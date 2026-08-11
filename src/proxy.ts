@@ -3,7 +3,15 @@ import { createServerClient } from '@supabase/ssr'
 
 const PUBLIC_ROUTES = ['/login', '/verify', '/auth']
 
-export async function middleware(request: NextRequest) {
+/**
+ * Renamed from `middleware` in Next 16 — the file convention is deprecated.
+ * Runs on the Node.js runtime by default now, which is what @supabase/ssr wants.
+ *
+ * This only refreshes the session and bounces signed-out visitors. It is not
+ * the security boundary: RLS is. Every server action re-checks the user, since
+ * a matcher change here must never be able to silently open a door.
+ */
+export async function proxy(request: NextRequest) {
   let response = NextResponse.next({ request })
 
   const supabase = createServerClient(
