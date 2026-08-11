@@ -109,3 +109,28 @@ export function toBanglaDigits(value: string | number): string {
 export function currentPeriodMonth(now: Date = new Date()): string {
   return `${todayInDhaka(now).slice(0, 7)}-01`
 }
+
+/** Renders a YYYY-MM-01 as "আগস্ট ২০২৬" — a billing period, not a day. */
+export function formatMonthBn(periodMonth: string): string {
+  const [y, m] = periodMonth.split('-').map(Number)
+  if (!y || !m || m > 12) return periodMonth
+  return `${MONTHS_BN[m - 1]} ${toBanglaDigits(y)}`
+}
+
+/**
+ * Shifts a YYYY-MM-01 by whole months.
+ *
+ * Arithmetic on the numbers rather than through Date, for the same reason
+ * formatDateBn parses by hand: a period_month is a label for a billing cycle,
+ * not an instant, and routing it through a timezone can only move it.
+ */
+export function addMonths(periodMonth: string, delta: number): string {
+  const [y, m] = periodMonth.split('-').map(Number)
+  if (!y || !m) return periodMonth
+  // Months as a single count from year zero, so a negative delta crosses
+  // January without a special case.
+  const total = y * 12 + (m - 1) + delta
+  const year = Math.floor(total / 12)
+  const month = total - year * 12 + 1
+  return `${String(year).padStart(4, '0')}-${String(month).padStart(2, '0')}-01`
+}

@@ -634,6 +634,267 @@ check(
 )
 
 // ---------------------------------------------------------------------------
+// The fee board's balance view.
+//
+// A Postgres view runs as its OWNER unless told otherwise, and the owner here is
+// the migration role, which bypasses RLS. So the first view added to this schema
+// was a chance to undo every policy above at once — not by weakening them, but
+// by routing around them. Measured before writing 20260811000006: as owner B,
+// the students table returned 1 row and a naive view over it returned 2,
+// including the other centre's child's name.
+//
+// security_invoker = true fixes it, check-migrations.mjs now refuses a view
+// without it, and this section is the behavioural half of that: it asks the
+// question an owner would ask, which is whether the fee board shows anyone
+// else's money.
+//
+// The arithmetic checks are here rather than in a unit test because this is
+// where the arithmetic actually happens. numeric(10, 2) in Postgres, not floats
+// in JavaScript — a fee board that is off by a taka is a fee board an owner
+// stops believing, and they will check it against a bKash statement.
+// ---------------------------------------------------------------------------
+
+console.log('\nFee board view (security_invoker):')
+
+// The seeded invoice: centre A, Ali, ৳800, nothing paid yet.
+const invoiceAli = (
+  await db.query('select id from fee_invoices where student_id = $1', [stAli])
+).rows[0].id
+
+await asUser(db, ids.ownerA, async (tx) => {
+  check(
+    'owner A sees their own invoice through the view',
+    (await n(tx, 'select count(*)::int as n from fee_invoice_balances')) === 1,
+  )
+  check(
+    'and the name comes with it, so the board is readable',
+    (await tx.query('select student_name from fee_invoice_balances')).rows[0]
+      .student_name === 'Ali Hasan',
+  )
+})
+
+// The one that matters. Centre B has no invoices at all, so a leak shows up as
+// any number other than zero.
+await asUser(db, ids.ownerB, async (tx) => {
+  check(
+    "owner B sees nothing of centre A's money through the view",
+    (await n(tx, 'select count(*)::int as n from fee_invoice_balances')) === 0,
+  )
+})
+
+await asUser(db, ids.karim, async (tx) => {
+  check(
+    'a teacher still sees no fees through the view',
+    (await n(tx, 'select count(*)::int as n from fee_invoice_balances')) === 0,
+  )
+})
+
+await asUser(db, ids.guardianUser, async (tx) => {
+  check(
+    "the guardian sees their own child's bill through the view",
+    (await n(tx, 'select count(*)::int as n from fee_invoice_balances')) === 1,
+  )
+})
+
+await asUser(db, null, async (tx) => {
+  check(
+    'a signed-out reader sees nothing through the view',
+    (await n(tx, 'select count(*)::int as n from fee_invoice_balances')) === 0,
+  )
+})
+
+// --- The money -------------------------------------------------------------
+
+const balance = async (invoiceId) =>
+  (
+    await db.query(
+      'select net_bdt, paid_bdt, remaining_bdt from fee_invoice_balances where id = $1',
+      [invoiceId],
+    )
+  ).rows[0]
+
+let bal = await balance(invoiceAli)
+check(
+  'nothing paid yet: remaining is the full fee',
+  Number(bal.net_bdt) === 800 && Number(bal.paid_bdt) === 0 && Number(bal.remaining_bdt) === 800,
+  `net=${bal.net_bdt} paid=${bal.paid_bdt} remaining=${bal.remaining_bdt}`,
+)
+
+// A discount reduces what the family owes without rewriting what was billed —
+// the owner needs both numbers to explain the bill to a parent.
+await db.query('update fee_invoices set discount_bdt = 100 where id = $1', [invoiceAli])
+bal = await balance(invoiceAli)
+check(
+  'a discount lowers what is owed, not what was billed',
+  Number(bal.net_bdt) === 700 && Number(bal.remaining_bdt) === 700,
+  `net=${bal.net_bdt} remaining=${bal.remaining_bdt}`,
+)
+
+const pay = (amount, method = 'cash') =>
+  db.query(
+    `insert into fee_payments (coaching_center_id, invoice_id, student_id, amount_bdt, method)
+     values ($1, $2, $3, $4, $5) returning id`,
+    [centerA, invoiceAli, stAli, amount, method],
+  )
+
+await pay(400)
+bal = await balance(invoiceAli)
+check(
+  'a partial payment leaves the difference outstanding',
+  Number(bal.paid_bdt) === 400 && Number(bal.remaining_bdt) === 300,
+  `paid=${bal.paid_bdt} remaining=${bal.remaining_bdt}`,
+)
+
+await pay(300, 'bkash')
+bal = await balance(invoiceAli)
+check(
+  'paying the rest clears it exactly',
+  Number(bal.paid_bdt) === 700 && Number(bal.remaining_bdt) === 0,
+  `paid=${bal.paid_bdt} remaining=${bal.remaining_bdt}`,
+)
+
+// A refund is a negative payment, not a deleted one: the original stays on the
+// record and the family owes the money again.
+await pay(-200)
+bal = await balance(invoiceAli)
+check(
+  'a refund puts the money back on the bill',
+  Number(bal.paid_bdt) === 500 && Number(bal.remaining_bdt) === 200,
+  `paid=${bal.paid_bdt} remaining=${bal.remaining_bdt}`,
+)
+check(
+  'and the payment it reverses is still on the record',
+  (await db.query('select count(*)::int as n from fee_payments where invoice_id = $1', [
+    invoiceAli,
+  ])).rows[0].n === 3,
+)
+
+// Fractional taka, which is the case JavaScript gets wrong. 1500.10 has no exact
+// float representation; three of them added as doubles give 4500.299999999999.
+await db.query('update fee_invoices set amount_bdt = 1500.10, discount_bdt = 0 where id = $1', [
+  invoiceAli,
+])
+await db.query('delete from fee_payments where invoice_id = $1', [invoiceAli])
+await pay(500.05)
+await pay(500.05)
+bal = await balance(invoiceAli)
+check(
+  'fractional taka add up exactly, because Postgres does the adding',
+  Number(bal.paid_bdt) === 1000.1 && Number(bal.remaining_bdt) === 500,
+  `paid=${bal.paid_bdt} remaining=${bal.remaining_bdt}`,
+)
+
+// Leave the seed as found: the sections below assert exact counts, and a
+// payment or a changed fee left behind here would fail one of them for a reason
+// that has nothing to do with what it is testing.
+await db.query('delete from fee_payments where invoice_id = $1', [invoiceAli])
+await db.query(
+  'update fee_invoices set amount_bdt = 800, discount_bdt = 0 where id = $1',
+  [invoiceAli],
+)
+
+// ---------------------------------------------------------------------------
+// The two writes the fee board makes.
+//
+// Everything above this proves reads. Nothing yet proved that the owner who is
+// supposed to run this screen can actually write to it — a policy that grants
+// SELECT and forgets INSERT reads exactly like a working one until someone tries
+// to take money, and the first person to try will be standing in front of a
+// parent.
+//
+// The other half is the generator's promise. The button says pressing it twice is
+// safe, which rests entirely on `on conflict (enrollment_id, period_month) do
+// nothing` and on RETURNING listing only the rows that were really inserted. If
+// that ever stopped holding, an owner with a flaky connection would double-bill
+// every family in the centre, and the arithmetic above would report the doubled
+// figure perfectly correctly.
+// ---------------------------------------------------------------------------
+
+console.log('\nFee board writes (raise, re-raise, collect):')
+
+// Mim has no seeded invoice, so this is a genuine first insert. The SQL is the
+// shape the generator's upsert compiles to, not an approximation of it.
+const raiseForMim = (tx) =>
+  tx.query(
+    `insert into fee_invoices
+       (coaching_center_id, student_id, enrollment_id, period_month, amount_bdt, due_date)
+     values ($1, $2, $3, date_trunc('month', current_date)::date, 1500, current_date + 10)
+     on conflict (enrollment_id, period_month) do nothing
+     returning id`,
+    [centerA, stMim, eMim],
+  )
+
+let mimInvoice = null
+await asUser(db, ids.ownerA, async (tx) => {
+  const first = await raiseForMim(tx)
+  mimInvoice = first.rows[0]?.id ?? null
+  check('the owner can raise an invoice for their own enrollment', first.rows.length === 1)
+
+  const second = await raiseForMim(tx)
+  check(
+    'pressing generate again inserts nothing and says so',
+    second.rows.length === 0,
+    `returned ${second.rows.length} row(s)`,
+  )
+
+  check(
+    'so the family is billed once, not twice',
+    (await n(
+      tx,
+      `select count(*)::int as n from fee_invoices
+       where enrollment_id = $1 and period_month = date_trunc('month', current_date)::date`,
+      [eMim],
+    )) === 1,
+  )
+
+  await tx.query(
+    `insert into fee_payments (coaching_center_id, invoice_id, student_id, amount_bdt, method)
+     values ($1, $2, $3, 1500, 'bkash')`,
+    [centerA, mimInvoice, stMim],
+  )
+  check(
+    'the owner can record a payment, and the board clears',
+    Number(
+      (
+        await tx.query('select remaining_bdt from fee_invoice_balances where id = $1', [
+          mimInvoice,
+        ])
+      ).rows[0].remaining_bdt,
+    ) === 0,
+  )
+})
+
+// A payment aimed at another centre's invoice. The insert names centre B in its
+// own tenant column, so RLS lets it through — what refuses it is the composite
+// foreign key from 20260811000005, and that distinction is why this is worth
+// asserting rather than assuming.
+check(
+  "owner B cannot put money on centre A's invoice",
+  await deniedAsUser(
+    db,
+    ids.ownerB,
+    `insert into fee_payments (coaching_center_id, invoice_id, student_id, amount_bdt)
+     values ($1, $2, $3, 500)`,
+    [centerB, mimInvoice, stB],
+  ),
+)
+
+check(
+  'a teacher cannot record a payment at all',
+  await deniedAsUser(
+    db,
+    ids.karim,
+    `insert into fee_payments (coaching_center_id, invoice_id, student_id, amount_bdt)
+     values ($1, $2, $3, 500)`,
+    [centerA, mimInvoice, stMim],
+  ),
+)
+
+// Put the seed back: the sections below count invoices and expect one.
+await db.query('delete from fee_payments where invoice_id = $1', [mimInvoice])
+await db.query('delete from fee_invoices where id = $1', [mimInvoice])
+
+// ---------------------------------------------------------------------------
 // Billing columns. The free tier only exists if these three cannot be edited
 // by the person who benefits from editing them.
 //

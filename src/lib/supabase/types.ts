@@ -1672,6 +1672,28 @@ export type Database = {
       }
     }
     Views: {
+      fee_invoice_balances: {
+        Row: {
+          id: string | null
+          coaching_center_id: string | null
+          student_id: string | null
+          enrollment_id: string | null
+          period_month: string | null
+          due_date: string | null
+          amount_bdt: number | null
+          discount_bdt: number | null
+          net_bdt: number | null
+          paid_bdt: number | null
+          remaining_bdt: number | null
+          note: string | null
+          voided_at: string | null
+          student_name: string | null
+          student_code: string | null
+          guardian_phone: string | null
+          sms_opt_out: boolean | null
+        }
+        Relationships: []
+      }
     }
     Functions: {
       bootstrap_center: {

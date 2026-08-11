@@ -81,6 +81,13 @@ h1, h2, h3, h4 {
   font-feature-settings: "tnum";
 }
 
+/* Tailwind's list-none hides the disclosure triangle in Chrome and Firefox but
+   not in Safari, which draws its own marker through a private pseudo-element.
+   Left in, it sits beside the student's name on every row of the fee board. */
+summary::-webkit-details-marker {
+  display: none;
+}
+
 /* A visible focus ring, always. Teachers navigate forms with the Android
    keyboard's next button, and an invisible focus makes that unusable. */
 :focus-visible {

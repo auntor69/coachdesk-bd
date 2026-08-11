@@ -126,6 +126,66 @@ migration saying why, and this check needs to learn about it deliberately.`,
     `\nTenant-consistent references: ${composite.rows[0].n} composite foreign keys, 0 holes.`,
   )
 
+  // -------------------------------------------------------------------------
+  // Every view must execute as its caller.
+  //
+  // A Postgres view runs with the privileges of its owner by default, and the
+  // owner here is the migration role, which bypasses RLS. So a view over a
+  // tenant table serves every centre's rows to every caller while all 63
+  // policies sit underneath it, untouched and irrelevant. Measured on this
+  // schema: as owner B, the students table returned 1 row and a naive view over
+  // it returned 2.
+  //
+  // security_invoker = true makes the view execute as the caller so the
+  // underlying policies apply. It is one clause, it is easy to leave out, and
+  // leaving it out is silent — the view works, it just works for everyone. That
+  // combination is what makes it worth a build failure rather than a code review.
+  // -------------------------------------------------------------------------
+  const leakyViews = await db.query(`
+    select c.relname
+    from pg_class c
+    join pg_namespace n on n.oid = c.relnamespace and n.nspname = 'public'
+    where c.relkind = 'v'
+      and coalesce(
+        (select option_value
+         from pg_options_to_table(c.reloptions)
+         where option_name = 'security_invoker'),
+        'false'
+      ) <> 'true'
+    order by c.relname;
+  `)
+
+  const views = await db.query(`
+    select count(*)::int as n
+    from pg_class c
+    join pg_namespace n on n.oid = c.relnamespace and n.nspname = 'public'
+    where c.relkind = 'v';
+  `)
+
+  if (leakyViews.rows.length > 0) {
+    console.error(
+      `\nVIEW BYPASSES RLS — ${leakyViews.rows.length} view(s) in public run as their owner, not the caller:\n`,
+    )
+    for (const v of leakyViews.rows) console.error(`  ${v.relname}`)
+    console.error(
+      `
+Each of these serves every centre's rows to every caller, with the row-level
+policies underneath still intact and doing nothing. Add the option:
+
+  create view <name> with (security_invoker = true) as …
+
+or, for one that already exists:
+
+  alter view <name> set (security_invoker = true);
+
+If a view genuinely must read past RLS — a platform-admin report, say — it does
+not belong in the public schema where PostgREST will expose it.`,
+    )
+    process.exit(1)
+  }
+
+  console.log(`Views: ${views.rows[0].n}, all security_invoker.`)
+
   await db.close()
 } catch (error) {
   console.error(`\nMIGRATION FAILED\n${error.message}`)

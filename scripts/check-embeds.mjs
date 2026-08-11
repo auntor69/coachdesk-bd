@@ -40,7 +40,7 @@ const embeds = [
   ['exams/[examId]/page.tsx', 'enrollments', 'id, students (id, name, student_code)'],
   ['exams/[examId]/page.tsx', 'teachers', 'id, teacher_permissions (can_send_sms)'],
   ['exams/new/page.tsx', 'batches', 'id, name, slot, subjects (name, name_bn)'],
-  ['fees/page.tsx', 'fee_invoices', 'id, amount_bdt, discount_bdt, due_date, period_month, students (name, guardian_phone)'],
+  ['fees/actions.ts', 'enrollments', 'id, student_id, batches (monthly_fee_bdt)'],
   ['me/page.tsx', 'exam_results', 'id, obtained_marks, is_absent, exams (title, total_marks, exam_date)'],
   ['settings/batches/page.tsx', 'batches', 'id, name, slot, start_time, end_time, monthly_fee_bdt, active, subjects (name, name_bn), teachers (name), batch_schedules (day_of_week), enrollments (id, status)'],
   ['settings/exam-types/page.tsx', 'exam_types', 'id, name, name_bn, exams (id)'],
@@ -57,6 +57,15 @@ const embeds = [
   ['lib/auth/session.ts', 'center_members', 'coaching_center_id, role, branch_id, coaching_centers (name, plan, sms_credit_balance)'],
   // Three hops, and the last one is the guardian phone the result SMS goes to.
   ['lib/sms/result-dispatch.ts', 'exam_results', 'id, obtained_marks, is_absent, note, enrollments (id, students (id, name, guardian_phone, sms_opt_out, guardians (id, phone, is_primary, sms_opt_out)))'],
+  // The fee board reads a view, not a table, and it is here for a different
+  // reason than the embeds. PostgREST serves views through the same schema cache
+  // as tables, so a view added by a migration stays invisible to the API until
+  // that cache reloads — and the failure looks like a 404 on a relation that
+  // plainly exists in psql. There are deliberately no embeds in these two: a join
+  // with an aggregate in it is not something PostgREST can always resolve through
+  // a view, so the student's name is a column of the view instead.
+  ['fees/page.tsx', 'fee_invoice_balances', 'id, student_name, student_code, amount_bdt, discount_bdt, net_bdt, paid_bdt, remaining_bdt, due_date, period_month'],
+  ['fees/actions.ts', 'fee_invoice_balances', 'id, student_id, student_name, remaining_bdt, voided_at'],
 ]
 
 let passed = 0
