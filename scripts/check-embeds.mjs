@@ -34,7 +34,6 @@ if (!url || !key) {
 
 /** Every embed shape in src/, with where it is used, so a failure names a file. */
 const embeds = [
-  ['dashboard/page.tsx', 'fee_invoices', 'id, student_id, amount_bdt, discount_bdt, due_date, students (name)'],
   ['exams/page.tsx', 'exams', 'id, title, total_marks, exam_date, sms_sent_at, sms_declined_at, batches (name), subjects (name, name_bn), exam_results (id)'],
   ['exams/[examId]/page.tsx', 'exams', 'id, title, total_marks, pass_marks, exam_date, batch_id, sms_sent_at, sms_declined_at, batches (name), subjects (name, name_bn), exam_types (name, name_bn)'],
   ['exams/[examId]/page.tsx', 'enrollments', 'id, students (id, name, student_code)'],
@@ -66,6 +65,7 @@ const embeds = [
   // a view, so the student's name is a column of the view instead.
   ['fees/page.tsx', 'fee_invoice_balances', 'id, student_name, student_code, amount_bdt, discount_bdt, net_bdt, paid_bdt, remaining_bdt, due_date, period_month'],
   ['fees/actions.ts', 'fee_invoice_balances', 'id, student_id, student_name, remaining_bdt, voided_at'],
+  ['dashboard/page.tsx', 'fee_invoice_balances', 'id, student_name, remaining_bdt, due_date'],
 ]
 
 let passed = 0

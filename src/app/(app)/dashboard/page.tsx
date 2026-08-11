@@ -5,19 +5,25 @@ import { greetingFor } from '@/components/app-shell'
 import { requireCenter } from '@/lib/auth/session'
 import { createClient } from '@/lib/supabase/server'
 import { todayInDhaka, currentPeriodMonth, formatDateBn } from '@/lib/bd/time'
+import { sumTaka, tallyOutstanding, formatTaka as taka } from '@/lib/money'
 
 export const metadata = { title: 'ড্যাশবোর্ড — CoachDesk' }
 
-/** ৳ with grouped digits. ASCII numerals on purpose — see toBanglaDigits. */
-function taka(amount: number): string {
-  return `৳${amount.toLocaleString('en-US')}`
-}
+/** One line, not a concatenation — see the same note on the fee board. */
+const COLUMNS = 'id, student_name, remaining_bdt, due_date'
 
 /**
  * The owner's screen. Four numbers and a list.
  *
  * The number that sells the product is outstanding fees, so it is largest and
  * first. Everything else on this page exists to make that number trustworthy.
+ *
+ * Which is why it reads the same view and uses the same arithmetic as the fee
+ * board rather than recomputing. This page used to fetch every invoice and every
+ * payment and reduce them in JavaScript floats; both screens showed ৳900 while
+ * the fees were whole taka, and would have started disagreeing the first time a
+ * centre entered 1250.50. Two screens showing the same number two different ways
+ * is how an owner finds a discrepancy and stops trusting both.
  */
 export default async function DashboardPage() {
   const session = await requireCenter()
@@ -28,7 +34,7 @@ export default async function DashboardPage() {
   const [
     { count: studentCount },
     { count: batchCount },
-    { data: invoices },
+    { data: owing },
     { data: payments },
     { data: todaySessions },
   ] = await Promise.all([
@@ -40,58 +46,49 @@ export default async function DashboardPage() {
       .from('batches')
       .select('id', { count: 'exact', head: true })
       .eq('active', true),
-    // Unvoided invoices only: a voided invoice is a correction, and counting it
-    // would show the owner money they are not owed.
+    // Unvoided and still owed. A voided invoice is a correction and counting it
+    // would show the owner money they are not owed; a settled one is not owed at
+    // all. Every balance here was subtracted by Postgres in numeric(10, 2).
     supabase
-      .from('fee_invoices')
-      .select('id, student_id, amount_bdt, discount_bdt, due_date, students (name)')
-      .is('voided_at', null),
-    supabase.from('fee_payments').select('invoice_id, amount_bdt, paid_at'),
+      .from('fee_invoice_balances')
+      .select(COLUMNS)
+      .is('voided_at', null)
+      .gt('remaining_bdt', 0),
+    // Collected this month, by payment date rather than by invoice period — the
+    // owner is asking "what came in", not "what was billed".
+    //
+    // The +06:00 offset is the whole point of doing this in the query. paid_at is
+    // a timestamptz and PostgREST hands it back in UTC, so taking the first ten
+    // characters of the string gives a UTC date: a payment at 1am Dhaka on the
+    // 1st is 19:00 UTC on the last of the previous month, and would be counted
+    // against a month the owner has already closed and reported.
+    supabase
+      .from('fee_payments')
+      .select('amount_bdt')
+      .gte('paid_at', `${period}T00:00:00+06:00`),
     supabase
       .from('attendance_sessions')
       .select('batch_id')
       .eq('session_date', today),
   ])
 
-  // Paid-per-invoice, computed here rather than in SQL. At free-tier scale the
-  // whole invoice table is a few hundred rows; a view can come later when it
-  // is not. Partial payments are normal here — parents pay in instalments —
-  // so an invoice is settled only when payments meet the discounted amount.
-  const paidByInvoice = new Map<string, number>()
-  for (const p of payments ?? []) {
-    paidByInvoice.set(p.invoice_id, (paidByInvoice.get(p.invoice_id) ?? 0) + p.amount_bdt)
-  }
+  // Same rule as the fee board, so the two screens cannot drift: only positive
+  // remainders, never netted against a family in credit. The credit itself is
+  // not shown here — it is a detail to act on, and it belongs on the board next
+  // to the child's name rather than diluting the one number this card is for.
+  const remainders = (owing ?? []).map((r) => Number(r.remaining_bdt ?? 0))
+  const { outstanding } = tallyOutstanding(remainders)
+  const collected = sumTaka((payments ?? []).map((p) => Number(p.amount_bdt)))
 
-  let outstanding = 0
-  let overdueCount = 0
-  const overdue: { name: string; amount: number; dueDate: string }[] = []
-
-  for (const inv of invoices ?? []) {
-    const due = inv.amount_bdt - inv.discount_bdt
-    const paid = paidByInvoice.get(inv.id) ?? 0
-    const remaining = due - paid
-    if (remaining <= 0) continue
-
-    outstanding += remaining
-    if (inv.due_date < today) {
-      overdueCount++
-      const student = Array.isArray(inv.students) ? inv.students[0] : inv.students
-      overdue.push({
-        name: student?.name ?? 'অজানা',
-        amount: remaining,
-        dueDate: inv.due_date,
-      })
-    }
-  }
-
-  // Collected this month, by payment date rather than by invoice period — the
-  // owner is asking "what came in", not "what was billed".
-  const monthStart = period
-  const collected = (payments ?? [])
-    .filter((p) => p.paid_at.slice(0, 10) >= monthStart)
-    .reduce((sum, p) => sum + p.amount_bdt, 0)
-
-  overdue.sort((a, b) => b.amount - a.amount)
+  // Biggest debt first: the call an owner makes before the others.
+  const overdue = (owing ?? [])
+    .filter((r) => (r.due_date ?? today) < today)
+    .map((r) => ({
+      name: r.student_name ?? 'অজানা',
+      amount: Number(r.remaining_bdt ?? 0),
+      dueDate: r.due_date ?? today,
+    }))
+    .sort((a, b) => b.amount - a.amount)
 
   return (
     <div className="flex flex-col gap-5">
@@ -106,9 +103,9 @@ export default async function DashboardPage() {
           {taka(outstanding)}
         </p>
         <p className="mt-2 text-sm text-brand-800">
-          {overdueCount > 0 ? (
+          {overdue.length > 0 ? (
             <>
-              <span className="num">{overdueCount}</span> জনের সময় পেরিয়ে গেছে
+              <span className="num">{overdue.length}</span> জনের সময় পেরিয়ে গেছে
             </>
           ) : (
             'কারও সময় পেরোয়নি'
