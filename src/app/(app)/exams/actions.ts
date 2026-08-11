@@ -1,0 +1,520 @@
+'use server'
+
+/**
+ * Exams, marks, and the one action in this product that spends real money.
+ *
+ * Sending result SMS is the only irreversible thing a teacher can do here: a
+ * message delivered to 40 parents cannot be recalled, and each one costs the
+ * centre credits it paid for. So the send is deliberately not a side effect of
+ * saving marks — marks save on their own, and the send is a separate, explicit
+ * decision made on a screen that shows the recipient count and the exact cost
+ * first. Everything below exists to make that boundary hold even if someone
+ * calls these endpoints directly.
+ */
+import { revalidatePath } from 'next/cache'
+
+import { createClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/admin'
+import { requireRole, AuthError, type CenterSession } from '@/lib/auth/session'
+import { todayInDhaka } from '@/lib/bd/time'
+import { planResultSms } from '@/lib/sms/result-dispatch'
+import { smsProviderConfigured } from '@/lib/sms/provider'
+
+export type ExamActionState = { error?: string; ok?: string } | null
+
+const DATE_RE = /^\d{4}-\d{2}-\d{2}$/
+
+async function teacherOrAbove(): Promise<CenterSession | ExamActionState> {
+  try {
+    return await requireRole('teacher')
+  } catch (err) {
+    if (err instanceof AuthError) {
+      return { error: 'আপনার এই কাজের অনুমতি নেই।' }
+    }
+    throw err
+  }
+}
+
+function isSession(value: CenterSession | ExamActionState): value is CenterSession {
+  return value !== null && 'userId' in value
+}
+
+/** The teacher row for this user in this centre, if they have one. */
+async function myTeacherId(session: CenterSession): Promise<string | null> {
+  const supabase = await createClient()
+  const { data } = await supabase
+    .from('teachers')
+    .select('id')
+    .eq('coaching_center_id', session.active.centerId)
+    .eq('user_id', session.userId)
+    .maybeSingle()
+  return data?.id ?? null
+}
+
+export type CreateExamState =
+  | { ok: true; examId: string }
+  | { ok: false; error: string }
+  | null
+
+export async function createExam(
+  _prev: CreateExamState,
+  formData: FormData,
+): Promise<CreateExamState> {
+  const session = await teacherOrAbove()
+  if (!isSession(session)) {
+    return { ok: false, error: session?.error ?? 'অনুমতি নেই।' }
+  }
+
+  const title = String(formData.get('title') ?? '').trim()
+  const batchId = String(formData.get('batchId') ?? '')
+  const examTypeId = String(formData.get('examTypeId') ?? '')
+  const totalMarks = Number(formData.get('totalMarks') ?? 0)
+  const rawPassMarks = String(formData.get('passMarks') ?? '').trim()
+  const rawDate = String(formData.get('examDate') ?? '')
+
+  if (!title) return { ok: false, error: 'পরীক্ষার নাম লিখুন।' }
+  if (title.length > 80) return { ok: false, error: 'নাম ৮০ অক্ষরের মধ্যে রাখুন।' }
+  if (!batchId) return { ok: false, error: 'ব্যাচ বাছুন।' }
+
+  if (!Number.isFinite(totalMarks) || totalMarks <= 0) {
+    return { ok: false, error: 'পূর্ণমান ঠিকভাবে লিখুন।' }
+  }
+  if (totalMarks > 1000) {
+    return { ok: false, error: 'পূর্ণমান ১০০০-এর মধ্যে হতে হবে।' }
+  }
+
+  const passMarks = rawPassMarks === '' ? null : Number(rawPassMarks)
+  if (passMarks !== null && (!Number.isFinite(passMarks) || passMarks < 0)) {
+    return { ok: false, error: 'পাস নম্বর ঠিকভাবে লিখুন।' }
+  }
+  // The database has the same check. Catching it here gives a field-level
+  // message rather than a constraint name.
+  if (passMarks !== null && passMarks > totalMarks) {
+    return { ok: false, error: 'পাস নম্বর পূর্ণমানের বেশি হতে পারে না।' }
+  }
+
+  // A future exam date is allowed — centres create next week's test in advance —
+  // but a garbled one becomes today rather than failing the insert.
+  const examDate = DATE_RE.test(rawDate) ? rawDate : todayInDhaka()
+
+  const supabase = await createClient()
+
+  // The subject comes from the batch, never from the form. A batch teaches one
+  // subject; letting the client name a different one would put a physics exam
+  // on a maths batch and quietly show the wrong roster on the marks sheet.
+  const { data: batch } = await supabase
+    .from('batches')
+    .select('id, subject_id')
+    .eq('id', batchId)
+    .maybeSingle()
+
+  if (!batch) return { ok: false, error: 'ব্যাচ পাওয়া যায়নি।' }
+
+  const { data: exam, error } = await supabase
+    .from('exams')
+    .insert({
+      coaching_center_id: session.active.centerId,
+      batch_id: batch.id,
+      subject_id: batch.subject_id,
+      teacher_id: await myTeacherId(session),
+      exam_type_id: examTypeId || null,
+      title,
+      total_marks: totalMarks,
+      pass_marks: passMarks,
+      exam_date: examDate,
+      created_by: session.userId,
+    })
+    .select('id')
+    .single()
+
+  if (error || !exam) {
+    return { ok: false, error: 'পরীক্ষা তৈরি করা যায়নি। আবার চেষ্টা করুন।' }
+  }
+
+  revalidatePath('/exams')
+  return { ok: true, examId: exam.id }
+}
+
+export type SaveMarksState =
+  | { ok: true; entered: number; absent: number; cleared: number }
+  | { ok: false; error: string }
+  | null
+
+type SubmittedMark = {
+  enrollmentId: string
+  /** null with isAbsent false means "the teacher cleared this field". */
+  marks: number | null
+  isAbsent: boolean
+  note: string | null
+}
+
+/**
+ * Saves the whole sheet in one call, and only the marks — never an SMS.
+ *
+ * Keeping the send out of here is the entire point of the two-step design. If
+ * this action also messaged parents, every correction to a typo would charge the
+ * centre again and contradict the message already delivered.
+ */
+export async function saveMarks(
+  _prev: SaveMarksState,
+  formData: FormData,
+): Promise<SaveMarksState> {
+  const session = await teacherOrAbove()
+  if (!isSession(session)) {
+    return { ok: false, error: session?.error ?? 'অনুমতি নেই।' }
+  }
+
+  const examId = String(formData.get('examId') ?? '')
+  if (!examId) return { ok: false, error: 'পরীক্ষা পাওয়া যায়নি।' }
+
+  const supabase = await createClient()
+
+  // RLS decides whether this teacher may touch this exam at all.
+  const { data: exam } = await supabase
+    .from('exams')
+    .select('id, batch_id, total_marks')
+    .eq('id', examId)
+    .maybeSingle()
+
+  if (!exam) return { ok: false, error: 'পরীক্ষা পাওয়া যায়নি।' }
+
+  const total = Number(exam.total_marks)
+
+  // Which enrollments are genuinely on this batch's roster. A forged id from
+  // another batch is dropped rather than written — the same guard the
+  // attendance action uses, for the same reason.
+  const { data: enrollments, error: rosterError } = await supabase
+    .from('enrollments')
+    .select('id')
+    .eq('batch_id', exam.batch_id)
+    .eq('status', 'active')
+
+  if (rosterError) return { ok: false, error: 'শিক্ষার্থীর তালিকা পড়া যায়নি।' }
+  const validIds = new Set((enrollments ?? []).map((e) => e.id))
+
+  const submitted: SubmittedMark[] = []
+  for (const [key, value] of formData.entries()) {
+    if (!key.startsWith('mark:')) continue
+    const enrollmentId = key.slice('mark:'.length)
+    if (!validIds.has(enrollmentId)) continue
+
+    const raw = String(value).trim()
+    const note = String(formData.get(`note:${enrollmentId}`) ?? '').trim()
+
+    if (raw === 'absent') {
+      submitted.push({ enrollmentId, marks: null, isAbsent: true, note: note || null })
+      continue
+    }
+    if (raw === '') {
+      submitted.push({ enrollmentId, marks: null, isAbsent: false, note: note || null })
+      continue
+    }
+
+    const marks = Number(raw)
+    if (!Number.isFinite(marks) || marks < 0) {
+      return { ok: false, error: 'নম্বর ঋণাত্মক হতে পারে না।' }
+    }
+    // A trigger enforces this too, but a trigger failure aborts the whole sheet
+    // with a database message. Named here, the teacher knows which cap they hit.
+    if (marks > total) {
+      return { ok: false, error: `নম্বর পূর্ণমান (${total}) এর বেশি হতে পারে না।` }
+    }
+
+    submitted.push({ enrollmentId, marks, isAbsent: false, note: note || null })
+  }
+
+  if (submitted.length === 0) {
+    return { ok: false, error: 'কোনো শিক্ষার্থী পাওয়া যায়নি।' }
+  }
+
+  const toWrite = submitted.filter((m) => m.isAbsent || m.marks !== null)
+  // A blanked field is a deliberate erase, not "leave it as it was". Honouring
+  // it matters because the SMS gate reads these rows: a stale mark left behind
+  // after a correction is a wrong number delivered to a parent's phone.
+  const toClear = submitted.filter((m) => !m.isAbsent && m.marks === null)
+
+  if (toWrite.length > 0) {
+    const { error } = await supabase.from('exam_results').upsert(
+      toWrite.map((m) => ({
+        coaching_center_id: session.active.centerId,
+        exam_id: exam.id,
+        enrollment_id: m.enrollmentId,
+        obtained_marks: m.isAbsent ? null : m.marks,
+        is_absent: m.isAbsent,
+        note: m.note,
+        entered_by: session.userId,
+      })),
+      { onConflict: 'exam_id,enrollment_id' },
+    )
+
+    if (error) return { ok: false, error: 'নম্বর সেভ হয়নি। আবার চেষ্টা করুন।' }
+  }
+
+  if (toClear.length > 0) {
+    await supabase
+      .from('exam_results')
+      .delete()
+      .eq('exam_id', exam.id)
+      .in(
+        'enrollment_id',
+        toClear.map((m) => m.enrollmentId),
+      )
+  }
+
+  revalidatePath(`/exams/${exam.id}`)
+  revalidatePath('/exams')
+
+  return {
+    ok: true,
+    entered: toWrite.filter((m) => !m.isAbsent).length,
+    absent: toWrite.filter((m) => m.isAbsent).length,
+    cleared: toClear.length,
+  }
+}
+
+export type SmsGateState =
+  | { ok: true; sent: number; charged: number; queuedOnly: boolean }
+  | { ok: true; declined: true }
+  | { ok: false; error: string }
+  | null
+
+/**
+ * The decline half of the gate.
+ *
+ * Recording "no" is not a no-op: without it the confirmation screen would ask
+ * again every time anyone opened the exam, and a teacher who deliberately chose
+ * not to message parents about a bad test would be nagged into it. It stays
+ * reversible — the screen keeps offering the send afterwards.
+ */
+export async function declineResultSms(
+  _prev: SmsGateState,
+  formData: FormData,
+): Promise<SmsGateState> {
+  const session = await teacherOrAbove()
+  if (!isSession(session)) {
+    return { ok: false, error: session?.error ?? 'অনুমতি নেই।' }
+  }
+
+  const examId = String(formData.get('examId') ?? '')
+  if (!examId) return { ok: false, error: 'পরীক্ষা পাওয়া যায়নি।' }
+
+  const supabase = await createClient()
+  const { error } = await supabase
+    .from('exams')
+    .update({ sms_declined_at: new Date().toISOString() })
+    .eq('id', examId)
+
+  if (error) return { ok: false, error: 'সেভ হয়নি। আবার চেষ্টা করুন।' }
+
+  revalidatePath(`/exams/${examId}`)
+  revalidatePath('/exams')
+  return { ok: true, declined: true }
+}
+
+/**
+ * The send. The only place in this product that spends a centre's credits.
+ *
+ * Structured so that no failure path can charge without queueing or queue
+ * without charging:
+ *
+ *   1. the dispatch row goes in first, and its unique (center, kind, ref_id)
+ *      index is what makes a double-tap or a retried request impossible — the
+ *      second insert fails rather than sending a second time;
+ *   2. credits are debited by compare-and-swap, so two simultaneous sends
+ *      cannot both read the same balance and both spend it;
+ *   3. only then are the messages queued.
+ *
+ * Steps 1-3 use the service-role client because `sms_logs`, the ledger, and the
+ * credit balance deliberately have no client-writable RLS policy — a browser
+ * session must never be able to write its own billing records. Every query here
+ * therefore filters by coaching_center_id by hand.
+ */
+export async function sendResultSms(
+  _prev: SmsGateState,
+  formData: FormData,
+): Promise<SmsGateState> {
+  const session = await teacherOrAbove()
+  if (!isSession(session)) {
+    return { ok: false, error: session?.error ?? 'অনুমতি নেই।' }
+  }
+
+  const examId = String(formData.get('examId') ?? '')
+  if (!examId) return { ok: false, error: 'পরীক্ষা পাওয়া যায়নি।' }
+
+  // The user's own client, so RLS still decides which exam they may act on.
+  const supabase = await createClient()
+  const centerId = session.active.centerId
+
+  const { data: exam } = await supabase
+    .from('exams')
+    .select('id, title, batch_id, sms_sent_at, coaching_center_id')
+    .eq('id', examId)
+    .maybeSingle()
+
+  if (!exam) return { ok: false, error: 'পরীক্ষা পাওয়া যায়নি।' }
+
+  // Belt and braces against a stale session pointing at another centre.
+  if (exam.coaching_center_id !== centerId) {
+    return { ok: false, error: 'পরীক্ষা পাওয়া যায়নি।' }
+  }
+
+  if (exam.sms_sent_at) {
+    return { ok: false, error: 'এই পরীক্ষার ফলাফল আগেই পাঠানো হয়েছে।' }
+  }
+
+  // A teacher may be denied SMS by the owner. Owners and managers always may —
+  // they are the ones paying for the credits.
+  const teacherId = await myTeacherId(session)
+  if (session.active.role === 'teacher' && teacherId) {
+    const { data: perms } = await supabase
+      .from('teacher_permissions')
+      .select('can_send_sms')
+      .eq('teacher_id', teacherId)
+      .maybeSingle()
+
+    if (perms && !perms.can_send_sms) {
+      return { ok: false, error: 'আপনার SMS পাঠানোর অনুমতি নেই। মালিককে বলুন।' }
+    }
+  }
+
+  const { count: rosterSize } = await supabase
+    .from('enrollments')
+    .select('id', { count: 'exact', head: true })
+    .eq('batch_id', exam.batch_id)
+    .eq('status', 'active')
+
+  const plan = await planResultSms(
+    supabase,
+    exam.id,
+    session.active.centerName,
+    rosterSize ?? 0,
+  )
+
+  if (!plan || plan.recipients.length === 0) {
+    return { ok: false, error: 'পাঠানোর মতো কোনো নম্বর নেই।' }
+  }
+
+  const cost = plan.creditCost
+  const admin = createAdminClient()
+
+  // Read the balance through the admin client rather than trusting the session
+  // copy, which was cached when the page was rendered.
+  const { data: center } = await admin
+    .from('coaching_centers')
+    .select('sms_credit_balance')
+    .eq('id', centerId)
+    .maybeSingle()
+
+  const balance = center?.sms_credit_balance ?? 0
+  if (balance < cost) {
+    return {
+      ok: false,
+      error: `SMS ক্রেডিট কম আছে — দরকার ${cost}, আছে ${balance}।`,
+    }
+  }
+
+  // Step 1. The unique (coaching_center_id, kind, ref_id) index turns a double
+  // submit into a duplicate-key error instead of a second charge.
+  const { data: dispatch, error: dispatchError } = await admin
+    .from('sms_dispatches')
+    .insert({
+      coaching_center_id: centerId,
+      kind: 'exam_result',
+      ref_id: exam.id,
+      recipient_count: plan.recipients.length,
+      segment_count: cost,
+      credit_cost: cost,
+      triggered_by: session.userId,
+    })
+    .select('id')
+    .single()
+
+  if (dispatchError || !dispatch) {
+    if (dispatchError?.code === '23505') {
+      return { ok: false, error: 'এই পরীক্ষার ফলাফল আগেই পাঠানো হয়েছে।' }
+    }
+    return { ok: false, error: 'পাঠানো যায়নি। আবার চেষ্টা করুন।' }
+  }
+
+  // Step 2. Compare-and-swap on the balance we just read. If another send got
+  // there first the row no longer matches, no rows update, and we back out
+  // rather than overwriting their debit with ours.
+  const { data: debited } = await admin
+    .from('coaching_centers')
+    .update({ sms_credit_balance: balance - cost })
+    .eq('id', centerId)
+    .eq('sms_credit_balance', balance)
+    .select('sms_credit_balance')
+    .maybeSingle()
+
+  if (!debited) {
+    await admin.from('sms_dispatches').delete().eq('id', dispatch.id)
+    return { ok: false, error: 'ক্রেডিট হিসাব বদলেছে। আবার চেষ্টা করুন।' }
+  }
+
+  await admin.from('sms_credit_ledger').insert({
+    coaching_center_id: centerId,
+    delta: -cost,
+    reason: `exam_result:${exam.id}`,
+    dispatch_id: dispatch.id,
+    balance_after: debited.sms_credit_balance,
+    created_by: session.userId,
+  })
+
+  // Step 3. Queued, not sent. A worker delivers these and moves them to 'sent'
+  // or 'failed'; nothing here claims a message reached a handset.
+  const { error: logError } = await admin.from('sms_logs').insert(
+    plan.recipients.map((r) => ({
+      coaching_center_id: centerId,
+      dispatch_id: dispatch.id,
+      student_id: r.studentId,
+      guardian_id: r.guardianId,
+      to_phone: r.phone,
+      kind: 'exam_result' as const,
+      body: r.body,
+      segments: r.segments,
+      credit_cost: r.segments,
+      status: 'queued' as const,
+    })),
+  )
+
+  if (logError) {
+    // The debit happened but nothing will ever be delivered, so give it back.
+    // A centre that loses credits to our bug will not trust the counter again.
+    const { data: refunded } = await admin
+      .from('coaching_centers')
+      .update({ sms_credit_balance: debited.sms_credit_balance + cost })
+      .eq('id', centerId)
+      .select('sms_credit_balance')
+      .maybeSingle()
+
+    await admin.from('sms_credit_ledger').insert({
+      coaching_center_id: centerId,
+      delta: cost,
+      reason: `refund:exam_result:${exam.id}`,
+      dispatch_id: dispatch.id,
+      balance_after: refunded?.sms_credit_balance ?? balance,
+      created_by: session.userId,
+    })
+    await admin.from('sms_dispatches').delete().eq('id', dispatch.id)
+
+    return { ok: false, error: 'পাঠানো যায়নি। ক্রেডিট ফেরত দেওয়া হয়েছে।' }
+  }
+
+  await admin
+    .from('exams')
+    .update({ sms_sent_at: new Date().toISOString(), sms_sent_by: session.userId })
+    .eq('id', exam.id)
+    .eq('coaching_center_id', centerId)
+
+  revalidatePath(`/exams/${exam.id}`)
+  revalidatePath('/exams')
+  revalidatePath('/settings/sms')
+
+  return {
+    ok: true,
+    sent: plan.recipients.length,
+    charged: cost,
+    queuedOnly: !smsProviderConfigured(),
+  }
+}

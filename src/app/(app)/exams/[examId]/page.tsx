@@ -1,0 +1,208 @@
+import Link from 'next/link'
+import { notFound } from 'next/navigation'
+
+import { Card } from '@/components/ui'
+import { requireRole } from '@/lib/auth/session'
+import { createClient } from '@/lib/supabase/server'
+import { formatDateBn } from '@/lib/bd/time'
+import { planResultSms } from '@/lib/sms/result-dispatch'
+import { smsProviderConfigured } from '@/lib/sms/provider'
+import { MarksSheet, type MarksRow } from './marks-sheet'
+import { SmsGate } from './sms-gate'
+
+export const metadata = { title: 'নম্বর — CoachDesk' }
+
+/**
+ * One exam: the marks sheet, then the parent-SMS decision under it.
+ *
+ * Both on one page, in that order, because they are one task in a teacher's
+ * head — "put the marks in and tell the parents" — but two separate writes in
+ * the database. Saving marks never sends anything; the gate below is the only
+ * thing that spends credits, and it reads the marks that were actually saved
+ * rather than whatever is currently typed into the sheet. That is deliberate:
+ * a preview built from unsaved input would show parents' names for marks that
+ * are not in the database yet.
+ */
+export default async function ExamPage({
+  params,
+}: {
+  // A Promise in Next 16, and awaiting it is not optional.
+  params: Promise<{ examId: string }>
+}) {
+  const { examId } = await params
+  const session = await requireRole('teacher')
+  const supabase = await createClient()
+
+  // RLS decides visibility. A miss is a 404, not a 403, so the URL cannot be
+  // used to find out which exam ids exist in other centres.
+  const { data: exam } = await supabase
+    .from('exams')
+    .select(
+      `id, title, total_marks, pass_marks, exam_date, batch_id,
+       sms_sent_at, sms_declined_at,
+       batches (name), subjects (name, name_bn), exam_types (name, name_bn)`,
+    )
+    .eq('id', examId)
+    .maybeSingle()
+
+  if (!exam) notFound()
+
+  const [{ data: enrollments }, { data: results }] = await Promise.all([
+    supabase
+      .from('enrollments')
+      .select('id, students (id, name, student_code)')
+      .eq('batch_id', exam.batch_id)
+      .eq('status', 'active'),
+    supabase
+      .from('exam_results')
+      .select('enrollment_id, obtained_marks, is_absent, note')
+      .eq('exam_id', exam.id),
+  ])
+
+  const saved = new Map(
+    (results ?? []).map((r) => [
+      r.enrollment_id,
+      {
+        // Number() drops the trailing .00 that Postgres numerics arrive with,
+        // so a teacher sees the 45 they typed rather than 45.00.
+        value: r.is_absent
+          ? 'absent'
+          : r.obtained_marks === null
+            ? ''
+            : String(Number(r.obtained_marks)),
+        note: r.note ?? '',
+      },
+    ]),
+  )
+
+  const rows: MarksRow[] = (enrollments ?? [])
+    .map((enrollment) => {
+      const student = Array.isArray(enrollment.students)
+        ? enrollment.students[0]
+        : enrollment.students
+      if (!student) return null
+      const prior = saved.get(enrollment.id)
+      return {
+        enrollmentId: enrollment.id,
+        name: student.name,
+        studentCode: student.student_code,
+        value: prior?.value ?? '',
+        note: prior?.note ?? '',
+      }
+    })
+    .filter((row): row is MarksRow => row !== null)
+    // Same Bangla collation as the attendance roster, so a teacher reads both
+    // screens in one order and can go down the two lists in parallel.
+    .sort((a, b) => a.name.localeCompare(b.name, 'bn-BD'))
+
+  // The same function the send action uses, so the count and cost shown here
+  // are the count and cost that will actually be charged.
+  const plan = await planResultSms(
+    supabase,
+    exam.id,
+    session.active.centerName,
+    rows.length,
+  )
+
+  // Owners and managers pay for the credits, so they may always spend them. A
+  // teacher can be denied by the owner in settings.
+  let canSend = true
+  if (session.active.role === 'teacher') {
+    const { data: teacher } = await supabase
+      .from('teachers')
+      .select('id, teacher_permissions (can_send_sms)')
+      .eq('user_id', session.userId)
+      .eq('coaching_center_id', session.active.centerId)
+      .maybeSingle()
+
+    const perms = Array.isArray(teacher?.teacher_permissions)
+      ? teacher?.teacher_permissions[0]
+      : teacher?.teacher_permissions
+    // No permission row means nothing has been restricted yet.
+    if (perms && perms.can_send_sms === false) canSend = false
+  }
+
+  const batch = Array.isArray(exam.batches) ? exam.batches[0] : exam.batches
+  const subject = Array.isArray(exam.subjects) ? exam.subjects[0] : exam.subjects
+  const examType = Array.isArray(exam.exam_types) ? exam.exam_types[0] : exam.exam_types
+
+  const subtitle = [
+    batch?.name,
+    subject?.name_bn || subject?.name,
+    examType?.name_bn || examType?.name,
+  ]
+    .filter(Boolean)
+    .join(' · ')
+
+  const preview = plan?.recipients[0]
+
+  return (
+    <div className="flex flex-col gap-5">
+      <div>
+        <Link
+          href="/exams"
+          className="inline-flex min-h-tap items-center text-ink-soft hover:text-ink"
+        >
+          ← পরীক্ষা
+        </Link>
+        <h1 className="mt-1 text-xl font-bold text-ink">{exam.title}</h1>
+        {subtitle && <p className="mt-0.5 text-ink-soft">{subtitle}</p>}
+        <p className="mt-0.5 text-sm text-ink-faint">
+          {formatDateBn(exam.exam_date)} · পূর্ণমান{' '}
+          <span className="num">{Number(exam.total_marks)}</span>
+          {exam.pass_marks !== null && (
+            <>
+              {' '}
+              · পাস <span className="num">{Number(exam.pass_marks)}</span>
+            </>
+          )}
+        </p>
+      </div>
+
+      {rows.length === 0 ? (
+        <Card>
+          <h2 className="font-semibold text-ink">এই ব্যাচে শিক্ষার্থী নেই</h2>
+          <p className="mt-1 text-sm text-ink-soft">
+            ব্যাচে শিক্ষার্থী যোগ করলে তাদের নাম এখানে নম্বর দেওয়ার জন্য চলে
+            আসবে।
+          </p>
+        </Card>
+      ) : (
+        <>
+          <MarksSheet
+            examId={exam.id}
+            totalMarks={Number(exam.total_marks)}
+            passMarks={exam.pass_marks === null ? null : Number(exam.pass_marks)}
+            rows={rows}
+            locked={Boolean(exam.sms_sent_at)}
+          />
+
+          <SmsGate
+            examId={exam.id}
+            recipientCount={plan?.recipients.length ?? 0}
+            creditCost={plan?.creditCost ?? 0}
+            balance={session.active.smsCreditBalance}
+            preview={
+              preview
+                ? {
+                    studentName: preview.studentName,
+                    phone: preview.phone,
+                    body: preview.body,
+                    segments: preview.segments,
+                  }
+                : null
+            }
+            skippedOptedOut={plan?.skippedOptedOut ?? 0}
+            skippedNoPhone={plan?.skippedNoPhone ?? 0}
+            withoutMarks={plan?.withoutMarks ?? rows.length}
+            anyMultiSegment={plan?.anyMultiSegment ?? false}
+            alreadySentAt={exam.sms_sent_at}
+            declinedAt={exam.sms_declined_at}
+            providerLive={smsProviderConfigured()}
+            canSend={canSend}
+          />
+        </>
+      )}
+    </div>
+  )
+}
