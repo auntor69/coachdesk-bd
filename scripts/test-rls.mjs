@@ -310,6 +310,197 @@ check(
 )
 
 // ---------------------------------------------------------------------------
+// Sideways references — the hole 20260811000005 closed.
+//
+// Everything above tests coaching_center_id: can this actor reach a row whose
+// centre is not theirs. This section tests the other axis. A write can carry a
+// perfectly legitimate coaching_center_id — passing every policy above —
+// alongside a *sibling* id belonging to another centre. Before the composite
+// foreign keys, all of these succeeded.
+//
+// Nothing here reads across tenants, which is why it survived so long. What it
+// does is stitch two centres' records together, so a mark or an invoice hangs
+// off a child who belongs to someone else, and every dashboard that joins
+// through a sideways id reports a number that is partly not the centre's.
+//
+// Half of these run as the superuser on purpose. That is the service_role path,
+// where no policy is consulted at all — the SMS queue and the invoice generator
+// will run there. If these assertions passed only under RLS, the constraint
+// would not be doing the work and the next thing I write as service_role would
+// walk straight through.
+// ---------------------------------------------------------------------------
+
+console.log('\nSideways references (same centre, wrong sibling):')
+
+/**
+ * Attempts a write as the connection owner — no RLS in the path, so only a
+ * constraint can refuse — and returns true only when a *tenant* foreign key was
+ * what refused it.
+ *
+ * Checking which constraint fired is the whole point. "The database said no" is
+ * cheap to get by accident: a unique conflict left behind by an earlier
+ * assertion, a check constraint, a bad enum label in the test itself. Any of
+ * those would turn this section green while the hole stayed open, and it would
+ * read exactly like a pass. So the error has to name a _center_fkey.
+ */
+async function refusedByTenantFk(sql, params = []) {
+  try {
+    await db.query(sql, params)
+    return { ok: false, why: 'accepted' }
+  } catch (error) {
+    const message = String(error.message)
+    return { ok: /_center_fkey/.test(message), why: message.split('\n')[0] }
+  }
+}
+
+/** Reads better at each call site than repeating the destructure. */
+async function checkRefused(name, sql, params) {
+  const result = await refusedByTenantFk(sql, params)
+  check(name, result.ok, result.why)
+}
+
+await checkRefused(
+  "a batch cannot borrow another centre's subject (service_role)",
+  `insert into batches (coaching_center_id, subject_id, name) values ($1, $2, 'Smuggled')`,
+  [centerA, sPhy],
+)
+await checkRefused(
+  "a batch cannot be handed another centre's teacher (service_role)",
+  `insert into batches (coaching_center_id, subject_id, teacher_id, name)
+   values ($1, $2, $3, 'Borrowed')`,
+  [centerA, sBio, tRahim],
+)
+await checkRefused(
+  "an enrollment cannot point at another centre's student (service_role)",
+  `insert into enrollments (coaching_center_id, student_id, subject_id, batch_id)
+   values ($1, $2, $3, $4)`,
+  [centerA, stB, sBio, bBioMorning],
+)
+await checkRefused(
+  "a guardian cannot be attached to another centre's student (service_role)",
+  `insert into guardians (coaching_center_id, student_id, phone)
+   values ($1, $2, '+8801711111111')`,
+  [centerA, stB],
+)
+await checkRefused(
+  "marks cannot be recorded against another centre's enrollment (service_role)",
+  `insert into exam_results (coaching_center_id, exam_id, enrollment_id, obtained_marks)
+   values ($1, $2, $3, 40)`,
+  [centerA, examBio, eB],
+)
+await checkRefused(
+  "an invoice cannot be raised against another centre's student (service_role)",
+  `insert into fee_invoices (coaching_center_id, student_id, period_month, amount_bdt, due_date)
+   values ($1, $2, date_trunc('month', current_date)::date, 800, current_date + 5)`,
+  [centerA, stB],
+)
+
+// Centre B's student has no seeded guardian, and a null guardian_id would make
+// MATCH SIMPLE skip the check — the insert would succeed and the test would
+// "pass" for the wrong reason. It needs a real guardian to aim at, so make one
+// and take it away again.
+const gB = await one(
+  `insert into guardians (coaching_center_id, student_id, phone, name)
+   values ($1, $2, '01799999999', 'B father') returning id`,
+  [centerB, stB],
+)
+await checkRefused(
+  "a result SMS cannot be logged against another centre's guardian (service_role)",
+  `insert into sms_logs (coaching_center_id, guardian_id, to_phone, kind, body)
+   values ($1, $2, '+8801711111111', 'exam_result', 'x')`,
+  [centerA, gB],
+)
+await db.query('delete from guardians where id = $1', [gB])
+
+await checkRefused(
+  "a permissions row cannot be attached to another centre's teacher (service_role)",
+  `insert into teacher_permissions (teacher_id, coaching_center_id) values ($1, $2)`,
+  [tRahim, centerA],
+)
+await checkRefused(
+  "teacher_subjects cannot pair a teacher with another centre's subject (service_role)",
+  `insert into teacher_subjects (teacher_id, subject_id, coaching_center_id)
+   values ($1, $2, $3)`,
+  [tKarim, sPhy, centerA],
+)
+
+// And the same attack down the path a real request takes.
+check(
+  "owner A cannot create an exam on another centre's subject",
+  await deniedAsUser(
+    db,
+    ids.ownerA,
+    `insert into exams (coaching_center_id, subject_id, batch_id, title, total_marks, exam_date)
+     values ($1, $2, $3, 'Injected', 100, current_date)`,
+    [centerA, sPhy, bBioMorning],
+  ),
+)
+check(
+  "owner A cannot enroll another centre's student into their own batch",
+  await deniedAsUser(
+    db,
+    ids.ownerA,
+    `insert into enrollments (coaching_center_id, student_id, subject_id, batch_id)
+     values ($1, $2, $3, $4)`,
+    [centerA, stB, sBio, bBioMorning],
+  ),
+)
+
+// The legitimate shapes have to keep working, or this is just an outage with a
+// security rationale. Everything below is created and then removed again: the
+// sections after this one assert exact counts, and a test that quietly leaves a
+// student behind makes the next one fail for a reason that has nothing to do
+// with what it is testing.
+const spareBatch = await one(
+  `insert into batches (coaching_center_id, subject_id, name)
+   values ($1, $2, 'Not yet staffed') returning id`,
+  [centerA, sBio],
+)
+// Worth stating on its own: a nullable sideways id must stay legal. MATCH SIMPLE
+// skips the check when any key column is null, and an unassigned batch is
+// exactly that — a real batch a centre creates before deciding who teaches it.
+check('a batch with no teacher assigned yet is still legal', Boolean(spareBatch))
+
+const spareEnrollment = await one(
+  `insert into enrollments (coaching_center_id, student_id, subject_id, batch_id)
+   values ($1, $2, $3, $4) returning id`,
+  [centerA, stMim, sBio, spareBatch],
+)
+check('an ordinary same-centre enrollment still inserts', Boolean(spareEnrollment))
+
+// Deleting a teacher must release their batches without taking the tenant
+// column with it — the reason every "set null" in the migration names its
+// column. A bare SET NULL on a composite key would try to null
+// coaching_center_id too, and NOT NULL would turn this delete into an error.
+const spareTeacher = await one(
+  `insert into teachers (coaching_center_id, name) values ($1, 'Temp Sir') returning id`,
+  [centerA],
+)
+await db.query('update batches set teacher_id = $1 where id = $2', [
+  spareTeacher,
+  spareBatch,
+])
+await db.query('delete from teachers where id = $1', [spareTeacher])
+const released = (
+  await db.query('select teacher_id, coaching_center_id from batches where id = $1', [
+    spareBatch,
+  ])
+).rows[0]
+check(
+  'deleting a teacher nulls the batch teacher and keeps the centre',
+  released.teacher_id === null && released.coaching_center_id === centerA,
+  `teacher_id=${released.teacher_id} center=${released.coaching_center_id}`,
+)
+
+await db.query('delete from batches where id = $1', [spareBatch])
+check(
+  'and removing the batch takes its enrollment with it, leaving the seed as found',
+  (await db.query('select count(*)::int as n from enrollments where id = $1', [
+    spareEnrollment,
+  ])).rows[0].n === 0,
+)
+
+// ---------------------------------------------------------------------------
 // Deactivating a teacher. The settings screen tells an owner that turning a
 // teacher off means "তিনি আর তাঁর ব্যাচ, শিক্ষার্থী বা অভিভাবকের নম্বর দেখতে পাবেন
 // না" — a promise about a person who may have just been fired, so it had better

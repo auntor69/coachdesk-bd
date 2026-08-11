@@ -12,7 +12,10 @@
     "test:schema": "node scripts/check-migrations.mjs",
     "test:rls": "node scripts/test-rls.mjs",
     "test:rls:live": "node --env-file=.env.local scripts/test-rls-live.mjs",
-    "test": "npm run test:schema && npm run test:rls"
+    "test:embeds": "node --env-file=.env.local scripts/check-embeds.mjs",
+    "test:unit": "node --test \"tests/**/*.test.ts\"",
+    "test": "npm run test:schema && npm run test:rls && npm run test:unit",
+    "test:live": "npm run test:rls:live && npm run test:embeds"
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.4",

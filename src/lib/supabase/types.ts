@@ -67,11 +67,11 @@ export type Database = {
             referencedColumns: ['id']
           },
           {
-            foreignKeyName: 'attendance_records_enrollment_id_fkey'
-            columns: ['enrollment_id']
+            foreignKeyName: 'attendance_records_enrollment_id_center_fkey'
+            columns: ['enrollment_id', 'coaching_center_id']
             isOneToOne: false
             referencedRelation: 'enrollments'
-            referencedColumns: ['id']
+            referencedColumns: ['id', 'coaching_center_id']
           },
           {
             foreignKeyName: 'attendance_records_marked_by_fkey'
@@ -81,11 +81,11 @@ export type Database = {
             referencedColumns: ['id']
           },
           {
-            foreignKeyName: 'attendance_records_session_id_fkey'
-            columns: ['session_id']
+            foreignKeyName: 'attendance_records_session_id_center_fkey'
+            columns: ['session_id', 'coaching_center_id']
             isOneToOne: false
             referencedRelation: 'attendance_sessions'
-            referencedColumns: ['id']
+            referencedColumns: ['id', 'coaching_center_id']
           },
         ]
       }
@@ -125,11 +125,11 @@ export type Database = {
         }
         Relationships: [
           {
-            foreignKeyName: 'attendance_sessions_batch_id_fkey'
-            columns: ['batch_id']
+            foreignKeyName: 'attendance_sessions_batch_id_center_fkey'
+            columns: ['batch_id', 'coaching_center_id']
             isOneToOne: false
             referencedRelation: 'batches'
-            referencedColumns: ['id']
+            referencedColumns: ['id', 'coaching_center_id']
           },
           {
             foreignKeyName: 'attendance_sessions_coaching_center_id_fkey'
@@ -146,11 +146,11 @@ export type Database = {
             referencedColumns: ['id']
           },
           {
-            foreignKeyName: 'attendance_sessions_teacher_id_fkey'
-            columns: ['teacher_id']
+            foreignKeyName: 'attendance_sessions_teacher_id_center_fkey'
+            columns: ['teacher_id', 'coaching_center_id']
             isOneToOne: false
             referencedRelation: 'teachers'
-            referencedColumns: ['id']
+            referencedColumns: ['id', 'coaching_center_id']
           },
         ]
       }
@@ -184,11 +184,11 @@ export type Database = {
         }
         Relationships: [
           {
-            foreignKeyName: 'batch_schedules_batch_id_fkey'
-            columns: ['batch_id']
+            foreignKeyName: 'batch_schedules_batch_id_center_fkey'
+            columns: ['batch_id', 'coaching_center_id']
             isOneToOne: false
             referencedRelation: 'batches'
-            referencedColumns: ['id']
+            referencedColumns: ['id', 'coaching_center_id']
           },
           {
             foreignKeyName: 'batch_schedules_coaching_center_id_fkey'
@@ -247,11 +247,11 @@ export type Database = {
         }
         Relationships: [
           {
-            foreignKeyName: 'batches_branch_id_fkey'
-            columns: ['branch_id']
+            foreignKeyName: 'batches_branch_id_center_fkey'
+            columns: ['branch_id', 'coaching_center_id']
             isOneToOne: false
             referencedRelation: 'branches'
-            referencedColumns: ['id']
+            referencedColumns: ['id', 'coaching_center_id']
           },
           {
             foreignKeyName: 'batches_coaching_center_id_fkey'
@@ -261,18 +261,18 @@ export type Database = {
             referencedColumns: ['id']
           },
           {
-            foreignKeyName: 'batches_subject_id_fkey'
-            columns: ['subject_id']
+            foreignKeyName: 'batches_subject_id_center_fkey'
+            columns: ['subject_id', 'coaching_center_id']
             isOneToOne: false
             referencedRelation: 'subjects'
-            referencedColumns: ['id']
+            referencedColumns: ['id', 'coaching_center_id']
           },
           {
-            foreignKeyName: 'batches_teacher_id_fkey'
-            columns: ['teacher_id']
+            foreignKeyName: 'batches_teacher_id_center_fkey'
+            columns: ['teacher_id', 'coaching_center_id']
             isOneToOne: false
             referencedRelation: 'teachers'
-            referencedColumns: ['id']
+            referencedColumns: ['id', 'coaching_center_id']
           },
         ]
       }
@@ -347,11 +347,11 @@ export type Database = {
         }
         Relationships: [
           {
-            foreignKeyName: 'center_members_branch_id_fkey'
-            columns: ['branch_id']
+            foreignKeyName: 'center_members_branch_id_center_fkey'
+            columns: ['branch_id', 'coaching_center_id']
             isOneToOne: false
             referencedRelation: 'branches'
-            referencedColumns: ['id']
+            referencedColumns: ['id', 'coaching_center_id']
           },
           {
             foreignKeyName: 'center_members_coaching_center_id_fkey'
@@ -461,11 +461,11 @@ export type Database = {
         }
         Relationships: [
           {
-            foreignKeyName: 'enrollments_batch_id_fkey'
-            columns: ['batch_id']
+            foreignKeyName: 'enrollments_batch_id_center_fkey'
+            columns: ['batch_id', 'coaching_center_id']
             isOneToOne: false
             referencedRelation: 'batches'
-            referencedColumns: ['id']
+            referencedColumns: ['id', 'coaching_center_id']
           },
           {
             foreignKeyName: 'enrollments_coaching_center_id_fkey'
@@ -475,18 +475,18 @@ export type Database = {
             referencedColumns: ['id']
           },
           {
-            foreignKeyName: 'enrollments_student_id_fkey'
-            columns: ['student_id']
+            foreignKeyName: 'enrollments_student_id_center_fkey'
+            columns: ['student_id', 'coaching_center_id']
             isOneToOne: false
             referencedRelation: 'students'
-            referencedColumns: ['id']
+            referencedColumns: ['id', 'coaching_center_id']
           },
           {
-            foreignKeyName: 'enrollments_subject_id_fkey'
-            columns: ['subject_id']
+            foreignKeyName: 'enrollments_subject_id_center_fkey'
+            columns: ['subject_id', 'coaching_center_id']
             isOneToOne: false
             referencedRelation: 'subjects'
-            referencedColumns: ['id']
+            referencedColumns: ['id', 'coaching_center_id']
           },
         ]
       }
@@ -536,11 +536,11 @@ export type Database = {
             referencedColumns: ['id']
           },
           {
-            foreignKeyName: 'exam_results_enrollment_id_fkey'
-            columns: ['enrollment_id']
+            foreignKeyName: 'exam_results_enrollment_id_center_fkey'
+            columns: ['enrollment_id', 'coaching_center_id']
             isOneToOne: false
             referencedRelation: 'enrollments'
-            referencedColumns: ['id']
+            referencedColumns: ['id', 'coaching_center_id']
           },
           {
             foreignKeyName: 'exam_results_entered_by_fkey'
@@ -550,11 +550,11 @@ export type Database = {
             referencedColumns: ['id']
           },
           {
-            foreignKeyName: 'exam_results_exam_id_fkey'
-            columns: ['exam_id']
+            foreignKeyName: 'exam_results_exam_id_center_fkey'
+            columns: ['exam_id', 'coaching_center_id']
             isOneToOne: false
             referencedRelation: 'exams'
-            referencedColumns: ['id']
+            referencedColumns: ['id', 'coaching_center_id']
           },
         ]
       }
@@ -653,11 +653,11 @@ export type Database = {
         }
         Relationships: [
           {
-            foreignKeyName: 'exams_batch_id_fkey'
-            columns: ['batch_id']
+            foreignKeyName: 'exams_batch_id_center_fkey'
+            columns: ['batch_id', 'coaching_center_id']
             isOneToOne: false
             referencedRelation: 'batches'
-            referencedColumns: ['id']
+            referencedColumns: ['id', 'coaching_center_id']
           },
           {
             foreignKeyName: 'exams_coaching_center_id_fkey'
@@ -674,11 +674,11 @@ export type Database = {
             referencedColumns: ['id']
           },
           {
-            foreignKeyName: 'exams_exam_type_id_fkey'
-            columns: ['exam_type_id']
+            foreignKeyName: 'exams_exam_type_id_center_fkey'
+            columns: ['exam_type_id', 'coaching_center_id']
             isOneToOne: false
             referencedRelation: 'exam_types'
-            referencedColumns: ['id']
+            referencedColumns: ['id', 'coaching_center_id']
           },
           {
             foreignKeyName: 'exams_sms_sent_by_fkey'
@@ -688,18 +688,18 @@ export type Database = {
             referencedColumns: ['id']
           },
           {
-            foreignKeyName: 'exams_subject_id_fkey'
-            columns: ['subject_id']
+            foreignKeyName: 'exams_subject_id_center_fkey'
+            columns: ['subject_id', 'coaching_center_id']
             isOneToOne: false
             referencedRelation: 'subjects'
-            referencedColumns: ['id']
+            referencedColumns: ['id', 'coaching_center_id']
           },
           {
-            foreignKeyName: 'exams_teacher_id_fkey'
-            columns: ['teacher_id']
+            foreignKeyName: 'exams_teacher_id_center_fkey'
+            columns: ['teacher_id', 'coaching_center_id']
             isOneToOne: false
             referencedRelation: 'teachers'
-            referencedColumns: ['id']
+            referencedColumns: ['id', 'coaching_center_id']
           },
         ]
       }
@@ -755,18 +755,18 @@ export type Database = {
             referencedColumns: ['id']
           },
           {
-            foreignKeyName: 'fee_invoices_enrollment_id_fkey'
-            columns: ['enrollment_id']
+            foreignKeyName: 'fee_invoices_enrollment_id_center_fkey'
+            columns: ['enrollment_id', 'coaching_center_id']
             isOneToOne: false
             referencedRelation: 'enrollments'
-            referencedColumns: ['id']
+            referencedColumns: ['id', 'coaching_center_id']
           },
           {
-            foreignKeyName: 'fee_invoices_student_id_fkey'
-            columns: ['student_id']
+            foreignKeyName: 'fee_invoices_student_id_center_fkey'
+            columns: ['student_id', 'coaching_center_id']
             isOneToOne: false
             referencedRelation: 'students'
-            referencedColumns: ['id']
+            referencedColumns: ['id', 'coaching_center_id']
           },
         ]
       }
@@ -819,11 +819,11 @@ export type Database = {
             referencedColumns: ['id']
           },
           {
-            foreignKeyName: 'fee_payments_invoice_id_fkey'
-            columns: ['invoice_id']
+            foreignKeyName: 'fee_payments_invoice_id_center_fkey'
+            columns: ['invoice_id', 'coaching_center_id']
             isOneToOne: false
             referencedRelation: 'fee_invoices'
-            referencedColumns: ['id']
+            referencedColumns: ['id', 'coaching_center_id']
           },
           {
             foreignKeyName: 'fee_payments_received_by_fkey'
@@ -833,11 +833,11 @@ export type Database = {
             referencedColumns: ['id']
           },
           {
-            foreignKeyName: 'fee_payments_student_id_fkey'
-            columns: ['student_id']
+            foreignKeyName: 'fee_payments_student_id_center_fkey'
+            columns: ['student_id', 'coaching_center_id']
             isOneToOne: false
             referencedRelation: 'students'
-            referencedColumns: ['id']
+            referencedColumns: ['id', 'coaching_center_id']
           },
         ]
       }
@@ -890,11 +890,11 @@ export type Database = {
             referencedColumns: ['id']
           },
           {
-            foreignKeyName: 'guardians_student_id_fkey'
-            columns: ['student_id']
-            isOneToOne: true
+            foreignKeyName: 'guardians_student_id_center_fkey'
+            columns: ['student_id', 'coaching_center_id']
+            isOneToOne: false
             referencedRelation: 'students'
-            referencedColumns: ['id']
+            referencedColumns: ['id', 'coaching_center_id']
           },
           {
             foreignKeyName: 'guardians_user_id_fkey'
@@ -950,18 +950,18 @@ export type Database = {
         }
         Relationships: [
           {
-            foreignKeyName: 'notices_batch_id_fkey'
-            columns: ['batch_id']
+            foreignKeyName: 'notices_batch_id_center_fkey'
+            columns: ['batch_id', 'coaching_center_id']
             isOneToOne: false
             referencedRelation: 'batches'
-            referencedColumns: ['id']
+            referencedColumns: ['id', 'coaching_center_id']
           },
           {
-            foreignKeyName: 'notices_branch_id_fkey'
-            columns: ['branch_id']
+            foreignKeyName: 'notices_branch_id_center_fkey'
+            columns: ['branch_id', 'coaching_center_id']
             isOneToOne: false
             referencedRelation: 'branches'
-            referencedColumns: ['id']
+            referencedColumns: ['id', 'coaching_center_id']
           },
           {
             foreignKeyName: 'notices_coaching_center_id_fkey'
@@ -1038,11 +1038,11 @@ export type Database = {
             referencedColumns: ['id']
           },
           {
-            foreignKeyName: 'payments_subscription_id_fkey'
-            columns: ['subscription_id']
+            foreignKeyName: 'payments_subscription_id_center_fkey'
+            columns: ['subscription_id', 'coaching_center_id']
             isOneToOne: false
             referencedRelation: 'subscriptions'
-            referencedColumns: ['id']
+            referencedColumns: ['id', 'coaching_center_id']
           },
         ]
       }
@@ -1149,18 +1149,18 @@ export type Database = {
             referencedColumns: ['id']
           },
           {
-            foreignKeyName: 'sms_credit_ledger_dispatch_id_fkey'
-            columns: ['dispatch_id']
+            foreignKeyName: 'sms_credit_ledger_dispatch_id_center_fkey'
+            columns: ['dispatch_id', 'coaching_center_id']
             isOneToOne: false
             referencedRelation: 'sms_dispatches'
-            referencedColumns: ['id']
+            referencedColumns: ['id', 'coaching_center_id']
           },
           {
-            foreignKeyName: 'sms_credit_ledger_payment_id_fkey'
-            columns: ['payment_id']
+            foreignKeyName: 'sms_credit_ledger_payment_id_center_fkey'
+            columns: ['payment_id', 'coaching_center_id']
             isOneToOne: false
             referencedRelation: 'payments'
-            referencedColumns: ['id']
+            referencedColumns: ['id', 'coaching_center_id']
           },
         ]
       }
@@ -1279,25 +1279,25 @@ export type Database = {
             referencedColumns: ['id']
           },
           {
-            foreignKeyName: 'sms_logs_dispatch_id_fkey'
-            columns: ['dispatch_id']
+            foreignKeyName: 'sms_logs_dispatch_id_center_fkey'
+            columns: ['dispatch_id', 'coaching_center_id']
             isOneToOne: false
             referencedRelation: 'sms_dispatches'
-            referencedColumns: ['id']
+            referencedColumns: ['id', 'coaching_center_id']
           },
           {
-            foreignKeyName: 'sms_logs_guardian_id_fkey'
-            columns: ['guardian_id']
+            foreignKeyName: 'sms_logs_guardian_id_center_fkey'
+            columns: ['guardian_id', 'coaching_center_id']
             isOneToOne: false
             referencedRelation: 'guardians'
-            referencedColumns: ['id']
+            referencedColumns: ['id', 'coaching_center_id']
           },
           {
-            foreignKeyName: 'sms_logs_student_id_fkey'
-            columns: ['student_id']
+            foreignKeyName: 'sms_logs_student_id_center_fkey'
+            columns: ['student_id', 'coaching_center_id']
             isOneToOne: false
             referencedRelation: 'students'
-            referencedColumns: ['id']
+            referencedColumns: ['id', 'coaching_center_id']
           },
         ]
       }
@@ -1402,11 +1402,11 @@ export type Database = {
         }
         Relationships: [
           {
-            foreignKeyName: 'students_branch_id_fkey'
-            columns: ['branch_id']
+            foreignKeyName: 'students_branch_id_center_fkey'
+            columns: ['branch_id', 'coaching_center_id']
             isOneToOne: false
             referencedRelation: 'branches'
-            referencedColumns: ['id']
+            referencedColumns: ['id', 'coaching_center_id']
           },
           {
             foreignKeyName: 'students_coaching_center_id_fkey'
@@ -1564,11 +1564,11 @@ export type Database = {
             referencedColumns: ['id']
           },
           {
-            foreignKeyName: 'teacher_permissions_teacher_id_fkey'
-            columns: ['teacher_id']
-            isOneToOne: true
+            foreignKeyName: 'teacher_permissions_teacher_id_center_fkey'
+            columns: ['teacher_id', 'coaching_center_id']
+            isOneToOne: false
             referencedRelation: 'teachers'
-            referencedColumns: ['id']
+            referencedColumns: ['id', 'coaching_center_id']
           },
         ]
       }
@@ -1597,18 +1597,18 @@ export type Database = {
             referencedColumns: ['id']
           },
           {
-            foreignKeyName: 'teacher_subjects_subject_id_fkey'
-            columns: ['subject_id']
+            foreignKeyName: 'teacher_subjects_subject_id_center_fkey'
+            columns: ['subject_id', 'coaching_center_id']
             isOneToOne: false
             referencedRelation: 'subjects'
-            referencedColumns: ['id']
+            referencedColumns: ['id', 'coaching_center_id']
           },
           {
-            foreignKeyName: 'teacher_subjects_teacher_id_fkey'
-            columns: ['teacher_id']
+            foreignKeyName: 'teacher_subjects_teacher_id_center_fkey'
+            columns: ['teacher_id', 'coaching_center_id']
             isOneToOne: false
             referencedRelation: 'teachers'
-            referencedColumns: ['id']
+            referencedColumns: ['id', 'coaching_center_id']
           },
         ]
       }
@@ -1648,11 +1648,11 @@ export type Database = {
         }
         Relationships: [
           {
-            foreignKeyName: 'teachers_branch_id_fkey'
-            columns: ['branch_id']
+            foreignKeyName: 'teachers_branch_id_center_fkey'
+            columns: ['branch_id', 'coaching_center_id']
             isOneToOne: false
             referencedRelation: 'branches'
-            referencedColumns: ['id']
+            referencedColumns: ['id', 'coaching_center_id']
           },
           {
             foreignKeyName: 'teachers_coaching_center_id_fkey'
