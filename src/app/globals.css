@@ -1,26 +1,96 @@
 @import "tailwindcss";
 
+/*
+ * CoachDesk design tokens.
+ *
+ * Built for the actual device: a mid-range Android phone, held in one hand,
+ * often in a bright room or outdoors. That means high contrast, large type,
+ * and tap targets you can hit without looking. Every decision below is
+ * downstream of "a teacher marking 30 students in under 30 seconds".
+ */
+
+@theme {
+  /* Deep green — the colour of school and of BD institutional signage, and
+     distinct from every telecom brand (red Robi, orange Banglalink, blue GP). */
+  --color-brand-50: #eefbf3;
+  --color-brand-100: #d6f5e1;
+  --color-brand-200: #b0e9c8;
+  --color-brand-300: #7cd7a7;
+  --color-brand-400: #45bd82;
+  --color-brand-500: #1f9d64;
+  --color-brand-600: #137e50;
+  --color-brand-700: #106442;
+  --color-brand-800: #105036;
+  --color-brand-900: #0e422e;
+
+  /* Present / absent / late. Never colour alone — always paired with a glyph
+     or a word, because red-green colour blindness is ~8% of men. */
+  --color-present: #1f9d64;
+  --color-absent: #dc2626;
+  --color-late: #d97706;
+
+  --color-ink: #111827;
+  --color-ink-soft: #4b5563;
+  --color-ink-faint: #9ca3af;
+  --color-surface: #ffffff;
+  --color-surface-alt: #f6f7f9;
+  --color-line: #e5e7eb;
+
+  --font-sans: var(--font-bangla), ui-sans-serif, system-ui, sans-serif;
+
+  /* Minimum comfortable tap target. Material says 48dp; teachers tapping fast
+     with a thumb need every bit of it. */
+  --spacing-tap: 3rem;
+}
+
+/*
+ * Bangla renders taller than Latin at the same nominal size, but its
+ * distinguishing marks are smaller, so it needs both more size and more
+ * leading than a Latin-first scale would give.
+ */
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  color-scheme: light;
 }
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+html {
+  /* Stops iOS Safari inflating text in landscape and breaking a tuned layout. */
+  -webkit-text-size-adjust: 100%;
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background: var(--color-surface-alt);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+  font-size: 1.0625rem;
+  line-height: 1.65;
+  /* Killing the 300ms tap delay matters when the interaction is 30 taps. */
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* Bangla conjuncts get clipped by tight line-height in headings. */
+h1, h2, h3, h4 {
+  line-height: 1.4;
+  text-wrap: balance;
+}
+
+/* Numbers stay Latin even in Bangla copy — every Bangladeshi reads both, and
+   tabular figures keep money and marks columns aligned. */
+.num {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum";
+}
+
+/* A visible focus ring, always. Teachers navigate forms with the Android
+   keyboard's next button, and an invisible focus makes that unusable. */
+:focus-visible {
+  outline: 2px solid var(--color-brand-600);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
 }

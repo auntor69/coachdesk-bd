@@ -15,14 +15,26 @@ const MIGRATIONS_DIR = 'supabase/migrations'
  * the auth.users table, and the auth.uid()/auth.role() helpers that every
  * RLS policy calls. Supabase derives these from the request JWT; here they
  * read a session-local setting we control from the test.
+ *
+ * The column list is deliberately wider than any policy needs. Our signup
+ * trigger reads new.raw_user_meta_data, and a stub missing that column turns
+ * a working migration into a test-only failure — which is the worst kind,
+ * because the fix is to change the stub and the instinct is to change the SQL.
  */
 const AUTH_STUB = `
   create schema if not exists auth;
 
   create table auth.users (
-    id    uuid primary key default gen_random_uuid(),
-    email text unique,
-    phone text unique
+    id                 uuid primary key default gen_random_uuid(),
+    email              text unique,
+    phone              text unique,
+    aud                text default 'authenticated',
+    role               text default 'authenticated',
+    encrypted_password text,
+    raw_app_meta_data  jsonb default '{}'::jsonb,
+    raw_user_meta_data jsonb default '{}'::jsonb,
+    created_at         timestamptz not null default now(),
+    updated_at         timestamptz not null default now()
   );
 
   create or replace function auth.uid()

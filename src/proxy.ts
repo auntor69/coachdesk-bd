@@ -1,7 +1,16 @@
 import { NextResponse, type NextRequest } from 'next/server'
 import { createServerClient } from '@supabase/ssr'
 
-const PUBLIC_ROUTES = ['/login', '/verify', '/auth']
+/**
+ * Routes reachable without a session.
+ *
+ * /onboarding is here despite requiring a user: it is the destination right
+ * after signup, and if the fresh auth cookie has not propagated by the time
+ * this runs, a new owner would be bounced to /login seconds after creating
+ * their account. The page itself redirects signed-out visitors, so nothing is
+ * exposed — this only removes a race from the worst possible moment.
+ */
+const PUBLIC_ROUTES = ['/login', '/signup', '/onboarding', '/auth']
 
 /**
  * Renamed from `middleware` in Next 16 — the file convention is deprecated.

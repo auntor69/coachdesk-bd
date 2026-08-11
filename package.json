@@ -7,6 +7,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
+    "gen:types": "node --env-file=.env.local scripts/gen-types.mjs",
     "db:push": "node --env-file=.env.local scripts/db-push.mjs",
     "test:schema": "node scripts/check-migrations.mjs",
     "test:rls": "node scripts/test-rls.mjs",
