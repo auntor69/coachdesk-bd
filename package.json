@@ -7,8 +7,10 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
+    "db:push": "node --env-file=.env.local scripts/db-push.mjs",
     "test:schema": "node scripts/check-migrations.mjs",
     "test:rls": "node scripts/test-rls.mjs",
+    "test:rls:live": "node --env-file=.env.local scripts/test-rls-live.mjs",
     "test": "npm run test:schema && npm run test:rls"
   },
   "dependencies": {
@@ -26,6 +28,7 @@
     "@types/react-dom": "^19",
     "eslint": "^9",
     "eslint-config-next": "16.3.0",
+    "pg": "^8.23.0",
     "pgsql-parser": "^13.19.1",
     "tailwindcss": "^4",
     "typescript": "^5"
