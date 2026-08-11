@@ -1,14 +1,15 @@
 'use server'
 
 /**
- * The fee board's two writes: raise this month's invoices, and record money
- * that came in.
+ * The fee board's writes: raise this month's invoices, record money that came
+ * in, and note that a parent was chased.
  *
- * This is the screen the product is sold on, so both actions are built around
- * being run by a person who is interrupted. Generating invoices is safe to run
- * twice. Recording a payment names the student in its confirmation, because an
- * owner holding cash across a desk needs to see that it landed on the right
- * child before the next parent starts talking.
+ * This is the screen the product is sold on, so all three are built around being
+ * run by a person who is interrupted. Generating invoices is safe to run twice.
+ * Recording a payment names the student in its confirmation, because an owner
+ * holding cash across a desk needs to see that it landed on the right child
+ * before the next parent starts talking. Logging a reminder never blocks the tap
+ * that opens the messaging app.
  */
 import { revalidatePath } from 'next/cache'
 
@@ -16,7 +17,8 @@ import { createClient } from '@/lib/supabase/server'
 import { requireRole, AuthError, type CenterSession } from '@/lib/auth/session'
 import { parseTaka, formatTaka, sumTaka } from '@/lib/money'
 import { currentPeriodMonth } from '@/lib/bd/time'
-import type { PaymentMethod } from '@/lib/supabase/types'
+import { normalizeBdMobile } from '@/lib/bd/phone'
+import type { FeeReminderChannel, PaymentMethod } from '@/lib/supabase/types'
 
 export type FeeState = {
   error?: string
@@ -263,4 +265,109 @@ export async function recordPayment(
   }
 
   return { ok: `${name} — ${formatTaka(amount)} জমা হয়েছে। ফি সম্পূর্ণ পরিশোধ ✓` }
+}
+
+/* -------------------------------------------------------------------------- */
+/* Reminders                                                                  */
+/* -------------------------------------------------------------------------- */
+
+/** The three ways an owner can reach a parent from the board today. */
+const CHANNELS = new Set<FeeReminderChannel>(['sms', 'whatsapp', 'call'])
+
+/**
+ * Comfortably longer than the WhatsApp text, which is the longest of the three.
+ * A cap at all because this string arrives from the browser — the row builds the
+ * message client-side so the page does not have to ship three variants of it per
+ * invoice — and an unbounded text column fed by a client is a place to paste a
+ * megabyte.
+ */
+const MAX_BODY = 1000
+
+/** numeric(10, 2) stops at 99999999.99, and no coaching fee is near it. */
+const MAX_AMOUNT = 99_999_999
+
+export type FeeReminderLog = {
+  invoiceId: string
+  channel: FeeReminderChannel
+  /** What the board showed as owed at the moment the owner tapped. */
+  amount: number
+  /** The guardian number the link was aimed at; null for anything unparseable. */
+  toPhone?: string | null
+  /** The exact text put in front of the owner. Null for a call. */
+  body?: string | null
+}
+
+/**
+ * Records that the owner reached out about one invoice.
+ *
+ * Called from the row's tap handler rather than a form, because the tap has to do
+ * two things at once: open the phone's SMS or WhatsApp app, and leave a note that
+ * it happened. The link does the first and nothing here interferes with it; this
+ * does the second.
+ *
+ * The amount, the number and the body come from the client rather than being
+ * recomputed here, which looks like misplaced trust and is not. This row exists
+ * to answer "what did I tell this family", and a message regenerated at log time
+ * could name a figure the parent never saw — the owner sends ৳700, a discount
+ * lands a minute later, and the log would insist they were told ৳500. What must
+ * not come from the client is *which invoice*, and that is read back through
+ * fee_invoice_balances so RLS decides whether it is theirs at all.
+ *
+ * Returns whether the row was written. The caller marks the invoice as chased
+ * only on true, so the board never claims a reminder it has no record of.
+ */
+export async function logFeeReminder(
+  input: FeeReminderLog,
+): Promise<{ logged: boolean }> {
+  const session = await feeAdmin()
+  if (!isSession(session)) return { logged: false }
+
+  const invoiceId = String(input?.invoiceId ?? '')
+  const channel = input?.channel
+  if (!invoiceId || !CHANNELS.has(channel)) return { logged: false }
+
+  const amount = Number(input?.amount)
+  if (!Number.isFinite(amount) || amount <= 0 || amount > MAX_AMOUNT) {
+    return { logged: false }
+  }
+
+  const supabase = await createClient()
+
+  // Voided as well as missing. The board never shows a cancelled invoice, so a
+  // reminder against one can only come from a page left open through the
+  // cancellation — and the parent should not be chased for it.
+  const { data: invoice } = await supabase
+    .from('fee_invoice_balances')
+    .select('id, voided_at')
+    .eq('id', invoiceId)
+    .maybeSingle()
+
+  if (!invoice?.id || invoice.voided_at) return { logged: false }
+
+  const body = String(input?.body ?? '').slice(0, MAX_BODY)
+
+  const { error } = await supabase.from('fee_reminders').insert({
+    coaching_center_id: session.active.centerId,
+    invoice_id: invoice.id,
+    channel,
+    // Through sumTaka so the stored figure is rounded to the two places the
+    // column holds, rather than letting a float land on Postgres and be rounded
+    // there into something the owner was never shown.
+    amount_bdt: sumTaka([amount]),
+    // Normalised so the column keeps the one meaning it is documented to have.
+    // Null rather than the raw string if it will not parse: a log entry saying
+    // the message went to "01712-34" is worse than one that admits it does not
+    // know where the message went.
+    to_phone: normalizeBdMobile(input?.toPhone),
+    body: body || null,
+    sent_by: session.userId,
+  })
+
+  if (error) return { logged: false }
+
+  // The board only, and only for the "last chased" line. Not /dashboard, which
+  // counts money rather than conversations.
+  revalidatePath('/fees')
+
+  return { logged: true }
 }

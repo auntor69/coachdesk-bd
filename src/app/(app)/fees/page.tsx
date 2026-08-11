@@ -6,8 +6,11 @@ import {
   currentPeriodMonth,
   addMonths,
   formatMonthBn,
+  formatDateBn,
 } from '@/lib/bd/time'
+import { normalizeBdMobile } from '@/lib/bd/phone'
 import { sumTaka, tallyOutstanding, formatTaka } from '@/lib/money'
+import type { FeeReminderChannel } from '@/lib/supabase/types'
 import { InvoiceGenerator } from './invoice-generator'
 import { PaymentRow, type FeeRow } from './payment-row'
 
@@ -19,7 +22,7 @@ export const metadata = { title: 'ফি — CoachDesk' }
  * literal — split this across two lines with a `+` and TypeScript widens it to
  * `string`, the parse fails, and every column comes back as GenericStringError.
  */
-const COLUMNS = 'id, student_name, student_code, amount_bdt, discount_bdt, net_bdt, paid_bdt, remaining_bdt, due_date, period_month'
+const COLUMNS = 'id, student_name, student_code, amount_bdt, discount_bdt, net_bdt, paid_bdt, remaining_bdt, due_date, period_month, guardian_phone, sms_opt_out'
 
 /**
  * The fee board — who has paid, who has not, by how many days, and the button
@@ -42,12 +45,12 @@ const COLUMNS = 'id, student_name, student_code, amount_bdt, discount_bdt, net_b
  * screen along with its confirmation.
  */
 export default async function FeesPage() {
-  await requireRole('manager')
+  const session = await requireRole('manager')
   const supabase = await createClient()
   const today = todayInDhaka()
   const thisMonth = currentPeriodMonth()
 
-  const [{ data: owing }, { data: settled }, { data: monthPayments }] =
+  const [{ data: owing }, { data: settled }, { data: monthPayments }, { data: chased }] =
     await Promise.all([
       supabase
         .from('fee_invoice_balances')
@@ -74,14 +77,35 @@ export default async function FeesPage() {
         .from('fee_payments')
         .select('amount_bdt')
         .gte('paid_at', `${thisMonth}T00:00:00+06:00`),
+      // Reminders since the start of last month, newest first, so each row can
+      // say when this family was last chased.
+      //
+      // Bounded by time rather than by the invoice ids on the board, and the
+      // bound is the point rather than an optimisation: the question a row is
+      // answering is "have I already dealt with this one recently", and a chase
+      // from four months ago is not a reason to hold off today. Two billing
+      // cycles is the window in which the answer still changes a decision.
+      supabase
+        .from('fee_reminders')
+        .select('invoice_id, channel, created_at')
+        .gte('created_at', `${addMonths(thisMonth, -1)}T00:00:00+06:00`)
+        .order('created_at', { ascending: false }),
     ])
+
+  // Newest wins, which is what the descending order above buys: the first row
+  // seen for an invoice is its latest reminder, so every later one is skipped.
+  const lastChase = new Map<string, { day: string; via: FeeReminderChannel }>()
+  for (const r of chased ?? []) {
+    if (!r.invoice_id || lastChase.has(r.invoice_id)) continue
+    lastChase.set(r.invoice_id, { day: dayLabel(r.created_at, today), via: r.channel })
+  }
 
   // Longest overdue first, then largest amount — the order an owner works down
   // a list in. Settled rows sink to the bottom rather than into a separate list,
   // so a row that has just been paid keeps its React state and its confirmation
   // message instead of being unmounted by the revalidation that follows.
   const rows = [...(owing ?? []), ...(settled ?? [])]
-    .map(toRow(today))
+    .map(toRow(today, lastChase))
     .sort(
       (a, b) =>
         Number(b.remaining > 0) - Number(a.remaining > 0)
@@ -155,7 +179,11 @@ export default async function FeesPage() {
       ) : (
         <ul className="flex flex-col gap-2">
           {rows.map((row) => (
-            <PaymentRow key={row.id} row={row} />
+            <PaymentRow
+              key={row.id}
+              row={row}
+              centerName={session.active.centerName}
+            />
           ))}
         </ul>
       )}
@@ -173,6 +201,9 @@ type ViewRow = {
   paid_bdt: number | null
   remaining_bdt: number | null
   due_date: string | null
+  period_month: string | null
+  guardian_phone: string | null
+  sms_opt_out: boolean | null
 }
 
 /**
@@ -183,21 +214,59 @@ type ViewRow = {
  * invoice that renders as ৳0 owed is visibly wrong and gets asked about, whereas
  * ৳NaN takes the whole page down.
  */
-function toRow(today: string) {
-  return (v: ViewRow): FeeRow => ({
-    id: v.id ?? '',
-    name: v.student_name ?? 'অজানা',
-    studentCode: v.student_code,
-    billed: Number(v.amount_bdt ?? 0),
-    discount: Number(v.discount_bdt ?? 0),
-    net: Number(v.net_bdt ?? 0),
-    paid: Number(v.paid_bdt ?? 0),
-    remaining: Number(v.remaining_bdt ?? 0),
-    dueDate: v.due_date ?? today,
-    // Negative until the due date passes, so a single subtraction tells the row
-    // whether to shout.
-    daysLate: daysBetween(v.due_date ?? today, today),
-  })
+function toRow(
+  today: string,
+  lastChase: Map<string, { day: string; via: FeeReminderChannel }>,
+) {
+  return (v: ViewRow): FeeRow => {
+    const chase = v.id ? lastChase.get(v.id) : undefined
+    return {
+      id: v.id ?? '',
+      name: v.student_name ?? 'অজানা',
+      studentCode: v.student_code,
+      billed: Number(v.amount_bdt ?? 0),
+      discount: Number(v.discount_bdt ?? 0),
+      net: Number(v.net_bdt ?? 0),
+      paid: Number(v.paid_bdt ?? 0),
+      remaining: Number(v.remaining_bdt ?? 0),
+      dueDate: v.due_date ?? today,
+      // Negative until the due date passes, so a single subtraction tells the row
+      // whether to shout.
+      daysLate: daysBetween(v.due_date ?? today, today),
+      // The invoice's own month, falling back to the due date's. A reminder that
+      // named the wrong month would be worse than one that named none.
+      periodMonth: v.period_month ?? `${(v.due_date ?? today).slice(0, 7)}-01`,
+      // Normalised here rather than trusted from the column, because the deep
+      // links need E.164 and a number entered before the validator existed —
+      // or edited in the dashboard — may not be in it. Null means no button.
+      guardianPhone: normalizeBdMobile(v.guardian_phone),
+      // Null defaults to opted-in, matching the column's own default. The row
+      // still cannot message a family with no number at all.
+      smsOptOut: v.sms_opt_out ?? false,
+      remindedDay: chase?.day ?? null,
+      remindedVia: chase?.via ?? null,
+    }
+  }
+}
+
+/**
+ * When a reminder went out, as a person would say it.
+ *
+ * The Dhaka conversion is the same trap as paid_at on the collections query:
+ * created_at is a timestamptz handed back in UTC, so slicing ten characters off
+ * it gives a UTC date, and a reminder sent at 1am Dhaka would read as yesterday.
+ * todayInDhaka takes the instant and answers with the Dhaka calendar day.
+ */
+function dayLabel(iso: string, today: string): string {
+  const at = new Date(iso)
+  if (Number.isNaN(at.getTime())) return ''
+  const date = todayInDhaka(at)
+  const gap = daysBetween(date, today)
+  // Future is clock skew between the browser, the server and Postgres, and the
+  // useful answer for a row stamped a few seconds ahead is still "today".
+  if (gap <= 0) return 'আজ'
+  if (gap === 1) return 'গতকাল'
+  return formatDateBn(date)
 }
 
 /**

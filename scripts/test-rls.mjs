@@ -895,6 +895,144 @@ await db.query('delete from fee_payments where invoice_id = $1', [mimInvoice])
 await db.query('delete from fee_invoices where id = $1', [mimInvoice])
 
 // ---------------------------------------------------------------------------
+// The record of having chased a fee.
+//
+// Three things here are not obvious from reading the migration.
+//
+// The first is that repeat reminders for the same invoice must be *allowed*. The
+// nearest existing table, sms_dispatches, carries unique (coaching_center_id,
+// kind, ref_id) — which is exactly what makes "one exam sends once" a database
+// guarantee, and exactly what would break a fee chase, because the planned
+// cadence is due−3, due, and due+7 against one invoice. Routing reminders through
+// that table would have silently dropped the second and third. So the absence of
+// a unique key is a feature and gets asserted like one.
+//
+// The second is that a guardian must NOT be able to read these, even though they
+// can read their own invoices and their own receipts. "This centre messaged you
+// about money three times in October" is the centre's own working note; a parent
+// reading a tally of how often they were chased learns nothing they need and
+// something that only strains the relationship the reminder was protecting.
+//
+// The third is the cascade. A cancelled invoice takes its chases with it, so a
+// deleted bill cannot leave behind a record of a parent being asked for money
+// that no longer exists.
+// ---------------------------------------------------------------------------
+
+console.log('\nFee reminders (who chased whom):')
+
+// Explicit created_at so the ordering assertion below means something. Three
+// inserts inside one transaction all share that transaction's now(), which would
+// make "the latest" ambiguous here in a way it never is in production, where each
+// tap is its own statement.
+const remind = (tx, invoice, center, channel = 'sms', ago = '0 minutes') =>
+  tx.query(
+    `insert into fee_reminders
+       (coaching_center_id, invoice_id, channel, amount_bdt, to_phone, body, created_at)
+     values ($1, $2, $3, 800, '+8801712345678', 'test body', now() - $4::interval)
+     returning id`,
+    [center, invoice, channel, ago],
+  )
+
+await asUser(db, ids.ownerA, async (tx) => {
+  check(
+    'the owner can record a reminder against their own invoice',
+    (await remind(tx, invoiceAli, centerA, 'sms', '2 days')).rows.length === 1,
+  )
+
+  // The two sms_dispatches would have refused.
+  await remind(tx, invoiceAli, centerA, 'whatsapp', '1 day')
+  await remind(tx, invoiceAli, centerA, 'call', '1 minute')
+  check(
+    'the same invoice can be chased again, on another channel, and again',
+    (await n(tx, 'select count(*)::int as n from fee_reminders where invoice_id = $1', [
+      invoiceAli,
+    ])) === 3,
+  )
+
+  // The board's own query, which takes the first row of a descending order.
+  check(
+    'and the latest one is the one the board will show',
+    (
+      await tx.query(
+        `select channel from fee_reminders where invoice_id = $1
+         order by created_at desc limit 1`,
+        [invoiceAli],
+      )
+    ).rows[0].channel === 'call',
+  )
+})
+
+// Named centre B in its own tenant column, so its RLS check passes; what refuses
+// it is the composite foreign key to (id, coaching_center_id) on fee_invoices.
+check(
+  "owner B cannot log a reminder against centre A's invoice",
+  await deniedAsUser(
+    db,
+    ids.ownerB,
+    `insert into fee_reminders (coaching_center_id, invoice_id, channel, amount_bdt)
+     values ($1, $2, 'sms', 800)`,
+    [centerB, invoiceAli],
+  ),
+)
+
+check(
+  'a teacher cannot log a reminder, for the same reason they cannot take money',
+  await deniedAsUser(
+    db,
+    ids.karim,
+    `insert into fee_reminders (coaching_center_id, invoice_id, channel, amount_bdt)
+     values ($1, $2, 'sms', 800)`,
+    [centerA, invoiceAli],
+  ),
+)
+
+await asUser(db, ids.ownerB, async (tx) => {
+  check(
+    "owner B sees none of centre A's reminders",
+    (await n(tx, 'select count(*)::int as n from fee_reminders')) === 0,
+  )
+})
+
+await asUser(db, ids.karim, async (tx) => {
+  check(
+    'a teacher cannot read who has been chased',
+    (await n(tx, 'select count(*)::int as n from fee_reminders')) === 0,
+  )
+})
+
+await asUser(db, ids.guardianUser, async (tx) => {
+  check(
+    'a guardian cannot read the record of being chased, unlike their own bill',
+    (await n(tx, 'select count(*)::int as n from fee_reminders')) === 0,
+  )
+})
+
+await asUser(db, null, async (tx) => {
+  check(
+    'a signed-out reader sees no reminders',
+    (await n(tx, 'select count(*)::int as n from fee_reminders')) === 0,
+  )
+})
+
+// The cascade, on a throwaway invoice so the seeded one survives.
+const scratchInvoice = await one(
+  `insert into fee_invoices (coaching_center_id, student_id, period_month, amount_bdt, due_date)
+   values ($1, $2, '2026-01-01', 500, '2026-01-10') returning id`,
+  [centerA, stAli],
+)
+await remind(db, scratchInvoice, centerA)
+await db.query('delete from fee_invoices where id = $1', [scratchInvoice])
+check(
+  'deleting an invoice takes its reminders with it',
+  (await n(db, 'select count(*)::int as n from fee_reminders where invoice_id = $1', [
+    scratchInvoice,
+  ])) === 0,
+)
+
+// Leave the seed as found.
+await db.query('delete from fee_reminders where invoice_id = $1', [invoiceAli])
+
+// ---------------------------------------------------------------------------
 // Billing columns. The free tier only exists if these three cannot be edited
 // by the person who benefits from editing them.
 //

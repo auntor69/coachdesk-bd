@@ -118,6 +118,20 @@ export function formatMonthBn(periodMonth: string): string {
 }
 
 /**
+ * Just the month name — "আগস্ট", no year.
+ *
+ * For places where the year is five characters of nothing: a parent reading an
+ * SMS about an unpaid fee is not wondering which year it is, and inside a
+ * 70-character Bangla segment those five characters are the difference between
+ * one SMS and two.
+ */
+export function monthNameBn(periodMonth: string): string {
+  const [y, m] = periodMonth.split('-').map(Number)
+  if (!y || !m || m > 12) return periodMonth
+  return MONTHS_BN[m - 1]
+}
+
+/**
  * Shifts a YYYY-MM-01 by whole months.
  *
  * Arithmetic on the numbers rather than through Date, for the same reason

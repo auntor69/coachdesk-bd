@@ -1,7 +1,8 @@
 'use client'
 
 /**
- * One row of the fee board, and the form that records money against it.
+ * One row of the fee board: the form that records money against it, and the
+ * three ways to chase it.
  *
  * Built for someone standing at a desk with a parent in front of them and a
  * queue behind. So: the amount is prefilled with what is owed, because paying in
@@ -15,11 +16,14 @@
  * that demands a transaction id for cash is a tool they stop using in week two.
  */
 import { useActionState, useEffect, useRef, useState } from 'react'
+import Link from 'next/link'
 
 import { Alert, Button, Field } from '@/components/ui'
 import { formatDateBn, toBanglaDigits } from '@/lib/bd/time'
 import { formatTaka as taka } from '@/lib/money'
-import { recordPayment, type FeeState } from './actions'
+import { buildFeeReminderSms, buildFeeReminderText } from '@/lib/sms/templates'
+import type { FeeReminderChannel } from '@/lib/supabase/types'
+import { recordPayment, logFeeReminder, type FeeState } from './actions'
 
 /** Cash first, then the wallets an owner is actually handed money through. */
 const METHODS = [
@@ -30,6 +34,15 @@ const METHODS = [
   { value: 'bank_transfer', label: 'ব্যাংক' },
   { value: 'other', label: 'অন্য' },
 ] as const
+
+/**
+ * "এসএমএস" rather than the formal "খুদেবার্তা", which nobody says out loud.
+ */
+const CHANNEL_LABEL: Record<FeeReminderChannel, string> = {
+  sms: 'এসএমএস',
+  whatsapp: 'হোয়াটসঅ্যাপ',
+  call: 'কল',
+}
 
 export type FeeRow = {
   id: string
@@ -42,9 +55,23 @@ export type FeeRow = {
   remaining: number
   dueDate: string
   daysLate: number
+  /** YYYY-MM-01 — which month's fee this is, for the reminder text. */
+  periodMonth: string
+  /** E.164, or null when the centre has not recorded one. */
+  guardianPhone: string | null
+  smsOptOut: boolean
+  /** 'আজ' / 'গতকাল' / a date, computed server-side. Null if never chased. */
+  remindedDay: string | null
+  remindedVia: FeeReminderChannel | null
 }
 
-export function PaymentRow({ row }: { row: FeeRow }) {
+export function PaymentRow({
+  row,
+  centerName,
+}: {
+  row: FeeRow
+  centerName: string
+}) {
   const [state, formAction, pending] = useActionState<FeeState, FormData>(
     recordPayment,
     null,
@@ -138,67 +165,203 @@ export function PaymentRow({ row }: { row: FeeRow }) {
               )}
             </>
           ) : (
-            <form ref={formRef} action={formAction} className="flex flex-col gap-3">
-              <input type="hidden" name="invoiceId" value={row.id} />
+            <>
+              {/* Above the form, not below it. A row opened on an overdue
+                  invoice is more often opened to chase it than to take money
+                  that nobody has brought yet, and the form is six fields tall —
+                  putting the chase under it means scrolling past all of them. */}
+              <Reminder row={row} centerName={centerName} />
 
-              <Field
-                label="কত টাকা জমা হলো"
-                name="amount"
-                // Not type="number": it strips the thousands separator an owner
-                // may type and refuses Bangla digits outright, and parseTaka
-                // handles both. inputMode still brings up the number pad.
-                type="text"
-                inputMode="decimal"
-                defaultValue={String(row.remaining)}
-                required
-                maxLength={12}
-                className="num"
-              />
+              <form ref={formRef} action={formAction} className="flex flex-col gap-3">
+                <input type="hidden" name="invoiceId" value={row.id} />
 
-              <div className="flex flex-col gap-1.5">
-                <span className="font-medium text-ink">কীভাবে</span>
-                <div role="radiogroup" className="flex flex-wrap gap-2">
-                  {METHODS.map((m) => (
-                    <label
-                      key={m.value}
-                      className={`inline-flex min-h-tap cursor-pointer items-center
-                        rounded-xl border-2 px-4 font-medium transition-colors ${
-                          method === m.value
-                            ? 'border-brand-500 bg-brand-50 text-brand-800'
-                            : 'border-line text-ink-soft'
-                        }`}
-                    >
-                      <input
-                        type="radio"
-                        name="method"
-                        value={m.value}
-                        checked={method === m.value}
-                        onChange={() => setMethod(m.value)}
-                        className="sr-only"
-                      />
-                      {m.label}
-                    </label>
-                  ))}
-                </div>
-              </div>
-
-              {method !== 'cash' && (
                 <Field
-                  label="ট্রানজেকশন আইডি (ঐচ্ছিক)"
-                  name="reference"
-                  placeholder="8N7A6B5C4D"
-                  maxLength={40}
+                  label="কত টাকা জমা হলো"
+                  name="amount"
+                  // Not type="number": it strips the thousands separator an owner
+                  // may type and refuses Bangla digits outright, and parseTaka
+                  // handles both. inputMode still brings up the number pad.
+                  type="text"
+                  inputMode="decimal"
+                  defaultValue={String(row.remaining)}
+                  required
+                  maxLength={12}
                   className="num"
                 />
-              )}
 
-              <Button type="submit" disabled={pending} full>
-                {pending ? 'জমা হচ্ছে…' : 'জমা নিন'}
-              </Button>
-            </form>
+                <div className="flex flex-col gap-1.5">
+                  <span className="font-medium text-ink">কীভাবে</span>
+                  <div role="radiogroup" className="flex flex-wrap gap-2">
+                    {METHODS.map((m) => (
+                      <label
+                        key={m.value}
+                        className={`inline-flex min-h-tap cursor-pointer items-center
+                          rounded-xl border-2 px-4 font-medium transition-colors ${
+                            method === m.value
+                              ? 'border-brand-500 bg-brand-50 text-brand-800'
+                              : 'border-line text-ink-soft'
+                          }`}
+                      >
+                        <input
+                          type="radio"
+                          name="method"
+                          value={m.value}
+                          checked={method === m.value}
+                          onChange={() => setMethod(m.value)}
+                          className="sr-only"
+                        />
+                        {m.label}
+                      </label>
+                    ))}
+                  </div>
+                </div>
+
+                {method !== 'cash' && (
+                  <Field
+                    label="ট্রানজেকশন আইডি (ঐচ্ছিক)"
+                    name="reference"
+                    placeholder="8N7A6B5C4D"
+                    maxLength={40}
+                    className="num"
+                  />
+                )}
+
+                <Button type="submit" disabled={pending} full>
+                  {pending ? 'জমা হচ্ছে…' : 'জমা নিন'}
+                </Button>
+              </form>
+            </>
           )}
         </div>
       </details>
     </li>
+  )
+}
+
+/** One tap target. Deliberately identical for all three — which channel a family
+ *  actually reads is the centre's knowledge, not something to rank for them. */
+const CHIP =
+  'inline-flex min-h-tap items-center rounded-xl border-2 border-line px-4' +
+  ' font-medium text-ink-soft transition-colors active:bg-brand-50'
+
+/**
+ * The chase: a prefilled SMS, a prefilled WhatsApp message, or a phone call.
+ *
+ * No gateway is involved. Each of these is a link that hands the message to the
+ * owner's own phone with the text already written, so it goes from their number,
+ * at their own operator's rate, and needs no registered sender ID — none of which
+ * exists yet. The alternative available tonight is what the paper register
+ * offered: read the number off a different screen and retype the amount from
+ * memory.
+ *
+ * The message is built here rather than on the server because the row already
+ * carries every input it needs, and shipping three rendered strings per invoice
+ * down to a phone on 3G to save two pure function calls is the wrong trade. It is
+ * the same function the cron worker will call when there is a gateway.
+ *
+ * Tapping does not wait for the log. The link navigates, the phone switches to
+ * its messaging app, and the write lands in the background — an owner should
+ * never watch a spinner between deciding to chase someone and being able to.
+ */
+function Reminder({ row, centerName }: { row: FeeRow; centerName: string }) {
+  const [sentVia, setSentVia] = useState<FeeReminderChannel | null>(null)
+
+  const input = {
+    studentName: row.name,
+    periodMonth: row.periodMonth,
+    amount: row.remaining,
+    dueDate: row.dueDate,
+    daysLate: row.daysLate,
+    centerName,
+  }
+  const smsBody = buildFeeReminderSms(input).body
+  const chatBody = buildFeeReminderText(input)
+  const phone = row.guardianPhone
+
+  // Set only once the row is actually in the database, never optimistically. The
+  // whole point of the line below is to stop the owner chasing the same family
+  // twice, and a badge that appears when the write failed would do the opposite
+  // of that. The delay is invisible on a phone, which has already switched apps.
+  function log(channel: FeeReminderChannel, body: string | null) {
+    logFeeReminder({ invoiceId: row.id, channel, amount: row.remaining, toPhone: phone, body })
+      .then((result) => {
+        if (result.logged) setSentVia(channel)
+      })
+      .catch(() => {})
+  }
+
+  const day = sentVia ? 'এইমাত্র' : row.remindedDay
+  const via = sentVia ?? row.remindedVia
+
+  return (
+    <div className="mb-4 border-b border-line pb-4">
+      <p className="font-medium text-ink">অভিভাবককে মনে করিয়ে দিন</p>
+
+      {/* No verb. Tapping the link proves the message was written and handed to
+          the phone, not that a parent read it — and a call that rang out is
+          still worth recording, because it is why the next try should be
+          WhatsApp. "সর্বশেষ: আজ · কল" claims exactly what is known. */}
+      {day && (
+        <p className="mt-0.5 text-sm text-ink-faint">
+          সর্বশেষ: {day}
+          {via && ` · ${CHANNEL_LABEL[via]}`}
+        </p>
+      )}
+
+      {phone === null ? (
+        <p className="mt-2 text-sm text-ink-soft">
+          অভিভাবকের নম্বর নেই।{' '}
+          <Link href="/settings/students" className="font-medium text-brand-700">
+            যোগ করে নিন
+          </Link>
+        </p>
+      ) : (
+        <>
+          <div className="mt-2 flex flex-wrap gap-2">
+            {/* An opt-out is a preference about messages, so it silences both
+                message channels — and neither of them silences the call. A phone
+                call is a person, not a broadcast, and a family that asked not to
+                be texted has not asked never to be spoken to. */}
+            {!row.smsOptOut && (
+              <>
+                <a
+                  // "?&body=" rather than "?body=": iOS historically wanted the
+                  // separator to be "&" and Android wants "?", and this form is
+                  // the one both parse. The empty first parameter is ignored.
+                  href={`sms:${phone}?&body=${encodeURIComponent(smsBody)}`}
+                  onClick={() => log('sms', smsBody)}
+                  className={CHIP}
+                >
+                  {CHANNEL_LABEL.sms}
+                </a>
+                <a
+                  // wa.me wants the number without the +.
+                  href={`https://wa.me/${phone.slice(1)}?text=${encodeURIComponent(chatBody)}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  onClick={() => log('whatsapp', chatBody)}
+                  className={CHIP}
+                >
+                  {CHANNEL_LABEL.whatsapp}
+                </a>
+              </>
+            )}
+            <a
+              href={`tel:${phone}`}
+              onClick={() => log('call', null)}
+              className={CHIP}
+            >
+              {CHANNEL_LABEL.call}
+            </a>
+          </div>
+
+          {row.smsOptOut && (
+            <p className="mt-2 text-sm text-ink-faint">
+              এই পরিবার এসএমএস পেতে চায় না — ফোন করা যাবে।
+            </p>
+          )}
+        </>
+      )}
+    </div>
   )
 }

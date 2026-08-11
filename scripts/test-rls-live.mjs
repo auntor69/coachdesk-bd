@@ -725,6 +725,88 @@ try {
   await client.query('delete from fee_invoices where id = $1', [mimInvoice])
 
   // -------------------------------------------------------------------------
+  // Fee reminders — the record of having chased a fee.
+  //
+  // Repeated here rather than left to pglite because two of the three things
+  // asserted are properties of the real database rather than of the SQL: that
+  // the policy on a table created by migration 7 actually took effect on a
+  // project where Supabase made the original grants, and that the composite
+  // foreign key is present live rather than only in the harness.
+  //
+  // The third — that the same invoice can be chased more than once — is the
+  // reason this table exists at all instead of sms_dispatches, whose unique
+  // (coaching_center_id, kind, ref_id) would have silently swallowed the second
+  // and third reminders of a due−3 / due / due+7 cadence.
+  //
+  // Explicit created_at because every statement in this file shares one
+  // transaction timestamp, which would make "the latest" ambiguous in a way it
+  // never is in production.
+  // -------------------------------------------------------------------------
+  header('Fee reminders (who chased whom)')
+
+  const REMIND = `insert into fee_reminders
+       (coaching_center_id, invoice_id, channel, amount_bdt, to_phone, body, created_at)
+     values ($1, $2, $3, 800, '+8801712345678', 'test body', now() - $4::interval)
+     returning id`
+
+  check('the owner can record a reminder against their own invoice',
+    (await runAs(ids.ownerA, REMIND, [centerA, invoiceAli, 'sms', '2 days'])).rows.length === 1)
+
+  await runAs(ids.ownerA, REMIND, [centerA, invoiceAli, 'whatsapp', '1 day'])
+  await runAs(ids.ownerA, REMIND, [centerA, invoiceAli, 'call', '1 minute'])
+  check('the same invoice can be chased again, on another channel, and again',
+    (await n(ids.ownerA,
+      'select count(*)::int as n from fee_reminders where invoice_id = $1',
+      [invoiceAli])) === 3)
+
+  // The board's own query: the first row of a descending order.
+  check('and the latest one is the one the board will show',
+    (await runAs(ids.ownerA,
+      `select channel from fee_reminders where invoice_id = $1
+       order by created_at desc limit 1`, [invoiceAli],
+    )).rows[0]?.channel === 'call')
+
+  // Names centre B in its own tenant column, so RLS lets it through; the
+  // composite foreign key to (id, coaching_center_id) is what refuses it.
+  check("owner B cannot log a reminder against centre A's invoice",
+    await denied(ids.ownerB,
+      `insert into fee_reminders (coaching_center_id, invoice_id, channel, amount_bdt)
+       values ($1, $2, 'sms', 800)`,
+      [centerB, invoiceAli]))
+
+  check('a teacher cannot log a reminder, like they cannot take money',
+    await denied(ids.karim,
+      `insert into fee_reminders (coaching_center_id, invoice_id, channel, amount_bdt)
+       values ($1, $2, 'sms', 800)`,
+      [centerA, invoiceAli]))
+
+  check("owner B sees none of centre A's reminders",
+    (await n(ids.ownerB, 'select count(*)::int as n from fee_reminders')) === 0)
+  check('a teacher cannot read who has been chased',
+    (await n(ids.karim, 'select count(*)::int as n from fee_reminders')) === 0)
+  // Deliberate: a guardian reads their own invoices and their own receipts, but
+  // a tally of how often they were chased for money is the centre's own note.
+  check('a guardian cannot read the record of being chased, unlike their own bill',
+    (await n(ids.guardianUser, 'select count(*)::int as n from fee_reminders')) === 0)
+  check('a signed-out reader sees no reminders',
+    (await n(null, 'select count(*)::int as n from fee_reminders')) === 0)
+
+  // Cascade, on a throwaway invoice so the seeded one survives.
+  const scratchInvoice = await one(
+    `insert into fee_invoices (coaching_center_id, student_id, period_month, amount_bdt, due_date)
+     values ($1, $2, '2026-01-01', 500, '2026-01-10') returning id`,
+    [centerA, stAli])
+  await client.query(REMIND, [centerA, scratchInvoice, 'sms', '0 minutes'])
+  await client.query('delete from fee_invoices where id = $1', [scratchInvoice])
+  check('deleting an invoice takes its reminders with it',
+    (await n(ids.ownerA,
+      'select count(*)::int as n from fee_reminders where invoice_id = $1',
+      [scratchInvoice])) === 0)
+
+  // Leave the seed as found.
+  await client.query('delete from fee_reminders where invoice_id = $1', [invoiceAli])
+
+  // -------------------------------------------------------------------------
   // Billing columns — the free tier only exists if these cannot be edited by
   // the person who benefits from editing them. Worth repeating against the real
   // database rather than only pglite, because the fix is a column privilege and

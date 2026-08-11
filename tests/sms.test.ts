@@ -2,7 +2,11 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 
 import { measureSms, creditCost } from '../src/lib/sms/encoding.ts'
-import { buildResultSms } from '../src/lib/sms/templates.ts'
+import {
+  buildResultSms,
+  buildFeeReminderSms,
+  buildFeeReminderText,
+} from '../src/lib/sms/templates.ts'
 
 test('plain ASCII is GSM-7 and fits 160 characters', () => {
   const short = measureSms('Result published')
@@ -141,4 +145,106 @@ test('marks keep ASCII digits and lose trailing zeros', () => {
 
   assert.ok(sms.body.includes('42.5/50'), sms.body)
   assert.ok(!/[০-৯]/.test(sms.body.split(':')[1] ?? ''), 'marks must stay ASCII')
+})
+
+/* -------------------------------------------------------------------------- */
+/* Fee reminders                                                              */
+/* -------------------------------------------------------------------------- */
+
+test('a fee reminder names the child, the month, the amount and the centre', () => {
+  const sms = buildFeeReminderSms({
+    studentName: 'মিম আক্তার',
+    periodMonth: '2026-08-01',
+    amount: 700,
+    dueDate: '2026-08-10',
+    daysLate: 1,
+    centerName: 'উত্তরা আইডিয়াল কোচিং',
+  })
+
+  assert.equal(sms.segments, 1)
+  assert.ok(sms.body.includes('মিম আক্তার'), sms.body)
+  assert.ok(sms.body.includes('আগস্ট'), sms.body)
+  assert.ok(sms.body.includes('৳700'), sms.body)
+  assert.ok(sms.body.includes('উত্তরা আইডিয়াল কোচিং'), sms.body)
+  // The natural phrasing, since there is room for it.
+  assert.ok(sms.body.includes('বাকি আছে'), sms.body)
+})
+
+test('the worst case a real centre can produce still costs one SMS', () => {
+  // Everything at its maximum at once: the longest month name in Bangla
+  // (ফেব্রুয়ারি, eleven characters), a five-figure balance from a family several
+  // months behind, a long student name, and a centre name longer than the brand
+  // budget. This is the test that decides the name budget — at 18 characters the
+  // month gets dropped here, and a parent owing two months cannot tell which one
+  // the message is about.
+  const sms = buildFeeReminderSms({
+    studentName: 'মোহাম্মদ সাদিয়া রহমান',
+    periodMonth: '2026-02-01',
+    amount: 99999,
+    dueDate: '2026-02-10',
+    daysLate: 40,
+    centerName: 'উত্তরা আইডিয়াল কোচিং সেন্টার ও একাডেমি',
+  })
+
+  assert.equal(sms.segments, 1, sms.body)
+  assert.equal(measureSms(sms.body).encoding, 'ucs2')
+  // The four things that must survive any amount of trimming.
+  assert.ok(sms.body.startsWith('মোহাম্মদ'), sms.body)
+  assert.ok(sms.body.includes('ফেব্রুয়ারি'), sms.body)
+  assert.ok(sms.body.includes('৳99,999'), sms.body)
+  assert.ok(sms.body.includes('উত্তরা'), sms.body)
+})
+
+test('reminder money stays ASCII, like every other figure a parent re-types', () => {
+  const sms = buildFeeReminderSms({
+    studentName: 'রাফিদ',
+    periodMonth: '2026-08-01',
+    amount: 1500.5,
+    dueDate: '2026-08-10',
+    daysLate: 0,
+    centerName: 'আলো',
+  })
+
+  assert.ok(sms.body.includes('৳1,500.50'), sms.body)
+  assert.ok(!/[০-৯]/.test(sms.body), 'no Bangla numerals in a fee reminder')
+})
+
+test('the WhatsApp reminder keeps what the SMS has no room for', () => {
+  const text = buildFeeReminderText({
+    studentName: 'মোহাম্মদ সাদিয়া রহমান',
+    periodMonth: '2026-02-01',
+    amount: 99999,
+    dueDate: '2026-02-10',
+    daysLate: 40,
+    centerName: 'উত্তরা আইডিয়াল কোচিং সেন্টার ও একাডেমি',
+  })
+
+  // Nothing is metered here, so nothing is clamped.
+  assert.ok(text.includes('মোহাম্মদ সাদিয়া রহমান'), text)
+  assert.ok(text.includes('উত্তরা আইডিয়াল কোচিং সেন্টার ও একাডেমি'), text)
+  assert.ok(text.includes('ফেব্রুয়ারি'), text)
+  assert.ok(text.includes('৳99,999'), text)
+  // The due date, in Bangla numerals — a date is read, not re-typed.
+  assert.ok(text.includes('১০ ফেব্রুয়ারি ২০২৬'), text)
+  assert.ok(text.startsWith('প্রিয় অভিভাবক,'), text)
+})
+
+test('a reminder sent before the due date does not speak in the past tense', () => {
+  const base = {
+    studentName: 'রাফিদ হাসান',
+    periodMonth: '2026-08-01',
+    amount: 1500,
+    dueDate: '2026-08-10',
+    centerName: 'আলো কোচিং',
+  }
+
+  // Raised on the 1st, chased the same day: the deadline is still ahead, and
+  // telling a family the date "was" something in their future reads as a threat
+  // over a bill that is not yet late.
+  const early = buildFeeReminderText({ ...base, daysLate: 0 })
+  assert.ok(early.includes('শেষ তারিখ ১০ আগস্ট ২০২৬'), early)
+  assert.ok(!early.includes('ছিল'), early)
+
+  const late = buildFeeReminderText({ ...base, daysLate: 5 })
+  assert.ok(late.includes('শেষ তারিখ ছিল ১০ আগস্ট ২০২৬'), late)
 })

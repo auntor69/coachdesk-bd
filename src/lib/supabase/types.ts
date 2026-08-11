@@ -17,6 +17,7 @@ export type AttendanceStatus = 'present' | 'absent' | 'late' | 'excused'
 export type BatchSlot = 'morning' | 'noon' | 'afternoon' | 'evening' | 'night'
 export type CenterStatus = 'trial' | 'active' | 'suspended' | 'cancelled'
 export type EnrollmentStatus = 'active' | 'paused' | 'completed' | 'dropped'
+export type FeeReminderChannel = 'sms' | 'whatsapp' | 'call'
 export type MemberRole = 'owner' | 'manager' | 'teacher' | 'student' | 'guardian'
 export type NoticeAudience = 'all' | 'students' | 'guardians' | 'teachers'
 export type PaymentMethod = 'cash' | 'bkash' | 'nagad' | 'rocket' | 'bank_transfer' | 'other'
@@ -838,6 +839,64 @@ export type Database = {
             isOneToOne: false
             referencedRelation: 'students'
             referencedColumns: ['id', 'coaching_center_id']
+          },
+        ]
+      }
+      fee_reminders: {
+        Row: {
+          id: string
+          coaching_center_id: string
+          invoice_id: string
+          channel: FeeReminderChannel
+          amount_bdt: number
+          to_phone: string | null
+          body: string | null
+          sent_by: string | null
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          coaching_center_id: string
+          invoice_id: string
+          channel: FeeReminderChannel
+          amount_bdt: number
+          to_phone?: string | null
+          body?: string | null
+          sent_by?: string | null
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          coaching_center_id?: string
+          invoice_id?: string
+          channel?: FeeReminderChannel
+          amount_bdt?: number
+          to_phone?: string | null
+          body?: string | null
+          sent_by?: string | null
+          created_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'fee_reminders_coaching_center_id_fkey'
+            columns: ['coaching_center_id']
+            isOneToOne: false
+            referencedRelation: 'coaching_centers'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'fee_reminders_invoice_id_center_fkey'
+            columns: ['invoice_id', 'coaching_center_id']
+            isOneToOne: false
+            referencedRelation: 'fee_invoices'
+            referencedColumns: ['id', 'coaching_center_id']
+          },
+          {
+            foreignKeyName: 'fee_reminders_sent_by_fkey'
+            columns: ['sent_by']
+            isOneToOne: false
+            referencedRelation: 'users'
+            referencedColumns: ['id']
           },
         ]
       }
@@ -1711,6 +1770,7 @@ export type Database = {
       batch_slot: BatchSlot
       center_status: CenterStatus
       enrollment_status: EnrollmentStatus
+      fee_reminder_channel: FeeReminderChannel
       member_role: MemberRole
       notice_audience: NoticeAudience
       payment_method: PaymentMethod

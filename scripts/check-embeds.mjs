@@ -63,7 +63,8 @@ const embeds = [
   // plainly exists in psql. There are deliberately no embeds in these two: a join
   // with an aggregate in it is not something PostgREST can always resolve through
   // a view, so the student's name is a column of the view instead.
-  ['fees/page.tsx', 'fee_invoice_balances', 'id, student_name, student_code, amount_bdt, discount_bdt, net_bdt, paid_bdt, remaining_bdt, due_date, period_month'],
+  ['fees/page.tsx', 'fee_invoice_balances', 'id, student_name, student_code, amount_bdt, discount_bdt, net_bdt, paid_bdt, remaining_bdt, due_date, period_month, guardian_phone, sms_opt_out'],
+  ['fees/page.tsx', 'fee_reminders', 'invoice_id, channel, created_at'],
   ['fees/actions.ts', 'fee_invoice_balances', 'id, student_id, student_name, remaining_bdt, voided_at'],
   ['dashboard/page.tsx', 'fee_invoice_balances', 'id, student_name, remaining_bdt, due_date'],
 ]
