@@ -97,13 +97,27 @@ export function Card({
   )
 }
 
-/** Full-width error banner. role="alert" so a screen reader announces it. */
-export function Alert({ children }: { children: ReactNode }) {
+const ALERT_TONES = {
+  error: 'border-absent/30 bg-absent/5 text-absent',
+  // Amber, because some banners are a question rather than a failure — "this
+  // number already has an account, is it the right person?" is not an error, and
+  // red trains people to dismiss it without reading.
+  warn: 'border-late/40 bg-late/5 text-late',
+  ok: 'border-brand-300 bg-brand-50 text-brand-800',
+} as const
+
+/** Full-width banner. role="alert" so a screen reader announces it. */
+export function Alert({
+  children,
+  tone = 'error',
+}: {
+  children: ReactNode
+  tone?: keyof typeof ALERT_TONES
+}) {
   return (
     <div
       role="alert"
-      className="rounded-xl border-2 border-absent/30 bg-absent/5 px-4 py-3
-        font-medium text-absent"
+      className={`rounded-xl border-2 px-4 py-3 font-medium ${ALERT_TONES[tone]}`}
     >
       {children}
     </div>

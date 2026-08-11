@@ -309,8 +309,98 @@ check(
   ),
 )
 
-console.log('\nStudent and guardian scoping:')
+// ---------------------------------------------------------------------------
+// Deactivating a teacher. The settings screen tells an owner that turning a
+// teacher off means "তিনি আর তাঁর ব্যাচ, শিক্ষার্থী বা অভিভাবকের নম্বর দেখতে পাবেন
+// না" — a promise about a person who may have just been fired, so it had better
+// be true. It takes two writes, and this section is why toggleTeacherActive does
+// both of them.
+// ---------------------------------------------------------------------------
 
+console.log('\nDeactivating a teacher:')
+
+await db.query('update teachers set active = false where id = $1', [tKarim])
+
+await asUser(db, ids.karim, async (tx) => {
+  check(
+    'an inactive teacher sees no students',
+    (await n(tx, 'select count(*)::int as n from students')) === 0,
+  )
+  check(
+    'an inactive teacher sees no guardian phone numbers',
+    (await n(tx, 'select count(*)::int as n from guardians')) === 0,
+  )
+  check(
+    'an inactive teacher sees no exam results',
+    (await n(tx, 'select count(*)::int as n from exam_results')) === 0,
+  )
+  // Not a bug, and the reason the action does more than flip `active`.
+  // batches_member_read admits anyone with a membership, deliberately — students
+  // and guardians need to see batch names and times. But `batches` also carries
+  // monthly_fee_bdt, so leaving the membership in place leaves an ex-employee
+  // reading the centre's price list and their former colleagues' phone numbers.
+  check(
+    'flipping `active` alone does NOT hide the batch list — membership still does',
+    (await n(tx, 'select count(*)::int as n from batches')) > 0,
+  )
+})
+
+check(
+  'an inactive teacher cannot take attendance for what was their own batch',
+  await deniedAsUser(
+    db,
+    ids.karim,
+    `insert into attendance_sessions (coaching_center_id, batch_id, session_date)
+     values ($1, $2, current_date - 1)`,
+    [centerA, bBioMorning],
+  ),
+)
+
+// The second write. Only the 'teacher' membership, so a teacher who is also a
+// manager keeps that one and an owner in Teacher Mode cannot lock themselves out.
+await db.query(
+  `delete from center_members
+   where coaching_center_id = $1 and user_id = $2 and role = 'teacher'`,
+  [centerA, ids.karim],
+)
+
+await asUser(db, ids.karim, async (tx) => {
+  check(
+    'with the membership gone the batch list goes too',
+    (await n(tx, 'select count(*)::int as n from batches')) === 0,
+  )
+  check(
+    'and so does the center itself',
+    (await n(tx, 'select count(*)::int as n from coaching_centers')) === 0,
+  )
+  check(
+    'and the list of colleagues',
+    (await n(tx, 'select count(*)::int as n from teachers')) === 0,
+  )
+})
+
+// The other half of the promise: the records they entered do not leave with them.
+const keptMarks = await db.query(
+  'select count(*)::int as n from exam_results where exam_id = $1',
+  [examBio],
+)
+check('their past marks survive deactivation', keptMarks.rows[0].n === 1)
+
+await db.query('update teachers set active = true where id = $1', [tKarim])
+await addMember(centerA, ids.karim, 'teacher')
+
+await asUser(db, ids.karim, async (tx) => {
+  check(
+    'reactivating gives the teacher their students back',
+    (await n(tx, 'select count(*)::int as n from students')) === 1,
+  )
+  check(
+    'and their batch back',
+    (await n(tx, 'select count(*)::int as n from batches where id = $1', [bBioMorning])) === 1,
+  )
+})
+
+console.log('\nStudent and guardian scoping:')
 await asUser(db, ids.studentUser, async (tx) => {
   check('student sees only themselves', (await n(tx, 'select count(*)::int as n from students')) === 1)
   check(

@@ -20,15 +20,13 @@ import {
   formatBdMobile,
 } from '@/lib/bd/phone'
 import { getSession, homePathFor } from '@/lib/auth/session'
+import { MIN_PASSWORD, PASSWORD_TOO_SHORT_BN } from '@/lib/auth/password'
 
 export type FormState = {
   error?: string
   /** Which input to highlight, so the message lands next to the problem. */
   field?: 'phone' | 'password' | 'name' | 'center' | 'email'
 } | null
-
-/** Passwords are typed on a phone keyboard by teachers, so: short but not silly. */
-const MIN_PASSWORD = 6
 
 /**
  * Supabase returns English error strings meant for developers. Teachers get
@@ -52,7 +50,7 @@ function friendlyAuthError(message: string): string {
     return 'এই নম্বরে অ্যাকাউন্ট আছে। লগইন করুন।'
   }
   if (/password/i.test(message) && /short|least/i.test(message)) {
-    return `পাসওয়ার্ড কমপক্ষে ${MIN_PASSWORD} অক্ষরের হতে হবে।`
+    return PASSWORD_TOO_SHORT_BN
   }
   return 'কিছু একটা সমস্যা হয়েছে। আবার চেষ্টা করুন।'
 }
@@ -129,7 +127,7 @@ export async function signUp(
   }
   if (password.length < MIN_PASSWORD) {
     return {
-      error: `পাসওয়ার্ড কমপক্ষে ${MIN_PASSWORD} অক্ষরের হতে হবে।`,
+      error: PASSWORD_TOO_SHORT_BN,
       field: 'password',
     }
   }
@@ -259,7 +257,7 @@ export async function resetStaffPassword(
 
   if (newPassword.length < MIN_PASSWORD) {
     return {
-      error: `পাসওয়ার্ড কমপক্ষে ${MIN_PASSWORD} অক্ষরের হতে হবে।`,
+      error: PASSWORD_TOO_SHORT_BN,
       field: 'password',
     }
   }
@@ -289,7 +287,7 @@ export async function resetStaffPassword(
     return { error: 'পাসওয়ার্ড বদলানো যায়নি। আবার চেষ্টা করুন।' }
   }
 
-  revalidatePath('/settings/staff')
+  revalidatePath('/settings/teachers')
   return null
 }
 

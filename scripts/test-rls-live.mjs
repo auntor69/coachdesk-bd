@@ -288,6 +288,63 @@ try {
     await denied(ids.ownerA,
       `insert into students (coaching_center_id, name) values ($1, 'Smuggled')`, [centerB]))
 
+  // -------------------------------------------------------------------------
+  // Deactivating a teacher. The settings screen promises an owner that turning a
+  // teacher off means they stop seeing their batches, their students, and those
+  // students' guardians — said about someone who may have just been fired, so it
+  // had better be true. It takes two writes, and this is why toggleTeacherActive
+  // does both.
+  // -------------------------------------------------------------------------
+  header('Deactivating a teacher')
+
+  await client.query('update teachers set active = false where id = $1', [tKarim])
+
+  check('an inactive teacher sees no students',
+    (await n(ids.karim, 'select count(*)::int as n from students')) === 0)
+  check('an inactive teacher sees no guardian phone numbers',
+    (await n(ids.karim, 'select count(*)::int as n from guardians')) === 0)
+  check('an inactive teacher sees no exam results',
+    (await n(ids.karim, 'select count(*)::int as n from exam_results')) === 0)
+  // Deliberate, and the reason the action does more than flip `active`:
+  // batches_member_read admits anyone holding a membership, because students and
+  // guardians need batch names and times. batches also carries monthly_fee_bdt.
+  check('flipping `active` alone does NOT hide the batch list — membership still does',
+    (await n(ids.karim, 'select count(*)::int as n from batches')) > 0)
+  check('an inactive teacher cannot take attendance for what was their own batch',
+    await denied(ids.karim,
+      `insert into attendance_sessions (coaching_center_id, batch_id, session_date)
+       values ($1, $2, current_date - 1)`, [centerA, bBioMorning]))
+
+  // The second write. Only the 'teacher' role, so a teacher who is also a manager
+  // keeps that, and an owner in Teacher Mode cannot lock themselves out.
+  await client.query(
+    `delete from center_members
+     where coaching_center_id = $1 and user_id = $2 and role = 'teacher'`,
+    [centerA, ids.karim],
+  )
+
+  check('with the membership gone the batch list goes too',
+    (await n(ids.karim, 'select count(*)::int as n from batches')) === 0)
+  check('and so does the center itself',
+    (await n(ids.karim, 'select count(*)::int as n from coaching_centers')) === 0)
+  check('and the list of colleagues',
+    (await n(ids.karim, 'select count(*)::int as n from teachers')) === 0)
+
+  const keptMarks = Number(
+    (await client.query('select count(*)::int as n from exam_results where exam_id = $1',
+      [examBio])).rows[0].n,
+  )
+  check('their past marks survive deactivation', keptMarks === 1)
+
+  await client.query('update teachers set active = true where id = $1', [tKarim])
+  await addMember(centerA, ids.karim, 'teacher')
+
+  check('reactivating gives the teacher their students back',
+    (await n(ids.karim, 'select count(*)::int as n from students')) === 1)
+  check('and their batch back',
+    (await n(ids.karim, 'select count(*)::int as n from batches where id = $1',
+      [bBioMorning])) === 1)
+
   header('Student and guardian scoping')
   check('student sees only themselves',
     (await n(ids.studentUser, 'select count(*)::int as n from students')) === 1)

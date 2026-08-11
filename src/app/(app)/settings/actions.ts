@@ -11,12 +11,28 @@
 import { revalidatePath } from 'next/cache'
 
 import { createClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/admin'
 import { requireRole, AuthError, type CenterSession } from '@/lib/auth/session'
-import { normalizeBdMobile } from '@/lib/bd/phone'
+import { normalizeBdMobile, phoneToLoginEmail } from '@/lib/bd/phone'
+import { MIN_PASSWORD, PASSWORD_TOO_SHORT_BN } from '@/lib/auth/password'
 import { wouldExceed, type LimitKey } from '@/lib/plans'
 import type { BatchSlot, SubjectKind } from '@/lib/supabase/types'
 
-export type ActionState = { error?: string; ok?: string } | null
+export type ActionState = {
+  error?: string
+  ok?: string
+  /**
+   * Set when the action stopped to ask something instead of failing. The teacher
+   * form re-submits with a confirmation field; see createTeacher.
+   */
+  confirm?: string
+  /**
+   * Name on the pre-existing account a teacher was linked to. Present only when
+   * something happened that the owner should read before moving on, so the form
+   * knows not to navigate away from its own success message.
+   */
+  linked?: string
+} | null
 
 /** Long enough for a real Bangla name, short enough to keep a list readable. */
 const MAX_NAME = 80
@@ -340,9 +356,14 @@ export async function createStudent(
     // subject rather than a separately chosen one — otherwise a student can be
     // enrolled in a maths batch under the physics subject and the marks screen
     // quietly shows the wrong list.
+    //
+    // Scoped by center id as well as by RLS: an owner of two centres satisfies
+    // is_staff_admin for both, so the policy alone would let a batch from the
+    // other one through.
     const { data: batches } = await supabase
       .from('batches')
       .select('id, subject_id')
+      .eq('coaching_center_id', session.active.centerId)
       .in('id', batchIds)
 
     if (batches && batches.length > 0) {
@@ -390,4 +411,352 @@ export async function toggleSmsOptOut(
   revalidatePath('/settings/sms')
   revalidatePath('/settings/students')
   return { ok: optOut ? 'SMS বন্ধ করা হয়েছে' : 'SMS চালু করা হয়েছে' }
+}
+
+// ---------------------------------------------------------------------------
+// Teachers
+// ---------------------------------------------------------------------------
+
+/** The five switches, in the order the settings screen shows them. */
+const PERMISSION_KEYS = [
+  'can_manage_exams',
+  'can_send_sms',
+  'can_manage_students',
+  'can_manage_batches',
+  'can_view_fees',
+] as const
+
+type PermissionKey = (typeof PERMISSION_KEYS)[number]
+
+/**
+ * An unchecked checkbox is simply absent from a FormData, so "missing" has to
+ * mean false here. That is only safe because the form always renders all five —
+ * a partial form would revoke whatever it happened to leave out, silently.
+ */
+function readPermissions(formData: FormData): Record<PermissionKey, boolean> {
+  return Object.fromEntries(
+    PERMISSION_KEYS.map((key) => [key, formData.get(key) !== null]),
+  ) as Record<PermissionKey, boolean>
+}
+
+/**
+ * Confirms a teacher belongs to the caller's center, and returns their id.
+ *
+ * RLS already stops another center's teacher, but an owner who runs two centers
+ * passes `is_staff_admin` for both — so the policy would admit a teacher of the
+ * other one. Every write below is scoped by center id for that reason.
+ */
+async function ownTeacherId(
+  session: CenterSession,
+  teacherId: string,
+): Promise<string | null> {
+  if (!teacherId) return null
+  const supabase = await createClient()
+  const { data } = await supabase
+    .from('teachers')
+    .select('id')
+    .eq('id', teacherId)
+    .eq('coaching_center_id', session.active.centerId)
+    .maybeSingle()
+  return data?.id ?? null
+}
+
+/**
+ * Adds a teacher, and optionally gives them a login.
+ *
+ * The login is optional on purpose: `teachers.user_id` is nullable so a centre
+ * can record a part-timer who will never open the app, and the list labels them
+ * "লগইন নেই". Making an account is the owner's job rather than a self-service
+ * invite — there is no SMS sender ID yet to send an invite through, and letting
+ * anyone who signs up with a matching number join a centre would hand a stranger
+ * other people's children's marks and their parents' phone numbers.
+ */
+export async function createTeacher(
+  _prev: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
+  const session = await staffAdmin()
+  if (!isSession(session)) return session
+
+  const name = String(formData.get('name') ?? '').trim()
+  const rawPhone = String(formData.get('phone') ?? '')
+  const subjectIds = formData.getAll('subjectIds').map(String).filter(Boolean)
+  const wantsLogin = formData.get('wantsLogin') !== null
+  const password = String(formData.get('password') ?? '')
+  const confirmedLink = formData.get('confirmLink') !== null
+  const permissions = readPermissions(formData)
+
+  if (!name) return { error: 'শিক্ষকের নাম লিখুন।' }
+  if (name.length > MAX_NAME) return { error: `নাম ${MAX_NAME} অক্ষরের মধ্যে রাখুন।` }
+
+  const phone = rawPhone.trim() ? normalizeBdMobile(rawPhone) : null
+  if (rawPhone.trim() && !phone) {
+    return { error: 'নম্বরটি ঠিক নেই (যেমন ০১৭১২৩৪৫৬৭৮)।' }
+  }
+  if (wantsLogin && !phone) {
+    return { error: 'লগইন দিতে হলে মোবাইল নম্বর লাগবে — নম্বরটাই তাঁর আইডি।' }
+  }
+  if (wantsLogin && password.length < MIN_PASSWORD) {
+    return { error: PASSWORD_TOO_SHORT_BN }
+  }
+
+  if (await overLimit(session, 'teachers', 'maxTeachers')) {
+    return { error: LIMIT_MESSAGE }
+  }
+
+  const supabase = await createClient()
+  const centerId = session.active.centerId
+
+  // Subjects are re-read rather than trusted from the form. Nothing stops a POST
+  // from carrying a subject id belonging to somewhere else, and teacher_subjects
+  // only checks that its *coaching_center_id* is ours — the foreign key would
+  // accept the smuggled subject sitting next to it.
+  let ownSubjectIds: string[] = []
+  if (subjectIds.length > 0) {
+    const { data: subjects } = await supabase
+      .from('subjects')
+      .select('id')
+      .eq('coaching_center_id', centerId)
+      .in('id', subjectIds)
+    ownSubjectIds = (subjects ?? []).map((s) => s.id)
+  }
+
+  let userId: string | null = null
+  let linkedName: string | null = null
+
+  if (wantsLogin && phone) {
+    const loginEmail = phoneToLoginEmail(phone)
+    if (!loginEmail) return { error: 'নম্বরটি ঠিক নেই।' }
+
+    const admin = createAdminClient()
+
+    // profiles.phone is unique across the whole platform, so a teacher who
+    // already works at another centre cannot be given a second account — they
+    // have to be linked to the one they have. Read with the admin client: RLS
+    // shows an owner only their own profile row, which is the one row this
+    // lookup is not interested in.
+    const { data: existing } = await admin
+      .from('profiles')
+      .select('id, full_name')
+      .eq('phone', phone)
+      .maybeSingle()
+
+    if (existing && !confirmedLink) {
+      // Never link on the first submit. One mistyped digit would otherwise hand
+      // a stranger a teacher account inside this centre: attendance, marks, and
+      // the guardians' phone numbers of other people's children. So the owner is
+      // shown whose account it is and has to agree.
+      //
+      // This does tell an owner that some number has a CoachDesk account and
+      // what name is on it. A real disclosure, accepted because the alternative
+      // is silent mis-linking and because it takes knowing the number first.
+      return {
+        confirm: `এই নম্বরে আগেই একটি অ্যাকাউন্ট আছে — ${existing.full_name || 'নাম দেওয়া নেই'}। এটাই যদি আপনার শিক্ষক হন, নিচে টিক দিয়ে আবার সেভ করুন। তিনি তাঁর পুরনো পাসওয়ার্ড দিয়েই ঢুকবেন।`,
+      }
+    }
+
+    if (existing) {
+      userId = existing.id
+      linkedName = existing.full_name || 'নাম দেওয়া নেই'
+    } else {
+      // Same admin path as signup, and for the same reason: the public signUp
+      // endpoint would try to send a confirmation email through the shared free
+      // SMTP, which is rate-limited to a couple an hour.
+      const { data: created, error: createError } = await admin.auth.admin.createUser({
+        email: loginEmail,
+        password,
+        email_confirm: true,
+        user_metadata: { full_name: name, phone, locale: 'bn' },
+      })
+
+      if (createError || !created.user) {
+        return { error: 'লগইন তৈরি করা যায়নি। আবার চেষ্টা করুন।' }
+      }
+      userId = created.user.id
+    }
+  }
+
+  const { data: teacher, error } = await supabase
+    .from('teachers')
+    .insert({
+      coaching_center_id: centerId,
+      user_id: userId,
+      name,
+      phone,
+    })
+    .select('id')
+    .single()
+
+  // An account may exist at this point with no teacher row attached to it. That
+  // is recoverable rather than orphaned: retrying the form finds it through the
+  // lookup above and links it instead of failing on the unique phone.
+  if (error || !teacher) {
+    return { error: 'যোগ করা যায়নি। আবার চেষ্টা করুন।' }
+  }
+
+  // Written even when every box is unticked, because a missing permissions row
+  // reads as "no restrictions" downstream — the SMS gate only closes on an
+  // explicit `can_send_sms === false`. Absent means allowed, so absent is not an
+  // option for a teacher an owner just configured.
+  await supabase.from('teacher_permissions').insert({
+    teacher_id: teacher.id,
+    coaching_center_id: centerId,
+    ...permissions,
+  })
+
+  if (ownSubjectIds.length > 0) {
+    await supabase.from('teacher_subjects').insert(
+      ownSubjectIds.map((subjectId) => ({
+        teacher_id: teacher.id,
+        subject_id: subjectId,
+        coaching_center_id: centerId,
+      })),
+    )
+  }
+
+  if (userId) {
+    // The membership is what makes the centre visible to them at all. Unique on
+    // (center, user, role), so a re-linked teacher who is already a member is a
+    // no-op rather than an error.
+    await supabase.from('center_members').upsert(
+      {
+        coaching_center_id: centerId,
+        user_id: userId,
+        role: 'teacher',
+      },
+      { onConflict: 'coaching_center_id,user_id,role', ignoreDuplicates: true },
+    )
+  }
+
+  revalidatePath('/settings/teachers')
+  revalidatePath('/settings/batches')
+  revalidatePath('/dashboard')
+
+  // Which of the two things happened is said out loud, with the name that was on
+  // the account. If the owner mistyped a digit and linked somebody else, this
+  // sentence is where they notice — so when it applies, `linked` tells the form
+  // to stay put rather than redirect past it.
+  if (linkedName) {
+    return {
+      ok: `শিক্ষক যোগ হয়েছে — ${linkedName} নামের পুরনো অ্যাকাউন্ট যুক্ত করা হয়েছে`,
+      linked: linkedName,
+    }
+  }
+
+  return {
+    ok: userId
+      ? 'শিক্ষক ও তাঁর লগইন তৈরি হয়েছে'
+      : 'শিক্ষক যোগ হয়েছে (লগইন ছাড়া)',
+  }
+}
+
+/** The permission checkboxes on the teacher list. */
+export async function saveTeacherPermissions(
+  _prev: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
+  const session = await staffAdmin()
+  if (!isSession(session)) return session
+
+  const teacherId = await ownTeacherId(
+    session,
+    String(formData.get('teacherId') ?? ''),
+  )
+  if (!teacherId) return { error: 'শিক্ষক পাওয়া যায়নি।' }
+
+  const supabase = await createClient()
+
+  // upsert, not update: bootstrap_center creates the owner's own teacher row
+  // without a permissions row, so the first save for that teacher is an insert.
+  const { error } = await supabase.from('teacher_permissions').upsert(
+    {
+      teacher_id: teacherId,
+      coaching_center_id: session.active.centerId,
+      ...readPermissions(formData),
+    },
+    { onConflict: 'teacher_id' },
+  )
+
+  if (error) return { error: 'সেভ করা যায়নি। আবার চেষ্টা করুন।' }
+
+  revalidatePath('/settings/teachers')
+  return { ok: 'অনুমতি সেভ হয়েছে' }
+}
+
+/**
+ * Turns a teacher off without deleting anything they recorded.
+ *
+ * Two things happen, because one is not enough. `teachers.active = false` cuts
+ * the teacher-scoped policies: `app.my_teacher_ids()` filters on `active` and
+ * every batch, student, guardian and marks policy for teachers is built on it,
+ * so those go on the next request. But the centre membership is separate, and on
+ * its own it would leave an ex-employee reading the batch list with its monthly
+ * fees, the subject list, and their former colleagues' phone numbers. So the
+ * teacher membership goes too.
+ *
+ * Only the `teacher` membership. The key is (center, user, role), so someone who
+ * is also a manager keeps that, and an owner in Teacher Mode who deactivates
+ * their own teacher record does not lock themselves out of their centre.
+ *
+ * What they entered stays: attendance and marks belong to the centre, not to the
+ * person who typed them. A teacher who leaves should not take last term with them.
+ */
+export async function toggleTeacherActive(
+  _prev: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
+  const session = await staffAdmin()
+  if (!isSession(session)) return session
+
+  const supabase = await createClient()
+  const centerId = session.active.centerId
+
+  const { data: teacher } = await supabase
+    .from('teachers')
+    .select('id, user_id')
+    .eq('id', String(formData.get('teacherId') ?? ''))
+    .eq('coaching_center_id', centerId)
+    .maybeSingle()
+
+  if (!teacher) return { error: 'শিক্ষক পাওয়া যায়নি।' }
+
+  const active = String(formData.get('active') ?? '') === 'true'
+
+  // Reactivating has to respect the plan limit, or "off then on" would be a way
+  // past maxTeachers on the free plan.
+  if (active && (await overLimit(session, 'teachers', 'maxTeachers'))) {
+    return { error: LIMIT_MESSAGE }
+  }
+
+  const { error } = await supabase
+    .from('teachers')
+    .update({ active })
+    .eq('id', teacher.id)
+    .eq('coaching_center_id', centerId)
+
+  if (error) return { error: 'বদলানো যায়নি। আবার চেষ্টা করুন।' }
+
+  if (teacher.user_id) {
+    if (active) {
+      await supabase.from('center_members').upsert(
+        {
+          coaching_center_id: centerId,
+          user_id: teacher.user_id,
+          role: 'teacher',
+        },
+        { onConflict: 'coaching_center_id,user_id,role', ignoreDuplicates: true },
+      )
+    } else {
+      await supabase
+        .from('center_members')
+        .delete()
+        .eq('coaching_center_id', centerId)
+        .eq('user_id', teacher.user_id)
+        .eq('role', 'teacher')
+    }
+  }
+
+  revalidatePath('/settings/teachers')
+  revalidatePath('/teach')
+  return { ok: active ? 'চালু করা হয়েছে' : 'বন্ধ করা হয়েছে' }
 }
