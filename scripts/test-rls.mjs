@@ -352,6 +352,139 @@ check(
   `mark is now ${markAfter}, expected 31`,
 )
 
+// ---------------------------------------------------------------------------
+// Billing columns. The free tier only exists if these three cannot be edited
+// by the person who benefits from editing them.
+//
+// This section started as a probe, not a test. Against the original policies it
+// printed:  UPDATE ALLOWED -> {"sms_credit_balance":999999,"plan":"institution"}
+// — an owner self-granting unlimited SMS and an institution plan through the
+// Supabase client, no payment involved. 20260811000004 closed it.
+// ---------------------------------------------------------------------------
+
+console.log('\nBilling columns (plan, status, credit balance):')
+
+check(
+  'owner cannot raise their own SMS credit balance',
+  await deniedAsUser(
+    db,
+    ids.ownerA,
+    'update coaching_centers set sms_credit_balance = 999999 where id = $1',
+    [centerA],
+  ),
+)
+check(
+  'owner cannot upgrade their own plan',
+  await deniedAsUser(
+    db,
+    ids.ownerA,
+    `update coaching_centers set plan = 'institution' where id = $1`,
+    [centerA],
+  ),
+)
+check(
+  'owner cannot move their center out of trial',
+  await deniedAsUser(
+    db,
+    ids.ownerA,
+    `update coaching_centers set status = 'active' where id = $1`,
+    [centerA],
+  ),
+)
+// A second free center is a cheaper way around the one-batch cap than editing
+// the plan column was, so the insert path has to close with it.
+check(
+  'owner cannot create a second center to escape the plan limit',
+  await deniedAsUser(
+    db,
+    ids.ownerA,
+    `insert into coaching_centers (name, created_by, plan)
+     values ('Free Institution', $1, 'institution')`,
+    [ids.ownerA],
+  ),
+)
+
+const billing = async () =>
+  (
+    await db.query(
+      'select plan, status, sms_credit_balance from coaching_centers where id = $1',
+      [centerA],
+    )
+  ).rows[0]
+
+let row = await billing()
+check(
+  'nothing actually moved after those attempts',
+  row.plan === 'teacher_free' && row.status === 'trial' && row.sms_credit_balance === 0,
+  `plan=${row.plan} status=${row.status} balance=${row.sms_credit_balance}`,
+)
+
+// The lock must not catch our own dispatcher. If it did, every SMS send would
+// fail closed — safe, but the product would look broken instead.
+let dispatcherOk = true
+try {
+  await db.transaction(async (tx) => {
+    await tx.exec('set local role service_role;')
+    await tx.query(
+      'update coaching_centers set sms_credit_balance = 50, plan = $2 where id = $1',
+      [centerA, 'teacher_plus'],
+    )
+  })
+} catch (error) {
+  dispatcherOk = false
+  console.log(`        ${error.message}`)
+}
+row = await billing()
+check(
+  'service_role can still top up credits and change the plan',
+  dispatcherOk && row.sms_credit_balance === 50 && row.plan === 'teacher_plus',
+  `plan=${row.plan} balance=${row.sms_credit_balance}`,
+)
+
+// An owner still has to be able to fix their own centre's name and address, or
+// the lock has broken the settings screen instead of the exploit.
+await asUser(db, ids.ownerA, (tx) =>
+  tx.query(
+    `update coaching_centers set name = 'Dhaka Science Care (Mirpur)', bd_area = 'Mirpur'
+     where id = $1`,
+    [centerA],
+  ),
+)
+const renamed = (
+  await db.query('select name, bd_area from coaching_centers where id = $1', [centerA])
+).rows[0]
+check(
+  'owner can still edit their own center details',
+  renamed.name === 'Dhaka Science Care (Mirpur)' && renamed.bd_area === 'Mirpur',
+  `name=${renamed.name} area=${renamed.bd_area}`,
+)
+
+// The accident the guard trigger exists for: someone pastes the blanket
+// `grant all on all tables in schema public to authenticated` that appears in
+// half the Supabase setup snippets, and the column revoke silently stops
+// mattering. A trigger cannot be granted away.
+await db.exec('grant update on coaching_centers to authenticated;')
+check(
+  'guard trigger still refuses after a blanket re-grant',
+  await deniedAsUser(
+    db,
+    ids.ownerA,
+    'update coaching_centers set sms_credit_balance = 999999 where id = $1',
+    [centerA],
+  ),
+)
+row = await billing()
+check(
+  'balance survived the re-grant',
+  row.sms_credit_balance === 50,
+  `balance=${row.sms_credit_balance}`,
+)
+await db.exec(`
+  revoke update on coaching_centers from authenticated;
+  grant update (name, phone, address, bd_area, timezone)
+    on coaching_centers to authenticated;
+`)
+
 console.log('\nAnonymous access:')
 
 await asUser(db, null, async (tx) => {

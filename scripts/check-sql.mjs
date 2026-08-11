@@ -12,7 +12,12 @@ let failed = false
 for (const file of readdirSync(dir).filter((f) => f.endsWith('.sql'))) {
   const sql = readFileSync(`${dir}/${file}`, 'utf8')
   try {
-    const stmts = await parse(sql)
+    const parsed = await parse(sql)
+    // pgsql-parser returns the raw ParseResult ({ version, stmts }) on current
+    // versions and a bare array on older ones. Reading .length off the wrong one
+    // printed "undefined statements" — a checker whose own output is wrong is
+    // not worth reading.
+    const stmts = Array.isArray(parsed) ? parsed : (parsed?.stmts ?? [])
     console.log(`OK   ${file} — ${stmts.length} statements`)
   } catch (error) {
     console.log(`FAIL ${file} — ${error.message}`)

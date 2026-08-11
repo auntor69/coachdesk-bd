@@ -72,6 +72,24 @@ export async function bootDatabase({ verbose = false } = {}) {
   await db.exec('create extension if not exists pgcrypto;')
   await db.exec(AUTH_STUB)
 
+  // Supabase grants these roles broad table privileges and relies entirely on
+  // RLS to filter rows. Replicating that here matters: without the grants a
+  // query fails with "permission denied" and a test would pass for the wrong
+  // reason, hiding a missing policy.
+  //
+  // Set as DEFAULT privileges *before* the migrations, not as a blanket grant
+  // after them. On the real project the grants already exist by the time a
+  // migration runs, so a migration that revokes one — see the billing column
+  // lock in 20260811000004 — keeps it revoked. Granting afterwards would hand it
+  // straight back, and the suite would prove the opposite of production.
+  await db.exec(`
+    grant usage on schema public to anon, authenticated, service_role;
+    alter default privileges in schema public
+      grant all on tables to anon, authenticated, service_role;
+    alter default privileges in schema public
+      grant all on sequences to anon, authenticated, service_role;
+  `)
+
   const files = readdirSync(MIGRATIONS_DIR)
     .filter((f) => f.endsWith('.sql'))
     .sort()
@@ -85,16 +103,6 @@ export async function bootDatabase({ verbose = false } = {}) {
       throw new Error(`${file}: ${error.message}`)
     }
   }
-
-  // Supabase grants these roles broad table privileges and relies entirely on
-  // RLS to filter rows. Replicating that here matters: without the grants a
-  // query fails with "permission denied" and a test would pass for the wrong
-  // reason, hiding a missing policy.
-  await db.exec(`
-    grant usage on schema public to anon, authenticated, service_role;
-    grant all on all tables in schema public to anon, authenticated, service_role;
-    grant all on all sequences in schema public to anon, authenticated, service_role;
-  `)
 
   return { db, migrations: files }
 }

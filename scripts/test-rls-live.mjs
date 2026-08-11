@@ -311,6 +311,86 @@ try {
   check('student cannot edit their own marks', Number(markAfter) === 31,
     `mark is now ${markAfter}, expected 31`)
 
+  // -------------------------------------------------------------------------
+  // Billing columns — the free tier only exists if these cannot be edited by
+  // the person who benefits from editing them. Worth repeating against the real
+  // database rather than only pglite, because the fix is a column privilege and
+  // a REVOKE only removes grants the revoking role made: if Supabase's original
+  // grant came from supabase_admin rather than postgres, the revoke in
+  // 20260811000004 succeeded locally and changed nothing here. This section is
+  // how we find that out. The guard trigger is the backstop either way.
+  //
+  // The GRANT/REVOKE below are transactional like everything else in this file
+  // and roll back with the seed data.
+  // -------------------------------------------------------------------------
+  header('Billing columns (plan, status, credit balance)')
+
+  check('owner cannot raise their own SMS credit balance',
+    await denied(ids.ownerA,
+      'update coaching_centers set sms_credit_balance = 999999 where id = $1', [centerA]))
+  check('owner cannot upgrade their own plan',
+    await denied(ids.ownerA,
+      `update coaching_centers set plan = 'institution' where id = $1`, [centerA]))
+  check('owner cannot move their center out of trial',
+    await denied(ids.ownerA,
+      `update coaching_centers set status = 'active' where id = $1`, [centerA]))
+  check('owner cannot create a second center to escape the plan limit',
+    await denied(ids.ownerA,
+      `insert into coaching_centers (name, created_by, plan)
+       values ('Free Institution', $1, 'institution')`, [ids.ownerA]))
+
+  const billing = async () =>
+    (await client.query(
+      'select plan, status, sms_credit_balance from coaching_centers where id = $1',
+      [centerA],
+    )).rows[0]
+
+  let billed = await billing()
+  check('nothing actually moved after those attempts',
+    billed.plan === 'teacher_free' && billed.status === 'trial' &&
+      billed.sms_credit_balance === 0,
+    `plan=${billed.plan} status=${billed.status} balance=${billed.sms_credit_balance}`)
+
+  // The lock must not catch our own dispatcher. If it did, every SMS send would
+  // fail closed — safe, but the product would look broken instead.
+  let dispatcherOk = true
+  try {
+    await client.query('set local role service_role')
+    await client.query(
+      'update coaching_centers set sms_credit_balance = 50 where id = $1', [centerA])
+  } catch (error) {
+    dispatcherOk = false
+    console.log(`        ${error.message}`)
+  } finally {
+    await client.query('set local role postgres')
+  }
+  billed = await billing()
+  check('service_role can still top up credits',
+    dispatcherOk && billed.sms_credit_balance === 50,
+    `balance=${billed.sms_credit_balance}`)
+
+  // An owner still has to be able to fix their own centre's details, or the lock
+  // has broken the settings screen instead of the exploit.
+  await runAs(ids.ownerA,
+    `update coaching_centers set name = 'Dhaka Science Care (Mirpur)', bd_area = 'Mirpur'
+     where id = $1`, [centerA])
+  const renamed = (await client.query(
+    'select name, bd_area from coaching_centers where id = $1', [centerA])).rows[0]
+  check('owner can still edit their own center details',
+    renamed.name === 'Dhaka Science Care (Mirpur)' && renamed.bd_area === 'Mirpur',
+    `name=${renamed.name} area=${renamed.bd_area}`)
+
+  // The accident the guard trigger exists for: someone pastes the blanket
+  // `grant all on all tables in schema public to authenticated` that appears in
+  // half the Supabase setup snippets, and the column revoke stops mattering.
+  await client.query('grant update on coaching_centers to authenticated')
+  check('guard trigger still refuses after a blanket re-grant',
+    await denied(ids.ownerA,
+      'update coaching_centers set sms_credit_balance = 999999 where id = $1', [centerA]))
+  billed = await billing()
+  check('balance survived the re-grant', billed.sms_credit_balance === 50,
+    `balance=${billed.sms_credit_balance}`)
+
   header('Anonymous access')
   check('signed-out user reads no students',
     (await n(null, 'select count(*)::int as n from students')) === 0)
