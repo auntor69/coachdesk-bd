@@ -1771,6 +1771,14 @@ export type Database = {
         }
         Returns: string
       }
+      import_students: {
+        Args: {
+          p_center_id: string | null
+          p_students: Json | null
+          p_batch_ids?: string[] | null
+        }
+        Returns: { added: number; already_there: number; enrolled: number }[]
+      }
     }
     Enums: {
       attendance_status: AttendanceStatus

@@ -14,8 +14,14 @@ import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { requireRole, AuthError, type CenterSession } from '@/lib/auth/session'
 import { normalizeBdMobile, phoneToLoginEmail } from '@/lib/bd/phone'
+import {
+  MAX_IMPORT_ROWS,
+  parseRoster,
+  readyRows,
+  rosterKey,
+} from '@/lib/bd/roster'
 import { MIN_PASSWORD, PASSWORD_TOO_SHORT_BN } from '@/lib/auth/password'
-import { wouldExceed, type LimitKey } from '@/lib/plans'
+import { roomFor, wouldExceed, type LimitKey } from '@/lib/plans'
 import type { BatchSlot, PayoutWallet, SubjectKind } from '@/lib/supabase/types'
 
 export type ActionState = {
@@ -382,6 +388,113 @@ export async function createStudent(
   revalidatePath('/teach')
   revalidatePath('/dashboard')
   return { ok: 'শিক্ষার্থী যোগ হয়েছে' }
+}
+
+/**
+ * Loading a whole register in one paste.
+ *
+ * This is how a centre becomes a customer: somebody sits down with their
+ * notebook and it goes in before the owner ever logs in. Two hundred students
+ * through the form above is an evening of typing per centre.
+ *
+ * The paste is re-parsed here rather than trusting rows sent from the browser.
+ * A Server Action is a public endpoint, so that would be a hole; but the better
+ * reason is that the same pure parser runs in both places, which is what makes
+ * the preview's promise and the import's result the same number.
+ */
+export async function importStudents(
+  _prev: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
+  const session = await staffAdmin()
+  if (!isSession(session)) return session
+
+  const rows = parseRoster(String(formData.get('roster') ?? ''))
+  const ready = readyRows(rows)
+  const batchIds = formData.getAll('batchIds').map(String).filter(Boolean)
+
+  if (rows.length === 0) {
+    return { error: 'তালিকা খালি। প্রতি লাইনে একজনের নাম আর অভিভাবকের নম্বর দিন।' }
+  }
+  if (rows.length > MAX_IMPORT_ROWS) {
+    return {
+      error: `একবারে সর্বোচ্চ ${MAX_IMPORT_ROWS} লাইন দিন, বাকিগুলো পরের বার। এখানে ${rows.length} লাইন আছে।`,
+    }
+  }
+  if (ready.length === 0) {
+    return { error: 'একটি লাইনও পড়া গেল না। প্রতি লাইনে নাম আর ১১ ডিজিটের মোবাইল নম্বর দরকার।' }
+  }
+
+  const supabase = await createClient()
+  const centerId = session.active.centerId
+
+  // The cap applies to the paste as a whole. Letting the first 15 of 80 names
+  // through and dropping the rest is worse than refusing: the owner has no way
+  // to know which 65 are missing, and would have to diff two hundred lines.
+  //
+  // Only capped plans pay for the roster fetch — and a capped plan holds at most
+  // 300 students, so it is a small one. Rows that are already on the roster are
+  // taken out of the count first, or re-pasting a register to fix three names
+  // would be refused by a plan that has plenty of room for those three.
+  const { count } = await supabase
+    .from('students')
+    .select('id', { count: 'exact', head: true })
+    .eq('coaching_center_id', centerId)
+    .eq('status', 'active')
+  const room = roomFor(session.plan, 'maxStudents', count ?? 0)
+
+  if (room !== null) {
+    const { data: roster } = await supabase
+      .from('students')
+      .select('name, guardian_phone')
+      .eq('coaching_center_id', centerId)
+    const known = new Set(
+      (roster ?? []).map((s) => rosterKey(s.name, s.guardian_phone ?? '')),
+    )
+    const fresh = ready.filter((s) => !known.has(rosterKey(s.name, s.guardian_phone)))
+
+    if (fresh.length > room) {
+      return {
+        error:
+          room === 0
+            ? LIMIT_MESSAGE
+            : `এই প্ল্যানে আর ${room} জন যোগ করা যাবে, কিন্তু তালিকায় ${fresh.length} জন নতুন। ${LIMIT_MESSAGE}`,
+      }
+    }
+  }
+
+  // One statement, so a dropped connection either lands the whole register or
+  // none of it. See 20260811000009_student_import.sql for why this is the only
+  // RPC in the app; the short version is that a student whose guardian row never
+  // arrived is a parent who never hears anything.
+  const { data, error } = await supabase
+    .rpc('import_students', {
+      p_center_id: centerId,
+      p_students: ready,
+      p_batch_ids: batchIds,
+    })
+    .single()
+
+  if (error || !data) {
+    return { error: 'তালিকা যোগ করা যায়নি। আবার চেষ্টা করুন।' }
+  }
+
+  revalidatePath('/settings/students')
+  revalidatePath('/teach')
+  revalidatePath('/dashboard')
+  // This screen too, and not for the sake of a stale list: the page hands the
+  // form the roster it already knows, and the form marks a pasted line "আগেই
+  // আছে" from it. Without this the owner imports, pastes the same register to
+  // check it worked, and is told all forty are new — which is the one thing this
+  // screen exists to be honest about. The import itself would still skip them.
+  revalidatePath('/settings/students/import')
+
+  // Reported from what the database actually did, not from what the preview
+  // predicted. The two should agree; when they do not, this is the honest one.
+  const parts = [`${data.added} জন যোগ হয়েছে`]
+  if (data.already_there > 0) parts.push(`${data.already_there} জন আগেই ছিল`)
+  if (data.enrolled > 0) parts.push(`${data.enrolled}টি ব্যাচ ভর্তি হয়েছে`)
+  return { ok: parts.join(' · ') }
 }
 
 /**

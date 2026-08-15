@@ -958,6 +958,211 @@ try {
   check('balance survived the re-grant', billed.sms_credit_balance === 50,
     `balance=${billed.sms_credit_balance}`)
 
+  header('Bulk import (import_students)')
+
+  // The jsonb the Server Action sends is exactly the parser's ImportStudent
+  // shape, so these literals are what a pasted register turns into.
+  const pasted = (...rows) => JSON.stringify(rows)
+  const listed = (name, phone, guardianName = null) => ({
+    name,
+    guardian_phone: phone,
+    guardian_name: guardianName,
+  })
+  const uuids = (...list) => `{${list.join(',')}}`
+  const IMPORT = 'select * from import_students($1::uuid, $2::jsonb, $3::uuid[])'
+
+  const importAs = async (user, center, students, batches = uuids()) =>
+    (await runAs(user, IMPORT, [center, students, batches])).rows[0]
+
+  // Counted as the connection owner: what the caller can see is a separate
+  // question from what actually landed, and here we want the truth.
+  const truth = async (sql, params = []) =>
+    Number((await client.query(sql, params)).rows[0].n)
+  const studentsIn = (center) =>
+    truth('select count(*)::int as n from students where coaching_center_id = $1', [center])
+  const namedAnywhere = (name) =>
+    truth('select count(*)::int as n from students where name = $1', [name])
+
+  const beforeA = await studentsIn(centerA)
+  const beforeB = await studentsIn(centerB)
+
+  // A teacher pastes the register. The function is security invoker on purpose,
+  // so there is nothing to argue with: the insert hits students_staff_admin_write
+  // and raises. A definer function here would have been a hole straight through
+  // the tenant boundary.
+  check('a teacher cannot import a roster',
+    await denied(ids.karim, IMPORT,
+      [centerA, pasted(listed('Sabbir Ahmed', '+8801712345678')), uuids()]))
+  check('the refused import left nothing behind',
+    (await studentsIn(centerA)) === beforeA && (await namedAnywhere('Sabbir Ahmed')) === 0)
+
+  // The centre id is an argument, so it is the argument an attacker changes.
+  check("an owner cannot import into another centre's roster",
+    await denied(ids.ownerA, IMPORT,
+      [centerB, pasted(listed('Nadia Islam', '+8801812345678')), uuids()]))
+  check("centre B's roster is untouched",
+    (await studentsIn(centerB)) === beforeB && (await namedAnywhere('Nadia Islam')) === 0)
+
+  // The real thing: four pasted lines, of which one is already on the roster
+  // under different spacing and case, and one repeats a line above it.
+  const imported = await importAs(ids.ownerA, centerA,
+    pasted(
+      listed('Sabbir Ahmed', '+8801712345678', 'Abdul Karim'),
+      listed('  ali   HASAN ', '01700000000'),
+      listed('Sabbir Ahmed', '+8801712345678'),
+      listed('Rumana Begum', '+8801812345679'),
+    ),
+    uuids(bBioMorning))
+  check('an owner imports the new names and skips the known one',
+    imported.added === 2 && imported.already_there === 1 && imported.enrolled === 2,
+    `added ${imported.added}, already ${imported.already_there}, enrolled ${imported.enrolled}`)
+  check('the roster grew by exactly the new names',
+    (await studentsIn(centerA)) === beforeA + 2)
+  check('the same name twice in one paste is one student',
+    (await namedAnywhere('Sabbir Ahmed')) === 1)
+
+  // Whitespace and case are how a register differs from a database. If the match
+  // were exact, every re-paste would double the roster.
+  check('"  ali   HASAN " matched the seeded Ali Hasan',
+    (await namedAnywhere('  ali   HASAN ')) === 0 &&
+      (await truth('select count(*)::int as n from students where id = $1', [stAli])) === 1)
+
+  // The reason this is a database function at all: a student whose guardian row
+  // is missing is a student no SMS ever reaches, and nobody would find out until
+  // a parent complained.
+  check('every imported student got a primary guardian row',
+    (await truth(
+      `select count(*)::int as n from students s
+       where s.coaching_center_id = $1 and s.name in ('Sabbir Ahmed', 'Rumana Begum')
+         and not exists (
+           select 1 from guardians g
+           where g.student_id = s.id and g.is_primary and g.phone = s.guardian_phone
+             and g.coaching_center_id = s.coaching_center_id)`,
+      [centerA])) === 0)
+  check("the guardian's name came across when the line had one",
+    (await truth(
+      `select count(*)::int as n from guardians g join students s on s.id = g.student_id
+       where s.name = 'Sabbir Ahmed' and g.name = 'Abdul Karim'`)) === 1)
+  check('a line with no guardian name still gets the number',
+    (await truth(
+      `select count(*)::int as n from guardians g join students s on s.id = g.student_id
+       where s.name = 'Rumana Begum' and g.name is null
+         and g.phone = '+8801812345679'`)) === 1)
+  check("the enrollment took the batch's own subject",
+    (await truth(
+      `select count(*)::int as n from enrollments e join students s on s.id = e.student_id
+       where e.batch_id = $1 and e.subject_id = $2 and s.name = 'Sabbir Ahmed'`,
+      [bBioMorning, sBio])) === 1)
+  check('the student already on the roster was not enrolled again',
+    (await truth(
+      'select count(*)::int as n from enrollments where student_id = $1 and batch_id = $2',
+      [stAli, bBioMorning])) === 1)
+  check('and did not collect a second guardian row',
+    (await truth('select count(*)::int as n from guardians where student_id = $1',
+      [stAli])) === 1)
+
+  // Pasting the same register twice is what an owner does when the first attempt
+  // looked like it had not worked.
+  const again = await importAs(ids.ownerA, centerA,
+    pasted(
+      listed('Sabbir Ahmed', '+8801712345678', 'Abdul Karim'),
+      listed('Rumana Begum', '+8801812345679'),
+    ),
+    uuids(bBioMorning))
+  check('a second identical paste adds nobody',
+    again.added === 0 && again.already_there === 2 && again.enrolled === 0,
+    `added ${again.added}, already ${again.already_there}`)
+
+  // Same guardian number, different child. Siblings must not collapse into one
+  // student, which is why identity is the name AND the number, not either alone.
+  const sibling = await importAs(ids.ownerA, centerA,
+    pasted(listed('Sadia Ahmed', '+8801712345678')))
+  check('a sibling on the same number is a second student', sibling.added === 1)
+
+  // A batch id from the other centre. The function joins batches on the centre id
+  // as well as the array, so the enrollment is dropped rather than raising — the
+  // sideways hole this codebase keeps closing.
+  const wrongBatch = await importAs(ids.ownerA, centerA,
+    pasted(listed('Tanvir Islam', '+8801912345678')), uuids(bPhyB))
+  check('a batch from the other centre enrolls nobody',
+    wrongBatch.added === 1 && wrongBatch.enrolled === 0,
+    `added ${wrongBatch.added}, enrolled ${wrongBatch.enrolled}`)
+  check("and centre B's batch has no new members",
+    (await truth('select count(*)::int as n from enrollments where batch_id = $1',
+      [bPhyB])) === 1)
+
+  // Garbage the parser would never produce, because the jsonb arrives from a
+  // public endpoint and does not have to have come from our form.
+  check('a jsonb object instead of an array is refused',
+    await denied(ids.ownerA, IMPORT, [centerA, '{"name":"x"}', uuids()]))
+  const partial = await importAs(ids.ownerA, centerA,
+    pasted(
+      listed('   ', '+8801912345670'),
+      listed('Nusrat Jahan', null),
+      listed('Nusrat Jahan', '+8801912345671'),
+    ))
+  check('a blank name or missing number is skipped, not fatal',
+    partial.added === 1, `added ${partial.added}`)
+  const empty = await importAs(ids.ownerA, centerA, pasted())
+  check('an empty list is a no-op, not an error', empty.added === 0)
+
+  // All-or-nothing. The three inserts are CTEs of one statement precisely so that
+  // the enrollment failing cannot leave a student behind with no guardian row —
+  // the state that sends nothing to a parent and that nobody notices for a month.
+  // No realistic input can fail that last step, so the failure is bolted on. The
+  // constraint lives inside its own savepoint, which is what removes it: it can
+  // never outlive this block even if the attempt below throws somewhere
+  // unexpected, and the whole suite rolls back regardless.
+  const countBeforeBreak = await studentsIn(centerA)
+  await client.query('savepoint breaking')
+  await client.query(
+    'alter table enrollments add constraint tmp_break check (false) not valid',
+  )
+  let brokeCleanly = false
+  try {
+    await importAs(ids.ownerA, centerA,
+      pasted(listed('Farhana Akter', '+8801612345678')), uuids(bBioMorning))
+  } catch {
+    brokeCleanly = true
+  }
+  await client.query('rollback to savepoint breaking')
+  await client.query('set local role postgres')
+  check('a failure at the last step fails the whole import', brokeCleanly)
+  check('no half-imported student was left behind',
+    (await studentsIn(centerA)) === countBeforeBreak &&
+      (await namedAnywhere('Farhana Akter')) === 0)
+  check('and no orphan guardian row either',
+    (await truth(
+      "select count(*)::int as n from guardians where phone = '+8801612345678'")) === 0)
+
+  // Every function in `public` is a PostgREST endpoint, and Supabase's default
+  // privileges hand EXECUTE to anon at creation — so a migration's
+  // `revoke ... from public` looks like it closed a door it never touched. This
+  // suite is where that was caught, the local one having been testing a database
+  // Supabase does not ship. Asked of the whole schema rather than of
+  // import_students, because the point is to catch the NEXT RPC somebody adds.
+  // Extension functions (citext) are excluded: granted to PUBLIC by their own
+  // install script, and not ours.
+  const anonCallable = (
+    await client.query(
+      `select p.proname as name
+       from pg_proc p
+       join pg_namespace nsp on nsp.oid = p.pronamespace
+       join aclexplode(p.proacl) a on a.privilege_type = 'EXECUTE'
+       where nsp.nspname = 'public' and p.prokind = 'f'
+         and coalesce(nullif(a.grantee::regrole::text, '-'), 'PUBLIC') in ('anon', 'PUBLIC')
+         and not exists (select 1 from pg_depend d where d.objid = p.oid and d.deptype = 'e')
+       order by 1`,
+    )
+  ).rows.map((r) => r.name)
+  check('no function in public is callable without a session',
+    anonCallable.length === 0, anonCallable.join(', '))
+  check('the import is still callable by a signed-in user',
+    (await truth(
+      `select count(*)::int as n from pg_proc p, aclexplode(p.proacl) a
+       where p.proname = 'import_students' and a.privilege_type = 'EXECUTE'
+         and a.grantee::regrole::text = 'authenticated'`)) === 1)
+
   header('Anonymous access')
   check('signed-out user reads no students',
     (await n(null, 'select count(*)::int as n from students')) === 0)
@@ -965,6 +1170,11 @@ try {
     (await n(null, 'select count(*)::int as n from guardians')) === 0)
   check('signed-out user reads no centers',
     (await n(null, 'select count(*)::int as n from coaching_centers')) === 0)
+  check('signed-out user cannot call the import',
+    await denied(null, IMPORT,
+      [centerA, pasted(listed('Anon Inserted', '+8801512345678')), uuids()]))
+  check('and no anonymous student landed',
+    (await namedAnywhere('Anon Inserted')) === 0)
 
   console.log(`\n${passed} passed, ${failed} failed  (against live Supabase)`)
   if (failed) console.log('Failures:', failures.join(', '))

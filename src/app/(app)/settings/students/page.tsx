@@ -4,6 +4,7 @@ import { Card } from '@/components/ui'
 import { requireRole } from '@/lib/auth/session'
 import { createClient } from '@/lib/supabase/server'
 import { formatBdMobile } from '@/lib/bd/phone'
+import { MAX_IMPORT_ROWS } from '@/lib/bd/roster'
 
 export const metadata = { title: 'শিক্ষার্থী — CoachDesk' }
 
@@ -24,6 +25,9 @@ export default async function StudentsPage() {
       `id, name, student_code, guardian_phone, class_level, institution,
        status, sms_opt_out, enrollments (id, status, batches (name))`,
     )
+    // Scoped as well as governed by RLS: an owner of two centres passes
+    // is_staff_admin for both, so the policy alone would mix two rosters.
+    .eq('coaching_center_id', session.active.centerId)
     .order('name', { ascending: true })
 
   const rows = (students ?? []).map((student) => ({
@@ -82,6 +86,32 @@ export default async function StudentsPage() {
           </Link>
         </div>
       </div>
+
+      {/*
+        The way a centre actually gets its students in: somebody sits down with
+        the register and pastes it. Kept in front of the owner rather than hidden
+        behind the one-at-a-time form, because 200 students typed one by one is
+        an evening nobody spends.
+      */}
+      <Link
+        href="/settings/students/import"
+        className="flex min-h-tap items-center justify-between gap-3 rounded-xl
+          border-2 border-dashed border-line bg-white px-4 py-3
+          hover:border-brand-300"
+      >
+        <span>
+          <span className="block font-medium text-ink">
+            রেজিস্টার থেকে একসাথে যোগ করুন
+          </span>
+          <span className="block text-sm text-ink-soft">
+            নামের তালিকা বসিয়ে দিন — একবারে{' '}
+            <span className="num">{MAX_IMPORT_ROWS}</span> জন পর্যন্ত
+          </span>
+        </span>
+        <span aria-hidden className="shrink-0 text-lg text-brand-700">
+          →
+        </span>
+      </Link>
 
       {missingPhone > 0 && (
         <Card className="border-late/30 bg-late/5">

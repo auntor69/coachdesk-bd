@@ -17,11 +17,16 @@ export default async function NewStudentPage() {
     supabase
       .from('batches')
       .select('id, name, slot, subjects (name, name_bn)')
+      // Scoped as well as governed by RLS: an owner of two centres passes
+      // is_staff_admin for both, so the policy alone would offer this centre's
+      // student a batch belonging to the other one.
+      .eq('coaching_center_id', session.active.centerId)
       .eq('active', true)
       .order('start_time', { ascending: true, nullsFirst: false }),
     supabase
       .from('students')
       .select('id', { count: 'exact', head: true })
+      .eq('coaching_center_id', session.active.centerId)
       .eq('status', 'active'),
   ])
 

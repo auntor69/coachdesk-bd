@@ -88,6 +88,14 @@ export async function bootDatabase({ verbose = false } = {}) {
       grant all on tables to anon, authenticated, service_role;
     alter default privileges in schema public
       grant all on sequences to anon, authenticated, service_role;
+    -- Functions too, and this one is easy to miss because Postgres alone would
+    -- have granted EXECUTE to PUBLIC and a "revoke ... from public" in a
+    -- migration would look like it had closed the door. On Supabase the door is
+    -- a separate, explicit grant to anon that the revoke does not touch, so
+    -- every new RPC starts out callable by a signed-out request. Reproducing
+    -- that here is the only way the local suite can catch it.
+    alter default privileges in schema public
+      grant all on functions to anon, authenticated, service_role;
   `)
 
   const files = readdirSync(MIGRATIONS_DIR)

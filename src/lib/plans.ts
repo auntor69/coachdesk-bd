@@ -135,6 +135,24 @@ export function wouldExceed(
   return currentCount + 1 > limit
 }
 
+/**
+ * How many more of `what` the plan still allows; null when unlimited.
+ *
+ * wouldExceed answers "may I add one more", which is the wrong question for a
+ * bulk import: a paste of 80 names against 15 remaining slots must be refused
+ * whole, with the number that would fit, rather than let 15 through and lose 65
+ * without saying which.
+ */
+export function roomFor(
+  plan: PlanLimits,
+  what: LimitKey,
+  currentCount: number,
+): number | null {
+  const limit = plan[what]
+  if (limit === null) return null
+  return Math.max(0, limit - currentCount)
+}
+
 /** What we charge a centre this month, before SMS credits. */
 export function monthlyBillBdt(plan: PlanLimits, activeEnrollments: number): number {
   if (plan.pricing === 'free') return 0
