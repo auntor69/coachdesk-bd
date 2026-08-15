@@ -16,7 +16,7 @@ import { requireRole, AuthError, type CenterSession } from '@/lib/auth/session'
 import { normalizeBdMobile, phoneToLoginEmail } from '@/lib/bd/phone'
 import { MIN_PASSWORD, PASSWORD_TOO_SHORT_BN } from '@/lib/auth/password'
 import { wouldExceed, type LimitKey } from '@/lib/plans'
-import type { BatchSlot, SubjectKind } from '@/lib/supabase/types'
+import type { BatchSlot, PayoutWallet, SubjectKind } from '@/lib/supabase/types'
 
 export type ActionState = {
   error?: string
@@ -759,4 +759,90 @@ export async function toggleTeacherActive(
   revalidatePath('/settings/teachers')
   revalidatePath('/teach')
   return { ok: active ? 'চালু করা হয়েছে' : 'বন্ধ করা হয়েছে' }
+}
+
+/* -------------------------------------------------------------------------- */
+/* Centre details                                                             */
+/* -------------------------------------------------------------------------- */
+
+const WALLETS = new Set<PayoutWallet>(['bkash', 'nagad', 'rocket'])
+
+/**
+ * Owner, not manager — the only action in this file that draws the line there.
+ *
+ * `centers_owner_update` has always been owner-only, so a manager calling this
+ * would be refused by RLS regardless. What that refusal cannot do is explain
+ * itself: the update would report zero rows changed and the form would say the
+ * save failed, which reads as a bug. And the reason the policy is drawn there
+ * matters more now than when the whitelist held a name and an address — whoever
+ * can edit the payment number decides where every fee reminder the centre sends
+ * points, so a wrong answer here redirects a month of income.
+ */
+async function centerOwner(): Promise<CenterSession | ActionState> {
+  try {
+    return await requireRole('owner')
+  } catch (err) {
+    if (err instanceof AuthError) {
+      return { error: 'নাম আর পেমেন্ট নম্বর শুধু কোচিংয়ের মালিক বদলাতে পারেন।' }
+    }
+    throw err
+  }
+}
+
+/**
+ * The centre's name and the wallet a parent sends fees to.
+ *
+ * Both live on one screen because they are the same decision. The name is not
+ * decoration: it is the signature on every reminder, and it is also what eats
+ * the SMS budget, so shortening it is what buys the payment number a place in a
+ * single segment. Splitting them across two screens would hide that trade.
+ */
+export async function saveCenterDetails(
+  _prev: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
+  const session = await centerOwner()
+  if (!isSession(session)) return session
+
+  const name = String(formData.get('name') ?? '').trim().replace(/\s+/g, ' ')
+  if (!name) return { error: 'কোচিংয়ের নাম লিখুন।' }
+  if (name.length > MAX_NAME) {
+    return { error: `নাম ${MAX_NAME} অক্ষরের মধ্যে রাখুন।` }
+  }
+
+  const walletInput = String(formData.get('paymentWallet') ?? '')
+  const numberInput = String(formData.get('paymentNumber') ?? '').trim()
+
+  const wallet = WALLETS.has(walletInput as PayoutWallet)
+    ? (walletInput as PayoutWallet)
+    : null
+  const number = normalizeBdMobile(numberInput)
+
+  // Told apart deliberately: "you left this blank" and "what you typed is not a
+  // number" need different answers, and the second one is where a digit gets
+  // lost. Money sent to a wrong-but-valid number is gone, and the centre gets
+  // blamed for losing a fee that was paid.
+  if (numberInput && !number) {
+    return { error: 'নম্বরটি ঠিক নেই। ১১ সংখ্যার মোবাইল নম্বর দিন, যেমন 01712345678।' }
+  }
+
+  // Half-configured is refused rather than saved, because neither half is
+  // usable on its own and the check constraint would reject it anyway — with a
+  // Postgres string no owner can read. The pair is also how "we do not take
+  // mobile payments" is expressed: clear both, and reminders stop naming one.
+  if (wallet && !number) return { error: 'কোন নম্বরে টাকা যাবে সেটিও লিখুন।' }
+  if (number && !wallet) return { error: 'বিকাশ, নগদ, নাকি রকেট — বেছে নিন।' }
+
+  const supabase = await createClient()
+  const { error } = await supabase
+    .from('coaching_centers')
+    .update({ name, payment_wallet: wallet, payment_number: number })
+    .eq('id', session.active.centerId)
+
+  if (error) return { error: 'সেভ হয়নি। আবার চেষ্টা করুন।' }
+
+  // Layout-wide, because the name is in the header of every screen and is read
+  // from the session, not from this page.
+  revalidatePath('/', 'layout')
+  return { ok: 'সেভ হয়েছে' }
 }

@@ -22,7 +22,7 @@ import { Alert, Button, Field } from '@/components/ui'
 import { formatDateBn, toBanglaDigits } from '@/lib/bd/time'
 import { formatTaka as taka } from '@/lib/money'
 import { buildFeeReminderSms, buildFeeReminderText } from '@/lib/sms/templates'
-import type { FeeReminderChannel } from '@/lib/supabase/types'
+import type { FeeReminderChannel, PayoutWallet } from '@/lib/supabase/types'
 import { recordPayment, logFeeReminder, type FeeState } from './actions'
 
 /** Cash first, then the wallets an owner is actually handed money through. */
@@ -65,12 +65,25 @@ export type FeeRow = {
   remindedVia: FeeReminderChannel | null
 }
 
+/**
+ * The centre-level facts every reminder on the board needs: who is asking, and
+ * where the money should go. One object rather than three props because they are
+ * fetched together, they change together on one settings screen, and they are all
+ * inputs to the same sentence.
+ */
+export type ReminderCenter = {
+  name: string
+  paymentWallet: PayoutWallet | null
+  /** E.164, as coaching_centers stores it. Null until the owner sets one. */
+  paymentNumber: string | null
+}
+
 export function PaymentRow({
   row,
-  centerName,
+  center,
 }: {
   row: FeeRow
-  centerName: string
+  center: ReminderCenter
 }) {
   const [state, formAction, pending] = useActionState<FeeState, FormData>(
     recordPayment,
@@ -170,7 +183,7 @@ export function PaymentRow({
                   invoice is more often opened to chase it than to take money
                   that nobody has brought yet, and the form is six fields tall —
                   putting the chase under it means scrolling past all of them. */}
-              <Reminder row={row} centerName={centerName} />
+              <Reminder row={row} center={center} />
 
               <form ref={formRef} action={formAction} className="flex flex-col gap-3">
                 <input type="hidden" name="invoiceId" value={row.id} />
@@ -263,7 +276,7 @@ const CHIP =
  * its messaging app, and the write lands in the background — an owner should
  * never watch a spinner between deciding to chase someone and being able to.
  */
-function Reminder({ row, centerName }: { row: FeeRow; centerName: string }) {
+function Reminder({ row, center }: { row: FeeRow; center: ReminderCenter }) {
   const [sentVia, setSentVia] = useState<FeeReminderChannel | null>(null)
 
   const input = {
@@ -272,7 +285,11 @@ function Reminder({ row, centerName }: { row: FeeRow; centerName: string }) {
     amount: row.remaining,
     dueDate: row.dueDate,
     daysLate: row.daysLate,
-    centerName,
+    centerName: center.name,
+    // Passed to both builders and dropped by whichever cannot afford it. The SMS
+    // gives it up when 70 characters will not stretch; WhatsApp always carries it.
+    paymentWallet: center.paymentWallet,
+    paymentNumber: center.paymentNumber,
   }
   const smsBody = buildFeeReminderSms(input).body
   const chatBody = buildFeeReminderText(input)

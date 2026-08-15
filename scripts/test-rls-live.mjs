@@ -875,6 +875,78 @@ try {
     renamed.name === 'Dhaka Science Care (Mirpur)' && renamed.bd_area === 'Mirpur',
     `name=${renamed.name} area=${renamed.bd_area}`)
 
+  // --- Where the fees are sent ----------------------------------------------
+  //
+  // Before the blanket re-grant below, on purpose: this section has to prove the
+  // column grant from 20260811000008 is actually present on the live table, and
+  // a table-wide grant would hide its absence.
+  //
+  // These assertions read the row instead of catching an exception, because
+  // centers_owner_update filters with `using (app.is_owner(id))` — a teacher's
+  // update matches no rows and reports success. `denied` would pass on a
+  // wide-open column, so it is only used where a constraint does the refusing.
+  header('Payment number (where a parent sends the fee)')
+
+  const payTo = async () =>
+    (await client.query(
+      'select payment_wallet, payment_number from coaching_centers where id = $1',
+      [centerA],
+    )).rows[0]
+  const setPay = (assignments) =>
+    `update coaching_centers set ${assignments} where id = $1`
+
+  await runAs(ids.ownerA,
+    setPay(`payment_wallet = 'bkash', payment_number = '+8801711000012'`), [centerA])
+  let money = await payTo()
+  check('owner can set where the fees are sent',
+    money.payment_wallet === 'bkash' && money.payment_number === '+8801711000012',
+    `${money.payment_wallet} ${money.payment_number}`)
+
+  // The attack the column invites, with a well-formed number so that the check
+  // constraint cannot pass this test on RLS's behalf. A teacher who could write
+  // here would not steal a record — every reminder the centre sent from that
+  // moment would name their wallet.
+  await runAs(ids.karim,
+    setPay(`payment_wallet = 'nagad', payment_number = '+8801999999999'`), [centerA])
+  money = await payTo()
+  check('a teacher cannot point the fees at their own wallet',
+    money.payment_wallet === 'bkash' && money.payment_number === '+8801711000012',
+    `${money.payment_wallet} ${money.payment_number}`)
+
+  await runAs(ids.ownerB,
+    setPay(`payment_wallet = 'rocket', payment_number = '+8801811000099'`), [centerA])
+  money = await payTo()
+  check("an owner cannot redirect another centre's fees",
+    money.payment_wallet === 'bkash' && money.payment_number === '+8801711000012',
+    `${money.payment_wallet} ${money.payment_number}`)
+
+  check('a wallet with no number is refused',
+    await denied(ids.ownerA,
+      setPay(`payment_wallet = 'nagad', payment_number = null`), [centerA]))
+  check('a number with no wallet is refused',
+    await denied(ids.ownerA,
+      setPay(`payment_wallet = null, payment_number = '+8801711000012'`), [centerA]))
+
+  // Each of these is a shape that would reach a parent looking almost right.
+  for (const [bad, why] of [
+    ['01711000012', 'local form that never got normalised'],
+    ['+880171100001', 'one digit short'],
+    ['+8801711000012 ', 'trailing space from a paste'],
+    ['+8801111000012', '011 — Citycell, dead since 2016'],
+  ]) {
+    check(`a malformed payment number is refused (${why})`,
+      await denied(ids.ownerA, setPay('payment_number = $2'), [centerA, bad]))
+  }
+
+  await runAs(ids.ownerA,
+    setPay('payment_wallet = null, payment_number = null'), [centerA])
+  money = await payTo()
+  check('clearing both is how a centre says it takes no mobile payments',
+    money.payment_wallet === null && money.payment_number === null,
+    `${money.payment_wallet} ${money.payment_number}`)
+
+  header('Billing columns, continued')
+
   // The accident the guard trigger exists for: someone pastes the blanket
   // `grant all on all tables in schema public to authenticated` that appears in
   // half the Supabase setup snippets, and the column revoke stops mattering.

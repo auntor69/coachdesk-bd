@@ -4,7 +4,11 @@
 // worth keeping runnable outside the bundler.
 import { measureSms } from './encoding.ts'
 import { formatTaka } from '../money.ts'
+import { formatBdMobile, normalizeBdMobile } from '../bd/phone.ts'
 import { monthNameBn, formatDateBn } from '../bd/time.ts'
+// Type-only, so Node erases the whole statement rather than loading the
+// generated types module when these tests run outside the bundler.
+import type { PayoutWallet } from '../supabase/types.ts'
 
 /**
  * The result SMS.
@@ -128,6 +132,52 @@ export type FeeReminderInput = {
   /** Positive when the due date has passed, which changes the tense used. */
   daysLate: number
   centerName: string
+  /** Which app the parent should open. Null until the owner sets one. */
+  paymentWallet?: PayoutWallet | null
+  /** E.164, as coaching_centers stores it. Rendered local and in ASCII. */
+  paymentNumber?: string | null
+}
+
+/**
+ * The word a parent uses for each wallet, not the company's own styling.
+ *
+ * Shared with the settings form on purpose: the owner picking a wallet should be
+ * reading the same word the parent will read, so there is no gap between what
+ * was configured and what goes out.
+ */
+export const WALLET_LABEL_BN: Record<PayoutWallet, string> = {
+  bkash: 'বিকাশ',
+  nagad: 'নগদ',
+  rocket: 'রকেট',
+}
+
+/**
+ * "বিকাশ 01711000012", or empty when the centre has not set a number.
+ *
+ * ASCII digits, and local form rather than +880. This is the one string in the
+ * whole product that a stranger retypes into a Send Money screen: Bangla
+ * numerals would have to be converted in their head, and +8801… is four
+ * characters of a shape nobody writes a wallet number in.
+ *
+ * Deliberately does not name a button. bKash receives money as "Send Money" into
+ * a personal account and as "Payment" into a Personal Retail Account, the fee
+ * differs, and we do not know which one the centre holds — a wrong instruction
+ * either costs the parent extra or fails outright. The number is unambiguous;
+ * the flow is theirs to know.
+ */
+function walletText(
+  wallet: PayoutWallet | null | undefined,
+  number: string | null | undefined,
+): string {
+  // Normalised first, and an unusable number is absent rather than shown.
+  // formatBdMobile alone would not do: it returns whatever it was given when it
+  // cannot parse it, which is right for display — a legacy number is better
+  // rendered than blanked — and wrong here. This string is an instruction to
+  // send money, and the settings form calls it on every keystroke while a half-
+  // typed "017" is in the field.
+  const e164 = normalizeBdMobile(number)
+  if (!wallet || !e164) return ''
+  return `${WALLET_LABEL_BN[wallet]} ${formatBdMobile(e164)}`
 }
 
 export type FeeReminderSms = {
@@ -154,6 +204,14 @@ export type FeeReminderSms = {
  * reading "মোহাম্মদ সাদিয়া" knows which child this is, and a family two months
  * behind genuinely does not know which month a bare amount refers to.
  *
+ * The payment number sits between those two groups: every polite form is tried
+ * with it before any form is tried without it, because a message naming the
+ * number is one a parent can act on without asking anybody, and that is the
+ * whole reason to send it. But it is the first *content* to go, unlike the month
+ * and the amount, because a family that cannot see the number can still pay the
+ * way they paid before this feature existed — whereas a family that cannot see
+ * which month is being asked for cannot pay at all.
+ *
  * Which step was needed is not something the owner is asked to care about; the
  * message they see before sending is the message that goes.
  */
@@ -164,22 +222,42 @@ export function buildFeeReminderSms(input: FeeReminderInput): FeeReminderSms {
   const money = formatTaka(input.amount)
   const tail = ` -${brand}`
 
+  const pay = walletText(input.paymentWallet, input.paymentNumber)
+  const suffix = pay ? ` ${pay}${tail}` : tail
+
   const ladder = [
-    `${name}, ${month} মাসের ফি ${money} বাকি আছে।${tail}`,
-    `${name}, ${month} মাসের ফি ${money} বাকি।${tail}`,
-    `${name}, ${month}: ফি ${money} বাকি।${tail}`,
+    `${name}, ${month} মাসের ফি ${money} বাকি আছে।`,
+    `${name}, ${month} মাসের ফি ${money} বাকি।`,
+    `${name}, ${month}: ফি ${money} বাকি।`,
   ]
 
-  for (const body of ladder) {
+  const bodies = pay
+    ? [...ladder.map((s) => `${s}${suffix}`), ...ladder.map((s) => `${s}${tail}`)]
+    : ladder.map((s) => `${s}${tail}`)
+
+  for (const body of bodies) {
     if (measureSms(body).segments <= 1) return { body, segments: 1 }
   }
 
-  // Nothing fit, which takes a centre name and a student name both at their
-  // limits. Send the terse one anyway rather than dropping the month or the
-  // amount: two segments costs the owner one extra SMS, a message the parent
+  // Nothing fit one segment, which takes a centre name and a student name both
+  // at their limits. Send the terse one anyway rather than dropping the month or
+  // the amount: two segments costs the owner one extra SMS, a message the parent
   // cannot act on costs them the fee.
-  const body = ladder[ladder.length - 1]
-  return { body, segments: measureSms(body).segments }
+  //
+  // And once the second segment is already paid for, the number rides along in
+  // it for nothing — so it is dropped here only if it would buy a third.
+  const terse = `${ladder[ladder.length - 1]}${tail}`
+  const bare = measureSms(terse)
+
+  if (pay) {
+    const withPay = `${ladder[ladder.length - 1]}${suffix}`
+    const paid = measureSms(withPay)
+    if (paid.segments <= bare.segments) {
+      return { body: withPay, segments: paid.segments }
+    }
+  }
+
+  return { body: terse, segments: bare.segments }
 }
 
 /**
@@ -210,10 +288,16 @@ export function buildFeeReminderText(input: FeeReminderInput): string {
       ? `জমা দেওয়ার শেষ তারিখ ছিল ${due}।`
       : `জমা দেওয়ার শেষ তারিখ ${due}।`
 
+  // Its own paragraph, not tucked into the sentence above. This is the line the
+  // parent will come back to when they are standing in the wallet app, and a
+  // number buried mid-sentence is one they have to hunt for twice.
+  const pay = walletText(input.paymentWallet, input.paymentNumber)
+
   return [
     'প্রিয় অভিভাবক,',
     '',
     `${input.studentName} — ${month} মাসের কোচিং ফি ${money} বাকি আছে। ${deadline}`,
+    ...(pay ? ['', `ফি পাঠাতে পারেন — ${pay}`] : []),
     '',
     'সুবিধামতো সময়ে জমা দিয়ে দিলে ভালো হয়। কোনো অসুবিধা থাকলে জানাবেন।',
     '',

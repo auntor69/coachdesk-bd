@@ -21,6 +21,7 @@ export type FeeReminderChannel = 'sms' | 'whatsapp' | 'call'
 export type MemberRole = 'owner' | 'manager' | 'teacher' | 'student' | 'guardian'
 export type NoticeAudience = 'all' | 'students' | 'guardians' | 'teachers'
 export type PaymentMethod = 'cash' | 'bkash' | 'nagad' | 'rocket' | 'bank_transfer' | 'other'
+export type PayoutWallet = 'bkash' | 'nagad' | 'rocket'
 export type PlanType = 'teacher_free' | 'teacher_plus' | 'center' | 'institution'
 export type SmsKind = 'exam_result' | 'attendance_alert' | 'fee_reminder' | 'notice' | 'custom'
 export type SmsStatus = 'queued' | 'sent' | 'delivered' | 'failed' | 'cancelled'
@@ -384,6 +385,8 @@ export type Database = {
           created_by: string | null
           created_at: string
           updated_at: string
+          payment_wallet: PayoutWallet | null
+          payment_number: string | null
         }
         Insert: {
           id?: string
@@ -398,6 +401,8 @@ export type Database = {
           created_by?: string | null
           created_at?: string
           updated_at?: string
+          payment_wallet?: PayoutWallet | null
+          payment_number?: string | null
         }
         Update: {
           id?: string
@@ -412,6 +417,8 @@ export type Database = {
           created_by?: string | null
           created_at?: string
           updated_at?: string
+          payment_wallet?: PayoutWallet | null
+          payment_number?: string | null
         }
         Relationships: [
           {
@@ -1774,6 +1781,7 @@ export type Database = {
       member_role: MemberRole
       notice_audience: NoticeAudience
       payment_method: PaymentMethod
+      payout_wallet: PayoutWallet
       plan_type: PlanType
       sms_kind: SmsKind
       sms_status: SmsStatus

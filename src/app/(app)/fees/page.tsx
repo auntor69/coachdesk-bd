@@ -12,7 +12,7 @@ import { normalizeBdMobile } from '@/lib/bd/phone'
 import { sumTaka, tallyOutstanding, formatTaka } from '@/lib/money'
 import type { FeeReminderChannel } from '@/lib/supabase/types'
 import { InvoiceGenerator } from './invoice-generator'
-import { PaymentRow, type FeeRow } from './payment-row'
+import { PaymentRow, type FeeRow, type ReminderCenter } from './payment-row'
 
 export const metadata = { title: 'ফি — CoachDesk' }
 
@@ -50,8 +50,13 @@ export default async function FeesPage() {
   const today = todayInDhaka()
   const thisMonth = currentPeriodMonth()
 
-  const [{ data: owing }, { data: settled }, { data: monthPayments }, { data: chased }] =
-    await Promise.all([
+  const [
+    { data: owing },
+    { data: settled },
+    { data: monthPayments },
+    { data: chased },
+    { data: center },
+  ] = await Promise.all([
       supabase
         .from('fee_invoice_balances')
         .select(COLUMNS)
@@ -90,6 +95,14 @@ export default async function FeesPage() {
         .select('invoice_id, channel, created_at')
         .gte('created_at', `${addMonths(thisMonth, -1)}T00:00:00+06:00`)
         .order('created_at', { ascending: false }),
+      // Where a parent should send the money. Read once for the whole board
+      // rather than per row: it is one value for the centre, and every reminder
+      // on the page is going to name it.
+      supabase
+        .from('coaching_centers')
+        .select('payment_wallet, payment_number')
+        .eq('id', session.active.centerId)
+        .maybeSingle(),
     ])
 
   // Newest wins, which is what the descending order above buys: the first row
@@ -131,6 +144,12 @@ export default async function FeesPage() {
     const value = addMonths(thisMonth, delta)
     return { value, label: formatMonthBn(value) }
   })
+
+  const centerPay: ReminderCenter = {
+    name: session.active.centerName,
+    paymentWallet: center?.payment_wallet ?? null,
+    paymentNumber: center?.payment_number ?? null,
+  }
 
   return (
     <div className="flex flex-col gap-5">
@@ -179,11 +198,7 @@ export default async function FeesPage() {
       ) : (
         <ul className="flex flex-col gap-2">
           {rows.map((row) => (
-            <PaymentRow
-              key={row.id}
-              row={row}
-              centerName={session.active.centerName}
-            />
+            <PaymentRow key={row.id} row={row} center={centerPay} />
           ))}
         </ul>
       )}

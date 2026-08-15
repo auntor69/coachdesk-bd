@@ -27,6 +27,7 @@ export default async function SettingsPage() {
     { count: batchCount },
     { count: studentCount },
     { count: examTypeCount },
+    { data: center },
   ] = await Promise.all([
     supabase
       .from('teachers')
@@ -48,7 +49,19 @@ export default async function SettingsPage() {
       .from('exam_types')
       .select('id', { count: 'exact', head: true })
       .eq('active', true),
+    supabase
+      .from('coaching_centers')
+      .select('payment_wallet, payment_number')
+      .eq('id', session.active.centerId)
+      .maybeSingle(),
   ])
+
+  // A count would say nothing here, so the hint carries the answer: either the
+  // number a parent will be told to pay, or the fact that there isn't one. An
+  // owner who has not set this is losing fees to a question they answer by hand.
+  const payHint = center?.payment_number
+    ? `ফি যাবে ${formatBdMobile(center.payment_number)} নম্বরে`
+    : 'পেমেন্ট নম্বর এখনো দেওয়া হয়নি'
 
   const items: {
     href: Route
@@ -56,6 +69,12 @@ export default async function SettingsPage() {
     hint: string
     count: number | null
   }[] = [
+    {
+      href: '/settings/center',
+      label: 'নাম ও পেমেন্ট',
+      hint: payHint,
+      count: null,
+    },
     {
       href: '/settings/students',
       label: 'শিক্ষার্থী',

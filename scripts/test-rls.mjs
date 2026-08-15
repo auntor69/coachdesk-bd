@@ -1161,9 +1161,120 @@ check(
 )
 await db.exec(`
   revoke update on coaching_centers from authenticated;
-  grant update (name, phone, address, bd_area, timezone)
+  grant update (name, phone, address, bd_area, timezone, payment_wallet, payment_number)
     on coaching_centers to authenticated;
 `)
+
+// ---------------------------------------------------------------------------
+// The payment number — the only editable column on this table that moves money.
+//
+// Everything above protects what a centre is charged. This protects where the
+// centre's income lands. A parent reads this number out of a fee reminder and
+// types it into a Send Money screen, so whoever can write it can redirect a
+// month of fees and the owner finds out when the money does not arrive.
+//
+// Note what these assertions look at. centers_owner_update filters rows with
+// `using (app.is_owner(id))`, so a teacher's UPDATE does not raise anything — it
+// matches nothing and reports success. deniedAsUser would pass on a wide-open
+// column. The only honest question is what the row says afterwards.
+// ---------------------------------------------------------------------------
+
+console.log('\nPayment number (where a parent sends the fee):')
+
+const payTo = async (center = centerA) =>
+  (
+    await db.query(
+      'select payment_wallet, payment_number from coaching_centers where id = $1',
+      [center],
+    )
+  ).rows[0]
+
+const setPay = (assignments) =>
+  `update coaching_centers set ${assignments} where id = $1`
+
+await asUser(db, ids.ownerA, (tx) =>
+  tx.query(setPay(`payment_wallet = 'bkash', payment_number = '+8801711000012'`), [
+    centerA,
+  ]),
+)
+let money = await payTo()
+check(
+  'owner can set where the fees are sent',
+  money.payment_wallet === 'bkash' && money.payment_number === '+8801711000012',
+  `${money.payment_wallet} ${money.payment_number}`,
+)
+
+// A well-formed number, deliberately. If it were malformed the check constraint
+// would reject it and this would pass without RLS having done anything.
+await asUser(db, ids.karim, (tx) =>
+  tx.query(setPay(`payment_wallet = 'nagad', payment_number = '+8801999999999'`), [
+    centerA,
+  ]),
+)
+money = await payTo()
+check(
+  'a teacher cannot point the fees at their own wallet',
+  money.payment_wallet === 'bkash' && money.payment_number === '+8801711000012',
+  `${money.payment_wallet} ${money.payment_number}`,
+)
+
+await asUser(db, ids.ownerB, (tx) =>
+  tx.query(setPay(`payment_wallet = 'rocket', payment_number = '+8801811000099'`), [
+    centerA,
+  ]),
+)
+money = await payTo()
+check(
+  "an owner cannot redirect another centre's fees",
+  money.payment_wallet === 'bkash' && money.payment_number === '+8801711000012',
+  `${money.payment_wallet} ${money.payment_number}`,
+)
+
+// Half-configured is refused in the database, not only in the action. A wallet
+// with no number tells a parent nothing; a number with no wallet does not say
+// which app to open, and the three are not interchangeable.
+check(
+  'a wallet with no number is refused',
+  await deniedAsUser(
+    db,
+    ids.ownerA,
+    setPay(`payment_wallet = 'nagad', payment_number = null`),
+    [centerA],
+  ),
+)
+check(
+  'a number with no wallet is refused',
+  await deniedAsUser(
+    db,
+    ids.ownerA,
+    setPay(`payment_wallet = null, payment_number = '+8801711000012'`),
+    [centerA],
+  ),
+)
+
+// Each of these is a shape that would reach a parent looking almost right.
+const BAD_NUMBERS = [
+  ['01711000012', 'local form that never got normalised'],
+  ['+880171100001', 'one digit short'],
+  ['+8801711000012 ', 'trailing space from a paste'],
+  ['+8801111000012', '011 — Citycell, dead since 2016'],
+]
+for (const [bad, why] of BAD_NUMBERS) {
+  check(
+    `a malformed payment number is refused (${why})`,
+    await deniedAsUser(db, ids.ownerA, setPay('payment_number = $2'), [centerA, bad]),
+  )
+}
+
+await asUser(db, ids.ownerA, (tx) =>
+  tx.query(setPay('payment_wallet = null, payment_number = null'), [centerA]),
+)
+money = await payTo()
+check(
+  'clearing both is how a centre says it takes no mobile payments',
+  money.payment_wallet === null && money.payment_number === null,
+  `${money.payment_wallet} ${money.payment_number}`,
+)
 
 console.log('\nAnonymous access:')
 

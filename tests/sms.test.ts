@@ -248,3 +248,115 @@ test('a reminder sent before the due date does not speak in the past tense', () 
   const late = buildFeeReminderText({ ...base, daysLate: 5 })
   assert.ok(late.includes('শেষ তারিখ ছিল ১০ আগস্ট ২০২৬'), late)
 })
+
+test('a reminder tells the parent where to send the money', () => {
+  const sms = buildFeeReminderSms({
+    studentName: 'মিম আক্তার',
+    periodMonth: '2026-08-01',
+    amount: 700,
+    dueDate: '2026-08-10',
+    daysLate: 2,
+    centerName: 'আলো কোচিং',
+    paymentWallet: 'bkash',
+    paymentNumber: '+8801711000012',
+  })
+
+  assert.equal(sms.segments, 1, sms.body)
+  assert.ok(sms.body.includes('বিকাশ'), sms.body)
+  // Local form and ASCII digits. A parent retypes this into a Send Money
+  // screen, so +880 is four characters of a shape nobody writes, and Bangla
+  // numerals would have to be converted in their head first.
+  assert.ok(sms.body.includes('01711000012'), sms.body)
+  assert.ok(!sms.body.includes('+880'), sms.body)
+  assert.ok(!/[০-৯]/.test(sms.body), 'no Bangla numerals in a fee reminder')
+})
+
+test('the payment number outlives politeness but not the month or the amount', () => {
+  const base = {
+    studentName: 'মিম আক্তার',
+    periodMonth: '2026-08-01',
+    amount: 700,
+    dueDate: '2026-08-10',
+    daysLate: 2,
+    paymentWallet: 'bkash' as const,
+    paymentNumber: '+8801711000012',
+  }
+
+  // A 17-character centre name leaves no room for both the number and the
+  // natural phrasing. The number stays, because a message naming it is one the
+  // family can act on without ringing anybody.
+  const tight = buildFeeReminderSms({ ...base, centerName: 'আলো কোচিং সেন্টার' })
+  assert.equal(tight.segments, 1, tight.body)
+  assert.ok(tight.body.includes('01711000012'), tight.body)
+  assert.ok(!tight.body.includes('বাকি আছে'), tight.body)
+
+  // At 21 characters even the terse form cannot hold it, and here the number is
+  // what goes — not the month and not the amount. A family who cannot see the
+  // number can still pay the way they always have; a family who cannot see
+  // which month is being asked for cannot pay at all.
+  const full = buildFeeReminderSms({ ...base, centerName: 'উত্তরা আইডিয়াল কোচিং' })
+  assert.equal(full.segments, 1, full.body)
+  assert.ok(!full.body.includes('01711000012'), full.body)
+  assert.ok(full.body.includes('আগস্ট'), full.body)
+  assert.ok(full.body.includes('৳700'), full.body)
+  assert.ok(full.body.includes('মিম আক্তার'), full.body)
+  assert.ok(full.body.includes('উত্তরা আইডিয়াল কোচিং'), full.body)
+})
+
+test('a centre with no wallet set sends exactly what it sent before', () => {
+  const base = {
+    studentName: 'রাফিদ হাসান',
+    periodMonth: '2026-08-01',
+    amount: 1500,
+    dueDate: '2026-08-10',
+    daysLate: 0,
+    centerName: 'আলো কোচিং',
+  }
+
+  const none = buildFeeReminderSms(base)
+  assert.equal(none.body, 'রাফিদ হাসান, আগস্ট মাসের ফি ৳1,500 বাকি আছে। -আলো কোচিং')
+
+  // Half-configured is the same as unconfigured, in both directions. A wallet
+  // with no number names an app the parent cannot send to; a number with no
+  // wallet does not say which app to open. The database rejects the pair
+  // outright — this is the settings form mid-keystroke, which must stay quiet.
+  for (const half of [
+    { ...base, paymentWallet: 'bkash' as const, paymentNumber: null },
+    { ...base, paymentWallet: 'bkash' as const, paymentNumber: '017' },
+    { ...base, paymentWallet: null, paymentNumber: '+8801711000012' },
+  ]) {
+    assert.equal(buildFeeReminderSms(half).body, none.body)
+  }
+})
+
+test('the WhatsApp reminder always carries the number, on its own line', () => {
+  // The case the SMS above had to drop it in: nothing is metered here, so the
+  // longest centre name in the fixtures keeps everything.
+  const text = buildFeeReminderText({
+    studentName: 'মোহাম্মদ সাদিয়া রহমান',
+    periodMonth: '2026-02-01',
+    amount: 99999,
+    dueDate: '2026-02-10',
+    daysLate: 40,
+    centerName: 'উত্তরা আইডিয়াল কোচিং সেন্টার ও একাডেমি',
+    paymentWallet: 'nagad',
+    paymentNumber: '01911000013',
+  })
+
+  assert.ok(text.includes('নগদ 01911000013'), text)
+  // Its own paragraph, because this is the line the parent comes back to while
+  // standing in the wallet app.
+  assert.ok(text.includes('\n\nফি পাঠাতে পারেন — নগদ 01911000013\n\n'), text)
+  assert.ok(text.includes('৳99,999'), text)
+
+  // And nothing dangling when there is nothing to say.
+  const without = buildFeeReminderText({
+    studentName: 'রাফিদ হাসান',
+    periodMonth: '2026-08-01',
+    amount: 1500,
+    dueDate: '2026-08-10',
+    daysLate: 0,
+    centerName: 'আলো কোচিং',
+  })
+  assert.ok(!without.includes('ফি পাঠাতে পারেন'), without)
+})
