@@ -105,6 +105,37 @@ export function toBanglaDigits(value: string | number): string {
   return String(value).replace(/\d/g, (d) => BANGLA_DIGIT_CHARS[Number(d)])
 }
 
+/**
+ * Whole days from `from` to `to`, both YYYY-MM-DD. Negative when `to` is earlier.
+ *
+ * Parsed as UTC noon rather than midnight: both dates shift by the same amount,
+ * so the difference is exact, and noon leaves twelve hours of slack in either
+ * direction — enough that no offset quirk anywhere can round a day away.
+ *
+ * A `date` column has no timezone, so this deliberately never consults one. The
+ * caller decides which day "today" is (todayInDhaka), and from there the gap
+ * between two calendar days is arithmetic, not a moment in time.
+ */
+export function daysBetween(from: string, to: string): number {
+  const a = Date.parse(`${from}T12:00:00Z`)
+  const b = Date.parse(`${to}T12:00:00Z`)
+  if (Number.isNaN(a) || Number.isNaN(b)) return 0
+  return Math.round((b - a) / 86_400_000)
+}
+
+/**
+ * Shifts a YYYY-MM-DD by whole days, staying a YYYY-MM-DD.
+ *
+ * Through Date at UTC noon, unlike addMonths which does its own arithmetic: a
+ * month is a label and can be counted, but adding days has to cross month
+ * lengths and leap years, and Date already knows that February 2028 has 29.
+ */
+export function addDays(isoDate: string, delta: number): string {
+  const at = Date.parse(`${isoDate}T12:00:00Z`)
+  if (Number.isNaN(at)) return isoDate
+  return new Date(at + delta * 86_400_000).toISOString().slice(0, 10)
+}
+
 /** Current month as YYYY-MM-01, the shape used by fee_invoices.period_month. */
 export function currentPeriodMonth(now: Date = new Date()): string {
   return `${todayInDhaka(now).slice(0, 7)}-01`

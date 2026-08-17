@@ -2,28 +2,37 @@ import Link from 'next/link'
 
 import { Card } from '@/components/ui'
 import { greetingFor } from '@/components/app-shell'
-import { requireCenter } from '@/lib/auth/session'
+import { requireCenter, isStaffAdmin } from '@/lib/auth/session'
 import { createClient } from '@/lib/supabase/server'
-import { todayInDhaka, currentPeriodMonth, formatDateBn } from '@/lib/bd/time'
+import {
+  todayInDhaka,
+  currentPeriodMonth,
+  addMonths,
+  formatDateBn,
+} from '@/lib/bd/time'
+import { countChasesDue } from '@/lib/fees/reminder-schedule'
 import { sumTaka, tallyOutstanding, formatTaka as taka } from '@/lib/money'
+import { ReminderEntry } from '@/app/(app)/fees/reminder-entry'
 
 export const metadata = { title: 'ড্যাশবোর্ড — CoachDesk' }
 
 /** One line, not a concatenation — see the same note on the fee board. */
-const COLUMNS = 'id, student_name, remaining_bdt, due_date'
+const COLUMNS = 'id, student_name, remaining_bdt, due_date, guardian_phone'
 
 /**
- * The owner's screen. Four numbers and a list.
+ * The owner's screen. Four numbers, two ways into the day's work, and a list.
  *
  * The number that sells the product is outstanding fees, so it is largest and
- * first. Everything else on this page exists to make that number trustworthy.
+ * first. Everything else on this page exists to make that number trustworthy —
+ * or, in the case of the reminder link directly beneath it, to make it smaller.
  *
  * Which is why it reads the same view and uses the same arithmetic as the fee
  * board rather than recomputing. This page used to fetch every invoice and every
  * payment and reduce them in JavaScript floats; both screens showed ৳900 while
  * the fees were whole taka, and would have started disagreeing the first time a
  * centre entered 1250.50. Two screens showing the same number two different ways
- * is how an owner finds a discrepancy and stops trusting both.
+ * is how an owner finds a discrepancy and stops trusting both. The same rule now
+ * covers the reminder count: countChasesDue, not a filter written twice.
  */
 export default async function DashboardPage() {
   const session = await requireCenter()
@@ -37,6 +46,7 @@ export default async function DashboardPage() {
     { data: owing },
     { data: payments },
     { data: todaySessions },
+    { data: chased },
   ] = await Promise.all([
     supabase
       .from('students')
@@ -70,6 +80,20 @@ export default async function DashboardPage() {
       .from('attendance_sessions')
       .select('batch_id')
       .eq('session_date', today),
+    // Reminders since the start of last month, newest first — enough to tell
+    // which of the outstanding rows have already been chased at their current
+    // stage, which is what turns "twelve people owe money" into "three people
+    // need a message today".
+    //
+    // Run for every role rather than only for the two that can open the
+    // worklist. RLS returns nothing to a teacher, so the query costs one round
+    // trip inside a Promise.all that is already waiting on five others, and
+    // making it conditional would buy nothing but a branch.
+    supabase
+      .from('fee_reminders')
+      .select('invoice_id, created_at')
+      .gte('created_at', `${addMonths(period, -1)}T00:00:00+06:00`)
+      .order('created_at', { ascending: false }),
   ])
 
   // Same rule as the fee board, so the two screens cannot drift: only positive
@@ -89,6 +113,34 @@ export default async function DashboardPage() {
       dueDate: r.due_date ?? today,
     }))
     .sort((a, b) => b.amount - a.amount)
+
+  // Newest reminder per invoice, as a Dhaka calendar day.
+  //
+  // The conversion is load-bearing and not a slice of the ISO string: created_at
+  // is a timestamptz handed back in UTC, so a reminder sent at 1am Dhaka would
+  // read as yesterday — and yesterday is on the other side of the cooldown, which
+  // is the difference between this number and the one on the worklist.
+  const lastChase = new Map<string, string>()
+  for (const r of chased ?? []) {
+    if (!r.invoice_id || lastChase.has(r.invoice_id)) continue
+    lastChase.set(r.invoice_id, todayInDhaka(new Date(r.created_at)))
+  }
+
+  // The same figure the fee board shows, from the same function, so the owner's
+  // home screen and the board never advertise two different amounts of work.
+  const dueToday = countChasesDue(
+    (owing ?? []).map((r) => ({
+      dueDate: r.due_date ?? today,
+      lastRemindedOn: (r.id && lastChase.get(r.id)) || null,
+      reachable: Boolean(r.guardian_phone),
+    })),
+    today,
+  )
+
+  // Owners and managers only. A teacher granted fee visibility can see the
+  // numbers on this page, but the worklist itself is staff-admin — offering them
+  // a door that answers 403 is worse than not offering it.
+  const canChase = isStaffAdmin(session)
 
   return (
     <div className="flex flex-col gap-5">
@@ -112,6 +164,12 @@ export default async function DashboardPage() {
           )}
         </p>
       </Card>
+
+      {/* Directly under the number it exists to reduce, and above everything
+          else on the page. This is the one action on the owner's home screen that
+          brings money in rather than reporting on it, and on a 375px phone that
+          means it has to be reachable without a scroll. */}
+      {canChase && remainders.length > 0 && <ReminderEntry dueToday={dueToday} />}
 
       <div className="grid grid-cols-3 gap-3">
         <Stat label="এ মাসে আদায়" value={taka(collected)} />

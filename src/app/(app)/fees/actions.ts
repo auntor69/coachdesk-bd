@@ -367,6 +367,14 @@ export async function logFeeReminder(
 
   // The board only, and only for the "last chased" line. Not /dashboard, which
   // counts money rather than conversations.
+  //
+  // Naming one path does not keep this to one screen: a Server Action that
+  // revalidates anything makes Next re-render whatever route the caller is
+  // standing on, and this is called just as often from /fees/reminders. That
+  // screen is a worklist being read top to bottom on a phone, and a refresh
+  // there would drop the row the owner just tapped out from under their thumb.
+  // It defends itself — see the frozen list in reminder-list.tsx — because the
+  // defence belongs next to the thumb it protects, not in the write path.
   revalidatePath('/fees')
 
   return { logged: true }

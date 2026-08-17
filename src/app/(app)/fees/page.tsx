@@ -5,14 +5,17 @@ import {
   todayInDhaka,
   currentPeriodMonth,
   addMonths,
+  daysBetween,
   formatMonthBn,
   formatDateBn,
 } from '@/lib/bd/time'
 import { normalizeBdMobile } from '@/lib/bd/phone'
 import { sumTaka, tallyOutstanding, formatTaka } from '@/lib/money'
+import { countChasesDue } from '@/lib/fees/reminder-schedule'
 import type { FeeReminderChannel } from '@/lib/supabase/types'
 import { InvoiceGenerator } from './invoice-generator'
 import { PaymentRow, type FeeRow, type ReminderCenter } from './payment-row'
+import { ReminderEntry } from './reminder-entry'
 
 export const metadata = { title: 'ফি — CoachDesk' }
 
@@ -107,10 +110,21 @@ export default async function FeesPage() {
 
   // Newest wins, which is what the descending order above buys: the first row
   // seen for an invoice is its latest reminder, so every later one is skipped.
-  const lastChase = new Map<string, { day: string; via: FeeReminderChannel }>()
+  //
+  // Two things come out of the same map. The row wants a label a person would say
+  // ("আজ", "গতকাল"); the reminder schedule wants the Dhaka calendar day, because
+  // whether a family may be messaged again turns on which day it was — and the
+  // month-bounded query above is wide enough for that: a stage window is never
+  // more than a fortnight long, so any reminder recent enough to close one is well
+  // inside it.
+  const lastChase = new Map<
+    string,
+    { on: string; day: string; via: FeeReminderChannel }
+  >()
   for (const r of chased ?? []) {
     if (!r.invoice_id || lastChase.has(r.invoice_id)) continue
-    lastChase.set(r.invoice_id, { day: dayLabel(r.created_at, today), via: r.channel })
+    const on = todayInDhaka(new Date(r.created_at))
+    lastChase.set(r.invoice_id, { on, day: dayLabel(on, today), via: r.channel })
   }
 
   // Longest overdue first, then largest amount — the order an owner works down
@@ -129,6 +143,19 @@ export default async function FeesPage() {
   const unpaid = rows.filter((r) => r.remaining > 0)
   const overdue = unpaid.filter((r) => r.daysLate > 0)
   const collected = sumTaka((monthPayments ?? []).map((p) => Number(p.amount_bdt)))
+
+  // How many of those are due a message today. Counted through the shared
+  // function rather than filtered here, so the number on this link cannot drift
+  // from the list it opens — and computed on this page rather than fetched from
+  // that one, so the board stays a single round trip.
+  const dueToday = countChasesDue(
+    unpaid.map((r) => ({
+      dueDate: r.dueDate,
+      lastRemindedOn: lastChase.get(r.id)?.on ?? null,
+      reachable: Boolean(r.guardianPhone),
+    })),
+    today,
+  )
 
   // Only what is actually owed, never netted against an overpayment — see
   // tallyOutstanding for why those two totals have to stay apart. The credit is
@@ -187,6 +214,11 @@ export default async function FeesPage() {
         openByDefault={rows.length === 0}
       />
 
+      {/* Only once something is owed. On an all-paid board it would be a link to
+          a screen that can only say "nothing to do", which the empty board
+          already says. */}
+      {unpaid.length > 0 && <ReminderEntry dueToday={dueToday} />}
+
       {rows.length === 0 ? (
         <Card>
           <p className="font-medium text-ink">এখনো কোনো ইনভয়েস নেই</p>
@@ -231,7 +263,7 @@ type ViewRow = {
  */
 function toRow(
   today: string,
-  lastChase: Map<string, { day: string; via: FeeReminderChannel }>,
+  lastChase: Map<string, { on: string; day: string; via: FeeReminderChannel }>,
 ) {
   return (v: ViewRow): FeeRow => {
     const chase = v.id ? lastChase.get(v.id) : undefined
@@ -267,33 +299,18 @@ function toRow(
 /**
  * When a reminder went out, as a person would say it.
  *
- * The Dhaka conversion is the same trap as paid_at on the collections query:
- * created_at is a timestamptz handed back in UTC, so slicing ten characters off
- * it gives a UTC date, and a reminder sent at 1am Dhaka would read as yesterday.
- * todayInDhaka takes the instant and answers with the Dhaka calendar day.
+ * Takes a Dhaka calendar day, not the raw timestamp: created_at is a timestamptz
+ * handed back in UTC, and slicing ten characters off it gives a UTC date, so a
+ * reminder sent at 1am Dhaka would read as yesterday. The caller has already made
+ * that conversion once for the schedule, and doing it twice invites the two
+ * answers to differ.
  */
-function dayLabel(iso: string, today: string): string {
-  const at = new Date(iso)
-  if (Number.isNaN(at.getTime())) return ''
-  const date = todayInDhaka(at)
+function dayLabel(date: string, today: string): string {
+  if (!date) return ''
   const gap = daysBetween(date, today)
   // Future is clock skew between the browser, the server and Postgres, and the
   // useful answer for a row stamped a few seconds ahead is still "today".
   if (gap <= 0) return 'আজ'
   if (gap === 1) return 'গতকাল'
   return formatDateBn(date)
-}
-
-/**
- * Whole days from `from` to `to`, both YYYY-MM-DD.
- *
- * Parsed as UTC noon rather than midnight: both dates shift by the same amount,
- * so the difference is exact, and noon leaves 12 hours of slack in either
- * direction — enough that no DST or offset quirk can ever round a day away.
- */
-function daysBetween(from: string, to: string): number {
-  const a = Date.parse(`${from}T12:00:00Z`)
-  const b = Date.parse(`${to}T12:00:00Z`)
-  if (Number.isNaN(a) || Number.isNaN(b)) return 0
-  return Math.round((b - a) / 86_400_000)
 }
