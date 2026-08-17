@@ -3,7 +3,7 @@ import Link from 'next/link'
 import { Card } from '@/components/ui'
 import { requireRole } from '@/lib/auth/session'
 import { createClient } from '@/lib/supabase/server'
-import { formatDateBn } from '@/lib/bd/time'
+import { formatDate } from '@/lib/bd/time'
 import { smsProviderConfigured } from '@/lib/sms/provider'
 import { OptOutList, type OptOutStudent } from './opt-out-list'
 
@@ -152,7 +152,7 @@ export default async function SmsSettingsPage() {
                     {KIND_LABELS[dispatch.kind] ?? dispatch.kind}
                   </p>
                   <p className="text-sm text-ink-faint">
-                    {formatDateBn(dispatch.created_at.slice(0, 10))}
+                    {formatDate(dispatch.created_at.slice(0, 10))}
                   </p>
                 </div>
                 <div className="shrink-0 text-right">

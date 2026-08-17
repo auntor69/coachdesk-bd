@@ -8,7 +8,7 @@ import {
   todayInDhaka,
   currentPeriodMonth,
   addMonths,
-  formatDateBn,
+  formatDate,
 } from '@/lib/bd/time'
 import { countChasesDue } from '@/lib/fees/reminder-schedule'
 import { ratesForDashboard } from '@/lib/attendance/rates'
@@ -261,7 +261,7 @@ export default async function DashboardPage() {
                 <div className="min-w-0">
                   <p className="truncate font-medium text-ink">{row.name}</p>
                   <p className="text-sm text-ink-faint">
-                    {formatDateBn(row.dueDate)}
+                    {formatDate(row.dueDate)}
                   </p>
                 </div>
                 <span className="num shrink-0 font-semibold text-absent">

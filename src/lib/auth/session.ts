@@ -15,6 +15,7 @@ import type { Route } from 'next'
 
 import { createClient } from '@/lib/supabase/server'
 import { loginEmailToPhone } from '@/lib/bd/phone'
+import { asLocale, type Locale } from '@/lib/i18n'
 import { planFor, type PlanLimits } from '@/lib/plans'
 import type { MemberRole, PlanType } from '@/lib/supabase/types'
 
@@ -38,7 +39,12 @@ export type Session = {
    */
   phone: string | null
   fullName: string | null
-  locale: 'bn' | 'en'
+  /**
+   * Which language every screen this session renders is written in. Read from
+   * profiles.locale, defaulted rather than nullable — a screen must never have to
+   * decide what to do with a reader who has no language.
+   */
+  locale: Locale
   isPlatformAdmin: boolean
   memberships: Membership[]
   /**
@@ -132,7 +138,7 @@ export const getSession = cache(async (): Promise<Session | null> => {
     email: isSynthetic ? null : (user.email ?? null),
     phone: profile?.phone ?? (user.email ? loginEmailToPhone(user.email) : null),
     fullName: profile?.full_name ?? null,
-    locale: (profile?.locale as 'bn' | 'en') ?? 'bn',
+    locale: asLocale(profile?.locale),
     isPlatformAdmin: profile?.is_platform_admin ?? false,
     memberships,
     active,

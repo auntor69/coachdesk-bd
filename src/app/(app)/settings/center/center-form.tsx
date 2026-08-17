@@ -13,7 +13,7 @@ import { useActionState, useMemo, useState } from 'react'
 
 import { Alert, Button, Field } from '@/components/ui'
 import { formatBdMobile, normalizeBdMobile } from '@/lib/bd/phone'
-import { monthNameBn } from '@/lib/bd/time'
+import { monthName } from '@/lib/bd/time'
 import { buildFeeReminderSms, WALLET_LABEL_BN } from '@/lib/sms/templates'
 import type { PayoutWallet } from '@/lib/supabase/types'
 import { saveCenterDetails, type ActionState } from '../actions'
@@ -156,7 +156,7 @@ export function CenterForm({
       */}
       <div className="rounded-2xl border border-line bg-brand-50/40 p-5">
         <p className="text-sm font-medium text-ink-soft">
-          {monthNameBn(example.periodMonth)} মাসের ফি-এর বার্তা দেখতে এমন হবে
+          {monthName(example.periodMonth)} মাসের ফি-এর বার্তা দেখতে এমন হবে
         </p>
         <p
           className="mt-2 whitespace-pre-wrap break-words rounded-xl border

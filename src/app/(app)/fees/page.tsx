@@ -6,8 +6,8 @@ import {
   currentPeriodMonth,
   addMonths,
   daysBetween,
-  formatMonthBn,
-  formatDateBn,
+  formatMonth,
+  formatDate,
 } from '@/lib/bd/time'
 import { normalizeBdMobile } from '@/lib/bd/phone'
 import { sumTaka, tallyOutstanding, formatTaka } from '@/lib/money'
@@ -169,7 +169,7 @@ export default async function FeesPage() {
   // list is the same on both sides of hydration.
   const months = [-1, 0, 1].map((delta) => {
     const value = addMonths(thisMonth, delta)
-    return { value, label: formatMonthBn(value) }
+    return { value, label: formatMonth(value) }
   })
 
   const centerPay: ReminderCenter = {
@@ -312,5 +312,5 @@ function dayLabel(date: string, today: string): string {
   // useful answer for a row stamped a few seconds ahead is still "today".
   if (gap <= 0) return 'আজ'
   if (gap === 1) return 'গতকাল'
-  return formatDateBn(date)
+  return formatDate(date)
 }

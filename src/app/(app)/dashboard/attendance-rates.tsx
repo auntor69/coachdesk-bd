@@ -1,5 +1,5 @@
 import { Card } from '@/components/ui'
-import { formatMonthBn } from '@/lib/bd/time'
+import { formatMonth } from '@/lib/bd/time'
 import type { BatchRate } from '@/lib/attendance/rates'
 
 /**
@@ -64,7 +64,7 @@ export function AttendanceRates({
     <Card>
       <div className="flex items-baseline justify-between gap-3">
         <h2 className="font-semibold text-ink">ব্যাচভিত্তিক হাজিরা</h2>
-        <p className="shrink-0 text-sm text-ink-faint">{formatMonthBn(month)}</p>
+        <p className="shrink-0 text-sm text-ink-faint">{formatMonth(month)}</p>
       </div>
       {!isCurrentMonth && (
         <p className="mt-0.5 text-sm text-ink-soft">

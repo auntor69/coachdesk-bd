@@ -3,7 +3,7 @@ import Link from 'next/link'
 import { Card } from '@/components/ui'
 import { requireRole } from '@/lib/auth/session'
 import { createClient } from '@/lib/supabase/server'
-import { formatDateBn } from '@/lib/bd/time'
+import { formatDate } from '@/lib/bd/time'
 
 export const metadata = { title: 'পরীক্ষা — CoachDesk' }
 
@@ -89,7 +89,7 @@ export default async function ExamsPage() {
                     {[row.batchName, row.subjectName].filter(Boolean).join(' · ')}
                   </p>
                   <p className="text-sm text-ink-faint">
-                    {formatDateBn(row.examDate)} · পূর্ণমান{' '}
+                    {formatDate(row.examDate)} · পূর্ণমান{' '}
                     <span className="num">{row.totalMarks}</span>
                   </p>
                 </div>

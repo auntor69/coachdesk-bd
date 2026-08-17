@@ -21,6 +21,7 @@ import {
   rosterKey,
 } from '@/lib/bd/roster'
 import { MIN_PASSWORD, PASSWORD_TOO_SHORT_BN } from '@/lib/auth/password'
+import { DEFAULT_LOCALE } from '@/lib/i18n'
 import { roomFor, wouldExceed, type LimitKey } from '@/lib/plans'
 import type { BatchSlot, PayoutWallet, SubjectKind } from '@/lib/supabase/types'
 
@@ -679,7 +680,7 @@ export async function createTeacher(
         email: loginEmail,
         password,
         email_confirm: true,
-        user_metadata: { full_name: name, phone, locale: 'bn' },
+        user_metadata: { full_name: name, phone, locale: DEFAULT_LOCALE },
       })
 
       if (createError || !created.user) {

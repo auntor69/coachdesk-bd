@@ -4,7 +4,7 @@ import { Card } from '@/components/ui'
 import { requireRole } from '@/lib/auth/session'
 import { createClient } from '@/lib/supabase/server'
 import { BatchSlot } from '@/lib/bd/schedule'
-import { dayNameBn } from '@/lib/bd/time'
+import { dayName } from '@/lib/bd/time'
 
 export const metadata = { title: 'ব্যাচ — CoachDesk' }
 
@@ -123,7 +123,7 @@ export default async function BatchesPage() {
                   </p>
                   <p className="text-sm text-ink-faint">
                     {row.days.length > 0
-                      ? row.days.map((d) => dayNameBn(d)).join(', ')
+                      ? row.days.map((d) => dayName(d)).join(', ')
                       : 'প্রতিদিন'}
                     {row.teacherName && ` · ${row.teacherName}`}
                   </p>

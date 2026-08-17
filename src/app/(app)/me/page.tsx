@@ -2,7 +2,7 @@ import { Card } from '@/components/ui'
 import { greetingFor } from '@/components/app-shell'
 import { requireCenter } from '@/lib/auth/session'
 import { createClient } from '@/lib/supabase/server'
-import { formatDateBn, todayInDhaka } from '@/lib/bd/time'
+import { formatDate, todayInDhaka } from '@/lib/bd/time'
 
 export const metadata = { title: 'আমার — CoachDesk' }
 
@@ -109,7 +109,7 @@ export default async function MePage() {
                   <div className="min-w-0">
                     <p className="truncate font-medium text-ink">{exam.title}</p>
                     <p className="text-sm text-ink-faint">
-                      {formatDateBn(exam.exam_date)}
+                      {formatDate(exam.exam_date)}
                     </p>
                   </div>
                   <span className="num shrink-0 font-semibold text-ink">

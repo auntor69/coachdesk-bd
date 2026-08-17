@@ -18,7 +18,7 @@
 import { useActionState, useEffect, useRef, useState } from 'react'
 
 import { Alert, Button, Field } from '@/components/ui'
-import { formatDateBn, toBanglaDigits } from '@/lib/bd/time'
+import { formatDate, toBanglaDigits } from '@/lib/bd/time'
 import { formatTaka as taka } from '@/lib/money'
 import type { FeeReminderChannel } from '@/lib/supabase/types'
 import { recordPayment, type FeeState } from './actions'
@@ -96,7 +96,7 @@ export function PaymentRow({
               )}
             </p>
             <p className="text-sm text-ink-faint">
-              {formatDateBn(row.dueDate)}
+              {formatDate(row.dueDate)}
               {/* Only while the money is still owed. Red is the colour that means
                   act on this, and a settled invoice needs no action — leaving the
                   warning on a paid row spends the owner's attention on the one

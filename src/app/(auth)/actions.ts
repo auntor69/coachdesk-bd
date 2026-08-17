@@ -21,6 +21,7 @@ import {
 } from '@/lib/bd/phone'
 import { getSession, homePathFor } from '@/lib/auth/session'
 import { MIN_PASSWORD, PASSWORD_TOO_SHORT_BN } from '@/lib/auth/password'
+import { DEFAULT_LOCALE } from '@/lib/i18n'
 
 export type FormState = {
   error?: string
@@ -150,7 +151,11 @@ export async function signUp(
     email_confirm: true,
     // Read by the on_auth_user_created trigger, so the profile row exists
     // before this function returns.
-    user_metadata: { full_name: fullName, phone, locale: 'bn' },
+    //
+    // DEFAULT_LOCALE rather than a literal: a new centre has expressed no
+    // preference yet, and the one place that decides what a reader gets by
+    // default should be the one place that says so.
+    user_metadata: { full_name: fullName, phone, locale: DEFAULT_LOCALE },
   })
 
   if (error) {

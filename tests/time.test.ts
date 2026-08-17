@@ -4,8 +4,13 @@ import assert from 'node:assert/strict'
 import {
   addDays,
   addMonths,
+  dayName,
   daysBetween,
-  formatMonthBn,
+  digits,
+  formatDate,
+  formatMonth,
+  formatTime,
+  monthName,
   currentPeriodMonth,
   todayInDhaka,
 } from '../src/lib/bd/time.ts'
@@ -37,17 +42,17 @@ test('shifting a period by whole months crosses years correctly', () => {
 
 test('a period renders as a month and a year, in Bangla numerals', () => {
   // Money stays ASCII across this product; a date does not.
-  assert.equal(formatMonthBn('2026-08-01'), 'আগস্ট ২০২৬')
-  assert.equal(formatMonthBn('2026-01-01'), 'জানুয়ারি ২০২৬')
-  assert.equal(formatMonthBn('2026-12-01'), 'ডিসেম্বর ২০২৬')
+  assert.equal(formatMonth('2026-08-01'), 'আগস্ট ২০২৬')
+  assert.equal(formatMonth('2026-01-01'), 'জানুয়ারি ২০২৬')
+  assert.equal(formatMonth('2026-12-01'), 'ডিসেম্বর ২০২৬')
 })
 
 test('a malformed period is shown as-is rather than as a wrong month', () => {
   // The fee board builds its month list from addMonths, so this should be
   // unreachable — but rendering "undefined ২০২৬" beside a bill is worse than
   // rendering the raw string, which is at least obviously a bug.
-  assert.equal(formatMonthBn(''), '')
-  assert.equal(formatMonthBn('2026-13-01'), '2026-13-01')
+  assert.equal(formatMonth(''), '')
+  assert.equal(formatMonth('2026-13-01'), '2026-13-01')
   assert.equal(addMonths('', 1), '')
 })
 
@@ -91,4 +96,78 @@ test('an unparseable date is not silently turned into a real one', () => {
   assert.equal(daysBetween('2026-08-15', 'nonsense'), 0)
   assert.equal(addDays('', 3), '')
   assert.equal(addDays('nonsense', 3), 'nonsense')
+})
+
+test('a date reads day-first in both languages', () => {
+  // Same order deliberately. Bangladesh writes dates day-first and an
+  // English-medium teacher there reads 11 August, so switching language never
+  // reflows a table column that was sized for one of them.
+  assert.equal(formatDate('2026-08-11'), '১১ আগস্ট ২০২৬')
+  assert.equal(formatDate('2026-08-11', 'bn'), '১১ আগস্ট ২০২৬')
+  assert.equal(formatDate('2026-08-11', 'en'), '11 August 2026')
+  assert.equal(formatDate('2026-01-01', 'en'), '1 January 2026')
+  assert.equal(formatDate('2026-12-31', 'en'), '31 December 2026')
+})
+
+test('a bad date is handed back unchanged whichever language asked', () => {
+  for (const locale of ['bn', 'en'] as const) {
+    assert.equal(formatDate('', locale), '')
+    assert.equal(formatDate('nonsense', locale), 'nonsense')
+    // Month 13 would have indexed past the end of the name table and printed
+    // "undefined" next to a due date.
+    assert.equal(formatDate('2026-13-01', locale), '2026-13-01')
+  }
+})
+
+test('English uses am and pm where Bangla names four parts of the day', () => {
+  // The one formatter where English is not a table swap. A 4pm class is বিকাল and
+  // a 7pm one is রাত; gluing "afternoon" to a 12-hour clock would read stranger
+  // to a bilingual teacher than the pm they already write.
+  assert.equal(formatTime('07:30'), '৭:৩০ সকাল')
+  assert.equal(formatTime('07:30', 'en'), '7:30 am')
+  assert.equal(formatTime('16:00', 'bn'), '৪:০০ বিকাল')
+  assert.equal(formatTime('16:00', 'en'), '4:00 pm')
+  assert.equal(formatTime('19:00', 'bn'), '৭:০০ রাত')
+  assert.equal(formatTime('19:00', 'en'), '7:00 pm')
+  // The two the 12-hour clock gets wrong when h % 12 is taken alone.
+  assert.equal(formatTime('00:15', 'en'), '12:15 am')
+  assert.equal(formatTime('12:05', 'en'), '12:05 pm')
+  assert.equal(formatTime('00:15', 'bn'), '১২:১৫ রাত')
+  assert.equal(formatTime('12:05', 'bn'), '১২:০৫ দুপুর')
+  // Postgres hands back HH:MM:SS; the seconds are not a time of day.
+  assert.equal(formatTime('09:05:00', 'en'), '9:05 am')
+})
+
+test('an absent or malformed time renders as nothing, not as a lie', () => {
+  for (const locale of ['bn', 'en'] as const) {
+    assert.equal(formatTime(null, locale), '')
+    assert.equal(formatTime('', locale), '')
+    assert.equal(formatTime('nonsense', locale), 'nonsense')
+  }
+})
+
+test('months and weekdays come in both languages', () => {
+  assert.equal(formatMonth('2026-08-01', 'en'), 'August 2026')
+  assert.equal(monthName('2026-08-01'), 'আগস্ট')
+  assert.equal(monthName('2026-08-01', 'en'), 'August')
+  assert.equal(monthName('2026-13-01', 'en'), '2026-13-01')
+  // Sunday-based, matching Postgres extract(dow) and the Bangladeshi week that
+  // starts on it.
+  assert.equal(dayName(0, 'en'), 'Sunday')
+  assert.equal(dayName(0), 'রবিবার')
+  assert.equal(dayName(4, 'en'), 'Thursday')
+  assert.equal(dayName(5, 'bn'), 'শুক্রবার')
+  // Out of range rather than crashing: a dow comes out of a nullable column.
+  assert.equal(dayName(7, 'en'), '')
+  assert.equal(dayName(-1, 'bn'), '')
+})
+
+test('numerals follow the reader and money follows neither', () => {
+  assert.equal(digits(2026), '২০২৬')
+  assert.equal(digits(2026, 'bn'), '২০২৬')
+  assert.equal(digits(2026, 'en'), '2026')
+  assert.equal(digits('07', 'en'), '07')
+  // Non-digits pass through untouched, which is what lets this run over a
+  // pre-formatted string like "09:05".
+  assert.equal(digits('09:05', 'bn'), '০৯:০৫')
 })

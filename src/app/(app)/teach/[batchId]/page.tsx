@@ -5,7 +5,7 @@ import { Card } from '@/components/ui'
 import { requireRole } from '@/lib/auth/session'
 import { createClient } from '@/lib/supabase/server'
 import { BatchSlot } from '@/lib/bd/schedule'
-import { todayInDhaka, formatDateBn } from '@/lib/bd/time'
+import { todayInDhaka, formatDate } from '@/lib/bd/time'
 import type { AttendanceStatus } from '@/lib/supabase/types'
 import { AttendanceRoster, type RosterStudent } from './attendance-roster'
 
@@ -116,7 +116,7 @@ export default async function AttendancePage({
             ))}
         </p>
         <p className="mt-0.5 text-sm text-ink-faint">
-          {formatDateBn(sessionDate)}
+          {formatDate(sessionDate)}
           {sessionDate !== today && ' — পুরোনো তারিখ'}
         </p>
       </div>

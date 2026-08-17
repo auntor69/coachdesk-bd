@@ -3,7 +3,7 @@ import Link from 'next/link'
 import { Card } from '@/components/ui'
 import { requireRole } from '@/lib/auth/session'
 import { createClient } from '@/lib/supabase/server'
-import { todayInDhaka, addDays, formatMonthBn } from '@/lib/bd/time'
+import { todayInDhaka, addDays, formatMonth } from '@/lib/bd/time'
 import { normalizeBdMobile } from '@/lib/bd/phone'
 import { sumTaka, formatTaka } from '@/lib/money'
 import {
@@ -127,7 +127,7 @@ export default async function RemindersPage() {
       dueDate,
       daysLate: decision.daysLate,
       periodMonth: invoice.period_month ?? `${dueDate.slice(0, 7)}-01`,
-      monthLabel: formatMonthBn(invoice.period_month ?? `${dueDate.slice(0, 7)}-01`),
+      monthLabel: formatMonth(invoice.period_month ?? `${dueDate.slice(0, 7)}-01`),
       cycle: decision.cycle,
       // Normalised here rather than trusted from the column: the deep links need
       // E.164, and a number entered before the validator existed may not be in it.

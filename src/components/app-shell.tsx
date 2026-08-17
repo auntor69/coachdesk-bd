@@ -15,13 +15,18 @@ import { Logo } from '@/components/ui'
 import type { MemberRole } from '@/lib/supabase/types'
 import type { Session } from '@/lib/auth/session'
 import { formatBdMobile } from '@/lib/bd/phone'
+import { dict, type Dictionary } from '@/lib/i18n'
 
 /**
  * `href` is `Route`, not string, so a nav entry pointing at a route that does
  * not exist fails the build. The bottom bar is the only navigation most users
  * ever touch; a dead tab here is worse than a dead link anywhere else.
+ *
+ * `label` is a key into the nav group rather than a string, so the table below
+ * stays one table instead of one per language — and a key that does not exist in
+ * the dictionary fails the build alongside a route that does not exist.
  */
-type NavItem = { href: Route; label: string; icon: string }
+type NavItem = { href: Route; label: keyof Dictionary['shell']['nav']; icon: string }
 
 /**
  * What each role sees. Icons are text glyphs rather than an icon font or SVG
@@ -34,23 +39,23 @@ type NavItem = { href: Route; label: string; icon: string }
  */
 const NAV: Record<MemberRole, NavItem[]> = {
   owner: [
-    { href: '/dashboard', label: 'হোম', icon: '⌂' },
-    { href: '/teach', label: 'হাজিরা', icon: '✓' },
-    { href: '/fees', label: 'ফি', icon: '৳' },
-    { href: '/settings', label: 'সেটিংস', icon: '⚙' },
+    { href: '/dashboard', label: 'home', icon: '⌂' },
+    { href: '/teach', label: 'attendance', icon: '✓' },
+    { href: '/fees', label: 'fees', icon: '৳' },
+    { href: '/settings', label: 'settings', icon: '⚙' },
   ],
   manager: [
-    { href: '/dashboard', label: 'হোম', icon: '⌂' },
-    { href: '/teach', label: 'হাজিরা', icon: '✓' },
-    { href: '/fees', label: 'ফি', icon: '৳' },
-    { href: '/settings', label: 'সেটিংস', icon: '⚙' },
+    { href: '/dashboard', label: 'home', icon: '⌂' },
+    { href: '/teach', label: 'attendance', icon: '✓' },
+    { href: '/fees', label: 'fees', icon: '৳' },
+    { href: '/settings', label: 'settings', icon: '⚙' },
   ],
   teacher: [
-    { href: '/teach', label: 'হাজিরা', icon: '✓' },
-    { href: '/exams', label: 'পরীক্ষা', icon: '✎' },
+    { href: '/teach', label: 'attendance', icon: '✓' },
+    { href: '/exams', label: 'exams', icon: '✎' },
   ],
-  student: [{ href: '/me', label: 'আমার', icon: '⌂' }],
-  guardian: [{ href: '/me', label: 'সন্তান', icon: '⌂' }],
+  student: [{ href: '/me', label: 'mine', icon: '⌂' }],
+  guardian: [{ href: '/me', label: 'myChild', icon: '⌂' }],
 }
 
 export function AppShell({
@@ -62,6 +67,7 @@ export function AppShell({
 }) {
   const role: MemberRole = session.active?.role ?? 'student'
   const items = NAV[role]
+  const t = dict(session.locale).shell
 
   return (
     <div className="flex min-h-full flex-col">
@@ -82,7 +88,7 @@ export function AppShell({
               className="rounded-lg px-3 py-2 text-sm font-medium text-ink-soft
                 hover:bg-surface-alt hover:text-ink"
             >
-              লগআউট
+              {t.logout}
             </button>
           </form>
         </div>
@@ -96,7 +102,7 @@ export function AppShell({
 
       {items.length > 1 && (
         <nav
-          aria-label="প্রধান মেনু"
+          aria-label={t.mainMenu}
           className="fixed inset-x-0 bottom-0 z-10 border-t border-line bg-white"
         >
           <ul className="mx-auto flex w-full max-w-3xl">
@@ -110,7 +116,12 @@ export function AppShell({
                   <span aria-hidden className="text-xl leading-none">
                     {item.icon}
                   </span>
-                  <span className="text-xs font-medium">{item.label}</span>
+                  {/* truncate, not wrap: "Attendance" is ten characters where
+                      হাজিরা is six, and a wrapped label makes one tab taller
+                      than the other three. */}
+                  <span className="w-full truncate px-1 text-center text-xs font-medium">
+                    {t.nav[item.label]}
+                  </span>
                 </Link>
               </li>
             ))}
@@ -123,5 +134,9 @@ export function AppShell({
 
 /** Greets by name, falling back to the number, because one of them always exists. */
 export function greetingFor(session: Session): string {
-  return session.fullName || formatBdMobile(session.phone) || 'স্বাগতম'
+  return (
+    session.fullName ||
+    formatBdMobile(session.phone) ||
+    dict(session.locale).shell.welcome
+  )
 }

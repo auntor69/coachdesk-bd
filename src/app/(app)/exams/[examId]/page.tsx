@@ -4,7 +4,7 @@ import { notFound } from 'next/navigation'
 import { Card } from '@/components/ui'
 import { requireRole } from '@/lib/auth/session'
 import { createClient } from '@/lib/supabase/server'
-import { formatDateBn } from '@/lib/bd/time'
+import { formatDate } from '@/lib/bd/time'
 import { planResultSms } from '@/lib/sms/result-dispatch'
 import { smsProviderConfigured } from '@/lib/sms/provider'
 import { MarksSheet, type MarksRow } from './marks-sheet'
@@ -148,7 +148,7 @@ export default async function ExamPage({
         <h1 className="mt-1 text-xl font-bold text-ink">{exam.title}</h1>
         {subtitle && <p className="mt-0.5 text-ink-soft">{subtitle}</p>}
         <p className="mt-0.5 text-sm text-ink-faint">
-          {formatDateBn(exam.exam_date)} · পূর্ণমান{' '}
+          {formatDate(exam.exam_date)} · পূর্ণমান{' '}
           <span className="num">{Number(exam.total_marks)}</span>
           {exam.pass_marks !== null && (
             <>

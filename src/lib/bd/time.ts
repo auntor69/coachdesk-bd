@@ -12,7 +12,19 @@
  * the offset is a genuine constant. We still go through Intl rather than
  * adding six hours by hand, because a fixed offset is the kind of assumption
  * that stops being true without telling you.
+ *
+ * The timezone is not negotiable but the *language* is: every function here that
+ * produces something a person reads takes a `Locale`. The clock is Dhaka's for
+ * an English-medium teacher too — what changes is the numerals and the words,
+ * never the day.
+ *
+ * `locale` defaults to 'bn' while the English sweep is in progress, so a screen
+ * that has not been converted yet keeps rendering exactly what it rendered
+ * before. The default comes out in the commit that adds the language switch:
+ * with it gone, `tsc` names every call site still missing a locale, which is a
+ * better checklist than anything written down.
  */
+import type { Locale } from '../i18n/locale.ts'
 
 export const DHAKA_TZ = 'Asia/Dhaka'
 
@@ -44,41 +56,84 @@ export function dhakaDayOfWeek(now: Date = new Date()): number {
   return index === -1 ? new Date(now).getUTCDay() : index
 }
 
-const DAY_NAMES_BN = [
-  'রবিবার',
-  'সোমবার',
-  'মঙ্গলবার',
-  'বুধবার',
-  'বৃহস্পতিবার',
-  'শুক্রবার',
-  'শনিবার',
-]
-
-export function dayNameBn(dow: number): string {
-  return DAY_NAMES_BN[dow] ?? ''
+/**
+ * Day and month names in both languages.
+ *
+ * Hard-coded rather than taken from Intl, which does have bn-BD data: Intl's
+ * Bangla month names are the Indian-Bengali forms (আগস্ট is spelled the same but
+ * ফেব্রুয়ারি and others are not), and the spellings below are the ones a Dhaka
+ * centre writes on a notice board. A date is read by a parent; it should look
+ * the way the notice board looks, not the way ICU does.
+ *
+ * These are calendar labels, not UI copy, so they live here rather than in the
+ * dictionaries — a screen never picks a month name, it passes a date.
+ */
+const DAY_NAMES: Record<Locale, readonly string[]> = {
+  bn: [
+    'রবিবার',
+    'সোমবার',
+    'মঙ্গলবার',
+    'বুধবার',
+    'বৃহস্পতিবার',
+    'শুক্রবার',
+    'শনিবার',
+  ],
+  en: [
+    'Sunday',
+    'Monday',
+    'Tuesday',
+    'Wednesday',
+    'Thursday',
+    'Friday',
+    'Saturday',
+  ],
 }
 
-const MONTHS_BN = [
-  'জানুয়ারি', 'ফেব্রুয়ারি', 'মার্চ', 'এপ্রিল', 'মে', 'জুন',
-  'জুলাই', 'আগস্ট', 'সেপ্টেম্বর', 'অক্টোবর', 'নভেম্বর', 'ডিসেম্বর',
-]
+/** Sunday-based, matching Postgres `extract(dow)` — see dhakaDayOfWeek. */
+export function dayName(dow: number, locale: Locale = 'bn'): string {
+  return DAY_NAMES[locale][dow] ?? ''
+}
+
+const MONTHS: Record<Locale, readonly string[]> = {
+  bn: [
+    'জানুয়ারি', 'ফেব্রুয়ারি', 'মার্চ', 'এপ্রিল', 'মে', 'জুন',
+    'জুলাই', 'আগস্ট', 'সেপ্টেম্বর', 'অক্টোবর', 'নভেম্বর', 'ডিসেম্বর',
+  ],
+  en: [
+    'January', 'February', 'March', 'April', 'May', 'June',
+    'July', 'August', 'September', 'October', 'November', 'December',
+  ],
+}
 
 /**
- * Renders a YYYY-MM-DD as "১১ আগস্ট ২০২৬".
+ * Renders a YYYY-MM-DD as "১১ আগস্ট ২০২৬" or "11 August 2026".
+ *
+ * Day first in both languages. Bangladesh writes dates day-first, and an
+ * English-medium teacher there reads 11 August, not August 11 — matching the
+ * Bangla order also means switching language never reflows a table column.
  *
  * Parsed by hand rather than through Date, because `new Date('2026-08-11')` is
  * parsed as UTC midnight and then displayed in local time, which moves the date
  * backwards for anyone west of Greenwich. A date column has no timezone and
  * should not acquire one on the way to a screen.
  */
-export function formatDateBn(isoDate: string): string {
+export function formatDate(isoDate: string, locale: Locale = 'bn'): string {
   const [y, m, d] = isoDate.split('-').map(Number)
-  if (!y || !m || !d) return isoDate
-  return `${toBanglaDigits(d)} ${MONTHS_BN[m - 1]} ${toBanglaDigits(y)}`
+  if (!y || !m || !d || m > 12) return isoDate
+  return `${digits(d, locale)} ${MONTHS[locale][m - 1]} ${digits(y, locale)}`
 }
 
-/** HH:MM:SS or HH:MM -> "৭:৩০ সকাল". Times come back from Postgres as strings. */
-export function formatTimeBn(time: string | null): string {
+/**
+ * HH:MM:SS or HH:MM -> "৭:৩০ সকাল" or "7:30 am". Postgres hands times back as
+ * strings, so there is no Date to route this through and no timezone to lose.
+ *
+ * The two languages divide the day differently, and this is the one formatter
+ * where English is not a table swap. Bangla names four parts of the day and a
+ * 4pm class is বিকাল while a 7pm one is রাত; English has am and pm and a
+ * bilingual reader would find "afternoon/evening" glued to a 12-hour clock
+ * stranger than the pm they already use for the same times.
+ */
+export function formatTime(time: string | null, locale: Locale = 'bn'): string {
   if (!time) return ''
   const [hStr, mStr] = time.split(':')
   const h = Number(hStr)
@@ -86,10 +141,22 @@ export function formatTimeBn(time: string | null): string {
   if (Number.isNaN(h) || Number.isNaN(m)) return time
 
   const period =
-    h < 6 ? 'রাত' : h < 12 ? 'সকাল' : h < 16 ? 'দুপুর' : h < 19 ? 'বিকাল' : 'রাত'
+    locale === 'en'
+      ? h < 12
+        ? 'am'
+        : 'pm'
+      : h < 6
+        ? 'রাত'
+        : h < 12
+          ? 'সকাল'
+          : h < 16
+            ? 'দুপুর'
+            : h < 19
+              ? 'বিকাল'
+              : 'রাত'
   const h12 = h % 12 === 0 ? 12 : h % 12
 
-  return `${toBanglaDigits(h12)}:${toBanglaDigits(String(m).padStart(2, '0'))} ${period}`
+  return `${digits(h12, locale)}:${digits(String(m).padStart(2, '0'), locale)} ${period}`
 }
 
 const BANGLA_DIGIT_CHARS = ['০', '১', '২', '৩', '৪', '৫', '৬', '৭', '৮', '৯']
@@ -103,6 +170,18 @@ const BANGLA_DIGIT_CHARS = ['০', '১', '২', '৩', '৪', '৫', '৬', '�
  */
 export function toBanglaDigits(value: string | number): string {
   return String(value).replace(/\d/g, (d) => BANGLA_DIGIT_CHARS[Number(d)])
+}
+
+/**
+ * Numerals for whichever language is reading — Bangla for 'bn', untouched for
+ * 'en'.
+ *
+ * The money rule above is unchanged and is not this function's job: a taka
+ * figure stays ASCII in both locales, and the place that enforces that is
+ * `formatTaka` in src/lib/money.ts, which never calls this.
+ */
+export function digits(value: string | number, locale: Locale = 'bn'): string {
+  return locale === 'en' ? String(value) : toBanglaDigits(value)
 }
 
 /**
@@ -142,10 +221,10 @@ export function currentPeriodMonth(now: Date = new Date()): string {
 }
 
 /** Renders a YYYY-MM-01 as "আগস্ট ২০২৬" — a billing period, not a day. */
-export function formatMonthBn(periodMonth: string): string {
+export function formatMonth(periodMonth: string, locale: Locale = 'bn'): string {
   const [y, m] = periodMonth.split('-').map(Number)
   if (!y || !m || m > 12) return periodMonth
-  return `${MONTHS_BN[m - 1]} ${toBanglaDigits(y)}`
+  return `${MONTHS[locale][m - 1]} ${digits(y, locale)}`
 }
 
 /**
@@ -156,17 +235,17 @@ export function formatMonthBn(periodMonth: string): string {
  * 70-character Bangla segment those five characters are the difference between
  * one SMS and two.
  */
-export function monthNameBn(periodMonth: string): string {
+export function monthName(periodMonth: string, locale: Locale = 'bn'): string {
   const [y, m] = periodMonth.split('-').map(Number)
   if (!y || !m || m > 12) return periodMonth
-  return MONTHS_BN[m - 1]
+  return MONTHS[locale][m - 1]
 }
 
 /**
  * Shifts a YYYY-MM-01 by whole months.
  *
  * Arithmetic on the numbers rather than through Date, for the same reason
- * formatDateBn parses by hand: a period_month is a label for a billing cycle,
+ * formatDate parses by hand: a period_month is a label for a billing cycle,
  * not an instant, and routing it through a timezone can only move it.
  */
 export function addMonths(periodMonth: string, delta: number): string {

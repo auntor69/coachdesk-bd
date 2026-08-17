@@ -1,5 +1,5 @@
 import type { BatchSlot as BatchSlotEnum } from '@/lib/supabase/types'
-import { formatTimeBn } from '@/lib/bd/time'
+import { formatTime } from '@/lib/bd/time'
 
 /**
  * Bangladeshi coaching centres run the same batch several times a day, and the
@@ -33,7 +33,7 @@ export function BatchSlot({
   end?: string | null
 }) {
   const label = slotLabel(slot)
-  const range = start ? `${formatTimeBn(start)}${end ? `–${formatTimeBn(end)}` : ''}` : ''
+  const range = start ? `${formatTime(start)}${end ? `–${formatTime(end)}` : ''}` : ''
   const text = [label, range].filter(Boolean).join(' · ')
   return text ? <>{text}</> : null
 }

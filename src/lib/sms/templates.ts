@@ -5,7 +5,7 @@
 import { measureSms } from './encoding.ts'
 import { formatTaka } from '../money.ts'
 import { formatBdMobile, normalizeBdMobile } from '../bd/phone.ts'
-import { monthNameBn, formatDateBn } from '../bd/time.ts'
+import { monthName, formatDate } from '../bd/time.ts'
 // Type-only, so Node erases the whole statement rather than loading the
 // generated types module when these tests run outside the bundler.
 import type { PayoutWallet } from '../supabase/types.ts'
@@ -218,7 +218,7 @@ export type FeeReminderSms = {
 export function buildFeeReminderSms(input: FeeReminderInput): FeeReminderSms {
   const brand = clamp(input.centerName, BRAND_BUDGET - 2)
   const name = clamp(input.studentName, 14)
-  const month = monthNameBn(input.periodMonth)
+  const month = monthName(input.periodMonth)
   const money = formatTaka(input.amount)
   const tail = ` -${brand}`
 
@@ -277,8 +277,8 @@ export function buildFeeReminderSms(input: FeeReminderInput): FeeReminderSms {
  */
 export function buildFeeReminderText(input: FeeReminderInput): string {
   const money = formatTaka(input.amount)
-  const month = monthNameBn(input.periodMonth)
-  const due = formatDateBn(input.dueDate)
+  const month = monthName(input.periodMonth)
+  const due = formatDate(input.dueDate)
 
   // Tense follows the fact. A row can be unpaid without being late — an owner
   // may well send this the morning a bill is raised — and telling a family the
