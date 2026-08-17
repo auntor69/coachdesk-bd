@@ -1163,6 +1163,146 @@ try {
        where p.proname = 'import_students' and a.privilege_type = 'EXECUTE'
          and a.grantee::regrole::text = 'authenticated'`)) === 1)
 
+  // -------------------------------------------------------------------------
+  // Attendance rate per batch — the dashboard's third number.
+  //
+  // The second view in this schema and the first aggregate, and both halves are
+  // worth asking about on the real database rather than only in pglite. A view
+  // runs as its OWNER unless told otherwise, and the owner here is whatever role
+  // Supabase's pooler applied the migration as — which is the variable the whole
+  // thing turns on, and the reason the fee board's view is checked live too.
+  //
+  // The aggregate is the new part. security_invoker means the caller's own RLS
+  // decides which rows reach the count, and a count assembled from a subset of
+  // the rows is not a smaller answer — it is a different answer under the same
+  // column name. Ali can read his own attendance and nobody else's, so RLS alone
+  // would have handed him a row labelled batch_name 'Bio Morning' carrying a
+  // rate_pct that described only himself, and nothing downstream could have
+  // told. That is what app.is_staff_admin inside the view is for, and what the
+  // zero-row checks at the bottom are really testing.
+  // -------------------------------------------------------------------------
+  header('Attendance rate view (security_invoker, staff-admin only)')
+
+  // Dated inside a past month, so the fixture does not depend on the day this
+  // runs and cannot collide with the current-date session Karim took above —
+  // attendance_sessions is unique on (batch_id, session_date).
+  const heldOn = (center, batch, monthsBack, day) =>
+    one(
+      `insert into attendance_sessions (coaching_center_id, batch_id, session_date)
+       values ($1, $2, (date_trunc('month', current_date::timestamp)
+         - make_interval(months => $3::int))::date + $4::int)
+       returning id`,
+      [center, batch, monthsBack, day],
+    )
+
+  const mark = (center, sessionId, enrollment, status) =>
+    client.query(
+      `insert into attendance_records (coaching_center_id, session_id, enrollment_id, status)
+       values ($1, $2, $3, $4::attendance_status)`,
+      [center, sessionId, enrollment, status],
+    )
+
+  // Bio Morning, last month: present, present, late, absent, excused. Four of
+  // the five marks count and three of those are attendance, so 75%. A rate that
+  // docked lateness would say 50; one that counted the excused day as an absence
+  // would say 60.
+  for (const [day, status] of [
+    [1, 'present'], [3, 'present'], [5, 'late'], [8, 'absent'], [10, 'excused'],
+  ]) {
+    await mark(centerA, await heldOn(centerA, bBioMorning, 1, day), eAli, status)
+  }
+  // Chem Evening, last month: one absence and nothing else.
+  await mark(centerA, await heldOn(centerA, bChemEvening, 1, 2), eMim, 'absent')
+  // Bio Morning, the month before: one excused mark. The batch ran, so there has
+  // to be a row, but there is nothing to take a percentage of.
+  await mark(centerA, await heldOn(centerA, bBioMorning, 2, 4), eAli, 'excused')
+  // Centre B, last month: one present, so a leak reads as a number.
+  await mark(centerB, await heldOn(centerB, bPhyB, 1, 6), eB, 'present')
+
+  const rateRow = async (userId, batch, monthsBack = 1) =>
+    (
+      await runAs(
+        userId,
+        `select sessions, present, late, absent, excused, counted, rate_pct,
+                batch_name, batch_active, period_month::text as period_month
+         from batch_attendance_monthly
+         where batch_id = $1
+           and period_month = (date_trunc('month', current_date::timestamp)
+             - make_interval(months => $2::int))::date`,
+        [batch, monthsBack],
+      )
+    ).rows[0] ?? null
+
+  const rateRows = (userId, sql = '', params = []) =>
+    n(userId, `select count(*)::int as n from batch_attendance_monthly ${sql}`, params)
+
+  check('the owner gets one row per batch per month, and only their own centre',
+    (await rateRows(ids.ownerA)) === 3)
+
+  const bio = await rateRow(ids.ownerA, bBioMorning)
+  check('five sessions, four marks counted: the excused day is not in the denominator',
+    Number(bio?.sessions) === 5 && Number(bio?.counted) === 4,
+    `sessions=${bio?.sessions} counted=${bio?.counted}`)
+  check('late is attendance: two present plus one late over four is 75%',
+    Number(bio?.rate_pct) === 75,
+    `rate=${bio?.rate_pct} present=${bio?.present} late=${bio?.late} absent=${bio?.absent}`)
+  check('and the batch name travels with it, so the card is readable',
+    bio?.batch_name === 'Bio Morning' && bio?.batch_active === true)
+
+  const chem = await rateRow(ids.ownerA, bChemEvening)
+  check('a batch nobody attended reads 0, which is not the same fact as no rate',
+    Number(chem?.rate_pct) === 0 && Number(chem?.counted) === 1,
+    `rate=${chem?.rate_pct} counted=${chem?.counted}`)
+
+  const older = await rateRow(ids.ownerA, bBioMorning, 2)
+  check('a month of nothing but excused marks has a row but no rate',
+    older !== null && older.rate_pct === null && Number(older.counted) === 0,
+    `row=${older ? 'yes' : 'no'} rate=${older?.rate_pct} counted=${older?.counted}`)
+  check('and it is its own month, not folded into the one after it',
+    Boolean(older) && older.period_month !== bio?.period_month,
+    `${older?.period_month} vs ${bio?.period_month}`)
+
+  // The session Karim took earlier was never marked. Counting it would put a day
+  // nobody was registered for into "how often did this batch run".
+  check('a session opened and never marked produces no row at all',
+    (await rateRow(ids.ownerA, bBioMorning, 0)) === null)
+
+  check("owner A sees nothing of centre B's attendance",
+    (await rateRows(ids.ownerA, 'where batch_id = $1', [bPhyB])) === 0)
+  check('owner B sees their own batch through the view',
+    (await rateRows(ids.ownerB)) === 1)
+  check("and none of centre A's batches, by id",
+    (await rateRows(ids.ownerB, 'where batch_id = $1', [bBioMorning])) === 0)
+
+  // The three the predicate exists to rule out, and none of them is a tenant
+  // leak — which is why counting another centre's rows would never have caught
+  // them. Each reader can legitimately see *some* of the marks underneath, so
+  // security_invoker alone would have handed each of them a row carrying a
+  // batch_name and a rate_pct assembled from their own slice: Nasrin's would
+  // happen to be true, Ali's would say 'Bio Morning' and describe nobody but
+  // himself, and nothing downstream could have told the two apart.
+  //
+  // Nasrin rather than Karim, deliberately. Karim's membership was revoked
+  // earlier in this suite, so a zero from him now proves the membership is gone
+  // and nothing about this view. Nasrin still teaches Chem Evening, which has a
+  // mark in the fixture above, so the door really is open behind her.
+  const marksBelow = (userId) =>
+    n(userId, 'select count(*)::int as n from attendance_records')
+
+  check('the teacher policy really does hand Nasrin the marks under this view',
+    (await marksBelow(ids.nasrin)) > 0)
+  check('and the student policy hands Ali his own',
+    (await marksBelow(ids.studentUser)) > 0)
+
+  check('yet a teacher reads no batch rate, not even for the batch she teaches',
+    (await rateRows(ids.nasrin)) === 0)
+  check("a student cannot read their own attendance as if it were the batch's",
+    (await rateRows(ids.studentUser)) === 0)
+  check('nor can a guardian, for the same reason',
+    (await rateRows(ids.guardianUser)) === 0)
+  check('and a signed-out reader gets nothing',
+    (await rateRows(null)) === 0)
+
   header('Anonymous access')
   check('signed-out user reads no students',
     (await n(null, 'select count(*)::int as n from students')) === 0)

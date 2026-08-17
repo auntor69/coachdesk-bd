@@ -1738,6 +1738,23 @@ export type Database = {
       }
     }
     Views: {
+      batch_attendance_monthly: {
+        Row: {
+          coaching_center_id: string | null
+          batch_id: string | null
+          batch_name: string | null
+          batch_active: boolean | null
+          period_month: string | null
+          sessions: number | null
+          present: number | null
+          late: number | null
+          absent: number | null
+          excused: number | null
+          counted: number | null
+          rate_pct: number | null
+        }
+        Relationships: []
+      }
       fee_invoice_balances: {
         Row: {
           id: string | null

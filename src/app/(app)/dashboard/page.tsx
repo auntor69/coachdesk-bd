@@ -11,8 +11,10 @@ import {
   formatDateBn,
 } from '@/lib/bd/time'
 import { countChasesDue } from '@/lib/fees/reminder-schedule'
+import { ratesForDashboard } from '@/lib/attendance/rates'
 import { sumTaka, tallyOutstanding, formatTaka as taka } from '@/lib/money'
 import { ReminderEntry } from '@/app/(app)/fees/reminder-entry'
+import { AttendanceRates } from './attendance-rates'
 
 export const metadata = { title: 'ড্যাশবোর্ড — CoachDesk' }
 
@@ -25,6 +27,9 @@ const COLUMNS = 'id, student_name, remaining_bdt, due_date, guardian_phone'
  * The number that sells the product is outstanding fees, so it is largest and
  * first. Everything else on this page exists to make that number trustworthy —
  * or, in the case of the reminder link directly beneath it, to make it smaller.
+ * The exception is the batch attendance card near the bottom, which is not about
+ * money at all: it is the figure that makes a centre renew, because it is the one
+ * thing on the screen a paper register could never have produced.
  *
  * Which is why it reads the same view and uses the same arithmetic as the fee
  * board rather than recomputing. This page used to fetch every invoice and every
@@ -47,6 +52,7 @@ export default async function DashboardPage() {
     { data: payments },
     { data: todaySessions },
     { data: chased },
+    { data: rates },
   ] = await Promise.all([
     supabase
       .from('students')
@@ -94,6 +100,29 @@ export default async function DashboardPage() {
       .select('invoice_id, created_at')
       .gte('created_at', `${addMonths(period, -1)}T00:00:00+06:00`)
       .order('created_at', { ascending: false }),
+    // Attendance rate per batch, counted by Postgres — forty students taking
+    // class twenty times is eight hundred rows per batch, and this screen is
+    // opened several times a day on a 3G phone.
+    //
+    // Two months, not one. A card that reads "no attendance yet" for the first
+    // days of every month is empty exactly when an owner is thinking hardest
+    // about the month that just closed, so the current month is used when it has
+    // anything in it and last month is the fallback. The view's index is on
+    // (coaching_center_id, period_month), which is what makes asking for two
+    // months no more work than asking for one.
+    //
+    // Active batches only: a closed batch's history stays readable through the
+    // view — that is why batch_active is exposed rather than filtered there — but
+    // it does not belong on today's dashboard.
+    //
+    // Unconditional, like the reminder query above. The view is staff-admin only,
+    // so a teacher gets an empty array from a round trip that was already
+    // happening inside this Promise.all.
+    supabase
+      .from('batch_attendance_monthly')
+      .select('batch_id, batch_name, period_month, sessions, counted, rate_pct')
+      .eq('batch_active', true)
+      .in('period_month', [period, addMonths(period, -1)]),
   ])
 
   // Same rule as the fee board, so the two screens cannot drift: only positive
@@ -139,8 +168,14 @@ export default async function DashboardPage() {
 
   // Owners and managers only. A teacher granted fee visibility can see the
   // numbers on this page, but the worklist itself is staff-admin — offering them
-  // a door that answers 403 is worse than not offering it.
-  const canChase = isStaffAdmin(session)
+  // a door that answers 403 is worse than not offering it. The same boolean gates
+  // the batch-rate card, which the view returns nothing to a teacher for.
+  const isAdmin = isStaffAdmin(session)
+
+  // The month the rate card describes and the batches in it, worst first — both
+  // decided in one tested place, because both invert without leaving a mark on
+  // the screen. See the note on the query for why two months are fetched.
+  const { month: rateMonth, rates: batchRates } = ratesForDashboard(rates, period)
 
   return (
     <div className="flex flex-col gap-5">
@@ -169,7 +204,7 @@ export default async function DashboardPage() {
           else on the page. This is the one action on the owner's home screen that
           brings money in rather than reporting on it, and on a 375px phone that
           means it has to be reachable without a scroll. */}
-      {canChase && remainders.length > 0 && <ReminderEntry dueToday={dueToday} />}
+      {isAdmin && remainders.length > 0 && <ReminderEntry dueToday={dueToday} />}
 
       <div className="grid grid-cols-3 gap-3">
         <Stat label="এ মাসে আদায়" value={taka(collected)} />
@@ -195,6 +230,18 @@ export default async function DashboardPage() {
           </Link>
         </div>
       </Card>
+
+      {/* Directly under the card that counts today's registers, because this is
+          what they add up to. A centre that has never taken attendance gets no
+          card at all rather than one explaining its own emptiness — the line
+          above already says nothing has been taken. */}
+      {isAdmin && batchRates.length > 0 && (
+        <AttendanceRates
+          month={rateMonth}
+          rows={batchRates}
+          isCurrentMonth={rateMonth === period}
+        />
+      )}
 
       {overdue.length > 0 && (
         <div>
