@@ -17,14 +17,16 @@
 import { useState } from 'react'
 
 import { formatTaka as taka } from '@/lib/money'
-import { toBanglaDigits } from '@/lib/bd/time'
+import { digits } from '@/lib/bd/time'
+import type { Locale, T } from '@/lib/i18n'
+import { fill } from '@/lib/i18n/fill'
 import type { ReminderStage } from '@/lib/fees/reminder-schedule'
 import type { FeeReminderChannel } from '@/lib/supabase/types'
-import { ChaseChips, CHANNEL_LABEL, type ChaseTarget, type ReminderCenter } from './reminder-chips'
+import { ChaseChips, lateLabel, type ChaseTarget, type ReminderCenter } from './reminder-chips'
 
 export type ChaseRow = ChaseTarget & {
   studentCode: string | null
-  /** "আগস্ট ২০২৬" — which month's fee, rendered on the server. */
+  /** Which month's fee. Written by the server, in the reader's language. */
   monthLabel: string
   /** How many times this invoice has already come round, 0 for the first. */
   cycle: number
@@ -32,18 +34,37 @@ export type ChaseRow = ChaseTarget & {
 
 export type ChaseGroup = {
   stage: ReminderStage
+  /** Heading and reason, both resolved server-side — see the reminders group. */
   label: string
   note: string
   rows: ChaseRow[]
 }
 
+/**
+ * The words this screen changes for itself, plus the two groups it hands down to
+ * the chips. Everything static about the page is written by the server parent.
+ */
+type ListWords = {
+  t: T<'chaseList'>
+  chase: T<'chase'>
+  channels: T<'channels'>
+  common: T<'common'>
+}
+
 export function ReminderList({
   groups,
   center,
+  locale,
+  words,
 }: {
   groups: ChaseGroup[]
   center: ReminderCenter
+  /** For the day and cycle counts, which take Bangla numerals for a bn reader. */
+  locale: Locale
+  words: ListWords
 }) {
+  const { t, chase, channels, common } = words
+
   // Which invoices have been chased since this page loaded, and how. Kept here
   // rather than in each row so the counter at the top can be honest about how
   // much of the list is left.
@@ -73,16 +94,17 @@ export function ReminderList({
   return (
     <div className="flex flex-col gap-5">
       {/* Only once something has been sent. Before that it would be a progress
-          bar at 0%, which tells the owner nothing they cannot see. */}
+          bar at 0%, which tells the owner nothing they cannot see.
+
+          `.num` on the paragraph rather than around the figure: the class is only
+          tabular-nums, so it costs nothing on the words either side, and hoisting
+          it is what lets the whole sentence be one filled string instead of
+          markup a translator cannot reorder. The count itself stays in ASCII in
+          both languages — it is a count of families, which an owner reads
+          alongside money. */}
       {left !== total && (
-        <p role="status" className="font-medium text-brand-700">
-          {left === 0 ? (
-            'সবাইকে বলা হয়ে গেছে ✓'
-          ) : (
-            <>
-              আরও <span className="num">{left}</span> জন বাকি
-            </>
-          )}
+        <p role="status" className="num font-medium text-brand-700">
+          {left === 0 ? t.allDone : fill(t.moreLeft, { n: left })}
         </p>
       )}
 
@@ -100,6 +122,8 @@ export function ReminderList({
                 key={row.id}
                 row={row}
                 center={center}
+                locale={locale}
+                words={{ t, chase, channels, common }}
                 sentVia={done[row.id]}
                 onSent={(channel) => setDone((d) => ({ ...d, [row.id]: channel }))}
               />
@@ -114,14 +138,20 @@ export function ReminderList({
 function Row({
   row,
   center,
+  locale,
+  words,
   sentVia,
   onSent,
 }: {
   row: ChaseRow
   center: ReminderCenter
+  locale: Locale
+  words: ListWords
   sentVia: FeeReminderChannel | undefined
   onSent: (channel: FeeReminderChannel) => void
 }) {
+  const { t, chase, channels, common } = words
+
   return (
     <li
       className={`rounded-xl border bg-white px-4 py-3 transition-opacity ${
@@ -139,18 +169,18 @@ function Row({
           <p className="text-sm text-ink-faint">
             {row.monthLabel}
             {row.daysLate > 0 && (
-              <span className="font-medium text-absent">
+              <span className="num font-medium text-absent">
                 {' · '}
-                <span className="num">{toBanglaDigits(row.daysLate)}</span> দিন দেরি
+                {lateLabel(row.daysLate, locale, common)}
               </span>
             )}
             {/* Only from the second time round. "১ম বার" on a first reminder is
                 noise; "৩ বার বলা হয়েছে" on a two-month-old debt is the fact that
                 tells an owner to stop texting and pick up the phone. */}
             {row.cycle > 0 && (
-              <span>
+              <span className="num">
                 {' · '}
-                <span className="num">{toBanglaDigits(row.cycle + 1)}</span> বার
+                {fill(t.times, { n: digits(row.cycle + 1, locale) })}
               </span>
             )}
           </p>
@@ -160,12 +190,18 @@ function Row({
       </div>
 
       <div className="mt-3">
-        <ChaseChips target={row} center={center} onSent={onSent} />
+        <ChaseChips
+          target={row}
+          center={center}
+          onSent={onSent}
+          t={chase}
+          channels={channels}
+        />
       </div>
 
       {sentVia && (
         <p className="mt-2 text-sm font-medium text-present">
-          {CHANNEL_LABEL[sentVia]} পাঠানো হয়েছে ✓
+          {fill(t.sent, { channel: channels[sentVia] })}
         </p>
       )}
     </li>

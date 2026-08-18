@@ -1,5 +1,7 @@
 import Link from 'next/link'
 
+import type { Dictionary } from '@/lib/i18n'
+
 /**
  * The way into today's reminder worklist — the same door on the fee board and on
  * the owner's dashboard.
@@ -19,8 +21,19 @@ import Link from 'next/link'
  * ordered by who has not been told yet, which is a different set in a different
  * order. Putting both on one screen would mean the owner deciding which of two
  * overlapping lists to trust.
+ *
+ * `Dictionary['reminders']` and not `T<'reminders'>`: this is a server component,
+ * so it can be handed the group as it is, functions and all. It borrows the
+ * worklist's own words rather than owning any — a door and the room behind it
+ * disagreeing about what is in there is how an owner stops believing the number.
  */
-export function ReminderEntry({ dueToday }: { dueToday: number }) {
+export function ReminderEntry({
+  dueToday,
+  t,
+}: {
+  dueToday: number
+  t: Dictionary['reminders']
+}) {
   return (
     <Link
       href="/fees/reminders"
@@ -28,15 +41,20 @@ export function ReminderEntry({ dueToday }: { dueToday: number }) {
         border border-line bg-white px-4 py-3"
     >
       <span>
-        <span className="font-medium text-ink">আজকের রিমাইন্ডার</span>
+        <span className="font-medium text-ink">{t.title}</span>
         <span className="block text-sm text-ink-faint">
           {dueToday > 0 ? (
             <>
-              <span className="num font-medium text-absent">{dueToday}</span> জনকে আজ
-              মনে করিয়ে দেওয়ার কথা
+              {/* Still two nodes rather than one filled sentence: the number is
+                  red and bold and the words are not, and a count that reads as
+                  ordinary text is one an owner scrolling past does not see. Both
+                  languages put it first, so the tail is all the dictionary
+                  carries. */}
+              <span className="num font-medium text-absent">{dueToday}</span>{' '}
+              {t.entryDueSuffix}
             </>
           ) : (
-            'আজ কাউকে মনে করানোর দরকার নেই'
+            t.noneTitle
           )}
         </span>
       </span>

@@ -240,30 +240,6 @@ export function countChasesDue(rows: ChaseCandidate[], today: string): number {
 }
 
 /**
- * The heading a group of chases sits under.
- *
- * Each one has to stay true across its whole window, which is longer than the day
- * the stage opened: 'due' covers the deadline and the six days after it, so "আজ
- * শেষ তারিখ" would be a lie to five families out of six. "শেষ তারিখ এসে গেছে" is
- * true on the day and still true a week later, and the exact number of days is on
- * the row itself where it belongs.
- */
-export const STAGE_LABEL_BN: Record<ReminderStage, string> = {
-  soon: 'শেষ তারিখের আগে',
-  due: 'শেষ তারিখ এসে গেছে',
-  late: 'এক সপ্তাহের বেশি দেরি',
-  owing: 'অনেক দিন ধরে বাকি',
-}
-
-/** The one line under each heading that says why this group exists. */
-export const STAGE_NOTE_BN: Record<ReminderStage, string> = {
-  soon: 'এখনো দেরি হয়নি — আগে মনে করিয়ে দিলে সময়মতো পাওয়ার সম্ভাবনা বেশি',
-  due: 'এই সপ্তাহেই জমা দেওয়ার কথা',
-  late: 'শেষ তারিখ এক সপ্তাহের বেশি আগে পেরিয়ে গেছে',
-  owing: 'দুই সপ্তাহ পর আবার মনে করিয়ে দেওয়ার সময়',
-}
-
-/**
  * Worklist order: the money that has been owed longest, first.
  *
  * Not the order the stages happen in. An owner with twenty minutes should spend

@@ -5,8 +5,6 @@ import {
   chaseDecision,
   countChasesDue,
   reminderStage,
-  STAGE_LABEL_BN,
-  STAGE_NOTE_BN,
   STAGE_ORDER,
 } from '../src/lib/fees/reminder-schedule.ts'
 
@@ -278,22 +276,6 @@ test('the worklist is ordered oldest debt first', () => {
   // Not the order the stages occur in. An owner with twenty minutes should spend
   // them on the six-week-old debt, not on the friendly pre-deadline nudges.
   assert.deepEqual(STAGE_ORDER, ['owing', 'late', 'due', 'soon'])
-})
-
-test('every stage has a heading and a reason, in Bangla', () => {
-  // The screen renders both from a lookup, so a fifth stage added without copy
-  // would print "undefined" above somebody's fee. Cheap to assert, and the day it
-  // fails is the day it saves an embarrassing screenshot.
-  for (const stage of STAGE_ORDER) {
-    assert.match(STAGE_LABEL_BN[stage], /[ঀ-৿]/, stage)
-    assert.match(STAGE_NOTE_BN[stage], /[ঀ-৿]/, stage)
-  }
-  // Four stages, four of each — nothing orphaned in either direction.
-  assert.equal(Object.keys(STAGE_LABEL_BN).length, STAGE_ORDER.length)
-  assert.equal(Object.keys(STAGE_NOTE_BN).length, STAGE_ORDER.length)
-  // 'due' spans the deadline and the six days after it, so its heading must not
-  // claim the deadline is today.
-  assert.ok(!STAGE_LABEL_BN.due.includes('আজ'), STAGE_LABEL_BN.due)
 })
 
 /** Local so these tests do not lean on the module they are checking. */

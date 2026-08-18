@@ -3,6 +3,8 @@ import assert from 'node:assert/strict'
 
 import { bn } from '../src/lib/i18n/bn.ts'
 import { en } from '../src/lib/i18n/en.ts'
+import { fill } from '../src/lib/i18n/fill.ts'
+import { STAGE_ORDER } from '../src/lib/fees/reminder-schedule.ts'
 import {
   dict,
   LOCALES,
@@ -83,6 +85,84 @@ test('a count-dependent string cannot be handed to a client component', () => {
   type Kept = T<'roster'>['note'] extends string ? true : false
   const noteStillCrosses: Kept = true
   assert.equal(noteStillCrosses, true)
+})
+
+test('a template string carries the same placeholders in both languages', () => {
+  // The other kind of count-dependent string: a `{n}` template, for the few
+  // sentences a client component has to write for itself. The compiler cannot see
+  // inside one — `fill` takes a plain string — so this stands in for the argument
+  // check a function gets for free.
+  //
+  // Both halves matter. A translation that drops `{n}` renders "still to tell"
+  // with no number, and one that renames it to `{count}` renders a literal
+  // "{count}" on the screen, which is the failure `fill` deliberately makes
+  // visible rather than blanking.
+  const placeholders = (s: string) =>
+    [...s.matchAll(/\{(\w+)\}/g)].map((m) => m[1]).sort()
+
+  const bnLeaves = new Map(leaves(bn))
+  for (const [key, value] of leaves(en)) {
+    const original = bnLeaves.get(key)
+    if (typeof value !== 'string' || typeof original !== 'string') continue
+    assert.deepEqual(
+      placeholders(value),
+      placeholders(original),
+      `en.${key} does not fill the same values as bn.${key}`,
+    )
+  }
+})
+
+test('filling a template substitutes by name and leaves nothing behind', () => {
+  assert.equal(fill('আরও {n} জন বাকি', { n: 4 }), 'আরও 4 জন বাকি')
+  assert.equal(fill('{n} still to tell', { n: 4 }), '4 still to tell')
+
+  // Named, not positional, so a translator may reorder freely — which is the
+  // whole reason the placeholders are named.
+  assert.equal(
+    fill('{paid} / {net} paid', { paid: '৳500', net: '৳1,000' }),
+    '৳500 / ৳1,000 paid',
+  )
+  assert.equal(
+    fill('{net} মোট, {paid} জমা', { paid: '৳500', net: '৳1,000' }),
+    '৳1,000 মোট, ৳500 জমা',
+  )
+
+  // Repeated once, or many times, or not at all.
+  assert.equal(fill('{n} of {n}', { n: 3 }), '3 of 3')
+  assert.equal(fill('nothing to fill', { n: 3 }), 'nothing to fill')
+
+  // A placeholder with no value stays put. Blanking it would render "more still
+  // to tell" and read as clumsy English rather than as a bug.
+  assert.equal(fill('{n} still to tell', {}), '{n} still to tell')
+
+  // A brace that is not a placeholder is left alone, and an empty value is
+  // substituted rather than treated as missing.
+  assert.equal(fill('{ n } and {}', { n: 1 }), '{ n } and {}')
+  assert.equal(fill('[{x}]', { x: '' }), '[]')
+})
+
+test('every reminder stage has a heading and a reason in both languages', () => {
+  // The worklist renders both from a lookup keyed by stage, so a fifth stage added
+  // to the schedule without copy would print "undefined" above somebody's fee.
+  // The two regex tests above already prove the language of each; this proves
+  // there is one per stage and nothing orphaned in either direction.
+  for (const locale of LOCALES) {
+    const { stages, stageNotes } = dict(locale).reminders
+    for (const stage of STAGE_ORDER) {
+      assert.ok(stages[stage], `${locale}.reminders.stages.${stage}`)
+      assert.ok(stageNotes[stage], `${locale}.reminders.stageNotes.${stage}`)
+    }
+    assert.equal(Object.keys(stages).length, STAGE_ORDER.length)
+    assert.equal(Object.keys(stageNotes).length, STAGE_ORDER.length)
+  }
+
+  // 'due' spans the deadline and the six days after it, so its heading must not
+  // claim the deadline is today — five families out of six would be reading a lie.
+  assert.ok(!bn.reminders.stages.due.includes('আজ'), bn.reminders.stages.due)
+  assert.ok(
+    !/\btoday\b/i.test(en.reminders.stages.due),
+    en.reminders.stages.due,
+  )
 })
 
 test('no string in either dictionary is empty', () => {

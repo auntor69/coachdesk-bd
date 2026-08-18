@@ -25,9 +25,16 @@
  * 'সেভ করুন'. A dictionary written from the English key list would have quietly
  * changed the register of the whole app.
  *
- * Functions, not templates with placeholders. `n => \`${n} জন\`` is checked by
- * the compiler at both ends: the shape of the argument is part of the type, so
- * an English translation that forgets the count cannot compile.
+ * Functions, not templates with placeholders, wherever the server can resolve the
+ * sentence. `n => \`${n} জন\`` is checked by the compiler at both ends: the shape
+ * of the argument is part of the type, so an English translation that forgets the
+ * count cannot compile. A `{n}` template gets none of that.
+ *
+ * The exception is a sentence only the browser can write — a counter that ticks as
+ * an owner works down a list, a tick that appears when a message is handed to the
+ * phone. A function cannot cross into a client component at all (see `T` in
+ * ./index.ts), so those few are `{n}` templates and are filled by ./fill.ts. They
+ * are marked as such where they appear.
  */
 export const bn = {
   common: {
@@ -43,6 +50,24 @@ export const bn = {
     optional: 'ঐচ্ছিক',
     /** Where a name is missing but a row still has to say something. */
     unknown: 'অজানা',
+    /**
+     * How far past a deadline something is. Genuinely shared: the fee board's row
+     * and the reminder worklist's row show the same overdue invoice and have to
+     * agree about it, and they are two different client components, so one of them
+     * would otherwise be reading the other's group.
+     *
+     * A `{n}` template rather than a function because both readers are client
+     * components — see ./fill.ts. The number arrives already in the right script:
+     * a day count takes Bangla numerals, unlike a count of people.
+     *
+     * Two strings because English needs two. Bangla would happily say "১ দিন দেরি"
+     * and the plural form covers it, but "1 days late" is the first thing an
+     * English-medium teacher notices, and a template cannot branch. Which one to
+     * use is decided in one place — see `lateLabel` in the fees folder — so the two
+     * screens cannot disagree about a day.
+     */
+    dayLate: 'একদিন দেরি',
+    daysLate: '{n} দিন দেরি',
     /**
      * The tail of 26 different error messages. Kept as its own string so the
      * specific half of each message stays with the screen that knows what went
@@ -178,6 +203,238 @@ export const bn = {
       'এই ব্যাচের হাজিরা আগে নেওয়া হয়েছে। বদলে আবার সেভ করলে আগের হাজিরা বদলে যাবে।',
     note: 'নোট',
     notePlaceholder: 'যেমন: ছুটির কারণে ক্লাস তাড়াতাড়ি শেষ',
+  },
+
+  /**
+   * The three ways an owner reaches a family. Vocabulary rather than one screen's
+   * words, like `attendance` above: the board's "last chased" line, the worklist's
+   * tick and the chips themselves all name the same three channels, and a centre
+   * that reads 'এসএমএস' in one place and 'খুদেবার্তা' in another is being shown two
+   * products.
+   *
+   * "এসএমএস" and not the formal "খুদেবার্তা", which nobody says out loud. Keyed by
+   * fee_reminders.channel, so a channel added to the enum without a label here is a
+   * compile error rather than a blank chip.
+   */
+  channels: {
+    sms: 'এসএমএস',
+    whatsapp: 'হোয়াটসঅ্যাপ',
+    call: 'কল',
+  },
+
+  /**
+   * The fee board — the screen the product is sold on — and everything its three
+   * writes say back.
+   *
+   * Money is never in a template here. `formatTaka` produces ASCII digits in both
+   * languages and the caller passes the finished figure in, because an owner checks
+   * this board against a bKash statement and a total in Bangla numerals is a total
+   * they have to translate before they can compare it.
+   *
+   * Counts of people stay ASCII too, and for the same reason — an owner reads "12
+   * জনের বাকি" off this card and types 12 somewhere else. Days and dates take
+   * Bangla numerals; see `digits` in lib/bd/time.ts.
+   */
+  fees: {
+    title: 'ফি',
+    subtitle: 'কে দিয়েছে, কার বাকি',
+    outstanding: 'মোট বকেয়া',
+    unpaidCount: (n: number) => `${n} জনের বাকি`,
+    overdueCount: (n: number) => `${n} জনের সময় পেরিয়ে গেছে`,
+    /**
+     * Prefixes rather than whole sentences, because the amount that follows is
+     * bold and a filled template cannot carry a `<span>`. Both languages happen to
+     * want the figure last here and first in `inCredit`, which is why these are two
+     * keys and not one with the number in the middle.
+     */
+    collectedThisMonth: 'এই মাসে জমা হয়েছে',
+    inCredit: 'বেশি জমা আছে',
+    emptyTitle: 'এখনো কোনো ইনভয়েস নেই',
+    emptyBody:
+      'উপরের বোতাম দিয়ে এই মাসের ইনভয়েস তৈরি করুন। প্রতিটি চালু ভর্তির জন্য একটি ইনভয়েস তৈরি হবে, ব্যাচের মাসিক ফি অনুযায়ী।',
+
+    /** When a reminder went out, as a person would say it. Anything older is a date. */
+    today: 'আজ',
+    yesterday: 'গতকাল',
+
+    /**
+     * What the writes return. Resolved in the action, so they arrive at the row
+     * already written and a function here costs nothing.
+     *
+     * The count in `invoicesCreated` is ASCII and the total is pre-formatted; both
+     * are figures an owner reconciles against something outside this app.
+     */
+    invoicesCreated: (count: number, total: string) =>
+      `${count}টি ইনভয়েস তৈরি হয়েছে — মোট ${total}।`,
+    invoicesAllExisted:
+      'এই মাসের সব ইনভয়েস আগেই তৈরি করা হয়েছে। নতুন কিছু যোগ হয়নি।',
+    /**
+     * The student's name comes first because that is the fear being answered: an
+     * owner taking cash across a desk needs to see the money landed on the right
+     * child before the next parent starts talking.
+     */
+    received: (name: string, amount: string) => `${name} — ${amount} জমা হয়েছে।`,
+    receivedInFull: (name: string, amount: string) =>
+      `${name} — ${amount} জমা হয়েছে। ফি সম্পূর্ণ পরিশোধ ✓`,
+    stillOwed: (amount: string) => `এখনো ${amount} বাকি আছে।`,
+    overpaid: (amount: string) =>
+      `প্রয়োজনের চেয়ে ${amount} বেশি জমা হয়েছে। ভুল হলে এখনই দেখে নিন।`,
+
+    errors: {
+      forbidden: 'ফি-এর হিসাব শুধু মালিক বা ম্যানেজার রাখতে পারেন।',
+      dueDayRange: 'তারিখ ১ থেকে ২৮-এর মধ্যে দিন।',
+      rosterUnreadable: 'শিক্ষার্থীর তালিকা পড়া যায়নি। আবার চেষ্টা করুন।',
+      nothingToBill:
+        'ইনভয়েস তৈরি করার মতো কিছু নেই। ব্যাচে মাসিক ফি বসানো আছে কি না দেখুন।',
+      invoicesFailed: 'ইনভয়েস তৈরি হয়নি। আবার চেষ্টা করুন।',
+      noInvoice: 'কোন ইনভয়েস, তা পাওয়া যায়নি।',
+      amountUnreadable: 'টাকার পরিমাণ ঠিকভাবে লিখুন।',
+      amountZero: 'টাকার পরিমাণ শূন্য হতে পারে না।',
+      amountNegative: 'টাকার পরিমাণ শূন্যের বেশি হতে হবে।',
+      invoiceMissing: 'ইনভয়েসটি পাওয়া যায়নি।',
+      invoiceVoided: 'এই ইনভয়েসটি বাতিল করা হয়েছে।',
+      paymentFailed: 'টাকা জমা হয়নি। আবার চেষ্টা করুন।',
+    },
+  },
+
+  /**
+   * One row of the board, which is a client component, so: strings only, and the
+   * ones with a figure in them are `{}` templates filled in the browser. See
+   * ./fill.ts for why they are templates and not functions.
+   */
+  feeRow: {
+    paidOf: '{paid} / {net} দেওয়া হয়েছে',
+    settled: '{paid} জমা হয়েছে · মোট {net}',
+    discount: '({amount} ছাড়)',
+    inCredit: '{amount} বেশি জমা আছে',
+
+    chaseTitle: 'অভিভাবককে মনে করিয়ে দিন',
+    /**
+     * No verb. Tapping a chip proves the message was written and handed to the
+     * phone, not that a parent read it — "সর্বশেষ: আজ · কল" claims exactly what is
+     * known and nothing more.
+     */
+    lastChase: 'সর্বশেষ',
+    justNow: 'এইমাত্র',
+
+    amount: 'কত টাকা জমা হলো',
+    method: 'কীভাবে',
+    reference: 'ট্রানজেকশন আইডি',
+    receiving: 'জমা হচ্ছে…',
+    receive: 'জমা নিন',
+    /**
+     * Keyed by fee_payments.method, so the radio group is one list in both
+     * languages and a method added to the enum without a label is a compile error.
+     * The wallet names stay as they are written on the apps themselves — a Dhaka
+     * owner reads "বিকাশ" on a poster and "bKash" on the phone, and both are right
+     * in their own script.
+     */
+    methods: {
+      cash: 'নগদ টাকা',
+      bkash: 'বিকাশ',
+      nagad: 'নগদ',
+      rocket: 'রকেট',
+      bank_transfer: 'ব্যাংক',
+      other: 'অন্য',
+    },
+  },
+
+  /** The three chips, and the two reasons there might be none. */
+  chase: {
+    noNumber: 'অভিভাবকের নম্বর নেই।',
+    addNumber: 'যোগ করে নিন',
+    optedOut: 'এই পরিবার এসএমএস পেতে চায় না — ফোন করা যাবে।',
+  },
+
+  /**
+   * What the worklist writes for itself as an owner works down it. All four change
+   * after the page has rendered, which is the whole reason this screen is a client
+   * component at all — everything static about it is resolved in `reminders` below.
+   */
+  chaseList: {
+    allDone: 'সবাইকে বলা হয়ে গেছে ✓',
+    moreLeft: 'আরও {n} জন বাকি',
+    /** From the second time round only. "১ বার" on a first reminder is noise. */
+    times: '{n} বার',
+    sent: '{channel} পাঠানো হয়েছে ✓',
+  },
+
+  /**
+   * Today's chase list: who to message now, and why this group of them.
+   *
+   * The stage headings each have to stay true across a whole window, not just the
+   * day it opened — 'due' covers the deadline and the six days after it, so "আজ শেষ
+   * তারিখ" would be a lie to five families out of six. The exact number of days is
+   * on the row, where it belongs.
+   */
+  reminders: {
+    title: 'আজকের রিমাইন্ডার',
+    subtitle: 'আজ কাদের মনে করিয়ে দেওয়ার কথা',
+    dueTitle: 'আজ মনে করাতে হবে',
+    /**
+     * Follows the count, which is set four times larger — so the number stays in
+     * its own element and only the word after it comes from here.
+     *
+     * A function of the count even though Bangla ignores it: English says "family"
+     * for one and "families" for the rest, and the page is a server component, so
+     * this is the cheap half of the two ways to write a count-dependent string —
+     * the compiler checks the argument at both ends. See ./fill.ts for the other.
+     */
+    people: (_n: number) => 'জনকে',
+    atStake: 'বাকি এই তালিকায়',
+
+    noneTitle: 'আজ কাউকে মনে করানোর দরকার নেই',
+    /**
+     * Three different situations, and an owner deserves to know which one they are
+     * in: "nothing to do" reads as a broken screen to someone who can see twelve
+     * unpaid rows on the board.
+     */
+    noneNothingOwed: 'কোনো ফি বাকি নেই।',
+    noneAllRecent: 'যাদের বাকি আছে, সবাইকে সম্প্রতি বলা হয়েছে। কয়েক দিন সময় দিন।',
+    noneNotDueYet: 'যে ফি বাকি আছে, তার শেষ তারিখ এখনো আসেনি।',
+
+    heldCount: (n: number) => `${n} জনকে সম্প্রতি বলা হয়েছে`,
+    waitingCount: (n: number) => `${n} জনের শেষ তারিখ এখনো আসেনি`,
+
+    unreachableTitle: (n: number) => `${n} জনের অভিভাবকের নম্বর নেই`,
+    unreachableBody: (names: string) =>
+      `নম্বর ছাড়া মনে করিয়ে দেওয়ার উপায় নেই — ${names}`,
+    addNumbers: 'নম্বর যোগ করুন',
+    backToBoard: 'ফি বোর্ডে ফিরুন',
+
+    /**
+     * The door onto this screen, on the fee board and on the dashboard. It borrows
+     * `title` and `noneTitle` rather than restating them, because it is a door to
+     * this screen and not a second screen — only the count's tail is its own, and
+     * only because the number beside it is red and bold and so cannot be inside a
+     * filled string.
+     */
+    entryDueSuffix: 'জনকে আজ মনে করিয়ে দেওয়ার কথা',
+
+    stages: {
+      soon: 'শেষ তারিখের আগে',
+      due: 'শেষ তারিখ এসে গেছে',
+      late: 'এক সপ্তাহের বেশি দেরি',
+      owing: 'অনেক দিন ধরে বাকি',
+    },
+    stageNotes: {
+      soon: 'এখনো দেরি হয়নি — আগে মনে করিয়ে দিলে সময়মতো পাওয়ার সম্ভাবনা বেশি',
+      due: 'এই সপ্তাহেই জমা দেওয়ার কথা',
+      late: 'শেষ তারিখ এক সপ্তাহের বেশি আগে পেরিয়ে গেছে',
+      owing: 'দুই সপ্তাহ পর আবার মনে করিয়ে দেওয়ার সময়',
+    },
+  },
+
+  /** The once-a-month form, folded away above the board. A client component. */
+  invoices: {
+    open: '+ মাসের ইনভয়েস তৈরি করুন',
+    month: 'কোন মাসের',
+    dueDay: 'শেষ তারিখ',
+    dueDayHint: 'মাসের কত তারিখের মধ্যে ফি দিতে হবে',
+    dayOption: '{d} তারিখ',
+    submit: 'ইনভয়েস তৈরি করুন',
+    safeToRepeat:
+      'প্রতিটি চালু ভর্তির জন্য একটি ইনভয়েস। আগে তৈরি হয়ে থাকলে আবার তৈরি হবে না — তাই দুইবার চাপলেও সমস্যা নেই।',
   },
 } as const
 

@@ -14,10 +14,16 @@
 import { revalidatePath } from 'next/cache'
 
 import { createClient } from '@/lib/supabase/server'
-import { requireRole, AuthError, type CenterSession } from '@/lib/auth/session'
+import {
+  requireRole,
+  getSession,
+  AuthError,
+  type CenterSession,
+} from '@/lib/auth/session'
 import { parseTaka, formatTaka, sumTaka } from '@/lib/money'
 import { currentPeriodMonth } from '@/lib/bd/time'
 import { normalizeBdMobile } from '@/lib/bd/phone'
+import { dict, DEFAULT_LOCALE } from '@/lib/i18n'
 import type { FeeReminderChannel, PaymentMethod } from '@/lib/supabase/types'
 
 export type FeeState = {
@@ -58,7 +64,12 @@ async function feeAdmin(): Promise<CenterSession | FeeState> {
     return await requireRole('manager')
   } catch (err) {
     if (err instanceof AuthError) {
-      return { error: 'ফি-এর হিসাব শুধু মালিক বা ম্যানেজার রাখতে পারেন।' }
+      // No session at all, or one whose role is wrong — either way there is no
+      // `session.locale` to read. getSession is memoised per request and was
+      // already called by requireRole above, so this costs nothing.
+      const caller = await getSession()
+      const d = dict(caller?.locale ?? DEFAULT_LOCALE)
+      return { error: d.fees.errors.forbidden }
     }
     throw err
   }
@@ -88,6 +99,11 @@ export async function generateInvoices(
   const session = await feeAdmin()
   if (!isSession(session)) return session
 
+  // The whole group, not just `errors`: the confirmation names a count and a total,
+  // so the sentence is written here and travels finished. A function cannot cross
+  // into the form that shows it.
+  const t = dict(session.locale).fees
+
   const rawMonth = String(formData.get('periodMonth') ?? '')
   const periodMonth = MONTH_RE.test(rawMonth) ? rawMonth : currentPeriodMonth()
 
@@ -98,7 +114,7 @@ export async function generateInvoices(
   // the kind of surprise that shows up in a phone call from a parent.
   const rawDueDay = Number(formData.get('dueDay') ?? 10)
   if (!Number.isInteger(rawDueDay) || rawDueDay < 1 || rawDueDay > 28) {
-    return { error: 'তারিখ ১ থেকে ২৮-এর মধ্যে দিন।' }
+    return { error: t.errors.dueDayRange }
   }
   const dueDate = `${periodMonth.slice(0, 7)}-${String(rawDueDay).padStart(2, '0')}`
 
@@ -113,7 +129,7 @@ export async function generateInvoices(
     .eq('status', 'active')
 
   if (rosterError) {
-    return { error: 'শিক্ষার্থীর তালিকা পড়া যায়নি। আবার চেষ্টা করুন।' }
+    return { error: t.errors.rosterUnreadable }
   }
 
   const billable = (enrollments ?? [])
@@ -124,10 +140,7 @@ export async function generateInvoices(
     .filter((e) => Number.isFinite(e.fee) && e.fee > 0)
 
   if (billable.length === 0) {
-    return {
-      error:
-        'ইনভয়েস তৈরি করার মতো কিছু নেই। ব্যাচে মাসিক ফি বসানো আছে কি না দেখুন।',
-    }
+    return { error: t.errors.nothingToBill }
   }
 
   // ignoreDuplicates makes this an insert-what-is-missing rather than an
@@ -149,7 +162,7 @@ export async function generateInvoices(
     .select('id, amount_bdt')
 
   if (insertError) {
-    return { error: 'ইনভয়েস তৈরি হয়নি। আবার চেষ্টা করুন।' }
+    return { error: t.errors.invoicesFailed }
   }
 
   const count = inserted?.length ?? 0
@@ -159,12 +172,10 @@ export async function generateInvoices(
   revalidatePath('/dashboard')
 
   if (count === 0) {
-    return { ok: 'এই মাসের সব ইনভয়েস আগেই তৈরি করা হয়েছে। নতুন কিছু যোগ হয়নি।' }
+    return { ok: t.invoicesAllExisted }
   }
 
-  return {
-    ok: `${count}টি ইনভয়েস তৈরি হয়েছে — মোট ${formatTaka(total)}।`,
-  }
+  return { ok: t.invoicesCreated(count, formatTaka(total)) }
 }
 
 /**
@@ -186,16 +197,18 @@ export async function recordPayment(
   const session = await feeAdmin()
   if (!isSession(session)) return session
 
+  const t = dict(session.locale).fees
+
   const invoiceId = String(formData.get('invoiceId') ?? '')
-  if (!invoiceId) return { error: 'কোন ইনভয়েস, তা পাওয়া যায়নি।' }
+  if (!invoiceId) return { error: t.errors.noInvoice }
 
   const amount = parseTaka(String(formData.get('amount') ?? ''))
-  if (amount === null) return { error: 'টাকার পরিমাণ ঠিকভাবে লিখুন।' }
-  if (amount === 0) return { error: 'টাকার পরিমাণ শূন্য হতে পারে না।' }
+  if (amount === null) return { error: t.errors.amountUnreadable }
+  if (amount === 0) return { error: t.errors.amountZero }
   // Refunds exist in the schema as negative payments and the board's arithmetic
   // handles them, but there is no refund button yet, so a negative here is a
   // mistyped amount rather than an intention.
-  if (amount < 0) return { error: 'টাকার পরিমাণ শূন্যের বেশি হতে হবে।' }
+  if (amount < 0) return { error: t.errors.amountNegative }
 
   const rawMethod = String(formData.get('method') ?? 'cash') as PaymentMethod
   const method = METHODS.has(rawMethod) ? rawMethod : 'cash'
@@ -224,8 +237,8 @@ export async function recordPayment(
   // actually be null — both are NOT NULL on fee_invoices — but a missing one
   // would mean the row is not what we think it is, and that is the same answer
   // as not finding it.
-  if (!invoice?.id || !invoice.student_id) return { error: 'ইনভয়েসটি পাওয়া যায়নি।' }
-  if (invoice.voided_at) return { error: 'এই ইনভয়েসটি বাতিল করা হয়েছে।' }
+  if (!invoice?.id || !invoice.student_id) return { error: t.errors.invoiceMissing }
+  if (invoice.voided_at) return { error: t.errors.invoiceVoided }
 
   const { error: paymentError } = await supabase.from('fee_payments').insert({
     coaching_center_id: session.active.centerId,
@@ -239,7 +252,7 @@ export async function recordPayment(
   })
 
   if (paymentError) {
-    return { error: 'টাকা জমা হয়নি। আবার চেষ্টা করুন।' }
+    return { error: t.errors.paymentFailed }
   }
 
   revalidatePath('/fees')
@@ -248,23 +261,27 @@ export async function recordPayment(
 
   const wasOwed = Number(invoice.remaining_bdt ?? 0)
   const stillOwed = sumTaka([wasOwed, -amount])
-  const name = invoice.student_name ?? 'শিক্ষার্থী'
+  // A view cannot prove student_name is not null, though fee_invoices says it is.
+  // 'অজানা' beside a figure is visibly wrong and gets asked about; 'undefined' is
+  // not a word in either language.
+  const name = invoice.student_name ?? dict(session.locale).common.unknown
+  const paid = formatTaka(amount)
 
   if (stillOwed > 0) {
     return {
-      ok: `${name} — ${formatTaka(amount)} জমা হয়েছে।`,
-      warn: `এখনো ${formatTaka(stillOwed)} বাকি আছে।`,
+      ok: t.received(name, paid),
+      warn: t.stillOwed(formatTaka(stillOwed)),
     }
   }
 
   if (stillOwed < 0) {
     return {
-      ok: `${name} — ${formatTaka(amount)} জমা হয়েছে।`,
-      warn: `প্রয়োজনের চেয়ে ${formatTaka(-stillOwed)} বেশি জমা হয়েছে। ভুল হলে এখনই দেখে নিন।`,
+      ok: t.received(name, paid),
+      warn: t.overpaid(formatTaka(-stillOwed)),
     }
   }
 
-  return { ok: `${name} — ${formatTaka(amount)} জমা হয়েছে। ফি সম্পূর্ণ পরিশোধ ✓` }
+  return { ok: t.receivedInFull(name, paid) }
 }
 
 /* -------------------------------------------------------------------------- */

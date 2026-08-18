@@ -1,22 +1,27 @@
 import Link from 'next/link'
 
 import { Card } from '@/components/ui'
-import { requireRole } from '@/lib/auth/session'
+import { requireRole, getSession } from '@/lib/auth/session'
 import { createClient } from '@/lib/supabase/server'
 import { todayInDhaka, addDays, formatMonth } from '@/lib/bd/time'
 import { normalizeBdMobile } from '@/lib/bd/phone'
 import { sumTaka, formatTaka } from '@/lib/money'
 import {
   chaseDecision,
-  STAGE_LABEL_BN,
-  STAGE_NOTE_BN,
   STAGE_ORDER,
   type ReminderStage,
 } from '@/lib/fees/reminder-schedule'
+import { dict, DEFAULT_LOCALE } from '@/lib/i18n'
 import { ReminderList, type ChaseGroup, type ChaseRow } from '../reminder-list'
 import type { ReminderCenter } from '../reminder-chips'
 
-export const metadata = { title: 'আজকের রিমাইন্ডার — CoachDesk' }
+/** getSession, not requireRole — see the note on teach/page.tsx's own. */
+export async function generateMetadata() {
+  const session = await getSession()
+  return {
+    title: `${dict(session?.locale ?? DEFAULT_LOCALE).reminders.title} — CoachDesk`,
+  }
+}
 
 /** One line — supabase-js parses this at the type level and only from a literal. */
 const COLUMNS = 'id, student_name, student_code, remaining_bdt, due_date, period_month, guardian_phone, sms_opt_out'
@@ -46,6 +51,9 @@ export default async function RemindersPage() {
   const session = await requireRole('manager')
   const supabase = await createClient()
   const today = todayInDhaka()
+  const locale = session.locale
+  const d = dict(locale)
+  const t = d.reminders
 
   const [{ data: owing }, { data: centerRow }] = await Promise.all([
     supabase
@@ -121,13 +129,16 @@ export default async function RemindersPage() {
 
     const row: ChaseRow = {
       id,
-      name: invoice.student_name ?? 'অজানা',
+      name: invoice.student_name ?? d.common.unknown,
       studentCode: invoice.student_code,
       remaining: Number(invoice.remaining_bdt ?? 0),
       dueDate,
       daysLate: decision.daysLate,
       periodMonth: invoice.period_month ?? `${dueDate.slice(0, 7)}-01`,
-      monthLabel: formatMonth(invoice.period_month ?? `${dueDate.slice(0, 7)}-01`),
+      monthLabel: formatMonth(
+        invoice.period_month ?? `${dueDate.slice(0, 7)}-01`,
+        locale,
+      ),
       cycle: decision.cycle,
       // Normalised here rather than trusted from the column: the deep links need
       // E.164, and a number entered before the validator existed may not be in it.
@@ -160,8 +171,8 @@ export default async function RemindersPage() {
     return [
       {
         stage,
-        label: STAGE_LABEL_BN[stage],
-        note: STAGE_NOTE_BN[stage],
+        label: t.stages[stage],
+        note: t.stageNotes[stage],
         rows: rows.sort(bySeverity),
       },
     ]
@@ -179,73 +190,80 @@ export default async function RemindersPage() {
   return (
     <div className="flex flex-col gap-5">
       <div>
-        <h1 className="text-xl font-bold text-ink">আজকের রিমাইন্ডার</h1>
-        <p className="mt-1 text-ink-soft">আজ কাদের মনে করিয়ে দেওয়ার কথা</p>
+        <h1 className="text-xl font-bold text-ink">{t.title}</h1>
+        <p className="mt-1 text-ink-soft">{t.subtitle}</p>
       </div>
 
       {due > 0 && (
         <Card className="border-brand-200 bg-brand-50">
-          <p className="text-sm font-medium text-brand-800">আজ মনে করাতে হবে</p>
+          <p className="text-sm font-medium text-brand-800">{t.dueTitle}</p>
+          {/* Still two nodes: the count is the largest thing on the screen and the
+              word beside it is not, so this one sentence keeps its markup where
+              the rest of the page gave it up. Both languages read
+              number-then-word. */}
           <p className="mt-1 text-brand-900">
             <span className="num text-4xl font-bold">{due}</span>
-            <span className="ml-2 font-semibold">জনকে</span>
+            <span className="ml-2 font-semibold">{t.people(due)}</span>
           </p>
           <p className="num mt-2 text-sm text-brand-800">
-            {formatTaka(atStake)} বাকি এই তালিকায়
+            {formatTaka(atStake)} {t.atStake}
           </p>
         </Card>
       )}
 
       {due === 0 && (
         <Card>
-          <p className="font-medium text-ink">আজ কাউকে মনে করানোর দরকার নেই</p>
+          <p className="font-medium text-ink">{t.noneTitle}</p>
           <p className="mt-1 text-sm text-ink-soft">
             {/* Three different situations, and an owner deserves to know which one
                 they are in. "Nothing to do" reads as a broken screen when they can
                 see twelve unpaid rows on the fee board. */}
             {invoices.length === 0
-              ? 'কোনো ফি বাকি নেই।'
+              ? t.noneNothingOwed
               : held > 0
-                ? 'যাদের বাকি আছে, সবাইকে সম্প্রতি বলা হয়েছে। কয়েক দিন সময় দিন।'
-                : 'যে ফি বাকি আছে, তার শেষ তারিখ এখনো আসেনি।'}
+                ? t.noneAllRecent
+                : t.noneNotDueYet}
           </p>
         </Card>
       )}
 
-      {groups.length > 0 && <ReminderList groups={groups} center={center} />}
+      {groups.length > 0 && (
+        <ReminderList
+          groups={groups}
+          center={center}
+          locale={locale}
+          words={{
+            t: d.chaseList,
+            chase: d.chase,
+            channels: d.channels,
+            common: d.common,
+          }}
+        />
+      )}
 
       {/* Counted, not listed. These are rows the owner has already dealt with, and
           the only thing worth saying about them is that they were not forgotten. */}
       {(held > 0 || waiting > 0) && (
-        <p className="text-sm text-ink-faint">
-          {held > 0 && (
-            <>
-              <span className="num">{held}</span> জনকে সম্প্রতি বলা হয়েছে
-            </>
-          )}
+        <p className="num text-sm text-ink-faint">
+          {held > 0 && t.heldCount(held)}
           {held > 0 && waiting > 0 && ' · '}
-          {waiting > 0 && (
-            <>
-              <span className="num">{waiting}</span> জনের শেষ তারিখ এখনো আসেনি
-            </>
-          )}
+          {waiting > 0 && t.waitingCount(waiting)}
         </p>
       )}
 
       {unreachable.length > 0 && (
         <Card>
-          <p className="font-medium text-ink">
-            <span className="num">{unreachable.length}</span> জনের অভিভাবকের নম্বর নেই
+          <p className="num font-medium text-ink">
+            {t.unreachableTitle(unreachable.length)}
           </p>
           <p className="mt-1 text-sm text-ink-soft">
-            নম্বর ছাড়া মনে করিয়ে দেওয়ার উপায় নেই —{' '}
-            {unreachable.map((r) => r.name).join(', ')}
+            {t.unreachableBody(unreachable.map((r) => r.name).join(', '))}
           </p>
           <Link
             href="/settings/students"
             className="mt-3 inline-flex min-h-tap items-center font-medium text-brand-700"
           >
-            নম্বর যোগ করুন →
+            {t.addNumbers} →
           </Link>
         </Card>
       )}
@@ -254,7 +272,7 @@ export default async function RemindersPage() {
         href="/fees"
         className="inline-flex min-h-tap items-center font-medium text-brand-700"
       >
-        ← ফি বোর্ডে ফিরুন
+        ← {t.backToBoard}
       </Link>
     </div>
   )

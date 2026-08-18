@@ -13,6 +13,7 @@ import {
 import { countChasesDue } from '@/lib/fees/reminder-schedule'
 import { ratesForDashboard } from '@/lib/attendance/rates'
 import { sumTaka, tallyOutstanding, formatTaka as taka } from '@/lib/money'
+import { dict } from '@/lib/i18n'
 import { ReminderEntry } from '@/app/(app)/fees/reminder-entry'
 import { AttendanceRates } from './attendance-rates'
 
@@ -204,7 +205,13 @@ export default async function DashboardPage() {
           else on the page. This is the one action on the owner's home screen that
           brings money in rather than reporting on it, and on a 375px phone that
           means it has to be reachable without a scroll. */}
-      {isAdmin && remainders.length > 0 && <ReminderEntry dueToday={dueToday} />}
+      {isAdmin && remainders.length > 0 && (
+        // The rest of this page is still Bangla-only — see the next task. The link
+        // is not: it is the fee worklist's own door, and a door that spoke a
+        // different language from the room would be the first thing an English
+        // reader distrusted.
+        <ReminderEntry dueToday={dueToday} t={dict(session.locale).reminders} />
+      )}
 
       <div className="grid grid-cols-3 gap-3">
         <Stat label="এ মাসে আদায়" value={taka(collected)} />

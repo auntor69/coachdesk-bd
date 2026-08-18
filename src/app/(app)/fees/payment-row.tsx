@@ -18,28 +18,48 @@
 import { useActionState, useEffect, useRef, useState } from 'react'
 
 import { Alert, Button, Field } from '@/components/ui'
-import { formatDate, toBanglaDigits } from '@/lib/bd/time'
+import { formatDate } from '@/lib/bd/time'
+import type { Locale, T } from '@/lib/i18n'
+import { fill } from '@/lib/i18n/fill'
 import { formatTaka as taka } from '@/lib/money'
-import type { FeeReminderChannel } from '@/lib/supabase/types'
+import type { FeeReminderChannel, PaymentMethod } from '@/lib/supabase/types'
 import { recordPayment, type FeeState } from './actions'
 import {
   ChaseChips,
-  CHANNEL_LABEL,
+  lateLabel,
   type ChaseTarget,
   type ReminderCenter,
 } from './reminder-chips'
 
 export type { ReminderCenter }
 
-/** Cash first, then the wallets an owner is actually handed money through. */
-const METHODS = [
-  { value: 'cash', label: 'নগদ টাকা' },
-  { value: 'bkash', label: 'বিকাশ' },
-  { value: 'nagad', label: 'নগদ' },
-  { value: 'rocket', label: 'রকেট' },
-  { value: 'bank_transfer', label: 'ব্যাংক' },
-  { value: 'other', label: 'অন্য' },
-] as const
+/**
+ * Cash first, then the wallets an owner is actually handed money through. Values
+ * only — the labels are looked up in the dictionary, so this stays one list in
+ * both languages and a wallet added to the enum without a label is a compile
+ * error rather than a blank chip.
+ */
+const METHODS: PaymentMethod[] = [
+  'cash',
+  'bkash',
+  'nagad',
+  'rocket',
+  'bank_transfer',
+  'other',
+]
+
+/**
+ * The four groups this row and its chips need. Not the locale's dictionary and not
+ * a provider: one group per component keeps the payload to the strings actually
+ * rendered, and the board ships one copy of these for the whole page however many
+ * rows are on it.
+ */
+type RowWords = {
+  t: T<'feeRow'>
+  chase: T<'chase'>
+  channels: T<'channels'>
+  common: T<'common'>
+}
 
 /**
  * A board row is a chase target plus the money the form needs. Extending rather
@@ -53,7 +73,7 @@ export type FeeRow = ChaseTarget & {
   discount: number
   net: number
   paid: number
-  /** 'আজ' / 'গতকাল' / a date, computed server-side. Null if never chased. */
+  /** "today" / "yesterday" / a date, written server-side. Null if never chased. */
   remindedDay: string | null
   remindedVia: FeeReminderChannel | null
 }
@@ -61,10 +81,20 @@ export type FeeRow = ChaseTarget & {
 export function PaymentRow({
   row,
   center,
+  locale,
+  words,
 }: {
   row: FeeRow
   center: ReminderCenter
+  /**
+   * For the date and the day count, which `formatDate` and `lateLabel` render in
+   * the reader's own numerals. Two bytes on the wire, and it buys this component
+   * the whole of lib/bd without either dictionary coming with it.
+   */
+  locale: Locale
+  words: RowWords
 }) {
+  const { t, chase, channels, common } = words
   const [state, formAction, pending] = useActionState<FeeState, FormData>(
     recordPayment,
     null,
@@ -96,22 +126,22 @@ export function PaymentRow({
               )}
             </p>
             <p className="text-sm text-ink-faint">
-              {formatDate(row.dueDate)}
+              {formatDate(row.dueDate, locale)}
               {/* Only while the money is still owed. Red is the colour that means
                   act on this, and a settled invoice needs no action — leaving the
                   warning on a paid row spends the owner's attention on the one
                   place it cannot be used. That the family paid late is a pattern
                   worth a report, not a badge that never goes away. */}
               {!settled && row.daysLate > 0 && (
-                <span className="font-medium text-absent">
-                  {' '}
-                  · <span className="num">{toBanglaDigits(row.daysLate)}</span> দিন দেরি
+                <span className="num font-medium text-absent">
+                  {' · '}
+                  {lateLabel(row.daysLate, locale, common)}
                 </span>
               )}
             </p>
             {row.paid !== 0 && !settled && (
               <p className="num text-sm text-ink-soft">
-                {taka(row.paid)} / {taka(row.net)} দেওয়া হয়েছে
+                {fill(t.paidOf, { paid: taka(row.paid), net: taka(row.net) })}
               </p>
             )}
           </div>
@@ -145,15 +175,16 @@ export function PaymentRow({
           {settled ? (
             <>
               <p className="num mt-2 text-sm text-ink-soft">
-                {taka(row.paid)} জমা হয়েছে · মোট {taka(row.net)}
-                {row.discount > 0 && ` (${taka(row.discount)} ছাড়)`}
+                {fill(t.settled, { paid: taka(row.paid), net: taka(row.net) })}
+                {row.discount > 0
+                  && ` ${fill(t.discount, { amount: taka(row.discount) })}`}
               </p>
               {/* Stated at the child's name, not just in the total at the top,
                   because this is where the owner looks when the parent asks
                   what happened to their extra hundred taka. */}
               {row.remaining < 0 && (
                 <p className="num mt-1 text-sm font-medium text-late">
-                  {taka(-row.remaining)} বেশি জমা আছে
+                  {fill(t.inCredit, { amount: taka(-row.remaining) })}
                 </p>
               )}
             </>
@@ -163,13 +194,19 @@ export function PaymentRow({
                   invoice is more often opened to chase it than to take money
                   that nobody has brought yet, and the form is six fields tall —
                   putting the chase under it means scrolling past all of them. */}
-              <Reminder row={row} center={center} />
+              <Reminder
+                row={row}
+                center={center}
+                t={t}
+                chase={chase}
+                channels={channels}
+              />
 
               <form ref={formRef} action={formAction} className="flex flex-col gap-3">
                 <input type="hidden" name="invoiceId" value={row.id} />
 
                 <Field
-                  label="কত টাকা জমা হলো"
+                  label={t.amount}
                   name="amount"
                   // Not type="number": it strips the thousands separator an owner
                   // may type and refuses Bangla digits outright, and parseTaka
@@ -183,14 +220,14 @@ export function PaymentRow({
                 />
 
                 <div className="flex flex-col gap-1.5">
-                  <span className="font-medium text-ink">কীভাবে</span>
+                  <span className="font-medium text-ink">{t.method}</span>
                   <div role="radiogroup" className="flex flex-wrap gap-2">
                     {METHODS.map((m) => (
                       <label
-                        key={m.value}
+                        key={m}
                         className={`inline-flex min-h-tap cursor-pointer items-center
                           rounded-xl border-2 px-4 font-medium transition-colors ${
-                            method === m.value
+                            method === m
                               ? 'border-brand-500 bg-brand-50 text-brand-800'
                               : 'border-line text-ink-soft'
                           }`}
@@ -198,12 +235,12 @@ export function PaymentRow({
                         <input
                           type="radio"
                           name="method"
-                          value={m.value}
-                          checked={method === m.value}
-                          onChange={() => setMethod(m.value)}
+                          value={m}
+                          checked={method === m}
+                          onChange={() => setMethod(m)}
                           className="sr-only"
                         />
-                        {m.label}
+                        {t.methods[m]}
                       </label>
                     ))}
                   </div>
@@ -211,7 +248,7 @@ export function PaymentRow({
 
                 {method !== 'cash' && (
                   <Field
-                    label="ট্রানজেকশন আইডি (ঐচ্ছিক)"
+                    label={`${t.reference} (${common.optional})`}
                     name="reference"
                     placeholder="8N7A6B5C4D"
                     maxLength={40}
@@ -220,7 +257,7 @@ export function PaymentRow({
                 )}
 
                 <Button type="submit" disabled={pending} full>
-                  {pending ? 'জমা হচ্ছে…' : 'জমা নিন'}
+                  {pending ? t.receiving : t.receive}
                 </Button>
               </form>
             </>
@@ -239,15 +276,27 @@ export function PaymentRow({
  * renders exactly the same three, and the message a family receives must not
  * depend on which screen the owner was standing on.
  */
-function Reminder({ row, center }: { row: FeeRow; center: ReminderCenter }) {
+function Reminder({
+  row,
+  center,
+  t,
+  chase,
+  channels,
+}: {
+  row: FeeRow
+  center: ReminderCenter
+  t: T<'feeRow'>
+  chase: T<'chase'>
+  channels: T<'channels'>
+}) {
   const [sentVia, setSentVia] = useState<FeeReminderChannel | null>(null)
 
-  const day = sentVia ? 'এইমাত্র' : row.remindedDay
+  const day = sentVia ? t.justNow : row.remindedDay
   const via = sentVia ?? row.remindedVia
 
   return (
     <div className="mb-4 border-b border-line pb-4">
-      <p className="font-medium text-ink">অভিভাবককে মনে করিয়ে দিন</p>
+      <p className="font-medium text-ink">{t.chaseTitle}</p>
 
       {/* No verb. Tapping the link proves the message was written and handed to
           the phone, not that a parent read it — and a call that rang out is
@@ -255,13 +304,19 @@ function Reminder({ row, center }: { row: FeeRow; center: ReminderCenter }) {
           WhatsApp. "সর্বশেষ: আজ · কল" claims exactly what is known. */}
       {day && (
         <p className="mt-0.5 text-sm text-ink-faint">
-          সর্বশেষ: {day}
-          {via && ` · ${CHANNEL_LABEL[via]}`}
+          {t.lastChase}: {day}
+          {via && ` · ${channels[via]}`}
         </p>
       )}
 
       <div className="mt-2">
-        <ChaseChips target={row} center={center} onSent={setSentVia} />
+        <ChaseChips
+          target={row}
+          center={center}
+          onSent={setSentVia}
+          t={chase}
+          channels={channels}
+        />
       </div>
     </div>
   )

@@ -23,18 +23,12 @@
  */
 import Link from 'next/link'
 
+import { digits } from '@/lib/bd/time'
+import type { Locale, T } from '@/lib/i18n'
+import { fill } from '@/lib/i18n/fill'
 import { buildFeeReminderSms, buildFeeReminderText } from '@/lib/sms/templates'
 import type { FeeReminderChannel, PayoutWallet } from '@/lib/supabase/types'
 import { logFeeReminder } from './actions'
-
-/**
- * "এসএমএস" rather than the formal "খুদেবার্তা", which nobody says out loud.
- */
-export const CHANNEL_LABEL: Record<FeeReminderChannel, string> = {
-  sms: 'এসএমএস',
-  whatsapp: 'হোয়াটসঅ্যাপ',
-  call: 'কল',
-}
 
 /**
  * The centre-level facts every reminder needs: who is asking, and where the money
@@ -72,6 +66,27 @@ const CHIP =
   ' font-medium text-ink-soft transition-colors active:bg-brand-50'
 
 /**
+ * "9 days late", in the reader's language and numerals.
+ *
+ * Here rather than in either row component because both of them show it, about the
+ * same invoice, and a family that is nine days late on the board must not be eight
+ * on the worklist. This module is already the one thing the two screens share.
+ *
+ * The singular is a separate string rather than a plural rule: English needs one
+ * ("1 days late" is the first thing a teacher notices), Bangla does not, and a
+ * `{n}` template — which is what a client component can use, see lib/i18n/fill —
+ * cannot branch on its own value.
+ */
+export function lateLabel(
+  daysLate: number,
+  locale: Locale,
+  t: T<'common'>,
+): string {
+  if (daysLate === 1) return t.dayLate
+  return fill(t.daysLate, { n: digits(daysLate, locale) })
+}
+
+/**
  * Tapping does not wait for the log. The link navigates, the phone switches to
  * its messaging app, and the write lands in the background — an owner should
  * never watch a spinner between deciding to chase someone and being able to.
@@ -80,15 +95,23 @@ const CHIP =
  * optimistically. Both callers use it to stop asking for the same message twice,
  * and a badge that appeared when the write had failed would do the opposite of
  * that. The delay is invisible on a phone, which has already switched apps.
+ *
+ * The words come from whichever parent rendered this, in that reader's language.
+ * The *message* does not: it is built in Bangla for a guardian who has no account
+ * here and so no language on file. See lib/sms/templates.ts.
  */
 export function ChaseChips({
   target,
   center,
   onSent,
+  t,
+  channels,
 }: {
   target: ChaseTarget
   center: ReminderCenter
   onSent?: (channel: FeeReminderChannel) => void
+  t: T<'chase'>
+  channels: T<'channels'>
 }) {
   const input = {
     studentName: target.name,
@@ -123,9 +146,9 @@ export function ChaseChips({
   if (phone === null) {
     return (
       <p className="text-sm text-ink-soft">
-        অভিভাবকের নম্বর নেই।{' '}
+        {t.noNumber}{' '}
         <Link href="/settings/students" className="font-medium text-brand-700">
-          যোগ করে নিন
+          {t.addNumber}
         </Link>
       </p>
     )
@@ -148,7 +171,7 @@ export function ChaseChips({
               onClick={() => log('sms', smsBody)}
               className={CHIP}
             >
-              {CHANNEL_LABEL.sms}
+              {channels.sms}
             </a>
             <a
               // wa.me wants the number without the +.
@@ -158,19 +181,17 @@ export function ChaseChips({
               onClick={() => log('whatsapp', chatBody)}
               className={CHIP}
             >
-              {CHANNEL_LABEL.whatsapp}
+              {channels.whatsapp}
             </a>
           </>
         )}
         <a href={`tel:${phone}`} onClick={() => log('call', null)} className={CHIP}>
-          {CHANNEL_LABEL.call}
+          {channels.call}
         </a>
       </div>
 
       {target.smsOptOut && (
-        <p className="mt-2 text-sm text-ink-faint">
-          এই পরিবার এসএমএস পেতে চায় না — ফোন করা যাবে।
-        </p>
+        <p className="mt-2 text-sm text-ink-faint">{t.optedOut}</p>
       )}
     </>
   )

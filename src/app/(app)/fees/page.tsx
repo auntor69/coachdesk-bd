@@ -1,5 +1,5 @@
 import { Card } from '@/components/ui'
-import { requireRole } from '@/lib/auth/session'
+import { requireRole, getSession } from '@/lib/auth/session'
 import { createClient } from '@/lib/supabase/server'
 import {
   todayInDhaka,
@@ -12,12 +12,17 @@ import {
 import { normalizeBdMobile } from '@/lib/bd/phone'
 import { sumTaka, tallyOutstanding, formatTaka } from '@/lib/money'
 import { countChasesDue } from '@/lib/fees/reminder-schedule'
+import { dict, DEFAULT_LOCALE, type Locale } from '@/lib/i18n'
 import type { FeeReminderChannel } from '@/lib/supabase/types'
 import { InvoiceGenerator } from './invoice-generator'
 import { PaymentRow, type FeeRow, type ReminderCenter } from './payment-row'
 import { ReminderEntry } from './reminder-entry'
 
-export const metadata = { title: 'ফি — CoachDesk' }
+/** getSession, not requireRole — see the note on teach/page.tsx's own. */
+export async function generateMetadata() {
+  const session = await getSession()
+  return { title: `${dict(session?.locale ?? DEFAULT_LOCALE).fees.title} — CoachDesk` }
+}
 
 /**
  * One line, not a concatenation. supabase-js parses the select string at the
@@ -52,6 +57,9 @@ export default async function FeesPage() {
   const supabase = await createClient()
   const today = todayInDhaka()
   const thisMonth = currentPeriodMonth()
+  const locale = session.locale
+  const d = dict(locale)
+  const t = d.fees
 
   const [
     { data: owing },
@@ -112,11 +120,11 @@ export default async function FeesPage() {
   // seen for an invoice is its latest reminder, so every later one is skipped.
   //
   // Two things come out of the same map. The row wants a label a person would say
-  // ("আজ", "গতকাল"); the reminder schedule wants the Dhaka calendar day, because
-  // whether a family may be messaged again turns on which day it was — and the
-  // month-bounded query above is wide enough for that: a stage window is never
-  // more than a fortnight long, so any reminder recent enough to close one is well
-  // inside it.
+  // ("আজ", "yesterday"); the reminder schedule wants the Dhaka calendar day,
+  // because whether a family may be messaged again turns on which day it was —
+  // and the month-bounded query above is wide enough for that: a stage window is
+  // never more than a fortnight long, so any reminder recent enough to close one
+  // is well inside it.
   const lastChase = new Map<
     string,
     { on: string; day: string; via: FeeReminderChannel }
@@ -124,7 +132,11 @@ export default async function FeesPage() {
   for (const r of chased ?? []) {
     if (!r.invoice_id || lastChase.has(r.invoice_id)) continue
     const on = todayInDhaka(new Date(r.created_at))
-    lastChase.set(r.invoice_id, { on, day: dayLabel(on, today), via: r.channel })
+    lastChase.set(r.invoice_id, {
+      on,
+      day: dayLabel(on, today, locale, t),
+      via: r.channel,
+    })
   }
 
   // Longest overdue first, then largest amount — the order an owner works down
@@ -132,7 +144,7 @@ export default async function FeesPage() {
   // so a row that has just been paid keeps its React state and its confirmation
   // message instead of being unmounted by the revalidation that follows.
   const rows = [...(owing ?? []), ...(settled ?? [])]
-    .map(toRow(today, lastChase))
+    .map(toRow(today, lastChase, d.common.unknown))
     .sort(
       (a, b) =>
         Number(b.remaining > 0) - Number(a.remaining > 0)
@@ -169,7 +181,7 @@ export default async function FeesPage() {
   // list is the same on both sides of hydration.
   const months = [-1, 0, 1].map((delta) => {
     const value = addMonths(thisMonth, delta)
-    return { value, label: formatMonth(value) }
+    return { value, label: formatMonth(value, locale) }
   })
 
   const centerPay: ReminderCenter = {
@@ -181,29 +193,33 @@ export default async function FeesPage() {
   return (
     <div className="flex flex-col gap-5">
       <div>
-        <h1 className="text-xl font-bold text-ink">ফি</h1>
-        <p className="mt-1 text-ink-soft">কে দিয়েছে, কার বাকি</p>
+        <h1 className="text-xl font-bold text-ink">{t.title}</h1>
+        <p className="mt-1 text-ink-soft">{t.subtitle}</p>
       </div>
 
       <Card className="border-brand-200 bg-brand-50">
-        <p className="text-sm font-medium text-brand-800">মোট বকেয়া</p>
+        <p className="text-sm font-medium text-brand-800">{t.outstanding}</p>
         <p className="num mt-1 text-4xl font-bold text-brand-900">
           {formatTaka(outstanding)}
         </p>
-        <p className="mt-2 text-sm text-brand-800">
-          <span className="num">{unpaid.length}</span> জনের বাকি ·{' '}
-          <span className="num">{overdue.length}</span> জনের সময় পেরিয়ে গেছে
+        {/* Two counts of people, so both stay in ASCII in either language — the
+            owner reads them next to money they will reconcile against a wallet
+            statement, and a figure that changes script between screens is a
+            figure they have to translate before they can trust it. `.num` on the
+            paragraph does the alignment for both. */}
+        <p className="num mt-2 text-sm text-brand-800">
+          {t.unpaidCount(unpaid.length)} · {t.overdueCount(overdue.length)}
         </p>
         {collected > 0 && (
           <p className="mt-1 text-sm text-brand-800">
-            এই মাসে জমা হয়েছে{' '}
+            {t.collectedThisMonth}{' '}
             <span className="num font-semibold">{formatTaka(collected)}</span>
           </p>
         )}
         {credit > 0 && (
           <p className="mt-1 text-sm text-brand-800">
-            <span className="num font-semibold">{formatTaka(credit)}</span> বেশি
-            জমা আছে
+            <span className="num font-semibold">{formatTaka(credit)}</span>{' '}
+            {t.inCredit}
           </p>
         )}
       </Card>
@@ -212,25 +228,41 @@ export default async function FeesPage() {
         months={months}
         defaultMonth={thisMonth}
         openByDefault={rows.length === 0}
+        locale={locale}
+        t={d.invoices}
+        common={d.common}
       />
 
       {/* Only once something is owed. On an all-paid board it would be a link to
           a screen that can only say "nothing to do", which the empty board
           already says. */}
-      {unpaid.length > 0 && <ReminderEntry dueToday={dueToday} />}
+      {unpaid.length > 0 && (
+        <ReminderEntry dueToday={dueToday} t={d.reminders} />
+      )}
 
       {rows.length === 0 ? (
         <Card>
-          <p className="font-medium text-ink">এখনো কোনো ইনভয়েস নেই</p>
-          <p className="mt-1 text-sm text-ink-soft">
-            উপরের বোতাম দিয়ে এই মাসের ইনভয়েস তৈরি করুন। প্রতিটি চালু ভর্তির জন্য
-            একটি ইনভয়েস তৈরি হবে, ব্যাচের মাসিক ফি অনুযায়ী।
-          </p>
+          <p className="font-medium text-ink">{t.emptyTitle}</p>
+          <p className="mt-1 text-sm text-ink-soft">{t.emptyBody}</p>
         </Card>
       ) : (
         <ul className="flex flex-col gap-2">
           {rows.map((row) => (
-            <PaymentRow key={row.id} row={row} center={centerPay} />
+            <PaymentRow
+              key={row.id}
+              row={row}
+              center={centerPay}
+              locale={locale}
+              // One object built once for the whole board. Four groups of words
+              // reach every row, and React sends each distinct value down once
+              // however many rows share it.
+              words={{
+                t: d.feeRow,
+                chase: d.chase,
+                channels: d.channels,
+                common: d.common,
+              }}
+            />
           ))}
         </ul>
       )}
@@ -264,12 +296,14 @@ type ViewRow = {
 function toRow(
   today: string,
   lastChase: Map<string, { on: string; day: string; via: FeeReminderChannel }>,
+  /** `common.unknown`, in the reader's language. See below for why not ''. */
+  unknown: string,
 ) {
   return (v: ViewRow): FeeRow => {
     const chase = v.id ? lastChase.get(v.id) : undefined
     return {
       id: v.id ?? '',
-      name: v.student_name ?? 'অজানা',
+      name: v.student_name ?? unknown,
       studentCode: v.student_code,
       billed: Number(v.amount_bdt ?? 0),
       discount: Number(v.discount_bdt ?? 0),
@@ -304,13 +338,22 @@ function toRow(
  * reminder sent at 1am Dhaka would read as yesterday. The caller has already made
  * that conversion once for the schedule, and doing it twice invites the two
  * answers to differ.
+ *
+ * Two words and a date formatter rather than a lookup at the point of use, because
+ * the answer travels into a client component as a finished string — the row shows
+ * it under "last chased" and has no way to re-derive it.
  */
-function dayLabel(date: string, today: string): string {
+function dayLabel(
+  date: string,
+  today: string,
+  locale: Locale,
+  t: { today: string; yesterday: string },
+): string {
   if (!date) return ''
   const gap = daysBetween(date, today)
   // Future is clock skew between the browser, the server and Postgres, and the
   // useful answer for a row stamped a few seconds ahead is still "today".
-  if (gap <= 0) return 'আজ'
-  if (gap === 1) return 'গতকাল'
-  return formatDate(date)
+  if (gap <= 0) return t.today
+  if (gap === 1) return t.yesterday
+  return formatDate(date, locale)
 }

@@ -14,16 +14,26 @@
 import { useActionState } from 'react'
 
 import { Alert, Button } from '@/components/ui'
+import { digits } from '@/lib/bd/time'
+import type { Locale, T } from '@/lib/i18n'
+import { fill } from '@/lib/i18n/fill'
 import { generateInvoices, type FeeState } from './actions'
 
 export function InvoiceGenerator({
   months,
   defaultMonth,
   openByDefault,
+  locale,
+  t,
+  common,
 }: {
   months: { value: string; label: string }[]
   defaultMonth: string
   openByDefault: boolean
+  /** For the 28 day numbers, which a Bangla reader expects in Bangla numerals. */
+  locale: Locale
+  t: T<'invoices'>
+  common: T<'common'>
 }) {
   const [state, formAction, pending] = useActionState<FeeState, FormData>(
     generateInvoices,
@@ -36,7 +46,7 @@ export function InvoiceGenerator({
       className="rounded-2xl border border-line bg-white px-5 py-4"
     >
       <summary className="cursor-pointer list-none font-semibold text-brand-700">
-        + মাসের ইনভয়েস তৈরি করুন
+        {t.open}
       </summary>
 
       <form action={formAction} className="mt-4 flex flex-col gap-3">
@@ -49,7 +59,7 @@ export function InvoiceGenerator({
 
         <div className="flex flex-col gap-1.5">
           <label htmlFor="periodMonth" className="font-medium text-ink">
-            কোন মাসের
+            {t.month}
           </label>
           <select
             id="periodMonth"
@@ -68,11 +78,9 @@ export function InvoiceGenerator({
 
         <div className="flex flex-col gap-1.5">
           <label htmlFor="dueDay" className="font-medium text-ink">
-            শেষ তারিখ
+            {t.dueDay}
           </label>
-          <span className="text-sm text-ink-soft">
-            মাসের কত তারিখের মধ্যে ফি দিতে হবে
-          </span>
+          <span className="text-sm text-ink-soft">{t.dueDayHint}</span>
           <select
             id="dueDay"
             name="dueDay"
@@ -85,20 +93,17 @@ export function InvoiceGenerator({
                 quietly moving it. */}
             {Array.from({ length: 28 }, (_, i) => i + 1).map((d) => (
               <option key={d} value={d}>
-                {d} তারিখ
+                {fill(t.dayOption, { d: digits(d, locale) })}
               </option>
             ))}
           </select>
         </div>
 
         <Button type="submit" disabled={pending} full>
-          {pending ? 'তৈরি হচ্ছে…' : 'ইনভয়েস তৈরি করুন'}
+          {pending ? common.creating : t.submit}
         </Button>
 
-        <p className="text-sm text-ink-faint">
-          প্রতিটি চালু ভর্তির জন্য একটি ইনভয়েস। আগে তৈরি হয়ে থাকলে আবার তৈরি হবে
-          না — তাই দুইবার চাপলেও সমস্যা নেই।
-        </p>
+        <p className="text-sm text-ink-faint">{t.safeToRepeat}</p>
       </form>
     </details>
   )
