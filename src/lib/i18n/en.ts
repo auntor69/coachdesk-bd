@@ -59,4 +59,57 @@ export const en: Dictionary = {
     late: 'Late',
     excused: 'Excused',
   },
+
+  teach: {
+    title: 'Today’s classes',
+    pending: (n: number) =>
+      `${n} ${n === 1 ? 'batch' : 'batches'} still to mark today`,
+    allTaken: 'All of today’s attendance is taken',
+    noClassToday: 'No classes today',
+    firstBatchTitle: 'Make a batch to get started',
+    firstBatchBody:
+      'A batch is a class at a set time — say “7am Maths”. Once a batch exists you can add students to it.',
+    addBatch: 'Add batch',
+    students: (n: number) => `${n} ${n === 1 ? 'student' : 'students'}`,
+    /**
+     * The same as `students`: Bangla shortens to জন on the narrow row and English
+     * has nothing shorter than the word itself. Kept as two keys so the Bangla
+     * side can stay short without the English side inventing an abbreviation.
+     */
+    studentsShort: (n: number) => `${n} ${n === 1 ? 'student' : 'students'}`,
+    /**
+     * 'Mark' and not 'Take attendance': the badge sits beside a batch name that
+     * is already truncating at 375px. 'Taken' answers it — the two are four
+     * characters apart, which is enough when one is a filled button.
+     */
+    taken: 'Taken',
+    take: 'Mark',
+    otherBatches: 'Batches with no class today',
+
+    rosterTitle: 'Attendance',
+    pastDate: 'past date',
+    noStudentsTitle: 'No students in this batch',
+    noStudentsBody: 'Add students and you can mark their attendance here.',
+
+    saved: (n: number) =>
+      `Attendance saved — ${n} ${n === 1 ? 'student' : 'students'}`,
+    rowLabel: (name: string) => `${name} — attendance`,
+    saveFor: (batch: string) => `${batch} — Save attendance`,
+
+    errors: {
+      forbidden: 'You do not have permission to do this.',
+      noBatch: 'Batch not found.',
+      noStudents: 'No students were sent.',
+      rosterUnreadable: 'Could not read the student list.',
+      emptyBatch: 'This batch has no students.',
+      saveFailed: 'Attendance was not saved. Please try again.',
+    },
+  },
+
+  roster: {
+    alreadyTaken:
+      'This batch already has attendance for this date. Saving again replaces what was there.',
+    note: 'Note',
+    notePlaceholder: 'e.g. class ended early for a holiday',
+  },
 }

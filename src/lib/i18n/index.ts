@@ -39,5 +39,47 @@ export function dict(locale: Locale): Dictionary {
  * honest — a component asking for `T<'shell'>` cannot be handed everything by
  * accident, and a reader of the component's signature can see exactly which
  * strings cross the wire for it.
+ *
+ * Count-dependent strings are functions, and a function cannot cross into a
+ * client component: React refuses to serialise it. So `T` maps them to `never`,
+ * which makes `t={d.roster}` fail at the JSX attribute and names the offending
+ * key. Without that, the failure is a runtime error on the first render of the
+ * screen — `tsc`, `npm test` and `next build` all pass, and the register 500s on
+ * a teacher's phone with a class waiting. Ask a plural of the server instead:
+ * resolve it in the page, or return the finished sentence from the action.
  */
-export type T<K extends keyof Dictionary> = Dictionary[K]
+export type T<K extends keyof Dictionary> = Wire<Dictionary[K]>
+
+/** A group with every function leaf poisoned. See `T`. */
+type Wire<G> = {
+  [K in keyof G]: G[K] extends (...args: never[]) => unknown
+    ? never
+    : G[K] extends object
+      ? Wire<G[K]>
+      : G[K]
+}
+
+/**
+ * The right name for a row the centre typed themselves.
+ *
+ * Subjects and exam types carry two names: `name`, which is required, and
+ * `name_bn`, which is optional — the settings form asks for "নাম" and then
+ * "বাংলা নাম (ঐচ্ছিক)". So a Bangla reader wants `name_bn` and falls back to
+ * `name`, and an English reader wants the reverse. Neither direction may return
+ * empty when the other column has something in it: a batch row reading
+ * "Class 9 · " with a missing subject looks like a bug in the app rather than a
+ * blank the owner left.
+ *
+ * Not part of the dictionary. The dictionary is what the app says; this is what
+ * the centre said, and no amount of translation work will fill in a Bangla name
+ * the owner never typed.
+ */
+export function localName(
+  row: { name?: string | null; name_bn?: string | null } | null | undefined,
+  locale: Locale,
+): string {
+  if (!row) return ''
+  return (locale === 'en'
+    ? row.name || row.name_bn
+    : row.name_bn || row.name) ?? ''
+}

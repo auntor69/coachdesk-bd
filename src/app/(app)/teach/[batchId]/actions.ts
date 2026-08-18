@@ -12,12 +12,13 @@
 import { revalidatePath } from 'next/cache'
 
 import { createClient } from '@/lib/supabase/server'
-import { requireRole, AuthError } from '@/lib/auth/session'
+import { requireRole, getSession, AuthError } from '@/lib/auth/session'
 import { todayInDhaka } from '@/lib/bd/time'
+import { dict, DEFAULT_LOCALE } from '@/lib/i18n'
 import type { AttendanceStatus } from '@/lib/supabase/types'
 
 export type SaveState =
-  | { ok: true; savedAt: string; count: number }
+  | { ok: true; savedAt: string; message: string }
   | { ok: false; error: string }
   | null
 
@@ -42,16 +43,26 @@ export async function saveAttendance(
     session = await requireRole('teacher')
   } catch (err) {
     if (err instanceof AuthError) {
-      return { ok: false, error: 'আপনার এই কাজের অনুমতি নেই।' }
+      // No session at all, or one whose role is wrong — either way there is no
+      // `session.locale` to read. getSession is memoised per request and was
+      // already called by requireRole above, so this is free.
+      const caller = await getSession()
+      const d = dict(caller?.locale ?? DEFAULT_LOCALE)
+      return { ok: false, error: d.teach.errors.forbidden }
     }
     throw err
   }
+
+  // The whole group, not just `errors`: the count in the success line is a plural
+  // in English and a bare number in Bangla, so the sentence is written here and
+  // travels finished. A function cannot cross into the register to write it there.
+  const t = dict(session.locale).teach
 
   const batchId = String(formData.get('batchId') ?? '')
   const rawDate = String(formData.get('sessionDate') ?? '')
   const note = String(formData.get('note') ?? '').trim()
 
-  if (!batchId) return { ok: false, error: 'ব্যাচ পাওয়া যায়নি।' }
+  if (!batchId) return { ok: false, error: t.errors.noBatch }
 
   // The date comes from the form so a teacher can backfill yesterday, which
   // means it cannot be trusted. Anything unparseable becomes today; a date in
@@ -72,7 +83,7 @@ export async function saveAttendance(
   }
 
   if (marks.length === 0) {
-    return { ok: false, error: 'কোনো শিক্ষার্থী পাওয়া যায়নি।' }
+    return { ok: false, error: t.errors.noStudents }
   }
 
   const supabase = await createClient()
@@ -87,14 +98,14 @@ export async function saveAttendance(
     .eq('status', 'active')
 
   if (rosterError) {
-    return { ok: false, error: 'শিক্ষার্থীর তালিকা পড়া যায়নি।' }
+    return { ok: false, error: t.errors.rosterUnreadable }
   }
 
   const validIds = new Set((enrollments ?? []).map((e) => e.id))
   const accepted = marks.filter((m) => validIds.has(m.enrollmentId))
 
   if (accepted.length === 0) {
-    return { ok: false, error: 'এই ব্যাচে কোনো শিক্ষার্থী নেই।' }
+    return { ok: false, error: t.errors.emptyBatch }
   }
 
   // The teacher row for this user in this centre, so the session records who
@@ -127,7 +138,7 @@ export async function saveAttendance(
     .single()
 
   if (sessionError || !attendanceSession) {
-    return { ok: false, error: 'হাজিরা সেভ হয়নি। আবার চেষ্টা করুন।' }
+    return { ok: false, error: t.errors.saveFailed }
   }
 
   const { error: recordsError } = await supabase.from('attendance_records').upsert(
@@ -142,7 +153,7 @@ export async function saveAttendance(
   )
 
   if (recordsError) {
-    return { ok: false, error: 'হাজিরা সেভ হয়নি। আবার চেষ্টা করুন।' }
+    return { ok: false, error: t.errors.saveFailed }
   }
 
   // The teacher list shows a "taken" badge per batch, and the dashboard counts
@@ -150,5 +161,5 @@ export async function saveAttendance(
   revalidatePath('/teach')
   revalidatePath('/dashboard')
 
-  return { ok: true, savedAt: sessionDate, count: accepted.length }
+  return { ok: true, savedAt: sessionDate, message: t.saved(accepted.length) }
 }

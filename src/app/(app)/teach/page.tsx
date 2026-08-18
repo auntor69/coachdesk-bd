@@ -2,12 +2,27 @@ import Link from 'next/link'
 
 import { Card } from '@/components/ui'
 import { greetingFor } from '@/components/app-shell'
-import { requireCenter } from '@/lib/auth/session'
+import { requireCenter, getSession } from '@/lib/auth/session'
 import { createClient } from '@/lib/supabase/server'
 import { BatchSlot } from '@/lib/bd/schedule'
 import { todayInDhaka, dhakaDayOfWeek } from '@/lib/bd/time'
+import { dict, localName, DEFAULT_LOCALE } from '@/lib/i18n'
 
-export const metadata = { title: 'আজকের ক্লাস — CoachDesk' }
+/**
+ * A page title has to read the session, and `export const metadata` cannot —
+ * it is evaluated without a request. `generateMetadata` can, and costs nothing
+ * extra: `getSession` is wrapped in React `cache()`, so the page below reuses
+ * the same result rather than asking Supabase twice.
+ *
+ * `getSession` and not `requireCenter`: the require* helpers throw, and a throw
+ * here would turn the layout's redirect-to-login into a 500. A title is not an
+ * authorization boundary — the layout redirects, the page re-derives, and a
+ * visitor who never gets to see this screen gets a default-language title.
+ */
+export async function generateMetadata() {
+  const session = await getSession()
+  return { title: `${dict(session?.locale ?? DEFAULT_LOCALE).teach.title} — CoachDesk` }
+}
 
 /**
  * A teacher's home: today's batches, each one tap from attendance.
@@ -22,6 +37,8 @@ export default async function TeachPage() {
   const supabase = await createClient()
   const today = todayInDhaka()
   const dow = dhakaDayOfWeek()
+  const locale = session.locale
+  const t = dict(locale).teach
 
   // RLS narrows this to batches this teacher actually teaches; an owner in
   // Teacher Mode sees all of their own center's batches, which is correct.
@@ -56,7 +73,7 @@ export default async function TeachPage() {
     return {
       id: batch.id,
       name: batch.name,
-      subjectName: subject?.name_bn || subject?.name || '',
+      subjectName: localName(subject, locale),
       slot: batch.slot,
       startTime: todaySchedule?.start_time ?? batch.start_time,
       endTime: todaySchedule?.end_time ?? batch.end_time,
@@ -77,26 +94,23 @@ export default async function TeachPage() {
         <h1 className="text-xl font-bold text-ink">{greetingFor(session)}</h1>
         <p className="mt-1 text-ink-soft">
           {pending.length > 0
-            ? `আজ ${pending.length}টি ব্যাচের হাজিরা বাকি`
+            ? t.pending(pending.length)
             : todayRows.length > 0
-              ? 'আজকের সব হাজিরা নেওয়া হয়েছে'
-              : 'আজ কোনো ক্লাস নেই'}
+              ? t.allTaken
+              : t.noClassToday}
         </p>
       </div>
 
       {rows.length === 0 && (
         <Card>
-          <h2 className="font-semibold text-ink">শুরু করতে একটি ব্যাচ বানান</h2>
-          <p className="mt-1 text-sm text-ink-soft">
-            ব্যাচ মানে একটি নির্দিষ্ট সময়ের ক্লাস — যেমন &ldquo;সকাল ৭টা গণিত&rdquo;।
-            ব্যাচ বানালে শিক্ষার্থী যোগ করা যাবে।
-          </p>
+          <h2 className="font-semibold text-ink">{t.firstBatchTitle}</h2>
+          <p className="mt-1 text-sm text-ink-soft">{t.firstBatchBody}</p>
           <Link
             href="/settings/batches/new"
             className="mt-4 inline-flex min-h-tap items-center justify-center
               rounded-xl bg-brand-600 px-5 font-semibold text-white"
           >
-            ব্যাচ যোগ করুন
+            {t.addBatch}
           </Link>
         </Card>
       )}
@@ -115,7 +129,13 @@ export default async function TeachPage() {
                   <p className="mt-0.5 truncate text-sm text-ink-soft">
                     {[
                       row.subjectName,
-                      <BatchSlot key="slot" slot={row.slot} start={row.startTime} end={row.endTime} />,
+                      <BatchSlot
+                        key="slot"
+                        slot={row.slot}
+                        start={row.startTime}
+                        end={row.endTime}
+                        locale={locale}
+                      />,
                     ]
                       .filter(Boolean)
                       .map((part, i) => (
@@ -125,8 +145,8 @@ export default async function TeachPage() {
                         </span>
                       ))}
                   </p>
-                  <p className="mt-0.5 text-sm text-ink-faint">
-                    <span className="num">{row.studentCount}</span> জন শিক্ষার্থী
+                  <p className="num mt-0.5 text-sm text-ink-faint">
+                    {t.students(row.studentCount)}
                   </p>
                 </div>
 
@@ -135,14 +155,14 @@ export default async function TeachPage() {
                     className="shrink-0 rounded-lg bg-brand-50 px-3 py-1.5 text-sm
                       font-semibold text-brand-700"
                   >
-                    ✓ নেওয়া হয়েছে
+                    ✓ {t.taken}
                   </span>
                 ) : (
                   <span
                     className="shrink-0 rounded-lg bg-brand-600 px-4 py-2.5 text-sm
                       font-semibold text-white"
                   >
-                    হাজিরা নিন
+                    {t.take}
                   </span>
                 )}
               </Link>
@@ -154,7 +174,7 @@ export default async function TeachPage() {
       {otherRows.length > 0 && (
         <details className="rounded-2xl border border-line bg-white p-4">
           <summary className="min-h-tap cursor-pointer font-medium text-ink-soft">
-            আজ ক্লাস নেই এমন ব্যাচ (<span className="num">{otherRows.length}</span>)
+            {t.otherBatches} (<span className="num">{otherRows.length}</span>)
           </summary>
           <ul className="mt-3 flex flex-col gap-2">
             {otherRows.map((row) => (
@@ -165,8 +185,8 @@ export default async function TeachPage() {
                     rounded-xl px-3 hover:bg-surface-alt"
                 >
                   <span className="truncate text-ink">{row.name}</span>
-                  <span className="shrink-0 text-sm text-ink-faint">
-                    <span className="num">{row.studentCount}</span> জন
+                  <span className="num shrink-0 text-sm text-ink-faint">
+                    {t.studentsShort(row.studentCount)}
                   </span>
                 </Link>
               </li>

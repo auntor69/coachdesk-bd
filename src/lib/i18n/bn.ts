@@ -85,6 +85,100 @@ export const bn = {
     late: 'দেরি',
     excused: 'ছুটি',
   },
+
+  /**
+   * A teacher's home: today's batches, one tap from the register. Kept in one
+   * group with the register's own headings because it is one errand — open the
+   * app, find the 4pm batch, mark it, come back — and a teacher who reads
+   * 'নেওয়া হয়েছে' on the list should read the same word on the way back.
+   */
+  teach: {
+    /** The page title, and the label on the register's back link to it. */
+    title: 'আজকের ক্লাস',
+    /**
+     * A function rather than a template, because this is where the two languages
+     * stop lining up: টি is the same for one batch and for nine, and English
+     * needs a plural. The count stays ASCII — Bangla numerals are for dates and
+     * times, never for something a teacher is counting.
+     */
+    pending: (n: number) => `আজ ${n}টি ব্যাচের হাজিরা বাকি`,
+    allTaken: 'আজকের সব হাজিরা নেওয়া হয়েছে',
+    noClassToday: 'আজ কোনো ক্লাস নেই',
+    /** The empty state a centre lands on before it has any batches at all. */
+    firstBatchTitle: 'শুরু করতে একটি ব্যাচ বানান',
+    firstBatchBody:
+      'ব্যাচ মানে একটি নির্দিষ্ট সময়ের ক্লাস — যেমন “সকাল ৭টা গণিত”। ব্যাচ বানালে শিক্ষার্থী যোগ করা যাবে।',
+    addBatch: 'ব্যাচ যোগ করুন',
+    students: (n: number) => `${n} জন শিক্ষার্থী`,
+    /** The same count on the collapsed list, where the row is half as wide. */
+    studentsShort: (n: number) => `${n} জন`,
+    /**
+     * The pair on the right of each row. They have to differ at a glance and not
+     * only by colour: one is a filled green button, the other a pale badge with a
+     * tick, and the words carry the difference for anyone who reads neither.
+     */
+    taken: 'নেওয়া হয়েছে',
+    take: 'হাজিরা নিন',
+    otherBatches: 'আজ ক্লাস নেই এমন ব্যাচ',
+
+    /** The register's own page title. */
+    rosterTitle: 'হাজিরা',
+    /** Appended to the date when a teacher is backfilling an earlier class. */
+    pastDate: 'পুরোনো তারিখ',
+    noStudentsTitle: 'এই ব্যাচে শিক্ষার্থী নেই',
+    noStudentsBody: 'শিক্ষার্থী যোগ করলে এখানে হাজিরা নেওয়া যাবে।',
+
+    /**
+     * Three the register shows but cannot be handed: each takes an argument, and
+     * a function cannot cross into a client component. So they live on this side
+     * of the boundary and are resolved before they travel — `saved` by the action
+     * that knows the count, the other two by the page, which knows the batch and
+     * every name on the roster.
+     */
+    saved: (n: number) => `হাজিরা সেভ হয়েছে — ${n} জন`,
+    /** The radiogroup's label, which is all a screen reader has to place the row. */
+    rowLabel: (name: string) => `${name} — হাজিরা`,
+    /**
+     * The batch name is in the submit button on purpose: a teacher with four
+     * batches in a morning needs to know which register they are about to write.
+     */
+    saveFor: (batch: string) => `${batch} — হাজিরা সেভ করুন`,
+
+    /**
+     * What the save action returns when it refuses. Nested in the screen's group
+     * rather than the register's: the action resolves the string on the server and
+     * returns it already written, so these never cross the wire unread.
+     *
+     * Whole sentences, not `${specific} ${common.tryAgain}`. Bangla ends a
+     * sentence with a danda and English with a full stop, and composing around
+     * that difference costs more than the six strings it would save.
+     */
+    errors: {
+      forbidden: 'আপনার এই কাজের অনুমতি নেই।',
+      noBatch: 'ব্যাচ পাওয়া যায়নি।',
+      noStudents: 'কোনো শিক্ষার্থী পাওয়া যায়নি।',
+      rosterUnreadable: 'শিক্ষার্থীর তালিকা পড়া যায়নি।',
+      emptyBatch: 'এই ব্যাচে কোনো শিক্ষার্থী নেই।',
+      saveFailed: 'হাজিরা সেভ হয়নি। আবার চেষ্টা করুন।',
+    },
+  },
+
+  /**
+   * What the register renders for itself — its own group and not part of `teach`,
+   * because it is the one client component in the flow and this group crosses the
+   * wire. A screen's worth of strings it does not use would be paid for on every
+   * load, on 3G, with a class waiting.
+   *
+   * Strings only, and that is a rule rather than a coincidence: a group handed to
+   * a client component may not hold a function, so anything taking a count or a
+   * name stays in `teach` above and arrives already written.
+   */
+  roster: {
+    alreadyTaken:
+      'এই ব্যাচের হাজিরা আগে নেওয়া হয়েছে। বদলে আবার সেভ করলে আগের হাজিরা বদলে যাবে।',
+    note: 'নোট',
+    notePlaceholder: 'যেমন: ছুটির কারণে ক্লাস তাড়াতাড়ি শেষ',
+  },
 } as const
 
 /**

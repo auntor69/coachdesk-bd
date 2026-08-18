@@ -11,6 +11,7 @@
 import { useActionState, useEffect, useState } from 'react'
 
 import { Alert, Button } from '@/components/ui'
+import type { T } from '@/lib/i18n'
 import type { AttendanceStatus } from '@/lib/supabase/types'
 import { saveAttendance, type SaveState } from './actions'
 
@@ -18,6 +19,8 @@ export type RosterStudent = {
   enrollmentId: string
   name: string
   studentCode: string | null
+  /** "<name> — হাজিরা", written by the page. See its comment. */
+  rowLabel: string
   status: AttendanceStatus
 }
 
@@ -26,11 +29,14 @@ export type RosterStudent = {
  * around 8% of men, and a register that reads as "all the same" to them is
  * worse than no register. Excused is not offered here — it is a decision made
  * after the fact, from the batch history, not while standing in front of a class.
+ *
+ * The label is a key into the shared `attendance` group rather than a string, so
+ * this table stays one table in both languages.
  */
-const CHOICES: { status: AttendanceStatus; glyph: string; label: string }[] = [
-  { status: 'present', glyph: '✓', label: 'উপস্থিত' },
-  { status: 'late', glyph: '⏱', label: 'দেরি' },
-  { status: 'absent', glyph: '✕', label: 'অনুপস্থিত' },
+const CHOICES: { status: 'present' | 'late' | 'absent'; glyph: string }[] = [
+  { status: 'present', glyph: '✓' },
+  { status: 'late', glyph: '⏱' },
+  { status: 'absent', glyph: '✕' },
 ]
 
 const CHOICE_ON: Record<string, string> = {
@@ -41,18 +47,34 @@ const CHOICE_ON: Record<string, string> = {
 
 export function AttendanceRoster({
   batchId,
-  batchName,
+  saveLabel,
   sessionDate,
   students,
   note,
   alreadyTaken,
+  t,
+  statusLabels,
+  common,
 }: {
   batchId: string
-  batchName: string
+  /**
+   * The submit button's whole label, batch name included, rather than the name to
+   * put in it: the sentence takes an argument and so belongs on the server side of
+   * the boundary. Same reason `students` arrive with their row labels written.
+   */
+  saveLabel: string
   sessionDate: string
   students: RosterStudent[]
   note: string
   alreadyTaken: boolean
+  /**
+   * Three groups, handed down by the server parent. Not the locale and not the
+   * dictionary: either one would put both languages in this bundle, and this is
+   * the screen a teacher opens on 3G with a class waiting.
+   */
+  t: T<'roster'>
+  statusLabels: T<'attendance'>
+  common: T<'common'>
 }) {
   const [state, formAction, pending] = useActionState<SaveState, FormData>(
     saveAttendance,
@@ -136,17 +158,16 @@ export function AttendanceRoster({
       {state?.ok && (
         <div
           role="status"
-          className="rounded-xl border-2 border-brand-200 bg-brand-50 px-4 py-3
+          className="num rounded-xl border-2 border-brand-200 bg-brand-50 px-4 py-3
             font-medium text-brand-800"
         >
-          হাজিরা সেভ হয়েছে — <span className="num">{state.count}</span> জন
+          {state.message}
         </div>
       )}
 
       {alreadyTaken && !state && (
         <p className="rounded-xl bg-surface-alt px-4 py-3 text-sm text-ink-soft">
-          এই ব্যাচের হাজিরা আগে নেওয়া হয়েছে। বদলে আবার সেভ করলে আগের হাজিরা
-          বদলে যাবে।
+          {t.alreadyTaken}
         </p>
       )}
 
@@ -182,7 +203,7 @@ export function AttendanceRoster({
 
               <div
                 role="radiogroup"
-                aria-label={`${student.name} — হাজিরা`}
+                aria-label={student.rowLabel}
                 className="flex shrink-0 gap-1"
               >
                 {CHOICES.map((choice) => {
@@ -193,7 +214,7 @@ export function AttendanceRoster({
                       type="button"
                       role="radio"
                       aria-checked={on}
-                      aria-label={choice.label}
+                      aria-label={statusLabels[choice.status]}
                       onClick={() => setStatus(student.enrollmentId, choice.status)}
                       className={`grid h-11 w-11 place-items-center rounded-lg border-2
                         text-lg transition-colors ${
@@ -213,12 +234,14 @@ export function AttendanceRoster({
       </ul>
 
       <label className="flex flex-col gap-1.5">
-        <span className="font-medium text-ink">নোট (ঐচ্ছিক)</span>
+        <span className="font-medium text-ink">
+          {t.note} ({common.optional})
+        </span>
         <textarea
           name="note"
           defaultValue={note}
           rows={2}
-          placeholder="যেমন: ছুটির কারণে ক্লাস তাড়াতাড়ি শেষ"
+          placeholder={t.notePlaceholder}
           className="rounded-xl border-2 border-line bg-white px-4 py-3 text-base
             outline-none placeholder:text-ink-faint focus:border-brand-500"
         />
@@ -232,19 +255,20 @@ export function AttendanceRoster({
       >
         <div className="mb-2 flex items-center justify-center gap-4 text-sm">
           <span className="font-medium text-present">
-            উপস্থিত <span className="num">{counts.present + counts.late}</span>
+            {statusLabels.present}{' '}
+            <span className="num">{counts.present + counts.late}</span>
           </span>
           {counts.late > 0 && (
             <span className="font-medium text-late">
-              দেরি <span className="num">{counts.late}</span>
+              {statusLabels.late} <span className="num">{counts.late}</span>
             </span>
           )}
           <span className="font-medium text-absent">
-            অনুপস্থিত <span className="num">{counts.absent}</span>
+            {statusLabels.absent} <span className="num">{counts.absent}</span>
           </span>
         </div>
         <Button type="submit" full disabled={pending}>
-          {pending ? 'সেভ হচ্ছে…' : `${batchName} — হাজিরা সেভ করুন`}
+          {pending ? common.saving : saveLabel}
         </Button>
       </div>
     </form>

@@ -2,14 +2,21 @@ import Link from 'next/link'
 import { notFound } from 'next/navigation'
 
 import { Card } from '@/components/ui'
-import { requireRole } from '@/lib/auth/session'
+import { requireRole, getSession } from '@/lib/auth/session'
 import { createClient } from '@/lib/supabase/server'
 import { BatchSlot } from '@/lib/bd/schedule'
 import { todayInDhaka, formatDate } from '@/lib/bd/time'
+import { dict, localName, DEFAULT_LOCALE } from '@/lib/i18n'
 import type { AttendanceStatus } from '@/lib/supabase/types'
 import { AttendanceRoster, type RosterStudent } from './attendance-roster'
 
-export const metadata = { title: 'হাজিরা — CoachDesk' }
+/** See /teach: a title needs the session, and a static export cannot read one. */
+export async function generateMetadata() {
+  const session = await getSession()
+  return {
+    title: `${dict(session?.locale ?? DEFAULT_LOCALE).teach.rosterTitle} — CoachDesk`,
+  }
+}
 
 /**
  * Attendance entry for one batch on one day.
@@ -28,9 +35,12 @@ export default async function AttendancePage({
   const [{ batchId }, { date }] = await Promise.all([params, searchParams])
 
   // Teacher or above. Students hitting this URL get the same 403 they would
-  // get from RLS, just sooner and in Bangla.
+  // get from RLS, just sooner and in their own language.
   const session = await requireRole('teacher')
   const supabase = await createClient()
+  const locale = session.locale
+  const d = dict(locale)
+  const t = d.teach
 
   const today = todayInDhaka()
   const sessionDate =
@@ -76,6 +86,11 @@ export default async function AttendancePage({
         enrollmentId: enrollment.id,
         name: student.name,
         studentCode: student.student_code,
+        // Written here rather than in the register, because it takes the name and
+        // a function cannot cross into a client component. It costs the name twice
+        // in the payload — a fair price for a screen reader being able to say
+        // which row it is on.
+        rowLabel: t.rowLabel(student.name),
         // Present is the default for an unmarked student — see the roster.
         status: previous.get(enrollment.id) ?? ('present' as AttendanceStatus),
       }
@@ -94,17 +109,18 @@ export default async function AttendancePage({
           className="inline-flex min-h-tap items-center text-ink-soft
             hover:text-ink"
         >
-          ← আজকের ক্লাস
+          ← {t.title}
         </Link>
         <h1 className="mt-1 text-xl font-bold text-ink">{batch.name}</h1>
         <p className="mt-0.5 text-ink-soft">
           {[
-            subject?.name_bn || subject?.name,
+            localName(subject, locale),
             <BatchSlot
               key="slot"
               slot={batch.slot}
               start={batch.start_time}
               end={batch.end_time}
+              locale={locale}
             />,
           ]
             .filter(Boolean)
@@ -116,26 +132,27 @@ export default async function AttendancePage({
             ))}
         </p>
         <p className="mt-0.5 text-sm text-ink-faint">
-          {formatDate(sessionDate)}
-          {sessionDate !== today && ' — পুরোনো তারিখ'}
+          {formatDate(sessionDate, locale)}
+          {sessionDate !== today && ` — ${t.pastDate}`}
         </p>
       </div>
 
       {students.length === 0 ? (
         <Card>
-          <h2 className="font-semibold text-ink">এই ব্যাচে শিক্ষার্থী নেই</h2>
-          <p className="mt-1 text-sm text-ink-soft">
-            শিক্ষার্থী যোগ করলে এখানে হাজিরা নেওয়া যাবে।
-          </p>
+          <h2 className="font-semibold text-ink">{t.noStudentsTitle}</h2>
+          <p className="mt-1 text-sm text-ink-soft">{t.noStudentsBody}</p>
         </Card>
       ) : (
         <AttendanceRoster
           batchId={batch.id}
-          batchName={batch.name}
+          saveLabel={t.saveFor(batch.name)}
           sessionDate={sessionDate}
           students={students}
           note={existingSession?.note ?? ''}
           alreadyTaken={Boolean(existingSession)}
+          t={d.roster}
+          statusLabels={d.attendance}
+          common={d.common}
         />
       )}
     </div>
