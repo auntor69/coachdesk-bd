@@ -20,6 +20,7 @@ import { Alert, Button, Field } from '@/components/ui'
 import { formatBdMobile, normalizeBdMobile } from '@/lib/bd/phone'
 import { MIN_PASSWORD } from '@/lib/auth/password'
 import { createTeacher, type ActionState } from '../../actions'
+import { MAX_NAME } from '@/lib/limits'
 
 type SubjectOption = { id: string; label: string }
 
@@ -95,7 +96,7 @@ export function TeacherForm({ subjects }: { subjects: SubjectOption[] }) {
         name="name"
         placeholder="করিম স্যার"
         required
-        maxLength={80}
+        maxLength={MAX_NAME}
         autoComplete="off"
       />
 

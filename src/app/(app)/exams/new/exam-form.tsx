@@ -14,6 +14,7 @@ import { useRouter } from 'next/navigation'
 import { Alert, Button, Field } from '@/components/ui'
 import type { T } from '@/lib/i18n'
 import { createExam, type CreateExamState } from '../actions'
+import { MAX_NAME } from '@/lib/limits'
 
 type Option = { id: string; label: string }
 
@@ -52,7 +53,7 @@ export function ExamForm({
         name="title"
         placeholder={t.namePlaceholder}
         required
-        maxLength={80}
+        maxLength={MAX_NAME}
         autoComplete="off"
       />
 

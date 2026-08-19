@@ -20,8 +20,10 @@ import {
   formatBdMobile,
 } from '@/lib/bd/phone'
 import { getSession, homePathFor } from '@/lib/auth/session'
-import { MIN_PASSWORD, PASSWORD_TOO_SHORT_BN } from '@/lib/auth/password'
+import { MIN_PASSWORD } from '@/lib/auth/password'
+import { MAX_NAME } from '@/lib/limits'
 import { DEFAULT_LOCALE } from '@/lib/i18n'
+import { nameTooLong, passwordTooShort } from '@/lib/i18n/messages'
 
 export type FormState = {
   error?: string
@@ -51,7 +53,7 @@ function friendlyAuthError(message: string): string {
     return 'এই নম্বরে অ্যাকাউন্ট আছে। লগইন করুন।'
   }
   if (/password/i.test(message) && /short|least/i.test(message)) {
-    return PASSWORD_TOO_SHORT_BN
+    return passwordTooShort(DEFAULT_LOCALE)
   }
   return 'কিছু একটা সমস্যা হয়েছে। আবার চেষ্টা করুন।'
 }
@@ -127,10 +129,7 @@ export async function signUp(
     return { error: 'আপনার নাম লিখুন।', field: 'name' }
   }
   if (password.length < MIN_PASSWORD) {
-    return {
-      error: PASSWORD_TOO_SHORT_BN,
-      field: 'password',
-    }
+    return { error: passwordTooShort(DEFAULT_LOCALE), field: 'password' }
   }
 
   const supabase = await createClient()
@@ -211,8 +210,8 @@ export async function createCenter(
   if (!centerName) {
     return { error: 'কোচিং/ব্যাচের নাম লিখুন।', field: 'center' }
   }
-  if (centerName.length > 80) {
-    return { error: 'নাম ৮০ অক্ষরের মধ্যে রাখুন।', field: 'center' }
+  if (centerName.length > MAX_NAME) {
+    return { error: nameTooLong(DEFAULT_LOCALE), field: 'center' }
   }
 
   const supabase = await createClient()
@@ -261,10 +260,7 @@ export async function resetStaffPassword(
   const newPassword = String(formData.get('password') ?? '')
 
   if (newPassword.length < MIN_PASSWORD) {
-    return {
-      error: PASSWORD_TOO_SHORT_BN,
-      field: 'password',
-    }
+    return { error: passwordTooShort(DEFAULT_LOCALE), field: 'password' }
   }
 
   const supabase = await createClient()

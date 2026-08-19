@@ -4,6 +4,7 @@ import { useActionState, useState } from 'react'
 
 import { createCenter, type FormState } from './actions'
 import { Alert, Button, Field } from '@/components/ui'
+import { MAX_NAME } from '@/lib/limits'
 
 /**
  * The one irreversible-feeling choice in the product, so it is asked plainly
@@ -82,7 +83,7 @@ export function OnboardingForm() {
         label={selected.nameLabel}
         name="centerName"
         placeholder={selected.namePlaceholder}
-        maxLength={80}
+        maxLength={MAX_NAME}
         required
         error={state?.field === 'center' ? state.error : undefined}
       />

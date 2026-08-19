@@ -31,7 +31,8 @@ export const en: Dictionary = {
     unknown: 'Unknown',
     dayLate: 'a day late',
     daysLate: '{n} days late',
-    tryAgain: 'please try again',
+    nameTooLong: 'Keep the name under {n} characters.',
+    passwordTooShort: 'The password has to be at least {n} characters.',
     somethingWentWrong: 'Something went wrong',
   },
 
@@ -332,7 +333,6 @@ export const en: Dictionary = {
     errors: {
       forbidden: 'You do not have permission to do that.',
       nameRequired: 'Give the exam a name.',
-      nameTooLong: 'Keep the name under 80 characters.',
       pickBatch: 'Choose a batch.',
       noBatch: 'That batch could not be found.',
       totalUnreadable: 'Write the full marks as a number.',
@@ -449,5 +449,133 @@ export const en: Dictionary = {
     classDays: (n: number) => (n === 1 ? 'class day' : 'class days'),
     countedMarks: (n: number) => (n === 1 ? 'mark counted' : 'marks counted'),
     unknownBatch: 'Unnamed batch',
+  },
+
+  settings: {
+    added: 'Added',
+    saved: 'Saved',
+
+    errors: {
+      forbidden: 'Only an owner or a manager can do this.',
+      /**
+       * "adds room" rather than "unlocks features", because it does not unlock
+       * any — the free plan holds a smaller centre, not a worse product, and an
+       * owner who has been told otherwise stops believing the next sentence too.
+       */
+      planLimit:
+        'The free plan is full. Changing plan makes room — every feature stays open either way.',
+      addFailed: 'That was not added. Please try again.',
+      createFailed: 'That was not created. Please try again.',
+      saveFailed: 'That was not saved. Please try again.',
+      changeFailed: 'That did not change. Please try again.',
+    },
+
+    subjects: {
+      errors: {
+        nameRequired: 'Give the subject a name.',
+        duplicate: 'You already have a subject with this name.',
+      },
+    },
+
+    examTypes: {
+      errors: {
+        nameRequired: 'Give the exam kind a name.',
+        duplicate: 'You already have a kind with this name.',
+      },
+    },
+
+    batches: {
+      created: 'Batch created',
+      errors: {
+        nameRequired: 'Give the batch a name.',
+        pickSubject: 'Choose a subject.',
+        feeUnreadable: 'Write the monthly fee properly.',
+        endBeforeStart: 'The end time has to be after the start time.',
+        daysNeedTimes:
+          'If you choose which days the class meets, give the start and end times too.',
+        duplicate: 'You already have a batch with this name.',
+        scheduleFailed:
+          'The batch was created, but its class days were not saved. Fix that from settings.',
+      },
+    },
+
+    students: {
+      added: 'Student added',
+      errors: {
+        nameRequired: 'Give the student’s name.',
+        /** ASCII digits in the example — see the Bangla for why they differ. */
+        guardianPhone:
+          'Give the guardian’s mobile number properly (e.g. 01712345678).',
+        studentPhone: 'That student number is not right.',
+        duplicateCode: 'A student with this ID already exists.',
+        notFound: 'Student not found.',
+      },
+    },
+
+    import: {
+      /**
+       * Three clauses joined with " · " by the action — see the Bangla. English
+       * inflects on all three counts, which is why they are functions.
+       */
+      added: (n: number) => `${n} ${n === 1 ? 'student' : 'students'} added`,
+      alreadyThere: (n: number) =>
+        `${n} ${n === 1 ? 'was' : 'were'} already on the roster`,
+      /** "enrolment" throughout, as in `fees.emptyBody`. */
+      enrolled: (n: number) =>
+        `${n} batch ${n === 1 ? 'enrolment' : 'enrolments'} made`,
+      errors: {
+        empty:
+          'The list is empty. Put one student’s name and their guardian’s number on each line.',
+        tooManyRows: (max: number, got: number) =>
+          `Paste at most ${max} lines at a time and the rest next time. This has ${got} ${
+            got === 1 ? 'line' : 'lines'
+          }.`,
+        noneReadable:
+          'Not one line could be read. Each line needs a name and an 11-digit mobile number.',
+        roomShort: (room: number, fresh: number) =>
+          `This plan has room for ${room} more ${
+            room === 1 ? 'student' : 'students'
+          }, but ${fresh} in the list ${fresh === 1 ? 'is' : 'are'} new.`,
+        failed: 'The list was not added. Please try again.',
+      },
+    },
+
+    sms: {
+      optedOut: 'SMS turned off',
+      optedIn: 'SMS turned on',
+    },
+
+    teachers: {
+      addedWithLogin: 'Teacher and their login created',
+      addedNoLogin: 'Teacher added (no login)',
+      linked: (name: string) =>
+        `Teacher added — joined to an existing account (${name})`,
+      permissionsSaved: 'Permissions saved',
+      activated: 'Turned on',
+      deactivated: 'Turned off',
+      noName: 'no name given',
+      confirmLink: (name: string) =>
+        `This number already has an account — ${name}. If that is your teacher, tick the box below and save again. They will sign in with their old password.`,
+      errors: {
+        nameRequired: 'Give the teacher’s name.',
+        phoneInvalid: 'That number is not right (e.g. 01712345678).',
+        loginNeedsPhone:
+          'A login needs a mobile number — the number is their ID.',
+        loginFailed: 'The login was not created. Please try again.',
+        notFound: 'Teacher not found.',
+      },
+    },
+
+    center: {
+      errors: {
+        ownerOnly:
+          'Only the centre’s owner can change the name and the payment number.',
+        nameRequired: 'Give the centre’s name.',
+        numberInvalid:
+          'That number is not right. Give an 11-digit mobile number, e.g. 01712345678.',
+        walletNeedsNumber: 'Write which number the money should go to as well.',
+        numberNeedsWallet: 'bKash, Nagad or Rocket — choose one.',
+      },
+    },
   },
 }

@@ -13,6 +13,7 @@ import { useRouter } from 'next/navigation'
 
 import { Alert, Button, Field } from '@/components/ui'
 import { createBatch, type ActionState } from '../../actions'
+import { MAX_NAME } from '@/lib/limits'
 
 type Option = { id: string; label: string }
 
@@ -79,7 +80,7 @@ export function BatchForm({
         name="name"
         placeholder="সকাল ৭টা — HSC গণিত"
         required
-        maxLength={80}
+        maxLength={MAX_NAME}
       />
 
       <label className="flex flex-col gap-1.5">

@@ -10,8 +10,9 @@
  * Six, not twelve. This gets typed on a mid-range Android keypad by someone who
  * was told it out loud, and the realistic attacker is a colleague guessing —
  * which GoTrue rate-limits — not an offline crack of a hash they cannot reach.
+ *
+ * The number and nothing else: a client form reads it for `minLength`, so the
+ * sentence that quotes it lives in `../i18n/messages.ts` instead, where pulling
+ * both dictionaries in costs a phone nothing.
  */
 export const MIN_PASSWORD = 6
-
-export const PASSWORD_TOO_SHORT_BN =
-  `পাসওয়ার্ড কমপক্ষে ${MIN_PASSWORD} অক্ষরের হতে হবে।`

@@ -12,7 +12,12 @@ import { revalidatePath } from 'next/cache'
 
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { requireRole, AuthError, type CenterSession } from '@/lib/auth/session'
+import {
+  requireRole,
+  getSession,
+  AuthError,
+  type CenterSession,
+} from '@/lib/auth/session'
 import { normalizeBdMobile, phoneToLoginEmail } from '@/lib/bd/phone'
 import {
   MAX_IMPORT_ROWS,
@@ -20,8 +25,10 @@ import {
   readyRows,
   rosterKey,
 } from '@/lib/bd/roster'
-import { MIN_PASSWORD, PASSWORD_TOO_SHORT_BN } from '@/lib/auth/password'
-import { DEFAULT_LOCALE } from '@/lib/i18n'
+import { MIN_PASSWORD } from '@/lib/auth/password'
+import { MAX_NAME } from '@/lib/limits'
+import { dict, DEFAULT_LOCALE } from '@/lib/i18n'
+import { nameTooLong, passwordTooShort } from '@/lib/i18n/messages'
 import { roomFor, wouldExceed, type LimitKey } from '@/lib/plans'
 import type { BatchSlot, PayoutWallet, SubjectKind } from '@/lib/supabase/types'
 
@@ -41,20 +48,26 @@ export type ActionState = {
   linked?: string
 } | null
 
-/** Long enough for a real Bangla name, short enough to keep a list readable. */
-const MAX_NAME = 80
-
 /**
  * requireRole throws for a signed-out or under-privileged caller. Every action
- * here wants the same Bangla message rather than a stack trace, so the throw is
+ * here wants the same sentence rather than a stack trace, so the throw is
  * converted once.
+ *
+ * Written in the caller's own language, which costs a second read of the session:
+ * requireRole threw, so it never handed one back. Worth the round trip — this is
+ * the one message a manager sees on the screens they are not allowed to touch,
+ * and an English-medium manager reading a lone Bangla sentence under an English
+ * form cannot tell a permission boundary from a bug. A signed-out caller has no
+ * locale to read, so they get the default.
  */
 async function staffAdmin(): Promise<CenterSession | ActionState> {
   try {
     return await requireRole('manager')
   } catch (err) {
     if (err instanceof AuthError) {
-      return { error: 'এই কাজটি শুধু মালিক বা ম্যানেজার করতে পারেন।' }
+      const caller = await getSession()
+      const d = dict(caller?.locale ?? DEFAULT_LOCALE)
+      return { error: d.settings.errors.forbidden }
     }
     throw err
   }
@@ -110,9 +123,6 @@ async function overLimit(
   return wouldExceed(session.plan, key, count ?? 0)
 }
 
-const LIMIT_MESSAGE =
-  'ফ্রি প্ল্যানের সীমা শেষ। আরও যোগ করতে প্ল্যান বদলাতে হবে — সব ফিচার খোলা থাকবে।'
-
 export async function createSubject(
   _prev: ActionState,
   formData: FormData,
@@ -120,15 +130,17 @@ export async function createSubject(
   const session = await staffAdmin()
   if (!isSession(session)) return session
 
+  const t = dict(session.locale).settings
+
   const name = String(formData.get('name') ?? '').trim()
   const nameBn = String(formData.get('nameBn') ?? '').trim()
   const kind = String(formData.get('kind') ?? 'academic') as SubjectKind
 
-  if (!name) return { error: 'বিষয়ের নাম লিখুন।' }
-  if (name.length > MAX_NAME) return { error: `নাম ${MAX_NAME} অক্ষরের মধ্যে রাখুন।` }
+  if (!name) return { error: t.subjects.errors.nameRequired }
+  if (name.length > MAX_NAME) return { error: nameTooLong(session.locale) }
 
   if (await overLimit(session, 'subjects', 'maxSubjects')) {
-    return { error: LIMIT_MESSAGE }
+    return { error: t.errors.planLimit }
   }
 
   const supabase = await createClient()
@@ -142,12 +154,12 @@ export async function createSubject(
   if (error) {
     // The unique index on (center, name) is the only realistic failure, and
     // "you already have this" is more useful than a database string.
-    if (error.code === '23505') return { error: 'এই নামে বিষয় আগেই আছে।' }
-    return { error: 'যোগ করা যায়নি। আবার চেষ্টা করুন।' }
+    if (error.code === '23505') return { error: t.subjects.errors.duplicate }
+    return { error: t.errors.addFailed }
   }
 
   revalidatePath('/settings/subjects')
-  return { ok: 'যোগ হয়েছে' }
+  return { ok: t.added }
 }
 
 export async function createExamType(
@@ -157,11 +169,13 @@ export async function createExamType(
   const session = await staffAdmin()
   if (!isSession(session)) return session
 
+  const t = dict(session.locale).settings
+
   const name = String(formData.get('name') ?? '').trim()
   const nameBn = String(formData.get('nameBn') ?? '').trim()
 
-  if (!name) return { error: 'পরীক্ষার ধরনের নাম লিখুন।' }
-  if (name.length > MAX_NAME) return { error: `নাম ${MAX_NAME} অক্ষরের মধ্যে রাখুন।` }
+  if (!name) return { error: t.examTypes.errors.nameRequired }
+  if (name.length > MAX_NAME) return { error: nameTooLong(session.locale) }
 
   const supabase = await createClient()
   const { error } = await supabase.from('exam_types').insert({
@@ -171,12 +185,12 @@ export async function createExamType(
   })
 
   if (error) {
-    if (error.code === '23505') return { error: 'এই নামে ধরন আগেই আছে।' }
-    return { error: 'যোগ করা যায়নি। আবার চেষ্টা করুন।' }
+    if (error.code === '23505') return { error: t.examTypes.errors.duplicate }
+    return { error: t.errors.addFailed }
   }
 
   revalidatePath('/settings/exam-types')
-  return { ok: 'যোগ হয়েছে' }
+  return { ok: t.added }
 }
 
 /** Turns "07:30" into a Postgres time, or null. Rejects anything else. */
@@ -197,6 +211,8 @@ export async function createBatch(
   const session = await staffAdmin()
   if (!isSession(session)) return session
 
+  const t = dict(session.locale).settings
+
   const name = String(formData.get('name') ?? '').trim()
   const subjectId = String(formData.get('subjectId') ?? '')
   const teacherId = String(formData.get('teacherId') ?? '')
@@ -205,16 +221,16 @@ export async function createBatch(
   const startTime = parseTime(String(formData.get('startTime') ?? ''))
   const endTime = parseTime(String(formData.get('endTime') ?? ''))
 
-  if (!name) return { error: 'ব্যাচের নাম লিখুন।' }
-  if (name.length > MAX_NAME) return { error: `নাম ${MAX_NAME} অক্ষরের মধ্যে রাখুন।` }
-  if (!subjectId) return { error: 'বিষয় বাছুন।' }
+  if (!name) return { error: t.batches.errors.nameRequired }
+  if (name.length > MAX_NAME) return { error: nameTooLong(session.locale) }
+  if (!subjectId) return { error: t.batches.errors.pickSubject }
   if (!Number.isFinite(monthlyFee) || monthlyFee < 0) {
-    return { error: 'মাসিক ফি ঠিকভাবে লিখুন।' }
+    return { error: t.batches.errors.feeUnreadable }
   }
   // The database has the same check; catching it here gives a field-level
   // message instead of a generic failure.
   if (startTime && endTime && endTime <= startTime) {
-    return { error: 'শেষের সময় শুরুর সময়ের পরে হতে হবে।' }
+    return { error: t.batches.errors.endBeforeStart }
   }
 
   // Which days this batch meets. 0=Sunday, matching Postgres extract(dow) and
@@ -230,11 +246,11 @@ export async function createBatch(
   // the batch would be created and the schedule silently dropped, which looks
   // exactly like a batch that meets every day.
   if (days.length > 0 && (!startTime || !endTime)) {
-    return { error: 'কোন দিন ক্লাস তা বাছলে শুরু ও শেষের সময়ও দিতে হবে।' }
+    return { error: t.batches.errors.daysNeedTimes }
   }
 
   if (await overLimit(session, 'batches', 'maxBatches')) {
-    return { error: LIMIT_MESSAGE }
+    return { error: t.errors.planLimit }
   }
 
   const slot = SLOTS.has(rawSlot as BatchSlot) ? (rawSlot as BatchSlot) : null
@@ -256,8 +272,8 @@ export async function createBatch(
     .single()
 
   if (error || !batch) {
-    if (error?.code === '23505') return { error: 'এই নামে ব্যাচ আগেই আছে।' }
-    return { error: 'তৈরি করা যায়নি। আবার চেষ্টা করুন।' }
+    if (error?.code === '23505') return { error: t.batches.errors.duplicate }
+    return { error: t.errors.createFailed }
   }
 
   // Which days this batch meets, validated above.
@@ -275,16 +291,13 @@ export async function createBatch(
     // The batch exists either way. Say so rather than reporting a clean success
     // the teacher would only disprove tomorrow, when the batch fails to appear.
     if (scheduleError) {
-      return {
-        error:
-          'ব্যাচ তৈরি হয়েছে, কিন্তু ক্লাসের দিন সেভ হয়নি। সেটিংস থেকে ঠিক করুন।',
-      }
+      return { error: t.batches.errors.scheduleFailed }
     }
   }
 
   revalidatePath('/settings/batches')
   revalidatePath('/teach')
-  return { ok: 'ব্যাচ তৈরি হয়েছে' }
+  return { ok: t.batches.created }
 }
 
 export async function createStudent(
@@ -293,6 +306,8 @@ export async function createStudent(
 ): Promise<ActionState> {
   const session = await staffAdmin()
   if (!isSession(session)) return session
+
+  const t = dict(session.locale).settings
 
   const name = String(formData.get('name') ?? '').trim()
   const batchIds = formData.getAll('batchIds').map(String).filter(Boolean)
@@ -303,8 +318,8 @@ export async function createStudent(
   const classLevel = String(formData.get('classLevel') ?? '').trim()
   const studentCode = String(formData.get('studentCode') ?? '').trim()
 
-  if (!name) return { error: 'শিক্ষার্থীর নাম লিখুন।' }
-  if (name.length > MAX_NAME) return { error: `নাম ${MAX_NAME} অক্ষরের মধ্যে রাখুন।` }
+  if (!name) return { error: t.students.errors.nameRequired }
+  if (name.length > MAX_NAME) return { error: nameTooLong(session.locale) }
 
   // The guardian's number is the product's whole delivery channel — results and
   // fee reminders go there. Required, and validated as a real BD mobile rather
@@ -312,18 +327,18 @@ export async function createStudent(
   // never arrives and nobody finds out for a month.
   const guardianPhone = normalizeBdMobile(rawGuardianPhone)
   if (!guardianPhone) {
-    return { error: 'অভিভাবকের সঠিক মোবাইল নম্বর দিন (যেমন ০১৭১২৩৪৫৬৭৮)।' }
+    return { error: t.students.errors.guardianPhone }
   }
 
   const studentPhone = rawStudentPhone.trim()
     ? normalizeBdMobile(rawStudentPhone)
     : null
   if (rawStudentPhone.trim() && !studentPhone) {
-    return { error: 'শিক্ষার্থীর নম্বরটি ঠিক নেই।' }
+    return { error: t.students.errors.studentPhone }
   }
 
   if (await overLimit(session, 'students', 'maxStudents')) {
-    return { error: LIMIT_MESSAGE }
+    return { error: t.errors.planLimit }
   }
 
   const supabase = await createClient()
@@ -344,8 +359,8 @@ export async function createStudent(
     .single()
 
   if (error || !student) {
-    if (error?.code === '23505') return { error: 'এই আইডিতে শিক্ষার্থী আগেই আছে।' }
-    return { error: 'যোগ করা যায়নি। আবার চেষ্টা করুন।' }
+    if (error?.code === '23505') return { error: t.students.errors.duplicateCode }
+    return { error: t.errors.addFailed }
   }
 
   // The guardian row is what the SMS sender reads. students.guardian_phone is
@@ -388,7 +403,7 @@ export async function createStudent(
   revalidatePath('/settings/students')
   revalidatePath('/teach')
   revalidatePath('/dashboard')
-  return { ok: 'শিক্ষার্থী যোগ হয়েছে' }
+  return { ok: t.students.added }
 }
 
 /**
@@ -410,21 +425,17 @@ export async function importStudents(
   const session = await staffAdmin()
   if (!isSession(session)) return session
 
+  const t = dict(session.locale).settings
+
   const rows = parseRoster(String(formData.get('roster') ?? ''))
   const ready = readyRows(rows)
   const batchIds = formData.getAll('batchIds').map(String).filter(Boolean)
 
-  if (rows.length === 0) {
-    return { error: 'তালিকা খালি। প্রতি লাইনে একজনের নাম আর অভিভাবকের নম্বর দিন।' }
-  }
+  if (rows.length === 0) return { error: t.import.errors.empty }
   if (rows.length > MAX_IMPORT_ROWS) {
-    return {
-      error: `একবারে সর্বোচ্চ ${MAX_IMPORT_ROWS} লাইন দিন, বাকিগুলো পরের বার। এখানে ${rows.length} লাইন আছে।`,
-    }
+    return { error: t.import.errors.tooManyRows(MAX_IMPORT_ROWS, rows.length) }
   }
-  if (ready.length === 0) {
-    return { error: 'একটি লাইনও পড়া গেল না। প্রতি লাইনে নাম আর ১১ ডিজিটের মোবাইল নম্বর দরকার।' }
-  }
+  if (ready.length === 0) return { error: t.import.errors.noneReadable }
 
   const supabase = await createClient()
   const centerId = session.active.centerId
@@ -455,11 +466,14 @@ export async function importStudents(
     const fresh = ready.filter((s) => !known.has(rosterKey(s.name, s.guardian_phone)))
 
     if (fresh.length > room) {
+      // Two sentences when there is room for some of them, because "the plan is
+      // full" is not true yet and an owner who is told it stops reading. The
+      // plan sentence is the same one every other limit uses.
       return {
         error:
           room === 0
-            ? LIMIT_MESSAGE
-            : `এই প্ল্যানে আর ${room} জন যোগ করা যাবে, কিন্তু তালিকায় ${fresh.length} জন নতুন। ${LIMIT_MESSAGE}`,
+            ? t.errors.planLimit
+            : `${t.import.errors.roomShort(room, fresh.length)} ${t.errors.planLimit}`,
       }
     }
   }
@@ -476,25 +490,23 @@ export async function importStudents(
     })
     .single()
 
-  if (error || !data) {
-    return { error: 'তালিকা যোগ করা যায়নি। আবার চেষ্টা করুন।' }
-  }
+  if (error || !data) return { error: t.import.errors.failed }
 
   revalidatePath('/settings/students')
   revalidatePath('/teach')
   revalidatePath('/dashboard')
   // This screen too, and not for the sake of a stale list: the page hands the
-  // form the roster it already knows, and the form marks a pasted line "আগেই
-  // আছে" from it. Without this the owner imports, pastes the same register to
+  // form the roster it already knows, and the form marks a pasted line as
+  // already on it. Without this the owner imports, pastes the same register to
   // check it worked, and is told all forty are new — which is the one thing this
   // screen exists to be honest about. The import itself would still skip them.
   revalidatePath('/settings/students/import')
 
   // Reported from what the database actually did, not from what the preview
   // predicted. The two should agree; when they do not, this is the honest one.
-  const parts = [`${data.added} জন যোগ হয়েছে`]
-  if (data.already_there > 0) parts.push(`${data.already_there} জন আগেই ছিল`)
-  if (data.enrolled > 0) parts.push(`${data.enrolled}টি ব্যাচ ভর্তি হয়েছে`)
+  const parts = [t.import.added(data.added)]
+  if (data.already_there > 0) parts.push(t.import.alreadyThere(data.already_there))
+  if (data.enrolled > 0) parts.push(t.import.enrolled(data.enrolled))
   return { ok: parts.join(' · ') }
 }
 
@@ -510,9 +522,11 @@ export async function toggleSmsOptOut(
   const session = await staffAdmin()
   if (!isSession(session)) return session
 
+  const t = dict(session.locale).settings
+
   const studentId = String(formData.get('studentId') ?? '')
   const optOut = String(formData.get('optOut') ?? '') === 'true'
-  if (!studentId) return { error: 'শিক্ষার্থী পাওয়া যায়নি।' }
+  if (!studentId) return { error: t.students.errors.notFound }
 
   const supabase = await createClient()
   const { error } = await supabase
@@ -520,11 +534,11 @@ export async function toggleSmsOptOut(
     .update({ sms_opt_out: optOut })
     .eq('id', studentId)
 
-  if (error) return { error: 'বদলানো যায়নি। আবার চেষ্টা করুন।' }
+  if (error) return { error: t.errors.changeFailed }
 
   revalidatePath('/settings/sms')
   revalidatePath('/settings/students')
-  return { ok: optOut ? 'SMS বন্ধ করা হয়েছে' : 'SMS চালু করা হয়েছে' }
+  return { ok: optOut ? t.sms.optedOut : t.sms.optedIn }
 }
 
 // ---------------------------------------------------------------------------
@@ -592,6 +606,8 @@ export async function createTeacher(
   const session = await staffAdmin()
   if (!isSession(session)) return session
 
+  const t = dict(session.locale).settings
+
   const name = String(formData.get('name') ?? '').trim()
   const rawPhone = String(formData.get('phone') ?? '')
   const subjectIds = formData.getAll('subjectIds').map(String).filter(Boolean)
@@ -600,22 +616,22 @@ export async function createTeacher(
   const confirmedLink = formData.get('confirmLink') !== null
   const permissions = readPermissions(formData)
 
-  if (!name) return { error: 'শিক্ষকের নাম লিখুন।' }
-  if (name.length > MAX_NAME) return { error: `নাম ${MAX_NAME} অক্ষরের মধ্যে রাখুন।` }
+  if (!name) return { error: t.teachers.errors.nameRequired }
+  if (name.length > MAX_NAME) return { error: nameTooLong(session.locale) }
 
   const phone = rawPhone.trim() ? normalizeBdMobile(rawPhone) : null
   if (rawPhone.trim() && !phone) {
-    return { error: 'নম্বরটি ঠিক নেই (যেমন ০১৭১২৩৪৫৬৭৮)।' }
+    return { error: t.teachers.errors.phoneInvalid }
   }
   if (wantsLogin && !phone) {
-    return { error: 'লগইন দিতে হলে মোবাইল নম্বর লাগবে — নম্বরটাই তাঁর আইডি।' }
+    return { error: t.teachers.errors.loginNeedsPhone }
   }
   if (wantsLogin && password.length < MIN_PASSWORD) {
-    return { error: PASSWORD_TOO_SHORT_BN }
+    return { error: passwordTooShort(session.locale) }
   }
 
   if (await overLimit(session, 'teachers', 'maxTeachers')) {
-    return { error: LIMIT_MESSAGE }
+    return { error: t.errors.planLimit }
   }
 
   const supabase = await createClient()
@@ -640,7 +656,7 @@ export async function createTeacher(
 
   if (wantsLogin && phone) {
     const loginEmail = phoneToLoginEmail(phone)
-    if (!loginEmail) return { error: 'নম্বরটি ঠিক নেই।' }
+    if (!loginEmail) return { error: t.teachers.errors.phoneInvalid }
 
     const admin = createAdminClient()
 
@@ -665,13 +681,13 @@ export async function createTeacher(
       // what name is on it. A real disclosure, accepted because the alternative
       // is silent mis-linking and because it takes knowing the number first.
       return {
-        confirm: `এই নম্বরে আগেই একটি অ্যাকাউন্ট আছে — ${existing.full_name || 'নাম দেওয়া নেই'}। এটাই যদি আপনার শিক্ষক হন, নিচে টিক দিয়ে আবার সেভ করুন। তিনি তাঁর পুরনো পাসওয়ার্ড দিয়েই ঢুকবেন।`,
+        confirm: t.teachers.confirmLink(existing.full_name || t.teachers.noName),
       }
     }
 
     if (existing) {
       userId = existing.id
-      linkedName = existing.full_name || 'নাম দেওয়া নেই'
+      linkedName = existing.full_name || t.teachers.noName
     } else {
       // Same admin path as signup, and for the same reason: the public signUp
       // endpoint would try to send a confirmation email through the shared free
@@ -680,11 +696,14 @@ export async function createTeacher(
         email: loginEmail,
         password,
         email_confirm: true,
-        user_metadata: { full_name: name, phone, locale: DEFAULT_LOCALE },
+        // The owner's own language, not the app default. An English-medium
+        // centre configures its teachers from an English screen, and a teacher
+        // who lands in Bangla has to find the switch before their first class.
+        user_metadata: { full_name: name, phone, locale: session.locale },
       })
 
       if (createError || !created.user) {
-        return { error: 'লগইন তৈরি করা যায়নি। আবার চেষ্টা করুন।' }
+        return { error: t.teachers.errors.loginFailed }
       }
       userId = created.user.id
     }
@@ -705,7 +724,7 @@ export async function createTeacher(
   // is recoverable rather than orphaned: retrying the form finds it through the
   // lookup above and links it instead of failing on the unique phone.
   if (error || !teacher) {
-    return { error: 'যোগ করা যায়নি। আবার চেষ্টা করুন।' }
+    return { error: t.errors.addFailed }
   }
 
   // Written even when every box is unticked, because a missing permissions row
@@ -751,17 +770,10 @@ export async function createTeacher(
   // sentence is where they notice — so when it applies, `linked` tells the form
   // to stay put rather than redirect past it.
   if (linkedName) {
-    return {
-      ok: `শিক্ষক যোগ হয়েছে — ${linkedName} নামের পুরনো অ্যাকাউন্ট যুক্ত করা হয়েছে`,
-      linked: linkedName,
-    }
+    return { ok: t.teachers.linked(linkedName), linked: linkedName }
   }
 
-  return {
-    ok: userId
-      ? 'শিক্ষক ও তাঁর লগইন তৈরি হয়েছে'
-      : 'শিক্ষক যোগ হয়েছে (লগইন ছাড়া)',
-  }
+  return { ok: userId ? t.teachers.addedWithLogin : t.teachers.addedNoLogin }
 }
 
 /** The permission checkboxes on the teacher list. */
@@ -772,11 +784,13 @@ export async function saveTeacherPermissions(
   const session = await staffAdmin()
   if (!isSession(session)) return session
 
+  const t = dict(session.locale).settings
+
   const teacherId = await ownTeacherId(
     session,
     String(formData.get('teacherId') ?? ''),
   )
-  if (!teacherId) return { error: 'শিক্ষক পাওয়া যায়নি।' }
+  if (!teacherId) return { error: t.teachers.errors.notFound }
 
   const supabase = await createClient()
 
@@ -791,10 +805,10 @@ export async function saveTeacherPermissions(
     { onConflict: 'teacher_id' },
   )
 
-  if (error) return { error: 'সেভ করা যায়নি। আবার চেষ্টা করুন।' }
+  if (error) return { error: t.errors.saveFailed }
 
   revalidatePath('/settings/teachers')
-  return { ok: 'অনুমতি সেভ হয়েছে' }
+  return { ok: t.teachers.permissionsSaved }
 }
 
 /**
@@ -822,6 +836,7 @@ export async function toggleTeacherActive(
   const session = await staffAdmin()
   if (!isSession(session)) return session
 
+  const t = dict(session.locale).settings
   const supabase = await createClient()
   const centerId = session.active.centerId
 
@@ -832,14 +847,14 @@ export async function toggleTeacherActive(
     .eq('coaching_center_id', centerId)
     .maybeSingle()
 
-  if (!teacher) return { error: 'শিক্ষক পাওয়া যায়নি।' }
+  if (!teacher) return { error: t.teachers.errors.notFound }
 
   const active = String(formData.get('active') ?? '') === 'true'
 
   // Reactivating has to respect the plan limit, or "off then on" would be a way
   // past maxTeachers on the free plan.
   if (active && (await overLimit(session, 'teachers', 'maxTeachers'))) {
-    return { error: LIMIT_MESSAGE }
+    return { error: t.errors.planLimit }
   }
 
   const { error } = await supabase
@@ -848,7 +863,7 @@ export async function toggleTeacherActive(
     .eq('id', teacher.id)
     .eq('coaching_center_id', centerId)
 
-  if (error) return { error: 'বদলানো যায়নি। আবার চেষ্টা করুন।' }
+  if (error) return { error: t.errors.changeFailed }
 
   if (teacher.user_id) {
     if (active) {
@@ -872,7 +887,7 @@ export async function toggleTeacherActive(
 
   revalidatePath('/settings/teachers')
   revalidatePath('/teach')
-  return { ok: active ? 'চালু করা হয়েছে' : 'বন্ধ করা হয়েছে' }
+  return { ok: active ? t.teachers.activated : t.teachers.deactivated }
 }
 
 /* -------------------------------------------------------------------------- */
@@ -897,7 +912,9 @@ async function centerOwner(): Promise<CenterSession | ActionState> {
     return await requireRole('owner')
   } catch (err) {
     if (err instanceof AuthError) {
-      return { error: 'নাম আর পেমেন্ট নম্বর শুধু কোচিংয়ের মালিক বদলাতে পারেন।' }
+      const caller = await getSession()
+      const d = dict(caller?.locale ?? DEFAULT_LOCALE)
+      return { error: d.settings.center.errors.ownerOnly }
     }
     throw err
   }
@@ -918,11 +935,11 @@ export async function saveCenterDetails(
   const session = await centerOwner()
   if (!isSession(session)) return session
 
+  const t = dict(session.locale).settings
+
   const name = String(formData.get('name') ?? '').trim().replace(/\s+/g, ' ')
-  if (!name) return { error: 'কোচিংয়ের নাম লিখুন।' }
-  if (name.length > MAX_NAME) {
-    return { error: `নাম ${MAX_NAME} অক্ষরের মধ্যে রাখুন।` }
-  }
+  if (!name) return { error: t.center.errors.nameRequired }
+  if (name.length > MAX_NAME) return { error: nameTooLong(session.locale) }
 
   const walletInput = String(formData.get('paymentWallet') ?? '')
   const numberInput = String(formData.get('paymentNumber') ?? '').trim()
@@ -937,15 +954,15 @@ export async function saveCenterDetails(
   // lost. Money sent to a wrong-but-valid number is gone, and the centre gets
   // blamed for losing a fee that was paid.
   if (numberInput && !number) {
-    return { error: 'নম্বরটি ঠিক নেই। ১১ সংখ্যার মোবাইল নম্বর দিন, যেমন 01712345678।' }
+    return { error: t.center.errors.numberInvalid }
   }
 
   // Half-configured is refused rather than saved, because neither half is
   // usable on its own and the check constraint would reject it anyway — with a
   // Postgres string no owner can read. The pair is also how "we do not take
   // mobile payments" is expressed: clear both, and reminders stop naming one.
-  if (wallet && !number) return { error: 'কোন নম্বরে টাকা যাবে সেটিও লিখুন।' }
-  if (number && !wallet) return { error: 'বিকাশ, নগদ, নাকি রকেট — বেছে নিন।' }
+  if (wallet && !number) return { error: t.center.errors.walletNeedsNumber }
+  if (number && !wallet) return { error: t.center.errors.numberNeedsWallet }
 
   const supabase = await createClient()
   const { error } = await supabase
@@ -953,10 +970,10 @@ export async function saveCenterDetails(
     .update({ name, payment_wallet: wallet, payment_number: number })
     .eq('id', session.active.centerId)
 
-  if (error) return { error: 'সেভ হয়নি। আবার চেষ্টা করুন।' }
+  if (error) return { error: t.errors.saveFailed }
 
   // Layout-wide, because the name is in the header of every screen and is read
   // from the session, not from this page.
   revalidatePath('/', 'layout')
-  return { ok: 'সেভ হয়েছে' }
+  return { ok: t.saved }
 }

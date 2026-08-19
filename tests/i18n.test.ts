@@ -4,6 +4,10 @@ import assert from 'node:assert/strict'
 import { bn } from '../src/lib/i18n/bn.ts'
 import { en } from '../src/lib/i18n/en.ts'
 import { fill } from '../src/lib/i18n/fill.ts'
+import { nameTooLong, passwordTooShort } from '../src/lib/i18n/messages.ts'
+import { MAX_NAME } from '../src/lib/limits.ts'
+import { MIN_PASSWORD } from '../src/lib/auth/password.ts'
+import { digits } from '../src/lib/bd/time.ts'
 import { STAGE_ORDER } from '../src/lib/fees/reminder-schedule.ts'
 import {
   dict,
@@ -239,5 +243,33 @@ test('a name the centre never typed falls back to the one they did', () => {
     assert.equal(localName(null, locale), '')
     assert.equal(localName(undefined, locale), '')
     assert.equal(localName({ name: null, name_bn: null }, locale), '')
+  }
+})
+
+test('a limit message quotes the constant the check actually enforces', () => {
+  // The point of messages.ts. Somebody halves MAX_NAME, forgets the sentence,
+  // and an owner is refused at forty while being told eighty is fine — with no
+  // way to discover the real number except by deleting characters one at a time.
+  for (const locale of LOCALES) {
+    assert.match(nameTooLong(locale), new RegExp(digits(MAX_NAME, locale)))
+    assert.match(passwordTooShort(locale), new RegExp(digits(MIN_PASSWORD, locale)))
+  }
+
+  // Bangla numerals in a Bangla sentence, ASCII in an English one. A cap is
+  // prose; money and headcounts are the ones that stay ASCII in both.
+  assert.match(nameTooLong('bn'), /৮০/)
+  assert.match(nameTooLong('en'), /80/)
+  assert.match(passwordTooShort('bn'), /৬/)
+  assert.match(passwordTooShort('en'), /6/)
+})
+
+test('no limit message ships with its placeholder still in it', () => {
+  // fill() leaves an unknown placeholder standing rather than throwing, which is
+  // right at runtime and useless at review time — "নাম {n} অক্ষরের" reads as a
+  // broken build to the owner and as a passing test to everyone else.
+  for (const locale of LOCALES) {
+    for (const text of [nameTooLong(locale), passwordTooShort(locale)]) {
+      assert.doesNotMatch(text, /\{[a-zA-Z]+\}/, text)
+    }
   }
 })

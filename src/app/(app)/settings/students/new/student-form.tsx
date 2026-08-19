@@ -15,6 +15,7 @@ import { useRouter } from 'next/navigation'
 import { Alert, Button, Field } from '@/components/ui'
 import { formatBdMobile, normalizeBdMobile } from '@/lib/bd/phone'
 import { createStudent, type ActionState } from '../../actions'
+import { MAX_NAME } from '@/lib/limits'
 
 type BatchOption = { id: string; label: string }
 
@@ -42,7 +43,7 @@ export function StudentForm({ batches }: { batches: BatchOption[] }) {
         name="name"
         placeholder="রাফিদ হাসান"
         required
-        maxLength={80}
+        maxLength={MAX_NAME}
         autoComplete="off"
       />
 
@@ -70,7 +71,7 @@ export function StudentForm({ batches }: { batches: BatchOption[] }) {
         label="অভিভাবকের নাম (ঐচ্ছিক)"
         name="guardianName"
         placeholder="মোঃ কামাল হোসেন"
-        maxLength={80}
+        maxLength={MAX_NAME}
         autoComplete="off"
       />
 
@@ -114,7 +115,7 @@ export function StudentForm({ batches }: { batches: BatchOption[] }) {
             label="স্কুল / কলেজ"
             name="institution"
             placeholder="ঢাকা কলেজ"
-            maxLength={80}
+            maxLength={MAX_NAME}
           />
           <Field label="শ্রেণি" name="classLevel" placeholder="HSC ২য় বর্ষ" maxLength={40} />
           <Field

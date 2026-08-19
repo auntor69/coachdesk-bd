@@ -23,7 +23,9 @@ import {
 } from '@/lib/auth/session'
 import { todayInDhaka } from '@/lib/bd/time'
 import { planResultSms } from '@/lib/sms/result-dispatch'
+import { MAX_NAME } from '@/lib/limits'
 import { dict, DEFAULT_LOCALE } from '@/lib/i18n'
+import { nameTooLong } from '@/lib/i18n/messages'
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/
 
@@ -91,7 +93,9 @@ export async function createExam(
   const rawDate = String(formData.get('examDate') ?? '')
 
   if (!title) return { ok: false, error: t.errors.nameRequired }
-  if (title.length > 80) return { ok: false, error: t.errors.nameTooLong }
+  if (title.length > MAX_NAME) {
+    return { ok: false, error: nameTooLong(session.locale) }
+  }
   if (!batchId) return { ok: false, error: t.errors.pickBatch }
 
   if (!Number.isFinite(totalMarks) || totalMarks <= 0) {

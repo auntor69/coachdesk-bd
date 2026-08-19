@@ -12,6 +12,7 @@ import { useActionState, useEffect, useRef } from 'react'
 
 import { Alert, Button, Field } from '@/components/ui'
 import type { ActionState } from './actions'
+import { MAX_NAME } from '@/lib/limits'
 
 export function QuickAdd({
   action,
@@ -57,13 +58,13 @@ export function QuickAdd({
         name="name"
         placeholder={placeholder}
         required
-        maxLength={80}
+        maxLength={MAX_NAME}
       />
       <Field
         label="বাংলা নাম (ঐচ্ছিক)"
         name="nameBn"
         placeholder={placeholderBn}
-        maxLength={80}
+        maxLength={MAX_NAME}
       />
 
       {children}

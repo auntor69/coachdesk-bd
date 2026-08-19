@@ -69,11 +69,30 @@ export const bn = {
     dayLate: 'একদিন দেরি',
     daysLate: '{n} দিন দেরি',
     /**
-     * The tail of 26 different error messages. Kept as its own string so the
-     * specific half of each message stays with the screen that knows what went
-     * wrong, instead of 26 near-identical sentences in this file.
+     * The cap on every name an owner types — a subject, a batch, a student, a
+     * teacher, an exam, the centre itself. Shared because it is one rule, and
+     * because two screens saying different numbers for the same cap is the
+     * failure this file exists to prevent.
+     *
+     * A `{n}` template, filled by `nameTooLong()` in @/lib/limits from the same
+     * constant the checks read. Eight files enforce this cap and one of them is a
+     * browser `maxLength`; a sentence with the number typed into it would go
+     * stale the first time somebody moved it, and the reader would be told ৮০
+     * while being refused at sixty. Rendered with `digits`, so it is ৮০ here and
+     * 80 in English.
      */
-    tryAgain: 'আবার চেষ্টা করুন',
+    nameTooLong: 'নাম {n} অক্ষরের মধ্যে রাখুন।',
+    /**
+     * The password rule, on the two screens that set one — somebody signing
+     * themselves up, and an owner issuing a starting password to a teacher
+     * standing next to them.
+     *
+     * Same shape as `nameTooLong` and for the same reason: the length lives in
+     * `MIN_PASSWORD`, three files enforce it, and a message that says ৬ while the
+     * check wants eight is somebody unable to log in rather than a cosmetic
+     * mismatch. Filled with ./fill.ts on the server, the number through `digits`.
+     */
+    passwordTooShort: 'পাসওয়ার্ড কমপক্ষে {n} অক্ষরের হতে হবে।',
     /** The last resort, when nothing more specific is known. */
     somethingWentWrong: 'কিছু একটা সমস্যা হয়েছে',
   },
@@ -533,7 +552,6 @@ export const bn = {
        */
       forbidden: 'আপনার এই কাজের অনুমতি নেই।',
       nameRequired: 'পরীক্ষার নাম লিখুন।',
-      nameTooLong: 'নাম ৮০ অক্ষরের মধ্যে রাখুন।',
       pickBatch: 'ব্যাচ বাছুন।',
       noBatch: 'ব্যাচ পাওয়া যায়নি।',
       totalUnreadable: 'পূর্ণমান ঠিকভাবে লিখুন।',
@@ -643,7 +661,7 @@ export const bn = {
      * two of those the owner can shorten are named here.
      */
     longNote:
-      'কিছু SMS ২টি হিসেব হচ্ছে — পরীক্ষার নাম বা কোচিংয়ের নাম ছোট করলে খরশ অর্ধেক হবে।',
+      'কিছু SMS ২টি হিসেব হচ্ছে — পরীক্ষার নাম বা কোচিংয়ের নাম ছোট করলে খরচ অর্ধেক হবে।',
     declined: 'এই পরীক্ষার SMS পাঠানো হয়নি। চাইলে পরে পাঠাতে পারবেন।',
     send: 'অভিভাবককে পাঠান',
     sending: 'পাঠানো হচ্ছে…',
@@ -717,6 +735,200 @@ export const bn = {
     countedMarks: (_n: number) => 'হাজিরার হিসাব',
     /** Unreachable through the view — batches.name is not null. */
     unknownBatch: 'অজানা ব্যাচ',
+  },
+  /**
+   * Everything an owner configures, and everything those writes say back.
+   *
+   * One group for seven entities rather than seven groups, because the failures
+   * are the same five sentences with a different noun in them — a refused insert
+   * reads identically whether it was a subject or a teacher — and seven copies of
+   * "যোগ করা যায়নি" is seven chances to fix six of them. What is genuinely the
+   * entity's own sits under the entity: only a batch has a start time, only an
+   * import has a row limit.
+   *
+   * Read by the actions, not by the forms. Every string here is returned from a
+   * Server Action and arrives at the form already written, which is why the
+   * counted ones are functions — see `T` in ./index.ts. The forms' own labels are
+   * separate groups below, one per form, because those do cross the wire.
+   */
+  settings: {
+    /** The two success words the smaller forms share. */
+    added: 'যোগ হয়েছে',
+    saved: 'সেভ হয়েছে',
+
+    errors: {
+      /**
+       * Names both roles, because a manager reading "আপনার অনুমতি নেই" on the
+       * one screen they are not allowed to touch has no way to tell a permission
+       * boundary from a bug. `center` below draws the line one step higher and
+       * says so separately.
+       */
+      forbidden: 'এই কাজটি শুধু মালিক বা ম্যানেজার করতে পারেন।',
+      /**
+       * Says what to do about it and that nothing gets taken away. An owner who
+       * hits this is a paying customer three taps later or never, and "সীমা শেষ"
+       * on its own reads as a wall.
+       */
+      planLimit:
+        'ফ্রি প্ল্যানের সীমা শেষ। আরও যোগ করতে প্ল্যান বদলাতে হবে — সব ফিচার খোলা থাকবে।',
+      addFailed: 'যোগ করা যায়নি। আবার চেষ্টা করুন।',
+      createFailed: 'তৈরি করা যায়নি। আবার চেষ্টা করুন।',
+      /**
+       * One sentence for both saves. The centre form used to say 'সেভ হয়নি' and
+       * the permission checkboxes 'সেভ করা যায়নি' — one event described two ways,
+       * which in English was always going to be the same string.
+       */
+      saveFailed: 'সেভ করা যায়নি। আবার চেষ্টা করুন।',
+      changeFailed: 'বদলানো যায়নি। আবার চেষ্টা করুন।',
+    },
+
+    subjects: {
+      errors: {
+        nameRequired: 'বিষয়ের নাম লিখুন।',
+        /** The unique index on (centre, name). More use than a Postgres string. */
+        duplicate: 'এই নামে বিষয় আগেই আছে।',
+      },
+    },
+
+    examTypes: {
+      errors: {
+        nameRequired: 'পরীক্ষার ধরনের নাম লিখুন।',
+        duplicate: 'এই নামে ধরন আগেই আছে।',
+      },
+    },
+
+    batches: {
+      created: 'ব্যাচ তৈরি হয়েছে',
+      errors: {
+        nameRequired: 'ব্যাচের নাম লিখুন।',
+        pickSubject: 'বিষয় বাছুন।',
+        feeUnreadable: 'মাসিক ফি ঠিকভাবে লিখুন।',
+        endBeforeStart: 'শেষের সময় শুরুর সময়ের পরে হতে হবে।',
+        /**
+         * batch_schedules needs both times, so days without them would create
+         * the batch and drop the schedule — which looks exactly like a batch
+         * that meets every day.
+         */
+        daysNeedTimes: 'কোন দিন ক্লাস তা বাছলে শুরু ও শেষের সময়ও দিতে হবে।',
+        duplicate: 'এই নামে ব্যাচ আগেই আছে।',
+        /**
+         * Half-succeeded, and says so. Reporting a clean success here would be
+         * disproved tomorrow morning, when the batch fails to appear on the
+         * teacher's list.
+         */
+        scheduleFailed:
+          'ব্যাচ তৈরি হয়েছে, কিন্তু ক্লাসের দিন সেভ হয়নি। সেটিংস থেকে ঠিক করুন।',
+      },
+    },
+
+    students: {
+      added: 'শিক্ষার্থী যোগ হয়েছে',
+      errors: {
+        nameRequired: 'শিক্ষার্থীর নাম লিখুন।',
+        /**
+         * The example is in Bangla numerals because a Bangla keyboard types them
+         * and `normalizeBdMobile` accepts them. The English message shows the
+         * same number in ASCII, which is what that reader's keypad gives.
+         */
+        guardianPhone: 'অভিভাবকের সঠিক মোবাইল নম্বর দিন (যেমন ০১৭১২৩৪৫৬৭৮)।',
+        studentPhone: 'শিক্ষার্থীর নম্বরটি ঠিক নেই।',
+        /** students.student_code is unique per centre when it is given at all. */
+        duplicateCode: 'এই আইডিতে শিক্ষার্থী আগেই আছে।',
+        notFound: 'শিক্ষার্থী পাওয়া যায়নি।',
+      },
+    },
+
+    import: {
+      /**
+       * Three clauses the action joins with " · ". Separate keys because two of
+       * the three are dropped when their count is zero — "৪০ জন যোগ হয়েছে · 0 জন
+       * আগেই ছিল" reads as a bug in the importer.
+       *
+       * Counts of people stay ASCII, as everywhere: an owner reads this line and
+       * checks it against the register they just pasted.
+       */
+      added: (n: number) => `${n} জন যোগ হয়েছে`,
+      alreadyThere: (n: number) => `${n} জন আগেই ছিল`,
+      enrolled: (n: number) => `${n}টি ব্যাচ ভর্তি হয়েছে`,
+      errors: {
+        empty: 'তালিকা খালি। প্রতি লাইনে একজনের নাম আর অভিভাবকের নম্বর দিন।',
+        /**
+         * Both numbers, because "too many lines" without them leaves an owner
+         * counting a two-hundred-line paste by hand.
+         */
+        tooManyRows: (max: number, got: number) =>
+          `একবারে সর্বোচ্চ ${max} লাইন দিন, বাকিগুলো পরের বার। এখানে ${got} লাইন আছে।`,
+        noneReadable:
+          'একটি লাইনও পড়া গেল না। প্রতি লাইনে নাম আর ১১ ডিজিটের মোবাইল নম্বর দরকার।',
+        /**
+         * The first half of a two-sentence refusal; the action appends
+         * `errors.planLimit`. Split that way because the plan sentence is the
+         * same everywhere and this one is only true of a paste.
+         */
+        roomShort: (room: number, fresh: number) =>
+          `এই প্ল্যানে আর ${room} জন যোগ করা যাবে, কিন্তু তালিকায় ${fresh} জন নতুন।`,
+        failed: 'তালিকা যোগ করা যায়নি। আবার চেষ্টা করুন।',
+      },
+    },
+
+    sms: {
+      optedOut: 'SMS বন্ধ করা হয়েছে',
+      optedIn: 'SMS চালু করা হয়েছে',
+    },
+
+    teachers: {
+      addedWithLogin: 'শিক্ষক ও তাঁর লগইন তৈরি হয়েছে',
+      addedNoLogin: 'শিক্ষক যোগ হয়েছে (লগইন ছাড়া)',
+      /**
+       * Names the account that was joined to. If the owner mistyped a digit and
+       * linked somebody else, this sentence is where they find out — so it says
+       * whose account it was rather than reporting a plain success.
+       */
+      linked: (name: string) =>
+        `শিক্ষক যোগ হয়েছে — পুরনো অ্যাকাউন্ট যুক্ত করা হয়েছে (${name})`,
+      permissionsSaved: 'অনুমতি সেভ হয়েছে',
+      activated: 'চালু করা হয়েছে',
+      deactivated: 'বন্ধ করা হয়েছে',
+      /** Stands in for a profile with no name on it, in both sentences below. */
+      noName: 'নাম দেওয়া নেই',
+      /**
+       * Not an error and not a success: the action stopped to ask. Never links on
+       * the first submit, because one mistyped digit would otherwise hand a
+       * stranger a teacher account inside this centre — other people's children's
+       * marks and their guardians' numbers.
+       */
+      confirmLink: (name: string) =>
+        `এই নম্বরে আগেই একটি অ্যাকাউন্ট আছে — ${name}। এটাই যদি আপনার শিক্ষক হন, নিচে টিক দিয়ে আবার সেভ করুন। তিনি তাঁর পুরনো পাসওয়ার্ড দিয়েই ঢুকবেন।`,
+      errors: {
+        nameRequired: 'শিক্ষকের নাম লিখুন।',
+        phoneInvalid: 'নম্বরটি ঠিক নেই (যেমন ০১৭১২৩৪৫৬৭৮)।',
+        /** Because the number is the login id — there is nothing else to be. */
+        loginNeedsPhone: 'লগইন দিতে হলে মোবাইল নম্বর লাগবে — নম্বরটাই তাঁর আইডি।',
+        loginFailed: 'লগইন তৈরি করা যায়নি। আবার চেষ্টা করুন।',
+        notFound: 'শিক্ষক পাওয়া যায়নি।',
+      },
+    },
+
+    center: {
+      errors: {
+        /**
+         * Owner, not manager — the one place in settings where the line moves,
+         * because whoever can edit the payment number decides where every fee
+         * reminder the centre sends points.
+         */
+        ownerOnly: 'নাম আর পেমেন্ট নম্বর শুধু কোচিংয়ের মালিক বদলাতে পারেন।',
+        nameRequired: 'কোচিংয়ের নাম লিখুন।',
+        /**
+         * Told apart from the two below on purpose: "you left this blank" and
+         * "what you typed is not a number" need different answers, and this is
+         * where a digit gets lost. Money sent to a wrong-but-valid number is
+         * gone, and the centre gets blamed for a fee that was paid.
+         */
+        numberInvalid: 'নম্বরটি ঠিক নেই। ১১ সংখ্যার মোবাইল নম্বর দিন, যেমন ০১৭১২৩৪৫৬৭৮।',
+        walletNeedsNumber: 'কোন নম্বরে টাকা যাবে সেটিও লিখুন।',
+        numberNeedsWallet: 'বিকাশ, নগদ, নাকি রকেট — বেছে নিন।',
+      },
+    },
   },
 } as const
 

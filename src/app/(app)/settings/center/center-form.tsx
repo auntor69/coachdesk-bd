@@ -17,6 +17,7 @@ import { monthName } from '@/lib/bd/time'
 import { buildFeeReminderSms, WALLET_LABEL_BN } from '@/lib/sms/templates'
 import type { PayoutWallet } from '@/lib/supabase/types'
 import { saveCenterDetails, type ActionState } from '../actions'
+import { MAX_NAME } from '@/lib/limits'
 
 /**
  * Fourteen code points with no space in them — exactly the budget
@@ -100,7 +101,7 @@ export function CenterForm({
         value={name}
         onChange={(e) => setName(e.target.value)}
         required
-        maxLength={80}
+        maxLength={MAX_NAME}
       />
 
       <fieldset className="flex flex-col gap-2">
