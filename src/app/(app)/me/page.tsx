@@ -1,13 +1,16 @@
 import { Card } from '@/components/ui'
 import { greetingFor } from '@/components/app-shell'
-import { requireCenter } from '@/lib/auth/session'
+import { requireCenter, getSession } from '@/lib/auth/session'
 import { createClient } from '@/lib/supabase/server'
 import { formatDate, todayInDhaka } from '@/lib/bd/time'
+import { formatTaka, tallyOutstanding } from '@/lib/money'
+import { dict, DEFAULT_LOCALE } from '@/lib/i18n'
 
-export const metadata = { title: 'আমার — CoachDesk' }
-
-function taka(amount: number): string {
-  return `৳${amount.toLocaleString('en-US')}`
+/** getSession, not requireCenter — see the note on teach/page.tsx's own. */
+export async function generateMetadata() {
+  const session = await getSession()
+  const locale = session?.locale ?? DEFAULT_LOCALE
+  return { title: `${dict(locale).me.title} — CoachDesk` }
 }
 
 /**
@@ -22,15 +25,25 @@ export default async function MePage() {
   const session = await requireCenter()
   const supabase = await createClient()
   const today = todayInDhaka()
+  const locale = session.locale
+  const d = dict(locale)
+  const t = d.me
 
-  const [{ data: students }, { data: invoices }, { data: payments }, { data: results }] =
+  const [{ data: students }, { data: balances }, { data: results }] =
     await Promise.all([
       supabase.from('students').select('id, name, class_level, institution'),
+      /*
+       * The balance comes from the view, not from invoices minus payments here.
+       * Two reasons, and the second is the one that bites: numeric(10,2) arriving
+       * as a JS float cannot represent 0.10, so a paid-in-full invoice can leave a
+       * remainder of about 2e-13 — which is greater than zero. This screen would
+       * then tell a parent they owe ৳0 *and* withhold the "all paid" card. The
+       * subtraction belongs where the numerics are exact. See lib/money's header.
+       */
       supabase
-        .from('fee_invoices')
-        .select('id, student_id, amount_bdt, discount_bdt, due_date')
+        .from('fee_invoice_balances')
+        .select('student_id, due_date, remaining_bdt')
         .is('voided_at', null),
-      supabase.from('fee_payments').select('invoice_id, amount_bdt'),
       supabase
         .from('exam_results')
         .select('id, obtained_marks, is_absent, exams (title, total_marks, exam_date)')
@@ -38,20 +51,20 @@ export default async function MePage() {
         .limit(5),
     ])
 
-  const paidByInvoice = new Map<string, number>()
-  for (const p of payments ?? []) {
-    paidByInvoice.set(p.invoice_id, (paidByInvoice.get(p.invoice_id) ?? 0) + p.amount_bdt)
-  }
+  /*
+   * Unpaid *and* overpaid, unlike the old version which dropped everything at or
+   * below zero. A family that handed over 1600 against a 1500 bill has a credit
+   * sitting on the invoice, and the only screen they can see it on is this one.
+   */
+  const rows = (balances ?? []).map((row) => ({
+    studentId: row.student_id,
+    dueDate: row.due_date,
+    remaining: row.remaining_bdt ?? 0,
+  }))
 
-  const dues = (invoices ?? [])
-    .map((inv) => ({
-      studentId: inv.student_id,
-      dueDate: inv.due_date,
-      remaining: inv.amount_bdt - inv.discount_bdt - (paidByInvoice.get(inv.id) ?? 0),
-    }))
-    .filter((d) => d.remaining > 0)
-
-  const totalDue = dues.reduce((sum, d) => sum + d.remaining, 0)
+  // Grand total across every child, for the all-paid card. tallyOutstanding, not
+  // a sum: a credit on one child must not pay off a debt on another.
+  const { outstanding: totalDue } = tallyOutstanding(rows.map((r) => r.remaining))
 
   return (
     <div className="flex flex-col gap-5">
@@ -61,7 +74,13 @@ export default async function MePage() {
       </div>
 
       {(students ?? []).map((student) => {
-        const studentDues = dues.filter((d) => d.studentId === student.id)
+        const mine = rows.filter((r) => r.studentId === student.id)
+        const { outstanding, credit } = tallyOutstanding(mine.map((r) => r.remaining))
+        // Only a row still owing money can be late. A credited invoice whose due
+        // date has passed is settled, and saying otherwise would send a parent to
+        // the centre over a bill they already paid.
+        const late = mine.some((r) => r.remaining > 0 && r.dueDate !== null && r.dueDate < today)
+
         return (
           <Card key={student.id}>
             <p className="font-semibold text-ink">{student.name}</p>
@@ -70,17 +89,18 @@ export default async function MePage() {
                 {[student.class_level, student.institution].filter(Boolean).join(' · ')}
               </p>
             )}
-            {studentDues.length > 0 && (
+            {outstanding > 0 && (
               <p className="mt-3 text-sm">
                 <span className="font-medium text-absent">
-                  বকেয়া{' '}
-                  <span className="num">
-                    {taka(studentDues.reduce((s, d) => s + d.remaining, 0))}
-                  </span>
+                  {t.due} <span className="num">{formatTaka(outstanding)}</span>
                 </span>
-                {studentDues.some((d) => d.dueDate < today) && (
-                  <span className="text-ink-soft"> · সময় পেরিয়ে গেছে</span>
-                )}
+                {late && <span className="text-ink-soft"> · {t.overdue}</span>}
+              </p>
+            )}
+            {credit > 0 && (
+              <p className="mt-3 text-sm text-brand-800">
+                <span className="num font-semibold">{formatTaka(credit)}</span>{' '}
+                {d.fees.inCredit}
               </p>
             )}
           </Card>
@@ -89,13 +109,13 @@ export default async function MePage() {
 
       {totalDue === 0 && (students ?? []).length > 0 && (
         <Card className="border-brand-200 bg-brand-50">
-          <p className="font-medium text-brand-800">সব ফি পরিশোধ করা আছে ✓</p>
+          <p className="font-medium text-brand-800">{t.allPaid}</p>
         </Card>
       )}
 
       {(results ?? []).length > 0 && (
         <div>
-          <h2 className="mb-2 font-semibold text-ink">সাম্প্রতিক ফলাফল</h2>
+          <h2 className="mb-2 font-semibold text-ink">{t.recentResults}</h2>
           <ul className="flex flex-col gap-2">
             {(results ?? []).map((result) => {
               const exam = Array.isArray(result.exams) ? result.exams[0] : result.exams
@@ -109,12 +129,12 @@ export default async function MePage() {
                   <div className="min-w-0">
                     <p className="truncate font-medium text-ink">{exam.title}</p>
                     <p className="text-sm text-ink-faint">
-                      {formatDate(exam.exam_date)}
+                      {formatDate(exam.exam_date, locale)}
                     </p>
                   </div>
                   <span className="num shrink-0 font-semibold text-ink">
                     {result.is_absent ? (
-                      <span className="text-absent">অনুপস্থিত</span>
+                      <span className="text-absent">{d.attendance.absent}</span>
                     ) : (
                       <>
                         {result.obtained_marks ?? '—'}/{exam.total_marks}
@@ -130,9 +150,7 @@ export default async function MePage() {
 
       {(students ?? []).length === 0 && (
         <Card>
-          <p className="text-ink-soft">
-            আপনার তথ্য এখনও যোগ করা হয়নি। কোচিং সেন্টারে যোগাযোগ করুন।
-          </p>
+          <p className="text-ink-soft">{t.noRecords}</p>
         </Card>
       )}
     </div>

@@ -476,6 +476,17 @@ export const en: Dictionary = {
     unknownBatch: 'Unnamed batch',
   },
 
+  me: {
+    title: 'Mine',
+    due: 'Due',
+    /** 'past the deadline', not 'overdue', because that is what fees says. */
+    overdue: 'past the deadline',
+    allPaid: 'All fees are paid ✓',
+    recentResults: 'Recent results',
+    noRecords:
+      'Your records have not been added yet. Please contact the coaching centre.',
+  },
+
   settings: {
     added: 'Added',
     saved: 'Saved',

@@ -784,6 +784,38 @@ export const bn = {
     unknownBatch: 'অজানা ব্যাচ',
   },
   /**
+   * A student's or guardian's own screen — the counterpart to `dashboard`.
+   *
+   * Deliberately small, because this reader cannot act on any of it: they cannot
+   * mark attendance, record a payment or change a fee, so every string is a
+   * statement of fact and none of them is a button.
+   *
+   * The two words that are *not* here are the point. `attendance.absent` and
+   * `fees.inCredit` come from the groups the owner reads, because a parent who
+   * rings the centre about a figure has to be talking about the same figure in
+   * the same words.
+   */
+  me: {
+    /** Matches shell.nav.mine — the tab and the page title should agree. */
+    title: 'আমার',
+    due: 'বকেয়া',
+    /**
+     * Follows the amount after a separator: 'বকেয়া ৳1,500 · সময় পেরিয়ে গেছে'.
+     * Not a count of late invoices — a parent needs to know a date has passed,
+     * not how many of them did.
+     */
+    overdue: 'সময় পেরিয়ে গেছে',
+    allPaid: 'সব ফি পরিশোধ করা আছে ✓',
+    recentResults: 'সাম্প্রতিক ফলাফল',
+    /**
+     * No students came back at all: either the centre has not linked this phone
+     * to a child yet, or it linked a different number. Both are the centre's to
+     * fix, so the sentence sends them there instead of suggesting they retry.
+     */
+    noRecords: 'আপনার তথ্য এখনও যোগ করা হয়নি। কোচিং সেন্টারে যোগাযোগ করুন।',
+  },
+
+  /**
    * Everything an owner configures, and everything those writes say back.
    *
    * One group for seven entities rather than seven groups, because the failures
