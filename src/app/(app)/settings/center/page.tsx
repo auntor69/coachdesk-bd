@@ -1,14 +1,19 @@
 import Link from 'next/link'
 
 import { Card } from '@/components/ui'
-import { requireRole } from '@/lib/auth/session'
+import { requireRole, getSession } from '@/lib/auth/session'
 import { createClient } from '@/lib/supabase/server'
-import { currentPeriodMonth } from '@/lib/bd/time'
+import { currentPeriodMonth, monthName } from '@/lib/bd/time'
 import { formatBdMobile } from '@/lib/bd/phone'
-import { WALLET_LABEL_BN } from '@/lib/sms/templates'
+import { dict, DEFAULT_LOCALE } from '@/lib/i18n'
 import { CenterForm } from './center-form'
 
-export const metadata = { title: 'নাম ও পেমেন্ট — CoachDesk' }
+/** getSession, not requireRole — see the note on teach/page.tsx's own. */
+export async function generateMetadata() {
+  const session = await getSession()
+  const locale = session?.locale ?? DEFAULT_LOCALE
+  return { title: `${dict(locale).settings.center.title} — CoachDesk` }
+}
 
 /**
  * The centre's name, and the wallet a parent sends fees to.
@@ -26,6 +31,8 @@ export const metadata = { title: 'নাম ও পেমেন্ট — CoachD
  */
 export default async function CenterSettingsPage() {
   const session = await requireRole('manager')
+  const locale = session.locale
+  const t = dict(locale).settings.center
   const supabase = await createClient()
   const periodMonth = currentPeriodMonth()
 
@@ -37,19 +44,27 @@ export default async function CenterSettingsPage() {
       .maybeSingle(),
     // One real name for the preview, so what the owner reads is a message their
     // own centre would send rather than a mock-up of one.
+    //
+    // Scoped, and not only by RLS: an owner of two centres passes the policy for
+    // both, and this would otherwise put a child from the other centre into the
+    // sample message — a minor's name on a screen that is not theirs, over a
+    // switcher that says this one.
     supabase
       .from('students')
       .select('name')
+      .eq('coaching_center_id', session.active.centerId)
       .eq('status', 'active')
       .order('name')
       .limit(1)
       .maybeSingle(),
     // A representative amount. Not the worst case — a family three months behind
     // owes more than one month's fee — but the figure their reminders will
-    // usually carry, and it is their own number rather than a guess.
+    // usually carry, and it is their own number rather than a guess. Scoped for
+    // the same reason as the name above.
     supabase
       .from('batches')
       .select('monthly_fee_bdt')
+      .eq('coaching_center_id', session.active.centerId)
       .eq('active', true)
       .order('monthly_fee_bdt', { ascending: false })
       .limit(1)
@@ -64,12 +79,10 @@ export default async function CenterSettingsPage() {
     <div className="flex flex-col gap-5">
       <div>
         <Link href="/settings" className="text-sm font-medium text-brand-700">
-          ← সেটিংস
+          ← {dict(locale).settings.hub.title}
         </Link>
-        <h1 className="mt-2 text-xl font-bold text-ink">নাম ও পেমেন্ট</h1>
-        <p className="mt-1 text-ink-soft">
-          অভিভাবকের কাছে যাওয়া বার্তায় এই নাম আর নম্বরটিই থাকবে
-        </p>
+        <h1 className="mt-2 text-xl font-bold text-ink">{t.title}</h1>
+        <p className="mt-1 text-ink-soft">{t.subtitle}</p>
       </div>
 
       {canEdit ? (
@@ -78,25 +91,33 @@ export default async function CenterSettingsPage() {
           paymentWallet={wallet}
           paymentNumber={number}
           example={{
+            // Bangla, like the preview it feeds: this is a stand-in for a real
+            // student's name inside a message a guardian reads.
             studentName: student?.name ?? 'রাফিদ হাসান',
             amount: Number(batch?.monthly_fee_bdt ?? 0) || 1500,
             periodMonth,
+            // The month in the reader's language, for the label above the
+            // preview. The month *inside* the message stays Bangla.
+            monthLabel: monthName(periodMonth, locale),
           }}
+          t={dict(locale).centerForm}
+          wallets={dict(locale).wallets}
+          common={dict(locale).common}
         />
       ) : (
         <Card>
-          <p className="font-medium text-ink">{center?.name ?? session.active.centerName}</p>
+          <p className="font-medium text-ink">
+            {center?.name ?? session.active.centerName}
+          </p>
           {wallet && number ? (
             <p className="mt-1 text-ink-soft">
-              {WALLET_LABEL_BN[wallet]}{' '}
+              {dict(locale).wallets[wallet]}{' '}
               <span className="num font-medium text-ink">{formatBdMobile(number)}</span>
             </p>
           ) : (
-            <p className="mt-1 text-ink-soft">পেমেন্ট নম্বর এখনো দেওয়া হয়নি।</p>
+            <p className="mt-1 text-ink-soft">{t.noNumber}</p>
           )}
-          <p className="mt-3 text-sm text-ink-faint">
-            এগুলো শুধু কোচিংয়ের মালিক বদলাতে পারেন।
-          </p>
+          <p className="mt-3 text-sm text-ink-faint">{t.readOnly}</p>
         </Card>
       )}
     </div>

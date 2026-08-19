@@ -133,6 +133,18 @@ export const en: Dictionary = {
     call: 'Call',
   },
 
+  /**
+   * The Latin styling every English-medium owner in Dhaka reads on the app icon
+   * — deliberately not a transliteration of the Bangla, and deliberately not what
+   * the guardian receives. The SMS itself still says বিকাশ, because the parent did
+   * not switch languages; see the note in bn.ts.
+   */
+  wallets: {
+    bkash: 'bKash',
+    nagad: 'Nagad',
+    rocket: 'Rocket',
+  },
+
   fees: {
     title: 'Fees',
     subtitle: 'Who has paid, who has not',
@@ -559,6 +571,47 @@ export const en: Dictionary = {
     submit: 'Add teacher',
   },
 
+  centerForm: {
+    nameLabel: 'Centre’s name',
+    nameHint: 'This name signs every SMS, so a short one is better',
+    walletLegend: 'Where guardians send the money',
+    walletHint: 'This number goes into the fee message',
+    walletNone: 'None of these',
+    numberLabel: '{wallet} number',
+    numberHint: 'The number the money arrives on — 11 digits, e.g. 01712345678',
+    previewTitle: 'The {month} fee message will look like this',
+    /**
+     * Both counts carry their own number, so the `.num` class can sit on the
+     * finished phrase. A function would be the better tool and cannot be used
+     * here: this form is a client component.
+     */
+    chars: '{n} characters',
+    smsCount: '{n} SMS',
+    fitsAll: 'Every student’s message will carry the number',
+    fitsSome:
+      'Students with long names will lose the number from their message. Shorten the centre’s name and it fits for everybody.',
+    fitsNone:
+      'The name is long enough that the number has nowhere to go in an SMS. Shortening the centre’s name fixes it — on WhatsApp the number always goes.',
+  },
+
+  optOutList: {
+    title: 'Who does not get SMS',
+    noNumber: 'No number',
+    on: 'On',
+    off: 'Off',
+    turnOn: 'Turn SMS on — {name}',
+    turnOff: 'Turn SMS off — {name}',
+  },
+
+  smsKinds: {
+    /** Plural: one dispatch carries a whole exam's worth of them. */
+    exam_result: 'Results',
+    attendance_alert: 'Attendance',
+    fee_reminder: 'Fees',
+    notice: 'Notice',
+    custom: 'Other',
+  },
+
   dashboard: {
     title: 'Dashboard',
     outstanding: 'Fees outstanding',
@@ -797,6 +850,37 @@ export const en: Dictionary = {
     sms: {
       optedOut: 'SMS turned off',
       optedIn: 'SMS turned on',
+
+      title: 'SMS',
+      balance: 'You have',
+      credits: (n: number) => `${n} ${n === 1 ? 'credit' : 'credits'}`,
+      monthly: (plan: string, n: number) =>
+        `${n} ${n === 1 ? 'credit' : 'credits'} a month on the ${plan} plan`,
+      /**
+       * "not 160" is the whole point of the sentence for this reader in
+       * particular: an English-medium owner has counted an English SMS before and
+       * knows the number they are about to plan around is wrong.
+       */
+      segmentNote: (chars: number) =>
+        `One SMS in Bangla is ${chars} characters, not 160. Telling one guardian one thing costs 1 credit.`,
+
+      notLiveTitle: 'Sending is not switched on yet',
+      notLiveBody:
+        'A sender ID in your centre’s name is being approved. Until then whatever you send waits in line and goes out together the moment it clears — nothing is lost.',
+
+      statusTitle: 'Status',
+      queued: 'In line',
+      sent: 'Gone',
+      failed: 'Not sent',
+
+      recentTitle: 'Recently sent',
+      noneYet:
+        'No SMS sent yet. The chance to tell guardians comes right after you save marks for an exam.',
+      people: (n: number) => `${n} ${n === 1 ? 'guardian' : 'guardians'}`,
+
+      optOutNone: 'Everybody is getting SMS right now.',
+      optOutSome: (n: number) =>
+        `SMS is off for ${n} ${n === 1 ? 'student' : 'students'}.`,
     },
 
     teachers: {
@@ -840,6 +924,10 @@ export const en: Dictionary = {
     },
 
     center: {
+      title: 'Name & payment',
+      subtitle: 'This name and this number are what reaches guardians in every message',
+      readOnly: 'Only the centre’s owner can change these.',
+      noNumber: 'No payment number yet.',
       errors: {
         ownerOnly:
           'Only the centre’s owner can change the name and the payment number.',

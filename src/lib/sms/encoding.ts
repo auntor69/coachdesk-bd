@@ -34,6 +34,16 @@ const LIMITS = {
   ucs2: { single: 70, multi: 67 },
 } as const
 
+/**
+ * What one Bangla SMS holds.
+ *
+ * Exported so the settings screen can teach the owner this number instead of
+ * asserting it: every centre plans around 160 until somebody tells them
+ * otherwise, and a hard-coded 70 in a sentence is a fact that can silently stop
+ * matching the arithmetic underneath it.
+ */
+export const UCS2_SEGMENT = LIMITS.ucs2.single
+
 export type SmsCost = {
   encoding: SmsEncoding
   /** Billable units — what the message costs in septets or UCS-2 characters. */

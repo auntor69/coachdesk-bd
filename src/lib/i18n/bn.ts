@@ -252,6 +252,27 @@ export const bn = {
   },
 
   /**
+   * The three wallets a Bangladeshi family actually sends money with, in the
+   * word they use for it rather than the company's own styling.
+   *
+   * Keyed by coaching_centers.payment_wallet, so a fourth wallet added to the
+   * enum without a word here is a compile error rather than a blank radio button
+   * on the one form that decides where a month of fees goes.
+   *
+   * The Bangla side must match `WALLET_LABEL_BN` exactly, and a test holds it to
+   * that: the owner choosing a wallet should be reading the same word the parent
+   * will read in the SMS, or the screen is describing a message it does not send.
+   * The English side deliberately does not — an English-medium owner reads
+   * "bKash" on the app icon, while the message their parents receive still says
+   * বিকাশ, because the parent is not the one who switched languages.
+   */
+  wallets: {
+    bkash: 'বিকাশ',
+    nagad: 'নগদ',
+    rocket: 'রকেট',
+  },
+
+  /**
    * The fee board — the screen the product is sold on — and everything its three
    * writes say back.
    *
@@ -953,6 +974,93 @@ export const bn = {
     submit: 'শিক্ষক যোগ করুন',
   },
 
+  /**
+   * The centre's own name and the number a parent sends fees to.
+   *
+   * Every string here is on one screen, and the screen is unusual: it shows the
+   * real SMS as the owner types, because the two fields compete for the same 70
+   * characters. So the copy has to explain a consequence rather than label a
+   * field — which is why the three verdict lines below are sentences and not
+   * badges.
+   */
+  centerForm: {
+    nameLabel: 'কোচিংয়ের নাম',
+    nameHint: 'প্রতিটি SMS-এর শেষে এই নামই যাবে, তাই ছোট নাম হলে ভালো',
+    /** The question, not the field: an owner is choosing an app here, not a word. */
+    walletLegend: 'অভিভাবক কোথায় টাকা পাঠাবেন',
+    walletHint: 'ফি-এর বার্তায় এই নম্বরটি লেখা থাকবে',
+    /** Its own key rather than part of `wallets`, which is keyed by the enum. */
+    walletNone: 'কোনোটাই না',
+    /**
+     * Filled in the browser, because which wallet is selected is client state.
+     * See the note in ./index.ts about `{n}` templates — a function could not
+     * cross into this form at all.
+     */
+    numberLabel: '{wallet} নম্বর',
+    numberHint: 'যে নম্বরে টাকা আসবে — ১১ সংখ্যা, যেমন 01712345678',
+    /** Also filled in the browser: the month is data, the sentence is copy. */
+    previewTitle: '{month} মাসের ফি-এর বার্তা দেখতে এমন হবে',
+    /**
+     * Two counts on one line, each in its own element so the numbers can be
+     * styled — hence two keys and no template. ASCII in both languages: this is
+     * a measurement the owner checks against a phone bill.
+     */
+    chars: '{n} অক্ষর',
+    smsCount: '{n}টি SMS',
+    /**
+     * The three verdicts, in order of how much they ask of the owner: nothing,
+     * shorten the name if you like, shorten the name or lose the number.
+     *
+     * Each says what happens to the *parent*, because that is the consequence the
+     * owner is deciding about. "নম্বর বাদ যাবে" on its own reads as an app fault;
+     * naming WhatsApp says the fee is still collectable either way.
+     */
+    fitsAll: 'সব শিক্ষার্থীর বার্তায় নম্বরটি থাকবে',
+    fitsSome:
+      'লম্বা নামের কিছু শিক্ষার্থীর বার্তা থেকে নম্বরটি বাদ যাবে। নাম ছোট করলে সবার বার্তাতেই জায়গা হবে।',
+    fitsNone:
+      'নামটি লম্বা হওয়ায় SMS-এ নম্বরের জায়গা হচ্ছে না। কোচিংয়ের নাম ছোট করলে হবে — WhatsApp-এ নম্বরটি সবসময়ই যাবে।',
+  },
+
+  /**
+   * The opt-out switches on the SMS screen.
+   *
+   * Short, because every row already carries a name and a number and the button
+   * is the whole interaction — there is no save step to explain.
+   */
+  optOutList: {
+    title: 'কে SMS পাবে না',
+    /** A guardian number the centre never got. Not an error: plenty are missing. */
+    noNumber: 'নম্বর নেই',
+    /** On the switch itself: what is true now, not what tapping it does. */
+    on: 'চালু',
+    off: 'বন্ধ',
+    /**
+     * The screen-reader label, which has to say what the tap *does* — the visible
+     * word says what the state is, and a button reading "চালু" that turns SMS off
+     * is unusable without eyes on the colour. Filled in the browser: the name is
+     * per row and the direction flips on every tap.
+     */
+    turnOn: 'SMS চালু করুন — {name}',
+    turnOff: 'SMS বন্ধ করুন — {name}',
+  },
+
+  /**
+   * What a sent batch of messages was about, in the ledger.
+   *
+   * One word each: the row already carries a date, a headcount and a credit cost,
+   * and the kind is what the owner scans down the column for. Keyed by
+   * sms_dispatches.kind, so a sixth kind added to the enum without a word here is
+   * a compile error rather than a raw 'attendance_alert' on the receipt.
+   */
+  smsKinds: {
+    exam_result: 'ফলাফল',
+    attendance_alert: 'হাজিরা',
+    fee_reminder: 'ফি',
+    notice: 'নোটিশ',
+    custom: 'অন্য',
+  },
+
   dashboard: {
     title: 'ড্যাশবোর্ড',
     outstanding: 'বকেয়া ফি',
@@ -1329,6 +1437,63 @@ export const bn = {
     sms: {
       optedOut: 'SMS বন্ধ করা হয়েছে',
       optedIn: 'SMS চালু করা হয়েছে',
+
+      /** Latin in a Bangla dictionary, and allowlisted as such — see the test. */
+      title: 'SMS',
+      balance: 'এখন আছে',
+      /**
+       * Credits are money, so they stay ASCII in both languages like every other
+       * figure an owner checks against something else — here, against what they
+       * paid for. Serves the balance and each row's cost; they are the same unit
+       * and reading two words for it would suggest they were not.
+       */
+      credits: (n: number) => `${n} ক্রেডিট`,
+      /**
+       * The monthly allowance, naming the plan the centre is on. This line used
+       * to read `session.plan.nameBn` to an English reader.
+       */
+      monthly: (plan: string, n: number) =>
+        `${plan} প্ল্যানে প্রতি মাসে ${n} ক্রেডিট`,
+      /**
+       * The one sentence on this screen that is teaching rather than reporting.
+       * Every centre assumes 160 characters, because that is what an English SMS
+       * holds; a Bangla one holds 70, and an owner who plans around the wrong
+       * number concludes we are overcharging them. Takes the capacity as an
+       * argument so the sentence cannot drift from the arithmetic that bills it.
+       */
+      segmentNote: (chars: number) =>
+        `বাংলায় এক SMS = ${digits(chars, 'bn')} অক্ষর। এক জন অভিভাবককে একটি বার্তা পাঠালে ${digits(1, 'bn')} ক্রেডিট খরচ হয়।`,
+
+      /**
+       * No gateway yet, and this says so rather than letting a queued message
+       * read as a delivered one. An owner who believes forty parents were told
+       * will not look again for weeks.
+       */
+      notLiveTitle: 'পাঠানো এখনও চালু হয়নি',
+      notLiveBody:
+        'আপনার কোচিংয়ের নামে sender ID অনুমোদনের কাজ চলছে। ততক্ষণ পর্যন্ত যা পাঠাবেন তা লাইনে জমা থাকবে, অনুমোদন হলেই একসাথে চলে যাবে — কোনো বার্তা হারাবে না।',
+
+      statusTitle: 'অবস্থা',
+      /** Three tiles across a 375px screen, so one word each. */
+      queued: 'লাইনে',
+      sent: 'গেছে',
+      failed: 'যায়নি',
+
+      recentTitle: 'সাম্প্রতিক পাঠানো',
+      /** Says where the first one will come from, not just that there are none. */
+      noneYet:
+        'এখনও কোনো SMS পাঠানো হয়নি। পরীক্ষার নম্বর সেভ করার পর অভিভাবকদের জানানোর সুযোগ আসবে।',
+      /** How many guardians one dispatch reached. A tally, so ASCII. */
+      people: (n: number) => `${n} জন`,
+
+      /**
+       * The opt-out list's subtitle, resolved here rather than in the list: the
+       * list is a client component, and English needs "1 student" and not
+       * "1 students". Zero is its own sentence — "0 জনের SMS বন্ধ আছে" is a true
+       * statement that reads like a failed lookup.
+       */
+      optOutNone: 'এখন সবাই SMS পাচ্ছে।',
+      optOutSome: (n: number) => `${n} জনের SMS বন্ধ আছে।`,
     },
 
     teachers: {
@@ -1405,6 +1570,15 @@ export const bn = {
     },
 
     center: {
+      title: 'নাম ও পেমেন্ট',
+      subtitle: 'অভিভাবকের কাছে যাওয়া বার্তায় এই নাম আর নম্বরটিই থাকবে',
+      /**
+       * The read-only card a manager gets. Its own sentence rather than
+       * `errors.ownerOnly`: nothing was refused here, so a manager should not be
+       * told they are not allowed — they are being told who to ask.
+       */
+      readOnly: 'এগুলো শুধু কোচিংয়ের মালিক বদলাতে পারেন।',
+      noNumber: 'পেমেন্ট নম্বর এখনো দেওয়া হয়নি।',
       errors: {
         /**
          * Owner, not manager — the one place in settings where the line moves,

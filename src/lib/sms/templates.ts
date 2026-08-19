@@ -197,6 +197,31 @@ export type FeeReminderSms = {
 }
 
 /**
+ * What a student's name gets in a fee reminder: fewer characters than a result
+ * SMS allows, because this message also has to name a month.
+ *
+ * Exported because the settings form has to reason about it — see
+ * `WORST_CASE_NAME` — and a second copy of the number there would drift the
+ * moment this one is tuned, which would make that form's promise about the
+ * payment number quietly false.
+ */
+export const FEE_NAME_BUDGET = 14
+
+/**
+ * The longest name this template will ever have to carry.
+ *
+ * `FEE_NAME_BUDGET` code points with no space in them, so `clamp` cannot trim it
+ * back to a whole word and it occupies the full budget. It therefore stands in
+ * for every name on the roster at once: whatever survives beside this survives
+ * for everybody. Never sent and never displayed — it exists so the settings form
+ * can ask "does the payment number fit for my worst case?" and get an answer
+ * that does not depend on which student happened to sort first.
+ */
+export const WORST_CASE_NAME = [...'মোহাম্মদসাদিয়ারহমান']
+  .slice(0, FEE_NAME_BUDGET)
+  .join('')
+
+/**
  * The fee reminder, sized for one SMS.
  *
  * Today this goes out through the owner's own handset via a prefilled `sms:`
@@ -228,7 +253,7 @@ export type FeeReminderSms = {
  */
 export function buildFeeReminderSms(input: FeeReminderInput): FeeReminderSms {
   const brand = clamp(input.centerName, BRAND_BUDGET - 2)
-  const name = clamp(input.studentName, 14)
+  const name = clamp(input.studentName, FEE_NAME_BUDGET)
   const month = monthName(input.periodMonth)
   const money = formatTaka(input.amount)
   const tail = ` -${brand}`

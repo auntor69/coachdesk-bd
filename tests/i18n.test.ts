@@ -10,6 +10,8 @@ import { MIN_PASSWORD } from '../src/lib/auth/password.ts'
 import { digits } from '../src/lib/bd/time.ts'
 import { STAGE_ORDER } from '../src/lib/fees/reminder-schedule.ts'
 import { PERMISSION_KEYS, PERMISSION_DEFAULTS } from '../src/lib/permissions.ts'
+import { WALLET_LABEL_BN } from '../src/lib/sms/templates.ts'
+import { UCS2_SEGMENT } from '../src/lib/sms/encoding.ts'
 import {
   dict,
   LOCALES,
@@ -72,7 +74,7 @@ const BENGALI = /[ঀ-৲৴-৿]/
  * Listed by exact path, never by pattern, so this stays a list of decisions
  * somebody made and not a hole a whole group can fall through.
  */
-const LATIN_IN_BANGLA = new Set(['settings.hub.sms'])
+const LATIN_IN_BANGLA = new Set(['settings.hub.sms', 'settings.sms.title'])
 
 test('the two dictionaries have exactly the same keys', () => {
   // tsc already proves this — en.ts is typed as bn's shape. Asserted again here
@@ -214,6 +216,56 @@ test('every teacher permission has a label and a hint in both languages', () => 
   // here renders an unchecked box, which the action then writes as a revoked
   // permission nobody chose to revoke.
   assert.deepEqual(Object.keys(PERMISSION_DEFAULTS).sort(), [...PERMISSION_KEYS].sort())
+})
+
+test('every wallet has a word in both languages, and Bangla matches the SMS', () => {
+  // Keyed by coaching_centers.payment_wallet in both dictionaries, so tsc catches
+  // a fourth wallet added to the enum without a word for it. This is the runtime
+  // half, plus the part tsc cannot see.
+  for (const locale of LOCALES) {
+    assert.deepEqual(
+      Object.keys(dict(locale).wallets).sort(),
+      Object.keys(WALLET_LABEL_BN).sort(),
+    )
+  }
+
+  // The Bangla labels must be the exact words the guardian reads in the SMS. The
+  // settings form shows the owner a live preview of that message beside these
+  // radio buttons, so two spellings of বিকাশ on one screen would be the app
+  // describing a message it does not send.
+  assert.deepEqual(bn.wallets, { ...WALLET_LABEL_BN })
+
+  // And English deliberately does not match: an English-medium owner reads the
+  // Latin styling, while their parents still receive Bangla. Asserted rather than
+  // left implicit, because "translate this too" is the obvious wrong fix if the
+  // line above ever fails.
+  assert.notEqual(en.wallets.bkash, WALLET_LABEL_BN.bkash)
+})
+
+test('every kind of dispatch has a word in both languages', () => {
+  // sms_dispatches.kind, rendered straight out of this lookup on the SMS ledger.
+  // A sixth kind added to the enum without a word here would print a raw
+  // 'attendance_alert' on an owner's receipt.
+  const KINDS = ['exam_result', 'attendance_alert', 'fee_reminder', 'notice', 'custom']
+  for (const locale of LOCALES) {
+    assert.deepEqual(Object.keys(dict(locale).smsKinds).sort(), [...KINDS].sort())
+  }
+})
+
+test('the SMS credit note quotes the capacity the biller actually counts', () => {
+  // Same bargain as messages.ts: the sentence teaching an owner that a Bangla SMS
+  // holds 70 characters takes the number from the module that segments the
+  // message, so the two cannot drift. An owner planning around 160 concludes we
+  // are overcharging them.
+  assert.equal(UCS2_SEGMENT, 70)
+  assert.match(
+    bn.settings.sms.segmentNote(UCS2_SEGMENT),
+    new RegExp(digits(UCS2_SEGMENT, 'bn')),
+  )
+  assert.match(
+    en.settings.sms.segmentNote(UCS2_SEGMENT),
+    new RegExp(digits(UCS2_SEGMENT, 'en')),
+  )
 })
 
 test('no string in either dictionary is empty', () => {

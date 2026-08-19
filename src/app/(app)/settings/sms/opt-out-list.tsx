@@ -14,6 +14,8 @@ import { useActionState } from 'react'
 import { Alert } from '@/components/ui'
 import { toggleSmsOptOut, type ActionState } from '../actions'
 import { formatBdMobile } from '@/lib/bd/phone'
+import { fill } from '@/lib/i18n/fill'
+import type { T } from '@/lib/i18n'
 
 export type OptOutStudent = {
   id: string
@@ -22,27 +24,26 @@ export type OptOutStudent = {
   optOut: boolean
 }
 
-export function OptOutList({ students }: { students: OptOutStudent[] }) {
+export function OptOutList({
+  students,
+  subtitle,
+  t,
+}: {
+  students: OptOutStudent[]
+  /** Already a sentence — see the note where the page resolves it. */
+  subtitle: string
+  t: T<'optOutList'>
+}) {
   const [state, formAction, pending] = useActionState<ActionState, FormData>(
     toggleSmsOptOut,
     null,
   )
 
-  const off = students.filter((s) => s.optOut).length
-
   return (
     <section className="flex flex-col gap-3">
       <div>
-        <h2 className="font-semibold text-ink">কে SMS পাবে না</h2>
-        <p className="mt-0.5 text-sm text-ink-soft">
-          {off === 0 ? (
-            'এখন সবাই SMS পাচ্ছে।'
-          ) : (
-            <>
-              <span className="num">{off}</span> জনের SMS বন্ধ আছে।
-            </>
-          )}
-        </p>
+        <h2 className="font-semibold text-ink">{t.title}</h2>
+        <p className="num mt-0.5 text-sm text-ink-soft">{subtitle}</p>
       </div>
 
       {state?.error && <Alert>{state.error}</Alert>}
@@ -64,7 +65,7 @@ export function OptOutList({ students }: { students: OptOutStudent[] }) {
               <p className="num truncate text-sm text-ink-faint">
                 {student.guardianPhone
                   ? formatBdMobile(student.guardianPhone)
-                  : 'নম্বর নেই'}
+                  : t.noNumber}
               </p>
             </div>
 
@@ -76,12 +77,16 @@ export function OptOutList({ students }: { students: OptOutStudent[] }) {
                 value={student.optOut ? 'false' : 'true'}
               />
               {/* aria-pressed rather than a checkbox, because the switch is the
-                  submit — there is no separate save step to forget. */}
+                  submit — there is no separate save step to forget. The visible
+                  word is the state; the label is the action, because a button
+                  reading "On" that turns SMS off is unusable without the colour. */}
               <button
                 type="submit"
                 disabled={pending}
                 aria-pressed={!student.optOut}
-                aria-label={`${student.name} — SMS ${student.optOut ? 'চালু' : 'বন্ধ'} করুন`}
+                aria-label={fill(student.optOut ? t.turnOn : t.turnOff, {
+                  name: student.name,
+                })}
                 className={`min-h-tap rounded-lg border-2 px-4 text-sm font-semibold
                   disabled:opacity-50 ${
                     student.optOut
@@ -89,7 +94,7 @@ export function OptOutList({ students }: { students: OptOutStudent[] }) {
                       : 'border-brand-500 bg-brand-50 text-brand-700'
                   }`}
               >
-                {student.optOut ? 'বন্ধ' : 'চালু'}
+                {student.optOut ? t.off : t.on}
               </button>
             </form>
           </li>
