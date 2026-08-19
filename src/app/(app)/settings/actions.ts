@@ -26,10 +26,11 @@ import {
   rosterKey,
 } from '@/lib/bd/roster'
 import { MIN_PASSWORD } from '@/lib/auth/password'
+import { SLOT_ORDER } from '@/lib/bd/schedule'
 import { MAX_NAME, MAX_LABEL, clamp } from '@/lib/limits'
 import { dict, DEFAULT_LOCALE } from '@/lib/i18n'
 import { nameTooLong, passwordTooShort } from '@/lib/i18n/messages'
-import { roomFor, wouldExceed, type LimitKey } from '@/lib/plans'
+import { roomFor, wouldExceed, hasStaff, type LimitKey } from '@/lib/plans'
 import type { BatchSlot, PayoutWallet, SubjectKind } from '@/lib/supabase/types'
 
 export type ActionState = {
@@ -208,7 +209,13 @@ function parseTime(input: string): string | null {
   return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`
 }
 
-const SLOTS = new Set<BatchSlot>(['morning', 'noon', 'afternoon', 'evening', 'night'])
+/**
+ * The valid slots, from the one list that also orders the picker.
+ *
+ * A Set built here by hand was the fourth copy of these five strings, and the
+ * only one `tsc` could not check against the picker the owner had just used.
+ */
+const SLOTS = new Set<BatchSlot>(SLOT_ORDER)
 
 export async function createBatch(
   _prev: ActionState,
@@ -618,6 +625,19 @@ export async function createTeacher(
 
   const t = dict(session.locale).settings
 
+  /*
+   * Staff is a coaching-centre feature, and this endpoint is public HTTP: the
+   * screen no longer offers the form, which stops nobody from posting to it.
+   *
+   * The count check further down cannot stand in for this one. `bootstrap_center`
+   * only writes the owner's own teacher row in teacher mode, so a centre that
+   * signed up as a centre counts zero teachers — and zero is under a cap of one,
+   * so `overLimit` said yes and a solo plan could take on staff.
+   */
+  if (!hasStaff(session.plan)) {
+    return { error: t.errors.staffNeedsCenter }
+  }
+
   const name = String(formData.get('name') ?? '').trim()
   const rawPhone = String(formData.get('phone') ?? '')
   const subjectIds = formData.getAll('subjectIds').map(String).filter(Boolean)
@@ -796,6 +816,11 @@ export async function saveTeacherPermissions(
 
   const t = dict(session.locale).settings
 
+  // Nobody to restrict on a one-teacher plan — see createTeacher's own note.
+  if (!hasStaff(session.plan)) {
+    return { error: t.errors.staffNeedsCenter }
+  }
+
   const teacherId = await ownTeacherId(
     session,
     String(formData.get('teacherId') ?? ''),
@@ -849,6 +874,12 @@ export async function toggleTeacherActive(
   const t = dict(session.locale).settings
   const supabase = await createClient()
   const centerId = session.active.centerId
+
+  // The only row a solo plan has is the owner's own, and switching it off would
+  // leave the centre with no teacher at all.
+  if (!hasStaff(session.plan)) {
+    return { error: t.errors.staffNeedsCenter }
+  }
 
   const { data: teacher } = await supabase
     .from('teachers')

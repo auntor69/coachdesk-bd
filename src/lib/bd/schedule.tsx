@@ -36,6 +36,27 @@ export function slotLabel(slot: BatchSlotEnum | null, locale: Locale = 'bn'): st
 }
 
 /**
+ * Every slot, in the order the day runs.
+ *
+ * The single source of the list. It was written out three more times — the keys
+ * above, a radio group in the batch form, and a validation Set in the settings
+ * action — and `tsc` only ever checked one of them, so a sixth slot could have
+ * been added to the type, shown in the picker, and then quietly rejected on
+ * submit.
+ *
+ * `satisfies` catches a misspelt entry, not a missing one. What catches a missing
+ * one is `SLOT_LABELS` above: it is a `Record<BatchSlot, string>`, so a new slot
+ * fails to compile there first, and whoever fixes that is looking at this list.
+ */
+export const SLOT_ORDER = [
+  'morning',
+  'noon',
+  'afternoon',
+  'evening',
+  'night',
+] as const satisfies readonly BatchSlotEnum[]
+
+/**
  * Renders a batch's when: "সকাল · ৭:৩০ সকাল–৯:০০ সকাল", or whichever half exists.
  * Returns null when neither does, so callers can omit the separator entirely.
  */

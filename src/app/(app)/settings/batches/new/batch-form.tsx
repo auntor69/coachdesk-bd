@@ -12,40 +12,35 @@ import { useActionState, useState } from 'react'
 import { useRouter } from 'next/navigation'
 
 import { Alert, Button, Field } from '@/components/ui'
+import type { T } from '@/lib/i18n'
 import { createBatch, type ActionState } from '../../actions'
 import { MAX_NAME } from '@/lib/limits'
 
 type Option = { id: string; label: string }
 
-/**
- * 0=Sunday to match Postgres extract(dow) and dhakaDayOfWeek(). Ordered
- * Saturday-first because that is how a Bangladeshi week reads — Friday and
- * Saturday are the weekend, and Saturday is the first working day.
- */
-const DAYS = [
-  { value: 6, label: 'শনি' },
-  { value: 0, label: 'রবি' },
-  { value: 1, label: 'সোম' },
-  { value: 2, label: 'মঙ্গল' },
-  { value: 3, label: 'বুধ' },
-  { value: 4, label: 'বৃহঃ' },
-  { value: 5, label: 'শুক্র' },
-]
-
-const SLOTS = [
-  { value: 'morning', label: 'সকাল' },
-  { value: 'noon', label: 'দুপুর' },
-  { value: 'afternoon', label: 'বিকাল' },
-  { value: 'evening', label: 'সন্ধ্যা' },
-  { value: 'night', label: 'রাত' },
-]
-
 export function BatchForm({
+  t,
+  common,
   subjects,
   teachers,
+  slots,
+  days: dayOptions,
 }: {
+  t: T<'batchForm'>
+  common: T<'common'>
   subjects: Option[]
   teachers: Option[]
+  /**
+   * The parts of the day and the days of the week, already named by `lib/bd` on
+   * the server. They arrive as labelled values rather than being looked up here
+   * so that the picker and the row it creates cannot drift apart, and so that
+   * `lib/bd/time`'s tables stay out of this bundle.
+   *
+   * Day values are Sunday-based to match Postgres `extract(dow)`; the order they
+   * arrive in is Saturday-first, which is how a Bangladeshi week reads.
+   */
+  slots: { value: string; label: string }[]
+  days: { value: number; label: string }[]
 }) {
   const router = useRouter()
   const [state, formAction, pending] = useActionState<ActionState, FormData>(
@@ -75,16 +70,16 @@ export function BatchForm({
       {state?.error && <Alert>{state.error}</Alert>}
 
       <Field
-        label="ব্যাচের নাম"
-        hint="যেমন: সকাল ৭টা — HSC গণিত"
+        label={t.nameLabel}
+        hint={t.nameHint}
         name="name"
-        placeholder="সকাল ৭টা — HSC গণিত"
+        placeholder={t.nameHint}
         required
         maxLength={MAX_NAME}
       />
 
       <label className="flex flex-col gap-1.5">
-        <span className="font-medium text-ink">বিষয়</span>
+        <span className="font-medium text-ink">{t.subject}</span>
         <select
           name="subjectId"
           required
@@ -93,7 +88,7 @@ export function BatchForm({
             text-base outline-none focus:border-brand-500"
         >
           <option value="" disabled>
-            বিষয় বাছুন
+            {t.pickSubject}
           </option>
           {subjects.map((subject) => (
             <option key={subject.id} value={subject.id}>
@@ -102,22 +97,22 @@ export function BatchForm({
           ))}
         </select>
         {subjects.length === 0 && (
-          <span className="text-sm text-absent">
-            আগে অন্তত একটি বিষয় যোগ করুন।
-          </span>
+          <span className="text-sm text-absent">{t.needSubject}</span>
         )}
       </label>
 
       {teachers.length > 0 && (
         <label className="flex flex-col gap-1.5">
-          <span className="font-medium text-ink">শিক্ষক (ঐচ্ছিক)</span>
+          <span className="font-medium text-ink">
+            {t.teacher} ({common.optional})
+          </span>
           <select
             name="teacherId"
             defaultValue=""
             className="min-h-tap rounded-xl border-2 border-line bg-white px-4
               text-base outline-none focus:border-brand-500"
           >
-            <option value="">পরে ঠিক করব</option>
+            <option value="">{t.teacherLater}</option>
             {teachers.map((teacher) => (
               <option key={teacher.id} value={teacher.id}>
                 {teacher.label}
@@ -128,9 +123,9 @@ export function BatchForm({
       )}
 
       <fieldset className="flex flex-col gap-2">
-        <legend className="mb-1 font-medium text-ink">কোন বেলা</legend>
+        <legend className="mb-1 font-medium text-ink">{t.whichSlot}</legend>
         <div className="flex flex-wrap gap-2">
-          {SLOTS.map((slot, index) => (
+          {slots.map((slot, index) => (
             <label key={slot.value} className="cursor-pointer">
               <input
                 type="radio"
@@ -153,17 +148,15 @@ export function BatchForm({
       </fieldset>
 
       <div className="grid grid-cols-2 gap-3">
-        <Field label="শুরু" name="startTime" type="time" defaultValue="07:00" />
-        <Field label="শেষ" name="endTime" type="time" defaultValue="08:30" />
+        <Field label={t.start} name="startTime" type="time" defaultValue="07:00" />
+        <Field label={t.end} name="endTime" type="time" defaultValue="08:30" />
       </div>
 
       <fieldset className="flex flex-col gap-2">
-        <legend className="mb-1 font-medium text-ink">কোন দিন ক্লাস</legend>
-        <p className="-mt-1 mb-1 text-sm text-ink-soft">
-          কিছু না বাছলে প্রতিদিনের ক্লাস ধরা হবে
-        </p>
+        <legend className="mb-1 font-medium text-ink">{t.whichDays}</legend>
+        <p className="-mt-1 mb-1 text-sm text-ink-soft">{t.daysHint}</p>
         <div className="flex flex-wrap gap-2">
-          {DAYS.map((day) => {
+          {dayOptions.map((day) => {
             const on = days.includes(day.value)
             return (
               <button
@@ -189,8 +182,8 @@ export function BatchForm({
       </fieldset>
 
       <Field
-        label="মাসিক ফি (৳)"
-        hint="এই ব্যাচের প্রতি মাসের ফি। পরে বদলালে পুরোনো বিল বদলাবে না।"
+        label={t.feeLabel}
+        hint={t.feeHint}
         name="monthlyFee"
         type="number"
         inputMode="numeric"
@@ -200,7 +193,7 @@ export function BatchForm({
       />
 
       <Button type="submit" full disabled={pending || subjects.length === 0}>
-        {pending ? 'তৈরি হচ্ছে…' : 'ব্যাচ তৈরি করুন'}
+        {pending ? common.creating : t.submit}
       </Button>
     </form>
   )

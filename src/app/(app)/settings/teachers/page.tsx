@@ -1,12 +1,18 @@
 import Link from 'next/link'
 
 import { Card } from '@/components/ui'
-import { requireRole } from '@/lib/auth/session'
+import { requireRole, getSession } from '@/lib/auth/session'
 import { createClient } from '@/lib/supabase/server'
-import { wouldExceed } from '@/lib/plans'
+import { wouldExceed, hasStaff, planName, PLANS } from '@/lib/plans'
+import { dict, DEFAULT_LOCALE } from '@/lib/i18n'
 import { TeacherList, type TeacherRow } from './teacher-list'
 
-export const metadata = { title: 'শিক্ষক — CoachDesk' }
+/** getSession, not requireRole — see the note on teach/page.tsx's own. */
+export async function generateMetadata() {
+  const session = await getSession()
+  const locale = session?.locale ?? DEFAULT_LOCALE
+  return { title: `${dict(locale).settings.teachers.title} — CoachDesk` }
+}
 
 /**
  * Who teaches here and what each of them may do.
@@ -19,6 +25,35 @@ export const metadata = { title: 'শিক্ষক — CoachDesk' }
  */
 export default async function TeachersPage() {
   const session = await requireRole('manager')
+  const locale = session.locale
+  const t = dict(locale).settings.teachers
+
+  // A one-teacher plan has no staff to manage, so there is no list to show: the
+  // only row would be the reader's own, under a button the action refuses. The
+  // route stays reachable rather than 404ing, because a bookmark or a stale link
+  // should explain itself.
+  if (!hasStaff(session.plan)) {
+    return (
+      <div className="flex flex-col gap-5">
+        <Link
+          href="/settings"
+          className="inline-flex min-h-tap items-center text-ink-soft hover:text-ink"
+        >
+          ← {dict(locale).settings.hub.title}
+        </Link>
+        <Card>
+          <h2 className="font-semibold text-ink">{t.soloTitle}</h2>
+          <p className="mt-1 text-sm text-ink-soft">
+            {t.soloBody(
+              planName(session.plan, locale),
+              planName(PLANS.center, locale),
+            )}
+          </p>
+        </Card>
+      </div>
+    )
+  }
+
   const supabase = await createClient()
 
   const { data: teachers } = await supabase
@@ -71,6 +106,16 @@ export default async function TeachersPage() {
 
   const activeCount = rows.filter((r) => r.active).length
   const limit = session.plan.maxTeachers
+
+  /*
+   * Only ever true for a capped multi-teacher tier, and no tier sold today is
+   * one: hasStaff let us past the return above, and every plan that passes it
+   * has maxTeachers null. So this and the x/y counter below are both unreachable
+   * right now, and kept rather than deleted because the day a mid tier caps staff
+   * at, say, twelve, the screen has to stop offering a thirteenth. plans.test.ts
+   * holds the other half of that bargain — a tier claiming staff must have room
+   * for a second teacher, or this page would refuse the first colleague.
+   */
   const atLimit = wouldExceed(session.plan, 'maxTeachers', activeCount)
 
   return (

@@ -702,6 +702,43 @@ export const bn = {
    * is harder to read than either convention followed alone. Dates and months are
    * the exception, as everywhere — those are Bangla numerals for a Bangla reader.
    */
+  /**
+   * Creating a batch — the one setup form long enough to need its own group.
+   *
+   * Top-level because it is a client component and `T` only takes a top-level key.
+   * The day and slot labels are *not* here: they come from `lib/bd`, which is what
+   * the country calls things, and the picker has to agree with the row it creates.
+   */
+  batchForm: {
+    nameLabel: 'ব্যাচের নাম',
+    /**
+     * Hint and placeholder are the same sentence on purpose: the example *is* the
+     * instruction, and an owner who reads neither still sees it greyed in the box.
+     * It names a time and a class, because that is how a centre says it aloud.
+     */
+    nameHint: 'যেমন: সকাল ৭টা — HSC গণিত',
+    subject: 'বিষয়',
+    pickSubject: 'বিষয় বাছুন',
+    needSubject: 'আগে অন্তত একটি বিষয় যোগ করুন।',
+    teacher: 'শিক্ষক',
+    /** The empty option. Not "কোনো শিক্ষক নেই": a decision deferred, not a fact. */
+    teacherLater: 'পরে ঠিক করব',
+    /** Part of the day, not a clock time — both are asked, in that order. */
+    whichSlot: 'কোন বেলা',
+    start: 'শুরু',
+    end: 'শেষ',
+    whichDays: 'কোন দিন ক্লাস',
+    /** What skipping this does, said before they skip it rather than after. */
+    daysHint: 'কিছু না বাছলে প্রতিদিনের ক্লাস ধরা হবে',
+    feeLabel: 'মাসিক ফি (৳)',
+    /**
+     * The one thing about the fee that is not obvious and costs money to learn
+     * late: changing it does not rewrite invoices already issued.
+     */
+    feeHint: 'এই ব্যাচের প্রতি মাসের ফি। পরে বদলালে পুরোনো বিল বদলাবে না।',
+    submit: 'ব্যাচ তৈরি করুন',
+  },
+
   dashboard: {
     title: 'ড্যাশবোর্ড',
     outstanding: 'বকেয়া ফি',
@@ -786,6 +823,11 @@ export const bn = {
        */
       planLimit:
         'এই প্ল্যানের সীমা শেষ। আরও যোগ করতে প্ল্যান বদলাতে হবে — সব ফিচার খোলা থাকবে।',
+      /**
+       * Not a cap being hit — a feature that does not exist on this plan. Worded
+       * as what the centre tier is for, because the owner did nothing wrong.
+       */
+      staffNeedsCenter: 'একাধিক শিক্ষক আর অনুমতি কোচিং সেন্টার প্ল্যানের ফিচার।',
       addFailed: 'যোগ করা যায়নি। আবার চেষ্টা করুন।',
       createFailed: 'তৈরি করা যায়নি। আবার চেষ্টা করুন।',
       /**
@@ -888,6 +930,44 @@ export const bn = {
     },
 
     batches: {
+      title: 'ব্যাচ ও সময়',
+      /** Without a plan cap, the count on its own. ASCII: it is a tally. */
+      count: (n: number) => `${n}টি ব্যাচ`,
+      /** With one, how much of it is spent — the same line the subject list shows. */
+      used: (n: number, limit: number) => `${n}/${limit}টি ব্যাচ`,
+      /** On the button that starts a new one. Short: it sits beside the heading. */
+      new: 'নতুন',
+      emptyTitle: 'এখনও কোনো ব্যাচ নেই',
+      /**
+       * Says what a batch is *for*, not what it is. An owner on this screen has
+       * nothing else set up either, and the useful thing to tell them is which two
+       * features unlock the moment they finish here.
+       */
+      emptyBody:
+        'ব্যাচ মানে একটি নির্দিষ্ট সময়ের ক্লাস। ব্যাচ বানালে শিক্ষার্থী যোগ করা যাবে, হাজিরা নেওয়া যাবে।',
+      /** What a batch with no day-schedule means — see createBatch's own note. */
+      everyDay: 'প্রতিদিন',
+      /** Under the fee, so it is not read as the price of the whole course. */
+      monthly: 'মাসিক',
+      /** How many are enrolled. Follows a number set in its own element. */
+      people: (_n: number) => 'জন',
+      /** A batch switched off. Its rows and its history stay exactly where they are. */
+      inactive: 'বন্ধ আছে',
+
+      newTitle: 'নতুন ব্যাচ',
+      capTitle: 'এই প্ল্যানে আর ব্যাচ যোগ করা যাবে না',
+      /**
+       * Names the four things the cap does *not* touch. The batch limit is the one
+       * an owner meets first, and it is the moment the app either reads as a trial
+       * with its features locked or as a smaller version of the whole thing.
+       */
+      cap: (name: string, limit: number) =>
+        `${name} প্ল্যানে ${digits(limit, 'bn')}টি ব্যাচ। হাজিরা, পরীক্ষা, SMS, ফি — সব ফিচার খোলা থাকে, শুধু ব্যাচের সংখ্যায় সীমা।`,
+      needSubjectTitle: 'আগে একটি বিষয় যোগ করুন',
+      needSubjectBody:
+        'ব্যাচ কোন বিষয়ের, সেটা ছাড়া নম্বর আর ফি ঠিক জায়গায় বসবে না।',
+      addSubject: 'বিষয় যোগ করুন',
+
       created: 'ব্যাচ তৈরি হয়েছে',
       errors: {
         nameRequired: 'ব্যাচের নাম লিখুন।',
@@ -967,6 +1047,16 @@ export const bn = {
     },
 
     teachers: {
+      title: 'শিক্ষক ও অনুমতি',
+      newTitle: 'নতুন শিক্ষক',
+      /**
+       * Shown instead of the whole screen on a one-teacher plan. It names the
+       * reader's own plan first, so the sentence reads as an explanation of what
+       * they bought rather than an advertisement for what they did not.
+       */
+      soloTitle: 'শিক্ষক ও অনুমতি কোচিং সেন্টারের জন্য',
+      soloBody: (plan: string, center: string) =>
+        `${plan} প্ল্যান একজন শিক্ষকের জন্য — আপনি নিজেই। একাধিক শিক্ষক, আর কে কী দেখতে ও করতে পারবে সেই নিয়ন্ত্রণ ${center} প্ল্যানে। বাকি সব ফিচার এখনই খোলা আছে।`,
       addedWithLogin: 'শিক্ষক ও তাঁর লগইন তৈরি হয়েছে',
       addedNoLogin: 'শিক্ষক যোগ হয়েছে (লগইন ছাড়া)',
       /**

@@ -418,6 +418,25 @@ export const en: Dictionary = {
     submit: 'Create and enter marks',
   },
 
+  batchForm: {
+    nameLabel: 'Batch name',
+    nameHint: 'For instance: 7am — HSC Maths',
+    subject: 'Subject',
+    pickSubject: 'Pick a subject',
+    needSubject: 'Add at least one subject first.',
+    teacher: 'Teacher',
+    teacherLater: 'Decide later',
+    whichSlot: 'Which part of the day',
+    start: 'Starts',
+    end: 'Ends',
+    whichDays: 'Which days',
+    daysHint: 'Leave these untouched and the batch counts as meeting every day',
+    feeLabel: 'Monthly fee (৳)',
+    feeHint:
+      "This batch's fee each month. Changing it later does not change bills already issued.",
+    submit: 'Create batch',
+  },
+
   dashboard: {
     title: 'Dashboard',
     outstanding: 'Fees outstanding',
@@ -470,6 +489,7 @@ export const en: Dictionary = {
        */
       planLimit:
         'This plan is full. Changing plan makes room — every feature stays open either way.',
+      staffNeedsCenter: 'Staff and permissions come with the Coaching Center plan.',
       addFailed: 'That was not added. Please try again.',
       createFailed: 'That was not created. Please try again.',
       saveFailed: 'That was not saved. Please try again.',
@@ -533,6 +553,28 @@ export const en: Dictionary = {
     },
 
     batches: {
+      title: 'Batches & times',
+      count: (n: number) => `${n} ${n === 1 ? 'batch' : 'batches'}`,
+      used: (n: number, limit: number) =>
+        `${n}/${limit} ${limit === 1 ? 'batch' : 'batches'}`,
+      new: 'New',
+      emptyTitle: 'No batches yet',
+      emptyBody:
+        'A batch is a class at a fixed time. Once one exists you can enrol students into it and take attendance.',
+      everyDay: 'Every day',
+      monthly: 'per month',
+      people: (n: number) => (n === 1 ? 'student' : 'students'),
+      inactive: 'Switched off',
+
+      newTitle: 'New batch',
+      capTitle: 'This plan has no room for another batch',
+      cap: (name: string, limit: number) =>
+        `The ${name} plan holds ${limit} ${limit === 1 ? 'batch' : 'batches'}. Attendance, exams, SMS, fees — every feature stays open, only the number of batches is capped.`,
+      needSubjectTitle: 'Add a subject first',
+      needSubjectBody:
+        'A batch belongs to a subject. Without one, marks and fees have nowhere to land.',
+      addSubject: 'Add a subject',
+
       created: 'Batch created',
       errors: {
         nameRequired: 'Give the batch a name.',
@@ -594,6 +636,11 @@ export const en: Dictionary = {
     },
 
     teachers: {
+      title: 'Teachers & permissions',
+      newTitle: 'New teacher',
+      soloTitle: 'Teachers & permissions is for coaching centres',
+      soloBody: (plan: string, center: string) =>
+        `${plan} is built for one teacher — you. Adding staff, and controlling what each of them can see and do, comes with the ${center} plan. Every other feature is already open.`,
       addedWithLogin: 'Teacher and their login created',
       addedNoLogin: 'Teacher added (no login)',
       linked: (name: string) =>

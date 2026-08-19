@@ -1,20 +1,26 @@
 import Link from 'next/link'
 
 import { Card } from '@/components/ui'
-import { requireRole } from '@/lib/auth/session'
+import { requireRole, getSession } from '@/lib/auth/session'
 import { createClient } from '@/lib/supabase/server'
 import { BatchSlot } from '@/lib/bd/schedule'
-import { dayName } from '@/lib/bd/time'
+import { dayNameShort } from '@/lib/bd/time'
+import { formatTaka } from '@/lib/money'
+import { dict, localName, DEFAULT_LOCALE } from '@/lib/i18n'
 
-export const metadata = { title: 'ব্যাচ — CoachDesk' }
-
-function taka(amount: number): string {
-  return `৳${amount.toLocaleString('en-US')}`
+/** getSession, not requireRole — see the note on teach/page.tsx's own. */
+export async function generateMetadata() {
+  const session = await getSession()
+  const locale = session?.locale ?? DEFAULT_LOCALE
+  return { title: `${dict(locale).settings.batches.title} — CoachDesk` }
 }
 
 export default async function BatchesPage() {
   const session = await requireRole('manager')
   const supabase = await createClient()
+  const locale = session.locale
+  const d = dict(locale)
+  const t = d.settings.batches
 
   const { data: batches } = await supabase
     .from('batches')
@@ -39,7 +45,7 @@ export default async function BatchesPage() {
       endTime: batch.end_time,
       fee: batch.monthly_fee_bdt,
       active: batch.active,
-      subjectName: subject?.name_bn || subject?.name || '',
+      subjectName: localName(subject, locale),
       teacherName: teacher?.name ?? '',
       days,
       studentCount: (batch.enrollments ?? []).filter((e) => e.status === 'active')
@@ -57,22 +63,13 @@ export default async function BatchesPage() {
           href="/settings"
           className="inline-flex min-h-tap items-center text-ink-soft hover:text-ink"
         >
-          ← সেটিংস
+          ← {d.settings.hub.title}
         </Link>
         <div className="mt-1 flex items-end justify-between gap-3">
           <div>
-            <h1 className="text-xl font-bold text-ink">ব্যাচ ও সময়</h1>
+            <h1 className="text-xl font-bold text-ink">{t.title}</h1>
             <p className="mt-1 text-ink-soft">
-              {limit === null ? (
-                <>
-                  <span className="num">{activeCount}</span>টি ব্যাচ
-                </>
-              ) : (
-                <>
-                  <span className="num">{activeCount}</span>/
-                  <span className="num">{limit}</span>টি ব্যাচ
-                </>
-              )}
+              {limit === null ? t.count(activeCount) : t.used(activeCount, limit)}
             </p>
           </div>
           <Link
@@ -80,18 +77,15 @@ export default async function BatchesPage() {
             className="inline-flex min-h-tap shrink-0 items-center justify-center
               rounded-xl bg-brand-600 px-5 font-semibold text-white"
           >
-            নতুন
+            {t.new}
           </Link>
         </div>
       </div>
 
       {rows.length === 0 ? (
         <Card>
-          <h2 className="font-semibold text-ink">এখনও কোনো ব্যাচ নেই</h2>
-          <p className="mt-1 text-sm text-ink-soft">
-            ব্যাচ মানে একটি নির্দিষ্ট সময়ের ক্লাস। ব্যাচ বানালে শিক্ষার্থী যোগ করা
-            যাবে, হাজিরা নেওয়া যাবে।
-          </p>
+          <h2 className="font-semibold text-ink">{t.emptyTitle}</h2>
+          <p className="mt-1 text-sm text-ink-soft">{t.emptyBody}</p>
         </Card>
       ) : (
         <ul className="flex flex-col gap-2">
@@ -111,6 +105,7 @@ export default async function BatchesPage() {
                         slot={row.slot}
                         start={row.startTime}
                         end={row.endTime}
+                        locale={locale}
                       />,
                     ]
                       .filter(Boolean)
@@ -122,24 +117,27 @@ export default async function BatchesPage() {
                       ))}
                   </p>
                   <p className="text-sm text-ink-faint">
+                    {/* Short day names: five spelled-out ones run past the width of
+                        a phone and truncate mid-week. */}
                     {row.days.length > 0
-                      ? row.days.map((d) => dayName(d)).join(', ')
-                      : 'প্রতিদিন'}
+                      ? row.days.map((day) => dayNameShort(day, locale)).join(', ')
+                      : t.everyDay}
                     {row.teacherName && ` · ${row.teacherName}`}
                   </p>
                 </div>
                 <div className="shrink-0 text-right">
                   <p className="num text-sm font-semibold text-ink">
-                    {taka(row.fee)}
+                    {formatTaka(row.fee)}
                   </p>
-                  <p className="text-xs text-ink-faint">মাসিক</p>
+                  <p className="text-xs text-ink-faint">{t.monthly}</p>
                   <p className="mt-1 text-sm text-ink-soft">
-                    <span className="num">{row.studentCount}</span> জন
+                    <span className="num">{row.studentCount}</span>{' '}
+                    {t.people(row.studentCount)}
                   </p>
                 </div>
               </div>
               {!row.active && (
-                <p className="mt-2 text-sm text-ink-faint">বন্ধ আছে</p>
+                <p className="mt-2 text-sm text-ink-faint">{t.inactive}</p>
               )}
             </li>
           ))}

@@ -153,6 +153,25 @@ export function wouldExceed(
 }
 
 /**
+ * Whether this plan has staff at all.
+ *
+ * The teacher tiers are one person — the owner. Everything about staff (a list
+ * of colleagues, per-teacher permissions, who may send SMS) is a coaching-centre
+ * concern, and on a solo plan the whole section is a list containing only the
+ * reader plus a button that cannot work.
+ *
+ * This is not `wouldExceed(plan, 'maxTeachers', n)` with n = 1, and the
+ * difference is a real hole rather than a nicety: `bootstrap_center` only writes
+ * the owner's own teacher row in teacher mode, so a centre that signed up as a
+ * centre counts *zero* teachers — and zero is comfortably under a cap of one.
+ * The count answers "is there room for one more row"; this answers "does this
+ * plan have colleagues", which is the question the screens are really asking.
+ */
+export function hasStaff(plan: PlanLimits): boolean {
+  return plan.maxTeachers === null || plan.maxTeachers > 1
+}
+
+/**
  * How many more of `what` the plan still allows; null when unlimited.
  *
  * wouldExceed answers "may I add one more", which is the wrong question for a

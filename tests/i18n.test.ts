@@ -46,7 +46,19 @@ function renderings(value: unknown): string[] {
   return [String(value)]
 }
 
-const BENGALI = /[ঀ-৿]/
+/**
+ * Bangla script, minus the taka sign.
+ *
+ * U+09F3 sits in the Bengali block but is the currency symbol both languages
+ * use: `formatTaka` prints ৳1,250 for an English reader on purpose, because
+ * an owner checks a fee board against a bKash statement in ASCII digits. Leaving
+ * it in this class would make "Monthly fee (৳)" read as untranslated English,
+ * and the only way to satisfy the test would be to write the wrong label.
+ *
+ * It is excluded from the mirror test too, which is right: a Bangla string whose
+ * only non-ASCII character is ৳ has not been translated either.
+ */
+const BENGALI = /[ঀ-৲৴-৿]/
 
 /**
  * Bangla strings that legitimately contain no Bangla letters.

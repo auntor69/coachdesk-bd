@@ -94,6 +94,41 @@ export function dayName(dow: number, locale: Locale = 'bn'): string {
   return DAY_NAMES[locale][dow] ?? ''
 }
 
+/**
+ * The same days, short enough for a row.
+ *
+ * A batch that meets five days spells out to "রবিবার, সোমবার, মঙ্গলবার, বুধবার,
+ * বৃহস্পতিবার" — fifty characters, which truncates halfway through
+ * Tuesday on a 375px phone and tells the owner nothing. These are the forms a
+ * centre writes on its own routine sheet.
+ *
+ * বৃহঃ keeps the visarga because that is how Thursday is abbreviated on a
+ * Bangladeshi timetable; বৃহ alone looks like a typo.
+ */
+const DAY_NAMES_SHORT: Record<Locale, readonly string[]> = {
+  bn: ['রবি', 'সোম', 'মঙ্গল', 'বুধ', 'বৃহঃ', 'শুক্র', 'শনি'],
+  en: ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'],
+}
+
+/** Sunday-based like `dayName`, and interchangeable with it. */
+export function dayNameShort(dow: number, locale: Locale = 'bn'): string {
+  return DAY_NAMES_SHORT[locale][dow] ?? ''
+}
+
+/**
+ * The week in the order a Bangladeshi reads it: Saturday first.
+ *
+ * Friday and Saturday are the weekend here and Saturday is the first working
+ * day, so a day picker that starts on Sunday puts the start of the week in the
+ * middle of the row. The numbers stay Sunday-based because they are stored, and
+ * `extract(dow)` decides what stored means; only the reading order changes.
+ *
+ * Exported because the batch form is not the only thing that will ever need to
+ * lay out a week, and a second copy of this array is a fortnight of somebody's
+ * attendance filed against the wrong day.
+ */
+export const WEEK_ORDER: readonly number[] = [6, 0, 1, 2, 3, 4, 5]
+
 const MONTHS: Record<Locale, readonly string[]> = {
   bn: [
     'জানুয়ারি', 'ফেব্রুয়ারি', 'মার্চ', 'এপ্রিল', 'মে', 'জুন',

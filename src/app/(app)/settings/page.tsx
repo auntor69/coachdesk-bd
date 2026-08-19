@@ -6,7 +6,7 @@ import { requireRole, getSession } from '@/lib/auth/session'
 import { createClient } from '@/lib/supabase/server'
 import { formatBdMobile } from '@/lib/bd/phone'
 import { dict, DEFAULT_LOCALE } from '@/lib/i18n'
-import { planName } from '@/lib/plans'
+import { planName, hasStaff } from '@/lib/plans'
 
 /** getSession, not requireRole — see the note on teach/page.tsx's own. */
 export async function generateMetadata() {
@@ -102,12 +102,22 @@ export default async function SettingsPage() {
       hint: t.subjectsHint,
       count: subjectCount ?? 0,
     },
-    {
-      href: '/settings/teachers',
-      label: t.teachers,
-      hint: t.teachersHint,
-      count: teacherCount ?? 0,
-    },
+    /*
+     * Staff appears only where there is staff. On a one-teacher plan this row
+     * led to a list containing the owner and an add button the action refuses,
+     * which reads as a feature withheld rather than a plan that does not have
+     * colleagues in it.
+     */
+    ...(hasStaff(session.plan)
+      ? [
+          {
+            href: '/settings/teachers' as Route,
+            label: t.teachers,
+            hint: t.teachersHint,
+            count: teacherCount ?? 0,
+          },
+        ]
+      : []),
     {
       href: '/settings/exam-types',
       label: t.examTypes,
