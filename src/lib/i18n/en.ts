@@ -28,6 +28,12 @@ export const en: Dictionary = {
     view: 'View',
     seeAll: 'See all',
     optional: 'optional',
+    /**
+     * "Bangla name", not "local name" — the field asks for one specific language,
+     * and an English-medium owner in Dhaka knows exactly which. What it costs to
+     * leave blank is explained by the hint on the form, which differs by reader.
+     */
+    bnName: 'Bangla name',
     unknown: 'Unknown',
     dayLate: 'a day late',
     daysLate: '{n} days late',
@@ -463,14 +469,52 @@ export const en: Dictionary = {
        * owner who has been told otherwise stops believing the next sentence too.
        */
       planLimit:
-        'The free plan is full. Changing plan makes room — every feature stays open either way.',
+        'This plan is full. Changing plan makes room — every feature stays open either way.',
       addFailed: 'That was not added. Please try again.',
       createFailed: 'That was not created. Please try again.',
       saveFailed: 'That was not saved. Please try again.',
       changeFailed: 'That did not change. Please try again.',
     },
 
+    hub: {
+      title: 'Settings',
+      smsCredits: 'SMS credits',
+      details: 'Details',
+      feesGoTo: (number: string) => `Fees go to ${number}`,
+      noPaymentNumber: 'No payment number yet',
+      center: 'Name & payment',
+      students: 'Students',
+      studentsHint: 'Names, guardian numbers, batches',
+      batches: 'Batches & times',
+      batchesHint: 'Morning / noon / afternoon / evening, which days',
+      subjects: 'Subjects',
+      subjectsHint: 'Maths, physics, English — your own list',
+      teachers: 'Teachers & permissions',
+      teachersHint: 'Who is allowed to do what',
+      examTypes: 'Exam kinds',
+      examTypesHint: 'Weekly, model test, monthly — whatever you run',
+      sms: 'SMS',
+      smsHint: 'Credits, who is opted out',
+      /** The free plan allows exactly one, so the singular is the common case. */
+      plan: (name: string, batches: number) =>
+        `${name} plan: ${batches} ${batches === 1 ? 'batch' : 'batches'}, every feature open, SMS metered.`,
+      planUnlimited: (name: string) =>
+        `${name} plan: as many batches as you need, every feature open, SMS metered.`,
+    },
+
     subjects: {
+      title: 'Subjects',
+      count: (n: number) => `${n} ${n === 1 ? 'subject' : 'subjects'}`,
+      /** The noun agrees with the cap, not the count: "1/4 subjects used". */
+      used: (n: number, limit: number) =>
+        `${n}/${limit} ${limit === 1 ? 'subject' : 'subjects'} used`,
+      batches: (n: number) => (n === 1 ? 'batch' : 'batches'),
+      capTitle: 'This plan has no room for another subject',
+      cap: (name: string, limit: number) =>
+        `The ${name} plan holds ${limit} ${limit === 1 ? 'subject' : 'subjects'}. Every feature stays open — only the number is capped.`,
+      nameLabel: 'Subject name',
+      /** The mirror of the Bangla hint, and true for this reader instead. */
+      nameHint: 'Mathematics, for instance — this is the name your lists will show',
       errors: {
         nameRequired: 'Give the subject a name.',
         duplicate: 'You already have a subject with this name.',
@@ -478,6 +522,10 @@ export const en: Dictionary = {
     },
 
     examTypes: {
+      title: 'Exam kinds',
+      subtitle: 'Name them the way your centre actually runs them',
+      exams: (n: number) => (n === 1 ? 'exam' : 'exams'),
+      nameLabel: 'Kind of exam',
       errors: {
         nameRequired: 'Give the exam kind a name.',
         duplicate: 'You already have a kind with this name.',

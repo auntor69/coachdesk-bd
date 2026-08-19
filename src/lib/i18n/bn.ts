@@ -36,6 +36,8 @@
  * ./index.ts), so those few are `{n}` templates and are filled by ./fill.ts. They
  * are marked as such where they appear.
  */
+import { digits } from '../bd/time.ts'
+
 export const bn = {
   common: {
     save: 'সেভ করুন',
@@ -48,6 +50,14 @@ export const bn = {
     view: 'দেখুন',
     seeAll: 'সব দেখুন',
     optional: 'ঐচ্ছিক',
+    /**
+     * The second name field on the forms that offer one — a subject, an exam
+     * kind. Shared because both forms ask the same question, and because what it
+     * means depends on who is reading: to a Bangla reader this is the name the
+     * lists will show, to an English reader it is the one they will not see. Each
+     * dictionary says the true thing for its own reader; see `localName`.
+     */
+    bnName: 'বাংলা নাম',
     /** Where a name is missing but a row still has to say something. */
     unknown: 'অজানা',
     /**
@@ -768,9 +778,14 @@ export const bn = {
        * Says what to do about it and that nothing gets taken away. An owner who
        * hits this is a paying customer three taps later or never, and "সীমা শেষ"
        * on its own reads as a wall.
+       *
+       * "এই প্ল্যান" and not "ফ্রি প্ল্যান": every tier below `center` has caps, so
+       * this sentence is shown to paying centres too, and telling one of them
+       * their free plan is full reads as the app having lost track of what they
+       * bought. Which plan it is gets named on the screen, next to the number.
        */
       planLimit:
-        'ফ্রি প্ল্যানের সীমা শেষ। আরও যোগ করতে প্ল্যান বদলাতে হবে — সব ফিচার খোলা থাকবে।',
+        'এই প্ল্যানের সীমা শেষ। আরও যোগ করতে প্ল্যান বদলাতে হবে — সব ফিচার খোলা থাকবে।',
       addFailed: 'যোগ করা যায়নি। আবার চেষ্টা করুন।',
       createFailed: 'তৈরি করা যায়নি। আবার চেষ্টা করুন।',
       /**
@@ -782,7 +797,77 @@ export const bn = {
       changeFailed: 'বদলানো যায়নি। আবার চেষ্টা করুন।',
     },
 
+    /**
+     * The hub itself: one row per thing an owner can shape, each with a count so
+     * the empty ones are visible. The labels are short because they sit above a
+     * hint that truncates on a 375px phone.
+     */
+    hub: {
+      /** Also the page title, and the label on every back link that returns here. */
+      title: 'সেটিংস',
+      smsCredits: 'SMS ক্রেডিট',
+      details: 'বিস্তারিত',
+      /**
+       * The one hint that answers a question rather than describing a screen:
+       * either the number a parent will be told to pay, or the fact that there
+       * isn't one. An owner who has not set this is losing fees to a question
+       * they currently answer by hand.
+       *
+       * The number arrives already grouped by `formatBdMobile`, so it reads the
+       * way it is written on a bKash receipt in either language.
+       */
+      feesGoTo: (number: string) => `ফি যাবে ${number} নম্বরে`,
+      noPaymentNumber: 'পেমেন্ট নম্বর এখনো দেওয়া হয়নি',
+      center: 'নাম ও পেমেন্ট',
+      students: 'শিক্ষার্থী',
+      studentsHint: 'নাম, অভিভাবকের নম্বর, ব্যাচ',
+      batches: 'ব্যাচ ও সময়',
+      batchesHint: 'সকাল / দুপুর / বিকাল / সন্ধ্যা, কোন দিন ক্লাস',
+      subjects: 'বিষয়',
+      subjectsHint: 'গণিত, পদার্থ, ইংরেজি — আপনার নিজের তালিকা',
+      teachers: 'শিক্ষক ও অনুমতি',
+      teachersHint: 'কে কী করতে পারবে',
+      examTypes: 'পরীক্ষার ধরন',
+      examTypesHint: 'সাপ্তাহিক, মডেল টেস্ট, মাসিক — যা আপনি নেন',
+      sms: 'SMS',
+      smsHint: 'ক্রেডিট, কে SMS পাবে না',
+      /**
+       * The plan the centre is actually on. This line used to read "ফ্রি প্ল্যান:
+       * ১টি ব্যাচ" to everybody, including a centre paying for unlimited batches.
+       *
+       * A batch count inside a sentence takes Bangla numerals, unlike the tallies
+       * on the rows above it — those are read off against a register, this is
+       * prose. English inflects on it, which is why both are functions.
+       */
+      plan: (name: string, batches: number) =>
+        `${name} প্ল্যান: ${digits(batches, 'bn')}টি ব্যাচ, সব ফিচার খোলা, SMS সীমিত।`,
+      planUnlimited: (name: string) =>
+        `${name} প্ল্যান: ব্যাচ যত লাগে, সব ফিচার খোলা, SMS সীমিত।`,
+    },
+
     subjects: {
+      title: 'বিষয়',
+      /** Without a plan cap, the count on its own. ASCII: it is a tally. */
+      count: (n: number) => `${n}টি বিষয়`,
+      /** With one, how much of it is spent — so the next add is not a surprise. */
+      used: (n: number, limit: number) => `${n}/${limit}টি বিষয় ব্যবহার হয়েছে`,
+      /** How many batches teach it. Follows a number set in its own element. */
+      batches: (_n: number) => 'ব্যাচ',
+      capTitle: 'এই প্ল্যানে আর বিষয় যোগ করা যাবে না',
+      /**
+       * Names the plan and its number, because `errors.planLimit` deliberately
+       * does not — a form's error line is not the place for a rate card. Bangla
+       * numerals here: this one is a sentence, not a tally.
+       */
+      cap: (name: string, limit: number) =>
+        `${name} প্ল্যানে ${digits(limit, 'bn')}টি বিষয়। সব ফিচার খোলা থাকে — শুধু সংখ্যার সীমা।`,
+      nameLabel: 'বিষয়ের নাম',
+      /**
+       * True for whoever is reading it: a Bangla reader's lists show `name_bn`,
+       * an English reader's show `name`. So the English hint says the opposite
+       * thing and both are correct — see `localName`.
+       */
+      nameHint: 'যেমন Mathematics — তালিকায় বাংলা নামটাই দেখানো হবে',
       errors: {
         nameRequired: 'বিষয়ের নাম লিখুন।',
         /** The unique index on (centre, name). More use than a Postgres string. */
@@ -791,6 +876,11 @@ export const bn = {
     },
 
     examTypes: {
+      title: 'পরীক্ষার ধরন',
+      subtitle: 'আপনার সেন্টার যে ধরনের পরীক্ষা নেয়, সেভাবেই লিখুন',
+      /** How many exams of this kind have been held. Follows its own number. */
+      exams: (_n: number) => 'পরীক্ষা',
+      nameLabel: 'ধরনের নাম',
       errors: {
         nameRequired: 'পরীক্ষার ধরনের নাম লিখুন।',
         duplicate: 'এই নামে ধরন আগেই আছে।',

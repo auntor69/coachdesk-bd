@@ -2,11 +2,18 @@ import Link from 'next/link'
 import type { Route } from 'next'
 
 import { Card } from '@/components/ui'
-import { requireRole } from '@/lib/auth/session'
+import { requireRole, getSession } from '@/lib/auth/session'
 import { createClient } from '@/lib/supabase/server'
 import { formatBdMobile } from '@/lib/bd/phone'
+import { dict, DEFAULT_LOCALE } from '@/lib/i18n'
+import { planName } from '@/lib/plans'
 
-export const metadata = { title: 'সেটিংস — CoachDesk' }
+/** getSession, not requireRole — see the note on teach/page.tsx's own. */
+export async function generateMetadata() {
+  const session = await getSession()
+  const locale = session?.locale ?? DEFAULT_LOCALE
+  return { title: `${dict(locale).settings.hub.title} — CoachDesk` }
+}
 
 /**
  * The customization hub.
@@ -20,6 +27,8 @@ export const metadata = { title: 'সেটিংস — CoachDesk' }
 export default async function SettingsPage() {
   const session = await requireRole('manager')
   const supabase = await createClient()
+  const locale = session.locale
+  const t = dict(locale).settings.hub
 
   const [
     { count: teacherCount },
@@ -60,8 +69,8 @@ export default async function SettingsPage() {
   // number a parent will be told to pay, or the fact that there isn't one. An
   // owner who has not set this is losing fees to a question they answer by hand.
   const payHint = center?.payment_number
-    ? `ফি যাবে ${formatBdMobile(center.payment_number)} নম্বরে`
-    : 'পেমেন্ট নম্বর এখনো দেওয়া হয়নি'
+    ? t.feesGoTo(formatBdMobile(center.payment_number))
+    : t.noPaymentNumber
 
   const items: {
     href: Route
@@ -71,65 +80,73 @@ export default async function SettingsPage() {
   }[] = [
     {
       href: '/settings/center',
-      label: 'নাম ও পেমেন্ট',
+      label: t.center,
       hint: payHint,
       count: null,
     },
     {
       href: '/settings/students',
-      label: 'শিক্ষার্থী',
-      hint: 'নাম, অভিভাবকের নম্বর, ব্যাচ',
+      label: t.students,
+      hint: t.studentsHint,
       count: studentCount ?? 0,
     },
     {
       href: '/settings/batches',
-      label: 'ব্যাচ ও সময়',
-      hint: 'সকাল / দুপুর / বিকাল / সন্ধ্যা, কোন দিন ক্লাস',
+      label: t.batches,
+      hint: t.batchesHint,
       count: batchCount ?? 0,
     },
     {
       href: '/settings/subjects',
-      label: 'বিষয়',
-      hint: 'গণিত, পদার্থ, ইংরেজি — আপনার নিজের তালিকা',
+      label: t.subjects,
+      hint: t.subjectsHint,
       count: subjectCount ?? 0,
     },
     {
       href: '/settings/teachers',
-      label: 'শিক্ষক ও অনুমতি',
-      hint: 'কে কী করতে পারবে',
+      label: t.teachers,
+      hint: t.teachersHint,
       count: teacherCount ?? 0,
     },
     {
       href: '/settings/exam-types',
-      label: 'পরীক্ষার ধরন',
-      hint: 'সাপ্তাহিক, মডেল টেস্ট, মাসিক — যা আপনি নেন',
+      label: t.examTypes,
+      hint: t.examTypesHint,
       count: examTypeCount ?? 0,
     },
     {
       href: '/settings/sms',
-      label: 'SMS',
-      hint: 'ক্রেডিট, কে SMS পাবে না',
+      label: t.sms,
+      hint: t.smsHint,
       count: null,
     },
   ]
 
+  // The centre's own plan, not the free one. Every tier below `center` has caps,
+  // so this line is read by paying owners too.
+  const maxBatches = session.plan.maxBatches
+  const planLine =
+    maxBatches === null
+      ? t.planUnlimited(planName(session.plan, locale))
+      : t.plan(planName(session.plan, locale), maxBatches)
+
   return (
     <div className="flex flex-col gap-5">
       <div>
-        <h1 className="text-xl font-bold text-ink">সেটিংস</h1>
+        <h1 className="text-xl font-bold text-ink">{t.title}</h1>
         <p className="mt-1 text-ink-soft">{session.active.centerName}</p>
       </div>
 
       <Card>
         <div className="flex items-baseline justify-between gap-3">
           <div>
-            <p className="text-sm text-ink-soft">SMS ক্রেডিট</p>
+            <p className="text-sm text-ink-soft">{t.smsCredits}</p>
             <p className="num mt-0.5 text-2xl font-bold text-ink">
               {session.active.smsCreditBalance}
             </p>
           </div>
           <Link href="/settings/sms" className="text-sm font-medium text-brand-700">
-            বিস্তারিত
+            {t.details}
           </Link>
         </div>
       </Card>
@@ -159,9 +176,7 @@ export default async function SettingsPage() {
         ))}
       </ul>
 
-      <p className="text-sm text-ink-faint">
-        ফ্রি প্ল্যান: ১টি ব্যাচ, সব ফিচার খোলা, SMS সীমিত।
-      </p>
+      <p className="text-sm text-ink-faint">{planLine}</p>
     </div>
   )
 }

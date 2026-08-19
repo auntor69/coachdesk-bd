@@ -11,11 +11,13 @@
 import { useActionState, useEffect, useRef } from 'react'
 
 import { Alert, Button, Field } from '@/components/ui'
+import type { T } from '@/lib/i18n'
 import type { ActionState } from './actions'
 import { MAX_NAME } from '@/lib/limits'
 
 export function QuickAdd({
   action,
+  common,
   label,
   hint,
   placeholder,
@@ -23,6 +25,13 @@ export function QuickAdd({
   children,
 }: {
   action: (prev: ActionState, formData: FormData) => Promise<ActionState>
+  /**
+   * The chrome — the second name field's label and the submit button. From
+   * `common` rather than a group of its own because both are words this app
+   * already says on every other form, and a form that said "যোগ করুন" here and
+   * something else elsewhere would be the only one that did.
+   */
+  common: T<'common'>
   label: string
   hint?: string
   placeholder: string
@@ -61,7 +70,7 @@ export function QuickAdd({
         maxLength={MAX_NAME}
       />
       <Field
-        label="বাংলা নাম (ঐচ্ছিক)"
+        label={`${common.bnName} (${common.optional})`}
         name="nameBn"
         placeholder={placeholderBn}
         maxLength={MAX_NAME}
@@ -70,7 +79,7 @@ export function QuickAdd({
       {children}
 
       <Button type="submit" disabled={pending} full>
-        {pending ? 'যোগ হচ্ছে…' : 'যোগ করুন'}
+        {pending ? common.adding : common.add}
       </Button>
     </form>
   )

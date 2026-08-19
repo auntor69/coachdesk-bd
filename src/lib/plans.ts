@@ -10,6 +10,8 @@
  * so it is metered on every tier and never bundled generously.
  */
 
+import type { Locale } from './i18n/locale.ts'
+
 export type PlanId = 'teacher_free' | 'teacher_plus' | 'center' | 'institution'
 
 export type PlanLimits = {
@@ -116,6 +118,21 @@ export const CENTER_MONTHLY_FLOOR_BDT = 500
 
 export function planFor(id: PlanId | string | null | undefined): PlanLimits {
   return PLANS[(id ?? 'teacher_free') as PlanId] ?? PLANS.teacher_free
+}
+
+/**
+ * What to call the plan in front of the person paying for it.
+ *
+ * A plan name is not a dictionary string — it is closer to a product name, and
+ * both spellings live above with the limits they belong to, where a new tier
+ * cannot be added without naming it twice. Screens used to read `plan.nameBn`
+ * directly, which was invisibly correct until the app grew a second language.
+ *
+ * The `Locale` import is type-only, so this file still pulls in nothing at
+ * runtime — `wouldExceed` and `roomFor` are read by client components.
+ */
+export function planName(plan: PlanLimits, locale: Locale): string {
+  return locale === 'en' ? plan.nameEn : plan.nameBn
 }
 
 export type LimitKey = 'maxBatches' | 'maxStudents' | 'maxTeachers' | 'maxSubjects'

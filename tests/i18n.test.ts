@@ -48,6 +48,19 @@ function renderings(value: unknown): string[] {
 
 const BENGALI = /[ঀ-৿]/
 
+/**
+ * Bangla strings that legitimately contain no Bangla letters.
+ *
+ * A Dhaka coaching centre says "SMS", in Latin letters, out loud and in writing
+ * — ক্ষুদ্র বার্তা পরিসেবা is what a textbook calls it and nobody else. So
+ * the honest translation of the label is the acronym, and the test below has to
+ * be told rather than the dictionary bent to satisfy it.
+ *
+ * Listed by exact path, never by pattern, so this stays a list of decisions
+ * somebody made and not a hole a whole group can fall through.
+ */
+const LATIN_IN_BANGLA = new Set(['settings.hub.sms'])
+
 test('the two dictionaries have exactly the same keys', () => {
   // tsc already proves this — en.ts is typed as bn's shape. Asserted again here
   // because `npm test` runs without a type check in front of it, and because the
@@ -198,9 +211,17 @@ test('nothing in the Bangla dictionary is secretly English', () => {
   // The mirror of the above, and the one that catches a string added in a hurry
   // to whichever file was already open.
   for (const [key, value] of leaves(bn)) {
+    if (LATIN_IN_BANGLA.has(key)) continue
     for (const text of renderings(value)) {
       assert.ok(BENGALI.test(text), `bn.${key} has no Bangla in it: ${text}`)
     }
+  }
+  // The allowlist is a list of decisions, so a stale entry has to fail too:
+  // otherwise a key renamed years from now leaves a permanent exemption behind
+  // for whatever inherits its path.
+  const paths = new Set(leaves(bn).map(([key]) => key))
+  for (const allowed of LATIN_IN_BANGLA) {
+    assert.ok(paths.has(allowed), `${allowed} is allowlisted but no longer exists`)
   }
 })
 
