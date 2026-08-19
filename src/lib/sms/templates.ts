@@ -73,7 +73,11 @@ function marksText(obtained: number | null, total: number): string {
 export type ResultSms = {
   body: string
   segments: number
-  /** True when the note or title had to be dropped to hold one segment. */
+  /**
+   * True when the teacher's note had to be dropped to avoid buying a segment.
+   * The gate counts these and names the students, so a note can be shortened
+   * before the credits are spent rather than going missing quietly.
+   */
   trimmed: boolean
 }
 
@@ -93,18 +97,25 @@ export function buildResultSms(input: ResultSmsInput): ResultSms {
   // ভালো করতে হবে" tells a parent more than a number does — but it is the only
   // part that is optional, and paying double for it is not the centre's choice
   // to make silently. It stays visible in the app either way.
+  //
+  // Dropped only when it would actually cost something. A long student name, a
+  // long exam title and a long centre name can push the message past 70
+  // characters between them, and once that second segment is already being paid
+  // for the note rides along inside it for nothing — the fee reminder makes the
+  // same call about its payment number, for the same reason.
+  const bare = `${core}${tail}`
+  const bareSegments = measureSms(bare).segments
+
   const note = (input.note ?? '').trim().replace(/\s+/g, ' ')
   if (note) {
     const withNote = `${core} ${note}${tail}`
-    if (measureSms(withNote).segments <= 1) {
-      return { body: withNote, segments: 1, trimmed: false }
+    const { segments } = measureSms(withNote)
+    if (segments <= bareSegments) {
+      return { body: withNote, segments, trimmed: false }
     }
   }
 
-  const body = `${core}${tail}`
-  const { segments } = measureSms(body)
-
-  return { body, segments, trimmed: Boolean(note) }
+  return { body: bare, segments: bareSegments, trimmed: Boolean(note) }
 }
 
 /**

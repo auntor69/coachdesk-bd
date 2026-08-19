@@ -150,6 +150,7 @@ export default async function ExamPage({
   const skippedNoPhone = plan?.skippedNoPhone ?? 0
   const skippedOptedOut = plan?.skippedOptedOut ?? 0
   const withoutMarks = plan?.withoutMarks ?? rows.length
+  const notesTrimmed = plan?.notesTrimmed ?? []
 
   return (
     <div className="flex flex-col gap-5">
@@ -210,6 +211,7 @@ export default async function ExamPage({
             skippedOptedOut={skippedOptedOut}
             skippedNoPhone={skippedNoPhone}
             withoutMarks={withoutMarks}
+            notesTrimmed={notesTrimmed.length}
             anyMultiSegment={plan?.anyMultiSegment ?? false}
             alreadySentAt={exam.sms_sent_at}
             declinedAt={exam.sms_declined_at}
@@ -225,6 +227,13 @@ export default async function ExamPage({
               withoutMarks: t.withoutMarksCount(withoutMarks),
               noPhone: t.noPhoneCount(skippedNoPhone),
               optedOut: t.optedOutCount(skippedOptedOut),
+              notesTrimmed: t.notesTrimmedCount(
+                notesTrimmed.length,
+                // Every name, not the first few. The list is as long as the
+                // number of notes a teacher wrote that morning, and truncating
+                // it would hide the very student they need to go back to.
+                notesTrimmed.join(', '),
+              ),
             }}
           />
         </>

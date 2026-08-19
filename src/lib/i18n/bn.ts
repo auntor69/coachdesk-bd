@@ -504,6 +504,13 @@ export const bn = {
     withoutMarksCount: (n: number) => `${n} জনের নম্বর এখনও দেওয়া হয়নি`,
     noPhoneCount: (n: number) => `${n} জনের অভিভাবকের নম্বর নেই`,
     optedOutCount: (n: number) => `${n} জনের SMS বন্ধ আছে`,
+    /**
+     * Whose note did not fit, with the names in it. The teacher is looking at the
+     * marks sheet directly above this line, so a count on its own would send them
+     * hunting through eight notes for the one that is a few characters too long.
+     */
+    notesTrimmedCount: (n: number, names: string) =>
+      `${n} জনের মন্তব্য SMS-এ জায়গা হচ্ছে না — ${names}`,
 
     /**
      * What the three writes return, resolved in the action. `marksSaved` reads
@@ -629,8 +636,14 @@ export const bn = {
     willGoTo: 'যাবে',
     cost: 'খরচ',
     perPersonNote: 'প্রত্যেকের নাম ও নম্বর আলাদা করে বসানো হবে',
+    /**
+     * Not about the notes, though it used to say so. A note is dropped before it
+     * can add a segment, so a two-segment message means the student's name, the
+     * exam's name and the centre's name are long enough between them — and the
+     * two of those the owner can shorten are named here.
+     */
     longNote:
-      'কিছু মন্তব্য লম্বা হওয়ায় সেগুলো ২টি SMS হিসেব হবে। মন্তব্য ছোট করলে খরচ কমবে।',
+      'কিছু SMS ২টি হিসেব হচ্ছে — পরীক্ষার নাম বা কোচিংয়ের নাম ছোট করলে খরশ অর্ধেক হবে।',
     declined: 'এই পরীক্ষার SMS পাঠানো হয়নি। চাইলে পরে পাঠাতে পারবেন।',
     send: 'অভিভাবককে পাঠান',
     sending: 'পাঠানো হচ্ছে…',

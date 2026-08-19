@@ -133,6 +133,25 @@ test('the note is dropped rather than paying for a second segment', () => {
   assert.ok(withShortNote.body.includes('ভালো'))
 })
 
+test('a note rides along free once the message is already two segments', () => {
+  // Student name, exam title and centre name all at their clamp limits: the
+  // message crosses 70 characters before the note is even considered, so the
+  // second segment is already being paid for and dropping the note buys nothing.
+  const sms = buildResultSms({
+    studentName: 'শারমিন সুলতানা খান',
+    examTitle: 'বার্ষিক পরীক্ষা ২০২৬',
+    obtainedMarks: 42,
+    totalMarks: 50,
+    isAbsent: false,
+    centerName: 'আলোর পথে কোচিং সেন্টার',
+    note: 'ভালো করেছে',
+  })
+
+  assert.equal(sms.segments, 2, sms.body)
+  assert.equal(sms.trimmed, false, 'dropping the note would not have saved a segment')
+  assert.ok(sms.body.includes('ভালো করেছে'), sms.body)
+})
+
 test('marks keep ASCII digits and lose trailing zeros', () => {
   const sms = buildResultSms({
     studentName: 'রাফিদ',

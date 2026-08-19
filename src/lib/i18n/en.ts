@@ -312,6 +312,13 @@ export const en: Dictionary = {
       `${n} ${n === 1 ? 'guardian' : 'guardians'} with no number`,
     optedOutCount: (n: number) =>
       `${n} ${n === 1 ? 'family has' : 'families have'} SMS turned off`,
+    /**
+     * Names, not just a count — see the Bangla. The verb agrees with the count
+     * even though the names follow it, because "1 notes are too long" is the
+     * failure this whole group of functions exists to prevent.
+     */
+    notesTrimmedCount: (n: number, names: string) =>
+      `${n} ${n === 1 ? 'note is' : 'notes are'} too long to send — ${names}`,
 
     marksSaved: (entered: number, absent: number) => {
       const who = `${entered} ${entered === 1 ? 'student' : 'students'}`
@@ -385,7 +392,7 @@ export const en: Dictionary = {
     cost: 'Cost',
     perPersonNote: 'Each family gets their own child’s name and marks',
     longNote:
-      'Some notes are long enough to count as 2 SMS. Shortening them costs less.',
+      'Some of these count as 2 SMS. A shorter exam name — or a shorter centre name in settings — halves the cost.',
     declined: 'No SMS was sent for this exam. You can still send it later.',
     send: 'Send to guardians',
     sending: 'Sending…',

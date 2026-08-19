@@ -42,8 +42,20 @@ export type ResultDispatchPlan = {
   skippedNoPhone: number
   /** Students on the roster with no mark entered yet. */
   withoutMarks: number
+  /**
+   * Whose note did not fit. Names rather than a count, because the only useful
+   * response is to go back up the same page and shorten that student's note —
+   * and "১ জনের মন্তব্য" leaves a teacher guessing which of eight it was. The
+   * length that decides it depends on the student's own name, so the longest
+   * note is not reliably the dropped one.
+   */
+  notesTrimmed: string[]
   creditCost: number
-  /** True when at least one message needed a second segment. */
+  /**
+   * True when at least one message needed a second segment. Never caused by a
+   * note — a note is dropped before it can add one — so this means the name,
+   * the title and the centre's name are long enough between them.
+   */
   anyMultiSegment: boolean
 }
 
@@ -76,6 +88,7 @@ export async function planResultSms(
     .eq('exam_id', examId)
 
   const recipients: ResultRecipient[] = []
+  const notesTrimmed: string[] = []
   let skippedOptedOut = 0
   let skippedNoPhone = 0
 
@@ -124,6 +137,8 @@ export async function planResultSms(
       note: result.note,
     })
 
+    if (sms.trimmed) notesTrimmed.push(student.name)
+
     recipients.push({
       studentId: student.id,
       studentName: student.name,
@@ -134,8 +149,10 @@ export async function planResultSms(
     })
   }
 
-  // Sorted so the preview list reads in the same order as the marks sheet.
+  // Sorted so the preview list reads in the same order as the marks sheet, and
+  // so does the list of notes that did not fit.
   recipients.sort((a, b) => a.studentName.localeCompare(b.studentName, 'bn-BD'))
+  notesTrimmed.sort((a, b) => a.localeCompare(b, 'bn-BD'))
 
   return {
     examTitle: exam.title,
@@ -144,6 +161,7 @@ export async function planResultSms(
     skippedOptedOut,
     skippedNoPhone,
     withoutMarks: Math.max(0, rosterSize - (results ?? []).length),
+    notesTrimmed,
     creditCost: recipients.reduce((sum, r) => sum + r.segments, 0),
     anyMultiSegment: recipients.some((r) => r.segments > 1),
   }

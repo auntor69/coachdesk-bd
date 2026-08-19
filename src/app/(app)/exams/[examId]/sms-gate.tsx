@@ -46,7 +46,7 @@ export type GatePreview = {
  * Bangla and produce "1 guardians" in English, so these are written on the server
  * where the plural can branch.
  *
- * Written unconditionally, including the ones this render will not show. Seven
+ * Written unconditionally, including the ones this render will not show. Eight
  * short strings cost less than the confusion of a nullable line whose emptiness
  * means two different things.
  */
@@ -58,6 +58,7 @@ export type GateLines = {
   withoutMarks: string
   noPhone: string
   optedOut: string
+  notesTrimmed: string
 }
 
 export function SmsGate({
@@ -69,6 +70,7 @@ export function SmsGate({
   skippedOptedOut,
   skippedNoPhone,
   withoutMarks,
+  notesTrimmed,
   anyMultiSegment,
   alreadySentAt,
   declinedAt,
@@ -86,6 +88,8 @@ export function SmsGate({
   skippedOptedOut: number
   skippedNoPhone: number
   withoutMarks: number
+  /** How many teachers' notes were dropped to keep a message to one segment. */
+  notesTrimmed: number
   anyMultiSegment: boolean
   alreadySentAt: string | null
   declinedAt: string | null
@@ -214,8 +218,14 @@ export function SmsGate({
         </p>
       )}
 
-      {(skippedOptedOut > 0 || skippedNoPhone > 0 || withoutMarks > 0) && (
+      {(skippedOptedOut > 0 ||
+        skippedNoPhone > 0 ||
+        withoutMarks > 0 ||
+        notesTrimmed > 0) && (
         <ul className="num mt-3 flex flex-col gap-1 text-sm text-ink-faint">
+          {/* First, because it is the only one of these the owner can still act
+              on before tapping send — the marks sheet is directly above. */}
+          {notesTrimmed > 0 && <li>{lines.notesTrimmed}</li>}
           {withoutMarks > 0 && <li>{lines.withoutMarks}</li>}
           {skippedNoPhone > 0 && <li>{lines.noPhone}</li>}
           {skippedOptedOut > 0 && <li>{lines.optedOut}</li>}
