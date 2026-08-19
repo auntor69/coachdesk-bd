@@ -24,17 +24,11 @@ import {
   rosterKey,
   type RosterProblem,
 } from '@/lib/bd/roster'
+import { fill } from '@/lib/i18n/fill'
+import type { T } from '@/lib/i18n'
 import { importStudents, type ActionState } from '../../actions'
 
 type BatchOption = { id: string; label: string }
-
-const PROBLEM_LABEL: Record<RosterProblem, string> = {
-  'no-phone': 'নম্বর নেই',
-  'bad-phone': 'নম্বরটি ঠিক নেই',
-  'no-name': 'নাম নেই',
-  'name-too-long': 'নামটি অনেক বড় — এটা কি নাম?',
-  duplicate: 'এই তালিকায় দুইবার',
-}
 
 /** A parse failure needs a human; a duplicate has already been dealt with. */
 const NEEDS_FIXING = new Set<RosterProblem>([
@@ -44,20 +38,18 @@ const NEEDS_FIXING = new Set<RosterProblem>([
   'name-too-long',
 ])
 
-const PLACEHOLDER = [
-  'রাফিদ হাসান 01712345678',
-  'সাদিয়া আক্তার, করিম মিয়া, 01812345678',
-  '৩। তানভীর ইসলাম ০১৯১২৩৪৫৬৭৮',
-].join('\n')
-
 /** How many parsed names are listed at once. A phone renders 500 rows slowly. */
 const PREVIEW_LIMIT = 100
 
 export function ImportForm({
+  t,
+  common,
   batches,
   existingKeys,
   room,
 }: {
+  t: T<'importForm'>
+  common: T<'common'>
   batches: BatchOption[]
   /** null when the roster is too big to hint with. The import still checks. */
   existingKeys: string[] | null
@@ -115,18 +107,17 @@ export function ImportForm({
         <Alert tone="ok">
           {state.ok}{' · '}
           <Link href="/settings/students" className="underline">
-            তালিকা দেখুন
+            {t.viewList}
           </Link>
         </Alert>
       )}
 
       <div className="flex flex-col gap-1.5">
         <label htmlFor="roster" className="font-medium text-ink">
-          নামের তালিকা
+          {t.label}
         </label>
         <span id="roster-hint" className="text-sm text-ink-soft">
-          প্রতি লাইনে একজন — নাম আর অভিভাবকের মোবাইল। ক্রমিক নম্বর, কমা বা ড্যাশ
-          থাকলে অসুবিধা নেই, আর নাম আগে না নম্বর আগে সেটাও দেখা হয় না।
+          {t.hint}
         </span>
         <textarea
           id="roster"
@@ -135,7 +126,7 @@ export function ImportForm({
           onChange={(event) => setText(event.target.value)}
           rows={8}
           spellCheck={false}
-          placeholder={PLACEHOLDER}
+          placeholder={t.placeholder}
           aria-describedby="roster-hint"
           // text-base for the same reason Field uses it: iOS Safari zooms the
           // page when a focused field is under 16px and never zooms back.
@@ -147,17 +138,17 @@ export function ImportForm({
 
       {rows.length > 0 && (
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm">
-          <span className="font-semibold text-ink">
-            <span className="num">{newCount}</span> জন নতুন
+          <span className="num font-semibold text-ink">
+            {fill(t.fresh, { n: newCount })}
           </span>
           {hinting && alreadyThere > 0 && (
-            <span className="text-ink-soft">
-              <span className="num">{alreadyThere}</span> জন আগেই আছে
+            <span className="num text-ink-soft">
+              {fill(t.alreadyThere, { n: alreadyThere })}
             </span>
           )}
           {problems.length > 0 && (
-            <span className="font-medium text-absent">
-              <span className="num">{problems.length}</span> লাইন বাদ পড়বে
+            <span className="num font-medium text-absent">
+              {fill(t.willSkip, { n: problems.length })}
             </span>
           )}
         </div>
@@ -165,24 +156,20 @@ export function ImportForm({
 
       {tooMany && (
         <Alert tone="warn">
-          একবারে <span className="num">{MAX_IMPORT_ROWS}</span> লাইনের বেশি নেওয়া
-          যায় না। এখানে <span className="num">{rows.length}</span> লাইন আছে — বাকিটা
-          পরের বার দিন।
+          {fill(t.tooMany, { max: MAX_IMPORT_ROWS, got: rows.length })}
         </Alert>
       )}
 
       {overRoom && (
         <Alert tone="warn">
-          এই প্ল্যানে আর <span className="num">{room}</span> জন যোগ করা যাবে, কিন্তু
-          তালিকায় <span className="num">{newCount}</span> জন নতুন।
+          {/* room is non-null here: overRoom is false when the plan is unlimited. */}
+          {fill(t.overRoom, { room: room ?? 0, fresh: newCount })}
         </Alert>
       )}
 
       {problems.length > 0 && (
         <div className="flex flex-col gap-2">
-          <p className="text-sm font-medium text-ink">
-            এই লাইনগুলো যোগ হবে না — ঠিক করে আবার দিন
-          </p>
+          <p className="text-sm font-medium text-ink">{t.problemsTitle}</p>
           <ul className="flex flex-col gap-1.5">
             {problems.slice(0, PREVIEW_LIMIT).map((row) => (
               <li
@@ -194,15 +181,14 @@ export function ImportForm({
                   <span className="min-w-0 break-words text-sm text-ink">{row.raw}</span>
                 </div>
                 <span className="mt-0.5 block text-xs font-medium text-absent">
-                  {row.problem !== null && PROBLEM_LABEL[row.problem]}
+                  {row.problem !== null && t.problem[row.problem]}
                 </span>
               </li>
             ))}
           </ul>
           {problems.length > PREVIEW_LIMIT && (
-            <p className="text-xs text-ink-soft">
-              আরও <span className="num">{problems.length - PREVIEW_LIMIT}</span> লাইনে
-              সমস্যা আছে।
+            <p className="num text-xs text-ink-soft">
+              {fill(t.moreProblems, { n: problems.length - PREVIEW_LIMIT })}
             </p>
           )}
         </div>
@@ -211,7 +197,7 @@ export function ImportForm({
       {ready.length > 0 && (
         <details className="rounded-2xl border border-line bg-white p-4">
           <summary className="min-h-tap cursor-pointer font-medium text-ink-soft">
-            যা পড়া গেছে দেখে নিন (<span className="num">{ready.length}</span>)
+            {fill(t.readyTitle, { n: ready.length })}
           </summary>
           <ul className="mt-3 flex flex-col divide-y divide-line">
             {ready.slice(0, PREVIEW_LIMIT).map((row) => (
@@ -225,13 +211,17 @@ export function ImportForm({
                   </span>
                 </div>
                 <div className="flex flex-wrap gap-x-3 text-xs text-ink-soft">
-                  {row.guardianName && <span>অভিভাবক: {row.guardianName}</span>}
+                  {row.guardianName && (
+                    <span>{fill(t.guardian, { name: row.guardianName })}</span>
+                  )}
                   {row.alreadyThere && (
-                    <span className="font-medium text-late">আগেই আছে</span>
+                    <span className="font-medium text-late">{t.alreadyOn}</span>
                   )}
                   {row.dropped.length > 0 && (
                     <span className="num">
-                      বাদ: {row.dropped.map(formatBdMobile).join(', ')}
+                      {fill(t.dropped, {
+                        numbers: row.dropped.map(formatBdMobile).join(', '),
+                      })}
                     </span>
                   )}
                 </div>
@@ -239,9 +229,8 @@ export function ImportForm({
             ))}
           </ul>
           {ready.length > PREVIEW_LIMIT && (
-            <p className="mt-2 text-xs text-ink-soft">
-              প্রথম <span className="num">{PREVIEW_LIMIT}</span> জন দেখানো হলো, বাকিরাও
-              যোগ হবে।
+            <p className="num mt-2 text-xs text-ink-soft">
+              {fill(t.previewNote, { shown: PREVIEW_LIMIT })}
             </p>
           )}
         </details>
@@ -249,12 +238,8 @@ export function ImportForm({
 
       {batches.length > 0 && (
         <fieldset className="flex flex-col gap-2">
-          <legend className="mb-1 font-medium text-ink">
-            সবাইকে কোন ব্যাচে ভর্তি করব
-          </legend>
-          <p className="mb-1 text-sm text-ink-soft">
-            এই তালিকার সবাই একই ব্যাচে যাবে। আলাদা ব্যাচ হলে ব্যাচ ধরে ধরে তালিকা দিন।
-          </p>
+          <legend className="mb-1 font-medium text-ink">{t.whichBatch}</legend>
+          <p className="mb-1 text-sm text-ink-soft">{t.whichBatchBody}</p>
           <div className="flex flex-col gap-2">
             {batches.map((batch) => (
               <label
@@ -282,10 +267,10 @@ export function ImportForm({
         disabled={pending || newCount === 0 || tooMany || overRoom}
       >
         {pending
-          ? 'যোগ হচ্ছে…'
+          ? common.adding
           : newCount > 0
-            ? `${newCount} জন যোগ করুন`
-            : 'যোগ করুন'}
+            ? fill(t.submit, { n: newCount })
+            : t.submitEmpty}
       </Button>
     </form>
   )

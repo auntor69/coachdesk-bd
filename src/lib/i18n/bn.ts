@@ -771,6 +771,82 @@ export const bn = {
     submit: 'শিক্ষার্থী যোগ করুন',
   },
 
+  /**
+   * The paste box and its preview — everything an owner reads *before* the
+   * import runs. What it says back afterwards is settings.import.
+   *
+   * Every count here is a `{n}` template rather than a function, and this is the
+   * screen the exception in this file's header was written for: the tallies move
+   * as the owner types into the box, so there is no server render that could
+   * resolve them. ./fill.ts does it in the browser. Which means English cannot
+   * inflect on any of these numbers, so each sentence is worded to read correctly
+   * at one as well as at forty — '{n} will be skipped', not '{n} lines'.
+   *
+   * `tooMany` and `overRoom` are the same two sentences settings.import.errors
+   * gives back, because the form disables the button and the action refuses again
+   * on its own, so one bad paste can produce either — and being told two
+   * different things about one problem reads as a second problem.
+   */
+  importForm: {
+    /** Follows the action's success line, after a separator. */
+    viewList: 'তালিকা দেখুন',
+    label: 'নামের তালিকা',
+    /**
+     * Says what the parser forgives. An owner who believes the format is strict
+     * spends the evening retyping a notebook into columns, which is the evening
+     * this screen exists to give back. See bd/roster for what is actually true.
+     */
+    hint: 'প্রতি লাইনে একজন — নাম আর অভিভাবকের মোবাইল। ক্রমিক নম্বর, কমা বা ড্যাশ থাকলে অসুবিধা নেই, আর নাম আগে না নম্বর আগে সেটাও দেখা হয় না।',
+    /**
+     * Three lines, each demonstrating one thing the parser tolerates: bare
+     * name-then-number, a guardian's name in the middle, and a serial number
+     * written in Bangla numerals. The English list keeps the shapes and drops
+     * the Bangla digits — that reader's keypad does not type them.
+     */
+    placeholder:
+      'রাফিদ হাসান 01712345678\nসাদিয়া আক্তার, করিম মিয়া, 01812345678\n৩। তানভীর ইসলাম ০১৯১২৩৪৫৬৭৮',
+    /**
+     * The three tallies above the box. ASCII numerals in both languages, like
+     * every count: the owner is reading them against the register in their hand.
+     */
+    fresh: '{n} জন নতুন',
+    alreadyThere: '{n} জন আগেই আছে',
+    /** Not "failed" — nothing has been written yet, so nothing has failed. */
+    willSkip: '{n} লাইন বাদ পড়বে',
+    tooMany: 'একবারে সর্বোচ্চ {max} লাইন দিন, বাকিগুলো পরের বার। এখানে {got} লাইন আছে।',
+    overRoom: 'এই প্ল্যানে আর {room} জন যোগ করা যাবে, কিন্তু তালিকায় {fresh} জন নতুন।',
+    problemsTitle: 'এই লাইনগুলো যোগ হবে না — ঠিক করে আবার দিন',
+    moreProblems: 'আরও {n} লাইনে সমস্যা আছে।',
+    /** Collapsed by default: reassurance, not a step. */
+    readyTitle: 'যা পড়া গেছে দেখে নিন ({n})',
+    guardian: 'অভিভাবক: {name}',
+    alreadyOn: 'আগেই আছে',
+    /**
+     * A line with two numbers in it: one of them became the guardian's. This
+     * names the others, so an owner can see that a student's own mobile was
+     * ignored rather than quietly filed as the parent's.
+     */
+    dropped: 'বাদ: {numbers}',
+    previewNote: 'প্রথম {shown} জন দেখানো হলো, বাকিরাও যোগ হবে।',
+    whichBatch: 'সবাইকে কোন ব্যাচে ভর্তি করব',
+    whichBatchBody:
+      'এই তালিকার সবাই একই ব্যাচে যাবে। আলাদা ব্যাচ হলে ব্যাচ ধরে ধরে তালিকা দিন।',
+    submit: '{n} জন যোগ করুন',
+    /** Nothing readable in the box yet, so the button is disabled beside it. */
+    submitEmpty: 'যোগ করুন',
+    /**
+     * Keyed by RosterProblem, so adding a parse failure in bd/roster without a
+     * label for it is a type error rather than a blank line in the preview.
+     */
+    problem: {
+      'no-phone': 'নম্বর নেই',
+      'bad-phone': 'নম্বরটি ঠিক নেই',
+      'no-name': 'নাম নেই',
+      'name-too-long': 'নামটি অনেক বড় — এটা কি নাম?',
+      duplicate: 'এই তালিকায় দুইবার',
+    },
+  },
+
   dashboard: {
     title: 'ড্যাশবোর্ড',
     outstanding: 'বকেয়া ফি',
@@ -1109,6 +1185,9 @@ export const bn = {
     },
 
     import: {
+      title: 'তালিকা থেকে যোগ',
+      body: 'রেজিস্টার বা এক্সেল থেকে সব নাম একসাথে বসিয়ে দিন — প্রতি লাইনে একজন।',
+
       /**
        * Three clauses the action joins with " · ". Separate keys because two of
        * the three are dropped when their count is zero — "৪০ জন যোগ হয়েছে · 0 জন

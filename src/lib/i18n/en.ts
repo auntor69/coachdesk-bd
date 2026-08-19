@@ -458,6 +458,48 @@ export const en: Dictionary = {
     submit: 'Add student',
   },
 
+  importForm: {
+    viewList: 'See the list',
+    label: 'The list of names',
+    hint:
+      'One student per line — the name and the guardian’s mobile. Serial numbers, commas and dashes are all fine, and it makes no difference whether the name or the number comes first.',
+    placeholder:
+      'Rafid Hasan 01712345678\nSadia Akter, Karim Mia, 01812345678\n3. Tanvir Islam 01912345678',
+    fresh: '{n} new',
+    alreadyThere: '{n} already here',
+    /** Not "{n} lines": a template cannot inflect, and one line can be skipped. */
+    willSkip: '{n} will be skipped',
+    /**
+     * The plural is safe to fix here, unlike everywhere else in this group: this
+     * sentence only appears when {got} is above the 500-line cap, so the
+     * singular settings.import.errors.tooManyRows allows for cannot arise.
+     */
+    tooMany:
+      'Paste at most {max} lines at a time and the rest next time. This has {got} lines.',
+    /** "are", not "is/are": overRoom needs {room} of at least 1, so {fresh} is 2 or more. */
+    overRoom:
+      'This plan has room for {room} more, but {fresh} in the list are new.',
+    problemsTitle: 'These lines will not be added — fix them and paste again',
+    moreProblems: 'And {n} more with a problem.',
+    readyTitle: 'Check what was read ({n})',
+    guardian: 'Guardian: {name}',
+    alreadyOn: 'Already here',
+    dropped: 'Ignored: {numbers}',
+    previewNote: 'Showing the first {shown}; the rest are added too.',
+    whichBatch: 'Which batch does everyone join',
+    whichBatchBody:
+      'Everyone on this list goes into the same batch. For different batches, paste one batch at a time.',
+    submit: 'Add {n} to the roster',
+    submitEmpty: 'Add',
+    problem: {
+      'no-phone': 'No number',
+      'bad-phone': 'That number is not right',
+      'no-name': 'No name',
+      'name-too-long': 'Too long to be a name — is it one?',
+      duplicate: 'Twice on this list',
+    },
+  },
+
   dashboard: {
     title: 'Dashboard',
     outstanding: 'Fees outstanding',
@@ -657,6 +699,10 @@ export const en: Dictionary = {
     },
 
     import: {
+      title: 'Add from a list',
+      body:
+        'Paste every name straight out of the register or a spreadsheet — one student per line.',
+
       /**
        * Three clauses joined with " · " by the action — see the Bangla. English
        * inflects on all three counts, which is why they are functions.
@@ -676,10 +722,15 @@ export const en: Dictionary = {
           }.`,
         noneReadable:
           'Not one line could be read. Each line needs a name and an 11-digit mobile number.',
+        /**
+         * No noun after "more", so that importForm.overRoom — which is a
+         * template and cannot inflect one — can be the same sentence. See the
+         * note on that group.
+         */
         roomShort: (room: number, fresh: number) =>
-          `This plan has room for ${room} more ${
-            room === 1 ? 'student' : 'students'
-          }, but ${fresh} in the list ${fresh === 1 ? 'is' : 'are'} new.`,
+          `This plan has room for ${room} more, but ${fresh} in the list ${
+            fresh === 1 ? 'is' : 'are'
+          } new.`,
         failed: 'The list was not added. Please try again.',
       },
     },
