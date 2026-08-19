@@ -11,7 +11,9 @@
  *
  * The permission boxes default to what the database defaults to: marks and SMS
  * on, students and fees off. That is the ordinary case — a teacher teaches and
- * reports results; who has paid is the owner's business.
+ * reports results; who has paid is the owner's business. Those defaults live in
+ * `@/lib/permissions` beside the list of five, because the list screen falls back
+ * to the same values when a teacher has no permissions row at all.
  */
 import { useActionState, useState } from 'react'
 import { useRouter } from 'next/navigation'
@@ -19,40 +21,24 @@ import { useRouter } from 'next/navigation'
 import { Alert, Button, Field } from '@/components/ui'
 import { formatBdMobile, normalizeBdMobile } from '@/lib/bd/phone'
 import { MIN_PASSWORD } from '@/lib/auth/password'
+import { PERMISSION_KEYS, PERMISSION_DEFAULTS } from '@/lib/permissions'
+import type { T } from '@/lib/i18n'
 import { createTeacher, type ActionState } from '../../actions'
 import { MAX_NAME } from '@/lib/limits'
 
 type SubjectOption = { id: string; label: string }
 
-const PERMISSIONS = [
-  {
-    name: 'can_manage_exams',
-    label: 'পরীক্ষা ও নম্বর',
-    hint: 'পরীক্ষা তৈরি করা আর নম্বর দেওয়া',
-    default: true,
-  },
-  {
-    name: 'can_send_sms',
-    label: 'অভিভাবককে SMS',
-    hint: 'নম্বর দেওয়ার পর অভিভাবককে SMS পাঠাতে পারবেন',
-    default: true,
-  },
-  {
-    name: 'can_manage_students',
-    label: 'শিক্ষার্থী যোগ ও সম্পাদনা',
-    hint: '',
-    default: false,
-  },
-  { name: 'can_manage_batches', label: 'ব্যাচ তৈরি ও বদল', hint: '', default: false },
-  {
-    name: 'can_view_fees',
-    label: 'ফি দেখা',
-    hint: 'কে টাকা দিয়েছে, কত বাকি',
-    default: false,
-  },
-] as const
-
-export function TeacherForm({ subjects }: { subjects: SubjectOption[] }) {
+export function TeacherForm({
+  t,
+  permissions: labels,
+  common,
+  subjects,
+}: {
+  t: T<'teacherForm'>
+  permissions: T<'teacherPermissions'>
+  common: T<'common'>
+  subjects: SubjectOption[]
+}) {
   const router = useRouter()
   const [state, formAction, pending] = useActionState<ActionState, FormData>(
     async (prev, formData) => {
@@ -75,12 +61,9 @@ export function TeacherForm({ subjects }: { subjects: SubjectOption[] }) {
     return (
       <div className="flex flex-col gap-4">
         <Alert tone="ok">{state.ok}</Alert>
-        <p className="text-sm text-ink-soft">
-          নামটা মিলছে না? তাহলে নম্বরে ভুল হয়েছে — শিক্ষকের তালিকা থেকে তাঁকে বন্ধ
-          করে দিন, তাহলে তিনি আর কিছু দেখতে পাবেন না।
-        </p>
+        <p className="text-sm text-ink-soft">{t.wrongPerson}</p>
         <Button type="button" full onClick={() => router.push('/settings/teachers')}>
-          শিক্ষকের তালিকা দেখুন
+          {t.seeList}
         </Button>
       </div>
     )
@@ -92,9 +75,9 @@ export function TeacherForm({ subjects }: { subjects: SubjectOption[] }) {
       {state?.confirm && <Alert tone="warn">{state.confirm}</Alert>}
 
       <Field
-        label="শিক্ষকের নাম"
+        label={t.nameLabel}
         name="name"
-        placeholder="করিম স্যার"
+        placeholder={t.namePlaceholder}
         required
         maxLength={MAX_NAME}
         autoComplete="off"
@@ -102,15 +85,15 @@ export function TeacherForm({ subjects }: { subjects: SubjectOption[] }) {
 
       <div>
         <Field
-          label="মোবাইল নম্বর"
-          hint="লগইন দিতে চাইলে এই নম্বরটাই তাঁর আইডি হবে"
+          label={`${t.phone} (${common.optional})`}
+          hint={t.phoneHint}
           name="phone"
           type="tel"
           inputMode="numeric"
           placeholder="01712345678"
           value={phone}
           onChange={(e) => setPhone(e.target.value)}
-          error={showEcho && !normalized ? 'নম্বরটি ঠিক নেই' : undefined}
+          error={showEcho && !normalized ? t.phoneBad : undefined}
         />
         {showEcho && normalized && (
           <p className="num mt-1 text-sm font-medium text-brand-700">
@@ -121,7 +104,7 @@ export function TeacherForm({ subjects }: { subjects: SubjectOption[] }) {
 
       {subjects.length > 0 && (
         <fieldset className="flex flex-col gap-2">
-          <legend className="mb-1 font-medium text-ink">কোন বিষয় পড়ান</legend>
+          <legend className="mb-1 font-medium text-ink">{t.whichSubjects}</legend>
           <div className="flex flex-col gap-2">
             {subjects.map((subject) => (
               <label
@@ -144,26 +127,24 @@ export function TeacherForm({ subjects }: { subjects: SubjectOption[] }) {
       )}
 
       <fieldset className="flex flex-col gap-2">
-        <legend className="mb-1 font-medium text-ink">কী কী করতে পারবেন</legend>
+        <legend className="mb-1 font-medium text-ink">{t.whatTheyCanDo}</legend>
         <div className="flex flex-col gap-2">
-          {PERMISSIONS.map((permission) => (
+          {PERMISSION_KEYS.map((key) => (
             <label
-              key={permission.name}
+              key={key}
               className="flex min-h-tap cursor-pointer items-start gap-3 rounded-xl
                 border-2 border-line bg-white px-4 py-3
                 has-[:checked]:border-brand-600 has-[:checked]:bg-brand-50"
             >
               <input
                 type="checkbox"
-                name={permission.name}
-                defaultChecked={permission.default}
+                name={key}
+                defaultChecked={PERMISSION_DEFAULTS[key]}
                 className="mt-0.5 h-5 w-5 shrink-0 accent-brand-600"
               />
               <span className="min-w-0">
-                <span className="block text-ink">{permission.label}</span>
-                {permission.hint && (
-                  <span className="block text-sm text-ink-soft">{permission.hint}</span>
-                )}
+                <span className="block text-ink">{labels[key].label}</span>
+                <span className="block text-sm text-ink-soft">{labels[key].hint}</span>
               </span>
             </label>
           ))}
@@ -180,30 +161,24 @@ export function TeacherForm({ subjects }: { subjects: SubjectOption[] }) {
             className="mt-0.5 h-5 w-5 shrink-0 accent-brand-600"
           />
           <span className="min-w-0">
-            <span className="block font-medium text-ink">এখনই লগইন দিন</span>
-            <span className="block text-sm text-ink-soft">
-              না দিলেও শিক্ষক যোগ হবে — আপনি নিজেই তাঁর ব্যাচের হাজিরা ও নম্বর দিতে
-              পারবেন। পরে যেকোনো সময় লগইন দেওয়া যাবে।
-            </span>
+            <span className="block font-medium text-ink">{t.loginNow}</span>
+            <span className="block text-sm text-ink-soft">{t.loginNowBody}</span>
           </span>
         </label>
 
         {wantsLogin && (
           <>
             <Field
-              label="শুরুর পাসওয়ার্ড"
-              hint="শিক্ষককে বলে দিন — তিনি পরে নিজে বদলে নিতে পারবেন"
+              label={t.password}
+              hint={t.passwordHint}
               name="password"
               type="text"
               required
               minLength={MIN_PASSWORD}
               autoComplete="off"
-              placeholder="যেমন 123456"
+              placeholder={t.passwordPlaceholder}
             />
-            <p className="text-sm text-ink-soft">
-              লগইন দিলে শিক্ষক নিজের ফোন থেকে হাজিরা ও নম্বর দিতে পারবেন। উপরে যেসব
-              অনুমতি টিক দেওয়া আছে, শুধু সেগুলোই তিনি করতে পারবেন।
-            </p>
+            <p className="text-sm text-ink-soft">{t.passwordNote}</p>
           </>
         )}
 
@@ -222,13 +197,13 @@ export function TeacherForm({ subjects }: { subjects: SubjectOption[] }) {
               name="confirmLink"
               className="h-5 w-5 shrink-0 accent-brand-600"
             />
-            <span className="text-ink">হ্যাঁ, এটাই তিনি — অ্যাকাউন্টটি যুক্ত করুন</span>
+            <span className="text-ink">{t.confirmLink}</span>
           </label>
         )}
       </fieldset>
 
       <Button type="submit" full disabled={pending}>
-        {pending ? 'যোগ হচ্ছে…' : 'শিক্ষক যোগ করুন'}
+        {pending ? common.adding : t.submit}
       </Button>
     </form>
   )

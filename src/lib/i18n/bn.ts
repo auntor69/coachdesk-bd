@@ -847,6 +847,112 @@ export const bn = {
     },
   },
 
+  /**
+   * The five permission switches, keyed by the column each one writes.
+   *
+   * One home for two client components. The add form ticks these boxes and the
+   * list edits them afterwards, and an owner who granted 'ফি দেখা' on one screen
+   * has to meet that same sentence on the other or they will not believe it is
+   * the same switch. Keyed by column name, so a permission added to
+   * @/lib/permissions without a label here is a type error rather than a blank
+   * row in a fieldset.
+   *
+   * Every one has a hint, and each hint says something its label does not. Both
+   * screens can afford them: the form shows them under each label, and the list
+   * shows them the moment an owner opens the collapsed panel — which is the
+   * moment they are deciding whether to hand something over.
+   */
+  teacherPermissions: {
+    can_manage_exams: {
+      label: 'পরীক্ষা ও নম্বর',
+      hint: 'পরীক্ষা তৈরি করা আর নম্বর দেওয়া',
+    },
+    can_send_sms: {
+      label: 'অভিভাবককে SMS',
+      hint: 'নম্বর দেওয়ার পর অভিভাবককে SMS পাঠাতে পারবেন',
+    },
+    can_manage_students: {
+      label: 'শিক্ষার্থী যোগ ও সম্পাদনা',
+      /** Names the number, because that is what really changes hands here. */
+      hint: 'অভিভাবকের মোবাইল নম্বরও বদলাতে পারবেন',
+    },
+    can_manage_batches: {
+      label: 'ব্যাচ তৈরি ও বদল',
+      hint: 'নতুন ব্যাচ খোলা, সময় বদল, ব্যাচে ভর্তি করা',
+    },
+    can_view_fees: {
+      label: 'ফি দেখা',
+      hint: 'কে টাকা দিয়েছে, কত বাকি',
+    },
+  },
+
+  /**
+   * The staff list, and the panel behind each row where permissions change.
+   *
+   * Only reachable on a plan with staff on it — a one-teacher plan gets
+   * settings.teachers.soloTitle instead of any of this.
+   */
+  teacherList: {
+    /** A teacher who has been turned off. Their marks and hajira stay put. */
+    inactive: 'বন্ধ',
+    /** A record with no account behind it — see teacherForm.loginNow. */
+    noLogin: 'লগইন নেই',
+    /** Collapsed: reading the list is the common case, editing is the rare one. */
+    edit: 'অনুমতি বদলান',
+    save: 'অনুমতি সেভ করুন',
+    /**
+     * Says what turning a teacher off does and, just as importantly, what it does
+     * not. An owner hesitates over this button because they are afraid of
+     * deleting a term's attendance along with the person.
+     */
+    deactivateBody:
+      'বন্ধ করলে তিনি আর তাঁর ব্যাচ, শিক্ষার্থী বা অভিভাবকের নম্বর দেখতে পাবেন না। আগের হাজিরা আর নম্বর মুছে যাবে না।',
+    reactivateBody: 'চালু করলে তিনি আবার তাঁর ব্যাচের হাজিরা ও নম্বর দিতে পারবেন।',
+    deactivate: 'শিক্ষককে বন্ধ করুন',
+    reactivate: 'আবার চালু করুন',
+  },
+
+  /**
+   * Adding a teacher.
+   *
+   * Two separable things get made here — a record of a teacher, and a login for
+   * them — and the copy has to keep them separable, because the part-timer who
+   * takes two batches a week and will never open the app still has to exist.
+   * loginNowBody is what stops an owner abandoning the form looking for the
+   * password of somebody who does not need one.
+   */
+  teacherForm: {
+    nameLabel: 'শিক্ষকের নাম',
+    namePlaceholder: 'করিম স্যার',
+    phone: 'মোবাইল নম্বর',
+    /** Optional field, so the hint says what giving it would buy. */
+    phoneHint: 'লগইন দিতে চাইলে এই নম্বরটাই তাঁর আইডি হবে',
+    /** As they type, not on submit — the same words studentForm uses. */
+    phoneBad: 'নম্বরটি ঠিক নেই',
+    whichSubjects: 'কোন বিষয় পড়ান',
+    whatTheyCanDo: 'কী কী করতে পারবেন',
+    loginNow: 'এখনই লগইন দিন',
+    loginNowBody:
+      'না দিলেও শিক্ষক যোগ হবে — আপনি নিজেই তাঁর ব্যাচের হাজিরা ও নম্বর দিতে পারবেন। পরে যেকোনো সময় লগইন দেওয়া যাবে।',
+    password: 'শুরুর পাসওয়ার্ড',
+    /** It is typed in the clear on purpose: the teacher is standing right there. */
+    passwordHint: 'শিক্ষককে বলে দিন — তিনি পরে নিজে বদলে নিতে পারবেন',
+    passwordPlaceholder: 'যেমন 123456',
+    passwordNote:
+      'লগইন দিলে শিক্ষক নিজের ফোন থেকে হাজিরা ও নম্বর দিতে পারবেন। উপরে যেসব অনুমতি টিক দেওয়া আছে, শুধু সেগুলোই তিনি করতে পারবেন।',
+    /** Never ticked by default — see settings.teachers.confirmLink for why. */
+    confirmLink: 'হ্যাঁ, এটাই তিনি — অ্যাকাউন্টটি যুক্ত করুন',
+    /**
+     * Shown after an existing account was joined, beside the name it belonged
+     * to. This is the one screen where a mistyped digit becomes visible, so it
+     * says what to do about it rather than congratulating anybody.
+     */
+    wrongPerson:
+      'নামটা মিলছে না? তাহলে নম্বরে ভুল হয়েছে — শিক্ষকের তালিকা থেকে তাঁকে বন্ধ করে দিন, তাহলে তিনি আর কিছু দেখতে পাবেন না।',
+    seeList: 'শিক্ষকের তালিকা দেখুন',
+    submit: 'শিক্ষক যোগ করুন',
+  },
+
   dashboard: {
     title: 'ড্যাশবোর্ড',
     outstanding: 'বকেয়া ফি',
@@ -1228,6 +1334,36 @@ export const bn = {
     teachers: {
       title: 'শিক্ষক ও অনুমতি',
       newTitle: 'নতুন শিক্ষক',
+      /** Without a plan cap, the count on its own. ASCII: it is a tally. */
+      count: (n: number) => `${n} জন শিক্ষক`,
+      /** With one, how much of it is spent — the same line the roster shows. */
+      used: (n: number, limit: number) => `${n}/${limit} জন শিক্ষক`,
+      new: 'নতুন শিক্ষক যোগ করুন',
+      emptyTitle: 'এখনও কোনো শিক্ষক যোগ হয়নি',
+      emptyBody:
+        'শিক্ষক যোগ করলে আপনি ঠিক করে দিতে পারবেন কে কী দেখবে আর কী করতে পারবে।',
+      /**
+       * How many batches one teacher runs, under their name in the list.
+       *
+       * Resolved here rather than in the row, even though the row is a client
+       * component and could hold a template: the count is already known on the
+       * server, and a function is the only way English gets to say "1 batch"
+       * instead of "1 batches". See the note in ./index.ts about asking the
+       * server for a plural.
+       *
+       * Zero is its own sentence. '0 ব্যাচ' under a teacher's name reads like a
+       * number that failed to load, and the fact worth saying is that nobody has
+       * given them a batch yet.
+       */
+      batches: (n: number) => (n === 0 ? 'কোনো ব্যাচ নেই' : `${n} ব্যাচ`),
+      /**
+       * Unreachable on every tier sold today — see the note on the page. Kept
+       * because the day a mid tier caps staff, the list and the add form both
+       * have to refuse, and they have to refuse in the same words.
+       */
+      capTitle: 'এই প্ল্যানে আর শিক্ষক যোগ করা যাবে না',
+      cap: (name: string, limit: number, center: string) =>
+        `${name} প্ল্যানে ${digits(limit, 'bn')} জন শিক্ষক। ${center} প্ল্যানে গেলে যত জন দরকার তত জন — সব ফিচার একই থাকবে।`,
       /**
        * Shown instead of the whole screen on a one-teacher plan. It names the
        * reader's own plan first, so the sentence reads as an explanation of what

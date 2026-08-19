@@ -9,10 +9,12 @@
  * teacher would bury the list itself — and reading the list is the common case,
  * editing is the rare one.
  */
-import { useActionState } from 'react'
+import { useActionState, useState } from 'react'
 
 import { Alert } from '@/components/ui'
 import { formatBdMobile } from '@/lib/bd/phone'
+import { PERMISSION_KEYS } from '@/lib/permissions'
+import type { T } from '@/lib/i18n'
 import { saveTeacherPermissions, toggleTeacherActive, type ActionState } from '../actions'
 
 export type TeacherRow = {
@@ -22,36 +24,55 @@ export type TeacherRow = {
   active: boolean
   hasLogin: boolean
   subjects: string[]
-  batchCount: number
+  /** Already a sentence — see settings.teachers.batches for why. */
+  batchLabel: string
   permissions: Record<string, boolean>
 }
 
-/** Same five as the add form, same order, same labels. */
-const PERMISSIONS = [
-  { name: 'can_manage_exams', label: 'পরীক্ষা ও নম্বর' },
-  { name: 'can_send_sms', label: 'অভিভাবককে SMS' },
-  { name: 'can_manage_students', label: 'শিক্ষার্থী যোগ ও সম্পাদনা' },
-  { name: 'can_manage_batches', label: 'ব্যাচ তৈরি ও বদল' },
-  { name: 'can_view_fees', label: 'ফি দেখা' },
-] as const
+export function TeacherList({
+  teachers,
+  t,
+  permissions: labels,
+  common,
+}: {
+  teachers: TeacherRow[]
+  t: T<'teacherList'>
+  permissions: T<'teacherPermissions'>
+  common: T<'common'>
+}) {
+  /**
+   * Which of the two forms spoke last.
+   *
+   * There are two actions on this screen and each keeps its own last result, so
+   * "Permissions saved" was still on the page after a teacher had been turned off
+   * — a confirmation naming an action the owner did not just take, sitting above a
+   * list that had changed underneath it. Recording the submit is enough to show
+   * one message: the newest one, and only that one.
+   */
+  const [last, setLast] = useState<'permissions' | 'active' | null>(null)
 
-/** The short summary line under each name. */
-function grantedLabels(permissions: Record<string, boolean>): string[] {
-  return PERMISSIONS.filter((p) => permissions[p.name]).map((p) => p.label)
-}
-
-export function TeacherList({ teachers }: { teachers: TeacherRow[] }) {
   const [permState, permAction, permPending] = useActionState<ActionState, FormData>(
-    saveTeacherPermissions,
+    async (prev, formData) => {
+      setLast('permissions')
+      return saveTeacherPermissions(prev, formData)
+    },
     null,
   )
   const [activeState, activeAction, activePending] = useActionState<
     ActionState,
     FormData
-  >(toggleTeacherActive, null)
+  >(async (prev, formData) => {
+    setLast('active')
+    return toggleTeacherActive(prev, formData)
+  }, null)
 
-  const error = permState?.error || activeState?.error
-  const ok = permState?.ok || activeState?.ok
+  const state = last === 'active' ? activeState : last === 'permissions' ? permState : null
+  const error = state?.error
+  const ok = state?.ok
+
+  /** The short summary line under each name. */
+  const grantedLabels = (granted: Record<string, boolean>): string[] =>
+    PERMISSION_KEYS.filter((key) => granted[key]).map((key) => labels[key].label)
 
   return (
     <section className="flex flex-col gap-2">
@@ -76,7 +97,7 @@ export function TeacherList({ teachers }: { teachers: TeacherRow[] }) {
                   <p className="truncate font-medium text-ink">
                     {teacher.name}
                     {!teacher.active && (
-                      <span className="ml-2 text-sm text-ink-faint">বন্ধ</span>
+                      <span className="ml-2 text-sm text-ink-faint">{t.inactive}</span>
                     )}
                   </p>
                   {teacher.subjects.length > 0 && (
@@ -85,7 +106,7 @@ export function TeacherList({ teachers }: { teachers: TeacherRow[] }) {
                     </p>
                   )}
                   <p className="text-sm text-ink-faint">
-                    <span className="num">{teacher.batchCount}</span> ব্যাচ
+                    {teacher.batchLabel}
                     {granted.length > 0 && ` · ${granted.join(', ')}`}
                   </p>
                 </div>
@@ -95,29 +116,34 @@ export function TeacherList({ teachers }: { teachers: TeacherRow[] }) {
                       {formatBdMobile(teacher.phone)}
                     </p>
                   )}
-                  {!teacher.hasLogin && <p className="text-xs text-late">লগইন নেই</p>}
+                  {!teacher.hasLogin && <p className="text-xs text-late">{t.noLogin}</p>}
                 </div>
               </div>
 
               <details className="mt-2 border-t border-line pt-2">
                 <summary className="min-h-tap cursor-pointer text-sm font-medium text-brand-700">
-                  অনুমতি বদলান
+                  {t.edit}
                 </summary>
 
                 <form action={permAction} className="mt-2 flex flex-col gap-2">
                   <input type="hidden" name="teacherId" value={teacher.id} />
-                  {PERMISSIONS.map((permission) => (
+                  {PERMISSION_KEYS.map((key) => (
                     <label
-                      key={permission.name}
-                      className="flex min-h-tap cursor-pointer items-center gap-3"
+                      key={key}
+                      className="flex min-h-tap cursor-pointer items-start gap-3"
                     >
                       <input
                         type="checkbox"
-                        name={permission.name}
-                        defaultChecked={teacher.permissions[permission.name] ?? false}
-                        className="h-5 w-5 shrink-0 accent-brand-600"
+                        name={key}
+                        defaultChecked={teacher.permissions[key] ?? false}
+                        className="mt-0.5 h-5 w-5 shrink-0 accent-brand-600"
                       />
-                      <span className="text-ink">{permission.label}</span>
+                      <span className="min-w-0">
+                        <span className="block text-ink">{labels[key].label}</span>
+                        <span className="block text-sm text-ink-soft">
+                          {labels[key].hint}
+                        </span>
+                      </span>
                     </label>
                   ))}
                   <button
@@ -127,7 +153,7 @@ export function TeacherList({ teachers }: { teachers: TeacherRow[] }) {
                       bg-brand-50 px-4 text-sm font-semibold text-brand-700
                       disabled:opacity-50"
                   >
-                    {permPending ? 'সেভ হচ্ছে…' : 'অনুমতি সেভ করুন'}
+                    {permPending ? common.saving : t.save}
                   </button>
                 </form>
 
@@ -142,9 +168,7 @@ export function TeacherList({ teachers }: { teachers: TeacherRow[] }) {
                     value={teacher.active ? 'false' : 'true'}
                   />
                   <p className="mb-2 text-sm text-ink-soft">
-                    {teacher.active
-                      ? 'বন্ধ করলে তিনি আর তাঁর ব্যাচ, শিক্ষার্থী বা অভিভাবকের নম্বর দেখতে পাবেন না। আগের হাজিরা আর নম্বর মুছে যাবে না।'
-                      : 'চালু করলে তিনি আবার তাঁর ব্যাচের হাজিরা ও নম্বর দিতে পারবেন।'}
+                    {teacher.active ? t.deactivateBody : t.reactivateBody}
                   </p>
                   <button
                     type="submit"
@@ -156,7 +180,7 @@ export function TeacherList({ teachers }: { teachers: TeacherRow[] }) {
                           : 'border-brand-500 bg-brand-50 text-brand-700'
                       }`}
                   >
-                    {teacher.active ? 'শিক্ষককে বন্ধ করুন' : 'আবার চালু করুন'}
+                    {teacher.active ? t.deactivate : t.reactivate}
                   </button>
                 </form>
               </details>

@@ -28,6 +28,7 @@ import {
 import { MIN_PASSWORD } from '@/lib/auth/password'
 import { SLOT_ORDER } from '@/lib/bd/schedule'
 import { MAX_NAME, MAX_LABEL, clamp } from '@/lib/limits'
+import { PERMISSION_KEYS, type PermissionKey } from '@/lib/permissions'
 import { dict, DEFAULT_LOCALE } from '@/lib/i18n'
 import { nameTooLong, passwordTooShort } from '@/lib/i18n/messages'
 import { roomFor, wouldExceed, hasStaff, type LimitKey } from '@/lib/plans'
@@ -562,21 +563,12 @@ export async function toggleSmsOptOut(
 // Teachers
 // ---------------------------------------------------------------------------
 
-/** The five switches, in the order the settings screen shows them. */
-const PERMISSION_KEYS = [
-  'can_manage_exams',
-  'can_send_sms',
-  'can_manage_students',
-  'can_manage_batches',
-  'can_view_fees',
-] as const
-
-type PermissionKey = (typeof PERMISSION_KEYS)[number]
-
 /**
  * An unchecked checkbox is simply absent from a FormData, so "missing" has to
  * mean false here. That is only safe because the form always renders all five —
- * a partial form would revoke whatever it happened to leave out, silently.
+ * a partial form would revoke whatever it happened to leave out, silently. Which
+ * is why the list of five lives in `@/lib/permissions` and both forms read it
+ * from there rather than keeping their own copy.
  */
 function readPermissions(formData: FormData): Record<PermissionKey, boolean> {
   return Object.fromEntries(

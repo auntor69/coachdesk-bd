@@ -4,7 +4,8 @@ import { Card } from '@/components/ui'
 import { requireRole, getSession } from '@/lib/auth/session'
 import { createClient } from '@/lib/supabase/server'
 import { wouldExceed, hasStaff, planName, PLANS } from '@/lib/plans'
-import { dict, DEFAULT_LOCALE } from '@/lib/i18n'
+import { PERMISSION_DEFAULTS } from '@/lib/permissions'
+import { dict, localName, DEFAULT_LOCALE } from '@/lib/i18n'
 import { TeacherList, type TeacherRow } from './teacher-list'
 
 /** getSession, not requireRole — see the note on teach/page.tsx's own. */
@@ -26,7 +27,8 @@ export async function generateMetadata() {
 export default async function TeachersPage() {
   const session = await requireRole('manager')
   const locale = session.locale
-  const t = dict(locale).settings.teachers
+  const d = dict(locale)
+  const t = d.settings.teachers
 
   // A one-teacher plan has no staff to manage, so there is no list to show: the
   // only row would be the reader's own, under a button the action refuses. The
@@ -39,7 +41,7 @@ export default async function TeachersPage() {
           href="/settings"
           className="inline-flex min-h-tap items-center text-ink-soft hover:text-ink"
         >
-          ← {dict(locale).settings.hub.title}
+          ← {d.settings.hub.title}
         </Link>
         <Card>
           <h2 className="font-semibold text-ink">{t.soloTitle}</h2>
@@ -67,6 +69,11 @@ export default async function TeachersPage() {
        teacher_subjects (subjects (name, name_bn)),
        batches (id, active)`,
     )
+    // Scoped as well as governed by RLS, for the reason the roster gives: an
+    // owner of two centres passes is_staff_admin for both, so the policy alone
+    // would list the other centre's teachers here — and their permissions, under
+    // a switcher that says this centre.
+    .eq('coaching_center_id', session.active.centerId)
     .order('name', { ascending: true })
 
   const rows: TeacherRow[] = (teachers ?? []).map((teacher) => {
@@ -80,9 +87,11 @@ export default async function TeachersPage() {
     const subjects = (teacher.teacher_subjects ?? [])
       .map((ts) => {
         const subject = Array.isArray(ts.subjects) ? ts.subjects[0] : ts.subjects
-        return subject?.name_bn || subject?.name || ''
+        return localName(subject, locale)
       })
       .filter(Boolean)
+
+    const batchCount = (teacher.batches ?? []).filter((b) => b.active).length
 
     return {
       id: teacher.id,
@@ -93,13 +102,18 @@ export default async function TeachersPage() {
       // because an owner who added a teacher expects them to be able to log in.
       hasLogin: Boolean(teacher.user_id),
       subjects,
-      batchCount: (teacher.batches ?? []).filter((b) => b.active).length,
+      // A finished sentence rather than the number, because the row is a client
+      // component and a plural cannot cross that boundary. See the note on
+      // settings.teachers.batches.
+      batchLabel: t.batches(batchCount),
       permissions: {
-        can_manage_exams: perms?.can_manage_exams ?? true,
-        can_send_sms: perms?.can_send_sms ?? true,
-        can_manage_students: perms?.can_manage_students ?? false,
-        can_manage_batches: perms?.can_manage_batches ?? false,
-        can_view_fees: perms?.can_view_fees ?? false,
+        can_manage_exams: perms?.can_manage_exams ?? PERMISSION_DEFAULTS.can_manage_exams,
+        can_send_sms: perms?.can_send_sms ?? PERMISSION_DEFAULTS.can_send_sms,
+        can_manage_students:
+          perms?.can_manage_students ?? PERMISSION_DEFAULTS.can_manage_students,
+        can_manage_batches:
+          perms?.can_manage_batches ?? PERMISSION_DEFAULTS.can_manage_batches,
+        can_view_fees: perms?.can_view_fees ?? PERMISSION_DEFAULTS.can_view_fees,
       },
     }
   })
@@ -125,41 +139,39 @@ export default async function TeachersPage() {
           href="/settings"
           className="inline-flex min-h-tap items-center text-ink-soft hover:text-ink"
         >
-          ← সেটিংস
+          ← {dict(locale).settings.hub.title}
         </Link>
-        <h1 className="mt-1 text-xl font-bold text-ink">শিক্ষক ও অনুমতি</h1>
+        <h1 className="mt-1 text-xl font-bold text-ink">{t.title}</h1>
         <p className="mt-1 text-ink-soft">
-          {limit === null ? (
-            <>
-              <span className="num">{activeCount}</span> জন শিক্ষক
-            </>
-          ) : (
-            <>
-              <span className="num">{activeCount}</span>/
-              <span className="num">{limit}</span> জন শিক্ষক
-            </>
-          )}
+          {limit === null ? t.count(activeCount) : t.used(activeCount, limit)}
         </p>
       </div>
 
       {rows.length === 0 ? (
         <Card>
-          <h2 className="font-semibold text-ink">এখনও কোনো শিক্ষক যোগ হয়নি</h2>
-          <p className="mt-1 text-sm text-ink-soft">
-            একা পড়ালে শিক্ষক যোগ করার দরকার নেই — আপনি নিজেই শিক্ষক হিসেবে আছেন।
-          </p>
+          <h2 className="font-semibold text-ink">{t.emptyTitle}</h2>
+          <p className="mt-1 text-sm text-ink-soft">{t.emptyBody}</p>
         </Card>
       ) : (
-        <TeacherList teachers={rows} />
+        <TeacherList
+          teachers={rows}
+          t={d.teacherList}
+          permissions={d.teacherPermissions}
+          common={d.common}
+        />
       )}
 
       {atLimit ? (
         <Card>
-          <p className="font-medium text-ink">আরও শিক্ষক যোগ করতে</p>
+          {/* The same refusal the add form gives, in the same words. */}
+          <p className="font-medium text-ink">{t.capTitle}</p>
           <p className="mt-1 text-sm text-ink-soft">
-            {session.plan.nameBn} প্ল্যানে{' '}
-            <span className="num">{limit}</span> জন শিক্ষক। সেন্টার প্ল্যানে গেলে যত
-            জন দরকার তত জন — সব ফিচার একই থাকবে।
+            {/* limit is non-null here: wouldExceed is false on an uncapped plan. */}
+            {t.cap(
+              planName(session.plan, locale),
+              limit ?? 0,
+              planName(PLANS.center, locale),
+            )}
           </p>
         </Card>
       ) : (
@@ -169,7 +181,8 @@ export default async function TeachersPage() {
             border-dashed border-brand-300 bg-brand-50/50 px-4 font-medium
             text-brand-700 hover:bg-brand-50"
         >
-          + নতুন শিক্ষক যোগ করুন
+          <span aria-hidden>+&nbsp;</span>
+          {t.new}
         </Link>
       )}
     </div>

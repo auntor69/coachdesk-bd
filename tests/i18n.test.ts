@@ -9,6 +9,7 @@ import { MAX_NAME } from '../src/lib/limits.ts'
 import { MIN_PASSWORD } from '../src/lib/auth/password.ts'
 import { digits } from '../src/lib/bd/time.ts'
 import { STAGE_ORDER } from '../src/lib/fees/reminder-schedule.ts'
+import { PERMISSION_KEYS, PERMISSION_DEFAULTS } from '../src/lib/permissions.ts'
 import {
   dict,
   LOCALES,
@@ -192,6 +193,27 @@ test('every reminder stage has a heading and a reason in both languages', () => 
     !/\btoday\b/i.test(en.reminders.stages.due),
     en.reminders.stages.due,
   )
+})
+
+test('every teacher permission has a label and a hint in both languages', () => {
+  // Both screens render this table from PERMISSION_KEYS, so a sixth switch added
+  // to the migration and the key list without copy for it would put a nameless
+  // checkbox in front of an owner deciding who may see other people's fees. tsc
+  // catches it too — the labels are keyed by PermissionKey — but `npm test` runs
+  // without a type check in front of it.
+  for (const locale of LOCALES) {
+    const labels = dict(locale).teacherPermissions
+    for (const key of PERMISSION_KEYS) {
+      assert.ok(labels[key]?.label, `${locale}.teacherPermissions.${key}.label`)
+      assert.ok(labels[key]?.hint, `${locale}.teacherPermissions.${key}.hint`)
+    }
+    assert.equal(Object.keys(labels).length, PERMISSION_KEYS.length)
+  }
+
+  // And the defaults the add form ticks cover exactly those five: a key missing
+  // here renders an unchecked box, which the action then writes as a revoked
+  // permission nobody chose to revoke.
+  assert.deepEqual(Object.keys(PERMISSION_DEFAULTS).sort(), [...PERMISSION_KEYS].sort())
 })
 
 test('no string in either dictionary is empty', () => {

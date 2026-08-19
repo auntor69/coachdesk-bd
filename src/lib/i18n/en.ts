@@ -500,6 +500,65 @@ export const en: Dictionary = {
     },
   },
 
+  teacherPermissions: {
+    can_manage_exams: {
+      label: 'Exams & marks',
+      hint: 'Create exams and enter marks',
+    },
+    can_send_sms: {
+      label: 'SMS to guardians',
+      hint: 'Send guardians an SMS once marks are in',
+    },
+    can_manage_students: {
+      label: 'Add & edit students',
+      hint: 'Includes changing a guardian’s mobile number',
+    },
+    can_manage_batches: {
+      label: 'Create & change batches',
+      hint: 'Open a batch, move its time, enrol students into it',
+    },
+    can_view_fees: {
+      label: 'See fees',
+      hint: 'Who has paid, and how much is left',
+    },
+  },
+
+  teacherList: {
+    inactive: 'Off',
+    noLogin: 'No login',
+    edit: 'Change permissions',
+    save: 'Save permissions',
+    deactivateBody:
+      'Turned off, they can no longer see their batches, the students in them, or any guardian’s number. Attendance and marks already entered are not deleted.',
+    reactivateBody:
+      'Turned back on, they can take attendance and enter marks for their batches again.',
+    deactivate: 'Turn this teacher off',
+    reactivate: 'Turn back on',
+  },
+
+  teacherForm: {
+    nameLabel: 'Teacher’s name',
+    namePlaceholder: 'Karim Sir',
+    phone: 'Mobile number',
+    phoneHint: 'If you give them a login, this number is their ID',
+    phoneBad: 'That number is not right',
+    whichSubjects: 'Which subjects do they teach',
+    whatTheyCanDo: 'What they are allowed to do',
+    loginNow: 'Give them a login now',
+    loginNowBody:
+      'The teacher is added either way — you can take attendance and enter marks for their batches yourself. A login can be given at any time later.',
+    password: 'Starting password',
+    passwordHint: 'Tell it to the teacher — they can change it themselves later',
+    passwordPlaceholder: 'e.g. 123456',
+    passwordNote:
+      'With a login, the teacher can take attendance and enter marks from their own phone. They can only do what is ticked above.',
+    confirmLink: 'Yes, that is them — join the account',
+    wrongPerson:
+      'Name does not match? Then the number was wrong — turn them off from the teacher list and they will not be able to see anything.',
+    seeList: 'See the teacher list',
+    submit: 'Add teacher',
+  },
+
   dashboard: {
     title: 'Dashboard',
     outstanding: 'Fees outstanding',
@@ -743,6 +802,20 @@ export const en: Dictionary = {
     teachers: {
       title: 'Teachers & permissions',
       newTitle: 'New teacher',
+      count: (n: number) => `${n} ${n === 1 ? 'teacher' : 'teachers'}`,
+      /** The noun agrees with the cap, as on the roster: "3/12 teachers". */
+      used: (n: number, limit: number) =>
+        `${n}/${limit} ${limit === 1 ? 'teacher' : 'teachers'}`,
+      new: 'Add a teacher',
+      emptyTitle: 'No teachers added yet',
+      emptyBody:
+        'Add a teacher and you decide what each of them can see and do.',
+      /** Zero gets its own sentence; see the Bangla for why. */
+      batches: (n: number) =>
+        n === 0 ? 'no batches yet' : `${n} ${n === 1 ? 'batch' : 'batches'}`,
+      capTitle: 'This plan has no room for another teacher',
+      cap: (name: string, limit: number, center: string) =>
+        `The ${name} plan covers ${limit} ${limit === 1 ? 'teacher' : 'teachers'}. The ${center} plan takes as many as you need — every feature stays the same.`,
       soloTitle: 'Teachers & permissions is for coaching centres',
       soloBody: (plan: string, center: string) =>
         `${plan} is built for one teacher — you. Adding staff, and controlling what each of them can see and do, comes with the ${center} plan. Every other feature is already open.`,
