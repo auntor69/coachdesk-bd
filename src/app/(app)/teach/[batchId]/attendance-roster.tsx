@@ -8,9 +8,10 @@
  * three absentees and submits, not thirty confirmations. That single default is
  * the difference between beating the paper register and losing to it.
  */
-import { useActionState, useEffect, useState } from 'react'
+import { useActionState, useEffect, useMemo, useRef, useState } from 'react'
 
 import { Alert, Button } from '@/components/ui'
+import { clearDraft, useSavedDraft, writeDraft } from '@/lib/drafts'
 import type { T } from '@/lib/i18n'
 import type { AttendanceStatus } from '@/lib/supabase/types'
 import { saveAttendance, type SaveState } from './actions'
@@ -43,6 +44,25 @@ const CHOICE_ON: Record<string, string> = {
   present: 'bg-present text-white border-present',
   late: 'bg-late text-white border-late',
   absent: 'bg-absent text-white border-absent',
+}
+
+/**
+ * Guards a value read back out of localStorage. Anything can be in there — an
+ * older version of this screen, another tab, a user with devtools open — and a
+ * status the enum does not have would be rejected by Postgres after the teacher
+ * had already tapped save.
+ *
+ * 'excused' is accepted even though the register does not offer it: it is set
+ * later from the batch history, and a draft written before that edit should not
+ * silently downgrade it to present.
+ */
+function isStatus(value: unknown): value is AttendanceStatus {
+  return (
+    value === 'present' ||
+    value === 'absent' ||
+    value === 'late' ||
+    value === 'excused'
+  )
 }
 
 export function AttendanceRoster({
@@ -81,68 +101,52 @@ export function AttendanceRoster({
     null,
   )
 
-  const [marks, setMarks] = useState<Record<string, AttendanceStatus>>(() =>
-    Object.fromEntries(students.map((s) => [s.enrollmentId, s.status])),
-  )
-
-  // A draft in localStorage, keyed by batch and date. Teachers lose this screen
-  // to a phone call, a locked screen, or Chrome discarding a background tab —
-  // and re-marking thirty students because the OS reclaimed memory is exactly
-  // the kind of thing that sends someone back to paper. Written on every change
-  // rather than on an interval, because the tab may never get another frame.
+  // A draft in localStorage, keyed by batch and date. See lib/drafts for why the
+  // read is a store subscription and not an effect, and why what the teacher has
+  // tapped is the only thing held in state.
   const draftKey = `coachdesk:attendance:${batchId}:${sessionDate}`
+  const draft = useSavedDraft<Record<string, unknown>>(draftKey)
+
+  /** Only what has been tapped since the page opened. Empty on arrival. */
+  const [tapped, setTapped] = useState<Record<string, AttendanceStatus>>({})
+
+  // Built from the roster the server sent, so a stale draft cannot resurrect a
+  // student who has since left the batch: an id nobody is enrolled under never
+  // gets looked up. `??` and not `||` — every status is a non-empty string, but
+  // the next person to add one should not have to know that.
+  const marks = useMemo(() => {
+    const merged: Record<string, AttendanceStatus> = {}
+    for (const s of students) {
+      const saved = draft?.[s.enrollmentId]
+      merged[s.enrollmentId] =
+        tapped[s.enrollmentId] ?? (isStatus(saved) ? saved : s.status)
+    }
+    return merged
+  }, [students, draft, tapped])
 
   useEffect(() => {
-    // In an effect, not in the initial state: localStorage does not exist during
-    // the server render, and reading it in useState would break hydration.
-    try {
-      const raw = window.localStorage.getItem(draftKey)
-      if (!raw) return
-      const draft = JSON.parse(raw) as Record<string, unknown>
-      // Only ids still on the roster, and only real statuses. A stale draft
-      // must never resurrect a student who has since left the batch.
-      setMarks((current) => {
-        const merged = { ...current }
-        for (const key of Object.keys(current)) {
-          const value = draft[key]
-          if (
-            value === 'present' ||
-            value === 'absent' ||
-            value === 'late' ||
-            value === 'excused'
-          ) {
-            merged[key] = value
-          }
-        }
-        return merged
-      })
-    } catch {
-      // A corrupt or unavailable draft is not worth a broken screen.
-    }
-  }, [draftKey])
-
-  useEffect(() => {
-    if (state?.ok) {
-      // Saved — the draft's job is done, and keeping it would override a later
-      // correction made from another device.
-      try {
-        window.localStorage.removeItem(draftKey)
-      } catch {
-        /* private mode; nothing to clean up */
-      }
-    }
+    if (state?.ok) clearDraft(draftKey)
   }, [state, draftKey])
 
+  /**
+   * The map as of the last tap, which is not the same thing as `marks`.
+   *
+   * A teacher marking three absentees taps fast, and two taps inside one frame
+   * both read the `marks` that the last render produced — so the second would
+   * silently undo the first. This is the value React has not caught up to yet;
+   * it is written synchronously, so it cannot be behind. Null until the first
+   * tap, when the render-time map is still the right place to start.
+   */
+  const latest = useRef<Record<string, AttendanceStatus> | null>(null)
+
   function setStatus(enrollmentId: string, status: AttendanceStatus) {
-    setMarks((current) => {
-      const next = { ...current, [enrollmentId]: status }
-      try {
-        window.localStorage.setItem(draftKey, JSON.stringify(next))
-      } catch {
-        /* storage full or blocked — the save still works, just no draft */
-      }
-      return next
-    })
+    const next = { ...(latest.current ?? marks), [enrollmentId]: status }
+    latest.current = next
+    setTapped(next)
+    // Written here rather than in an effect on `marks`: the tab may never get
+    // another frame, and an effect would also fire once on mount — before the
+    // draft had been read — and overwrite the thing it was about to restore.
+    writeDraft(draftKey, next)
   }
 
   const counts = { present: 0, late: 0, absent: 0, excused: 0 }
