@@ -11,12 +11,14 @@
  * the database, the database wins and the user sees nothing.
  */
 import { cache } from 'react'
+import { cookies } from 'next/headers'
 import type { Route } from 'next'
 
 import { createClient } from '@/lib/supabase/server'
 import { loginEmailToPhone } from '@/lib/bd/phone'
 import { asLocale, type Locale } from '@/lib/i18n'
 import { planFor, type PlanLimits } from '@/lib/plans'
+import { ACTIVE_CENTER_COOKIE, pickActive, strongestPerCenter } from '@/lib/auth/active-center'
 import type { MemberRole, PlanType } from '@/lib/supabase/types'
 
 export type Membership = {
@@ -46,10 +48,17 @@ export type Session = {
    */
   locale: Locale
   isPlatformAdmin: boolean
+  /**
+   * The centres this person can work in — one entry each, carrying the strongest
+   * role they hold there. Not one entry per `center_members` row: an owner who
+   * also teaches a batch has two rows at one centre. See
+   * `strongestPerCenter` in lib/auth/active-center.
+   */
   memberships: Membership[]
   /**
-   * The center being acted on. Most users have exactly one; a teacher who works
-   * at two centers has two, and we pick the first until they choose.
+   * The center being acted on: the one they chose in the header, or the highest
+   * authority they hold if they have not chosen. Most users have exactly one and
+   * never see the choice. See lib/auth/active-center.
    */
   active: Membership | null
   plan: PlanLimits
@@ -108,29 +117,32 @@ export const getSession = cache(async (): Promise<Session | null> => {
       .eq('active', true),
   ])
 
-  const memberships: Membership[] = (rows ?? [])
-    .map((row) => {
-      // The embed is an object for a to-one relation, but PostgREST types it
-      // loosely enough that a defensive unwrap costs nothing.
-      const center = Array.isArray(row.coaching_centers)
-        ? row.coaching_centers[0]
-        : row.coaching_centers
-      if (!center) return null
-      return {
-        centerId: row.coaching_center_id,
-        centerName: center.name,
-        role: row.role,
-        branchId: row.branch_id,
-        plan: center.plan,
-        smsCreditBalance: center.sms_credit_balance,
-      }
-    })
-    .filter((m): m is Membership => m !== null)
-    // Highest authority first, so a user who owns one center and teaches at
-    // another lands on the one they run.
-    .sort((a, b) => ROLE_RANK[b.role] - ROLE_RANK[a.role])
+  const memberships = strongestPerCenter(
+    (rows ?? [])
+      .map((row) => {
+        // The embed is an object for a to-one relation, but PostgREST types it
+        // loosely enough that a defensive unwrap costs nothing.
+        const center = Array.isArray(row.coaching_centers)
+          ? row.coaching_centers[0]
+          : row.coaching_centers
+        if (!center) return null
+        return {
+          centerId: row.coaching_center_id,
+          centerName: center.name,
+          role: row.role,
+          branchId: row.branch_id,
+          plan: center.plan,
+          smsCreditBalance: center.sms_credit_balance,
+        }
+      })
+      .filter((m): m is Membership => m !== null),
+    (m) => ROLE_RANK[m.role],
+  )
 
-  const active = memberships[0] ?? null
+  const active = pickActive(
+    memberships,
+    (await cookies()).get(ACTIVE_CENTER_COOKIE)?.value,
+  )
 
   // A phone-login account has no real email; recover the number from the
   // synthetic address so the UI can still greet them by number.
@@ -213,10 +225,15 @@ export function isStaffAdmin(session: Session): boolean {
  * Returns `Route` rather than string so `redirect(homePathFor(s))` typechecks
  * against Next 16's typed routes — which means deleting a route breaks the build
  * here instead of stranding a whole role on a 404.
+ *
+ * Split from `homePathFor` for the centre switcher, which needs the landing page
+ * of the role the reader is switching *into*. It cannot ask for a fresh session to
+ * find out: `getSession` is memoised per request, so the copy it would get back
+ * still names the centre they just left.
  */
-export function homePathFor(session: Session): Route {
-  if (!session.active) return '/onboarding'
-  switch (session.active.role) {
+export function homePathForRole(role: MemberRole | null): Route {
+  if (!role) return '/onboarding'
+  switch (role) {
     case 'owner':
     case 'manager':
       return '/dashboard'
@@ -226,4 +243,8 @@ export function homePathFor(session: Session): Route {
     case 'guardian':
       return '/me'
   }
+}
+
+export function homePathFor(session: Session): Route {
+  return homePathForRole(session.active?.role ?? null)
 }

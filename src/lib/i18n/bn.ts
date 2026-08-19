@@ -117,6 +117,13 @@ export const bn = {
     mainMenu: 'প্রধান মেনু',
     /** Greets a reader whose name and phone are both missing. */
     welcome: 'স্বাগতম',
+    /**
+     * Only rendered for someone who belongs to more than one centre, so it can
+     * say "another" without first explaining that there is more than one.
+     */
+    otherCenter: 'অন্য কোচিং',
+    /** Marks the centre the reader is already in, beside its name in the list. */
+    thisCenter: 'এখন এখানে',
     nav: {
       home: 'হোম',
       attendance: 'হাজিরা',

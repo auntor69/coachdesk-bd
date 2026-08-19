@@ -11,6 +11,7 @@ import Link from 'next/link'
 import type { Route } from 'next'
 
 import { signOut } from '@/app/(auth)/actions'
+import { switchCenter } from '@/app/(app)/actions'
 import { Logo } from '@/components/ui'
 import type { MemberRole } from '@/lib/supabase/types'
 import type { Session } from '@/lib/auth/session'
@@ -58,6 +59,75 @@ const NAV: Record<MemberRole, NavItem[]> = {
   guardian: [{ href: '/me', label: 'myChild', icon: '⌂' }],
 }
 
+/**
+ * The centre's name, and a way out of it for people who have more than one.
+ *
+ * A `<details>` and one form per centre, rather than a `<select>` with an
+ * onChange: this is a Server Component and a dropdown that switches on change
+ * needs client JavaScript to submit. A disclosure works before the bundle
+ * arrives, which on a 3G connection in Mymensingh is most of the first ten
+ * seconds. It also degrades honestly — with JS off it is still a list of
+ * buttons that each post a form.
+ */
+function CenterName({ session, t }: { session: Session; t: Dictionary['shell'] }) {
+  if (!session.active) return null
+
+  if (session.memberships.length < 2) {
+    return (
+      <p className="mt-0.5 truncate text-sm text-ink-soft">
+        {session.active.centerName}
+      </p>
+    )
+  }
+
+  return (
+    <details className="relative">
+      <summary
+        className="flex min-h-tap cursor-pointer list-none items-center gap-1
+          text-sm text-ink-soft marker:hidden hover:text-ink
+          [&::-webkit-details-marker]:hidden"
+      >
+        <span className="truncate">{session.active.centerName}</span>
+        <span aria-hidden className="text-xs">
+          ▾
+        </span>
+      </summary>
+
+      {/* min-w rather than w: a centre's name is as long as its owner typed it,
+          and the panel should fit the names it holds, not a guess at them. */}
+      <div
+        className="absolute left-0 top-full z-20 mt-1 flex min-w-56 max-w-xs
+          flex-col rounded-xl border border-line bg-white p-1 shadow-lg"
+      >
+        <p className="px-3 py-1.5 text-xs font-medium text-ink-faint">
+          {t.otherCenter}
+        </p>
+        {session.memberships.map((m) => {
+          const here = m.centerId === session.active?.centerId
+          return (
+            <form key={m.centerId} action={switchCenter}>
+              <input type="hidden" name="centerId" value={m.centerId} />
+              <button
+                type="submit"
+                className="flex min-h-tap w-full items-center justify-between gap-2
+                  rounded-lg px-3 py-2 text-left text-sm text-ink
+                  hover:bg-surface-alt"
+              >
+                <span className="truncate font-medium">{m.centerName}</span>
+                {here && (
+                  <span className="shrink-0 text-xs text-ink-faint">
+                    {t.thisCenter}
+                  </span>
+                )}
+              </button>
+            </form>
+          )
+        })}
+      </div>
+    </details>
+  )
+}
+
 export function AppShell({
   session,
   children,
@@ -75,11 +145,7 @@ export function AppShell({
         <div className="mx-auto flex w-full max-w-3xl items-center justify-between gap-3 px-4 py-3">
           <div className="min-w-0">
             <Logo className="text-base" />
-            {session.active && (
-              <p className="mt-0.5 truncate text-sm text-ink-soft">
-                {session.active.centerName}
-              </p>
-            )}
+            <CenterName session={session} t={t} />
           </div>
 
           <form action={signOut}>
