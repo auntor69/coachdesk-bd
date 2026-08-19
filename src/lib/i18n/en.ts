@@ -437,6 +437,27 @@ export const en: Dictionary = {
     submit: 'Create batch',
   },
 
+  studentForm: {
+    nameLabel: 'Student’s name',
+    namePlaceholder: 'Rafid Hasan',
+    guardianPhone: 'Guardian’s mobile',
+    guardianPhoneHint: 'Result and fee SMS go to this number',
+    phoneBad: 'That number is not right',
+    guardianName: 'Guardian’s name',
+    guardianNamePlaceholder: 'Md Kamal Hossain',
+    whichBatch: 'Which batch',
+    moreInfo: 'More details',
+    studentPhone: 'Student’s own mobile',
+    institution: 'School / college',
+    institutionPlaceholder: 'Dhaka College',
+    classLevel: 'Class',
+    classPlaceholder: 'HSC 2nd year',
+    code: 'ID number',
+    codeHint: 'The centre’s own roll or ID, if it keeps one',
+    codePlaceholder: '2026-041',
+    submit: 'Add student',
+  },
+
   dashboard: {
     title: 'Dashboard',
     outstanding: 'Fees outstanding',
@@ -601,6 +622,28 @@ export const en: Dictionary = {
     },
 
     students: {
+      title: 'Students',
+      count: (n: number) => `${n} ${n === 1 ? 'student' : 'students'}`,
+      /** The noun agrees with the cap, not the count: "9/60 students". */
+      used: (n: number, limit: number) =>
+        `${n}/${limit} ${limit === 1 ? 'student' : 'students'}`,
+      new: 'New',
+      importTitle: 'Add a whole register at once',
+      importBody: (max: number) => `Paste a list of names — up to ${max} at a time`,
+      missingPhone: (n: number) =>
+        `${n} ${n === 1 ? 'student has' : 'students have'} no guardian’s number`,
+      missingPhoneBody: 'Without a number, no result or fee SMS can reach them.',
+      emptyTitle: 'No students yet',
+      emptyBody:
+        'Add students and attendance, exam marks and fees all start landing here.',
+      inactive: 'Left',
+      noPhone: 'No number',
+      smsOff: 'SMS off',
+
+      newTitle: 'New student',
+      capTitle: 'This plan has no room for another student',
+      cap: (name: string, limit: number) =>
+        `The ${name} plan holds ${limit} ${limit === 1 ? 'student' : 'students'}. Every feature stays open — only the number is capped.`,
       added: 'Student added',
       errors: {
         nameRequired: 'Give the student’s name.',

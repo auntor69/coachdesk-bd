@@ -14,12 +14,21 @@ import { useRouter } from 'next/navigation'
 
 import { Alert, Button, Field } from '@/components/ui'
 import { formatBdMobile, normalizeBdMobile } from '@/lib/bd/phone'
+import type { T } from '@/lib/i18n'
 import { createStudent, type ActionState } from '../../actions'
 import { MAX_NAME, MAX_LABEL } from '@/lib/limits'
 
 type BatchOption = { id: string; label: string }
 
-export function StudentForm({ batches }: { batches: BatchOption[] }) {
+export function StudentForm({
+  t,
+  common,
+  batches,
+}: {
+  t: T<'studentForm'>
+  common: T<'common'>
+  batches: BatchOption[]
+}) {
   const router = useRouter()
   const [state, formAction, pending] = useActionState<ActionState, FormData>(
     async (prev, formData) => {
@@ -39,9 +48,9 @@ export function StudentForm({ batches }: { batches: BatchOption[] }) {
       {state?.error && <Alert>{state.error}</Alert>}
 
       <Field
-        label="শিক্ষার্থীর নাম"
+        label={t.nameLabel}
         name="name"
-        placeholder="রাফিদ হাসান"
+        placeholder={t.namePlaceholder}
         required
         maxLength={MAX_NAME}
         autoComplete="off"
@@ -49,8 +58,8 @@ export function StudentForm({ batches }: { batches: BatchOption[] }) {
 
       <div>
         <Field
-          label="অভিভাবকের মোবাইল"
-          hint="ফলাফল আর ফির SMS এই নম্বরে যাবে"
+          label={t.guardianPhone}
+          hint={t.guardianPhoneHint}
           name="guardianPhone"
           type="tel"
           inputMode="numeric"
@@ -58,7 +67,7 @@ export function StudentForm({ batches }: { batches: BatchOption[] }) {
           required
           value={guardianPhone}
           onChange={(e) => setGuardianPhone(e.target.value)}
-          error={showEcho && !normalized ? 'নম্বরটি ঠিক নেই' : undefined}
+          error={showEcho && !normalized ? t.phoneBad : undefined}
         />
         {showEcho && normalized && (
           <p className="num mt-1 text-sm font-medium text-brand-700">
@@ -68,16 +77,16 @@ export function StudentForm({ batches }: { batches: BatchOption[] }) {
       </div>
 
       <Field
-        label="অভিভাবকের নাম (ঐচ্ছিক)"
+        label={`${t.guardianName} (${common.optional})`}
         name="guardianName"
-        placeholder="মোঃ কামাল হোসেন"
+        placeholder={t.guardianNamePlaceholder}
         maxLength={MAX_NAME}
         autoComplete="off"
       />
 
       {batches.length > 0 && (
         <fieldset className="flex flex-col gap-2">
-          <legend className="mb-1 font-medium text-ink">কোন ব্যাচে</legend>
+          <legend className="mb-1 font-medium text-ink">{t.whichBatch}</legend>
           <div className="flex flex-col gap-2">
             {batches.map((batch) => (
               <label
@@ -101,35 +110,40 @@ export function StudentForm({ batches }: { batches: BatchOption[] }) {
 
       <details className="rounded-2xl border border-line bg-white p-4">
         <summary className="min-h-tap cursor-pointer font-medium text-ink-soft">
-          আরও তথ্য (ঐচ্ছিক)
+          {t.moreInfo} ({common.optional})
         </summary>
         <div className="mt-3 flex flex-col gap-4">
           <Field
-            label="শিক্ষার্থীর নিজের মোবাইল"
+            label={t.studentPhone}
             name="phone"
             type="tel"
             inputMode="numeric"
             placeholder="01812345678"
           />
           <Field
-            label="স্কুল / কলেজ"
+            label={t.institution}
             name="institution"
-            placeholder="ঢাকা কলেজ"
+            placeholder={t.institutionPlaceholder}
             maxLength={MAX_NAME}
           />
-          <Field label="শ্রেণি" name="classLevel" placeholder="HSC ২য় বর্ষ" maxLength={MAX_LABEL} />
           <Field
-            label="আইডি নম্বর"
-            hint="সেন্টারের নিজের রোল বা আইডি, থাকলে"
+            label={t.classLevel}
+            name="classLevel"
+            placeholder={t.classPlaceholder}
+            maxLength={MAX_LABEL}
+          />
+          <Field
+            label={t.code}
+            hint={t.codeHint}
             name="studentCode"
-            placeholder="২০২৬-০৪১"
+            placeholder={t.codePlaceholder}
             maxLength={MAX_LABEL}
           />
         </div>
       </details>
 
       <Button type="submit" full disabled={pending}>
-        {pending ? 'যোগ হচ্ছে…' : 'শিক্ষার্থী যোগ করুন'}
+        {pending ? common.adding : t.submit}
       </Button>
     </form>
   )

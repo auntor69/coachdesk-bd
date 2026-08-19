@@ -739,6 +739,38 @@ export const bn = {
     submit: 'ব্যাচ তৈরি করুন',
   },
 
+  /**
+   * Adding one student by hand — the form, not what the action says back.
+   *
+   * The guardian's number carries every SMS this product sends, so it is the one
+   * optional-looking field that is required, and the only one echoed back in the
+   * format a Bangladeshi reads. Everything the centre might not know on day one
+   * sits behind `moreInfo`, so the required part of the form is three fields.
+   */
+  studentForm: {
+    nameLabel: 'শিক্ষার্থীর নাম',
+    namePlaceholder: 'রাফিদ হাসান',
+    guardianPhone: 'অভিভাবকের মোবাইল',
+    /** Says what the number is *for*, which is why it cannot be skipped. */
+    guardianPhoneHint: 'ফলাফল আর ফির SMS এই নম্বরে যাবে',
+    /** Shown as they type, not after they submit — see normalizeBdMobile. */
+    phoneBad: 'নম্বরটি ঠিক নেই',
+    guardianName: 'অভিভাবকের নাম',
+    guardianNamePlaceholder: 'মোঃ কামাল হোসেন',
+    whichBatch: 'কোন ব্যাচে',
+    moreInfo: 'আরও তথ্য',
+    studentPhone: 'শিক্ষার্থীর নিজের মোবাইল',
+    institution: 'স্কুল / কলেজ',
+    institutionPlaceholder: 'ঢাকা কলেজ',
+    classLevel: 'শ্রেণি',
+    classPlaceholder: 'HSC ২য় বর্ষ',
+    code: 'আইডি নম্বর',
+    /** The centre's own roll number, if it keeps one. Unique per centre. */
+    codeHint: 'সেন্টারের নিজের রোল বা আইডি, থাকলে',
+    codePlaceholder: '২০২৬-০৪১',
+    submit: 'শিক্ষার্থী যোগ করুন',
+  },
+
   dashboard: {
     title: 'ড্যাশবোর্ড',
     outstanding: 'বকেয়া ফি',
@@ -1024,6 +1056,42 @@ export const bn = {
     },
 
     students: {
+      title: 'শিক্ষার্থী',
+      /** Without a plan cap, the count on its own. ASCII: it is a tally. */
+      count: (n: number) => `${n} জন শিক্ষার্থী`,
+      /** With one, how much of it is spent — the same line the batch list shows. */
+      used: (n: number, limit: number) => `${n}/${limit} জন শিক্ষার্থী`,
+      /** On the button beside the heading. Short: it shares a row with the count. */
+      new: 'নতুন',
+      /**
+       * The bulk paste. Names its ceiling in the same breath, because an owner
+       * holding a two-hundred-name register needs that number before they paste,
+       * not in an error afterwards.
+       */
+      importTitle: 'রেজিস্টার থেকে একসাথে যোগ করুন',
+      importBody: (max: number) => `নামের তালিকা বসিয়ে দিন — একবারে ${max} জন পর্যন্ত`,
+      /**
+       * The one missing field that breaks the product silently: everything looks
+       * fine until a parent says they never heard anything. Counted, and shown
+       * above the list rather than only on the row, because the owner has to know
+       * it is worth scrolling for.
+       */
+      missingPhone: (n: number) => `${n} জনের অভিভাবকের নম্বর নেই`,
+      missingPhoneBody: 'নম্বর ছাড়া ফলাফল বা ফির SMS যাবে না।',
+      emptyTitle: 'এখনও কোনো শিক্ষার্থী নেই',
+      emptyBody:
+        'শিক্ষার্থী যোগ করলে হাজিরা, পরীক্ষার নম্বর আর ফি — সব এখানে আসবে।',
+      /** A student who has left. Their marks, attendance and bills stay put. */
+      inactive: 'বন্ধ',
+      noPhone: 'নম্বর নেই',
+      /** The guardian asked not to be texted. See channels for where that is set. */
+      smsOff: 'SMS বন্ধ',
+
+      newTitle: 'নতুন শিক্ষার্থী',
+      capTitle: 'এই প্ল্যানে আর শিক্ষার্থী যোগ করা যাবে না',
+      /** Names the plan and its number — see subjects.cap for why, not errors. */
+      cap: (name: string, limit: number) =>
+        `${name} প্ল্যানে ${digits(limit, 'bn')} জন শিক্ষার্থী। সব ফিচার খোলা থাকে — শুধু সংখ্যার সীমা।`,
       added: 'শিক্ষার্থী যোগ হয়েছে',
       errors: {
         nameRequired: 'শিক্ষার্থীর নাম লিখুন।',

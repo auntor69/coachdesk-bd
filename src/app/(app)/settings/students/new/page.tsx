@@ -1,17 +1,26 @@
 import Link from 'next/link'
 
 import { Card } from '@/components/ui'
-import { requireRole } from '@/lib/auth/session'
+import { requireRole, getSession } from '@/lib/auth/session'
 import { createClient } from '@/lib/supabase/server'
-import { wouldExceed } from '@/lib/plans'
+import { wouldExceed, planName } from '@/lib/plans'
 import { slotLabel } from '@/lib/bd/schedule'
+import { dict, localName, DEFAULT_LOCALE } from '@/lib/i18n'
 import { StudentForm } from './student-form'
 
-export const metadata = { title: 'নতুন শিক্ষার্থী — CoachDesk' }
+/** getSession, not requireRole — see the note on teach/page.tsx's own. */
+export async function generateMetadata() {
+  const session = await getSession()
+  const locale = session?.locale ?? DEFAULT_LOCALE
+  return { title: `${dict(locale).settings.students.newTitle} — CoachDesk` }
+}
 
 export default async function NewStudentPage() {
   const session = await requireRole('manager')
   const supabase = await createClient()
+  const locale = session.locale
+  const d = dict(locale)
+  const t = d.settings.students
 
   const [{ data: batches }, { count: studentCount }] = await Promise.all([
     supabase
@@ -39,31 +48,33 @@ export default async function NewStudentPage() {
           href="/settings/students"
           className="inline-flex min-h-tap items-center text-ink-soft hover:text-ink"
         >
-          ← শিক্ষার্থী
+          ← {t.title}
         </Link>
-        <h1 className="mt-1 text-xl font-bold text-ink">নতুন শিক্ষার্থী</h1>
+        <h1 className="mt-1 text-xl font-bold text-ink">{t.newTitle}</h1>
       </div>
 
       {atLimit ? (
         <Card>
-          <p className="font-medium text-ink">
-            এই প্ল্যানে আর শিক্ষার্থী যোগ করা যাবে না
-          </p>
+          <p className="font-medium text-ink">{t.capTitle}</p>
           <p className="mt-1 text-sm text-ink-soft">
-            {session.plan.nameBn} প্ল্যানে{' '}
-            <span className="num">{session.plan.maxStudents}</span> জন শিক্ষার্থী।
+            {/* maxStudents is non-null here: wouldExceed only says yes when it is. */}
+            {t.cap(planName(session.plan, locale), session.plan.maxStudents ?? 0)}
           </p>
         </Card>
       ) : (
         <StudentForm
+          t={d.studentForm}
+          common={d.common}
           batches={(batches ?? []).map((batch) => {
             const subject = Array.isArray(batch.subjects)
               ? batch.subjects[0]
               : batch.subjects
             const parts = [
               batch.name,
-              subject?.name_bn || subject?.name,
-              slotLabel(batch.slot),
+              // The reader's own language, not always Bangla: this label is how
+              // an owner tells two batches of the same subject apart.
+              subject ? localName(subject, locale) : '',
+              slotLabel(batch.slot, locale),
             ].filter(Boolean)
             return { id: batch.id, label: parts.join(' · ') }
           })}
