@@ -6,6 +6,13 @@ import { ratesForDashboard, type RateRow } from '../src/lib/attendance/rates.ts'
 const AUG = '2026-08-01'
 const JUL = '2026-07-01'
 
+/**
+ * Stands in for `dashboard.unknownBatch`. Deliberately not the real Bangla word:
+ * this module is pure and takes the fallback name as an argument, and a test that
+ * asserted on the dictionary's wording would fail the day the wording improved.
+ */
+const UNKNOWN = '<<no name>>'
+
 /** A view row with only the fields a case cares about spelled out. */
 function row(over: Partial<RateRow> & { batch_name: string }): RateRow {
   return {
@@ -28,6 +35,7 @@ test('the batch worth a conversation is the first one on the card', () => {
       row({ batch_name: 'Phy Night', rate_pct: 78 }),
     ],
     AUG,
+    UNKNOWN,
   )
   assert.deepEqual(
     rates.map((r) => r.batchName),
@@ -47,6 +55,7 @@ test('a batch with nothing to measure sinks below one that is failing', () => {
       row({ batch_name: 'Fine', rate_pct: 95 }),
     ],
     AUG,
+    UNKNOWN,
   )
   assert.deepEqual(
     rates.map((r) => r.batchName),
@@ -64,6 +73,7 @@ test('0% is a rate and sorts as one', () => {
       row({ batch_name: 'Fine', rate_pct: 88 }),
     ],
     AUG,
+    UNKNOWN,
   )
   assert.deepEqual(
     rates.map((r) => r.batchName),
@@ -80,6 +90,7 @@ test('the current month wins as soon as it has one mark in it', () => {
       row({ batch_name: 'August', period_month: AUG, rate_pct: 55, sessions: 1, counted: 3 }),
     ],
     AUG,
+    UNKNOWN,
   )
   assert.equal(month, AUG)
   assert.deepEqual(rates.map((r) => r.batchName), ['August'])
@@ -99,6 +110,7 @@ test('on the first of the month it falls back to the month that just closed', ()
       row({ batch_name: 'Chem Evening', period_month: JUL, rate_pct: 62 }),
     ],
     AUG,
+    UNKNOWN,
   )
   assert.equal(month, JUL)
   assert.deepEqual(rates.map((r) => r.batchName), ['Chem Evening', 'Bio Morning'])
@@ -107,10 +119,10 @@ test('on the first of the month it falls back to the month that just closed', ()
 test('a centre that has never taken attendance gets no rows at all', () => {
   // The page renders no card in this case rather than a card explaining its own
   // emptiness — the month it names would be arbitrary either way.
-  assert.deepEqual(ratesForDashboard([], AUG).rates, [])
-  assert.deepEqual(ratesForDashboard(null, AUG).rates, [])
-  assert.deepEqual(ratesForDashboard(undefined, AUG).rates, [])
-  assert.equal(ratesForDashboard([], AUG).month, JUL)
+  assert.deepEqual(ratesForDashboard([], AUG, UNKNOWN).rates, [])
+  assert.deepEqual(ratesForDashboard(null, AUG, UNKNOWN).rates, [])
+  assert.deepEqual(ratesForDashboard(undefined, AUG, UNKNOWN).rates, [])
+  assert.equal(ratesForDashboard([], AUG, UNKNOWN).month, JUL)
 })
 
 test('a month older than the two asked for cannot leak onto the card', () => {
@@ -120,6 +132,7 @@ test('a month older than the two asked for cannot leak onto the card', () => {
   const { month, rates } = ratesForDashboard(
     [row({ batch_name: 'Ancient', period_month: '2026-03-01', rate_pct: 50 })],
     AUG,
+    UNKNOWN,
   )
   assert.equal(month, JUL)
   assert.deepEqual(rates, [])
@@ -138,14 +151,15 @@ test('a null column from the view cannot print as "undefined"', () => {
       rate_pct: null,
     }],
     AUG,
+    UNKNOWN,
   )
   assert.equal(rates.length, 1)
-  assert.match(rates[0].batchName, /[ঀ-৿]/)
+  assert.equal(rates[0].batchName, UNKNOWN)
   assert.equal(rates[0].sessions, 0)
   assert.equal(rates[0].counted, 0)
   assert.equal(rates[0].ratePct, null)
 })
 
 test('the fallback crosses a year boundary the way the rest of the app does', () => {
-  assert.equal(ratesForDashboard([], '2027-01-01').month, '2026-12-01')
+  assert.equal(ratesForDashboard([], '2027-01-01', UNKNOWN).month, '2026-12-01')
 })

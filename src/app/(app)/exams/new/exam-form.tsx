@@ -12,6 +12,7 @@ import { useActionState } from 'react'
 import { useRouter } from 'next/navigation'
 
 import { Alert, Button, Field } from '@/components/ui'
+import type { T } from '@/lib/i18n'
 import { createExam, type CreateExamState } from '../actions'
 
 type Option = { id: string; label: string }
@@ -20,10 +21,14 @@ export function ExamForm({
   batches,
   examTypes,
   today,
+  t,
+  common,
 }: {
   batches: Option[]
   examTypes: Option[]
   today: string
+  t: T<'examForm'>
+  common: T<'common'>
 }) {
   const router = useRouter()
   const [state, formAction, pending] = useActionState<CreateExamState, FormData>(
@@ -43,16 +48,16 @@ export function ExamForm({
       {state?.ok === false && <Alert>{state.error}</Alert>}
 
       <Field
-        label="পরীক্ষার নাম"
+        label={t.name}
         name="title"
-        placeholder="সাপ্তাহিক পরীক্ষা"
+        placeholder={t.namePlaceholder}
         required
         maxLength={80}
         autoComplete="off"
       />
 
       <label className="flex flex-col gap-1.5">
-        <span className="font-medium text-ink">ব্যাচ</span>
+        <span className="font-medium text-ink">{t.batch}</span>
         <select
           name="batchId"
           required
@@ -61,7 +66,7 @@ export function ExamForm({
             text-base outline-none focus:border-brand-500"
         >
           <option value="" disabled>
-            ব্যাচ বাছুন
+            {t.pickBatch}
           </option>
           {batches.map((batch) => (
             <option key={batch.id} value={batch.id}>
@@ -73,7 +78,9 @@ export function ExamForm({
 
       {examTypes.length > 0 && (
         <label className="flex flex-col gap-1.5">
-          <span className="font-medium text-ink">ধরন (ঐচ্ছিক)</span>
+          <span className="font-medium text-ink">
+            {t.kind} ({common.optional})
+          </span>
           <select
             name="examTypeId"
             defaultValue=""
@@ -92,7 +99,7 @@ export function ExamForm({
 
       <div className="grid grid-cols-2 gap-3">
         <Field
-          label="পূর্ণমান"
+          label={t.fullMarks}
           name="totalMarks"
           type="number"
           inputMode="numeric"
@@ -104,8 +111,8 @@ export function ExamForm({
           className="num"
         />
         <Field
-          label="পাস নম্বর"
-          hint="ঐচ্ছিক"
+          label={t.passMarks}
+          hint={common.optional}
           name="passMarks"
           type="number"
           inputMode="numeric"
@@ -116,7 +123,7 @@ export function ExamForm({
       </div>
 
       <Field
-        label="পরীক্ষার তারিখ"
+        label={t.date}
         name="examDate"
         type="date"
         defaultValue={today}
@@ -125,7 +132,7 @@ export function ExamForm({
       />
 
       <Button type="submit" full disabled={pending}>
-        {pending ? 'তৈরি হচ্ছে…' : 'পরীক্ষা তৈরি করে নম্বর দিন'}
+        {pending ? common.creating : t.submit}
       </Button>
     </form>
   )

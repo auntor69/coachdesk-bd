@@ -15,28 +15,46 @@ import { revalidatePath } from 'next/cache'
 
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { requireRole, AuthError, type CenterSession } from '@/lib/auth/session'
+import {
+  requireRole,
+  getSession,
+  AuthError,
+  type CenterSession,
+} from '@/lib/auth/session'
 import { todayInDhaka } from '@/lib/bd/time'
 import { planResultSms } from '@/lib/sms/result-dispatch'
-import { smsProviderConfigured } from '@/lib/sms/provider'
-
-export type ExamActionState = { error?: string; ok?: string } | null
+import { dict, DEFAULT_LOCALE } from '@/lib/i18n'
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/
 
-async function teacherOrAbove(): Promise<CenterSession | ExamActionState> {
+/**
+ * Who is calling, or why not — and in their own language.
+ *
+ * A union rather than "a session or an error object" with a type guard, because
+ * the guard had no way to prove the error string existed and every caller ended
+ * in `session?.error ?? 'no permission'`: a fallback that could not be reached
+ * and would still have needed translating.
+ */
+type Caller =
+  | { ok: true; session: CenterSession }
+  | { ok: false; error: string }
+
+async function teacherOrAbove(): Promise<Caller> {
   try {
-    return await requireRole('teacher')
+    return { ok: true, session: await requireRole('teacher') }
   } catch (err) {
     if (err instanceof AuthError) {
-      return { error: 'আপনার এই কাজের অনুমতি নেই।' }
+      // getSession is memoised per request and requireRole above already called
+      // it, so reading the caller's language back costs nothing. A signed-out
+      // caller has no language at all, hence the default.
+      const caller = await getSession()
+      return {
+        ok: false,
+        error: dict(caller?.locale ?? DEFAULT_LOCALE).exams.errors.forbidden,
+      }
     }
     throw err
   }
-}
-
-function isSession(value: CenterSession | ExamActionState): value is CenterSession {
-  return value !== null && 'userId' in value
 }
 
 /** The teacher row for this user in this centre, if they have one. */
@@ -60,10 +78,10 @@ export async function createExam(
   _prev: CreateExamState,
   formData: FormData,
 ): Promise<CreateExamState> {
-  const session = await teacherOrAbove()
-  if (!isSession(session)) {
-    return { ok: false, error: session?.error ?? 'অনুমতি নেই।' }
-  }
+  const caller = await teacherOrAbove()
+  if (!caller.ok) return { ok: false, error: caller.error }
+  const { session } = caller
+  const t = dict(session.locale).exams
 
   const title = String(formData.get('title') ?? '').trim()
   const batchId = String(formData.get('batchId') ?? '')
@@ -72,25 +90,25 @@ export async function createExam(
   const rawPassMarks = String(formData.get('passMarks') ?? '').trim()
   const rawDate = String(formData.get('examDate') ?? '')
 
-  if (!title) return { ok: false, error: 'পরীক্ষার নাম লিখুন।' }
-  if (title.length > 80) return { ok: false, error: 'নাম ৮০ অক্ষরের মধ্যে রাখুন।' }
-  if (!batchId) return { ok: false, error: 'ব্যাচ বাছুন।' }
+  if (!title) return { ok: false, error: t.errors.nameRequired }
+  if (title.length > 80) return { ok: false, error: t.errors.nameTooLong }
+  if (!batchId) return { ok: false, error: t.errors.pickBatch }
 
   if (!Number.isFinite(totalMarks) || totalMarks <= 0) {
-    return { ok: false, error: 'পূর্ণমান ঠিকভাবে লিখুন।' }
+    return { ok: false, error: t.errors.totalUnreadable }
   }
   if (totalMarks > 1000) {
-    return { ok: false, error: 'পূর্ণমান ১০০০-এর মধ্যে হতে হবে।' }
+    return { ok: false, error: t.errors.totalTooBig }
   }
 
   const passMarks = rawPassMarks === '' ? null : Number(rawPassMarks)
   if (passMarks !== null && (!Number.isFinite(passMarks) || passMarks < 0)) {
-    return { ok: false, error: 'পাস নম্বর ঠিকভাবে লিখুন।' }
+    return { ok: false, error: t.errors.passUnreadable }
   }
   // The database has the same check. Catching it here gives a field-level
   // message rather than a constraint name.
   if (passMarks !== null && passMarks > totalMarks) {
-    return { ok: false, error: 'পাস নম্বর পূর্ণমানের বেশি হতে পারে না।' }
+    return { ok: false, error: t.errors.passOverTotal }
   }
 
   // A future exam date is allowed — centres create next week's test in advance —
@@ -108,7 +126,7 @@ export async function createExam(
     .eq('id', batchId)
     .maybeSingle()
 
-  if (!batch) return { ok: false, error: 'ব্যাচ পাওয়া যায়নি।' }
+  if (!batch) return { ok: false, error: t.errors.noBatch }
 
   const { data: exam, error } = await supabase
     .from('exams')
@@ -128,7 +146,7 @@ export async function createExam(
     .single()
 
   if (error || !exam) {
-    return { ok: false, error: 'পরীক্ষা তৈরি করা যায়নি। আবার চেষ্টা করুন।' }
+    return { ok: false, error: t.errors.createFailed }
   }
 
   revalidatePath('/exams')
@@ -136,7 +154,7 @@ export async function createExam(
 }
 
 export type SaveMarksState =
-  | { ok: true; entered: number; absent: number; cleared: number }
+  | { ok: true; message: string }
   | { ok: false; error: string }
   | null
 
@@ -159,13 +177,13 @@ export async function saveMarks(
   _prev: SaveMarksState,
   formData: FormData,
 ): Promise<SaveMarksState> {
-  const session = await teacherOrAbove()
-  if (!isSession(session)) {
-    return { ok: false, error: session?.error ?? 'অনুমতি নেই।' }
-  }
+  const caller = await teacherOrAbove()
+  if (!caller.ok) return { ok: false, error: caller.error }
+  const { session } = caller
+  const t = dict(session.locale).exams
 
   const examId = String(formData.get('examId') ?? '')
-  if (!examId) return { ok: false, error: 'পরীক্ষা পাওয়া যায়নি।' }
+  if (!examId) return { ok: false, error: t.errors.noExam }
 
   const supabase = await createClient()
 
@@ -176,7 +194,7 @@ export async function saveMarks(
     .eq('id', examId)
     .maybeSingle()
 
-  if (!exam) return { ok: false, error: 'পরীক্ষা পাওয়া যায়নি।' }
+  if (!exam) return { ok: false, error: t.errors.noExam }
 
   const total = Number(exam.total_marks)
 
@@ -189,8 +207,8 @@ export async function saveMarks(
     .eq('batch_id', exam.batch_id)
     .eq('status', 'active')
 
-  if (rosterError) return { ok: false, error: 'শিক্ষার্থীর তালিকা পড়া যায়নি।' }
-  const validIds = new Set((enrollments ?? []).map((e) => e.id))
+  if (rosterError) return { ok: false, error: t.errors.rosterUnreadable }
+  const validIds = new Set((enrollments ?? []).map((row) => row.id))
 
   const submitted: SubmittedMark[] = []
   for (const [key, value] of formData.entries()) {
@@ -212,19 +230,19 @@ export async function saveMarks(
 
     const marks = Number(raw)
     if (!Number.isFinite(marks) || marks < 0) {
-      return { ok: false, error: 'নম্বর ঋণাত্মক হতে পারে না।' }
+      return { ok: false, error: t.errors.marksNegative }
     }
     // A trigger enforces this too, but a trigger failure aborts the whole sheet
     // with a database message. Named here, the teacher knows which cap they hit.
     if (marks > total) {
-      return { ok: false, error: `নম্বর পূর্ণমান (${total}) এর বেশি হতে পারে না।` }
+      return { ok: false, error: t.errors.marksOverTotal(total) }
     }
 
     submitted.push({ enrollmentId, marks, isAbsent: false, note: note || null })
   }
 
   if (submitted.length === 0) {
-    return { ok: false, error: 'কোনো শিক্ষার্থী পাওয়া যায়নি।' }
+    return { ok: false, error: t.errors.noStudents }
   }
 
   const toWrite = submitted.filter((m) => m.isAbsent || m.marks !== null)
@@ -247,7 +265,7 @@ export async function saveMarks(
       { onConflict: 'exam_id,enrollment_id' },
     )
 
-    if (error) return { ok: false, error: 'নম্বর সেভ হয়নি। আবার চেষ্টা করুন।' }
+    if (error) return { ok: false, error: t.errors.saveFailed }
   }
 
   if (toClear.length > 0) {
@@ -264,16 +282,20 @@ export async function saveMarks(
   revalidatePath(`/exams/${exam.id}`)
   revalidatePath('/exams')
 
+  // One finished sentence rather than two counts. English inflects on both of
+  // them and the sheet is a client component, so it cannot be handed a
+  // dictionary function to do it with — see `T` in lib/i18n.
   return {
     ok: true,
-    entered: toWrite.filter((m) => !m.isAbsent).length,
-    absent: toWrite.filter((m) => m.isAbsent).length,
-    cleared: toClear.length,
+    message: t.marksSaved(
+      toWrite.filter((m) => !m.isAbsent).length,
+      toWrite.filter((m) => m.isAbsent).length,
+    ),
   }
 }
 
 export type SmsGateState =
-  | { ok: true; sent: number; charged: number; queuedOnly: boolean }
+  | { ok: true; message: string }
   | { ok: true; declined: true }
   | { ok: false; error: string }
   | null
@@ -290,13 +312,12 @@ export async function declineResultSms(
   _prev: SmsGateState,
   formData: FormData,
 ): Promise<SmsGateState> {
-  const session = await teacherOrAbove()
-  if (!isSession(session)) {
-    return { ok: false, error: session?.error ?? 'অনুমতি নেই।' }
-  }
+  const caller = await teacherOrAbove()
+  if (!caller.ok) return { ok: false, error: caller.error }
+  const t = dict(caller.session.locale).exams
 
   const examId = String(formData.get('examId') ?? '')
-  if (!examId) return { ok: false, error: 'পরীক্ষা পাওয়া যায়নি।' }
+  if (!examId) return { ok: false, error: t.errors.noExam }
 
   const supabase = await createClient()
   const { error } = await supabase
@@ -304,7 +325,7 @@ export async function declineResultSms(
     .update({ sms_declined_at: new Date().toISOString() })
     .eq('id', examId)
 
-  if (error) return { ok: false, error: 'সেভ হয়নি। আবার চেষ্টা করুন।' }
+  if (error) return { ok: false, error: t.errors.declineFailed }
 
   revalidatePath(`/exams/${examId}`)
   revalidatePath('/exams')
@@ -333,13 +354,13 @@ export async function sendResultSms(
   _prev: SmsGateState,
   formData: FormData,
 ): Promise<SmsGateState> {
-  const session = await teacherOrAbove()
-  if (!isSession(session)) {
-    return { ok: false, error: session?.error ?? 'অনুমতি নেই।' }
-  }
+  const caller = await teacherOrAbove()
+  if (!caller.ok) return { ok: false, error: caller.error }
+  const { session } = caller
+  const t = dict(session.locale).exams
 
   const examId = String(formData.get('examId') ?? '')
-  if (!examId) return { ok: false, error: 'পরীক্ষা পাওয়া যায়নি।' }
+  if (!examId) return { ok: false, error: t.errors.noExam }
 
   // The user's own client, so RLS still decides which exam they may act on.
   const supabase = await createClient()
@@ -351,15 +372,15 @@ export async function sendResultSms(
     .eq('id', examId)
     .maybeSingle()
 
-  if (!exam) return { ok: false, error: 'পরীক্ষা পাওয়া যায়নি।' }
+  if (!exam) return { ok: false, error: t.errors.noExam }
 
   // Belt and braces against a stale session pointing at another centre.
   if (exam.coaching_center_id !== centerId) {
-    return { ok: false, error: 'পরীক্ষা পাওয়া যায়নি।' }
+    return { ok: false, error: t.errors.noExam }
   }
 
   if (exam.sms_sent_at) {
-    return { ok: false, error: 'এই পরীক্ষার ফলাফল আগেই পাঠানো হয়েছে।' }
+    return { ok: false, error: t.errors.alreadySent }
   }
 
   // A teacher may be denied SMS by the owner. Owners and managers always may —
@@ -373,7 +394,7 @@ export async function sendResultSms(
       .maybeSingle()
 
     if (perms && !perms.can_send_sms) {
-      return { ok: false, error: 'আপনার SMS পাঠানোর অনুমতি নেই। মালিককে বলুন।' }
+      return { ok: false, error: t.errors.noSmsPermission }
     }
   }
 
@@ -391,7 +412,7 @@ export async function sendResultSms(
   )
 
   if (!plan || plan.recipients.length === 0) {
-    return { ok: false, error: 'পাঠানোর মতো কোনো নম্বর নেই।' }
+    return { ok: false, error: t.errors.noRecipients }
   }
 
   const cost = plan.creditCost
@@ -407,10 +428,7 @@ export async function sendResultSms(
 
   const balance = center?.sms_credit_balance ?? 0
   if (balance < cost) {
-    return {
-      ok: false,
-      error: `SMS ক্রেডিট কম আছে — দরকার ${cost}, আছে ${balance}।`,
-    }
+    return { ok: false, error: t.errors.creditsShort(cost, balance) }
   }
 
   // Step 1. The unique (coaching_center_id, kind, ref_id) index turns a double
@@ -431,9 +449,9 @@ export async function sendResultSms(
 
   if (dispatchError || !dispatch) {
     if (dispatchError?.code === '23505') {
-      return { ok: false, error: 'এই পরীক্ষার ফলাফল আগেই পাঠানো হয়েছে।' }
+      return { ok: false, error: t.errors.alreadySent }
     }
-    return { ok: false, error: 'পাঠানো যায়নি। আবার চেষ্টা করুন।' }
+    return { ok: false, error: t.errors.sendFailed }
   }
 
   // Step 2. Compare-and-swap on the balance we just read. If another send got
@@ -449,7 +467,7 @@ export async function sendResultSms(
 
   if (!debited) {
     await admin.from('sms_dispatches').delete().eq('id', dispatch.id)
-    return { ok: false, error: 'ক্রেডিট হিসাব বদলেছে। আবার চেষ্টা করুন।' }
+    return { ok: false, error: t.errors.creditRace }
   }
 
   await admin.from('sms_credit_ledger').insert({
@@ -498,7 +516,7 @@ export async function sendResultSms(
     })
     await admin.from('sms_dispatches').delete().eq('id', dispatch.id)
 
-    return { ok: false, error: 'পাঠানো যায়নি। ক্রেডিট ফেরত দেওয়া হয়েছে।' }
+    return { ok: false, error: t.errors.sendFailedRefunded }
   }
 
   await admin
@@ -511,10 +529,5 @@ export async function sendResultSms(
   revalidatePath('/exams')
   revalidatePath('/settings/sms')
 
-  return {
-    ok: true,
-    sent: plan.recipients.length,
-    charged: cost,
-    queuedOnly: !smsProviderConfigured(),
-  }
+  return { ok: true, message: t.smsQueued(plan.recipients.length, cost) }
 }

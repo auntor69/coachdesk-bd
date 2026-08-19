@@ -436,6 +436,275 @@ export const bn = {
     safeToRepeat:
       'প্রতিটি চালু ভর্তির জন্য একটি ইনভয়েস। আগে তৈরি হয়ে থাকলে আবার তৈরি হবে না — তাই দুইবার চাপলেও সমস্যা নেই।',
   },
+
+  /**
+   * The three exam screens, and every sentence with a number in it that the two
+   * client components below need.
+   *
+   * That last part is why this group is larger than the screens it names. The
+   * marks sheet and the SMS gate are client components, so neither may hold a
+   * function (see `T` in ./index.ts) — and almost every counted sentence on the
+   * gate is a count English inflects on: one guardian, three guardians; one
+   * credit, three credits. The numbers are all known before the page renders,
+   * so they are resolved here by the server and travel as finished strings.
+   *
+   * Marks stay in ASCII digits in both languages, like money and unlike a date.
+   * A teacher types 45 into a numeric keypad and compares it against the পূর্ণমান
+   * printed beside the field; a Bangla ৪৫ next to an input holding 45 is the same
+   * mistake as a Bangla total on the fee board, and worse, because the input's
+   * value is parsed as a number.
+   */
+  exams: {
+    title: 'পরীক্ষা',
+    subtitle: 'নম্বর দিন, ফলাফল অভিভাবককে জানান',
+    /** On a button beside the heading, so it cannot be long. */
+    new: 'নতুন',
+    emptyTitle: 'এখনও কোনো পরীক্ষা নেই',
+    emptyBody:
+      'পরীক্ষা তৈরি করলে ব্যাচের সব শিক্ষার্থীর নাম নম্বর দেওয়ার জন্য একসাথে চলে আসবে।',
+    create: 'পরীক্ষা তৈরি করুন',
+
+    /**
+     * What a Bangladeshi question paper prints at the top of itself, which is
+     * where both of these words come from. Prefixes rather than sentences: the
+     * figure after each one is in its own element so it can be tabular.
+     */
+    fullMarks: 'পূর্ণমান',
+    pass: 'পাস',
+    /** Under the count of marks entered, on a list row. */
+    marked: 'নম্বর দেওয়া',
+    smsSent: 'SMS পাঠানো ✓',
+    smsNotSent: 'SMS পাঠানো হয়নি',
+
+    /** The marks sheet's own page title. */
+    marksTitle: 'নম্বর',
+    noStudentsTitle: 'এই ব্যাচে শিক্ষার্থী নেই',
+    noStudentsBody:
+      'ব্যাচে শিক্ষার্থী যোগ করলে তাদের নাম এখানে নম্বর দেওয়ার জন্য চলে আসবে।',
+
+    newTitle: 'নতুন পরীক্ষা',
+    needBatchTitle: 'আগে একটি ব্যাচ দরকার',
+    needBatchBody:
+      'পরীক্ষা একটি ব্যাচের জন্য হয় — ব্যাচের শিক্ষার্থীরাই নম্বর দেওয়ার তালিকায় আসে।',
+    createBatch: 'ব্যাচ তৈরি করুন',
+
+    /**
+     * The gate's figures, written here and handed down. Each one is a count that
+     * English inflects on and Bangla does not, which is the whole reason they are
+     * not `{n}` templates like the fee row's.
+     */
+    recipients: (n: number) => `${n} জনের কাছে`,
+    credits: (n: number) => `${n} ক্রেডিট`,
+    balanceNow: (n: number) => `এখন আছে ${n} ক্রেডিট`,
+    shortfall: (n: number) => `${n} কম পড়ছে`,
+    /** How many SMS one message becomes. A long comment costs a second one. */
+    segments: (n: number) => `${n}টি SMS`,
+    /** Above the one real message the gate shows before it is tapped. */
+    previewFor: (name: string) => `${name}-এর অভিভাবক যা পাবেন`,
+    withoutMarksCount: (n: number) => `${n} জনের নম্বর এখনও দেওয়া হয়নি`,
+    noPhoneCount: (n: number) => `${n} জনের অভিভাবকের নম্বর নেই`,
+    optedOutCount: (n: number) => `${n} জনের SMS বন্ধ আছে`,
+
+    /**
+     * What the three writes return, resolved in the action. `marksSaved` reads
+     * "নম্বর সেভ হয়েছে — ২৮ জন, অনুপস্থিত ২" and drops the second half when
+     * nobody was absent, which is why it is one function and not two strings.
+     */
+    marksSaved: (entered: number, absent: number) =>
+      absent > 0
+        ? `নম্বর সেভ হয়েছে — ${entered} জন, অনুপস্থিত ${absent}`
+        : `নম্বর সেভ হয়েছে — ${entered} জন`,
+    smsQueued: (sent: number, charged: number) =>
+      `${sent} জন অভিভাবক · ${charged} ক্রেডিট খরচ হয়েছে`,
+
+    errors: {
+      /**
+       * Its own rather than shared with the register's identical sentence. The
+       * fee board already proved this line wants to be specific — "only an owner
+       * or a manager can keep the fee records" — and this one will want to name
+       * the batch's teacher the day exams stop being open to every teacher.
+       */
+      forbidden: 'আপনার এই কাজের অনুমতি নেই।',
+      nameRequired: 'পরীক্ষার নাম লিখুন।',
+      nameTooLong: 'নাম ৮০ অক্ষরের মধ্যে রাখুন।',
+      pickBatch: 'ব্যাচ বাছুন।',
+      noBatch: 'ব্যাচ পাওয়া যায়নি।',
+      totalUnreadable: 'পূর্ণমান ঠিকভাবে লিখুন।',
+      totalTooBig: 'পূর্ণমান ১০০০-এর মধ্যে হতে হবে।',
+      passUnreadable: 'পাস নম্বর ঠিকভাবে লিখুন।',
+      passOverTotal: 'পাস নম্বর পূর্ণমানের বেশি হতে পারে না।',
+      createFailed: 'পরীক্ষা তৈরি করা যায়নি। আবার চেষ্টা করুন।',
+
+      noExam: 'পরীক্ষা পাওয়া যায়নি।',
+      rosterUnreadable: 'শিক্ষার্থীর তালিকা পড়া যায়নি।',
+      noStudents: 'কোনো শিক্ষার্থী পাওয়া যায়নি।',
+      marksNegative: 'নম্বর ঋণাত্মক হতে পারে না।',
+      /**
+       * The cap is named because a trigger enforces it too, and a trigger failure
+       * arrives as a constraint name. ASCII, like every other mark.
+       */
+      marksOverTotal: (total: number) =>
+        `নম্বর পূর্ণমান (${total}) এর বেশি হতে পারে না।`,
+      saveFailed: 'নম্বর সেভ হয়নি। আবার চেষ্টা করুন।',
+
+      declineFailed: 'সেভ হয়নি। আবার চেষ্টা করুন।',
+      alreadySent: 'এই পরীক্ষার ফলাফল আগেই পাঠানো হয়েছে।',
+      noSmsPermission: 'আপনার SMS পাঠানোর অনুমতি নেই। মালিককে বলুন।',
+      noRecipients: 'পাঠানোর মতো কোনো নম্বর নেই।',
+      creditsShort: (need: number, have: number) =>
+        `SMS ক্রেডিট কম আছে — দরকার ${need}, আছে ${have}।`,
+      sendFailed: 'পাঠানো যায়নি। আবার চেষ্টা করুন।',
+      creditRace: 'ক্রেডিট হিসাব বদলেছে। আবার চেষ্টা করুন।',
+      /** The one refund path. An owner who loses credits to our bug is gone. */
+      sendFailedRefunded: 'পাঠানো যায়নি। ক্রেডিট ফেরত দেওয়া হয়েছে।',
+    },
+  },
+
+  /**
+   * The marks sheet — a client component, so strings only, and the three that
+   * name a student are `{name}` templates filled in the browser.
+   *
+   * Those three are the one place in the app where a per-row sentence is written
+   * client-side rather than by the page. The register does the opposite: it takes
+   * one finished label per row. The difference is arithmetic — this sheet renders
+   * three labels for each of forty students, and 120 resolved strings in the RSC
+   * payload of a screen a teacher opens on 3G between two classes is a real cost,
+   * where forty were not. See ./fill.ts.
+   */
+  marksSheet: {
+    locked:
+      'এই পরীক্ষার ফলাফল অভিভাবকদের কাছে পাঠানো হয়েছে। এখন নম্বর বদলালে অভিভাবকের কাছে থাকা SMS-এর সাথে মিলবে না।',
+    markLabel: '{name} — প্রাপ্ত নম্বর',
+    absentLabel: '{name} — অনুপস্থিত',
+    noteLabel: '{name} — মন্তব্য',
+    notePlaceholder: 'মন্তব্য — অভিভাবকের SMS-এ যাবে, যদি জায়গা থাকে',
+    /**
+     * The tail of "১২/৪০ জনের ফলাফল বসানো হয়েছে". Only the tail, because the
+     * numerator is set bolder than the denominator — a teacher scanning the
+     * sticky bar wants to see how far they have got, not read a sentence.
+     *
+     * "ফলাফল", not "নম্বর": the counter treats a student marked absent as done,
+     * because for the purpose of "can I save this sheet yet" they are. A sheet
+     * with seven marks and one absence read "৮ জনের নম্বর দেওয়া হয়েছে", which is
+     * one mark more than the teacher entered. An absence is a result; it is not
+     * a number. English says "marked" and never had the problem.
+     */
+    marked: 'জনের ফলাফল বসানো হয়েছে',
+    /**
+     * The same word as `exams.fullMarks`, written twice on purpose. A client
+     * component can only be handed a group with no functions in it and `exams`
+     * has fourteen, so the sheet cannot reach across for it. In English the two
+     * are not even the same string: this one follows a "·" mid-line and is
+     * lowercase, that one starts a line.
+     */
+    fullMarks: 'পূর্ণমান',
+    save: 'নম্বর সেভ করুন',
+  },
+
+  /**
+   * The gate that spends the centre's money. A client component: strings only,
+   * and every sentence with a figure in it arrives already written — see the
+   * `exams` group above.
+   */
+  smsGate: {
+    sentTitle: 'অভিভাবকদের কাছে পাঠানো হয়েছে',
+    /**
+     * Said plainly rather than hidden, because it is the difference between a
+     * bug and a queue. Until BTRC approves a sender ID in the centre's own name
+     * nothing leaves the building, and an owner who thinks a message was
+     * delivered will not chase the parent who never got it.
+     */
+    queuedNote:
+      'SMS গুলো লাইনে আছে। আপনার কোচিংয়ের নামে sender ID অনুমোদন হলেই অভিভাবকের ফোনে পৌঁছাতে শুরু করবে — তখন এগুলো নিজে থেকেই চলে যাবে।',
+
+    /** The heading on the two states where there is nothing to decide. */
+    resultSms: 'ফলাফল SMS',
+    noPermission:
+      'আপনার SMS পাঠানোর অনুমতি নেই। কোচিংয়ের মালিক চাইলে সেটিংস থেকে অনুমতি দিতে পারেন।',
+    saveMarksFirst: 'নম্বর সেভ করার পর অভিভাবকদের কাছে SMS পাঠানোর সুযোগ আসবে।',
+    noNumbers: 'পাঠানোর মতো কোনো অভিভাবকের নম্বর নেই।',
+
+    askTitle: 'অভিভাবকদের ফলাফল জানাবেন?',
+    /** Two label-and-figure tiles, side by side. Both have to stay short. */
+    willGoTo: 'যাবে',
+    cost: 'খরচ',
+    perPersonNote: 'প্রত্যেকের নাম ও নম্বর আলাদা করে বসানো হবে',
+    longNote:
+      'কিছু মন্তব্য লম্বা হওয়ায় সেগুলো ২টি SMS হিসেব হবে। মন্তব্য ছোট করলে খরচ কমবে।',
+    declined: 'এই পরীক্ষার SMS পাঠানো হয়নি। চাইলে পরে পাঠাতে পারবেন।',
+    send: 'অভিভাবককে পাঠান',
+    sending: 'পাঠানো হচ্ছে…',
+    decline: 'এখন পাঠাবেন না',
+    noUndo: 'পাঠানোর পর আর ফেরানো যায় না',
+  },
+
+  /** Creating an exam. Four fields, a client component. */
+  examForm: {
+    name: 'পরীক্ষার নাম',
+    namePlaceholder: 'সাপ্তাহিক পরীক্ষা',
+    batch: 'ব্যাচ',
+    pickBatch: 'ব্যাচ বাছুন',
+    kind: 'ধরন',
+    fullMarks: 'পূর্ণমান',
+    passMarks: 'পাস নম্বর',
+    date: 'পরীক্ষার তারিখ',
+    /** Says where it goes, because creating an exam was never the errand. */
+    submit: 'পরীক্ষা তৈরি করে নম্বর দিন',
+  },
+
+  /**
+   * The owner's home screen. All server-rendered, so counts are functions.
+   *
+   * Every figure on this page is ASCII in both languages, and the batch-rate card
+   * is why the rule is worth stating: it puts a percentage, a count of class days
+   * and a count of marks in one paragraph, and a card that reads "৯ দিন ক্লাস · 91%"
+   * is harder to read than either convention followed alone. Dates and months are
+   * the exception, as everywhere — those are Bangla numerals for a Bangla reader.
+   */
+  dashboard: {
+    title: 'ড্যাশবোর্ড',
+    outstanding: 'বকেয়া ফি',
+    nobodyOverdue: 'কারও সময় পেরোয়নি',
+    /** Three tiles across a 375px screen, so these wrap rather than truncate. */
+    collected: 'এ মাসে আদায়',
+    students: 'শিক্ষার্থী',
+    batches: 'ব্যাচ',
+
+    todayAttendance: 'আজকের হাজিরা',
+    batchesTaken: (done: number, total: number) => `${done}/${total} ব্যাচ নেওয়া হয়েছে`,
+
+    overdueTitle: 'সময় পেরোনো ফি',
+
+    addStudentsTitle: 'শিক্ষার্থী যোগ করুন',
+    addStudentsBody:
+      'ব্যাচ আর শিক্ষার্থী যোগ করলে হাজিরা, ফলাফল আর ফি — সব এখানে দেখাবে।',
+
+    ratesTitle: 'ব্যাচভিত্তিক হাজিরা',
+    ratesFallback: 'এ মাসে এখনো হাজিরা নেওয়া হয়নি — গত মাসের হিসাব দেখানো হচ্ছে',
+    /**
+     * The reading of a rate, keyed by band. Not decoration: the house rule is
+     * that a present/absent colour never travels alone, and a green 91% beside a
+     * red 58% is exactly that. The thresholds live with the colours in the card;
+     * only the words are here.
+     */
+    bands: {
+      good: 'ভালো',
+      fair: 'মাঝারি',
+      low: 'কম',
+    },
+    /** A batch whose every mark was 'excused' — not a batch that ran at 0%. */
+    noRate: 'হিসাব নেই',
+    allExcused: 'সব ছুটি মঞ্জুর করা',
+    /**
+     * Both follow a number that is set in its own element, so only the word is
+     * here — and both are functions because English inflects on a count that
+     * Bangla ignores. "৯ দিন ক্লাস · ৩৫০ হাজিরার হিসাব".
+     */
+    classDays: (_n: number) => 'দিন ক্লাস',
+    countedMarks: (_n: number) => 'হাজিরার হিসাব',
+    /** Unreachable through the view — batches.name is not null. */
+    unknownBatch: 'অজানা ব্যাচ',
+  },
 } as const
 
 /**

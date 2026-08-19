@@ -2,7 +2,7 @@ import Link from 'next/link'
 
 import { Card } from '@/components/ui'
 import { greetingFor } from '@/components/app-shell'
-import { requireCenter, isStaffAdmin } from '@/lib/auth/session'
+import { requireCenter, getSession, isStaffAdmin } from '@/lib/auth/session'
 import { createClient } from '@/lib/supabase/server'
 import {
   todayInDhaka,
@@ -13,11 +13,16 @@ import {
 import { countChasesDue } from '@/lib/fees/reminder-schedule'
 import { ratesForDashboard } from '@/lib/attendance/rates'
 import { sumTaka, tallyOutstanding, formatTaka as taka } from '@/lib/money'
-import { dict } from '@/lib/i18n'
+import { dict, DEFAULT_LOCALE } from '@/lib/i18n'
 import { ReminderEntry } from '@/app/(app)/fees/reminder-entry'
 import { AttendanceRates } from './attendance-rates'
 
-export const metadata = { title: 'ড্যাশবোর্ড — CoachDesk' }
+/** getSession, not requireCenter — see the note on teach/page.tsx's own. */
+export async function generateMetadata() {
+  const session = await getSession()
+  const locale = session?.locale ?? DEFAULT_LOCALE
+  return { title: `${dict(locale).dashboard.title} — CoachDesk` }
+}
 
 /** One line, not a concatenation — see the same note on the fee board. */
 const COLUMNS = 'id, student_name, remaining_bdt, due_date, guardian_phone'
@@ -45,6 +50,9 @@ export default async function DashboardPage() {
   const supabase = await createClient()
   const today = todayInDhaka()
   const period = currentPeriodMonth()
+  const locale = session.locale
+  const d = dict(locale)
+  const t = d.dashboard
 
   const [
     { count: studentCount },
@@ -138,7 +146,7 @@ export default async function DashboardPage() {
   const overdue = (owing ?? [])
     .filter((r) => (r.due_date ?? today) < today)
     .map((r) => ({
-      name: r.student_name ?? 'অজানা',
+      name: r.student_name ?? d.common.unknown,
       amount: Number(r.remaining_bdt ?? 0),
       dueDate: r.due_date ?? today,
     }))
@@ -176,7 +184,11 @@ export default async function DashboardPage() {
   // The month the rate card describes and the batches in it, worst first — both
   // decided in one tested place, because both invert without leaving a mark on
   // the screen. See the note on the query for why two months are fetched.
-  const { month: rateMonth, rates: batchRates } = ratesForDashboard(rates, period)
+  const { month: rateMonth, rates: batchRates } = ratesForDashboard(
+    rates,
+    period,
+    t.unknownBatch,
+  )
 
   return (
     <div className="flex flex-col gap-5">
@@ -186,18 +198,17 @@ export default async function DashboardPage() {
       </div>
 
       <Card className="border-brand-200 bg-brand-50">
-        <p className="text-sm font-medium text-brand-800">বকেয়া ফি</p>
+        <p className="text-sm font-medium text-brand-800">{t.outstanding}</p>
         <p className="num mt-1 text-4xl font-bold text-brand-900">
           {taka(outstanding)}
         </p>
-        <p className="mt-2 text-sm text-brand-800">
-          {overdue.length > 0 ? (
-            <>
-              <span className="num">{overdue.length}</span> জনের সময় পেরিয়ে গেছে
-            </>
-          ) : (
-            'কারও সময় পেরোয়নি'
-          )}
+        {/* `.num` on the paragraph rather than a span around the count, the same
+            way the fee board carries this sentence. It is only tabular figures,
+            so it does nothing to the Bangla words and everything to the digit. */}
+        <p className="num mt-2 text-sm text-brand-800">
+          {overdue.length > 0
+            ? d.fees.overdueCount(overdue.length)
+            : t.nobodyOverdue}
         </p>
       </Card>
 
@@ -206,26 +217,24 @@ export default async function DashboardPage() {
           brings money in rather than reporting on it, and on a 375px phone that
           means it has to be reachable without a scroll. */}
       {isAdmin && remainders.length > 0 && (
-        // The rest of this page is still Bangla-only — see the next task. The link
-        // is not: it is the fee worklist's own door, and a door that spoke a
-        // different language from the room would be the first thing an English
-        // reader distrusted.
-        <ReminderEntry dueToday={dueToday} t={dict(session.locale).reminders} />
+        // The worklist's own words, borrowed rather than restated — a door and the
+        // room behind it disagreeing about what is in there is how an owner stops
+        // believing the number.
+        <ReminderEntry dueToday={dueToday} t={d.reminders} />
       )}
 
       <div className="grid grid-cols-3 gap-3">
-        <Stat label="এ মাসে আদায়" value={taka(collected)} />
-        <Stat label="শিক্ষার্থী" value={String(studentCount ?? 0)} />
-        <Stat label="ব্যাচ" value={String(batchCount ?? 0)} />
+        <Stat label={t.collected} value={taka(collected)} />
+        <Stat label={t.students} value={String(studentCount ?? 0)} />
+        <Stat label={t.batches} value={String(batchCount ?? 0)} />
       </div>
 
       <Card>
         <div className="flex items-center justify-between gap-3">
           <div>
-            <p className="font-semibold text-ink">আজকের হাজিরা</p>
-            <p className="mt-0.5 text-sm text-ink-soft">
-              <span className="num">{todaySessions?.length ?? 0}</span>/
-              <span className="num">{batchCount ?? 0}</span> ব্যাচ নেওয়া হয়েছে
+            <p className="font-semibold text-ink">{t.todayAttendance}</p>
+            <p className="num mt-0.5 text-sm text-ink-soft">
+              {t.batchesTaken(todaySessions?.length ?? 0, batchCount ?? 0)}
             </p>
           </div>
           <Link
@@ -233,7 +242,7 @@ export default async function DashboardPage() {
             className="shrink-0 rounded-lg px-3 py-2 font-medium text-brand-700
               hover:bg-brand-50"
           >
-            দেখুন →
+            {d.common.view} →
           </Link>
         </div>
       </Card>
@@ -247,15 +256,17 @@ export default async function DashboardPage() {
           month={rateMonth}
           rows={batchRates}
           isCurrentMonth={rateMonth === period}
+          locale={locale}
+          t={t}
         />
       )}
 
       {overdue.length > 0 && (
         <div>
           <div className="mb-2 flex items-baseline justify-between gap-3">
-            <h2 className="font-semibold text-ink">সময় পেরোনো ফি</h2>
+            <h2 className="font-semibold text-ink">{t.overdueTitle}</h2>
             <Link href="/fees" className="text-sm font-medium text-brand-700">
-              সব দেখুন
+              {d.common.seeAll}
             </Link>
           </div>
           <ul className="flex flex-col gap-2">
@@ -268,7 +279,7 @@ export default async function DashboardPage() {
                 <div className="min-w-0">
                   <p className="truncate font-medium text-ink">{row.name}</p>
                   <p className="text-sm text-ink-faint">
-                    {formatDate(row.dueDate)}
+                    {formatDate(row.dueDate, locale)}
                   </p>
                 </div>
                 <span className="num shrink-0 font-semibold text-absent">
@@ -282,16 +293,14 @@ export default async function DashboardPage() {
 
       {(studentCount ?? 0) === 0 && (
         <Card>
-          <h2 className="font-semibold text-ink">শিক্ষার্থী যোগ করুন</h2>
-          <p className="mt-1 text-sm text-ink-soft">
-            ব্যাচ আর শিক্ষার্থী যোগ করলে হাজিরা, ফলাফল আর ফি — সব এখানে দেখাবে।
-          </p>
+          <h2 className="font-semibold text-ink">{t.addStudentsTitle}</h2>
+          <p className="mt-1 text-sm text-ink-soft">{t.addStudentsBody}</p>
           <Link
             href="/settings/students/new"
             className="mt-4 inline-flex min-h-tap items-center justify-center
               rounded-xl bg-brand-600 px-5 font-semibold text-white"
           >
-            শিক্ষার্থী যোগ করুন
+            {t.addStudentsTitle}
           </Link>
         </Card>
       )}

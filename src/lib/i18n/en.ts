@@ -267,4 +267,180 @@ export const en: Dictionary = {
     safeToRepeat:
       'One invoice per active enrolment. Anything already created is left alone — so pressing this twice is safe.',
   },
+
+  exams: {
+    title: 'Exams',
+    subtitle: 'Enter marks, tell the guardians',
+    new: 'New',
+    emptyTitle: 'No exams yet',
+    emptyBody:
+      'Create an exam and every student in the batch arrives together, ready to be marked.',
+    create: 'Create an exam',
+
+    /**
+     * The words a Bangladeshi question paper prints on itself, which is where the
+     * Bangla comes from too. Capitalised because both start a line; the marks
+     * sheet has its own lowercase copy for mid-line use.
+     */
+    fullMarks: 'Full marks',
+    pass: 'Pass',
+    marked: 'marked',
+    smsSent: 'SMS sent ✓',
+    smsNotSent: 'SMS not sent',
+
+    marksTitle: 'Marks',
+    noStudentsTitle: 'No students in this batch',
+    noStudentsBody:
+      'Add students to the batch and their names will arrive here to be marked.',
+
+    newTitle: 'New exam',
+    needBatchTitle: 'You need a batch first',
+    needBatchBody:
+      'An exam belongs to a batch — the batch’s students are the ones who arrive to be marked.',
+    createBatch: 'Create a batch',
+
+    recipients: (n: number) => `${n} ${n === 1 ? 'guardian' : 'guardians'}`,
+    credits: (n: number) => `${n} ${n === 1 ? 'credit' : 'credits'}`,
+    balanceNow: (n: number) => `${n} ${n === 1 ? 'credit' : 'credits'} left`,
+    shortfall: (n: number) => `${n} short`,
+    /** SMS is its own plural in English, which is the one mercy in this group. */
+    segments: (n: number) => `${n} SMS`,
+    previewFor: (name: string) => `What ${name}’s guardian will get`,
+    withoutMarksCount: (n: number) =>
+      `${n} ${n === 1 ? 'student has' : 'students have'} no marks yet`,
+    noPhoneCount: (n: number) =>
+      `${n} ${n === 1 ? 'guardian' : 'guardians'} with no number`,
+    optedOutCount: (n: number) =>
+      `${n} ${n === 1 ? 'family has' : 'families have'} SMS turned off`,
+
+    marksSaved: (entered: number, absent: number) => {
+      const who = `${entered} ${entered === 1 ? 'student' : 'students'}`
+      return absent > 0 ? `Marks saved — ${who}, ${absent} absent` : `Marks saved — ${who}`
+    },
+    smsQueued: (sent: number, charged: number) =>
+      `${sent} ${sent === 1 ? 'guardian' : 'guardians'} · ${charged} ${
+        charged === 1 ? 'credit' : 'credits'
+      } used`,
+
+    errors: {
+      forbidden: 'You do not have permission to do that.',
+      nameRequired: 'Give the exam a name.',
+      nameTooLong: 'Keep the name under 80 characters.',
+      pickBatch: 'Choose a batch.',
+      noBatch: 'That batch could not be found.',
+      totalUnreadable: 'Write the full marks as a number.',
+      totalTooBig: 'Full marks must be 1000 or less.',
+      passUnreadable: 'Write the pass mark as a number.',
+      passOverTotal: 'The pass mark cannot be higher than the full marks.',
+      createFailed: 'The exam could not be created. Please try again.',
+
+      noExam: 'That exam could not be found.',
+      rosterUnreadable: 'The student list could not be read.',
+      noStudents: 'No students were found.',
+      marksNegative: 'A mark cannot be negative.',
+      marksOverTotal: (total: number) =>
+        `A mark cannot be higher than the full marks (${total}).`,
+      saveFailed: 'The marks were not saved. Please try again.',
+
+      declineFailed: 'That was not saved. Please try again.',
+      alreadySent: 'This exam’s results have already been sent.',
+      noSmsPermission:
+        'You do not have permission to send SMS. Ask the centre’s owner.',
+      noRecipients: 'There are no numbers to send to.',
+      creditsShort: (need: number, have: number) =>
+        `Not enough SMS credit — ${need} needed, ${have} left.`,
+      sendFailed: 'That could not be sent. Please try again.',
+      creditRace: 'The credit balance has changed. Please try again.',
+      sendFailedRefunded: 'That could not be sent. The credits have been returned.',
+    },
+  },
+
+  marksSheet: {
+    locked:
+      'These results have already gone to the guardians. Changing a mark now will not match the SMS they are holding.',
+    markLabel: '{name} — marks',
+    absentLabel: '{name} — absent',
+    noteLabel: '{name} — note',
+    notePlaceholder: 'Note — goes in the guardian’s SMS if there is room',
+    marked: 'marked',
+    /** Mid-line, after a "·", so lowercase — see `exams.fullMarks`. */
+    fullMarks: 'full marks',
+    save: 'Save marks',
+  },
+
+  smsGate: {
+    sentTitle: 'Sent to the guardians',
+    queuedNote:
+      'The messages are queued. They will start arriving on guardians’ phones as soon as a sender ID in your centre’s name is approved — and then these will go on their own.',
+
+    resultSms: 'Result SMS',
+    noPermission:
+      'You do not have permission to send SMS. The centre’s owner can grant it in settings.',
+    saveMarksFirst:
+      'Save the marks and the option to text the guardians will appear.',
+    noNumbers: 'None of these guardians has a number on file.',
+
+    askTitle: 'Tell the guardians the results?',
+    willGoTo: 'Goes to',
+    cost: 'Cost',
+    perPersonNote: 'Each family gets their own child’s name and marks',
+    longNote:
+      'Some notes are long enough to count as 2 SMS. Shortening them costs less.',
+    declined: 'No SMS was sent for this exam. You can still send it later.',
+    send: 'Send to guardians',
+    sending: 'Sending…',
+    decline: 'Not now',
+    noUndo: 'Once sent, it cannot be taken back',
+  },
+
+  examForm: {
+    name: 'Exam name',
+    namePlaceholder: 'Weekly test',
+    batch: 'Batch',
+    pickBatch: 'Choose a batch',
+    kind: 'Kind',
+    fullMarks: 'Full marks',
+    passMarks: 'Pass mark',
+    date: 'Exam date',
+    submit: 'Create and enter marks',
+  },
+
+  dashboard: {
+    title: 'Dashboard',
+    outstanding: 'Fees outstanding',
+    nobodyOverdue: 'Nobody has missed a deadline',
+    collected: 'Collected this month',
+    students: 'Students',
+    batches: 'Batches',
+
+    todayAttendance: 'Today’s attendance',
+    /**
+     * The noun agrees with the denominator, not with `done`. A centre with one
+     * batch is the ordinary first week of this product, and "0/1 batches taken"
+     * followed by "1/1 batches taken" an hour later is wrong twice on the screen
+     * every new owner looks at most.
+     */
+    batchesTaken: (done: number, total: number) =>
+      `${done}/${total} ${total === 1 ? 'batch' : 'batches'} taken`,
+
+    overdueTitle: 'Past the deadline',
+
+    addStudentsTitle: 'Add your students',
+    addStudentsBody:
+      'Add a batch and some students, and attendance, results and fees all show up here.',
+
+    ratesTitle: 'Attendance by batch',
+    ratesFallback:
+      'No attendance has been taken this month — showing last month instead',
+    bands: {
+      good: 'Good',
+      fair: 'Fair',
+      low: 'Low',
+    },
+    noRate: 'No figure',
+    allExcused: 'Every absence excused',
+    classDays: (n: number) => (n === 1 ? 'class day' : 'class days'),
+    countedMarks: (n: number) => (n === 1 ? 'mark counted' : 'marks counted'),
+    unknownBatch: 'Unnamed batch',
+  },
 }

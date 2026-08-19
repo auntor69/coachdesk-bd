@@ -1,9 +1,11 @@
 import { Card } from '@/components/ui'
 import { formatMonth } from '@/lib/bd/time'
 import type { BatchRate } from '@/lib/attendance/rates'
+import type { Locale } from '@/lib/i18n/locale'
+import type { Dictionary } from '@/lib/i18n'
 
 /**
- * Bands for the judgement, and a word for each one.
+ * Bands for the judgement, and a key to the word for each one.
  *
  * The word is not decoration. The house rule in globals.css is that present /
  * absent / late colour never travels alone, because red-green colour blindness
@@ -14,11 +16,17 @@ import type { BatchRate } from '@/lib/attendance/rates'
  * where a Dhaka centre owner's own language lands, and the honest place to
  * revisit them is after the first few centres are running. Nothing depends on
  * them being exactly right: the number is always on the row.
+ *
+ * Thresholds here, words in the dictionary. The 85 is not a translation and
+ * moving it into `en.ts` would let one language grade a batch differently from
+ * the other; the word for it is not a layout decision and does not belong in a
+ * component. `key` is what joins them, and `dashboard.bands` is typed, so a band
+ * added here without a word fails to compile.
  */
 const BANDS = [
-  { min: 85, word: 'ভালো', text: 'text-present', bar: 'bg-present' },
-  { min: 70, word: 'মাঝারি', text: 'text-late', bar: 'bg-late' },
-  { min: 0, word: 'কম', text: 'text-absent', bar: 'bg-absent' },
+  { min: 85, key: 'good', text: 'text-present', bar: 'bg-present' },
+  { min: 70, key: 'fair', text: 'text-late', bar: 'bg-late' },
+  { min: 0, key: 'low', text: 'text-absent', bar: 'bg-absent' },
 ] as const
 
 function bandFor(ratePct: number) {
@@ -49,6 +57,8 @@ export function AttendanceRates({
   month,
   rows,
   isCurrentMonth,
+  locale,
+  t,
 }: {
   /** YYYY-MM-01, the month these rows actually describe. */
   month: string
@@ -59,22 +69,33 @@ export function AttendanceRates({
    * precisely the days an owner is thinking hardest about the month just closed.
    */
   isCurrentMonth: boolean
+  /**
+   * For the month heading alone. Everything else on this card is ASCII in both
+   * languages — see the note on the `dashboard` group — but a month is a date, and
+   * dates take Bangla numerals for a Bangla reader.
+   */
+  locale: Locale
+  /**
+   * `Dictionary['dashboard']` and not `T<'dashboard'>`, like `ReminderEntry`:
+   * this is a server component, so it can take the group as it is, and it needs
+   * to — `classDays` and `countedMarks` are functions, because English inflects
+   * on a count that Bangla ignores.
+   */
+  t: Dictionary['dashboard']
 }) {
   return (
     <Card>
       <div className="flex items-baseline justify-between gap-3">
-        <h2 className="font-semibold text-ink">ব্যাচভিত্তিক হাজিরা</h2>
-        <p className="shrink-0 text-sm text-ink-faint">{formatMonth(month)}</p>
+        <h2 className="font-semibold text-ink">{t.ratesTitle}</h2>
+        <p className="shrink-0 text-sm text-ink-faint">{formatMonth(month, locale)}</p>
       </div>
       {!isCurrentMonth && (
-        <p className="mt-0.5 text-sm text-ink-soft">
-          এ মাসে এখনো হাজিরা নেওয়া হয়নি — গত মাসের হিসাব দেখানো হচ্ছে
-        </p>
+        <p className="mt-0.5 text-sm text-ink-soft">{t.ratesFallback}</p>
       )}
 
       <ul className="mt-3 flex flex-col gap-3">
         {rows.map((row) => (
-          <Rate key={row.batchId} {...row} />
+          <Rate key={row.batchId} {...row} t={t} />
         ))}
       </ul>
     </Card>
@@ -87,8 +108,19 @@ export function AttendanceRates({
  * The bar is redundant with the number by design — it is the channel that works
  * while scrolling past at arm's length, and it is aria-hidden because a screen
  * reader already has the figure in words two elements earlier.
+ *
+ * No locale: every figure on this row is ASCII in both languages. A percentage
+ * forces that on the rate, and a row that then set its day count in Bangla
+ * numerals would be reading "৯ দিন ক্লাস · 91%" — two numeral systems in one
+ * line, which is harder to read than either convention followed alone.
  */
-function Rate({ batchName, ratePct, counted, sessions }: BatchRate) {
+function Rate({
+  batchName,
+  ratePct,
+  counted,
+  sessions,
+  t,
+}: BatchRate & { t: Dictionary['dashboard'] }) {
   // Unused when there is no rate, and computed unconditionally so the render
   // below stays free of non-null assertions.
   const band = bandFor(ratePct ?? 0)
@@ -99,11 +131,11 @@ function Rate({ batchName, ratePct, counted, sessions }: BatchRate) {
         <p className="min-w-0 truncate font-medium text-ink">{batchName}</p>
         <p className="shrink-0">
           {ratePct === null ? (
-            <span className="text-ink-faint">হিসাব নেই</span>
+            <span className="text-ink-faint">{t.noRate}</span>
           ) : (
             <>
               <span className={`num font-bold ${band.text}`}>{ratePct}%</span>
-              <span className="ml-2 text-sm text-ink-soft">{band.word}</span>
+              <span className="ml-2 text-sm text-ink-soft">{t.bands[band.key]}</span>
             </>
           )}
         </p>
@@ -125,12 +157,12 @@ function Rate({ batchName, ratePct, counted, sessions }: BatchRate) {
       )}
 
       <p className="mt-1 text-xs text-ink-faint">
-        <span className="num">{sessions}</span> দিন ক্লাস ·{' '}
+        <span className="num">{sessions}</span> {t.classDays(sessions)} ·{' '}
         {ratePct === null ? (
-          'সব ছুটি মঞ্জুর করা'
+          t.allExcused
         ) : (
           <>
-            <span className="num">{counted}</span> হাজিরার হিসাব
+            <span className="num">{counted}</span> {t.countedMarks(counted)}
           </>
         )}
       </p>

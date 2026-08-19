@@ -12,6 +12,8 @@
 import { useActionState, useEffect, useRef, useState } from 'react'
 
 import { Alert, Button } from '@/components/ui'
+import { fill } from '@/lib/i18n/fill'
+import type { T } from '@/lib/i18n'
 import { saveMarks, type SaveMarksState } from '../actions'
 
 export type MarksRow = {
@@ -29,12 +31,16 @@ export function MarksSheet({
   passMarks,
   rows,
   locked,
+  t,
+  common,
 }: {
   examId: string
   totalMarks: number
   passMarks: number | null
   rows: MarksRow[]
   locked: boolean
+  t: T<'marksSheet'>
+  common: T<'common'>
 }) {
   const [state, formAction, pending] = useActionState<SaveMarksState, FormData>(
     saveMarks,
@@ -124,22 +130,16 @@ export function MarksSheet({
       {state?.ok && (
         <div
           role="status"
-          className="rounded-xl border-2 border-brand-200 bg-brand-50 px-4 py-3
+          className="num rounded-xl border-2 border-brand-200 bg-brand-50 px-4 py-3
             font-medium text-brand-800"
         >
-          নম্বর সেভ হয়েছে — <span className="num">{state.entered}</span> জন
-          {state.absent > 0 && (
-            <>
-              , অনুপস্থিত <span className="num">{state.absent}</span>
-            </>
-          )}
+          {state.message}
         </div>
       )}
 
       {locked && (
         <p className="rounded-xl bg-surface-alt px-4 py-3 text-sm text-ink-soft">
-          এই পরীক্ষার ফলাফল অভিভাবকদের কাছে পাঠানো হয়েছে। এখন নম্বর বদলালে
-          অভিভাবকের কাছে থাকা SMS-এর সাথে মিলবে না।
+          {t.locked}
         </p>
       )}
 
@@ -186,7 +186,7 @@ export function MarksSheet({
                 <input
                   type="text"
                   inputMode="decimal"
-                  aria-label={`${row.name} — প্রাপ্ত নম্বর`}
+                  aria-label={fill(t.markLabel, { name: row.name })}
                   value={isAbsent ? '' : value}
                   disabled={isAbsent}
                   placeholder="—"
@@ -204,7 +204,7 @@ export function MarksSheet({
                 <button
                   type="button"
                   aria-pressed={isAbsent}
-                  aria-label={`${row.name} — অনুপস্থিত`}
+                  aria-label={fill(t.absentLabel, { name: row.name })}
                   onClick={() =>
                     setMarks((current) => ({
                       ...current,
@@ -223,7 +223,7 @@ export function MarksSheet({
 
                 <button
                   type="button"
-                  aria-label={`${row.name} — মন্তব্য`}
+                  aria-label={fill(t.noteLabel, { name: row.name })}
                   aria-expanded={openNote === row.enrollmentId}
                   onClick={() =>
                     setOpenNote(openNote === row.enrollmentId ? null : row.enrollmentId)
@@ -245,7 +245,7 @@ export function MarksSheet({
                   autoFocus
                   maxLength={60}
                   value={notes[row.enrollmentId] ?? ''}
-                  placeholder="মন্তব্য — অভিভাবকের SMS-এ যাবে, যদি জায়গা থাকে"
+                  placeholder={t.notePlaceholder}
                   onChange={(e) =>
                     setNotes((current) => ({
                       ...current,
@@ -267,16 +267,16 @@ export function MarksSheet({
       >
         <div className="mb-2 text-center text-sm text-ink-soft">
           <span className="num font-medium text-ink">{entered}</span>/
-          <span className="num">{rows.length}</span> জনের নম্বর দেওয়া হয়েছে
+          <span className="num">{rows.length}</span> {t.marked}
           {remaining > 0 && (
             <span className="text-ink-faint">
               {' '}
-              · পূর্ণমান <span className="num">{totalMarks}</span>
+              · {t.fullMarks} <span className="num">{totalMarks}</span>
             </span>
           )}
         </div>
         <Button type="submit" full disabled={pending}>
-          {pending ? 'সেভ হচ্ছে…' : 'নম্বর সেভ করুন'}
+          {pending ? common.saving : t.save}
         </Button>
       </div>
     </form>

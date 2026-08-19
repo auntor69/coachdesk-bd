@@ -1,11 +1,16 @@
 import Link from 'next/link'
 
 import { Card } from '@/components/ui'
-import { requireRole } from '@/lib/auth/session'
+import { requireRole, getSession } from '@/lib/auth/session'
 import { createClient } from '@/lib/supabase/server'
 import { formatDate } from '@/lib/bd/time'
+import { dict, localName, DEFAULT_LOCALE } from '@/lib/i18n'
 
-export const metadata = { title: 'পরীক্ষা — CoachDesk' }
+/** getSession, not requireRole — see the note on teach/page.tsx's own. */
+export async function generateMetadata() {
+  const session = await getSession()
+  return { title: `${dict(session?.locale ?? DEFAULT_LOCALE).exams.title} — CoachDesk` }
+}
 
 /**
  * Exams a teacher can enter marks for, newest first.
@@ -15,8 +20,10 @@ export const metadata = { title: 'পরীক্ষা — CoachDesk' }
  * answer costs the centre money if they guess wrong and send twice.
  */
 export default async function ExamsPage() {
-  await requireRole('teacher')
+  const session = await requireRole('teacher')
   const supabase = await createClient()
+  const locale = session.locale
+  const t = dict(locale).exams
 
   const { data: exams } = await supabase
     .from('exams')
@@ -33,10 +40,12 @@ export default async function ExamsPage() {
     return {
       id: exam.id,
       title: exam.title,
-      totalMarks: exam.total_marks,
+      // Number(), like the marks sheet: total_marks is numeric, so it arrives as
+      // "100.00" and rendering it raw showed a full mark nobody typed.
+      totalMarks: Number(exam.total_marks),
       examDate: exam.exam_date,
       batchName: batch?.name ?? '',
-      subjectName: subject?.name_bn || subject?.name || '',
+      subjectName: localName(subject, locale),
       resultCount: (exam.exam_results ?? []).length,
       smsSent: Boolean(exam.sms_sent_at),
       smsDeclined: Boolean(exam.sms_declined_at),
@@ -47,31 +56,28 @@ export default async function ExamsPage() {
     <div className="flex flex-col gap-5">
       <div className="flex items-end justify-between gap-3">
         <div>
-          <h1 className="text-xl font-bold text-ink">পরীক্ষা</h1>
-          <p className="mt-1 text-ink-soft">নম্বর দিন, ফলাফল অভিভাবককে জানান</p>
+          <h1 className="text-xl font-bold text-ink">{t.title}</h1>
+          <p className="mt-1 text-ink-soft">{t.subtitle}</p>
         </div>
         <Link
           href="/exams/new"
           className="inline-flex min-h-tap shrink-0 items-center justify-center
             rounded-xl bg-brand-600 px-5 font-semibold text-white"
         >
-          নতুন
+          {t.new}
         </Link>
       </div>
 
       {rows.length === 0 ? (
         <Card>
-          <h2 className="font-semibold text-ink">এখনও কোনো পরীক্ষা নেই</h2>
-          <p className="mt-1 text-sm text-ink-soft">
-            পরীক্ষা তৈরি করলে ব্যাচের সব শিক্ষার্থীর নাম নম্বর দেওয়ার জন্য
-            একসাথে চলে আসবে।
-          </p>
+          <h2 className="font-semibold text-ink">{t.emptyTitle}</h2>
+          <p className="mt-1 text-sm text-ink-soft">{t.emptyBody}</p>
           <Link
             href="/exams/new"
             className="mt-4 inline-flex min-h-tap items-center justify-center
               rounded-xl bg-brand-600 px-5 font-semibold text-white"
           >
-            পরীক্ষা তৈরি করুন
+            {t.create}
           </Link>
         </Card>
       ) : (
@@ -89,7 +95,7 @@ export default async function ExamsPage() {
                     {[row.batchName, row.subjectName].filter(Boolean).join(' · ')}
                   </p>
                   <p className="text-sm text-ink-faint">
-                    {formatDate(row.examDate)} · পূর্ণমান{' '}
+                    {formatDate(row.examDate, locale)} · {t.fullMarks}{' '}
                     <span className="num">{row.totalMarks}</span>
                   </p>
                 </div>
@@ -98,14 +104,14 @@ export default async function ExamsPage() {
                   <p className="num text-sm font-semibold text-ink">
                     {row.resultCount}
                   </p>
-                  <p className="text-xs text-ink-faint">নম্বর দেওয়া</p>
+                  <p className="text-xs text-ink-faint">{t.marked}</p>
                   {row.smsSent && (
                     <p className="mt-1 text-xs font-medium text-brand-700">
-                      SMS পাঠানো ✓
+                      {t.smsSent}
                     </p>
                   )}
                   {row.smsDeclined && !row.smsSent && (
-                    <p className="mt-1 text-xs text-ink-faint">SMS পাঠানো হয়নি</p>
+                    <p className="mt-1 text-xs text-ink-faint">{t.smsNotSent}</p>
                   )}
                 </div>
               </Link>

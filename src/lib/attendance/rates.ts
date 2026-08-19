@@ -62,7 +62,8 @@ export type DashboardRates = {
  * almost nothing marked yet, and a card that reads empty on those days is empty
  * exactly when an owner is thinking hardest about the month that just closed.
  * Mid-month it never fires, and the card silently becomes the running total of
- * the month in progress — the same thing "এ মাসে আদায়" already does two cards up.
+ * the month in progress — the same thing `dashboard.collected` already does two
+ * cards up.
  *
  * Worst first, which is not how batches are ordered anywhere else in the app. An
  * owner reads two rows of this card and stops, so those two rows have to be the
@@ -77,6 +78,14 @@ export type DashboardRates = {
 export function ratesForDashboard(
   rows: RateRow[] | null | undefined,
   period: string,
+  /**
+   * `dashboard.unknownBatch`, in the reader's language. A parameter rather than a
+   * literal for the same reason `toRow` on the fee board takes one: this module is
+   * unit-tested under `node --test`, which cannot resolve `@/lib/i18n`, and a
+   * Bangla word hard-coded in a pure function would be the one string on an
+   * English dashboard that never translated.
+   */
+  unknownBatch: string,
 ): DashboardRates {
   const all = rows ?? []
   const thisMonth = all.filter((r) => r.period_month === period)
@@ -89,7 +98,7 @@ export function ratesForDashboard(
       // Unreachable through the view — batches.name is not null — but the
       // generated type says otherwise and a card headed "undefined" is worse
       // than a card headed with a word.
-      batchName: r.batch_name ?? 'অজানা ব্যাচ',
+      batchName: r.batch_name ?? unknownBatch,
       ratePct: r.rate_pct,
       counted: r.counted ?? 0,
       sessions: r.sessions ?? 0,

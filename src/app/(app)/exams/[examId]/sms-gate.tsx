@@ -17,17 +17,47 @@
 import { useActionState } from 'react'
 
 import { Alert, Button } from '@/components/ui'
+import type { T } from '@/lib/i18n'
 import {
   declineResultSms,
   sendResultSms,
   type SmsGateState,
 } from '../actions'
 
+/**
+ * The one real message, written by the page.
+ *
+ * `heading` and `segmentNote` arrive finished rather than as a name and a number,
+ * for the same reason `lines` below does — and because the page has the student's
+ * name to hand anyway.
+ */
 export type GatePreview = {
-  studentName: string
-  phone: string
+  heading: string
   body: string
-  segments: number
+  segmentNote: string
+}
+
+/**
+ * Every sentence on this screen with a figure in it, resolved by the page.
+ *
+ * "40 guardians" and "1 guardian", "12 credits" and "1 credit": English inflects
+ * on every count here, and a client component may not be handed a dictionary
+ * function (see `T` in lib/i18n). Templates filled in the browser would work for
+ * Bangla and produce "1 guardians" in English, so these are written on the server
+ * where the plural can branch.
+ *
+ * Written unconditionally, including the ones this render will not show. Seven
+ * short strings cost less than the confusion of a nullable line whose emptiness
+ * means two different things.
+ */
+export type GateLines = {
+  recipients: string
+  cost: string
+  balance: string
+  shortfall: string
+  withoutMarks: string
+  noPhone: string
+  optedOut: string
 }
 
 export function SmsGate({
@@ -44,6 +74,9 @@ export function SmsGate({
   declinedAt,
   providerLive,
   canSend,
+  t,
+  common,
+  lines,
 }: {
   examId: string
   recipientCount: number
@@ -58,6 +91,9 @@ export function SmsGate({
   declinedAt: string | null
   providerLive: boolean
   canSend: boolean
+  t: T<'smsGate'>
+  common: T<'common'>
+  lines: GateLines
 }) {
   const [sendState, sendAction, sending] = useActionState<SmsGateState, FormData>(
     sendResultSms,
@@ -68,7 +104,11 @@ export function SmsGate({
     FormData
   >(declineResultSms, null)
 
-  const justSent = sendState?.ok === true && 'sent' in sendState
+  // The success shape carries the finished sentence, so its presence *is* "sent".
+  // Kept as one derived value rather than a boolean plus a second narrowing at
+  // the point of use, which needed a non-null assertion to convince tsc.
+  const sentMessage =
+    sendState?.ok === true && 'message' in sendState ? sendState.message : null
   const justDeclined = declineState?.ok === true && 'declined' in declineState
   const error =
     sendState?.ok === false
@@ -78,26 +118,23 @@ export function SmsGate({
         : null
 
   // Already delivered, this visit or a previous one. Nothing left to decide.
-  if (alreadySentAt || justSent) {
+  if (alreadySentAt || sentMessage) {
     return (
       <section
         className="rounded-2xl border-2 border-brand-200 bg-brand-50 p-5"
         aria-labelledby="sms-sent-heading"
       >
         <h2 id="sms-sent-heading" className="font-bold text-brand-800">
-          অভিভাবকদের কাছে পাঠানো হয়েছে
+          {t.sentTitle}
         </h2>
-        {justSent && 'sent' in sendState! && (
-          <p className="mt-1 text-sm text-brand-800">
-            <span className="num font-semibold">{sendState.sent}</span> জন
-            অভিভাবক · <span className="num font-semibold">{sendState.charged}</span>{' '}
-            ক্রেডিট খরচ হয়েছে
+        {sentMessage && (
+          <p className="num mt-1 text-sm font-semibold text-brand-800">
+            {sentMessage}
           </p>
         )}
         {!providerLive && (
           <p className="mt-3 rounded-xl bg-white/70 px-3 py-2 text-sm text-ink-soft">
-            SMS গুলো লাইনে আছে। আপনার কোচিংয়ের নামে sender ID অনুমোদন হলেই
-            অভিভাবকের ফোনে পৌঁছাতে শুরু করবে — তখন এগুলো নিজে থেকেই চলে যাবে।
+            {t.queuedNote}
           </p>
         )}
       </section>
@@ -107,11 +144,8 @@ export function SmsGate({
   if (!canSend) {
     return (
       <section className="rounded-2xl border border-line bg-surface-alt p-5">
-        <h2 className="font-semibold text-ink">ফলাফল SMS</h2>
-        <p className="mt-1 text-sm text-ink-soft">
-          আপনার SMS পাঠানোর অনুমতি নেই। কোচিংয়ের মালিক চাইলে সেটিংস থেকে অনুমতি
-          দিতে পারেন।
-        </p>
+        <h2 className="font-semibold text-ink">{t.resultSms}</h2>
+        <p className="mt-1 text-sm text-ink-soft">{t.noPermission}</p>
       </section>
     )
   }
@@ -119,16 +153,12 @@ export function SmsGate({
   if (recipientCount === 0) {
     return (
       <section className="rounded-2xl border border-line bg-surface-alt p-5">
-        <h2 className="font-semibold text-ink">ফলাফল SMS</h2>
+        <h2 className="font-semibold text-ink">{t.resultSms}</h2>
         <p className="mt-1 text-sm text-ink-soft">
-          {withoutMarks > 0
-            ? 'নম্বর সেভ করার পর অভিভাবকদের কাছে SMS পাঠানোর সুযোগ আসবে।'
-            : 'পাঠানোর মতো কোনো অভিভাবকের নম্বর নেই।'}
+          {withoutMarks > 0 ? t.saveMarksFirst : t.noNumbers}
         </p>
         {skippedNoPhone > 0 && (
-          <p className="num mt-2 text-sm text-ink-faint">
-            {skippedNoPhone} জনের অভিভাবকের ফোন নম্বর নেই
-          </p>
+          <p className="num mt-2 text-sm text-ink-faint">{lines.noPhone}</p>
         )}
       </section>
     )
@@ -142,24 +172,24 @@ export function SmsGate({
       aria-labelledby="sms-gate-heading"
     >
       <h2 id="sms-gate-heading" className="text-lg font-bold text-ink">
-        অভিভাবকদের ফলাফল জানাবেন?
+        {t.askTitle}
       </h2>
 
       <dl className="mt-4 grid grid-cols-2 gap-3">
         <div className="rounded-xl bg-surface-alt px-3 py-2">
-          <dt className="text-xs text-ink-soft">যাবে</dt>
-          <dd className="num text-xl font-bold text-ink">{recipientCount} জনের কাছে</dd>
+          <dt className="text-xs text-ink-soft">{t.willGoTo}</dt>
+          <dd className="num text-xl font-bold text-ink">{lines.recipients}</dd>
         </div>
         <div className="rounded-xl bg-surface-alt px-3 py-2">
-          <dt className="text-xs text-ink-soft">খরচ</dt>
-          <dd className="num text-xl font-bold text-ink">{creditCost} ক্রেডিট</dd>
+          <dt className="text-xs text-ink-soft">{t.cost}</dt>
+          <dd className="num text-xl font-bold text-ink">{lines.cost}</dd>
         </div>
       </dl>
 
       <p className="num mt-2 text-sm text-ink-soft">
-        এখন আছে {balance} ক্রেডিট
+        {lines.balance}
         {shortfall > 0 && (
-          <span className="font-semibold text-absent"> · {shortfall} কম পড়ছে</span>
+          <span className="font-semibold text-absent"> · {lines.shortfall}</span>
         )}
       </p>
 
@@ -167,33 +197,28 @@ export function SmsGate({
           the abstract has not actually seen what a parent will read. */}
       {preview && (
         <div className="mt-4">
-          <p className="text-sm font-medium text-ink">
-            {preview.studentName}-এর অভিভাবক যা পাবেন
-          </p>
+          <p className="text-sm font-medium text-ink">{preview.heading}</p>
           <blockquote
             className="mt-1.5 rounded-xl rounded-bl-sm border border-line
               bg-surface-alt px-3 py-2 text-[15px] leading-relaxed text-ink"
           >
             {preview.body}
           </blockquote>
-          <p className="num mt-1 text-xs text-ink-faint">
-            {preview.segments} SMS · প্রত্যেকের নাম ও নম্বর আলাদা করে বসানো হবে
-          </p>
+          <p className="num mt-1 text-xs text-ink-faint">{preview.segmentNote}</p>
         </div>
       )}
 
       {anyMultiSegment && (
         <p className="mt-3 rounded-xl bg-surface-alt px-3 py-2 text-sm text-ink-soft">
-          কিছু মন্তব্য লম্বা হওয়ায় সেগুলো ২টি SMS হিসেব হবে। মন্তব্য ছোট করলে
-          খরচ কমবে।
+          {t.longNote}
         </p>
       )}
 
       {(skippedOptedOut > 0 || skippedNoPhone > 0 || withoutMarks > 0) && (
         <ul className="num mt-3 flex flex-col gap-1 text-sm text-ink-faint">
-          {withoutMarks > 0 && <li>{withoutMarks} জনের নম্বর এখনও দেওয়া হয়নি</li>}
-          {skippedNoPhone > 0 && <li>{skippedNoPhone} জনের অভিভাবকের নম্বর নেই</li>}
-          {skippedOptedOut > 0 && <li>{skippedOptedOut} জনের SMS বন্ধ আছে</li>}
+          {withoutMarks > 0 && <li>{lines.withoutMarks}</li>}
+          {skippedNoPhone > 0 && <li>{lines.noPhone}</li>}
+          {skippedOptedOut > 0 && <li>{lines.optedOut}</li>}
         </ul>
       )}
 
@@ -205,7 +230,7 @@ export function SmsGate({
 
       {(declinedAt || justDeclined) && (
         <p className="mt-4 rounded-xl bg-surface-alt px-3 py-2 text-sm text-ink-soft">
-          এই পরীক্ষার SMS পাঠানো হয়নি। চাইলে পরে পাঠাতে পারবেন।
+          {t.declined}
         </p>
       )}
 
@@ -215,7 +240,7 @@ export function SmsGate({
         <form action={sendAction}>
           <input type="hidden" name="examId" value={examId} />
           <Button type="submit" full disabled={sending || declining || shortfall > 0}>
-            {sending ? 'পাঠানো হচ্ছে…' : 'অভিভাবককে পাঠান'}
+            {sending ? t.sending : t.send}
           </Button>
         </form>
 
@@ -227,14 +252,12 @@ export function SmsGate({
             full
             disabled={sending || declining}
           >
-            {declining ? 'সেভ হচ্ছে…' : 'এখন পাঠাবেন না'}
+            {declining ? common.saving : t.decline}
           </Button>
         </form>
       </div>
 
-      <p className="mt-3 text-center text-xs text-ink-faint">
-        পাঠানোর পর আর ফেরানো যায় না
-      </p>
+      <p className="mt-3 text-center text-xs text-ink-faint">{t.noUndo}</p>
     </section>
   )
 }

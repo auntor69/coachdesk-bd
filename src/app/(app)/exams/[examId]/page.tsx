@@ -2,15 +2,21 @@ import Link from 'next/link'
 import { notFound } from 'next/navigation'
 
 import { Card } from '@/components/ui'
-import { requireRole } from '@/lib/auth/session'
+import { requireRole, getSession } from '@/lib/auth/session'
 import { createClient } from '@/lib/supabase/server'
 import { formatDate } from '@/lib/bd/time'
 import { planResultSms } from '@/lib/sms/result-dispatch'
 import { smsProviderConfigured } from '@/lib/sms/provider'
+import { dict, localName, DEFAULT_LOCALE } from '@/lib/i18n'
 import { MarksSheet, type MarksRow } from './marks-sheet'
 import { SmsGate } from './sms-gate'
 
-export const metadata = { title: 'নম্বর — CoachDesk' }
+/** getSession, not requireRole — see the note on teach/page.tsx's own. */
+export async function generateMetadata() {
+  const session = await getSession()
+  const locale = session?.locale ?? DEFAULT_LOCALE
+  return { title: `${dict(locale).exams.marksTitle} — CoachDesk` }
+}
 
 /**
  * One exam: the marks sheet, then the parent-SMS decision under it.
@@ -32,6 +38,9 @@ export default async function ExamPage({
   const { examId } = await params
   const session = await requireRole('teacher')
   const supabase = await createClient()
+  const locale = session.locale
+  const d = dict(locale)
+  const t = d.exams
 
   // RLS decides visibility. A miss is a 404, not a 403, so the URL cannot be
   // used to find out which exam ids exist in other centres.
@@ -126,15 +135,21 @@ export default async function ExamPage({
   const subject = Array.isArray(exam.subjects) ? exam.subjects[0] : exam.subjects
   const examType = Array.isArray(exam.exam_types) ? exam.exam_types[0] : exam.exam_types
 
-  const subtitle = [
-    batch?.name,
-    subject?.name_bn || subject?.name,
-    examType?.name_bn || examType?.name,
-  ]
+  const subtitle = [batch?.name, localName(subject, locale), localName(examType, locale)]
     .filter(Boolean)
     .join(' · ')
 
-  const preview = plan?.recipients[0]
+  const first = plan?.recipients[0]
+
+  // Every counted sentence on the gate, written here. The gate is a client
+  // component and cannot call a dictionary function; see GateLines for why that
+  // matters more in English than in Bangla.
+  const recipientCount = plan?.recipients.length ?? 0
+  const creditCost = plan?.creditCost ?? 0
+  const balance = session.active.smsCreditBalance
+  const skippedNoPhone = plan?.skippedNoPhone ?? 0
+  const skippedOptedOut = plan?.skippedOptedOut ?? 0
+  const withoutMarks = plan?.withoutMarks ?? rows.length
 
   return (
     <div className="flex flex-col gap-5">
@@ -143,17 +158,17 @@ export default async function ExamPage({
           href="/exams"
           className="inline-flex min-h-tap items-center text-ink-soft hover:text-ink"
         >
-          ← পরীক্ষা
+          ← {t.title}
         </Link>
         <h1 className="mt-1 text-xl font-bold text-ink">{exam.title}</h1>
         {subtitle && <p className="mt-0.5 text-ink-soft">{subtitle}</p>}
         <p className="mt-0.5 text-sm text-ink-faint">
-          {formatDate(exam.exam_date)} · পূর্ণমান{' '}
+          {formatDate(exam.exam_date, locale)} · {t.fullMarks}{' '}
           <span className="num">{Number(exam.total_marks)}</span>
           {exam.pass_marks !== null && (
             <>
               {' '}
-              · পাস <span className="num">{Number(exam.pass_marks)}</span>
+              · {t.pass} <span className="num">{Number(exam.pass_marks)}</span>
             </>
           )}
         </p>
@@ -161,11 +176,8 @@ export default async function ExamPage({
 
       {rows.length === 0 ? (
         <Card>
-          <h2 className="font-semibold text-ink">এই ব্যাচে শিক্ষার্থী নেই</h2>
-          <p className="mt-1 text-sm text-ink-soft">
-            ব্যাচে শিক্ষার্থী যোগ করলে তাদের নাম এখানে নম্বর দেওয়ার জন্য চলে
-            আসবে।
-          </p>
+          <h2 className="font-semibold text-ink">{t.noStudentsTitle}</h2>
+          <p className="mt-1 text-sm text-ink-soft">{t.noStudentsBody}</p>
         </Card>
       ) : (
         <>
@@ -175,31 +187,45 @@ export default async function ExamPage({
             passMarks={exam.pass_marks === null ? null : Number(exam.pass_marks)}
             rows={rows}
             locked={Boolean(exam.sms_sent_at)}
+            t={d.marksSheet}
+            common={d.common}
           />
 
           <SmsGate
             examId={exam.id}
-            recipientCount={plan?.recipients.length ?? 0}
-            creditCost={plan?.creditCost ?? 0}
-            balance={session.active.smsCreditBalance}
+            recipientCount={recipientCount}
+            creditCost={creditCost}
+            balance={balance}
             preview={
-              preview
+              first
                 ? {
-                    studentName: preview.studentName,
-                    phone: preview.phone,
-                    body: preview.body,
-                    segments: preview.segments,
+                    heading: t.previewFor(first.studentName),
+                    body: first.body,
+                    segmentNote: `${t.segments(first.segments)} · ${
+                      d.smsGate.perPersonNote
+                    }`,
                   }
                 : null
             }
-            skippedOptedOut={plan?.skippedOptedOut ?? 0}
-            skippedNoPhone={plan?.skippedNoPhone ?? 0}
-            withoutMarks={plan?.withoutMarks ?? rows.length}
+            skippedOptedOut={skippedOptedOut}
+            skippedNoPhone={skippedNoPhone}
+            withoutMarks={withoutMarks}
             anyMultiSegment={plan?.anyMultiSegment ?? false}
             alreadySentAt={exam.sms_sent_at}
             declinedAt={exam.sms_declined_at}
             providerLive={smsProviderConfigured()}
             canSend={canSend}
+            t={d.smsGate}
+            common={d.common}
+            lines={{
+              recipients: t.recipients(recipientCount),
+              cost: t.credits(creditCost),
+              balance: t.balanceNow(balance),
+              shortfall: t.shortfall(creditCost - balance),
+              withoutMarks: t.withoutMarksCount(withoutMarks),
+              noPhone: t.noPhoneCount(skippedNoPhone),
+              optedOut: t.optedOutCount(skippedOptedOut),
+            }}
           />
         </>
       )}
