@@ -14,6 +14,7 @@ import { useActionState, useEffect, useMemo, useRef, useState } from 'react'
 import { Alert, Button } from '@/components/ui'
 import { clearDraft, useSavedDraft, writeDraft } from '@/lib/drafts'
 import { fill } from '@/lib/i18n/fill'
+import { MAX_NOTE } from '@/lib/limits'
 import type { T } from '@/lib/i18n'
 import { saveMarks, type SaveMarksState } from '../actions'
 
@@ -253,7 +254,7 @@ export function MarksSheet({
                 <input
                   type="text"
                   autoFocus
-                  maxLength={60}
+                  maxLength={MAX_NOTE}
                   value={note}
                   placeholder={t.notePlaceholder}
                   onChange={(e) => setNote(row.enrollmentId, e.target.value)}

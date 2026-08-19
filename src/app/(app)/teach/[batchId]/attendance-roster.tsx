@@ -12,6 +12,7 @@ import { useActionState, useEffect, useMemo, useRef, useState } from 'react'
 
 import { Alert, Button } from '@/components/ui'
 import { clearDraft, useSavedDraft, writeDraft } from '@/lib/drafts'
+import { MAX_TEXT } from '@/lib/limits'
 import type { T } from '@/lib/i18n'
 import type { AttendanceStatus } from '@/lib/supabase/types'
 import { saveAttendance, type SaveState } from './actions'
@@ -245,6 +246,7 @@ export function AttendanceRoster({
           name="note"
           defaultValue={note}
           rows={2}
+          maxLength={MAX_TEXT}
           placeholder={t.notePlaceholder}
           className="rounded-xl border-2 border-line bg-white px-4 py-3 text-base
             outline-none placeholder:text-ink-faint focus:border-brand-500"

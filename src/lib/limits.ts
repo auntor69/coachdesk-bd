@@ -29,3 +29,46 @@
  * describe what Postgres can hold.
  */
 export const MAX_NAME = 80
+
+/**
+ * A code or a short label that sits in a table cell: a centre's own roll number,
+ * "HSC ২য় বর্ষ", a bKash transaction id.
+ *
+ * Not a name, because nobody reads these as words — they get compared against a
+ * receipt or a register, and a long one means somebody pasted the wrong thing.
+ */
+export const MAX_LABEL = 40
+
+/**
+ * A teacher's one line about one student's marks. Sixty because it also has to
+ * fit in the result SMS after the marks and the centre's name, and because a
+ * teacher writing more than that on forty students will not finish.
+ */
+export const MAX_NOTE = 60
+
+/**
+ * A paragraph that stays on the screen: why today's class was short, what a
+ * parent said when they paid half.
+ *
+ * Bigger than MAX_NOTE because nothing carries it anywhere — the 60 above is
+ * small because it rides inside an SMS somebody pays for, and this one only ever
+ * gets read by the person who opens the record. Still capped, because it arrives
+ * from a public endpoint and lands in a column.
+ */
+export const MAX_TEXT = 200
+
+/**
+ * Cuts an optional field down to its cap instead of refusing the whole write.
+ *
+ * For the fields a browser already capped, which is all of them: `maxLength`
+ * stopped the keystrokes, so anything longer arriving here came from something
+ * that is not the form. That is worth defending against — an unbounded string
+ * from a public endpoint lands in a column and then in a list on somebody's
+ * phone — but it is not worth a sentence, because no real owner will ever read
+ * it. The required fields still refuse and say why: `name` is the one an owner
+ * actually typed, and silently shortening it would be a lie.
+ */
+export function clamp(value: string, max: number): string {
+  return value.length > max ? value.slice(0, max) : value
+}
+

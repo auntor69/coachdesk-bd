@@ -14,6 +14,7 @@ import { revalidatePath } from 'next/cache'
 import { createClient } from '@/lib/supabase/server'
 import { requireRole, getSession, AuthError } from '@/lib/auth/session'
 import { todayInDhaka } from '@/lib/bd/time'
+import { MAX_TEXT, clamp } from '@/lib/limits'
 import { dict, DEFAULT_LOCALE } from '@/lib/i18n'
 import type { AttendanceStatus } from '@/lib/supabase/types'
 
@@ -60,7 +61,10 @@ export async function saveAttendance(
 
   const batchId = String(formData.get('batchId') ?? '')
   const rawDate = String(formData.get('sessionDate') ?? '')
-  const note = String(formData.get('note') ?? '').trim()
+  // The roster's own box stops at MAX_TEXT, so a longer one did not come from
+  // the roster. Clamped rather than refused: the note is an aside, and losing a
+  // teacher's whole register of ticks over it would be the wrong trade.
+  const note = clamp(String(formData.get('note') ?? '').trim(), MAX_TEXT)
 
   if (!batchId) return { ok: false, error: t.errors.noBatch }
 

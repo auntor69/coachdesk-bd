@@ -1,7 +1,8 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 
-import { parseRoster, readyRows, MAX_IMPORT_ROWS, MAX_STUDENT_NAME } from '../src/lib/bd/roster.ts'
+import { parseRoster, readyRows, MAX_IMPORT_ROWS } from '../src/lib/bd/roster.ts'
+import { MAX_NAME } from '../src/lib/limits.ts'
 
 /** Shorthand: the one row a single-line paste produces. */
 function one(line: string) {
@@ -112,8 +113,21 @@ test('a sentence with a number in it is a problem, not a student', () => {
   // on the end of it. No commas, so it does not split into columns — it arrives
   // as one very long "name", which is the only signal that it is not one.
   const note = 'পরীক্ষার হলে উপস্থিত থাকতে হবে '.repeat(4).trim()
-  assert.ok(note.length > MAX_STUDENT_NAME)
+  assert.ok(note.length > MAX_NAME)
   assert.equal(one(`${note} 01712345678`).problem, 'name-too-long')
+})
+
+test('a margin note is not filed as somebody’s father', () => {
+  // The guardian column is believed on a heuristic — a later column with no
+  // digits in it. A paragraph written between two students has no digits either,
+  // and this line is otherwise perfectly importable, so nothing else would have
+  // stopped it reaching the column.
+  const aside = 'অভিবাবকের সাখাতের সময় পরিবর্তন করা হয়েছে '.repeat(3).trim()
+  assert.ok(aside.length > MAX_NAME)
+  const row = one(`রাফিদ হাসান, ${aside}, 01712345678`)
+  assert.equal(row.problem, null)
+  assert.equal(row.name, 'রাফিদ হাসান')
+  assert.equal(row.guardianName, null)
 })
 
 test('a big paste is not truncated by the parser', () => {

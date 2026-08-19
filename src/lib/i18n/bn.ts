@@ -74,7 +74,7 @@ export const bn = {
      * because two screens saying different numbers for the same cap is the
      * failure this file exists to prevent.
      *
-     * A `{n}` template, filled by `nameTooLong()` in @/lib/limits from the same
+     * A `{n}` template, filled by `nameTooLong()` in ./messages.ts from the same
      * constant the checks read. Eight files enforce this cap and one of them is a
      * browser `maxLength`; a sentence with the number typed into it would go
      * stale the first time somebody moved it, and the reader would be told ৮০

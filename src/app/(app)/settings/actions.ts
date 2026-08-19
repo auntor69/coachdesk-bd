@@ -26,7 +26,7 @@ import {
   rosterKey,
 } from '@/lib/bd/roster'
 import { MIN_PASSWORD } from '@/lib/auth/password'
-import { MAX_NAME } from '@/lib/limits'
+import { MAX_NAME, MAX_LABEL, clamp } from '@/lib/limits'
 import { dict, DEFAULT_LOCALE } from '@/lib/i18n'
 import { nameTooLong, passwordTooShort } from '@/lib/i18n/messages'
 import { roomFor, wouldExceed, type LimitKey } from '@/lib/plans'
@@ -137,7 +137,11 @@ export async function createSubject(
   const kind = String(formData.get('kind') ?? 'academic') as SubjectKind
 
   if (!name) return { error: t.subjects.errors.nameRequired }
-  if (name.length > MAX_NAME) return { error: nameTooLong(session.locale) }
+  // Both names, because both end up in the same lists. The Bangla one is
+  // optional, not exempt.
+  if (name.length > MAX_NAME || nameBn.length > MAX_NAME) {
+    return { error: nameTooLong(session.locale) }
+  }
 
   if (await overLimit(session, 'subjects', 'maxSubjects')) {
     return { error: t.errors.planLimit }
@@ -175,7 +179,9 @@ export async function createExamType(
   const nameBn = String(formData.get('nameBn') ?? '').trim()
 
   if (!name) return { error: t.examTypes.errors.nameRequired }
-  if (name.length > MAX_NAME) return { error: nameTooLong(session.locale) }
+  if (name.length > MAX_NAME || nameBn.length > MAX_NAME) {
+    return { error: nameTooLong(session.locale) }
+  }
 
   const supabase = await createClient()
   const { error } = await supabase.from('exam_types').insert({
@@ -314,12 +320,16 @@ export async function createStudent(
   const rawGuardianPhone = String(formData.get('guardianPhone') ?? '')
   const guardianName = String(formData.get('guardianName') ?? '').trim()
   const rawStudentPhone = String(formData.get('phone') ?? '')
-  const institution = String(formData.get('institution') ?? '').trim()
-  const classLevel = String(formData.get('classLevel') ?? '').trim()
-  const studentCode = String(formData.get('studentCode') ?? '').trim()
+  // Clamped rather than refused: every one of these is optional, every one is
+  // capped in the browser already, and a value over the cap therefore did not
+  // come from the form. See `clamp` in @/lib/limits.
+  const institution = clamp(String(formData.get('institution') ?? '').trim(), MAX_NAME)
+  const classLevel = clamp(String(formData.get('classLevel') ?? '').trim(), MAX_LABEL)
+  const studentCode = clamp(String(formData.get('studentCode') ?? '').trim(), MAX_LABEL)
 
   if (!name) return { error: t.students.errors.nameRequired }
   if (name.length > MAX_NAME) return { error: nameTooLong(session.locale) }
+  if (guardianName.length > MAX_NAME) return { error: nameTooLong(session.locale) }
 
   // The guardian's number is the product's whole delivery channel — results and
   // fee reminders go there. Required, and validated as a real BD mobile rather

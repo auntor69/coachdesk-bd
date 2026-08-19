@@ -23,7 +23,7 @@ import {
 } from '@/lib/auth/session'
 import { todayInDhaka } from '@/lib/bd/time'
 import { planResultSms } from '@/lib/sms/result-dispatch'
-import { MAX_NAME } from '@/lib/limits'
+import { MAX_NAME, MAX_NOTE, clamp } from '@/lib/limits'
 import { dict, DEFAULT_LOCALE } from '@/lib/i18n'
 import { nameTooLong } from '@/lib/i18n/messages'
 
@@ -221,7 +221,13 @@ export async function saveMarks(
     if (!validIds.has(enrollmentId)) continue
 
     const raw = String(value).trim()
-    const note = String(formData.get(`note:${enrollmentId}`) ?? '').trim()
+    // Clamped, not refused. The sheet's own field stops at MAX_NOTE, so a
+    // longer one came from something other than the sheet — and this string is
+    // read twice more, on /me and inside the result SMS.
+    const note = clamp(
+      String(formData.get(`note:${enrollmentId}`) ?? '').trim(),
+      MAX_NOTE,
+    )
 
     if (raw === 'absent') {
       submitted.push({ enrollmentId, marks: null, isAbsent: true, note: note || null })

@@ -15,7 +15,7 @@ import { useRouter } from 'next/navigation'
 import { Alert, Button, Field } from '@/components/ui'
 import { formatBdMobile, normalizeBdMobile } from '@/lib/bd/phone'
 import { createStudent, type ActionState } from '../../actions'
-import { MAX_NAME } from '@/lib/limits'
+import { MAX_NAME, MAX_LABEL } from '@/lib/limits'
 
 type BatchOption = { id: string; label: string }
 
@@ -117,13 +117,13 @@ export function StudentForm({ batches }: { batches: BatchOption[] }) {
             placeholder="ঢাকা কলেজ"
             maxLength={MAX_NAME}
           />
-          <Field label="শ্রেণি" name="classLevel" placeholder="HSC ২য় বর্ষ" maxLength={40} />
+          <Field label="শ্রেণি" name="classLevel" placeholder="HSC ২য় বর্ষ" maxLength={MAX_LABEL} />
           <Field
             label="আইডি নম্বর"
             hint="সেন্টারের নিজের রোল বা আইডি, থাকলে"
             name="studentCode"
             placeholder="২০২৬-০৪১"
-            maxLength={40}
+            maxLength={MAX_LABEL}
           />
         </div>
       </details>

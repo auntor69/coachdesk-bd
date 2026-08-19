@@ -25,6 +25,12 @@
  */
 
 import { normalizeBdMobile, toAsciiDigits } from './phone.ts'
+// The same cap the one-at-a-time form uses, checked here rather than in the
+// action so the preview and the import agree on which lines count: a stray
+// instruction in the middle of a register ("সবাই সকাল ৮টায় আসবে 01712345678")
+// parses to a name of sentence length, and it has to be visible as a problem
+// the owner can fix rather than a row dropped later.
+import { MAX_NAME } from '../limits.ts'
 
 /**
  * Why a paste is capped at all: it goes to Postgres as one jsonb value inside
@@ -34,13 +40,6 @@ import { normalizeBdMobile, toAsciiDigits } from './phone.ts'
  */
 export const MAX_IMPORT_ROWS = 500
 
-/**
- * Same cap the one-at-a-time form uses. Enforced here rather than in the action
- * so that the preview and the import agree on which lines count: a stray note in
- * the middle of a register ("সবাই সকাল ৮টায় আসবে 01712345678") parses to a name
- * of sentence length, and it has to be visible as a problem, not dropped later.
- */
-export const MAX_STUDENT_NAME = 80
 
 export type RosterProblem =
   /** No digits in the line at all — usually a header row or a section title. */
@@ -177,7 +176,11 @@ function nameFromRemainder(remainder: string) {
     // its digits and then pass as a perfectly plausible father.
     if (/\d/.test(toAsciiDigits(part))) continue
     const candidate = cleanNamePart(part)
-    if (candidate !== '') {
+    // A column of sentence length is a note somebody wrote in the margin, not a
+    // father's name. Skipped rather than shortened, because half a sentence
+    // filed as a guardian is worse than no guardian at all — and the student's
+    // own name and number on that line are still perfectly good.
+    if (candidate !== '' && candidate.length <= MAX_NAME) {
       guardianName = candidate
       break
     }
@@ -230,7 +233,7 @@ export function parseRoster(text: string): RosterRow[] {
       problem = /\d/.test(ascii) ? 'bad-phone' : 'no-phone'
     } else if (name === null) {
       problem = 'no-name'
-    } else if (name.length > MAX_STUDENT_NAME) {
+    } else if (name.length > MAX_NAME) {
       problem = 'name-too-long'
     } else {
       // Same key the SQL uses, so the preview's count and the import's count

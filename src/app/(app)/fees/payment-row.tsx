@@ -19,6 +19,7 @@ import { useActionState, useEffect, useRef, useState } from 'react'
 
 import { Alert, Button, Field } from '@/components/ui'
 import { formatDate } from '@/lib/bd/time'
+import { MAX_LABEL } from '@/lib/limits'
 import type { Locale, T } from '@/lib/i18n'
 import { fill } from '@/lib/i18n/fill'
 import { formatTaka as taka } from '@/lib/money'
@@ -251,7 +252,7 @@ export function PaymentRow({
                     label={`${t.reference} (${common.optional})`}
                     name="reference"
                     placeholder="8N7A6B5C4D"
-                    maxLength={40}
+                    maxLength={MAX_LABEL}
                     className="num"
                   />
                 )}

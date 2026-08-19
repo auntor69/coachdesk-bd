@@ -23,6 +23,7 @@ import {
 import { parseTaka, formatTaka, sumTaka } from '@/lib/money'
 import { currentPeriodMonth } from '@/lib/bd/time'
 import { normalizeBdMobile } from '@/lib/bd/phone'
+import { MAX_LABEL, MAX_TEXT, clamp } from '@/lib/limits'
 import { dict, DEFAULT_LOCALE } from '@/lib/i18n'
 import type { FeeReminderChannel, PaymentMethod } from '@/lib/supabase/types'
 
@@ -46,13 +47,6 @@ const METHODS = new Set<PaymentMethod>([
 /** First day of a month, and nothing that merely looks like one. */
 const MONTH_RE = /^\d{4}-\d{2}-01$/
 
-/**
- * A bKash transaction id is 10 alphanumeric characters; Nagad and bank refs
- * vary. Long enough for any of them, short enough that the column is not a
- * free-text field someone pastes a conversation into.
- */
-const MAX_REFERENCE = 40
-const MAX_NOTE = 200
 
 /**
  * Fees are owner-and-manager work. A teacher with can_view_fees may read the
@@ -213,12 +207,12 @@ export async function recordPayment(
   const rawMethod = String(formData.get('method') ?? 'cash') as PaymentMethod
   const method = METHODS.has(rawMethod) ? rawMethod : 'cash'
 
-  const reference = String(formData.get('reference') ?? '')
-    .trim()
-    .slice(0, MAX_REFERENCE)
-  const note = String(formData.get('note') ?? '')
-    .trim()
-    .slice(0, MAX_NOTE)
+  // Both clamped rather than refused, for the reason `clamp` gives: the form
+  // caps them, so a longer one is not the form. A transaction id is checked
+  // against a bKash SMS, so a truncated one is visibly wrong to the person who
+  // typed it — which is the right kind of wrong.
+  const reference = clamp(String(formData.get('reference') ?? '').trim(), MAX_LABEL)
+  const note = clamp(String(formData.get('note') ?? '').trim(), MAX_TEXT)
 
   const supabase = await createClient()
 
