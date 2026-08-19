@@ -50,12 +50,14 @@ export default async function TeachPage() {
        batch_schedules (day_of_week, start_time, end_time),
        enrollments (id, status)`,
     )
+    .eq('coaching_center_id', session.active.centerId)
     .eq('active', true)
     .order('start_time', { ascending: true, nullsFirst: false })
 
   const { data: sessions } = await supabase
     .from('attendance_sessions')
     .select('id, batch_id')
+    .eq('coaching_center_id', session.active.centerId)
     .eq('session_date', today)
 
   const takenBatchIds = new Set((sessions ?? []).map((s) => s.batch_id))

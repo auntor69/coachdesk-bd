@@ -28,16 +28,19 @@ export default async function NewBatchPage() {
       supabase
         .from('subjects')
         .select('id, name, name_bn')
+        .eq('coaching_center_id', session.active.centerId)
         .eq('active', true)
         .order('name'),
       supabase
         .from('teachers')
         .select('id, name')
+        .eq('coaching_center_id', session.active.centerId)
         .eq('active', true)
         .order('name'),
       supabase
         .from('batches')
         .select('id', { count: 'exact', head: true })
+        .eq('coaching_center_id', session.active.centerId)
         .eq('active', true),
     ])
 

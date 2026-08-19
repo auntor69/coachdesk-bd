@@ -59,6 +59,7 @@ export default async function RemindersPage() {
     supabase
       .from('fee_invoice_balances')
       .select(COLUMNS)
+      .eq('coaching_center_id', session.active.centerId)
       .is('voided_at', null)
       .gt('remaining_bdt', 0)
       .order('due_date', { ascending: true }),
@@ -84,6 +85,7 @@ export default async function RemindersPage() {
   const { data: chases } = await supabase
     .from('fee_reminders')
     .select('invoice_id, created_at')
+    .eq('coaching_center_id', session.active.centerId)
     .gte('created_at', `${earliest}T00:00:00+06:00`)
     .order('created_at', { ascending: false })
 

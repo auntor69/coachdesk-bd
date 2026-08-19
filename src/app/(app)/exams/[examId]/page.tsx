@@ -51,6 +51,7 @@ export default async function ExamPage({
        sms_sent_at, sms_declined_at,
        batches (name), subjects (name, name_bn), exam_types (name, name_bn)`,
     )
+    .eq('coaching_center_id', session.active.centerId)
     .eq('id', examId)
     .maybeSingle()
 
@@ -60,11 +61,13 @@ export default async function ExamPage({
     supabase
       .from('enrollments')
       .select('id, students (id, name, student_code)')
+      .eq('coaching_center_id', session.active.centerId)
       .eq('batch_id', exam.batch_id)
       .eq('status', 'active'),
     supabase
       .from('exam_results')
       .select('enrollment_id, obtained_marks, is_absent, note')
+      .eq('coaching_center_id', session.active.centerId)
       .eq('exam_id', exam.id),
   ])
 
@@ -106,12 +109,12 @@ export default async function ExamPage({
 
   // The same function the send action uses, so the count and cost shown here
   // are the count and cost that will actually be charged.
-  const plan = await planResultSms(
-    supabase,
-    exam.id,
-    session.active.centerName,
-    rows.length,
-  )
+  const plan = await planResultSms(supabase, {
+    centerId: session.active.centerId,
+    centerName: session.active.centerName,
+    examId: exam.id,
+    rosterSize: rows.length,
+  })
 
   // Owners and managers pay for the credits, so they may always spend them. A
   // teacher can be denied by the owner in settings.

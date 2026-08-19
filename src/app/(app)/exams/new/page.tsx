@@ -28,11 +28,13 @@ export default async function NewExamPage() {
     supabase
       .from('batches')
       .select('id, name, slot, subjects (name, name_bn)')
+      .eq('coaching_center_id', session.active.centerId)
       .eq('active', true)
       .order('start_time', { ascending: true, nullsFirst: false }),
     supabase
       .from('exam_types')
       .select('id, name, name_bn')
+      .eq('coaching_center_id', session.active.centerId)
       .eq('active', true)
       .order('sort_order', { ascending: true }),
   ])

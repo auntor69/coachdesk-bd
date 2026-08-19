@@ -71,12 +71,14 @@ export default async function FeesPage() {
       supabase
         .from('fee_invoice_balances')
         .select(COLUMNS)
+        .eq('coaching_center_id', session.active.centerId)
         .is('voided_at', null)
         .gt('remaining_bdt', 0)
         .order('due_date', { ascending: true }),
       supabase
         .from('fee_invoice_balances')
         .select(COLUMNS)
+        .eq('coaching_center_id', session.active.centerId)
         .is('voided_at', null)
         .lte('remaining_bdt', 0)
         .eq('period_month', thisMonth)
@@ -92,6 +94,7 @@ export default async function FeesPage() {
       supabase
         .from('fee_payments')
         .select('amount_bdt')
+        .eq('coaching_center_id', session.active.centerId)
         .gte('paid_at', `${thisMonth}T00:00:00+06:00`),
       // Reminders since the start of last month, newest first, so each row can
       // say when this family was last chased.
@@ -104,6 +107,7 @@ export default async function FeesPage() {
       supabase
         .from('fee_reminders')
         .select('invoice_id, channel, created_at')
+        .eq('coaching_center_id', session.active.centerId)
         .gte('created_at', `${addMonths(thisMonth, -1)}T00:00:00+06:00`)
         .order('created_at', { ascending: false }),
       // Where a parent should send the money. Read once for the whole board

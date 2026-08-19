@@ -98,6 +98,7 @@ export async function saveAttendance(
   const { data: enrollments, error: rosterError } = await supabase
     .from('enrollments')
     .select('id')
+    .eq('coaching_center_id', session.active.centerId)
     .eq('batch_id', batchId)
     .eq('status', 'active')
 

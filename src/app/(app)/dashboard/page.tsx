@@ -66,10 +66,12 @@ export default async function DashboardPage() {
     supabase
       .from('students')
       .select('id', { count: 'exact', head: true })
+      .eq('coaching_center_id', session.active.centerId)
       .eq('status', 'active'),
     supabase
       .from('batches')
       .select('id', { count: 'exact', head: true })
+      .eq('coaching_center_id', session.active.centerId)
       .eq('active', true),
     // Unvoided and still owed. A voided invoice is a correction and counting it
     // would show the owner money they are not owed; a settled one is not owed at
@@ -77,6 +79,7 @@ export default async function DashboardPage() {
     supabase
       .from('fee_invoice_balances')
       .select(COLUMNS)
+      .eq('coaching_center_id', session.active.centerId)
       .is('voided_at', null)
       .gt('remaining_bdt', 0),
     // Collected this month, by payment date rather than by invoice period — the
@@ -90,10 +93,12 @@ export default async function DashboardPage() {
     supabase
       .from('fee_payments')
       .select('amount_bdt')
+      .eq('coaching_center_id', session.active.centerId)
       .gte('paid_at', `${period}T00:00:00+06:00`),
     supabase
       .from('attendance_sessions')
       .select('batch_id')
+      .eq('coaching_center_id', session.active.centerId)
       .eq('session_date', today),
     // Reminders since the start of last month, newest first — enough to tell
     // which of the outstanding rows have already been chased at their current
@@ -107,6 +112,7 @@ export default async function DashboardPage() {
     supabase
       .from('fee_reminders')
       .select('invoice_id, created_at')
+      .eq('coaching_center_id', session.active.centerId)
       .gte('created_at', `${addMonths(period, -1)}T00:00:00+06:00`)
       .order('created_at', { ascending: false }),
     // Attendance rate per batch, counted by Postgres — forty students taking
@@ -130,6 +136,7 @@ export default async function DashboardPage() {
     supabase
       .from('batch_attendance_monthly')
       .select('batch_id, batch_name, period_month, sessions, counted, rate_pct')
+      .eq('coaching_center_id', session.active.centerId)
       .eq('batch_active', true)
       .in('period_month', [period, addMonths(period, -1)]),
   ])

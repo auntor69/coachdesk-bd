@@ -29,6 +29,7 @@ export default async function BatchesPage() {
        subjects (name, name_bn), teachers (name),
        batch_schedules (day_of_week), enrollments (id, status)`,
     )
+    .eq('coaching_center_id', session.active.centerId)
     .order('start_time', { ascending: true, nullsFirst: false })
 
   const rows = (batches ?? []).map((batch) => {

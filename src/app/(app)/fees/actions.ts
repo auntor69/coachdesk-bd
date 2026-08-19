@@ -223,6 +223,7 @@ export async function recordPayment(
   const { data: invoice } = await supabase
     .from('fee_invoice_balances')
     .select('id, student_id, student_name, remaining_bdt, voided_at')
+    .eq('coaching_center_id', session.active.centerId)
     .eq('id', invoiceId)
     .maybeSingle()
 
@@ -350,6 +351,7 @@ export async function logFeeReminder(
   const { data: invoice } = await supabase
     .from('fee_invoice_balances')
     .select('id, voided_at')
+    .eq('coaching_center_id', session.active.centerId)
     .eq('id', invoiceId)
     .maybeSingle()
 

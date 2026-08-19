@@ -96,6 +96,9 @@ export const getSession = cache(async (): Promise<Session | null> => {
       .select('full_name, phone, locale, is_platform_admin')
       .eq('id', user.id)
       .maybeSingle(),
+    // scoped-by: user_id — this query *is* the centre list, so nothing upstream
+    // of it knows which centre to filter by. Every other query in the app is
+    // scoped by the answer this one gives; see scripts/check-scoping.mjs.
     supabase
       .from('center_members')
       .select(

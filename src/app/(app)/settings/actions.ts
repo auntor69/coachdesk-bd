@@ -547,9 +547,15 @@ export async function toggleSmsOptOut(
   if (!studentId) return { error: t.students.errors.notFound }
 
   const supabase = await createClient()
+  // Scoped to the active centre, not only to the id. studentId arrives in a
+  // FormData on a public endpoint, and an owner of two centres passes RLS for
+  // both — so without this line the switch on one centre's screen can silence a
+  // guardian at the other, and the centre that stopped sending has no record of
+  // anyone having asked it to.
   const { error } = await supabase
     .from('students')
     .update({ sms_opt_out: optOut })
+    .eq('coaching_center_id', session.active.centerId)
     .eq('id', studentId)
 
   if (error) return { error: t.errors.changeFailed }

@@ -124,9 +124,16 @@ export async function createExam(
   // The subject comes from the batch, never from the form. A batch teaches one
   // subject; letting the client name a different one would put a physics exam
   // on a maths batch and quietly show the wrong roster on the marks sheet.
+  //
+  // batchId arrives in a FormData, and an owner of two centres passes RLS for
+  // both — so the centre filter is what turns "some batch I can see" into "a
+  // batch on the screen this form was submitted from". Without it the insert
+  // below pairs this centre's exam with the other centre's batch, which the
+  // composite foreign key rejects as a constraint error nobody can read.
   const { data: batch } = await supabase
     .from('batches')
     .select('id, subject_id')
+    .eq('coaching_center_id', session.active.centerId)
     .eq('id', batchId)
     .maybeSingle()
 
@@ -191,10 +198,13 @@ export async function saveMarks(
 
   const supabase = await createClient()
 
-  // RLS decides whether this teacher may touch this exam at all.
+  // RLS decides whether this teacher may touch this exam at all; the centre
+  // filter decides which of their centres this sheet belongs to. Both are
+  // needed — a teacher at two centres passes the policy for either one's exams.
   const { data: exam } = await supabase
     .from('exams')
     .select('id, batch_id, total_marks')
+    .eq('coaching_center_id', session.active.centerId)
     .eq('id', examId)
     .maybeSingle()
 
@@ -208,6 +218,7 @@ export async function saveMarks(
   const { data: enrollments, error: rosterError } = await supabase
     .from('enrollments')
     .select('id')
+    .eq('coaching_center_id', session.active.centerId)
     .eq('batch_id', exam.batch_id)
     .eq('status', 'active')
 
@@ -282,6 +293,7 @@ export async function saveMarks(
     await supabase
       .from('exam_results')
       .delete()
+      .eq('coaching_center_id', session.active.centerId)
       .eq('exam_id', exam.id)
       .in(
         'enrollment_id',
@@ -324,15 +336,21 @@ export async function declineResultSms(
 ): Promise<SmsGateState> {
   const caller = await teacherOrAbove()
   if (!caller.ok) return { ok: false, error: caller.error }
-  const t = dict(caller.session.locale).exams
+  const { session } = caller
+  const t = dict(session.locale).exams
 
   const examId = String(formData.get('examId') ?? '')
   if (!examId) return { ok: false, error: t.errors.noExam }
 
   const supabase = await createClient()
+  // The centre filter, on a write whose only other filter is a form field. A
+  // teacher at two centres passes RLS for both, so without it this button can
+  // silence the result SMS for an exam at the centre they are not looking at —
+  // and the only symptom is parents who never hear about a test.
   const { error } = await supabase
     .from('exams')
     .update({ sms_declined_at: new Date().toISOString() })
+    .eq('coaching_center_id', session.active.centerId)
     .eq('id', examId)
 
   if (error) return { ok: false, error: t.errors.declineFailed }
@@ -376,18 +394,18 @@ export async function sendResultSms(
   const supabase = await createClient()
   const centerId = session.active.centerId
 
+  // Filtered by centre, not only by the id in the form. This is the read the
+  // whole money path hangs off: everything below charges `centerId`, so if the
+  // exam came from the other centre a teacher belongs to, one centre's credits
+  // would pay for the other centre's messages.
   const { data: exam } = await supabase
     .from('exams')
-    .select('id, title, batch_id, sms_sent_at, coaching_center_id')
+    .select('id, title, batch_id, sms_sent_at')
+    .eq('coaching_center_id', centerId)
     .eq('id', examId)
     .maybeSingle()
 
   if (!exam) return { ok: false, error: t.errors.noExam }
-
-  // Belt and braces against a stale session pointing at another centre.
-  if (exam.coaching_center_id !== centerId) {
-    return { ok: false, error: t.errors.noExam }
-  }
 
   if (exam.sms_sent_at) {
     return { ok: false, error: t.errors.alreadySent }
@@ -400,6 +418,7 @@ export async function sendResultSms(
     const { data: perms } = await supabase
       .from('teacher_permissions')
       .select('can_send_sms')
+      .eq('coaching_center_id', centerId)
       .eq('teacher_id', teacherId)
       .maybeSingle()
 
@@ -411,15 +430,16 @@ export async function sendResultSms(
   const { count: rosterSize } = await supabase
     .from('enrollments')
     .select('id', { count: 'exact', head: true })
+    .eq('coaching_center_id', centerId)
     .eq('batch_id', exam.batch_id)
     .eq('status', 'active')
 
-  const plan = await planResultSms(
-    supabase,
-    exam.id,
-    session.active.centerName,
-    rosterSize ?? 0,
-  )
+  const plan = await planResultSms(supabase, {
+    centerId,
+    centerName: session.active.centerName,
+    examId: exam.id,
+    rosterSize: rosterSize ?? 0,
+  })
 
   if (!plan || plan.recipients.length === 0) {
     return { ok: false, error: t.errors.noRecipients }
@@ -476,7 +496,11 @@ export async function sendResultSms(
     .maybeSingle()
 
   if (!debited) {
-    await admin.from('sms_dispatches').delete().eq('id', dispatch.id)
+    await admin
+      .from('sms_dispatches')
+      .delete()
+      .eq('coaching_center_id', centerId)
+      .eq('id', dispatch.id)
     return { ok: false, error: t.errors.creditRace }
   }
 
@@ -524,7 +548,11 @@ export async function sendResultSms(
       balance_after: refunded?.sms_credit_balance ?? balance,
       created_by: session.userId,
     })
-    await admin.from('sms_dispatches').delete().eq('id', dispatch.id)
+    await admin
+      .from('sms_dispatches')
+      .delete()
+      .eq('coaching_center_id', centerId)
+      .eq('id', dispatch.id)
 
     return { ok: false, error: t.errors.sendFailedRefunded }
   }

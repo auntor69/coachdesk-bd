@@ -32,6 +32,7 @@ export default async function SubjectsPage() {
   const { data: subjects } = await supabase
     .from('subjects')
     .select('id, name, name_bn, subject_kind, active, batches (id)')
+    .eq('coaching_center_id', session.active.centerId)
     .order('name', { ascending: true })
 
   const rows = subjects ?? []

@@ -31,6 +31,7 @@ export default async function ExamsPage() {
       `id, title, total_marks, exam_date, sms_sent_at, sms_declined_at,
        batches (name), subjects (name, name_bn), exam_results (id)`,
     )
+    .eq('coaching_center_id', session.active.centerId)
     .order('exam_date', { ascending: false })
     .limit(30)
 

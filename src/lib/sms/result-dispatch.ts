@@ -59,15 +59,35 @@ export type ResultDispatchPlan = {
   anyMultiSegment: boolean
 }
 
+/**
+ * Named rather than positional, because `centerId` and `centerName` are both
+ * strings: swapping them at a call site would compile, plan a send against a
+ * centre id of "উত্তরা আইডিয়াল কোচিং", find no rows, and report "no recipients"
+ * on a screen listing forty students.
+ */
+export type ResultDispatchInput = {
+  /** Which centre's data this plan may see. Not optional — see below. */
+  centerId: string
+  centerName: string
+  examId: string
+  rosterSize: number
+}
+
+/**
+ * The centre id is a parameter and not something this function could look up
+ * from the exam, deliberately. Reading it off the exam row would mean asking the
+ * database "which centre is this?" and believing the answer — which is exactly
+ * the check being made. The caller knows which centre's screen the request came
+ * from, and that is the only trustworthy source.
+ */
 export async function planResultSms(
   supabase: SupabaseClient<Database>,
-  examId: string,
-  centerName: string,
-  rosterSize: number,
+  { centerId, centerName, examId, rosterSize }: ResultDispatchInput,
 ): Promise<ResultDispatchPlan | null> {
   const { data: exam } = await supabase
     .from('exams')
     .select('id, title, total_marks')
+    .eq('coaching_center_id', centerId)
     .eq('id', examId)
     .maybeSingle()
 
@@ -85,6 +105,7 @@ export async function planResultSms(
          )
        )`,
     )
+    .eq('coaching_center_id', centerId)
     .eq('exam_id', examId)
 
   const recipients: ResultRecipient[] = []

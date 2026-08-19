@@ -41,22 +41,27 @@ export default async function SettingsPage() {
     supabase
       .from('teachers')
       .select('id', { count: 'exact', head: true })
+      .eq('coaching_center_id', session.active.centerId)
       .eq('active', true),
     supabase
       .from('subjects')
       .select('id', { count: 'exact', head: true })
+      .eq('coaching_center_id', session.active.centerId)
       .eq('active', true),
     supabase
       .from('batches')
       .select('id', { count: 'exact', head: true })
+      .eq('coaching_center_id', session.active.centerId)
       .eq('active', true),
     supabase
       .from('students')
       .select('id', { count: 'exact', head: true })
+      .eq('coaching_center_id', session.active.centerId)
       .eq('status', 'active'),
     supabase
       .from('exam_types')
       .select('id', { count: 'exact', head: true })
+      .eq('coaching_center_id', session.active.centerId)
       .eq('active', true),
     supabase
       .from('coaching_centers')

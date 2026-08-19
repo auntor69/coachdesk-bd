@@ -52,6 +52,7 @@ export default async function AttendancePage({
   const { data: batch } = await supabase
     .from('batches')
     .select('id, name, slot, start_time, end_time, subjects (name, name_bn)')
+    .eq('coaching_center_id', session.active.centerId)
     .eq('id', batchId)
     .maybeSingle()
 
@@ -61,11 +62,13 @@ export default async function AttendancePage({
     supabase
       .from('enrollments')
       .select('id, students (id, name, student_code)')
+      .eq('coaching_center_id', session.active.centerId)
       .eq('batch_id', batchId)
       .eq('status', 'active'),
     supabase
       .from('attendance_sessions')
       .select('id, note, attendance_records (enrollment_id, status)')
+      .eq('coaching_center_id', session.active.centerId)
       .eq('batch_id', batchId)
       .eq('session_date', sessionDate)
       .maybeSingle(),

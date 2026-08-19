@@ -31,6 +31,7 @@ export default async function ExamTypesPage() {
   const { data: examTypes } = await supabase
     .from('exam_types')
     .select('id, name, name_bn, exams (id)')
+    .eq('coaching_center_id', session.active.centerId)
     .order('sort_order', { ascending: true })
     .order('name', { ascending: true })
 

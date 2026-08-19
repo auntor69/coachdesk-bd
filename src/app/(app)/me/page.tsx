@@ -20,6 +20,12 @@ export async function generateMetadata() {
  * student sees themselves, a guardian sees their children — so there is no
  * student_id filter here. If a filter were the only thing separating one
  * family's data from another's, a typo would be a breach.
+ *
+ * The coaching_center_id filters are not that, and they are not defence in depth
+ * either. A guardian with a child at two centres is a member of both, so RLS
+ * answers for both — correctly — and this screen is showing one of them, named at
+ * the top. Without the filter it would list the other centre's child under this
+ * centre's name and add both bills into one total.
  */
 export default async function MePage() {
   const session = await requireCenter()
@@ -31,7 +37,10 @@ export default async function MePage() {
 
   const [{ data: students }, { data: balances }, { data: results }] =
     await Promise.all([
-      supabase.from('students').select('id, name, class_level, institution'),
+      supabase
+        .from('students')
+        .select('id, name, class_level, institution')
+        .eq('coaching_center_id', session.active.centerId),
       /*
        * The balance comes from the view, not from invoices minus payments here.
        * Two reasons, and the second is the one that bites: numeric(10,2) arriving
@@ -43,10 +52,12 @@ export default async function MePage() {
       supabase
         .from('fee_invoice_balances')
         .select('student_id, due_date, remaining_bdt')
+        .eq('coaching_center_id', session.active.centerId)
         .is('voided_at', null),
       supabase
         .from('exam_results')
         .select('id, obtained_marks, is_absent, exams (title, total_marks, exam_date)')
+        .eq('coaching_center_id', session.active.centerId)
         .order('created_at', { ascending: false })
         .limit(5),
     ])
