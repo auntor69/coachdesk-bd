@@ -54,6 +54,11 @@ const embeds = [
   ['teach/[batchId]/page.tsx', 'enrollments', 'id, students (id, name, student_code)'],
   ['teach/[batchId]/page.tsx', 'attendance_sessions', 'id, note, attendance_records (enrollment_id, status)'],
   ['lib/auth/session.ts', 'center_members', 'coaching_center_id, role, branch_id, coaching_centers (name, plan, sms_credit_balance)'],
+  // The same shape as the exam screen's, from a different file, and listed
+  // separately because that is the point of naming the file: this one decides
+  // whether a teacher is shown the fee board at all, and an embed PostgREST
+  // cannot resolve would answer "no permission" rather than failing loudly.
+  ['lib/auth/session.ts', 'teachers', 'teacher_permissions (can_view_fees)'],
   // Three hops, and the last one is the guardian phone the result SMS goes to.
   ['lib/sms/result-dispatch.ts', 'exam_results', 'id, obtained_marks, is_absent, note, enrollments (id, students (id, name, guardian_phone, sms_opt_out, guardians (id, phone, is_primary, sms_opt_out)))'],
   // The fee board reads a view, not a table, and it is here for a different
@@ -66,7 +71,7 @@ const embeds = [
   ['fees/page.tsx', 'fee_invoice_balances', 'id, student_name, student_code, amount_bdt, discount_bdt, net_bdt, paid_bdt, remaining_bdt, due_date, period_month, guardian_phone, sms_opt_out'],
   ['fees/page.tsx', 'fee_reminders', 'invoice_id, channel, created_at'],
   ['fees/actions.ts', 'fee_invoice_balances', 'id, student_id, student_name, remaining_bdt, voided_at'],
-  ['dashboard/page.tsx', 'fee_invoice_balances', 'id, student_name, remaining_bdt, due_date'],
+  ['dashboard/page.tsx', 'fee_invoice_balances', 'id, student_name, remaining_bdt, due_date, guardian_phone'],
 ]
 
 let passed = 0
