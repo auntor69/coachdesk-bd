@@ -334,6 +334,13 @@ export const en: Dictionary = {
     emptyTitle: 'No exams yet',
     emptyBody:
       'Create an exam and every student in the batch arrives together, ready to be marked.',
+    /**
+     * The same empty list, read by a teacher the owner has not given exam duties
+     * to. Its own string for the reason `fees.emptyBodyReadOnly` is: the other one
+     * is an instruction, and the button it refers to is not on this reader's screen.
+     */
+    emptyBodyReadOnly:
+      'No exams have been created for your batches yet. The centre’s owner decides who can create them.',
     create: 'Create an exam',
 
     /**
@@ -390,6 +397,14 @@ export const en: Dictionary = {
 
     errors: {
       forbidden: 'You do not have permission to do that.',
+      /**
+       * Not `forbidden` above, which answers a role — this one answers a checkbox.
+       * The reader teaches this batch and the owner has turned "Exams & marks" off
+       * for them, so naming the owner is the only actionable half of the sentence:
+       * nothing they do on this screen will change it.
+       */
+      noExamPermission:
+        'You do not have permission to create exams or enter marks. Ask the centre’s owner.',
       nameRequired: 'Give the exam a name.',
       pickBatch: 'Choose a batch.',
       noBatch: 'That batch could not be found.',
@@ -421,6 +436,15 @@ export const en: Dictionary = {
   },
 
   marksSheet: {
+    /**
+     * Read-only because of a permission, which is a different sentence from
+     * `locked` below and outranks it. Locked is about time — the SMS has gone, so
+     * changing a mark now contradicts something a parent is holding. This is about
+     * authority, and it is the only one of the two that actually disables the
+     * inputs.
+     */
+    readOnly:
+      'The owner has turned off marks entry for you. You can read this sheet but not change it.',
     locked:
       'These results have already gone to the guardians. Changing a mark now will not match the SMS they are holding.',
     markLabel: '{name} — marks',

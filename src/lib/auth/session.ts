@@ -220,43 +220,57 @@ export function isStaffAdmin(session: Session): boolean {
   return session.active ? atLeast(session.active.role, 'manager') : false
 }
 
+/** The three permission columns anything outside the settings screens reads. */
+type TeacherPerms = {
+  can_manage_exams: boolean
+  can_send_sms: boolean
+  can_view_fees: boolean
+}
+
 /**
  * The reader's own `teachers` rows at the active centre, with the permissions
  * that hang off them.
  *
- * One query behind two questions — which batches are mine, and may I see fees —
- * because both are asked on the same request by different files: the shell asks
- * for the nav, the page asks for its own guard, and React's `cache` means they
- * share this. Not exported: the two derived helpers below are the useful shapes,
- * and a caller reaching for the rows themselves would be about to re-derive one
- * of them.
+ * One query behind four questions — which batches are mine, may I see fees, may I
+ * enter marks, may I message a parent — because several of them are asked on the
+ * same request by different files: the shell asks for the nav, the page asks for
+ * its own guard, the action asks again because it is a public endpoint. React's
+ * `cache` means they share this. Not exported: the helpers below are the useful
+ * shapes, and a caller reaching for the rows themselves would be about to
+ * re-derive one of them.
  *
  * A list rather than a row, and this is not defensiveness. `teachers` has no
  * unique key on (coaching_center_id, user_id), so a centre that entered the same
  * person twice has two rows and `maybeSingle()` would fail the whole query. Every
- * question asked of this is "any of them", which is also what app.can_view_fees
- * and app.my_teacher_ids do.
+ * question asked of this is "any of them", which is also what the app.* helpers do.
+ *
+ * `perms` is null when a teacher row has no permissions row at all, which is a
+ * third state and not a row of falses: `bootstrap_center` leaves the owner's own
+ * teacher row that way, and the two defaults read that absence in opposite
+ * directions. See canManageExams and canReadFees.
  */
 const myTeacherRows = cache(
-  async (): Promise<{ id: string; canViewFees: boolean }[]> => {
+  async (): Promise<{ id: string; perms: TeacherPerms | null }[]> => {
     const session = await getSession()
     if (!session?.active) return []
 
     const supabase = await createClient()
     const { data } = await supabase
       .from('teachers')
-      .select('id, teacher_permissions (can_view_fees)')
+      .select(
+        'id, teacher_permissions (can_manage_exams, can_send_sms, can_view_fees)',
+      )
       .eq('coaching_center_id', session.active.centerId)
       .eq('user_id', session.userId)
       .eq('active', true)
 
     return (data ?? []).map((row) => {
       // The embed is an object for a to-one relation; PostgREST types it loosely
-      // enough that the unwrap costs nothing. Same shape as exams/[examId].
+      // enough that the unwrap costs nothing. Same shape as center_members above.
       const perms = Array.isArray(row.teacher_permissions)
         ? row.teacher_permissions[0]
         : row.teacher_permissions
-      return { id: row.id, canViewFees: perms?.can_view_fees === true }
+      return { id: row.id, perms: perms ?? null }
     })
   },
 )
@@ -282,6 +296,56 @@ export const myTeacherIds = cache(async (): Promise<string[]> => {
 })
 
 /**
+ * May this reader create exams and enter marks?
+ *
+ * Absent means allowed, which is the opposite of how fees read the same absence
+ * and the same rule app.can_manage_exams applies: the column defaults to true, and
+ * `bootstrap_center` gives an owner's own teacher row no permissions row at all —
+ * reading that as "may do nothing" would lock an owner out of their own marks sheet
+ * on the day they signed up. So only an explicit false refuses.
+ *
+ * Stricter than the policy in one place, deliberately. A member whose role reads
+ * teacher but who holds no active `teachers` row gets false here and true from
+ * app.can_manage_exams, because the policy is ANDed with app.teaches_batch and this
+ * is not: there is no batch they could be entering marks for, so the honest thing
+ * to render is nothing. The app may be narrower than the boundary; it must never be
+ * wider.
+ */
+export const canManageExams = cache(async (): Promise<boolean> => {
+  const session = await getSession()
+  if (!session?.active) return false
+  if (isStaffAdmin(session)) return true
+  if (session.active.role !== 'teacher') return false
+
+  const rows = await myTeacherRows()
+  if (rows.length === 0) return false
+  return !rows.some((row) => row.perms?.can_manage_exams === false)
+})
+
+/**
+ * May this reader spend the centre's SMS credits?
+ *
+ * Absent means allowed, as above — and unlike the other two, this one was already
+ * enforced before it was ever collected here. It lived twice: once as a query on
+ * the exam screen deciding whether to draw the gate, once inline in the send
+ * action, which is the copy that matters because the action is a public endpoint.
+ * Both now ask this.
+ *
+ * Owners and managers always may. They are the ones who bought the credits, and
+ * the send screen shows the balance and the exact cost before it spends any.
+ */
+export const canSendSms = cache(async (): Promise<boolean> => {
+  const session = await getSession()
+  if (!session?.active) return false
+  if (isStaffAdmin(session)) return true
+  if (session.active.role !== 'teacher') return false
+
+  const rows = await myTeacherRows()
+  if (rows.length === 0) return false
+  return !rows.some((row) => row.perms?.can_send_sms === false)
+})
+
+/**
  * May this reader see fee figures at the active centre?
  *
  * Free for every role but one. A staff-admin always may — it is their money. A
@@ -290,12 +354,11 @@ export const myTeacherIds = cache(async (): Promise<string[]> => {
  * wrong one. So `teacher` is the only role that costs a query, and only on the two
  * screens that ask.
  *
- * Absent means no, which is the opposite of how the SMS gate reads the same
- * absence. `bootstrap_center` gives an owner's own teacher row no permissions row,
- * and reading that as "may do nothing" would lock an owner out of their own marks
- * sheet — so `can_send_sms` opens unless it finds an explicit false. Fees invert
- * it: the column defaults to false, an owner opting in is the entire point, and an
- * owner does not need a row anyway because they are staff-admin.
+ * Absent means no, which is the opposite of how the two above read the same
+ * absence: this column defaults to false, an owner opting in is the entire point,
+ * and an owner does not need a row anyway because they are staff-admin. Between
+ * them the rule is one rule — the owner's explicit tick or untick beats the default
+ * — and app.can_view_fees and app.can_manage_exams split the same way.
  *
  * `some` over every matching teacher row, because app.can_view_fees uses `exists`
  * and the one thing worse than disagreeing with the boundary is disagreeing with
@@ -311,7 +374,7 @@ export const canReadFees = cache(async (): Promise<boolean> => {
   if (isStaffAdmin(session)) return true
   if (session.active.role !== 'teacher') return false
 
-  return (await myTeacherRows()).some((row) => row.canViewFees)
+  return (await myTeacherRows()).some((row) => row.perms?.can_view_fees === true)
 })
 
 /**

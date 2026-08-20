@@ -18,6 +18,9 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import {
   requireRole,
   getSession,
+  canManageExams,
+  canSendSms,
+  myTeacherIds,
   AuthError,
   type CenterSession,
 } from '@/lib/auth/session'
@@ -59,18 +62,6 @@ async function teacherOrAbove(): Promise<Caller> {
   }
 }
 
-/** The teacher row for this user in this centre, if they have one. */
-async function myTeacherId(session: CenterSession): Promise<string | null> {
-  const supabase = await createClient()
-  const { data } = await supabase
-    .from('teachers')
-    .select('id')
-    .eq('coaching_center_id', session.active.centerId)
-    .eq('user_id', session.userId)
-    .maybeSingle()
-  return data?.id ?? null
-}
-
 export type CreateExamState =
   | { ok: true; examId: string }
   | { ok: false; error: string }
@@ -84,6 +75,16 @@ export async function createExam(
   if (!caller.ok) return { ok: false, error: caller.error }
   const { session } = caller
   const t = dict(session.locale).exams
+
+  // The owner's "Exams & marks" checkbox, checked here and not only by the policy.
+  // exams_teacher_insert would reject this on its own — an INSERT that fails a
+  // `with check` is an error, so that path at least reports *something* — but what
+  // it reports is `createFailed`, which tells a teacher to try again at a thing
+  // that will never work. See saveMarks for the case where the policy alone says
+  // nothing at all.
+  if (!(await canManageExams())) {
+    return { ok: false, error: t.errors.noExamPermission }
+  }
 
   const title = String(formData.get('title') ?? '').trim()
   const batchId = String(formData.get('batchId') ?? '')
@@ -145,7 +146,12 @@ export async function createExam(
       coaching_center_id: session.active.centerId,
       batch_id: batch.id,
       subject_id: batch.subject_id,
-      teacher_id: await myTeacherId(session),
+      // Whose exam this is. The shared helper answers with a list because
+      // `teachers` has no unique key on (centre, user); the first is taken because
+      // this column holds one id, and for a centre that entered the same person
+      // twice there is no better answer than either of their rows. Null for an
+      // owner or manager who holds no teacher row at all.
+      teacher_id: (await myTeacherIds())[0] ?? null,
       exam_type_id: examTypeId || null,
       title,
       total_marks: totalMarks,
@@ -192,6 +198,18 @@ export async function saveMarks(
   if (!caller.ok) return { ok: false, error: caller.error }
   const { session } = caller
   const t = dict(session.locale).exams
+
+  // The check that cannot be left to the policy.
+  //
+  // Clearing a mark is a DELETE, and a DELETE that matches no policy removes zero
+  // rows and raises nothing — supabase-js hands back `error: null`. So without
+  // this, a teacher whose permission had just been taken away would blank a wrong
+  // mark, read "Marks saved", and leave the old number sitting in the row that the
+  // result SMS reads. The upsert half would have failed loudly; the erase half is
+  // silent, and it is the half that matters most.
+  if (!(await canManageExams())) {
+    return { ok: false, error: t.errors.noExamPermission }
+  }
 
   const examId = String(formData.get('examId') ?? '')
   if (!examId) return { ok: false, error: t.errors.noExam }
@@ -342,16 +360,46 @@ export async function declineResultSms(
   const examId = String(formData.get('examId') ?? '')
   if (!examId) return { ok: false, error: t.errors.noExam }
 
+  // A teacher who may not send may not silence either. Both halves of the gate
+  // answer the same question — will parents hear about this test — and offering
+  // "no" to someone who was never offered "yes" is a decision they do not have.
+  if (!(await canSendSms())) {
+    return { ok: false, error: t.errors.noSmsPermission }
+  }
+
   const supabase = await createClient()
-  // The centre filter, on a write whose only other filter is a form field. A
-  // teacher at two centres passes RLS for both, so without it this button can
-  // silence the result SMS for an exam at the centre they are not looking at —
+
+  // Read first, through the user's own client, so RLS decides which exam this is
+  // allowed to be about. The write below goes through the admin client and would
+  // otherwise trust a form field.
+  //
+  // The centre filter is on the read for the same reason it used to be on the
+  // write: a teacher at two centres passes RLS for both, so without it this button
+  // can silence the result SMS for an exam at the centre they are not looking at,
   // and the only symptom is parents who never hear about a test.
-  const { error } = await supabase
+  const { data: exam } = await supabase
+    .from('exams')
+    .select('id')
+    .eq('coaching_center_id', session.active.centerId)
+    .eq('id', examId)
+    .maybeSingle()
+
+  if (!exam) return { ok: false, error: t.errors.noExam }
+
+  // The admin client, and this is the change that makes the button work at all.
+  // `sms_declined_at` is a column on `exams`, so the UPDATE used to be filtered by
+  // exams_teacher_write — which 20260811000013 split into four policies and ANDed
+  // the exam permission onto three of them. A teacher who may mark but may not
+  // message would have reached an UPDATE that matched no policy: zero rows, no
+  // error, `{ ok: true, declined: true }`, and the gate asking again on the next
+  // page load. Deciding not to spend credits is not the same authority as entering
+  // marks, so the check above is the boundary and this write is bookkeeping.
+  const admin = createAdminClient()
+  const { error } = await admin
     .from('exams')
     .update({ sms_declined_at: new Date().toISOString() })
     .eq('coaching_center_id', session.active.centerId)
-    .eq('id', examId)
+    .eq('id', exam.id)
 
   if (error) return { ok: false, error: t.errors.declineFailed }
 
@@ -413,18 +461,14 @@ export async function sendResultSms(
 
   // A teacher may be denied SMS by the owner. Owners and managers always may —
   // they are the ones paying for the credits.
-  const teacherId = await myTeacherId(session)
-  if (session.active.role === 'teacher' && teacherId) {
-    const { data: perms } = await supabase
-      .from('teacher_permissions')
-      .select('can_send_sms')
-      .eq('coaching_center_id', centerId)
-      .eq('teacher_id', teacherId)
-      .maybeSingle()
-
-    if (perms && !perms.can_send_sms) {
-      return { ok: false, error: t.errors.noSmsPermission }
-    }
+  //
+  // This was its own query here and another on the exam screen, both reading
+  // teacher_permissions with `maybeSingle()`, which would have thrown outright at a
+  // centre that entered the same teacher twice. One helper now, memoised per
+  // request, and it is the same one the screen uses to decide whether to draw the
+  // button — so the gate and the door agree by construction.
+  if (!(await canSendSms())) {
+    return { ok: false, error: t.errors.noSmsPermission }
   }
 
   const { count: rosterSize } = await supabase

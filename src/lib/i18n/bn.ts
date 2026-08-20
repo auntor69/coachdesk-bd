@@ -564,6 +564,13 @@ export const bn = {
     emptyTitle: 'এখনও কোনো পরীক্ষা নেই',
     emptyBody:
       'পরীক্ষা তৈরি করলে ব্যাচের সব শিক্ষার্থীর নাম নম্বর দেওয়ার জন্য একসাথে চলে আসবে।',
+    /**
+     * The same empty list for a teacher who cannot create one — the fee board's
+     * emptyBodyReadOnly, in the exam's words. The sentence above is an instruction
+     * pointing at a button this reader does not have.
+     */
+    emptyBodyReadOnly:
+      'আপনার ব্যাচের জন্য এখনও কোনো পরীক্ষা তৈরি হয়নি। কে পরীক্ষা তৈরি করতে পারবে তা মালিক ঠিক করেন।',
     create: 'পরীক্ষা তৈরি করুন',
 
     /**
@@ -634,6 +641,14 @@ export const bn = {
        * the batch's teacher the day exams stop being open to every teacher.
        */
       forbidden: 'আপনার এই কাজের অনুমতি নেই।',
+      /**
+       * The line the day arrived. The note above `forbidden` said this one would
+       * want to be specific once exams stopped being open to every teacher — this
+       * is that sentence, and it names the owner because the owner's checkbox is
+       * the only thing that can change the answer.
+       */
+      noExamPermission:
+        'আপনার পরীক্ষা তৈরি বা নম্বর বসানোর অনুমতি নেই। মালিককে বলুন।',
       nameRequired: 'পরীক্ষার নাম লিখুন।',
       pickBatch: 'ব্যাচ বাছুন।',
       noBatch: 'ব্যাচ পাওয়া যায়নি।',
@@ -680,6 +695,13 @@ export const bn = {
    * where forty were not. See ./fill.ts.
    */
   marksSheet: {
+    /**
+     * Read-only by permission, which outranks `locked` below and is a different
+     * thing from it. Locked is about time — the SMS has gone out. This is about
+     * authority, and it is the only one of the two that actually greys the fields.
+     */
+    readOnly:
+      'মালিক আপনার জন্য নম্বর বসানো বন্ধ রেখেছেন। এই পাতা দেখতে পারবেন, বদলাতে পারবেন না।',
     locked:
       'এই পরীক্ষার ফলাফল অভিভাবকদের কাছে পাঠানো হয়েছে। এখন নম্বর বদলালে অভিভাবকের কাছে থাকা SMS-এর সাথে মিলবে না।',
     markLabel: '{name} — প্রাপ্ত নম্বর',

@@ -2106,6 +2106,244 @@ await db.query('delete from teacher_permissions where teacher_id in ($1, $2)', [
   tRahim,
 ])
 
+// ---------------------------------------------------------------------------
+// The exam checkbox.
+//
+// teacher_permissions.can_manage_exams is the second of the five that did nothing.
+// exams_teacher_write was one `for all` policy on app.teaches_batch, so unticking
+// "Exams & marks" left a teacher creating exams and entering marks exactly as
+// before. 20260811000013 splits it into read / insert / update / delete and ANDs
+// the permission onto the last three.
+//
+// The split is the part worth testing. `for all` covers SELECT, so the obvious
+// one-line version of this migration — AND the permission onto the existing policy
+// — would have taken a teacher's own exams and their own students' marks off their
+// screen. A teacher who may not enter marks is still the person standing in front
+// of the class that got them. So every "refused" below is paired with a "still
+// reads", and the read assertions are the ones that would fail if anyone ever
+// collapses these four policies back into one.
+// ---------------------------------------------------------------------------
+
+console.log('\nTeacher exam permission (can_manage_exams):')
+
+// Three exams of this section's own, all inserted by the migration role so that
+// everything below is about the policy rather than about whether the fixture
+// happened to be writable. Two on Karim's batch and one on Nasrin's.
+//
+// exam_results is unique on (exam_id, enrollment_id), which is why the refusals
+// need somewhere fresh to aim: a second insert of a pair the seed already holds
+// raises a unique violation, deniedAsUser cannot tell that apart from an RLS
+// refusal, and the test would pass while the policy was wide open. examSpare and
+// examTheirs exist so that every "refused" here is refused for its own reason.
+const examMine = await one(
+  `insert into exams (coaching_center_id, subject_id, batch_id, teacher_id, title, total_marks, exam_date)
+   values ($1, $2, $3, $4, 'Bio Weekly 2', 50, current_date) returning id`,
+  [centerA, sBio, bBioMorning, tKarim],
+)
+const examSpare = await one(
+  `insert into exams (coaching_center_id, subject_id, batch_id, teacher_id, title, total_marks, exam_date)
+   values ($1, $2, $3, $4, 'Bio Weekly 3', 50, current_date) returning id`,
+  [centerA, sBio, bBioMorning, tKarim],
+)
+const examTheirs = await one(
+  `insert into exams (coaching_center_id, subject_id, batch_id, teacher_id, title, total_marks, exam_date)
+   values ($1, $2, $3, $4, 'Chem Weekly 2', 50, current_date) returning id`,
+  [centerA, sChem, bChemEvening, tNasrin],
+)
+
+const examPerm = (value) =>
+  db.query(
+    `insert into teacher_permissions (teacher_id, coaching_center_id, can_manage_exams)
+     values ($1, $2, $3)
+     on conflict (teacher_id) do update set can_manage_exams = excluded.can_manage_exams`,
+    [tKarim, centerA, value],
+  )
+
+const titleOf = async (exam) =>
+  (await db.query('select title from exams where id = $1', [exam])).rows[0]?.title
+
+const marksOn = async (exam) =>
+  (await db.query('select count(*)::int as n from exam_results where exam_id = $1', [exam]))
+    .rows[0].n
+
+const namedExams = async (title) =>
+  (await db.query('select count(*)::int as n from exams where title = $1', [title])).rows[0].n
+
+// No permissions row at all, which is where every teacher created before this
+// migration sits and where bootstrap_center leaves an owner's own teacher row.
+// Allowed — the opposite of how can_view_fees reads the same absence, and not an
+// inconsistency: that column defaults false and this one defaults true, so in both
+// cases the absence agrees with the column and only the owner's explicit choice
+// changes an answer.
+await asUser(db, ids.karim, async (tx) => {
+  await tx.query(
+    `insert into exams (coaching_center_id, subject_id, batch_id, title, total_marks, exam_date)
+     values ($1, $2, $3, 'Made With No Row', 50, current_date)`,
+    [centerA, sBio, bBioMorning],
+  )
+  await tx.query(
+    `insert into exam_results (coaching_center_id, exam_id, enrollment_id, obtained_marks)
+     values ($1, $2, $3, 44)`,
+    [centerA, examMine, eAli],
+  )
+})
+
+check('with no permissions row a teacher can create an exam', (await namedExams('Made With No Row')) === 1)
+check('and enter a mark on one', (await marksOn(examMine)) === 1)
+
+await examPerm(true)
+await asUser(db, ids.karim, async (tx) => {
+  await tx.query(`update exams set title = 'Renamed While Ticked' where id = $1`, [examMine])
+})
+check(
+  'ticked, the same teacher can rename their exam',
+  (await titleOf(examMine)) === 'Renamed While Ticked',
+  `title is now ${await titleOf(examMine)}`,
+)
+
+// The three refusals. INSERT is the only one deniedAsUser can see: a `with check`
+// violation raises, where an UPDATE or DELETE that matches no policy touches nought
+// rows and reports success. See the fee section for the same distinction.
+await examPerm(false)
+
+check(
+  'unticked, the teacher cannot create an exam on the batch they teach',
+  await deniedAsUser(
+    db,
+    ids.karim,
+    `insert into exams (coaching_center_id, subject_id, batch_id, title, total_marks, exam_date)
+     values ($1, $2, $3, 'Made While Unticked', 50, current_date)`,
+    [centerA, sBio, bBioMorning],
+  ),
+)
+check('and no exam landed', (await namedExams('Made While Unticked')) === 0)
+
+check(
+  'nor enter a mark for a student they teach',
+  await deniedAsUser(
+    db,
+    ids.karim,
+    `insert into exam_results (coaching_center_id, exam_id, enrollment_id, obtained_marks)
+     values ($1, $2, $3, 12)`,
+    [centerA, examSpare, eAli],
+  ),
+)
+check('and no mark landed', (await marksOn(examSpare)) === 0)
+
+// The two silent ones. A teacher can still SELECT both of these rows, so the
+// statements below raise nothing at all — Postgres filters them out and reports
+// nought rows changed, which deniedAsUser reads as allowed. The assertion is the
+// stored value, and this is exactly the pair the marks sheet leans on: clearing a
+// mark is a DELETE, so a saveMarks that trusted the policy alone would have told a
+// teacher their correction was saved while the old number stayed in the row the
+// result SMS reads.
+await asUser(db, ids.karim, async (tx) => {
+  await tx.query(`update exams set title = 'Renamed While Unticked' where id = $1`, [examMine])
+  await tx.query('delete from exam_results where exam_id = $1', [examMine])
+})
+
+check(
+  'unticked, the teacher cannot rename an exam they can read',
+  (await titleOf(examMine)) === 'Renamed While Ticked',
+  `title is now ${await titleOf(examMine)}`,
+)
+check(
+  'nor clear a mark on it, which is the one the marks sheet depends on',
+  (await marksOn(examMine)) === 1,
+  `${await marksOn(examMine)} mark(s) left`,
+)
+
+// What the split exists for. Everything above is refused and all of this is still
+// open, because a teacher who may not enter marks still has to read the marks that
+// were entered for the class they teach.
+await asUser(db, ids.karim, async (tx) => {
+  check(
+    'unticked, the teacher still reads their own exam',
+    (await n(tx, 'select count(*)::int as n from exams where id = $1', [examMine])) === 1,
+  )
+  check(
+    'and the marks already on it',
+    (await n(tx, 'select count(*)::int as n from exam_results where exam_id = $1', [
+      examMine,
+    ])) === 1,
+  )
+  check(
+    'and the exam list for their batch is not empty',
+    (await n(tx, 'select count(*)::int as n from exams where batch_id = $1', [
+      bBioMorning,
+    ])) >= 2,
+  )
+})
+
+// The permission is not a boundary on its own. app.can_manage_exams answers true
+// for an owner, a student and a stranger; every policy pairs it with
+// app.teaches_batch, and this is the assertion that says so — ticked, and still
+// nothing of Nasrin's.
+await examPerm(true)
+check(
+  'ticked does not widen: still no mark on a colleague-taught student',
+  await deniedAsUser(
+    db,
+    ids.karim,
+    `insert into exam_results (coaching_center_id, exam_id, enrollment_id, obtained_marks)
+     values ($1, $2, $3, 12)`,
+    [centerA, examTheirs, eMim],
+  ),
+)
+check('and none landed', (await marksOn(examTheirs)) === 0)
+await asUser(db, ids.karim, async (tx) => {
+  await tx.query(`update exams set title = 'Karim Was Here' where id = $1`, [examTheirs])
+})
+check(
+  "nor a rename of a colleague's exam",
+  (await titleOf(examTheirs)) === 'Chem Weekly 2',
+  `title is now ${await titleOf(examTheirs)}`,
+)
+
+// Per teacher, not per centre. Nasrin has no permissions row of her own, so
+// unticking Karim's box must leave her able to work.
+await examPerm(false)
+await asUser(db, ids.nasrin, async (tx) => {
+  await tx.query(
+    `insert into exams (coaching_center_id, subject_id, batch_id, title, total_marks, exam_date)
+     values ($1, $2, $3, 'Nasrin Unaffected', 50, current_date)`,
+    [centerA, sChem, bChemEvening],
+  )
+})
+check(
+  "one teacher's unticked box is not the centre's",
+  (await namedExams('Nasrin Unaffected')) === 1,
+)
+
+// And the off switch still wins over the tick. teachers.active is deliberately not
+// in app.can_manage_exams — app.teaches_batch already resolves only through active
+// rows — so this is the assertion that says the omission is safe rather than merely
+// intended.
+await examPerm(true)
+await db.query('update teachers set active = false where id = $1', [tKarim])
+check(
+  'a deactivated teacher cannot create an exam even with the box ticked',
+  await deniedAsUser(
+    db,
+    ids.karim,
+    `insert into exams (coaching_center_id, subject_id, batch_id, title, total_marks, exam_date)
+     values ($1, $2, $3, 'Made While Off', 50, current_date)`,
+    [centerA, sBio, bBioMorning],
+  ),
+)
+check('and none landed', (await namedExams('Made While Off')) === 0)
+await db.query('update teachers set active = true where id = $1', [tKarim])
+
+// Leave the seed as found. examBio keeps its one mark of 31 for Ali, which the
+// student-edit assertions above already read; everything created here goes,
+// marks first even though the exam cascade would take them anyway.
+await db.query('delete from exam_results where exam_id = any($1)', [
+  [examMine, examSpare, examTheirs],
+])
+await db.query('delete from exams where id = any($1)', [[examMine, examSpare, examTheirs]])
+await db.query(`delete from exams where title in ('Made With No Row', 'Nasrin Unaffected')`)
+await db.query('delete from teacher_permissions where teacher_id = $1', [tKarim])
+
 console.log('\nAnonymous access:')
 
 await asUser(db, null, async (tx) => {

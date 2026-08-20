@@ -44,6 +44,7 @@ export function MarksSheet({
   passMarks,
   rows,
   locked,
+  readOnly,
   t,
   common,
 }: {
@@ -51,7 +52,25 @@ export function MarksSheet({
   totalMarks: number
   passMarks: number | null
   rows: MarksRow[]
+  /**
+   * The result SMS has gone out. A notice, not a lock — the name is older than
+   * this comment and the behaviour it describes was never built. Kept as a notice
+   * deliberately: a wrong mark that parents have already been told about is
+   * exactly the mark most worth correcting, and the sheet's job is to warn that
+   * the correction will not match the message they are holding.
+   */
   locked: boolean
+  /**
+   * The owner has unticked "Exams & marks" for this teacher. Unlike `locked` this
+   * one really does disable everything that writes, because the action behind the
+   * button now refuses and a form that submits into a refusal is a worse answer
+   * than a field that will not take a keystroke.
+   *
+   * Reading is untouched, which is the whole distinction the permission draws: the
+   * marks, the absences and the notes all stay legible, because the person holding
+   * the phone is still the one who taught the class.
+   */
+  readOnly: boolean
   t: T<'marksSheet'>
   common: T<'common'>
 }) {
@@ -82,15 +101,19 @@ export function MarksSheet({
     const marks: Record<string, string> = {}
     const notes: Record<string, string> = {}
     for (const row of rows) {
-      const savedMark = draft?.marks?.[row.enrollmentId]
-      const savedNote = draft?.notes?.[row.enrollmentId]
+      // No draft in read-only mode. A draft is unsaved typing, and showing it in a
+      // sheet nothing can be submitted from would present a teacher's abandoned
+      // keystrokes as the marks on record — with no way to either store or clear
+      // them. What is in the database is the only thing worth showing.
+      const savedMark = readOnly ? undefined : draft?.marks?.[row.enrollmentId]
+      const savedNote = readOnly ? undefined : draft?.notes?.[row.enrollmentId]
       marks[row.enrollmentId] =
         typed.marks[row.enrollmentId] ?? (isText(savedMark) ? savedMark : row.value)
       notes[row.enrollmentId] =
         typed.notes[row.enrollmentId] ?? (isText(savedNote) ? savedNote : row.note)
     }
     return { marks, notes }
-  }, [rows, draft, typed])
+  }, [rows, draft, typed, readOnly])
 
   useEffect(() => {
     if (state?.ok) clearDraft(draftKey)
@@ -138,8 +161,15 @@ export function MarksSheet({
   const remaining = rows.length - entered
 
   return (
-    <form action={formAction} className="flex flex-col gap-4">
-      <input type="hidden" name="examId" value={examId} />
+    // No action at all in read-only mode, rather than an action that refuses. The
+    // hidden fields below go with it: a form whose action is undefined submits to
+    // the current URL as a GET, so leaving forty `mark:` inputs in place would turn
+    // a stray Enter into a page-length query string.
+    <form
+      action={readOnly ? undefined : formAction}
+      className="flex flex-col gap-4"
+    >
+      {!readOnly && <input type="hidden" name="examId" value={examId} />}
 
       {state?.ok === false && <Alert>{state.error}</Alert>}
 
@@ -153,9 +183,13 @@ export function MarksSheet({
         </div>
       )}
 
-      {locked && (
+      {/* One notice, not two. Read-only outranks locked because it is the one that
+          answers what the teacher can do about any of it: told that the SMS has
+          gone and that the fields are theirs to fix, they would go looking for a
+          way to fix them. */}
+      {(readOnly || locked) && (
         <p className="rounded-xl bg-surface-alt px-4 py-3 text-sm text-ink-soft">
-          {t.locked}
+          {readOnly ? t.readOnly : t.locked}
         </p>
       )}
 
@@ -191,12 +225,20 @@ export function MarksSheet({
                   )}
                 </div>
 
-                <input type="hidden" name={`mark:${row.enrollmentId}`} value={value} />
-                <input
-                  type="hidden"
-                  name={`note:${row.enrollmentId}`}
-                  value={note}
-                />
+                {!readOnly && (
+                  <>
+                    <input
+                      type="hidden"
+                      name={`mark:${row.enrollmentId}`}
+                      value={value}
+                    />
+                    <input
+                      type="hidden"
+                      name={`note:${row.enrollmentId}`}
+                      value={note}
+                    />
+                  </>
+                )}
 
                 {/* inputMode="decimal" brings up the numeric keypad on Android
                     without blocking a half mark. */}
@@ -205,7 +247,7 @@ export function MarksSheet({
                   inputMode="decimal"
                   aria-label={fill(t.markLabel, { name: row.name })}
                   value={isAbsent ? '' : value}
-                  disabled={isAbsent}
+                  disabled={isAbsent || readOnly}
                   placeholder="—"
                   onChange={(e) =>
                     setMark(row.enrollmentId, e.target.value.replace(/[^\d.]/g, ''))
@@ -217,13 +259,17 @@ export function MarksSheet({
                     }`}
                 />
 
+                {/* Still says who is absent when it cannot be changed — the cross is
+                    the only place that fact is written, so greying it out rather
+                    than hiding it keeps the sheet readable. */}
                 <button
                   type="button"
                   aria-pressed={isAbsent}
                   aria-label={fill(t.absentLabel, { name: row.name })}
+                  disabled={readOnly}
                   onClick={() => setMark(row.enrollmentId, isAbsent ? '' : 'absent')}
                   className={`grid h-11 w-11 shrink-0 place-items-center rounded-lg
-                    border-2 text-lg ${
+                    border-2 text-lg disabled:opacity-60 ${
                       isAbsent
                         ? 'border-absent bg-absent text-white'
                         : 'border-line bg-white text-ink-faint'
@@ -232,6 +278,11 @@ export function MarksSheet({
                   <span aria-hidden>✕</span>
                 </button>
 
+                {/* Not disabled in read-only mode, and that is the point: this
+                    button writes nothing, it only opens the row. A note is the one
+                    thing on this sheet that cannot be seen without tapping
+                    something, so disabling it would hide the teacher's own words
+                    from them. The field it opens is where the read-only part is. */}
                 <button
                   type="button"
                   aria-label={fill(t.noteLabel, { name: row.name })}
@@ -255,11 +306,13 @@ export function MarksSheet({
                   type="text"
                   autoFocus
                   maxLength={MAX_NOTE}
+                  readOnly={readOnly}
                   value={note}
                   placeholder={t.notePlaceholder}
                   onChange={(e) => setNote(row.enrollmentId, e.target.value)}
                   className="mt-2 min-h-tap w-full rounded-lg border-2 border-line
-                    bg-white px-3 text-base outline-none focus:border-brand-500"
+                    bg-white px-3 text-base outline-none read-only:bg-surface-alt
+                    read-only:text-ink-soft focus:border-brand-500"
                 />
               )}
             </li>
@@ -267,11 +320,16 @@ export function MarksSheet({
         })}
       </ul>
 
+      {/* The counter stays in read-only mode and the button goes. "12/40 marked" is
+          the one thing on this bar that is information rather than an action, and it
+          is what a teacher who cannot enter marks came to find out. */}
       <div
         className="sticky bottom-20 -mx-4 mt-1 border-t border-line bg-white/95
           px-4 py-3 backdrop-blur"
       >
-        <div className="mb-2 text-center text-sm text-ink-soft">
+        <div
+          className={`text-center text-sm text-ink-soft ${readOnly ? '' : 'mb-2'}`}
+        >
           <span className="num font-medium text-ink">{entered}</span>/
           <span className="num">{rows.length}</span> {t.marked}
           {remaining > 0 && (
@@ -281,9 +339,11 @@ export function MarksSheet({
             </span>
           )}
         </div>
-        <Button type="submit" full disabled={pending}>
-          {pending ? common.saving : t.save}
-        </Button>
+        {!readOnly && (
+          <Button type="submit" full disabled={pending}>
+            {pending ? common.saving : t.save}
+          </Button>
+        )}
       </div>
     </form>
   )

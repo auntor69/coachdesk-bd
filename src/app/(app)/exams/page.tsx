@@ -1,7 +1,7 @@
 import Link from 'next/link'
 
 import { Card } from '@/components/ui'
-import { pageRole, getSession } from '@/lib/auth/session'
+import { pageRole, getSession, canManageExams } from '@/lib/auth/session'
 import { createClient } from '@/lib/supabase/server'
 import { formatDate } from '@/lib/bd/time'
 import { dict, localName, DEFAULT_LOCALE } from '@/lib/i18n'
@@ -24,6 +24,12 @@ export default async function ExamsPage() {
   const supabase = await createClient()
   const locale = session.locale
   const t = dict(locale).exams
+
+  // Whether this reader may create one. The list itself is not gated — a teacher
+  // who may not create exams still needs to read the marks for the class they
+  // teach, which is the whole distinction the permission draws — so this only
+  // decides whether the two doors to /exams/new are drawn.
+  const canMark = await canManageExams()
 
   const { data: exams } = await supabase
     .from('exams')
@@ -60,26 +66,36 @@ export default async function ExamsPage() {
           <h1 className="text-xl font-bold text-ink">{t.title}</h1>
           <p className="mt-1 text-ink-soft">{t.subtitle}</p>
         </div>
-        <Link
-          href="/exams/new"
-          className="inline-flex min-h-tap shrink-0 items-center justify-center
-            rounded-xl bg-brand-600 px-5 font-semibold text-white"
-        >
-          {t.new}
-        </Link>
+        {canMark && (
+          <Link
+            href="/exams/new"
+            className="inline-flex min-h-tap shrink-0 items-center justify-center
+              rounded-xl bg-brand-600 px-5 font-semibold text-white"
+          >
+            {t.new}
+          </Link>
+        )}
       </div>
 
       {rows.length === 0 ? (
         <Card>
           <h2 className="font-semibold text-ink">{t.emptyTitle}</h2>
-          <p className="mt-1 text-sm text-ink-soft">{t.emptyBody}</p>
-          <Link
-            href="/exams/new"
-            className="mt-4 inline-flex min-h-tap items-center justify-center
-              rounded-xl bg-brand-600 px-5 font-semibold text-white"
-          >
-            {t.create}
-          </Link>
+          {/* The instruction, or the reason there is no instruction. Same split as
+              the fee board's empty state, and the same reason: a reader with no
+              button must be told the emptiness is somebody else's to fix, not read
+              "create an exam" and go looking for the way. */}
+          <p className="mt-1 text-sm text-ink-soft">
+            {canMark ? t.emptyBody : t.emptyBodyReadOnly}
+          </p>
+          {canMark && (
+            <Link
+              href="/exams/new"
+              className="mt-4 inline-flex min-h-tap items-center justify-center
+                rounded-xl bg-brand-600 px-5 font-semibold text-white"
+            >
+              {t.create}
+            </Link>
+          )}
         </Card>
       ) : (
         <ul className="flex flex-col gap-2">

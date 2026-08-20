@@ -2,7 +2,7 @@ import Link from 'next/link'
 import { notFound } from 'next/navigation'
 
 import { Card } from '@/components/ui'
-import { pageRole, getSession } from '@/lib/auth/session'
+import { pageRole, getSession, canSendSms, canManageExams } from '@/lib/auth/session'
 import { createClient } from '@/lib/supabase/server'
 import { formatDate } from '@/lib/bd/time'
 import { planResultSms } from '@/lib/sms/result-dispatch'
@@ -116,23 +116,12 @@ export default async function ExamPage({
     rosterSize: rows.length,
   })
 
-  // Owners and managers pay for the credits, so they may always spend them. A
-  // teacher can be denied by the owner in settings.
-  let canSend = true
-  if (session.active.role === 'teacher') {
-    const { data: teacher } = await supabase
-      .from('teachers')
-      .select('id, teacher_permissions (can_send_sms)')
-      .eq('user_id', session.userId)
-      .eq('coaching_center_id', session.active.centerId)
-      .maybeSingle()
-
-    const perms = Array.isArray(teacher?.teacher_permissions)
-      ? teacher?.teacher_permissions[0]
-      : teacher?.teacher_permissions
-    // No permission row means nothing has been restricted yet.
-    if (perms && perms.can_send_sms === false) canSend = false
-  }
+  // Owners and managers pay for the credits, so they may always spend them, and a
+  // teacher can be denied either capability by the owner in settings. Two
+  // questions, one memoised query, and the same two helpers the actions behind
+  // both buttons call — so nothing here can offer a control that the action will
+  // refuse.
+  const [canSend, canMark] = await Promise.all([canSendSms(), canManageExams()])
 
   const batch = Array.isArray(exam.batches) ? exam.batches[0] : exam.batches
   const subject = Array.isArray(exam.subjects) ? exam.subjects[0] : exam.subjects
@@ -191,6 +180,7 @@ export default async function ExamPage({
             passMarks={exam.pass_marks === null ? null : Number(exam.pass_marks)}
             rows={rows}
             locked={Boolean(exam.sms_sent_at)}
+            readOnly={!canMark}
             t={d.marksSheet}
             common={d.common}
           />
