@@ -8,6 +8,7 @@ import { planName } from '@/lib/plans'
 import { smsProviderConfigured } from '@/lib/sms/provider'
 import { UCS2_SEGMENT } from '@/lib/sms/encoding'
 import { dict, DEFAULT_LOCALE } from '@/lib/i18n'
+import type { SmsStatus } from '@/lib/supabase/types'
 import { OptOutList, type OptOutStudent } from './opt-out-list'
 
 /** getSession, not pageRole — see the note on teach/page.tsx's own. */
@@ -61,13 +62,34 @@ export default async function SmsSettingsPage() {
       .order('name', { ascending: true }),
   ])
 
-  const counts = { queued: 0, sent: 0, delivered: 0, failed: 0 }
-  for (const log of logs ?? []) {
-    if (log.status === 'queued') counts.queued++
-    else if (log.status === 'sent') counts.sent++
-    else if (log.status === 'delivered') counts.delivered++
-    else if (log.status === 'failed') counts.failed++
+  /**
+   * Every status the enum has, not the four this screen draws.
+   *
+   * An exhaustive Record means adding a value to sms_status breaks this build
+   * instead of quietly deleting rows from the screen — which is not a hypothetical
+   * worry, it is what the if/else chain here did the day 'sending' was added. An
+   * owner would have watched forty in line become twelve in line, nothing gone and
+   * nothing failed, with twenty-eight messages nowhere at all.
+   */
+  const counts: Record<SmsStatus, number> = {
+    queued: 0,
+    sending: 0,
+    sent: 0,
+    delivered: 0,
+    failed: 0,
+    cancelled: 0,
   }
+  for (const log of logs ?? []) counts[log.status]++
+
+  /**
+   * 'sending' belongs with 'queued', not with 'sent'.
+   *
+   * It means the worker has taken the message and is waiting on the gateway — a few
+   * seconds normally, up to ten minutes if that run was killed mid-batch and the
+   * reaper has yet to put it back. Either way the honest word for it is "in line":
+   * nobody has heard anything yet, and it may still come back to be tried again.
+   */
+  const waiting = counts.queued + counts.sending
 
   const optOutStudents: OptOutStudent[] = (students ?? []).map((student) => ({
     id: student.id,
@@ -120,7 +142,7 @@ export default async function SmsSettingsPage() {
         <dl className="grid grid-cols-3 gap-2">
           <div className="rounded-xl border border-line bg-white px-3 py-2">
             <dt className="text-xs text-ink-soft">{t.queued}</dt>
-            <dd className="num text-xl font-bold text-ink">{counts.queued}</dd>
+            <dd className="num text-xl font-bold text-ink">{waiting}</dd>
           </div>
           <div className="rounded-xl border border-line bg-white px-3 py-2">
             <dt className="text-xs text-ink-soft">{t.sent}</dt>
@@ -139,6 +161,9 @@ export default async function SmsSettingsPage() {
             </dd>
           </div>
         </dl>
+        {counts.cancelled > 0 && (
+          <p className="num text-sm text-ink-faint">{t.cancelledNote(counts.cancelled)}</p>
+        )}
       </section>
 
       <section className="flex flex-col gap-3">

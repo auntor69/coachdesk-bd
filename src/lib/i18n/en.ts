@@ -972,6 +972,8 @@ export const en: Dictionary = {
       queued: 'In line',
       sent: 'Gone',
       failed: 'Not sent',
+      cancelledNote: (n: number) =>
+        `${n} cancelled — ${n === 1 ? 'that credit is' : 'those credits are'} back.`,
 
       recentTitle: 'Recently sent',
       noneYet:

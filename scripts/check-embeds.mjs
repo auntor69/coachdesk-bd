@@ -147,3 +147,92 @@ any code.`,
   )
   process.exit(1)
 }
+
+// ---------------------------------------------------------------------------
+// And the doors that must stay shut.
+//
+// Every function in `public` is an endpoint at POST /rest/v1/rpc/<name>. The SMS
+// worker's are the most dangerous in the schema: one marks a message sent, two
+// credit a balance an owner cannot otherwise move by a single taka. They are
+// granted to service_role alone.
+//
+// This is asked of the live project rather than only of the local suite because
+// the local suite cannot fully prove it. Supabase ships its own default
+// privileges — `grant all on functions to postgres, anon, authenticated,
+// service_role` — so a function is handed to both browser-facing roles at the
+// instant it is created, and the idiomatic `revoke all ... from public` does not
+// touch either grant. pg-harness reproduces those defaults deliberately, but a
+// harness that models a platform is a guess about the platform. This asks it.
+//
+// claim_sms_batch is deliberately NOT probed here. A successful probe would claim
+// a real centre's message and leave it in 'sending' for ten minutes, and until
+// the cron endpoint is live nothing would come back for it — a check that damages
+// what it is checking. Its grant is identical to these three, written in the same
+// migration by the same four lines, so the failure mode this catches is covered;
+// its own ACL is asserted from the catalogue in test-rls.mjs.
+// ---------------------------------------------------------------------------
+
+/**
+ * Each probe uses the function's REAL signature, so a 404 means "not exposed"
+ * rather than "no such overload" — and each is harmless if it does execute:
+ * finish_sms on the nil uuid finds no row and returns 'missing', and the other
+ * two only tidy a queue that a worker would tidy anyway.
+ */
+const closedRpcs = [
+  ['finish_sms', { p_id: '00000000-0000-0000-0000-000000000000', p_ok: false }],
+  ['cancel_opted_out_sms', {}],
+  ['reap_stranded_sms', {}],
+]
+
+console.log('\nServer-only RPCs, asked with the anon key:')
+
+let shut = 0
+const open = []
+
+for (const [name, body] of closedRpcs) {
+  const response = await fetch(`${url}/rest/v1/rpc/${name}`, {
+    method: 'POST',
+    headers: {
+      apikey: key,
+      Authorization: `Bearer ${key}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(body),
+  })
+
+  if (response.status === 401 || response.status === 403) {
+    shut++
+    console.log(`  SHUT  ${name} (${response.status})`)
+    continue
+  }
+
+  const detail = await response.json().catch(() => ({}))
+  open.push({ name, status: response.status, code: detail.code, message: detail.message })
+  console.log(`  OPEN  ${name} [${response.status} ${detail.code ?? ''}] ${detail.message ?? ''}`)
+}
+
+console.log(`${shut}/${closedRpcs.length} server-only RPCs refuse an anonymous call.`)
+
+if (open.length > 0) {
+  const cacheOnly = open.every((o) => o.code === 'PGRST202')
+  console.error(
+    cacheOnly
+      ? `
+INCONCLUSIVE — PostgREST cannot see these functions yet, so "not callable" here
+means "not in the schema cache", which is not the same as "not granted". Send
+
+  notify pgrst, 'reload schema';
+
+and run this again. Do not read the 404 as a pass.`
+      : `
+SERVER-ONLY RPC IS PUBLICLY CALLABLE — ${open.length} of them, with no session.
+
+Revoking PUBLIC is not enough on Supabase: the project's default privileges hand
+EXECUTE to anon and authenticated by name at creation time, and PUBLIC is a
+different grantee. Fix it in a new migration, naming the roles:
+
+  revoke all on function public.<name>(<args>) from anon, authenticated, public;
+  grant execute on function public.<name>(<args>) to service_role;`,
+  )
+  process.exit(1)
+}

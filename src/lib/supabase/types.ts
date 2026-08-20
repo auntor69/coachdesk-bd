@@ -24,7 +24,7 @@ export type PaymentMethod = 'cash' | 'bkash' | 'nagad' | 'rocket' | 'bank_transf
 export type PayoutWallet = 'bkash' | 'nagad' | 'rocket'
 export type PlanType = 'teacher_free' | 'teacher_plus' | 'center' | 'institution'
 export type SmsKind = 'exam_result' | 'attendance_alert' | 'fee_reminder' | 'notice' | 'custom'
-export type SmsStatus = 'queued' | 'sent' | 'delivered' | 'failed' | 'cancelled'
+export type SmsStatus = 'queued' | 'sending' | 'sent' | 'delivered' | 'failed' | 'cancelled'
 export type StudentStatus = 'active' | 'inactive' | 'graduated' | 'dropped'
 export type SubjectKind = 'academic' | 'coaching'
 export type SubscriptionStatus = 'trialing' | 'active' | 'past_due' | 'cancelled'
@@ -1299,6 +1299,9 @@ export type Database = {
           queued_at: string
           sent_at: string | null
           updated_at: string
+          attempts: number
+          claimed_at: string | null
+          retry_after: string | null
         }
         Insert: {
           id?: string
@@ -1317,6 +1320,9 @@ export type Database = {
           queued_at?: string
           sent_at?: string | null
           updated_at?: string
+          attempts?: number
+          claimed_at?: string | null
+          retry_after?: string | null
         }
         Update: {
           id?: string
@@ -1335,6 +1341,9 @@ export type Database = {
           queued_at?: string
           sent_at?: string | null
           updated_at?: string
+          attempts?: number
+          claimed_at?: string | null
+          retry_after?: string | null
         }
         Relationships: [
           {
@@ -1818,6 +1827,25 @@ export type Database = {
         }
         Returns: string
       }
+      cancel_opted_out_sms: {
+        Args: Record<PropertyKey, never>
+        Returns: number
+      }
+      claim_sms_batch: {
+        Args: {
+          p_limit?: number | null
+        }
+        Returns: { id: string; to_phone: string; body: string; attempts: number }[]
+      }
+      finish_sms: {
+        Args: {
+          p_id: string | null
+          p_ok: boolean | null
+          p_ref?: string | null
+          p_error?: string | null
+        }
+        Returns: string
+      }
       import_students: {
         Args: {
           p_center_id: string | null
@@ -1825,6 +1853,10 @@ export type Database = {
           p_batch_ids?: string[] | null
         }
         Returns: { added: number; already_there: number; enrolled: number }[]
+      }
+      reap_stranded_sms: {
+        Args: Record<PropertyKey, never>
+        Returns: number
       }
     }
     Enums: {

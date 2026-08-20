@@ -1,0 +1,26 @@
+-- CoachDesk BD — one more SMS status: 'sending'.
+--
+-- A message in flight is not the same fact as a message waiting, and until now
+-- there was no way to say so. That mattered the moment a delivery worker existed:
+-- two cron ticks overlapping, or one tick retried by the platform, would both read
+-- the same 'queued' rows and both hand them to the gateway. A parent would get
+-- "আপনার ছেলে ৩৫% পেয়েছে" twice and the centre would look broken.
+--
+-- So the worker claims rows by moving them to 'sending' in one statement, with
+-- `for update skip locked`, and a second worker running at the same instant simply
+-- finds nothing to take. The state is what makes the claim visible.
+--
+-- Placed before 'sent' in the enum so the values read in the order a message
+-- travels — queued, sending, sent, delivered — which is what `order by status`
+-- gives an admin looking at a stuck queue.
+--
+-- ALONE IN ITS OWN MIGRATION, and not merged into the one that follows, because
+-- Postgres refuses to use a new enum value in the transaction that added it:
+--
+--   ERROR: unsafe use of new value "sending" of enum type sms_status
+--
+-- db-push runs one transaction per file, so the function that assigns 'sending'
+-- has to be in the next file. A `language sql` body is parsed at creation time,
+-- so this is not a runtime surprise — it is a migration that will not apply.
+
+alter type public.sms_status add value if not exists 'sending' before 'sent';

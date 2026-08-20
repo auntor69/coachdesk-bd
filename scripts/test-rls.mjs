@@ -2729,6 +2729,446 @@ await asUser(db, ids.studentUser, async (tx) => {
   )
 })
 
+// ---------------------------------------------------------------------------
+// The SMS delivery worker — claim, settle, cancel, reap.
+//
+// This is the first code in the product that spends and un-spends credits
+// without a person in the room, so the questions are different from every other
+// section above. Not "can centre A see centre B's rows" — the claim is
+// deliberately global, because one cron drains everybody's queue — but:
+//
+//   * can anything holding a cookie call these at all? A browser session that
+//     could reach finish_sms could mark a message sent that never went, which is
+//     the one lie this product must not be able to tell, and could mint itself
+//     credits one refunded row at a time.
+//   * does a message get claimed exactly once?
+//   * when a message is given up on, do the credits come back — to the right
+//     centre, with a ledger row explaining them?
+//
+// What this cannot test: two workers racing. PGlite is a single connection, so
+// `for update skip locked` has nothing to skip. The assertions below check the
+// sequential half of the claim (a claimed row is not claimable again), which is
+// what a retried cron invocation does; the concurrent half rests on the lock
+// clause being in the same statement as the status change.
+// ---------------------------------------------------------------------------
+
+console.log('\nSMS delivery worker (claim, settle, cancel, reap):')
+
+// The queue is global by design, so the test needs a known one. Earlier sections
+// left rows behind; nothing after this reads them.
+await db.query('delete from sms_logs')
+await db.query('delete from sms_credit_ledger')
+
+/**
+ * A statement as the worker runs it.
+ *
+ * `set role` at session level rather than `set local role` inside a transaction,
+ * because a claim has to COMMIT before the next assertion asks whether the row
+ * is claimable again — a claim rolled back at the end of the test's transaction
+ * would prove nothing about a second cron tick.
+ */
+const asService = async (sql, params = []) => {
+  await db.exec('set role service_role;')
+  try {
+    return await db.query(sql, params)
+  } finally {
+    await db.exec('reset role;')
+  }
+}
+
+const queueSms = (center, student, cost = 2) =>
+  one(
+    `insert into sms_logs
+       (coaching_center_id, student_id, to_phone, kind, body, credit_cost)
+     values ($1, $2, '+8801711111111', 'exam_result', 'ফলাফল', $3)
+     returning id`,
+    [center, student, cost],
+  )
+
+const logRow = async (id) =>
+  (
+    await db.query(
+      `select status::text as status, attempts, error, provider_ref,
+              sent_at is not null as has_sent_at,
+              claimed_at is not null as has_claimed_at,
+              retry_after > now() as backing_off
+         from sms_logs where id = $1`,
+      [id],
+    )
+  ).rows[0]
+
+const creditsOf = async (center) =>
+  (
+    await db.query('select sms_credit_balance from coaching_centers where id = $1', [
+      center,
+    ])
+  ).rows[0].sms_credit_balance
+
+// --- The fence, before anything else -------------------------------------
+
+const workerFunctions = [
+  'claim_sms_batch',
+  'finish_sms',
+  'cancel_opted_out_sms',
+  'reap_stranded_sms',
+]
+
+// The schema-wide anon check above catches a function the browser can reach with
+// no session. This is the other half: `authenticated` is handed EXECUTE by
+// Supabase's default privileges at creation time exactly as anon is, so a
+// migration that revokes PUBLIC and grants service_role has closed nothing.
+const signedInCallable = (
+  await db.query(
+    `select p.proname as name
+     from pg_proc p
+     join pg_namespace nsp on nsp.oid = p.pronamespace and nsp.nspname = 'public'
+     join aclexplode(p.proacl) a on a.privilege_type = 'EXECUTE'
+     where p.proname = any($1)
+       and a.grantee::regrole::text in ('authenticated', 'anon')
+     order by 1`,
+    [workerFunctions],
+  )
+).rows.map((r) => r.name)
+check(
+  'no worker function is callable by a signed-in browser session',
+  signedInCallable.length === 0,
+  signedInCallable.join(', '),
+)
+
+check(
+  'every worker function is callable by the server',
+  (
+    await db.query(
+      `select count(distinct p.proname)::int as n
+         from pg_proc p
+         join pg_namespace nsp on nsp.oid = p.pronamespace and nsp.nspname = 'public'
+         join aclexplode(p.proacl) a on a.privilege_type = 'EXECUTE'
+        where p.proname = any($1) and a.grantee::regrole::text = 'service_role'`,
+      [workerFunctions],
+    )
+  ).rows[0].n === workerFunctions.length,
+)
+
+check(
+  'the refund helper is not reachable through PostgREST at all',
+  (
+    await db.query(
+      `select count(*)::int as n from pg_proc p
+       join pg_namespace nsp on nsp.oid = p.pronamespace
+       where p.proname = 'refund_sms' and nsp.nspname = 'app'`,
+    )
+  ).rows[0].n === 1,
+)
+
+// And down the path a real request takes, not only through the catalogue.
+const oldest = await queueSms(centerA, stAli)
+check(
+  'an owner cannot claim their own centre’s queue',
+  await deniedAsUser(db, ids.ownerA, 'select * from claim_sms_batch(10)'),
+)
+check(
+  'an owner cannot mark a message sent',
+  await deniedAsUser(db, ids.ownerA, 'select finish_sms($1, true, $2)', [
+    oldest,
+    'forged',
+  ]),
+)
+check(
+  'an owner cannot trigger the refund path',
+  await deniedAsUser(db, ids.ownerA, 'select cancel_opted_out_sms()'),
+)
+check(
+  'a teacher cannot either',
+  await deniedAsUser(db, ids.karim, 'select * from claim_sms_batch(10)'),
+)
+check(
+  'and the message they were refused is untouched',
+  (await logRow(oldest)).status === 'queued',
+)
+
+// --- Claiming happens once ------------------------------------------------
+
+const second = await queueSms(centerA, stAli)
+const third = await queueSms(centerA, stMim)
+
+const firstBatch = (await asService('select * from claim_sms_batch(2)')).rows
+check(
+  'the worker claims exactly the batch size it asked for',
+  firstBatch.length === 2,
+  `got ${firstBatch.length}`,
+)
+// The set, not the sequence. `returning` from an `update ... where id in (select
+// ... order by queued_at)` follows whatever order the planner updates rows in, so
+// asserting firstBatch[0].id would be asserting a coincidence — it failed once
+// and passed once on the same code. What the ordering promises is which rows get
+// taken, which is what a centre that queued forty messages this morning cares
+// about; the worker itself never looks at the order they arrive in.
+check(
+  'oldest first, so a queue drains in the order it filled',
+  [oldest, second].every((id) => firstBatch.some((r) => r.id === id)) &&
+    !firstBatch.some((r) => r.id === third),
+)
+check(
+  'a claimed message is in flight, and counted as attempted',
+  (await logRow(oldest)).status === 'sending' && (await logRow(oldest)).attempts === 1,
+)
+check(
+  'the claim hands over the phone number and the body, and nothing else',
+  Object.keys(firstBatch[0]).sort().join(',') === 'attempts,body,id,to_phone',
+  Object.keys(firstBatch[0]).join(','),
+)
+
+const secondBatch = (await asService('select * from claim_sms_batch(10)')).rows
+check(
+  'a second tick takes only what is left, never a message already in flight',
+  secondBatch.length === 1 && secondBatch[0].id === third,
+  `got ${secondBatch.length}`,
+)
+check(
+  'and a third tick over a drained queue takes nothing',
+  (await asService('select * from claim_sms_batch(10)')).rows.length === 0,
+)
+
+check(
+  'the batch size is clamped, not trusted',
+  (await asService('select * from claim_sms_batch(50000)')).rows.length === 0,
+)
+
+// --- Settling one message -------------------------------------------------
+
+const balanceBefore = await creditsOf(centerA)
+
+check(
+  'a delivered message is marked sent, with the gateway’s reference',
+  (await asService('select finish_sms($1, true, $2) as s', [oldest, 'gw-77'])).rows[0]
+    .s === 'sent',
+)
+let logged = await logRow(oldest)
+check(
+  'and carries a sent timestamp, no error, and no claim',
+  logged.status === 'sent' &&
+    logged.has_sent_at &&
+    logged.provider_ref === 'gw-77' &&
+    logged.error === null &&
+    !logged.has_claimed_at,
+  `status=${logged.status} ref=${logged.provider_ref}`,
+)
+check(
+  'a successful send costs nothing extra — credits went at queue time',
+  (await creditsOf(centerA)) === balanceBefore,
+)
+
+check(
+  'settling the same message twice is a no-op, not a second outcome',
+  (await asService('select finish_sms($1, false, null, $2) as s', [oldest, 'again']))
+    .rows[0].s === 'sent',
+)
+check(
+  'so a retried worker cannot un-send a delivered message',
+  (await logRow(oldest)).error === null &&
+    (await creditsOf(centerA)) === balanceBefore,
+)
+
+// A refusal below the cap goes back in the queue rather than being lost, and
+// waits before it is tried again — three attempts inside one gateway restart is
+// the same as one attempt.
+check(
+  'a refused message returns to the queue',
+  (await asService('select finish_sms($1, false, null, $2) as s', [
+    second,
+    'gateway 503',
+  ])).rows[0].s === 'queued',
+)
+logged = await logRow(second)
+check(
+  'with the gateway’s complaint kept and a backoff set',
+  logged.status === 'queued' &&
+    logged.error === 'gateway 503' &&
+    logged.backing_off === true &&
+    !logged.has_claimed_at,
+  `status=${logged.status} backing_off=${logged.backing_off}`,
+)
+check(
+  'and it is not claimable again until the backoff expires',
+  (await asService('select * from claim_sms_batch(10)')).rows.length === 0,
+)
+check(
+  'a message still in the queue has not been refunded',
+  (await creditsOf(centerA)) === balanceBefore,
+)
+
+// --- Giving up, and giving the credits back -------------------------------
+
+// Straight to the cap rather than looping the gateway three times: the number
+// lives in SQL and the test should not hold a second copy of it to count to.
+await db.query(
+  `update sms_logs set attempts = 3, status = 'sending', claimed_at = now(),
+                       retry_after = null
+     where id = $1`,
+  [second],
+)
+check(
+  'out of attempts, a message is failed rather than retried for ever',
+  (await asService('select finish_sms($1, false, null, $2) as s', [
+    second,
+    'invalid number',
+  ])).rows[0].s === 'failed',
+)
+check(
+  'and the centre gets its credits back',
+  (await creditsOf(centerA)) === balanceBefore + 2,
+  `${await creditsOf(centerA)} vs ${balanceBefore + 2}`,
+)
+check(
+  'with a ledger row naming the message, so the balance stays explainable',
+  (await countOf(
+    `select count(*)::int as n from sms_credit_ledger
+      where coaching_center_id = $1 and delta = 2
+        and reason = 'refund:failed:' || $2::text`,
+    [centerA, second],
+  )) === 1,
+)
+
+// --- The refund lands in the right centre --------------------------------
+
+const otherCentre = await queueSms(centerB, stB, 3)
+const bBefore = await creditsOf(centerB)
+const aBefore = await creditsOf(centerA)
+await db.query(
+  `update sms_logs set attempts = 3, status = 'sending', claimed_at = now()
+     where id = $1`,
+  [otherCentre],
+)
+await asService('select finish_sms($1, false, null, $2)', [otherCentre, 'dead'])
+check(
+  'a failed message refunds the centre that paid for it',
+  (await creditsOf(centerB)) === bBefore + 3,
+  `B ${bBefore} -> ${await creditsOf(centerB)}`,
+)
+check(
+  'and not the one that happened to be next in the queue',
+  (await creditsOf(centerA)) === aBefore,
+)
+check(
+  'the ledger row is centre B’s too',
+  (await countOf(
+    `select count(*)::int as n from sms_credit_ledger
+      where coaching_center_id = $1 and reason like 'refund:failed:%'`,
+    [centerB],
+  )) === 1,
+)
+
+// --- Opting out after the message was queued -----------------------------
+//
+// The gap the settings screen does not mention: approved and paid for at 9:02, a
+// guardian rings at 9:04, the worker's next tick is at 9:05. That switch is
+// promised to win over everything.
+
+const optedOut = await queueSms(centerA, stMim, 4)
+const stays = await queueSms(centerA, stAli, 4)
+await db.query('update students set sms_opt_out = true where id = $1', [stMim])
+const aBeforeCancel = await creditsOf(centerA)
+
+check(
+  'a message for a student taken off the list is cancelled before it goes',
+  (await asService('select cancel_opted_out_sms() as n')).rows[0].n === 1,
+)
+check(
+  'the cancelled message says why',
+  (await logRow(optedOut)).status === 'cancelled' &&
+    (await logRow(optedOut)).error === 'opted out after queueing',
+)
+check(
+  'a message nobody opted out of is left alone',
+  (await logRow(stays)).status === 'queued',
+)
+check(
+  'cancelling refunds it — the owner flipping a switch is not a charge',
+  (await creditsOf(centerA)) === aBeforeCancel + 4,
+)
+check(
+  'and says so in the ledger',
+  (await countOf(
+    `select count(*)::int as n from sms_credit_ledger
+      where reason = 'refund:opted_out:' || $1::text`,
+    [optedOut],
+  )) === 1,
+)
+
+// The guardian's own switch, which is a different row from the student's. A
+// second number on the same child — Ali already has a primary guardian, and one
+// household can hold one parent who wants the messages and one who does not.
+const gOptOut = await one(
+  `insert into guardians (coaching_center_id, student_id, phone, name, is_primary, sms_opt_out)
+   values ($1, $2, '01766666666', 'Ali mother', false, true) returning id`,
+  [centerA, stAli],
+)
+const viaGuardian = await one(
+  `insert into sms_logs
+     (coaching_center_id, student_id, guardian_id, to_phone, kind, body, credit_cost)
+   values ($1, $2, $3, '+8801766666666', 'exam_result', 'ফলাফল', 1)
+   returning id`,
+  [centerA, stAli, gOptOut],
+)
+await asService('select cancel_opted_out_sms()')
+check(
+  'a guardian’s own opt-out cancels the message too',
+  (await logRow(viaGuardian)).status === 'cancelled',
+)
+
+// --- Rows nobody is coming back for --------------------------------------
+
+const stranded = await queueSms(centerA, stAli)
+await db.query('update students set sms_opt_out = false where id = $1', [stMim])
+await asService('select * from claim_sms_batch(10)')
+check(
+  'a message being sent right now is not treated as abandoned',
+  (await asService('select reap_stranded_sms() as n')).rows[0].n === 0,
+)
+await db.query(
+  `update sms_logs set claimed_at = now() - interval '20 minutes' where id = $1`,
+  [stranded],
+)
+check(
+  'a message left in flight by a worker that died is reclaimed',
+  (await asService('select reap_stranded_sms() as n')).rows[0].n === 1,
+)
+logged = await logRow(stranded)
+check(
+  'and goes back in the queue, with the reason recorded',
+  logged.status === 'queued' && logged.error === 'worker stopped mid-send',
+  `status=${logged.status} error=${logged.error}`,
+)
+
+// A strand at the cap is a failure like any other, refund included, because the
+// reaper settles through finish_sms rather than deciding for itself.
+const strandedOut = await queueSms(centerA, stAli, 5)
+await asService('select * from claim_sms_batch(10)')
+await db.query(
+  `update sms_logs set attempts = 3, claimed_at = now() - interval '20 minutes'
+     where id = $1`,
+  [strandedOut],
+)
+const beforeReap = await creditsOf(centerA)
+await asService('select reap_stranded_sms()')
+check(
+  'a strand out of attempts is failed and refunded, not left in flight',
+  (await logRow(strandedOut)).status === 'failed' &&
+    (await creditsOf(centerA)) === beforeReap + 5,
+)
+
+// The ledger has to add up, or the balance on the settings screen is a number
+// with no story behind it. Asked of centre A over the whole section.
+check(
+  'every credit given back this section has a ledger row that explains it',
+  (await countOf(
+    `select count(*)::int as n from sms_credit_ledger
+      where coaching_center_id = $1 and delta > 0
+        and reason not like 'refund:%'`,
+    [centerA],
+  )) === 0,
+)
+
 console.log('\nAnonymous access:')
 
 await asUser(db, null, async (tx) => {

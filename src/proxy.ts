@@ -13,6 +13,24 @@ import { createServerClient } from '@supabase/ssr'
 const PUBLIC_ROUTES = ['/login', '/signup', '/onboarding', '/auth']
 
 /**
+ * Routes authenticated by a bearer token instead of a cookie.
+ *
+ * Kept separate from PUBLIC_ROUTES on purpose. These are not public — /api/cron
+ * refuses any call whose Authorization header does not carry CRON_SECRET, and
+ * refuses every call at all when that variable is unset. Listing them here says
+ * only "do not apply the cookie rule", which is a different statement from "no
+ * session needed", and the two should not be able to be confused by someone
+ * adding a route to a list.
+ *
+ * Without this the redirect below is a real bug rather than an inconvenience: the
+ * matcher catches /api/*, a cron request arrives with no cookie, and it would be
+ * answered with a 307 to /login. Vercel Cron, GitHub Actions and pg_net all read
+ * a 3xx as success, so the SMS queue would silently never drain and every report
+ * would say the job ran fine.
+ */
+const TOKEN_ROUTES = ['/api/cron']
+
+/**
  * Renamed from `middleware` in Next 16 — the file convention is deprecated.
  * Runs on the Node.js runtime by default now, which is what @supabase/ssr wants.
  *
@@ -21,6 +39,15 @@ const PUBLIC_ROUTES = ['/login', '/signup', '/onboarding', '/auth']
  * a matcher change here must never be able to silently open a door.
  */
 export async function proxy(request: NextRequest) {
+  const { pathname } = request.nextUrl
+
+  // Before the Supabase client, not after: a token-authenticated request has no
+  // cookie to refresh, and getUser() is a network round trip to the auth server.
+  // The cron job would pay for it on every run and get nothing for it.
+  if (TOKEN_ROUTES.some((route) => pathname.startsWith(route))) {
+    return NextResponse.next({ request })
+  }
+
   let response = NextResponse.next({ request })
 
   const supabase = createServerClient(
@@ -50,7 +77,6 @@ export async function proxy(request: NextRequest) {
     data: { user },
   } = await supabase.auth.getUser()
 
-  const { pathname } = request.nextUrl
   const isPublic = PUBLIC_ROUTES.some((route) => pathname.startsWith(route))
 
   if (!user && !isPublic) {

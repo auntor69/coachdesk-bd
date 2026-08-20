@@ -13,10 +13,18 @@ import 'server-only'
  * NID, which is a real-world step no amount of code can shortcut.
  *
  * The queue is the right design regardless: a delivery worker can retry, respect
- * per-operator rate limits, and reconcile delivery reports. When the aggregator
- * is live, only the worker changes — everything upstream already records exactly
- * what should be sent to whom.
+ * per-operator rate limits, and reconcile delivery reports. That worker now
+ * exists — 20260811000016 and /api/cron/sms — and this is the switch it reads
+ * before claiming anything. A worker that ran without a gateway would spend three
+ * attempts and a refund on every message in the queue.
+ *
+ * All three variables, not two. The endpoint was added to this check when the
+ * worker arrived: a deployment holding a key and a sender ID but no URL used to
+ * report "gateway live" on the settings screen, which was harmless while nothing
+ * sent anything and is a lie now that something does.
  */
 export function smsProviderConfigured(): boolean {
-  return Boolean(process.env.SMS_API_KEY && process.env.SMS_SENDER_ID)
+  return Boolean(
+    process.env.SMS_API_URL && process.env.SMS_API_KEY && process.env.SMS_SENDER_ID,
+  )
 }

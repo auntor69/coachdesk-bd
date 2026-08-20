@@ -1639,6 +1639,20 @@ export const bn = {
       queued: 'লাইনে',
       sent: 'গেছে',
       failed: 'যায়নি',
+      /**
+       * Cancelled messages, as a line under the tiles rather than a fourth tile.
+       *
+       * Three tiles is what fits a 320px screen, and cancelled is the rarest of the
+       * four things that can happen to a queued message: it needs somebody to turn
+       * their SMS off in the window between a message being queued and the worker
+       * reaching it. Rare is not the same as invisible, though — with no line for
+       * it, a message that is neither in the line nor gone nor failed disappears
+       * from this screen, and an owner who sent forty finds thirty-seven.
+       *
+       * Says the refund in the same breath, because that is the owner's real
+       * question. Not why it was cancelled — whether they paid for it.
+       */
+      cancelledNote: (n: number) => `${n}টি বাতিল হয়েছে — ক্রেডিট ফেরত পেয়েছেন।`,
 
       recentTitle: 'সাম্প্রতিক পাঠানো',
       /** Says where the first one will come from, not just that there are none. */
