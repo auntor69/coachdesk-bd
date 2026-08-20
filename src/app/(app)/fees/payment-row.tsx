@@ -84,6 +84,7 @@ export function PaymentRow({
   center,
   locale,
   words,
+  readOnly = false,
 }: {
   row: FeeRow
   center: ReminderCenter
@@ -94,6 +95,12 @@ export function PaymentRow({
    */
   locale: Locale
   words: RowWords
+  /**
+   * A teacher with can_view_fees reads this board; they do not collect on it. See
+   * the read-only branch below for what that removes and why it is a different
+   * shape rather than a disabled one.
+   */
+  readOnly?: boolean
 }) {
   const { t, chase, channels, common } = words
   const [state, formAction, pending] = useActionState<FeeState, FormData>(
@@ -111,6 +118,25 @@ export function PaymentRow({
   }, [state])
 
   const settled = row.remaining <= 0
+  const head = (
+    <RowHead row={row} settled={settled} locale={locale} t={t} common={common} />
+  )
+
+  // Not a `<details>` with a disabled form in it, and not one with an empty
+  // panel: everything inside the disclosure is either a way to take money or a
+  // way to chase it, and a read-only reader has neither. What is left is exactly
+  // the summary, so the summary is the whole row — a control that opens onto
+  // nothing reads as a bug, and one that opens onto greyed-out buttons reads as
+  // a permission the owner forgot to grant.
+  if (readOnly) {
+    return (
+      <li className="rounded-xl border border-line bg-white">
+        <div className="flex min-h-tap items-center justify-between gap-3 px-4 py-3">
+          {head}
+        </div>
+      </li>
+    )
+  }
 
   return (
     <li className="rounded-xl border border-line bg-white">
@@ -119,41 +145,7 @@ export function PaymentRow({
           className="flex min-h-tap cursor-pointer list-none items-center
             justify-between gap-3 px-4 py-3"
         >
-          <div className="min-w-0">
-            <p className="truncate font-medium text-ink">
-              {row.name}
-              {row.studentCode && (
-                <span className="num ml-2 text-sm text-ink-faint">{row.studentCode}</span>
-              )}
-            </p>
-            <p className="text-sm text-ink-faint">
-              {formatDate(row.dueDate, locale)}
-              {/* Only while the money is still owed. Red is the colour that means
-                  act on this, and a settled invoice needs no action — leaving the
-                  warning on a paid row spends the owner's attention on the one
-                  place it cannot be used. That the family paid late is a pattern
-                  worth a report, not a badge that never goes away. */}
-              {!settled && row.daysLate > 0 && (
-                <span className="num font-medium text-absent">
-                  {' · '}
-                  {lateLabel(row.daysLate, locale, common)}
-                </span>
-              )}
-            </p>
-            {row.paid !== 0 && !settled && (
-              <p className="num text-sm text-ink-soft">
-                {fill(t.paidOf, { paid: taka(row.paid), net: taka(row.net) })}
-              </p>
-            )}
-          </div>
-
-          <span
-            className={`num shrink-0 font-semibold ${
-              settled ? 'text-present' : row.daysLate > 0 ? 'text-absent' : 'text-ink'
-            }`}
-          >
-            {settled ? '✓' : taka(row.remaining)}
-          </span>
+          {head}
         </summary>
 
         <div className="border-t border-line px-4 py-4">
@@ -266,6 +258,69 @@ export function PaymentRow({
         </div>
       </details>
     </li>
+  )
+}
+
+/**
+ * The name, the deadline and the money — the part of a row that is the same
+ * whether it is a summary you can open or a line you can only read.
+ *
+ * A fragment rather than a wrapper, so both parents keep their own flex classes
+ * and neither gains a div. Split out for one reason: the read-only board and the
+ * collecting board must show a family's arrears identically, and the way that
+ * stops being true is two copies of this markup drifting a badge apart.
+ */
+function RowHead({
+  row,
+  settled,
+  locale,
+  t,
+  common,
+}: {
+  row: FeeRow
+  settled: boolean
+  locale: Locale
+  t: T<'feeRow'>
+  common: T<'common'>
+}) {
+  return (
+    <>
+      <div className="min-w-0">
+        <p className="truncate font-medium text-ink">
+          {row.name}
+          {row.studentCode && (
+            <span className="num ml-2 text-sm text-ink-faint">{row.studentCode}</span>
+          )}
+        </p>
+        <p className="text-sm text-ink-faint">
+          {formatDate(row.dueDate, locale)}
+          {/* Only while the money is still owed. Red is the colour that means
+              act on this, and a settled invoice needs no action — leaving the
+              warning on a paid row spends the owner's attention on the one
+              place it cannot be used. That the family paid late is a pattern
+              worth a report, not a badge that never goes away. */}
+          {!settled && row.daysLate > 0 && (
+            <span className="num font-medium text-absent">
+              {' · '}
+              {lateLabel(row.daysLate, locale, common)}
+            </span>
+          )}
+        </p>
+        {row.paid !== 0 && !settled && (
+          <p className="num text-sm text-ink-soft">
+            {fill(t.paidOf, { paid: taka(row.paid), net: taka(row.net) })}
+          </p>
+        )}
+      </div>
+
+      <span
+        className={`num shrink-0 font-semibold ${
+          settled ? 'text-present' : row.daysLate > 0 ? 'text-absent' : 'text-ink'
+        }`}
+      >
+        {settled ? '✓' : taka(row.remaining)}
+      </span>
+    </>
   )
 }
 

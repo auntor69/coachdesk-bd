@@ -177,6 +177,22 @@ export const en: Dictionary = {
     emptyTitle: 'No invoices yet',
     emptyBody:
       'Use the button above to raise this month’s invoices. One is created for every active enrolment, at that batch’s monthly fee.',
+    /**
+     * The same empty board, read by a teacher who may look and not raise. A
+     * separate string rather than a clause dropped from the other one, because
+     * "use the button above" *is* the other one — and a reader with no button
+     * needs to be told the emptiness is somebody else's to fix, not a screen
+     * that failed to load.
+     */
+    emptyBodyReadOnly:
+      'No invoices have been raised for your batches yet. Only an owner or a manager can raise them.',
+    /**
+     * Under the outstanding total, for a teacher. What that figure counts is
+     * their own batches and nothing else, and a fee total that is a subset has to
+     * say so — the number gets read against a bKash statement, and one that is
+     * quietly short is worse than no number at all.
+     */
+    yoursOnly: 'Your own batches only',
 
     today: 'today',
     yesterday: 'yesterday',
@@ -546,7 +562,11 @@ export const en: Dictionary = {
     },
     can_view_fees: {
       label: 'See fees',
-      hint: 'Who has paid, and how much is left',
+      /**
+       * Both limits, because "See fees" on its own reads as the whole board and
+       * the till. The grant is their own batches, and looking only.
+       */
+      hint: 'Who has paid in their own batches. Cannot take payments.',
     },
   },
 

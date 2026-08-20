@@ -1758,6 +1758,333 @@ await asUser(db, null, async (tx) => {
   )
 })
 
+// ---------------------------------------------------------------------------
+// The teacher fee permission.
+//
+// teacher_permissions.can_view_fees shipped in the init migration and was read by
+// nothing for eleven migrations: stored, defaulted false, rendered as a checkbox on
+// the owner's teacher form, and named in the comment above the fee policies — which
+// claimed "the app checks it before querying". Nothing checked it. Ticking the box
+// granted a teacher exactly nothing. 20260811000012 is the policy that makes it
+// mean something, and this section is what stops it going quiet again.
+//
+// Every pair here has the shape of the deactivation section above: assert the open
+// door before the shut one. "Karim sees no fees for Mim" is worth nothing unless
+// somebody can see fees for Mim — a policy that returned zero rows to everyone
+// would otherwise pass this whole section.
+//
+// Predicates on a named child rather than bare counts, wherever a bare count would
+// do. The import section above leaves two extra students in Karim's own batch, so
+// `count(*) from students` is not 1 here and an assertion written that way would
+// have been read as a leak.
+// ---------------------------------------------------------------------------
+
+console.log('\nTeacher fee visibility (can_view_fees):')
+
+// Mim is the control group: Nasrin's student, never Karim's. Her own invoice with
+// money against it, so the zeros below had something to be non-zero about.
+const invoiceMim = await one(
+  `insert into fee_invoices
+     (coaching_center_id, student_id, enrollment_id, period_month, amount_bdt, due_date)
+   values ($1, $2, $3, '2026-02-01', 1200, '2026-02-10') returning id`,
+  [centerA, stMim, eMim],
+)
+
+const payOn = (invoice, st, amount, method = 'cash') =>
+  db.query(
+    `insert into fee_payments (coaching_center_id, invoice_id, student_id, amount_bdt, method)
+     values ($1, $2, $3, $4, $5)`,
+    [centerA, invoice, st, amount, method],
+  )
+
+await payOn(invoiceAli, stAli, 300, 'bkash')
+await payOn(invoiceMim, stMim, 200)
+
+// One chase on Ali's invoice: the row Karim must still not see even once the fees
+// themselves have opened up.
+await remind(db, invoiceAli, centerA)
+
+// The row the owner's teacher form writes. `on conflict` so each flip below is one
+// statement rather than a delete and an insert.
+const feePerm = (value) =>
+  db.query(
+    `insert into teacher_permissions (teacher_id, coaching_center_id, can_view_fees)
+     values ($1, $2, $3)
+     on conflict (teacher_id) do update set can_view_fees = excluded.can_view_fees`,
+    [tKarim, centerA, value],
+  )
+
+await asUser(db, ids.ownerA, async (tx) => {
+  check(
+    "the owner sees both children's invoices, so the zeros below mean something",
+    (await n(tx, 'select count(*)::int as n from fee_invoices where student_id in ($1, $2)', [
+      stAli,
+      stMim,
+    ])) === 2,
+  )
+  check(
+    'and the money against both',
+    (await n(tx, 'select count(*)::int as n from fee_payments where invoice_id in ($1, $2)', [
+      invoiceAli,
+      invoiceMim,
+    ])) === 2,
+  )
+})
+
+// No row at all is the state bootstrap_center leaves an owner's own teacher row in,
+// and the state every teacher created before this migration is in. It has to read
+// as no — the opposite of how can_send_sms reads the same absence, because that one
+// would lock an owner out of their own marks sheet and this one is money.
+await asUser(db, ids.karim, async (tx) => {
+  check(
+    'with no permissions row, a teacher sees no invoice for their own student',
+    (await n(tx, 'select count(*)::int as n from fee_invoices where student_id = $1', [
+      stAli,
+    ])) === 0,
+  )
+  check(
+    'and no payments',
+    (await n(tx, 'select count(*)::int as n from fee_payments where invoice_id = $1', [
+      invoiceAli,
+    ])) === 0,
+  )
+})
+
+await feePerm(false)
+await asUser(db, ids.karim, async (tx) => {
+  check(
+    'with the box explicitly unticked, still nothing',
+    (await n(tx, 'select count(*)::int as n from fee_invoices where student_id = $1', [
+      stAli,
+    ])) === 0,
+  )
+})
+
+await feePerm(true)
+await asUser(db, ids.karim, async (tx) => {
+  check(
+    'ticked: the teacher reads the invoice of a student they teach',
+    (await n(tx, 'select count(*)::int as n from fee_invoices where student_id = $1', [
+      stAli,
+    ])) === 1,
+  )
+  check(
+    "and not the invoice of a colleague's student in the same centre",
+    (await n(tx, 'select count(*)::int as n from fee_invoices where student_id = $1', [
+      stMim,
+    ])) === 0,
+  )
+
+  // Through the view, which is what the board actually queries. It inner-joins
+  // students under security_invoker, so this is also the assertion that the fee
+  // policy and the student policy are scoped alike: had the fee policy been written
+  // centre-wide, the join would have dropped Mim's row anyway and the total at the
+  // top of the board would have been a subset calling itself the centre's.
+  check(
+    'the board row comes with the name, or the row is unreadable',
+    (
+      await tx.query('select student_name from fee_invoice_balances where id = $1', [
+        invoiceAli,
+      ])
+    ).rows[0]?.student_name === 'Ali Hasan',
+  )
+  check(
+    "and the colleague's row is not on the board",
+    (await n(tx, 'select count(*)::int as n from fee_invoice_balances where id = $1', [
+      invoiceMim,
+    ])) === 0,
+  )
+  check(
+    'so the whole board is their own batches and nothing else',
+    (await n(tx, 'select count(*)::int as n from fee_invoice_balances')) === 1,
+  )
+
+  check(
+    'the payments follow their invoice',
+    (await n(tx, 'select count(*)::int as n from fee_payments where invoice_id = $1', [
+      invoiceAli,
+    ])) === 1,
+  )
+  check(
+    'and stop at it',
+    (await n(tx, 'select count(*)::int as n from fee_payments where invoice_id = $1', [
+      invoiceMim,
+    ])) === 0,
+  )
+
+  // What the box must NOT also grant. can_manage_students is a separate checkbox an
+  // owner may well have left off, and a guardian's mobile number is not part of
+  // "see fees" — so the fee policies match the student policy instead of widening
+  // it, and these three are how that stays true.
+  check(
+    "seeing fees does not hand over a colleague's student",
+    (await n(tx, 'select count(*)::int as n from students where id = $1', [stMim])) === 0,
+  )
+  check(
+    'nor the guardian phone number of one',
+    (await n(tx, 'select count(*)::int as n from guardians where student_id = $1', [
+      stMim,
+    ])) === 0,
+  )
+  check(
+    'nor the record of who has been chased for money',
+    (await n(tx, 'select count(*)::int as n from fee_reminders')) === 0,
+  )
+  check(
+    'nor what the centre pays us',
+    (await n(tx, 'select count(*)::int as n from subscriptions')) === 0,
+  )
+})
+
+// Read, and only read. A teacher was already refused all three of these with no
+// permissions row at all, higher up; what these assert is that ticking the box did
+// not quietly grant them too.
+check(
+  'a teacher who can see fees still cannot record a payment',
+  await deniedAsUser(
+    db,
+    ids.karim,
+    `insert into fee_payments (coaching_center_id, invoice_id, student_id, amount_bdt)
+     values ($1, $2, $3, 500)`,
+    [centerA, invoiceAli, stAli],
+  ),
+)
+check(
+  'nor raise an invoice',
+  await deniedAsUser(
+    db,
+    ids.karim,
+    `insert into fee_invoices (coaching_center_id, student_id, period_month, amount_bdt, due_date)
+     values ($1, $2, '2026-03-01', 900, '2026-03-10')`,
+    [centerA, stAli],
+  ),
+)
+check(
+  'nor log a reminder, even against the invoice they can now read',
+  await deniedAsUser(
+    db,
+    ids.karim,
+    `insert into fee_reminders (coaching_center_id, invoice_id, channel, amount_bdt)
+     values ($1, $2, 'sms', 800)`,
+    [centerA, invoiceAli],
+  ),
+)
+
+// UPDATE and DELETE are the two that cannot be asserted with deniedAsUser, and
+// they are the two that would cost the most. A reader who can SELECT a row and has
+// no write policy gets no error from `update` — the row is filtered out and
+// Postgres reports nought rows changed, which deniedAsUser reads as allowed. So
+// the assertion is the stored number. Setting discount_bdt to the full 800 is a
+// legal value that clears fee_invoices_discount_bound, which is the point: if the
+// policy ever opened, a teacher would be writing off the owner's fees and nothing
+// in the schema would stop them.
+await asUser(db, ids.karim, async (tx) => {
+  await tx.query('update fee_invoices set discount_bdt = 800 where id = $1', [invoiceAli])
+  await tx.query('delete from fee_payments where invoice_id = $1', [invoiceAli])
+})
+
+const untouched = (
+  await db.query(
+    `select f.discount_bdt,
+            (select count(*)::int from fee_payments p where p.invoice_id = f.id) as payments
+     from fee_invoices f where f.id = $1`,
+    [invoiceAli],
+  )
+).rows[0]
+check(
+  'a teacher cannot write the fee off, not even one they can read',
+  Number(untouched.discount_bdt) === 0,
+  `discount is now ${untouched.discount_bdt}`,
+)
+check(
+  'nor delete the payment on it',
+  untouched.payments === 1,
+  `${untouched.payments} payment(s) left`,
+)
+
+// The grant is per teacher, not per centre. Nasrin teaches Mim and has no
+// permissions row of her own, so ticking Karim's box must leave her board shut.
+await asUser(db, ids.nasrin, async (tx) => {
+  check(
+    "one teacher's permission is not the centre's",
+    (await n(tx, 'select count(*)::int as n from fee_invoices where student_id = $1', [
+      stMim,
+    ])) === 0,
+  )
+})
+
+// Centre B's teacher, ticked, at his own centre. can_view_fees takes the centre as
+// an argument and the policy passes the row's own tenant column into it; a version
+// that had asked "is this caller a fee-reading teacher anywhere" would pass every
+// assertion above and fail this one.
+await db.query(
+  `insert into teacher_permissions (teacher_id, coaching_center_id, can_view_fees)
+   values ($1, $2, true)`,
+  [tRahim, centerB],
+)
+await asUser(db, ids.rahim, async (tx) => {
+  check(
+    "a fee-reading teacher at centre B reads none of centre A's invoices",
+    (await n(tx, 'select count(*)::int as n from fee_invoices')) === 0,
+  )
+  check(
+    'and nothing at all through the board',
+    (await n(tx, 'select count(*)::int as n from fee_invoice_balances')) === 0,
+  )
+})
+
+// The two off switches, both of which the settings screen promises when an owner
+// turns a teacher off. `teachers.active` is the flag; the membership is the second
+// write toggleTeacherActive makes. Either has to be enough on its own, which is why
+// can_view_fees ands is_member onto a query that already filters on teachers.active.
+await db.query('update teachers set active = false where id = $1', [tKarim])
+await asUser(db, ids.karim, async (tx) => {
+  check(
+    'deactivating a teacher closes the fee board along with everything else',
+    (await n(tx, 'select count(*)::int as n from fee_invoices where student_id = $1', [
+      stAli,
+    ])) === 0,
+  )
+})
+await db.query('update teachers set active = true where id = $1', [tKarim])
+
+await db.query(
+  `delete from center_members
+   where coaching_center_id = $1 and user_id = $2 and role = 'teacher'`,
+  [centerA, ids.karim],
+)
+await asUser(db, ids.karim, async (tx) => {
+  check(
+    'and revoking the membership closes it too, with the teacher row left active',
+    (await n(tx, 'select count(*)::int as n from fee_invoices where student_id = $1', [
+      stAli,
+    ])) === 0,
+  )
+})
+await addMember(centerA, ids.karim, 'teacher')
+
+await asUser(db, ids.karim, async (tx) => {
+  check(
+    'putting both back reopens it, so neither zero above was a broken fixture',
+    (await n(tx, 'select count(*)::int as n from fee_invoices where student_id = $1', [
+      stAli,
+    ])) === 1,
+  )
+})
+
+// Leave the seed as found, permission included. Nothing below counts fee rows
+// today; the next section added here will.
+await db.query('delete from fee_payments where invoice_id in ($1, $2)', [
+  invoiceAli,
+  invoiceMim,
+])
+await db.query('delete from fee_reminders where invoice_id = $1', [invoiceAli])
+await db.query('delete from fee_invoices where id = $1', [invoiceMim])
+await db.query('delete from teacher_permissions where teacher_id in ($1, $2)', [
+  tKarim,
+  tRahim,
+])
+
 console.log('\nAnonymous access:')
 
 await asUser(db, null, async (tx) => {

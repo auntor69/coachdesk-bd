@@ -15,6 +15,7 @@ import { switchCenter } from '@/app/(app)/actions'
 import { Logo } from '@/components/ui'
 import type { MemberRole } from '@/lib/supabase/types'
 import type { Session } from '@/lib/auth/session'
+import { canReadFees } from '@/lib/auth/session'
 import { formatBdMobile } from '@/lib/bd/phone'
 import { dict, type Dictionary } from '@/lib/i18n'
 
@@ -30,6 +31,13 @@ import { dict, type Dictionary } from '@/lib/i18n'
 type NavItem = { href: Route; label: keyof Dictionary['shell']['nav']; icon: string }
 
 /**
+ * The fee tab, named once because two roles reach it by different routes — the
+ * table below for a staff-admin, `canReadFees` for a teacher whose owner has
+ * ticked the permission. Two literals would eventually be two different icons.
+ */
+const FEES_TAB: NavItem = { href: '/fees', label: 'fees', icon: '৳' }
+
+/**
  * What each role sees. Icons are text glyphs rather than an icon font or SVG
  * sprite — one less network request on a 3G connection, and they inherit the
  * Bangla font's baseline so nothing sits half a pixel off.
@@ -42,13 +50,13 @@ const NAV: Record<MemberRole, NavItem[]> = {
   owner: [
     { href: '/dashboard', label: 'home', icon: '⌂' },
     { href: '/teach', label: 'attendance', icon: '✓' },
-    { href: '/fees', label: 'fees', icon: '৳' },
+    FEES_TAB,
     { href: '/settings', label: 'settings', icon: '⚙' },
   ],
   manager: [
     { href: '/dashboard', label: 'home', icon: '⌂' },
     { href: '/teach', label: 'attendance', icon: '✓' },
-    { href: '/fees', label: 'fees', icon: '৳' },
+    FEES_TAB,
     { href: '/settings', label: 'settings', icon: '⚙' },
   ],
   teacher: [
@@ -128,7 +136,7 @@ function CenterName({ session, t }: { session: Session; t: Dictionary['shell'] }
   )
 }
 
-export function AppShell({
+export async function AppShell({
   session,
   children,
 }: {
@@ -136,8 +144,21 @@ export function AppShell({
   children: React.ReactNode
 }) {
   const role: MemberRole = session.active?.role ?? 'student'
-  const items = NAV[role]
   const t = dict(session.locale).shell
+
+  // The one entry the table above cannot decide, because it turns on a
+  // permission rather than a role. Asked through the same `canReadFees` that
+  // /fees guards itself with, so the tab and the screen can never disagree —
+  // and it is memoised per request, so the layout and the page it wraps cost
+  // one query between them.
+  //
+  // Appended rather than slotted in beside attendance: the two tabs a teacher
+  // already knows keep their positions on the day the permission is granted or
+  // taken away.
+  const items: NavItem[] =
+    role === 'teacher' && (await canReadFees())
+      ? [...NAV.teacher, FEES_TAB]
+      : NAV[role]
 
   return (
     <div className="flex min-h-full flex-col">

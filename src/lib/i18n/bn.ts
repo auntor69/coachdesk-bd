@@ -333,6 +333,20 @@ export const bn = {
     emptyTitle: 'এখনো কোনো ইনভয়েস নেই',
     emptyBody:
       'উপরের বোতাম দিয়ে এই মাসের ইনভয়েস তৈরি করুন। প্রতিটি চালু ভর্তির জন্য একটি ইনভয়েস তৈরি হবে, ব্যাচের মাসিক ফি অনুযায়ী।',
+    /**
+     * Says who *does* raise them, rather than that the reader may not. A teacher
+     * who was handed this screen by their owner does not need to be told what
+     * they are not; they need to know the board is empty because nobody has
+     * billed yet, and who to go and ask.
+     */
+    emptyBodyReadOnly:
+      'আপনার ব্যাচের জন্য এখনো কোনো ইনভয়েস তৈরি হয়নি। ইনভয়েস তৈরি করবেন মালিক বা ম্যানেজার।',
+    /**
+     * "হিসাব", not a word for the total, because it sits above a figure that is
+     * already labelled — this line's job is the boundary of the sum, not what the
+     * sum is.
+     */
+    yoursOnly: 'শুধু আপনার নিজের ব্যাচের হিসাব',
 
     /** When a reminder went out, as a person would say it. Anything older is a date. */
     today: 'আজ',
@@ -934,7 +948,12 @@ export const bn = {
     },
     can_view_fees: {
       label: 'ফি দেখা',
-      hint: 'কে টাকা দিয়েছে, কত বাকি',
+      /**
+       * Names the second limit in the money's own words. An owner ticking this
+       * wants to know whether they have just handed someone their till — so the
+       * sentence that answers that goes in the hint, not in a help page.
+       */
+      hint: 'নিজের ব্যাচের কে টাকা দিয়েছে, কত বাকি। টাকা জমা নিতে পারবেন না।',
     },
   },
 

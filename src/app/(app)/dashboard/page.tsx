@@ -2,7 +2,7 @@ import Link from 'next/link'
 
 import { Card } from '@/components/ui'
 import { greetingFor } from '@/components/app-shell'
-import { pageRole, getSession, isStaffAdmin } from '@/lib/auth/session'
+import { pageRole, getSession, isStaffAdmin, canReadFees } from '@/lib/auth/session'
 import { createClient } from '@/lib/supabase/server'
 import {
   todayInDhaka,
@@ -193,6 +193,18 @@ export default async function DashboardPage() {
   // the batch-rate card, which the view returns nothing to a teacher for.
   const isAdmin = isStaffAdmin(session)
 
+  // Whether the fee figures on this page mean anything to whoever is reading it.
+  //
+  // Without this, a teacher landing here from a bookmark got the centre's
+  // outstanding as ৳0 and "nobody is overdue" — RLS had returned them nothing, and
+  // the card reported that absence as good news in the same 4xl type an owner
+  // reads their real arrears in. A number that is missing is not a number that is
+  // zero, and this card is the one the whole product is sold on.
+  //
+  // Free for an owner or a manager: canReadFees answers from the role without a
+  // query, and it is memoised, so this and the fee tab in the shell share one.
+  const seeFees = await canReadFees()
+
   // The month the rate card describes and the batches in it, worst first — both
   // decided in one tested place, because both invert without leaving a mark on
   // the screen. See the note on the query for why two months are fetched.
@@ -209,20 +221,32 @@ export default async function DashboardPage() {
         <p className="mt-1 text-ink-soft">{session.active.centerName}</p>
       </div>
 
-      <Card className="border-brand-200 bg-brand-50">
-        <p className="text-sm font-medium text-brand-800">{t.outstanding}</p>
-        <p className="num mt-1 text-4xl font-bold text-brand-900">
-          {taka(outstanding)}
-        </p>
-        {/* `.num` on the paragraph rather than a span around the count, the same
-            way the fee board carries this sentence. It is only tabular figures,
-            so it does nothing to the Bangla words and everything to the digit. */}
-        <p className="num mt-2 text-sm text-brand-800">
-          {overdue.length > 0
-            ? d.fees.overdueCount(overdue.length)
-            : t.nobodyOverdue}
-        </p>
-      </Card>
+      {seeFees && (
+        <Card className="border-brand-200 bg-brand-50">
+          <p className="text-sm font-medium text-brand-800">{t.outstanding}</p>
+          <p className="num mt-1 text-4xl font-bold text-brand-900">
+            {taka(outstanding)}
+          </p>
+          {/* The fee board's own caption, borrowed rather than restated. A
+              teacher's copy of this figure covers their own batches and no others,
+              because fee_invoice_balances inner-joins students under
+              security_invoker — and the two screens must describe that same
+              boundary in the same words. */}
+          {!isAdmin && (
+            <p className="mt-1 text-sm font-medium text-brand-700">
+              {d.fees.yoursOnly}
+            </p>
+          )}
+          {/* `.num` on the paragraph rather than a span around the count, the same
+              way the fee board carries this sentence. It is only tabular figures,
+              so it does nothing to the Bangla words and everything to the digit. */}
+          <p className="num mt-2 text-sm text-brand-800">
+            {overdue.length > 0
+              ? d.fees.overdueCount(overdue.length)
+              : t.nobodyOverdue}
+          </p>
+        </Card>
+      )}
 
       {/* Directly under the number it exists to reduce, and above everything
           else on the page. This is the one action on the owner's home screen that
@@ -235,8 +259,17 @@ export default async function DashboardPage() {
         <ReminderEntry dueToday={dueToday} t={d.reminders} />
       )}
 
-      <div className="grid grid-cols-3 gap-3">
-        <Stat label={t.collected} value={taka(collected)} />
+      {/* Two or three, and the column count follows, because a two-item row in a
+          three-column grid leaves a gap that reads as a stat that failed to load.
+          Both class names are written out rather than interpolated from a number,
+          so Tailwind's scanner can still see them. */}
+      <div className={`grid gap-3 ${isAdmin ? 'grid-cols-3' : 'grid-cols-2'}`}>
+        {/* Staff-admin, and not merely `seeFees`. What came in this month is the
+            centre's revenue; a teacher's copy of it would be the takings of their
+            own batches under a label that says the centre's, and unlike arrears it
+            is not a number they can do anything with. Their share of the money is
+            on the fee board, next to the names. */}
+        {isAdmin && <Stat label={t.collected} value={taka(collected)} />}
         <Stat label={t.students} value={String(studentCount ?? 0)} />
         <Stat label={t.batches} value={String(batchCount ?? 0)} />
       </div>
@@ -303,7 +336,11 @@ export default async function DashboardPage() {
         </div>
       )}
 
-      {(studentCount ?? 0) === 0 && (
+      {/* Staff-admin only. /settings/students/new is theirs, so a teacher tapping
+          this got a 403 — and the count it triggers on is the teacher's own
+          students, not the centre's, so a teacher whose batches happen to be empty
+          was being told a centre with three hundred students had none. */}
+      {isAdmin && (studentCount ?? 0) === 0 && (
         <Card>
           <h2 className="font-semibold text-ink">{t.addStudentsTitle}</h2>
           <p className="mt-1 text-sm text-ink-soft">{t.addStudentsBody}</p>

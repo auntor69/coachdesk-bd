@@ -221,6 +221,56 @@ export function isStaffAdmin(session: Session): boolean {
 }
 
 /**
+ * May this reader see fee figures at the active centre?
+ *
+ * Free for every role but one. A staff-admin always may — it is their money. A
+ * student or guardian never reaches a fee *board*: they see their own bill on /me
+ * through a different policy, and asking this question about them would answer the
+ * wrong one. So `teacher` is the only role that costs a query, and only on the two
+ * screens that ask.
+ *
+ * Absent means no, which is the opposite of how the SMS gate reads the same
+ * absence. `bootstrap_center` gives an owner's own teacher row no permissions row,
+ * and reading that as "may do nothing" would lock an owner out of their own marks
+ * sheet — so `can_send_sms` opens unless it finds an explicit false. Fees invert
+ * it: the column defaults to false, an owner opting in is the entire point, and an
+ * owner does not need a row anyway because they are staff-admin.
+ *
+ * `some` over every matching teacher row rather than `maybeSingle`, because
+ * `teachers` has no unique key on (centre, user) and `maybeSingle` would answer
+ * "no" to a centre that had two rows for one person. app.can_view_fees uses
+ * `exists`, so this has to as well: the one thing worse than disagreeing with the
+ * boundary is disagreeing with it quietly.
+ *
+ * This decides what to *render*. app.can_view_fees in 20260811000012 is the
+ * boundary and the thing with tests — if this ever says yes where the policy says
+ * no, the screen draws and every query on it comes back empty.
+ */
+export const canReadFees = cache(async (): Promise<boolean> => {
+  const session = await getSession()
+  if (!session?.active) return false
+  if (isStaffAdmin(session)) return true
+  if (session.active.role !== 'teacher') return false
+
+  const supabase = await createClient()
+  const { data: rows } = await supabase
+    .from('teachers')
+    .select('teacher_permissions (can_view_fees)')
+    .eq('coaching_center_id', session.active.centerId)
+    .eq('user_id', session.userId)
+    .eq('active', true)
+
+  return (rows ?? []).some((row) => {
+    // The embed is an object for a to-one relation; PostgREST types it loosely
+    // enough that the unwrap costs nothing. Same shape as exams/[examId].
+    const perms = Array.isArray(row.teacher_permissions)
+      ? row.teacher_permissions[0]
+      : row.teacher_permissions
+    return perms?.can_view_fees === true
+  })
+})
+
+/**
  * The same three checks, for a page rather than a Server Action.
  *
  * A page and an action want opposite things from a failed authorization. An
