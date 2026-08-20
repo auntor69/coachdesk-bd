@@ -2,7 +2,7 @@ import Link from 'next/link'
 
 import { Card } from '@/components/ui'
 import { greetingFor } from '@/components/app-shell'
-import { pageRole, getSession } from '@/lib/auth/session'
+import { pageRole, getSession, isStaffAdmin, myTeacherIds } from '@/lib/auth/session'
 import { createClient } from '@/lib/supabase/server'
 import { BatchSlot } from '@/lib/bd/schedule'
 import { todayInDhaka, dhakaDayOfWeek } from '@/lib/bd/time'
@@ -45,9 +45,27 @@ export default async function TeachPage() {
   const locale = session.locale
   const t = dict(locale).teach
 
-  // RLS narrows this to batches this teacher actually teaches; an owner in
-  // Teacher Mode sees all of their own center's batches, which is correct.
-  const { data: batches } = await supabase
+  // Whose batches this screen is about.
+  //
+  // Not RLS's job, and this page used to assume it was. batches_member_read lets
+  // any member read any batch at their own centre, which is right: an owner needs
+  // it for the setup screens, and a batch's name and time are not a secret from
+  // the people inside the centre. It is simply not the answer to "what am I
+  // teaching today" — and this page asked the database that question and printed
+  // whatever came back. A teacher at a nine-batch centre got all nine, every one
+  // captioned "0 students" because the enrolment embed *is* narrowed to their own
+  // batches, each linking to a register they would not have been allowed to save.
+  //
+  // A staff-admin is not filtered. An owner opening this is reviewing the centre's
+  // day rather than their own timetable, and bootstrap_center gives them a teachers
+  // row that no batch need point at — filtering them would empty their own screen.
+  const isAdmin = isStaffAdmin(session)
+  const mine = isAdmin ? null : await myTeacherIds()
+
+  // Two steps rather than one chain: supabase-js's `.order()` returns a builder
+  // with the filter methods already dropped off it, so a conditional filter has to
+  // be added before the ordering rather than after.
+  let batchQuery = supabase
     .from('batches')
     .select(
       `id, name, slot, start_time, end_time,
@@ -57,7 +75,16 @@ export default async function TeachPage() {
     )
     .eq('coaching_center_id', session.active.centerId)
     .eq('active', true)
-    .order('start_time', { ascending: true, nullsFirst: false })
+
+  if (mine) batchQuery = batchQuery.in('teacher_id', mine)
+
+  // A member whose role reads teacher but who holds no active row in the staff
+  // list teaches nothing — an unfinished invitation, or a row switched off. `in.()`
+  // would be a round trip to be told what is already known here.
+  const { data: batches } =
+    mine?.length === 0
+      ? { data: null }
+      : await batchQuery.order('start_time', { ascending: true, nullsFirst: false })
 
   const { data: sessions } = await supabase
     .from('attendance_sessions')
@@ -108,19 +135,30 @@ export default async function TeachPage() {
         </p>
       </div>
 
-      {rows.length === 0 && (
-        <Card>
-          <h2 className="font-semibold text-ink">{t.firstBatchTitle}</h2>
-          <p className="mt-1 text-sm text-ink-soft">{t.firstBatchBody}</p>
-          <Link
-            href="/settings/batches/new"
-            className="mt-4 inline-flex min-h-tap items-center justify-center
-              rounded-xl bg-brand-600 px-5 font-semibold text-white"
-          >
-            {t.addBatch}
-          </Link>
-        </Card>
-      )}
+      {rows.length === 0 &&
+        (isAdmin ? (
+          <Card>
+            <h2 className="font-semibold text-ink">{t.firstBatchTitle}</h2>
+            <p className="mt-1 text-sm text-ink-soft">{t.firstBatchBody}</p>
+            <Link
+              href="/settings/batches/new"
+              className="mt-4 inline-flex min-h-tap items-center justify-center
+                rounded-xl bg-brand-600 px-5 font-semibold text-white"
+            >
+              {t.addBatch}
+            </Link>
+          </Card>
+        ) : (
+          /* The same emptiness, without the button. /settings/batches/new is
+             staff-admin, so the card above offered the only role that normally
+             reads this screen a door that answers 403 — and told them to make a
+             batch, which is not a thing a teacher does. This one names who
+             does. */
+          <Card>
+            <h2 className="font-semibold text-ink">{t.noBatchesTitle}</h2>
+            <p className="mt-1 text-sm text-ink-soft">{t.noBatchesBody}</p>
+          </Card>
+        ))}
 
       {todayRows.length > 0 && (
         <ul className="flex flex-col gap-3">

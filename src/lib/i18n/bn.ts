@@ -194,6 +194,13 @@ export const bn = {
     firstBatchBody:
       'ব্যাচ মানে একটি নির্দিষ্ট সময়ের ক্লাস — যেমন “সকাল ৭টা গণিত”। ব্যাচ বানালে শিক্ষার্থী যোগ করা যাবে।',
     addBatch: 'ব্যাচ যোগ করুন',
+    /**
+     * The teacher's version of the same empty screen. Says who does the assigning
+     * rather than that they may not — a teacher on their first day does not need
+     * to be told what they are not allowed to do.
+     */
+    noBatchesTitle: 'এখনও কোনো ব্যাচ আপনার নামে নেই',
+    noBatchesBody: 'মালিক আপনাকে ব্যাচে দিলে আজকের ক্লাস এখানে দেখা যাবে।',
     students: (n: number) => `${n} জন শিক্ষার্থী`,
     /** The same count on the collapsed list, where the row is half as wide. */
     studentsShort: (n: number) => `${n} জন`,

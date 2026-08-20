@@ -94,6 +94,15 @@ export const en: Dictionary = {
     firstBatchBody:
       'A batch is a class at a set time — say “7am Maths”. Once a batch exists you can add students to it.',
     addBatch: 'Add batch',
+    /**
+     * The same emptiness to a teacher, who cannot answer it. "Make a batch to
+     * get started" is an instruction they cannot follow and the button under it
+     * goes to a screen that refuses them, so they get the other half of the
+     * fact — that somebody else assigns batches — and no button at all.
+     */
+    noBatchesTitle: 'None of the batches are yours yet',
+    noBatchesBody:
+      'Once the owner puts you on a batch, today’s classes show up here.',
     students: (n: number) => `${n} ${n === 1 ? 'student' : 'students'}`,
     /**
      * The same as `students`: Bangla shortens to জন on the narrow row and English

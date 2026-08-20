@@ -50,15 +50,16 @@ const embeds = [
   // teacher_subjects is a junction table PostgREST may try to collapse.
   ['settings/teachers/page.tsx', 'teachers', 'id, name, phone, active, user_id, teacher_permissions (can_manage_students, can_manage_exams, can_send_sms, can_view_fees, can_manage_batches), teacher_subjects (subjects (name, name_bn)), batches (id, active)'],
   ['teach/page.tsx', 'batches', 'id, name, slot, start_time, end_time, subjects (name, name_bn), batch_schedules (day_of_week, start_time, end_time), enrollments (id, status)'],
-  ['teach/[batchId]/page.tsx', 'batches', 'id, name, slot, start_time, end_time, subjects (name, name_bn)'],
+  ['teach/[batchId]/page.tsx', 'batches', 'id, name, slot, start_time, end_time, teacher_id, subjects (name, name_bn)'],
   ['teach/[batchId]/page.tsx', 'enrollments', 'id, students (id, name, student_code)'],
   ['teach/[batchId]/page.tsx', 'attendance_sessions', 'id, note, attendance_records (enrollment_id, status)'],
   ['lib/auth/session.ts', 'center_members', 'coaching_center_id, role, branch_id, coaching_centers (name, plan, sms_credit_balance)'],
-  // The same shape as the exam screen's, from a different file, and listed
-  // separately because that is the point of naming the file: this one decides
-  // whether a teacher is shown the fee board at all, and an embed PostgREST
-  // cannot resolve would answer "no permission" rather than failing loudly.
-  ['lib/auth/session.ts', 'teachers', 'teacher_permissions (can_view_fees)'],
+  // Nearly the exam screen's shape, from a different file, and listed separately
+  // because that is the point of naming the file: this one decides whether a
+  // teacher is shown the fee board at all and which batches /teach calls theirs,
+  // and an embed PostgREST cannot resolve would answer "no permission" and "no
+  // batches" rather than failing loudly.
+  ['lib/auth/session.ts', 'teachers', 'id, teacher_permissions (can_view_fees)'],
   // Three hops, and the last one is the guardian phone the result SMS goes to.
   ['lib/sms/result-dispatch.ts', 'exam_results', 'id, obtained_marks, is_absent, note, enrollments (id, students (id, name, guardian_phone, sms_opt_out, guardians (id, phone, is_primary, sms_opt_out)))'],
   // The fee board reads a view, not a table, and it is here for a different

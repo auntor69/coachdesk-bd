@@ -2,7 +2,7 @@ import Link from 'next/link'
 
 import { Card } from '@/components/ui'
 import { greetingFor } from '@/components/app-shell'
-import { pageRole, getSession, isStaffAdmin, canReadFees } from '@/lib/auth/session'
+import { pageRole, getSession, isStaffAdmin, canReadFees, myTeacherIds } from '@/lib/auth/session'
 import { createClient } from '@/lib/supabase/server'
 import {
   todayInDhaka,
@@ -59,6 +59,35 @@ export default async function DashboardPage() {
   const d = dict(locale)
   const t = d.dashboard
 
+  // Owners and managers only. A teacher granted fee visibility can see the
+  // numbers on this page, but the worklist itself is staff-admin — offering them
+  // a door that answers 403 is worse than not offering it. The same boolean gates
+  // the batch-rate card, which the view returns nothing to a teacher for.
+  const isAdmin = isStaffAdmin(session)
+
+  // And which batches count as this reader's, for the one figure on this page that
+  // RLS does not narrow on its own.
+  //
+  // Everything else here already answers per reader: students, invoices, payments
+  // and today's registers are all scoped to a teacher's own batches by policy. A
+  // batch *row* is not — batches_member_read admits every member of the centre, for
+  // the reasons in the note on /teach — so the count sat there reading 9 beside a
+  // student count of 2, and "1 of 9 batches marked today" over a teacher who had
+  // marked both of theirs. Two numbers from the same screen describing two
+  // different centres.
+  const mine = isAdmin ? null : await myTeacherIds()
+
+  // Built out here rather than inline below because the filter is conditional and
+  // `.select(..., { head: true })` has nowhere to hang an `if`. Nothing runs until
+  // the Promise.all awaits it.
+  let batchCountQuery = supabase
+    .from('batches')
+    .select('id', { count: 'exact', head: true })
+    .eq('coaching_center_id', session.active.centerId)
+    .eq('active', true)
+
+  if (mine) batchCountQuery = batchCountQuery.in('teacher_id', mine)
+
   const [
     { count: studentCount },
     { count: batchCount },
@@ -73,11 +102,7 @@ export default async function DashboardPage() {
       .select('id', { count: 'exact', head: true })
       .eq('coaching_center_id', session.active.centerId)
       .eq('status', 'active'),
-    supabase
-      .from('batches')
-      .select('id', { count: 'exact', head: true })
-      .eq('coaching_center_id', session.active.centerId)
-      .eq('active', true),
+    batchCountQuery,
     // Unvoided and still owed. A voided invoice is a correction and counting it
     // would show the owner money they are not owed; a settled one is not owed at
     // all. Every balance here was subtracted by Postgres in numeric(10, 2).
@@ -187,12 +212,6 @@ export default async function DashboardPage() {
     today,
   )
 
-  // Owners and managers only. A teacher granted fee visibility can see the
-  // numbers on this page, but the worklist itself is staff-admin — offering them
-  // a door that answers 403 is worse than not offering it. The same boolean gates
-  // the batch-rate card, which the view returns nothing to a teacher for.
-  const isAdmin = isStaffAdmin(session)
-
   // Whether the fee figures on this page mean anything to whoever is reading it.
   //
   // Without this, a teacher landing here from a bookmark got the centre's
@@ -202,7 +221,8 @@ export default async function DashboardPage() {
   // zero, and this card is the one the whole product is sold on.
   //
   // Free for an owner or a manager: canReadFees answers from the role without a
-  // query, and it is memoised, so this and the fee tab in the shell share one.
+  // query, and it is memoised, so this and the fee tab in the shell share one — and
+  // for a teacher it shares `mine`'s query above rather than adding its own.
   const seeFees = await canReadFees()
 
   // The month the rate card describes and the batches in it, worst first — both

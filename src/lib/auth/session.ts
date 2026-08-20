@@ -221,6 +221,67 @@ export function isStaffAdmin(session: Session): boolean {
 }
 
 /**
+ * The reader's own `teachers` rows at the active centre, with the permissions
+ * that hang off them.
+ *
+ * One query behind two questions — which batches are mine, and may I see fees —
+ * because both are asked on the same request by different files: the shell asks
+ * for the nav, the page asks for its own guard, and React's `cache` means they
+ * share this. Not exported: the two derived helpers below are the useful shapes,
+ * and a caller reaching for the rows themselves would be about to re-derive one
+ * of them.
+ *
+ * A list rather than a row, and this is not defensiveness. `teachers` has no
+ * unique key on (coaching_center_id, user_id), so a centre that entered the same
+ * person twice has two rows and `maybeSingle()` would fail the whole query. Every
+ * question asked of this is "any of them", which is also what app.can_view_fees
+ * and app.my_teacher_ids do.
+ */
+const myTeacherRows = cache(
+  async (): Promise<{ id: string; canViewFees: boolean }[]> => {
+    const session = await getSession()
+    if (!session?.active) return []
+
+    const supabase = await createClient()
+    const { data } = await supabase
+      .from('teachers')
+      .select('id, teacher_permissions (can_view_fees)')
+      .eq('coaching_center_id', session.active.centerId)
+      .eq('user_id', session.userId)
+      .eq('active', true)
+
+    return (data ?? []).map((row) => {
+      // The embed is an object for a to-one relation; PostgREST types it loosely
+      // enough that the unwrap costs nothing. Same shape as exams/[examId].
+      const perms = Array.isArray(row.teacher_permissions)
+        ? row.teacher_permissions[0]
+        : row.teacher_permissions
+      return { id: row.id, canViewFees: perms?.can_view_fees === true }
+    })
+  },
+)
+
+/**
+ * The `teachers.id` values the reader holds at the active centre — the app-side
+ * twin of app.my_teacher_ids, for the screens that have to *filter* rather than
+ * be allowed or refused.
+ *
+ * /teach is why this exists. batches_member_read lets any member of a centre read
+ * any of its batches, which is right for an owner and for the student whose
+ * enrolment names one, and quite wrong as the definition of "my classes today":
+ * the register itself is scoped by app.teaches_batch, so a teacher was shown every
+ * batch in the centre with "0 students" beside it and a button into an empty
+ * roster. RLS was not the thing that was broken, so this is not the layer that
+ * fixes it — the screen simply has to ask for what it means.
+ *
+ * Empty for a staff-admin who holds no teacher row, which is why callers check
+ * `isStaffAdmin` first rather than filtering on this and finding nothing.
+ */
+export const myTeacherIds = cache(async (): Promise<string[]> => {
+  return (await myTeacherRows()).map((row) => row.id)
+})
+
+/**
  * May this reader see fee figures at the active centre?
  *
  * Free for every role but one. A staff-admin always may — it is their money. A
@@ -236,11 +297,9 @@ export function isStaffAdmin(session: Session): boolean {
  * it: the column defaults to false, an owner opting in is the entire point, and an
  * owner does not need a row anyway because they are staff-admin.
  *
- * `some` over every matching teacher row rather than `maybeSingle`, because
- * `teachers` has no unique key on (centre, user) and `maybeSingle` would answer
- * "no" to a centre that had two rows for one person. app.can_view_fees uses
- * `exists`, so this has to as well: the one thing worse than disagreeing with the
- * boundary is disagreeing with it quietly.
+ * `some` over every matching teacher row, because app.can_view_fees uses `exists`
+ * and the one thing worse than disagreeing with the boundary is disagreeing with
+ * it quietly. See myTeacherRows for why there can be more than one.
  *
  * This decides what to *render*. app.can_view_fees in 20260811000012 is the
  * boundary and the thing with tests — if this ever says yes where the policy says
@@ -252,22 +311,7 @@ export const canReadFees = cache(async (): Promise<boolean> => {
   if (isStaffAdmin(session)) return true
   if (session.active.role !== 'teacher') return false
 
-  const supabase = await createClient()
-  const { data: rows } = await supabase
-    .from('teachers')
-    .select('teacher_permissions (can_view_fees)')
-    .eq('coaching_center_id', session.active.centerId)
-    .eq('user_id', session.userId)
-    .eq('active', true)
-
-  return (rows ?? []).some((row) => {
-    // The embed is an object for a to-one relation; PostgREST types it loosely
-    // enough that the unwrap costs nothing. Same shape as exams/[examId].
-    const perms = Array.isArray(row.teacher_permissions)
-      ? row.teacher_permissions[0]
-      : row.teacher_permissions
-    return perms?.can_view_fees === true
-  })
+  return (await myTeacherRows()).some((row) => row.canViewFees)
 })
 
 /**

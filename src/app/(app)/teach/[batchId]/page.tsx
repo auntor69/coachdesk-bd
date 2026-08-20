@@ -1,8 +1,13 @@
 import Link from 'next/link'
-import { notFound } from 'next/navigation'
+import { forbidden, notFound } from 'next/navigation'
 
 import { Card } from '@/components/ui'
-import { pageRole, getSession } from '@/lib/auth/session'
+import {
+  pageRole,
+  getSession,
+  isStaffAdmin,
+  myTeacherIds,
+} from '@/lib/auth/session'
 import { createClient } from '@/lib/supabase/server'
 import { BatchSlot } from '@/lib/bd/schedule'
 import { todayInDhaka, formatDate } from '@/lib/bd/time'
@@ -46,17 +51,32 @@ export default async function AttendancePage({
   const sessionDate =
     date && /^\d{4}-\d{2}-\d{2}$/.test(date) && date <= today ? date : today
 
-  // RLS decides whether this teacher may see this batch at all; a miss is a
-  // 404 rather than a 403 so the URL cannot be used to probe which batch IDs
-  // exist in other centres.
+  // Which centre this batch is in is RLS's question, and a miss is a 404 rather
+  // than a 403 so the URL cannot be used to probe which batch IDs exist in other
+  // centres.
   const { data: batch } = await supabase
     .from('batches')
-    .select('id, name, slot, start_time, end_time, subjects (name, name_bn)')
+    .select('id, name, slot, start_time, end_time, teacher_id, subjects (name, name_bn)')
     .eq('coaching_center_id', session.active.centerId)
     .eq('id', batchId)
     .maybeSingle()
 
   if (!batch) notFound()
+
+  // Whose register this is is a different question, and nothing was asking it.
+  // batches_member_read admits every member of the centre, so a teacher could open
+  // any batch in it — and what they got was this screen with an empty roster,
+  // because enrollments_teacher_read is scoped by app.teaches_batch. "No students
+  // in this batch" is a sentence about the batch; the truth was about the reader.
+  // Marking it would then have failed at the write policy, after they had tapped
+  // through forty names.
+  //
+  // 403 and not 404, unlike the miss above. This batch is at their own centre and
+  // /teach may well have listed it to them last month, so there is nothing left to
+  // hide — and the 403 screen says the one useful thing, which is that the owner
+  // decides who teaches what.
+  const mine = isStaffAdmin(session) ? null : await myTeacherIds()
+  if (mine && (!batch.teacher_id || !mine.includes(batch.teacher_id))) forbidden()
 
   const [{ data: enrollments }, { data: existingSession }] = await Promise.all([
     supabase

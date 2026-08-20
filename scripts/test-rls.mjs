@@ -241,6 +241,27 @@ await asUser(db, ids.karim, async (tx) => {
     (await n(tx, 'select count(*)::int as n from subscriptions')) === 0,
   )
   check('Karim sees his own batch', (await n(tx, 'select count(*)::int as n from batches where id = $1', [bBioMorning])) === 1)
+  // And Nasrin's, deliberately. batches_member_read admits every member of the
+  // centre, because a batch's name and time are not a secret from the people
+  // inside it and the owner's setup screens depend on reading all of them.
+  //
+  // This is asserted rather than assumed because two screens are built on it being
+  // true: /teach filters by teachers.id in the app, and /teach/[batchId] answers
+  // forbidden() for a batch in the reader's own centre that is not theirs. Anyone
+  // narrowing this policy will land here first, and the fix is to delete those two
+  // filters — not to leave them contradicting a boundary that has moved.
+  //
+  // What a teacher still cannot reach through a foreign batch is anyone in it: the
+  // enrolments, the students, the marks and the guardians' phone numbers are all
+  // checked above, and all scoped by app.teaches_batch.
+  check(
+    "Karim can read Nasrin's batch row, which is why /teach filters in the app",
+    (await n(tx, 'select count(*)::int as n from batches where id = $1', [bChemEvening])) === 1,
+  )
+  check(
+    "Karim sees nobody in Nasrin's batch",
+    (await n(tx, 'select count(*)::int as n from enrollments where batch_id = $1', [bChemEvening])) === 0,
+  )
 })
 
 console.log('\nTeacher write scoping:')
