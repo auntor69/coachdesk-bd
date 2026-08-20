@@ -48,6 +48,7 @@ export const en: Dictionary = {
     welcome: 'Welcome',
     otherCenter: 'Other centre',
     thisCenter: 'Here now',
+    switchTo: 'Switch language to {lang}',
     /**
      * Short enough for a 48px tab at 375px, which is the constraint the Bangla
      * labels were written to and the one English loses most easily: "Attendance"

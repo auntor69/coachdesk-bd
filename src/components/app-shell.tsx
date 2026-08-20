@@ -12,6 +12,7 @@ import type { Route } from 'next'
 
 import { signOut } from '@/app/(auth)/actions'
 import { switchCenter } from '@/app/(app)/actions'
+import { LanguageSwitch } from '@/components/language-switch'
 import { Logo } from '@/components/ui'
 import type { MemberRole } from '@/lib/supabase/types'
 import type { Session } from '@/lib/auth/session'
@@ -169,15 +170,19 @@ export async function AppShell({
             <CenterName session={session} t={t} />
           </div>
 
-          <form action={signOut}>
-            <button
-              type="submit"
-              className="rounded-lg px-3 py-2 text-sm font-medium text-ink-soft
-                hover:bg-surface-alt hover:text-ink"
-            >
-              {t.logout}
-            </button>
-          </form>
+          <div className="flex shrink-0 items-center gap-1">
+            <LanguageSwitch locale={session.locale} />
+
+            <form action={signOut}>
+              <button
+                type="submit"
+                className="rounded-lg px-3 py-2 text-sm font-medium text-ink-soft
+                  hover:bg-surface-alt hover:text-ink"
+              >
+                {t.logout}
+              </button>
+            </form>
+          </div>
         </div>
       </header>
 

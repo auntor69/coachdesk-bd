@@ -1,6 +1,8 @@
 import type { Metadata, Viewport } from 'next'
 import { Hind_Siliguri } from 'next/font/google'
 
+import { readerLocale } from '@/lib/i18n/server'
+
 import './globals.css'
 
 /*
@@ -36,9 +38,22 @@ export const viewport: Viewport = {
   viewportFit: 'cover',
 }
 
-export default function RootLayout({ children }: LayoutProps<'/'>) {
+/**
+ * `lang` follows the reader, and is the reason this layout is async.
+ *
+ * It was hardcoded "bn", which was true of every screen until the language switch
+ * existed. A page rendering English under lang="bn" is not cosmetic: it is what a
+ * screen reader announces it in, and it decides which font the browser falls back
+ * to for a glyph Hind Siliguri does not have.
+ *
+ * readerLocale rather than a session read, because this layout also wraps the
+ * login screen, where there is no profile to read yet.
+ */
+export default async function RootLayout({ children }: LayoutProps<'/'>) {
+  const locale = await readerLocale()
+
   return (
-    <html lang="bn" className={`${bangla.variable} h-full antialiased`}>
+    <html lang={locale} className={`${bangla.variable} h-full antialiased`}>
       <body className="min-h-full flex flex-col">{children}</body>
     </html>
   )

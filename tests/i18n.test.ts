@@ -16,7 +16,9 @@ import {
   dict,
   LOCALES,
   asLocale,
+  otherLocale,
   DEFAULT_LOCALE,
+  LOCALE_NAME,
   localName,
   type T,
 } from '../src/lib/i18n/index.ts'
@@ -329,6 +331,40 @@ test('a locale from the database that is neither falls back to Bangla', () => {
   }
   assert.equal(asLocale('en'), 'en')
   assert.equal(asLocale('bn'), 'bn')
+})
+
+test('the switch offers the other language, named in its own script', () => {
+  // The button is labelled with the language it moves you *to*, which is the only
+  // convention that works when the reader cannot read the language currently on
+  // screen. `otherLocale` therefore has to be total and its own inverse — two
+  // locales make a toggle complete, and a third would turn "the other one" into a
+  // lie. This is where that gets caught rather than in a menu that shows one entry.
+  for (const locale of LOCALES) {
+    assert.notEqual(otherLocale(locale), locale)
+    assert.ok(LOCALES.includes(otherLocale(locale)))
+    assert.equal(otherLocale(otherLocale(locale)), locale)
+  }
+
+  // Endonyms, and the reason they are not in either dictionary: both files would
+  // have to hold the same two strings, and "Bengali" on the button is useless to
+  // exactly the person who needs to press it.
+  assert.equal(LOCALE_NAME.bn, 'বাংলা')
+  assert.equal(LOCALE_NAME.en, 'English')
+  assert.ok(BENGALI.test(LOCALE_NAME.bn))
+  assert.ok(!BENGALI.test(LOCALE_NAME.en))
+  for (const locale of LOCALES) {
+    assert.ok(LOCALE_NAME[locale].trim(), `LOCALE_NAME.${locale} is empty`)
+  }
+
+  // What the button's accessible name actually comes out as. `fill` leaves an
+  // unfilled placeholder on the screen on purpose, so asserting no brace survives
+  // is what catches `{lang}` renamed on one side of the dictionary only.
+  for (const locale of LOCALES) {
+    const name = LOCALE_NAME[otherLocale(locale)]
+    const label = fill(dict(locale).shell.switchTo, { lang: name })
+    assert.ok(label.includes(name), label)
+    assert.ok(!label.includes('{'), label)
+  }
 })
 
 test('a subject with both names is shown in the reader’s language', () => {

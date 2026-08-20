@@ -124,6 +124,12 @@ export const bn = {
     otherCenter: 'অন্য কোচিং',
     /** Marks the centre the reader is already in, beside its name in the list. */
     thisCenter: 'এখন এখানে',
+    /**
+     * The language switch's accessible name. `{lang}` is the endonym of the
+     * language being switched to — বাংলা or English — and is filled from
+     * LOCALE_NAME rather than from here, because neither name is translated.
+     */
+    switchTo: 'ভাষা বদলে {lang} করুন',
     nav: {
       home: 'হোম',
       attendance: 'হাজিরা',

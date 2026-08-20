@@ -22,7 +22,13 @@ import type { Locale } from './locale.ts'
 
 export type { Dictionary } from './bn.ts'
 export type { Locale } from './locale.ts'
-export { LOCALES, DEFAULT_LOCALE, asLocale } from './locale.ts'
+export {
+  LOCALES,
+  DEFAULT_LOCALE,
+  asLocale,
+  otherLocale,
+  LOCALE_NAME,
+} from './locale.ts'
 
 const DICTS: Record<Locale, Dictionary> = { bn, en }
 

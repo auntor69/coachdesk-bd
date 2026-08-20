@@ -35,3 +35,42 @@ export const DEFAULT_LOCALE: Locale = 'bn'
 export function asLocale(value: unknown): Locale {
   return value === 'en' || value === 'bn' ? value : DEFAULT_LOCALE
 }
+
+/** The other one. Two locales, so a toggle is total and needs no menu. */
+export function otherLocale(locale: Locale): Locale {
+  return locale === 'bn' ? 'en' : 'bn'
+}
+
+/**
+ * Each language's name in itself.
+ *
+ * Endonyms, and deliberately not in either dictionary. A picker that offers
+ * "Bengali" to somebody who cannot read English has failed at the one job it has,
+ * so both entries have to read the same in both files — and a string that must be
+ * identical in bn.ts and en.ts does not belong in either of them.
+ */
+export const LOCALE_NAME: Record<Locale, string> = {
+  bn: 'বাংলা',
+  en: 'English',
+}
+
+/**
+ * Where the choice is kept for a reader who has no account yet.
+ *
+ * Signed in, the answer is `profiles.locale` and this is only a copy of it, so
+ * that signing out does not throw an English reader back to a Bangla login form.
+ * Client-writable, like every cookie — `asLocale` is what makes that harmless.
+ *
+ * Accept-Language is deliberately not consulted. Bangladeshi Android phones ship
+ * configured as en-US and are handed to people who read Bangla; honouring the
+ * header would give the majority of this app's users the wrong language and no
+ * obvious way to understand why.
+ */
+export const LOCALE_COOKIE = 'cd_lang'
+
+/**
+ * A year, like the active-centre cookie and for the same reason: this is a
+ * preference and not a credential, so nothing is gained by making somebody choose
+ * their own language again next week.
+ */
+export const LOCALE_MAX_AGE = 60 * 60 * 24 * 365
