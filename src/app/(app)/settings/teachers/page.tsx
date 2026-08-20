@@ -1,14 +1,14 @@
 import Link from 'next/link'
 
 import { Card } from '@/components/ui'
-import { requireRole, getSession } from '@/lib/auth/session'
+import { pageRole, getSession } from '@/lib/auth/session'
 import { createClient } from '@/lib/supabase/server'
 import { wouldExceed, hasStaff, planName, PLANS } from '@/lib/plans'
 import { PERMISSION_DEFAULTS } from '@/lib/permissions'
 import { dict, localName, DEFAULT_LOCALE } from '@/lib/i18n'
 import { TeacherList, type TeacherRow } from './teacher-list'
 
-/** getSession, not requireRole — see the note on teach/page.tsx's own. */
+/** getSession, not pageRole — see the note on teach/page.tsx's own. */
 export async function generateMetadata() {
   const session = await getSession()
   const locale = session?.locale ?? DEFAULT_LOCALE
@@ -25,7 +25,7 @@ export async function generateMetadata() {
  * every teacher added through the form gets a real row.
  */
 export default async function TeachersPage() {
-  const session = await requireRole('manager')
+  const session = await pageRole('manager')
   const locale = session.locale
   const d = dict(locale)
   const t = d.settings.teachers

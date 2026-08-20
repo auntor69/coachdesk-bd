@@ -2,7 +2,7 @@ import Link from 'next/link'
 
 import { Card } from '@/components/ui'
 import { greetingFor } from '@/components/app-shell'
-import { requireCenter, getSession, isStaffAdmin } from '@/lib/auth/session'
+import { pageRole, getSession, isStaffAdmin } from '@/lib/auth/session'
 import { createClient } from '@/lib/supabase/server'
 import {
   todayInDhaka,
@@ -17,7 +17,7 @@ import { dict, DEFAULT_LOCALE } from '@/lib/i18n'
 import { ReminderEntry } from '@/app/(app)/fees/reminder-entry'
 import { AttendanceRates } from './attendance-rates'
 
-/** getSession, not requireCenter — see the note on teach/page.tsx's own. */
+/** getSession, not pageRole — see the note on teach/page.tsx's own. */
 export async function generateMetadata() {
   const session = await getSession()
   const locale = session?.locale ?? DEFAULT_LOCALE
@@ -46,7 +46,12 @@ const COLUMNS = 'id, student_name, remaining_bdt, due_date, guardian_phone'
  * covers the reminder count: countChasesDue, not a filter written twice.
  */
 export default async function DashboardPage() {
-  const session = await requireCenter()
+  // `teacher`, not `manager`: a teacher with fee visibility is meant to read the
+  // numbers here — see the note on `isAdmin` below, which gates the parts that
+  // are staff-admin. But not `pageCenter` either, which let a *student* load it:
+  // they have /me, this screen is not for them, and the nav bar has never
+  // offered it to them. Reachable-but-unlinked is still reachable.
+  const session = await pageRole('teacher')
   const supabase = await createClient()
   const today = todayInDhaka()
   const period = currentPeriodMonth()

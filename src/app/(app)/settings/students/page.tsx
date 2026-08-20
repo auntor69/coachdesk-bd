@@ -1,13 +1,13 @@
 import Link from 'next/link'
 
 import { Card } from '@/components/ui'
-import { requireRole, getSession } from '@/lib/auth/session'
+import { pageRole, getSession } from '@/lib/auth/session'
 import { createClient } from '@/lib/supabase/server'
 import { formatBdMobile } from '@/lib/bd/phone'
 import { MAX_IMPORT_ROWS } from '@/lib/bd/roster'
 import { dict, DEFAULT_LOCALE } from '@/lib/i18n'
 
-/** getSession, not requireRole — see the note on teach/page.tsx's own. */
+/** getSession, not pageRole — see the note on teach/page.tsx's own. */
 export async function generateMetadata() {
   const session = await getSession()
   const locale = session?.locale ?? DEFAULT_LOCALE
@@ -22,7 +22,7 @@ export async function generateMetadata() {
  * a wrong one gets caught before a parent complains.
  */
 export default async function StudentsPage() {
-  const session = await requireRole('manager')
+  const session = await pageRole('manager')
   const supabase = await createClient()
   const locale = session.locale
   const d = dict(locale)

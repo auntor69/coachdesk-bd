@@ -1,5 +1,5 @@
 import { Card } from '@/components/ui'
-import { requireRole, getSession } from '@/lib/auth/session'
+import { pageRole, getSession } from '@/lib/auth/session'
 import { createClient } from '@/lib/supabase/server'
 import {
   todayInDhaka,
@@ -18,7 +18,7 @@ import { InvoiceGenerator } from './invoice-generator'
 import { PaymentRow, type FeeRow, type ReminderCenter } from './payment-row'
 import { ReminderEntry } from './reminder-entry'
 
-/** getSession, not requireRole — see the note on teach/page.tsx's own. */
+/** getSession, not pageRole — see the note on teach/page.tsx's own. */
 export async function generateMetadata() {
   const session = await getSession()
   return { title: `${dict(session?.locale ?? DEFAULT_LOCALE).fees.title} — CoachDesk` }
@@ -53,7 +53,7 @@ const COLUMNS = 'id, student_name, student_code, amount_bdt, discount_bdt, net_b
  * screen along with its confirmation.
  */
 export default async function FeesPage() {
-  const session = await requireRole('manager')
+  const session = await pageRole('manager')
   const supabase = await createClient()
   const today = todayInDhaka()
   const thisMonth = currentPeriodMonth()

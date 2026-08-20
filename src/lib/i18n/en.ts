@@ -64,6 +64,19 @@ export const en: Dictionary = {
     },
   },
 
+  denied: {
+    title: 'You cannot open this page',
+    atCenter: (center: string) => `Your role at ${center} does not open this page.`,
+    askOwner: 'The centre owner can change what you are allowed to see.',
+    home: 'Back to my screen',
+  },
+
+  missing: {
+    title: 'We could not find that page',
+    body: 'The link may be old, or what it pointed at was deleted.',
+    home: 'Back to my screen',
+  },
+
   attendance: {
     present: 'Present',
     absent: 'Absent',

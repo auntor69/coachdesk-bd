@@ -1,12 +1,12 @@
 import { Card } from '@/components/ui'
 import { greetingFor } from '@/components/app-shell'
-import { requireCenter, getSession } from '@/lib/auth/session'
+import { pageCenter, getSession } from '@/lib/auth/session'
 import { createClient } from '@/lib/supabase/server'
 import { formatDate, todayInDhaka } from '@/lib/bd/time'
 import { formatTaka, tallyOutstanding } from '@/lib/money'
 import { dict, DEFAULT_LOCALE } from '@/lib/i18n'
 
-/** getSession, not requireCenter — see the note on teach/page.tsx's own. */
+/** getSession, not pageCenter — see the note on teach/page.tsx's own. */
 export async function generateMetadata() {
   const session = await getSession()
   const locale = session?.locale ?? DEFAULT_LOCALE
@@ -28,7 +28,7 @@ export async function generateMetadata() {
  * centre's name and add both bills into one total.
  */
 export default async function MePage() {
-  const session = await requireCenter()
+  const session = await pageCenter()
   const supabase = await createClient()
   const today = todayInDhaka()
   const locale = session.locale

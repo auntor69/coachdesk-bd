@@ -136,6 +136,30 @@ export const bn = {
   },
 
   /**
+   * The 403 screen. Reached by tapping a bookmark for a screen your role does not
+   * open, or by switching to the centre where you are a teacher with an owner
+   * screen still in history — so it names the centre, which is the part the
+   * reader is most likely to have lost track of.
+   */
+  denied: {
+    title: 'এই পাতা খোলার অনুমতি নেই',
+    atCenter: (center: string) => `${center}-এ আপনার দায়িত্বে এই পাতা দেখা যায় না।`,
+    askOwner: 'দরকার হলে কোচিংয়ের মালিক অনুমতি বদলে দিতে পারেন।',
+    home: 'আমার স্ক্রিনে ফিরুন',
+  },
+
+  /**
+   * The 404. Its own group rather than a line borrowed from `denied`, because the
+   * two say different things: that one is "you may not", this one is "it is not
+   * there", and a reader who is told the wrong one goes looking for the wrong fix.
+   */
+  missing: {
+    title: 'পাতাটি খুঁজে পাওয়া যায়নি',
+    body: 'লিংকটি পুরোনো হতে পারে, বা জিনিসটি মুছে ফেলা হয়েছে।',
+    home: 'আমার স্ক্রিনে ফিরুন',
+  },
+
+  /**
    * The four marks. These are the app's vocabulary, not one screen's: the roster,
    * the rate card, a guardian's history and an SMS all name the same four states,
    * and a centre that calls them different things in two places has two systems.

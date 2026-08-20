@@ -1,7 +1,7 @@
 import Link from 'next/link'
 
 import { Card } from '@/components/ui'
-import { requireRole, getSession } from '@/lib/auth/session'
+import { pageRole, getSession } from '@/lib/auth/session'
 import { createClient } from '@/lib/supabase/server'
 import { todayInDhaka, addDays, formatMonth } from '@/lib/bd/time'
 import { normalizeBdMobile } from '@/lib/bd/phone'
@@ -15,7 +15,7 @@ import { dict, DEFAULT_LOCALE } from '@/lib/i18n'
 import { ReminderList, type ChaseGroup, type ChaseRow } from '../reminder-list'
 import type { ReminderCenter } from '../reminder-chips'
 
-/** getSession, not requireRole — see the note on teach/page.tsx's own. */
+/** getSession, not pageRole — see the note on teach/page.tsx's own. */
 export async function generateMetadata() {
   const session = await getSession()
   return {
@@ -48,7 +48,7 @@ const COLUMNS = 'id, student_name, student_code, remaining_bdt, due_date, period
  * nothing and needs nobody's approval.
  */
 export default async function RemindersPage() {
-  const session = await requireRole('manager')
+  const session = await pageRole('manager')
   const supabase = await createClient()
   const today = todayInDhaka()
   const locale = session.locale

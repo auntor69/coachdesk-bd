@@ -12,6 +12,7 @@
  */
 import { cache } from 'react'
 import { cookies } from 'next/headers'
+import { forbidden, redirect } from 'next/navigation'
 import type { Route } from 'next'
 
 import { createClient } from '@/lib/supabase/server'
@@ -217,6 +218,57 @@ export async function requireRole(minimum: MemberRole): Promise<CenterSession> {
 /** Owners and managers — the two roles that may change a center's setup. */
 export function isStaffAdmin(session: Session): boolean {
   return session.active ? atLeast(session.active.role, 'manager') : false
+}
+
+/**
+ * The same three checks, for a page rather than a Server Action.
+ *
+ * A page and an action want opposite things from a failed authorization. An
+ * action has a form in front of it, so it catches `AuthError` and returns a
+ * sentence the form can print next to the button that did not work. A page has
+ * nothing to return to — throwing there is an unhandled error, which Next renders
+ * as a 500. That was live on /fees and every /settings screen: a teacher who
+ * tapped a bookmark, or switched to the centre they teach at with an owner screen
+ * still in history, got a white error page.
+ *
+ * So the require* helpers above stay as they are — the primitive that throws, for
+ * callers that catch — and pages call these, which turn each code into the answer
+ * that suits it:
+ *
+ *   forbidden       -> a 403 screen naming the reader's own home (forbidden.tsx)
+ *   no_center       -> /onboarding, because they have an account and no centre yet
+ *   unauthenticated -> /login, which the proxy usually catches first
+ *
+ * Both interrupts work by throwing, so neither may be wrapped in a try/catch that
+ * swallows: `forbidden()` caught is a page that renders nothing, and `redirect()`
+ * caught is a page that carries on as if it were authorized. Nothing here catches
+ * anything, and that is the point — this function's whole job is to convert one
+ * throw into another.
+ */
+async function pageGuard<T>(check: () => Promise<T>): Promise<T> {
+  try {
+    return await check()
+  } catch (err) {
+    if (!(err instanceof AuthError)) throw err
+    switch (err.code) {
+      case 'forbidden':
+        forbidden()
+      case 'no_center':
+        redirect('/onboarding')
+      case 'unauthenticated':
+        redirect('/login')
+    }
+  }
+}
+
+/** requireRole for a page: a 403 screen instead of a 500. See pageGuard. */
+export async function pageRole(minimum: MemberRole): Promise<CenterSession> {
+  return pageGuard(() => requireRole(minimum))
+}
+
+/** requireCenter for a page. See pageGuard. */
+export async function pageCenter(): Promise<CenterSession> {
+  return pageGuard(() => requireCenter())
 }
 
 /**

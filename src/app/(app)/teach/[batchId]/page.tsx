@@ -2,7 +2,7 @@ import Link from 'next/link'
 import { notFound } from 'next/navigation'
 
 import { Card } from '@/components/ui'
-import { requireRole, getSession } from '@/lib/auth/session'
+import { pageRole, getSession } from '@/lib/auth/session'
 import { createClient } from '@/lib/supabase/server'
 import { BatchSlot } from '@/lib/bd/schedule'
 import { todayInDhaka, formatDate } from '@/lib/bd/time'
@@ -36,7 +36,7 @@ export default async function AttendancePage({
 
   // Teacher or above. Students hitting this URL get the same 403 they would
   // get from RLS, just sooner and in their own language.
-  const session = await requireRole('teacher')
+  const session = await pageRole('teacher')
   const supabase = await createClient()
   const locale = session.locale
   const d = dict(locale)

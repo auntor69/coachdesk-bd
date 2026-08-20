@@ -2,13 +2,13 @@ import Link from 'next/link'
 import type { Route } from 'next'
 
 import { Card } from '@/components/ui'
-import { requireRole, getSession } from '@/lib/auth/session'
+import { pageRole, getSession } from '@/lib/auth/session'
 import { createClient } from '@/lib/supabase/server'
 import { formatBdMobile } from '@/lib/bd/phone'
 import { dict, DEFAULT_LOCALE } from '@/lib/i18n'
 import { planName, hasStaff } from '@/lib/plans'
 
-/** getSession, not requireRole — see the note on teach/page.tsx's own. */
+/** getSession, not pageRole — see the note on teach/page.tsx's own. */
 export async function generateMetadata() {
   const session = await getSession()
   const locale = session?.locale ?? DEFAULT_LOCALE
@@ -25,7 +25,7 @@ export async function generateMetadata() {
  * have in their first week.
  */
 export default async function SettingsPage() {
-  const session = await requireRole('manager')
+  const session = await pageRole('manager')
   const supabase = await createClient()
   const locale = session.locale
   const t = dict(locale).settings.hub

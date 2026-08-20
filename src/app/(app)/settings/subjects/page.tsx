@@ -1,14 +1,14 @@
 import Link from 'next/link'
 
 import { Card } from '@/components/ui'
-import { requireRole, getSession } from '@/lib/auth/session'
+import { pageRole, getSession } from '@/lib/auth/session'
 import { createClient } from '@/lib/supabase/server'
 import { dict, localName, DEFAULT_LOCALE } from '@/lib/i18n'
 import { planName } from '@/lib/plans'
 import { createSubject } from '../actions'
 import { QuickAdd } from '../quick-add'
 
-/** getSession, not requireRole — see the note on teach/page.tsx's own. */
+/** getSession, not pageRole — see the note on teach/page.tsx's own. */
 export async function generateMetadata() {
   const session = await getSession()
   const locale = session?.locale ?? DEFAULT_LOCALE
@@ -23,7 +23,7 @@ export async function generateMetadata() {
  * product being customizable is that the owner never waits on us for this.
  */
 export default async function SubjectsPage() {
-  const session = await requireRole('manager')
+  const session = await pageRole('manager')
   const supabase = await createClient()
   const locale = session.locale
   const d = dict(locale)

@@ -2,7 +2,7 @@ import Link from 'next/link'
 import { notFound } from 'next/navigation'
 
 import { Card } from '@/components/ui'
-import { requireRole, getSession } from '@/lib/auth/session'
+import { pageRole, getSession } from '@/lib/auth/session'
 import { createClient } from '@/lib/supabase/server'
 import { formatDate } from '@/lib/bd/time'
 import { planResultSms } from '@/lib/sms/result-dispatch'
@@ -11,7 +11,7 @@ import { dict, localName, DEFAULT_LOCALE } from '@/lib/i18n'
 import { MarksSheet, type MarksRow } from './marks-sheet'
 import { SmsGate } from './sms-gate'
 
-/** getSession, not requireRole — see the note on teach/page.tsx's own. */
+/** getSession, not pageRole — see the note on teach/page.tsx's own. */
 export async function generateMetadata() {
   const session = await getSession()
   const locale = session?.locale ?? DEFAULT_LOCALE
@@ -36,7 +36,7 @@ export default async function ExamPage({
   params: Promise<{ examId: string }>
 }) {
   const { examId } = await params
-  const session = await requireRole('teacher')
+  const session = await pageRole('teacher')
   const supabase = await createClient()
   const locale = session.locale
   const d = dict(locale)

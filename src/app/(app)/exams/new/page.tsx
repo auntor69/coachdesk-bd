@@ -1,14 +1,14 @@
 import Link from 'next/link'
 
 import { Card } from '@/components/ui'
-import { requireRole, getSession } from '@/lib/auth/session'
+import { pageRole, getSession } from '@/lib/auth/session'
 import { createClient } from '@/lib/supabase/server'
 import { slotLabel } from '@/lib/bd/schedule'
 import { todayInDhaka } from '@/lib/bd/time'
 import { dict, localName, DEFAULT_LOCALE } from '@/lib/i18n'
 import { ExamForm } from './exam-form'
 
-/** getSession, not requireRole — see the note on teach/page.tsx's own. */
+/** getSession, not pageRole — see the note on teach/page.tsx's own. */
 export async function generateMetadata() {
   const session = await getSession()
   const locale = session?.locale ?? DEFAULT_LOCALE
@@ -16,7 +16,7 @@ export async function generateMetadata() {
 }
 
 export default async function NewExamPage() {
-  const session = await requireRole('teacher')
+  const session = await pageRole('teacher')
   const supabase = await createClient()
   const locale = session.locale
   const d = dict(locale)

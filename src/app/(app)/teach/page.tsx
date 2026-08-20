@@ -2,7 +2,7 @@ import Link from 'next/link'
 
 import { Card } from '@/components/ui'
 import { greetingFor } from '@/components/app-shell'
-import { requireCenter, getSession } from '@/lib/auth/session'
+import { pageRole, getSession } from '@/lib/auth/session'
 import { createClient } from '@/lib/supabase/server'
 import { BatchSlot } from '@/lib/bd/schedule'
 import { todayInDhaka, dhakaDayOfWeek } from '@/lib/bd/time'
@@ -14,10 +14,12 @@ import { dict, localName, DEFAULT_LOCALE } from '@/lib/i18n'
  * extra: `getSession` is wrapped in React `cache()`, so the page below reuses
  * the same result rather than asking Supabase twice.
  *
- * `getSession` and not `requireCenter`: the require* helpers throw, and a throw
- * here would turn the layout's redirect-to-login into a 500. A title is not an
- * authorization boundary — the layout redirects, the page re-derives, and a
- * visitor who never gets to see this screen gets a default-language title.
+ * `getSession` and not `pageRole`: a title is not an authorization boundary. The
+ * guard belongs in the page body, which runs right after this and does the same
+ * check properly — put it here as well and an unauthorized visitor is decided
+ * twice, in the one place where the answer cannot be rendered. Whichever guard is
+ * used it interrupts by throwing, and a throw while building metadata is a 500
+ * where the page itself would have shown a 403 or a redirect.
  */
 export async function generateMetadata() {
   const session = await getSession()
@@ -33,7 +35,10 @@ export async function generateMetadata() {
  * "what does this app contain".
  */
 export default async function TeachPage() {
-  const session = await requireCenter()
+  // Matches teach/[batchId], which has always required `teacher`. This list was
+  // the looser of the two: a student could open the screen that takes attendance,
+  // then get a 403 on any batch they tapped.
+  const session = await pageRole('teacher')
   const supabase = await createClient()
   const today = todayInDhaka()
   const dow = dhakaDayOfWeek()

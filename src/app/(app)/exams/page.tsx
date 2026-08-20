@@ -1,12 +1,12 @@
 import Link from 'next/link'
 
 import { Card } from '@/components/ui'
-import { requireRole, getSession } from '@/lib/auth/session'
+import { pageRole, getSession } from '@/lib/auth/session'
 import { createClient } from '@/lib/supabase/server'
 import { formatDate } from '@/lib/bd/time'
 import { dict, localName, DEFAULT_LOCALE } from '@/lib/i18n'
 
-/** getSession, not requireRole — see the note on teach/page.tsx's own. */
+/** getSession, not pageRole — see the note on teach/page.tsx's own. */
 export async function generateMetadata() {
   const session = await getSession()
   return { title: `${dict(session?.locale ?? DEFAULT_LOCALE).exams.title} — CoachDesk` }
@@ -20,7 +20,7 @@ export async function generateMetadata() {
  * answer costs the centre money if they guess wrong and send twice.
  */
 export default async function ExamsPage() {
-  const session = await requireRole('teacher')
+  const session = await pageRole('teacher')
   const supabase = await createClient()
   const locale = session.locale
   const t = dict(locale).exams

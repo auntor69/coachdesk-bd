@@ -1,7 +1,7 @@
 import Link from 'next/link'
 
 import { Card } from '@/components/ui'
-import { requireRole, getSession } from '@/lib/auth/session'
+import { pageRole, getSession } from '@/lib/auth/session'
 import { createClient } from '@/lib/supabase/server'
 import { formatDate } from '@/lib/bd/time'
 import { planName } from '@/lib/plans'
@@ -10,7 +10,7 @@ import { UCS2_SEGMENT } from '@/lib/sms/encoding'
 import { dict, DEFAULT_LOCALE } from '@/lib/i18n'
 import { OptOutList, type OptOutStudent } from './opt-out-list'
 
-/** getSession, not requireRole — see the note on teach/page.tsx's own. */
+/** getSession, not pageRole — see the note on teach/page.tsx's own. */
 export async function generateMetadata() {
   const session = await getSession()
   const locale = session?.locale ?? DEFAULT_LOCALE
@@ -27,7 +27,7 @@ export async function generateMetadata() {
  * were delivered will not check again for weeks.
  */
 export default async function SmsSettingsPage() {
-  const session = await requireRole('manager')
+  const session = await pageRole('manager')
   const locale = session.locale
   const d = dict(locale)
   const t = d.settings.sms
