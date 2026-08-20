@@ -2344,6 +2344,391 @@ await db.query('delete from exams where id = any($1)', [[examMine, examSpare, ex
 await db.query(`delete from exams where title in ('Made With No Row', 'Nasrin Unaffected')`)
 await db.query('delete from teacher_permissions where teacher_id = $1', [tKarim])
 
+console.log('\nAt-risk students (student_risk arithmetic and reach):')
+
+/*
+ * One fixture student per arm of the view, because the arms are what break.
+ *
+ * Each of the three signals has two ways to fire — a level and a fall — and a
+ * minimum below which it must stay quiet. That is nine behaviours, and a test
+ * built on one student showing "at risk" proves none of them: a view that
+ * flagged everybody would pass it. So every student below is aimed at exactly one
+ * arm, with the other two arms deliberately clean, and each is asserted by name.
+ *
+ * Asserted by name and never by a count of the view, on purpose. Ali and Mim have
+ * been accumulating attendance, marks, invoices, payments and reminders through
+ * fourteen sections of this file, and whether either of them lands on this
+ * worklist depends on which day of which month the suite runs. A total is a test
+ * that goes red in February for a reason nobody can find.
+ *
+ * A dedicated batch, so session dates can be stated relative to today without
+ * colliding with the rate section's fixtures — attendance_sessions is unique on
+ * (batch_id, session_date).
+ */
+const bRisk = await one(
+  `insert into batches (coaching_center_id, subject_id, teacher_id, name, slot)
+   values ($1, $2, $3, 'Risk Fixture Batch', 'morning') returning id`,
+  [centerA, sBio, tKarim],
+)
+
+// Sixteen sessions: eight inside the 30-day window, eight in the 30 before it.
+// The view's boundary is `> today - 30`, so day 30 belongs to the prior window
+// and the fixture stays clear of it in both directions.
+const RECENT_DAYS = [2, 4, 6, 8, 10, 12, 14, 16]
+const PRIOR_DAYS = [32, 34, 36, 38, 40, 42, 44, 46]
+
+const sessionOn = (daysBack) =>
+  one(
+    `insert into attendance_sessions (coaching_center_id, batch_id, session_date)
+     values ($1, $2, current_date - $3::int) returning id`,
+    [centerA, bRisk, daysBack],
+  )
+
+const recentSessions = []
+for (const day of RECENT_DAYS) recentSessions.push(await sessionOn(day))
+const priorSessions = []
+for (const day of PRIOR_DAYS) priorSessions.push(await sessionOn(day))
+
+const riskStudent = async (name, status = 'active') => {
+  const id = await one(
+    `insert into students (coaching_center_id, name, status, guardian_phone)
+     values ($1, $2, $3::student_status, '01799000000') returning id`,
+    [centerA, name, status],
+  )
+  return { id, enrollment: await enroll(centerA, id, sBio, bRisk) }
+}
+
+/**
+ * Marks the first `present` of `sessions` as attended and the rest absent.
+ *
+ * Present rather than late for the attended ones, and absent rather than excused
+ * for the others, because this view's job is not to re-decide what counts as
+ * attendance — batch_attendance_monthly settled that and its own section proves
+ * it. Here the only question is what the percentage does to the flag.
+ */
+const attend = async (enrollment, sessions, present) => {
+  for (const [i, session] of sessions.entries()) {
+    await mark(centerA, session, enrollment, i < present ? 'present' : 'absent')
+  }
+}
+
+// 2 of 8 recently, 2 of 8 before: 25% both windows. The level arm fires and the
+// fall arm cannot, because nothing fell.
+const rina = await riskStudent('Rina Level')
+await attend(rina.enrollment, recentSessions, 2)
+await attend(rina.enrollment, priorSessions, 2)
+
+// 6 of 8 recently against 8 of 8 before: 75%, down 25 points. The mirror image —
+// 75% is above the 70% floor, so only the fall arm can produce this flag. This is
+// the assertion that would fail if anyone ever "simplified" the view to a
+// threshold on the recent rate alone.
+const sumon = await riskStudent('Sumon Falling')
+await attend(sumon.enrollment, recentSessions, 6)
+await attend(sumon.enrollment, priorSessions, 8)
+
+// 0 of 3 — worse than everyone above, and deliberately not flagged. Three marks
+// is not a measurement, and a view that flagged this would put a student who
+// missed one week of a twice-weekly batch on the same list as one who has stopped
+// coming. Carries one exam absence too, for the same reason: one is not two.
+const shanto = await riskStudent('Shanto Too Few')
+await attend(shanto.enrollment, recentSessions.slice(0, 3), 0)
+
+// Attendance perfect in both windows, so anything that flags these four is
+// coming from the marks or fee arm and not leaking in from attendance.
+const tanu = await riskStudent('Tanu Low Mark')
+const mukti = await riskStudent('Mukti Falling Mark')
+const joy = await riskStudent('Joy Missed Exams')
+for (const s of [tanu, mukti, joy]) {
+  await attend(s.enrollment, recentSessions, 8)
+  await attend(s.enrollment, priorSessions, 8)
+}
+
+// Three exams with three different totals, so a view comparing raw marks instead
+// of percentages gets a different answer from every one of them.
+const riskExam = (title, daysBack, total) =>
+  one(
+    `insert into exams (coaching_center_id, subject_id, batch_id, teacher_id,
+                        title, total_marks, exam_date)
+     values ($1, $2, $3, $4, $5, $6, current_date - $7::int) returning id`,
+    [centerA, sBio, bRisk, tKarim, title, total, daysBack],
+  )
+
+const examFirst = await riskExam('Risk Exam One', 90, 100)
+const examSecond = await riskExam('Risk Exam Two', 45, 50)
+const examLatest = await riskExam('Risk Exam Three', 5, 100)
+
+const scored = (exam, enrollment, obtained) =>
+  db.query(
+    `insert into exam_results (coaching_center_id, exam_id, enrollment_id, obtained_marks)
+     values ($1, $2, $3, $4)`,
+    [centerA, exam, enrollment, obtained],
+  )
+
+const skipped = (exam, enrollment) =>
+  db.query(
+    `insert into exam_results (coaching_center_id, exam_id, enrollment_id, is_absent)
+     values ($1, $2, $3, true)`,
+    [centerA, exam, enrollment],
+  )
+
+// One mark, 30 out of 100. Under the pass line, with no earlier exam to have
+// fallen from — the level arm alone.
+await scored(examLatest, tanu.enrollment, 30)
+
+// 80% then 90%, then 65%. The average of the earlier two is 85 and the fall is
+// 20 points, so the trend arm fires; 65% is comfortably above the 40% floor, so
+// the level arm cannot be what did it. Note the second exam is out of 50: a view
+// averaging raw marks would read 80, 45, 65 and see a *rise*.
+await scored(examFirst, mukti.enrollment, 80)
+await scored(examSecond, mukti.enrollment, 45)
+await scored(examLatest, mukti.enrollment, 65)
+
+// Sat the first, missed the next two. Missing exams is its own signal and is
+// never averaged as a zero — his one real mark is a 90%, which is what makes this
+// student the test of that: a view scoring absences as nought would flag him on
+// the trend arm instead and read his ability as 30%.
+await scored(examFirst, joy.enrollment, 90)
+await skipped(examSecond, joy.enrollment)
+await skipped(examLatest, joy.enrollment)
+
+// One missed exam for Shanto, who must still stay off the list.
+await skipped(examLatest, shanto.enrollment)
+
+const riskInvoice = async (student, enrollment, dueDaysBack, amount, opts = {}) => {
+  const id = await one(
+    `insert into fee_invoices (coaching_center_id, student_id, enrollment_id,
+                              period_month, amount_bdt, due_date, voided_at)
+     values ($1, $2, $3,
+             date_trunc('month', (current_date - $4::int)::timestamp)::date,
+             $5, current_date - $4::int, $6)
+     returning id`,
+    [centerA, student, enrollment, dueDaysBack, amount, opts.voided ? new Date().toISOString() : null],
+  )
+  if (opts.paid) {
+    await db.query(
+      `insert into fee_payments (coaching_center_id, invoice_id, student_id, amount_bdt, method)
+       values ($1, $2, $3, $4, 'cash')`,
+      [centerA, id, student, opts.paid],
+    )
+  }
+  return id
+}
+
+// Ten days past due and unpaid. Attendance and marks untouched — she is never
+// marked and never sat an exam, which is also the case that proves a student with
+// no attendance record at all does not flag on attendance: null is not below 70.
+const faria = await riskStudent('Faria Late Fee')
+await riskInvoice(faria.id, faria.enrollment, 10, 500)
+
+// Three days past due, which the reminder engine does not call late either. A
+// centre collects through the first week of the month; flagging this would put
+// every family on the list every month.
+const nabila = await riskStudent('Nabila Just Late')
+await riskInvoice(nabila.id, nabila.enrollment, 3, 500)
+
+// Twenty days past due, and settled. Plus a second, voided, invoice at the same
+// age. Both are the kind of row that shows the money as still owed if the view
+// forgets a predicate, and both must leave this student off the list entirely.
+const kabir = await riskStudent('Kabir Settled')
+await riskInvoice(kabir.id, kabir.enrollment, 20, 500, { paid: 500 })
+await riskInvoice(kabir.id, kabir.enrollment, 21, 700, { voided: true })
+
+// All three at once, which is the row an owner should phone about today.
+const rifat = await riskStudent('Rifat Everything')
+await attend(rifat.enrollment, recentSessions, 1)
+await scored(examLatest, rifat.enrollment, 20)
+await riskInvoice(rifat.id, rifat.enrollment, 20, 1200)
+
+// Everything wrong and already gone. A dropped student is not at risk of leaving.
+const gone = await riskStudent('Gone Already', 'dropped')
+await attend(gone.enrollment, recentSessions, 0)
+await riskInvoice(gone.id, gone.enrollment, 40, 900)
+
+// Centre B gets a risky student of its own, so a cross-tenant leak reads as a row
+// rather than as the absence of one.
+await db.query(
+  `insert into fee_invoices (coaching_center_id, student_id, enrollment_id,
+                            period_month, amount_bdt, due_date)
+   values ($1, $2, $3, date_trunc('month', (current_date - 30)::timestamp)::date, 600,
+           current_date - 30)`,
+  [centerB, stB, eB],
+)
+
+const riskRow = async (tx, student) =>
+  (
+    await tx.query(
+      `select signals, attendance_flag, marks_flag, fee_flag,
+              att_low, att_fell, marks_low, marks_fell, marks_missed,
+              att_marks, att_pct, att_prev_marks, att_prev_pct,
+              marks_pct, marks_prev_pct, marks_prev_n, exams_missed,
+              fee_days_late, fee_owed_bdt, student_name
+       from student_risk where student_id = $1`,
+      [student],
+    )
+  ).rows[0] ?? null
+
+await asUser(db, ids.ownerA, async (tx) => {
+  const r = await riskRow(tx, rina.id)
+  check(
+    'a quarter of classes attended flags on the level alone',
+    r?.attendance_flag === true && r?.marks_flag === false && r?.fee_flag === false
+      && Number(r?.signals) === 1,
+    JSON.stringify(r),
+  )
+  check(
+    'and it says which arm fired, so the screen picks the sentence rather than guessing',
+    r?.att_low === true && r?.att_fell === false,
+    JSON.stringify(r),
+  )
+  check(
+    'and the figures behind it travel with the row, so the screen can say why',
+    Number(r?.att_pct) === 25 && Number(r?.att_marks) === 8
+      && Number(r?.att_prev_pct) === 25 && Number(r?.att_prev_marks) === 8,
+    `${r?.att_pct}% of ${r?.att_marks}, was ${r?.att_prev_pct}% of ${r?.att_prev_marks}`,
+  )
+
+  const s = await riskRow(tx, sumon.id)
+  check(
+    '75% is above the floor and still flags, because it fell 25 points',
+    s?.attendance_flag === true && Number(s?.att_pct) === 75
+      && Number(s?.att_prev_pct) === 100,
+    JSON.stringify(s),
+  )
+  check(
+    'and only the fall arm claims it, so the sentence carries both months',
+    s?.att_fell === true && s?.att_low === false,
+    JSON.stringify(s),
+  )
+
+  check(
+    'three marks and one missed exam are not enough to flag anybody',
+    (await riskRow(tx, shanto.id)) === null,
+  )
+
+  const t = await riskRow(tx, tanu.id)
+  check(
+    '30% in the only exam sat flags on marks and not on attendance',
+    t?.marks_flag === true && t?.attendance_flag === false
+      && Number(t?.marks_pct) === 30 && Number(t?.marks_prev_n) === 0,
+    JSON.stringify(t),
+  )
+  check(
+    'on the level arm alone, because one exam cannot be a trend',
+    t?.marks_low === true && t?.marks_fell === false && t?.marks_missed === false,
+    JSON.stringify(t),
+  )
+
+  const m = await riskRow(tx, mukti.id)
+  check(
+    '65% after an 85% average flags on the fall, out of a different total each time',
+    m?.marks_flag === true && Number(m?.marks_pct) === 65
+      && Number(m?.marks_prev_pct) === 85 && Number(m?.marks_prev_n) === 2,
+    JSON.stringify(m),
+  )
+  check(
+    'and on the fall arm alone — 65% is a fine mark, the drop is the story',
+    m?.marks_fell === true && m?.marks_low === false,
+    JSON.stringify(m),
+  )
+
+  const j = await riskRow(tx, joy.id)
+  check(
+    'two missed exams flag on their own, and are not averaged in as zeroes',
+    j?.marks_flag === true && Number(j?.exams_missed) === 2
+      && Number(j?.marks_pct) === 90,
+    JSON.stringify(j),
+  )
+  check(
+    'on the missed arm only, so the screen never writes "90%" as a complaint',
+    j?.marks_missed === true && j?.marks_low === false && j?.marks_fell === false,
+    JSON.stringify(j),
+  )
+
+  const f = await riskRow(tx, faria.id)
+  check(
+    'a fee ten days past due flags, and no attendance record is not 0% attendance',
+    f?.fee_flag === true && f?.attendance_flag === false
+      && Number(f?.fee_days_late) === 10 && Number(f?.fee_owed_bdt) === 500,
+    JSON.stringify(f),
+  )
+
+  check(
+    'three days past due is not late, here or in the reminder engine',
+    (await riskRow(tx, nabila.id)) === null,
+  )
+  check(
+    'a settled invoice and a voided one leave a student off the list',
+    (await riskRow(tx, kabir.id)) === null,
+  )
+  check(
+    'a dropped student is not at risk of leaving',
+    (await riskRow(tx, gone.id)) === null,
+  )
+
+  const all = await riskRow(tx, rifat.id)
+  check(
+    'all three signals count up rather than collapsing into one flag',
+    Number(all?.signals) === 3 && all?.attendance_flag === true
+      && all?.marks_flag === true && all?.fee_flag === true,
+    JSON.stringify(all),
+  )
+
+  // Bounded above by construction, so this stays honest whatever Ali and Mim have
+  // accumulated by the day the suite runs. It is worth asserting because the arms
+  // outnumber the signals: five booleans OR down to three, and adding them instead
+  // would let one student drifting in a single way outrank one drifting in all
+  // three — and it would put riskLevel's 'call' on a student who does not need one.
+  check(
+    'the arms fold back into three signals however many of them fired',
+    (await n(
+      tx,
+      'select count(*)::int as n from student_risk where signals < 1 or signals > 3',
+    )) === 0,
+  )
+
+  check(
+    "owner A sees no part of centre B's worklist",
+    (await n(
+      tx,
+      'select count(*)::int as n from student_risk where coaching_center_id = $1',
+      [centerB],
+    )) === 0,
+  )
+})
+
+await asUser(db, ids.ownerB, async (tx) => {
+  check(
+    'owner B sees their own late-paying student',
+    (await riskRow(tx, stB)) !== null,
+  )
+  check(
+    "and none of centre A's, though nine of them are flagged",
+    (await n(
+      tx,
+      'select count(*)::int as n from student_risk where coaching_center_id = $1',
+      [centerA],
+    )) === 0,
+  )
+})
+
+// The predicate the view carries itself, and the reason it does. A teacher's own
+// RLS would let some rows through — their batch's attendance, their subject's
+// marks — and the aggregate would come out as a fraction of each student's real
+// picture wearing the whole picture's name.
+await asUser(db, ids.karim, async (tx) => {
+  check(
+    'a teacher reads nothing from the worklist, not a narrowed version of it',
+    (await n(tx, 'select count(*)::int as n from student_risk')) === 0,
+  )
+})
+
+await asUser(db, ids.studentUser, async (tx) => {
+  check(
+    'a student cannot read the file the centre keeps on them',
+    (await n(tx, 'select count(*)::int as n from student_risk')) === 0,
+  )
+})
+
 console.log('\nAnonymous access:')
 
 await asUser(db, null, async (tx) => {

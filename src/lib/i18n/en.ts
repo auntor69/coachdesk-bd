@@ -720,6 +720,37 @@ export const en: Dictionary = {
     unknownBatch: 'Unnamed batch',
   },
 
+  risk: {
+    title: 'Drifting away',
+    lead: 'Students who may quietly stop coming — the ones a one-minute call today can keep.',
+    count: (n: number) => (n === 1 ? 'student' : 'students'),
+    signalCount: (n: number) => (n === 1 ? 'signal' : 'signals'),
+    levels: {
+      watch: 'Keep an eye',
+      talk: 'Worth a word',
+      call: 'Call today',
+    },
+    reasons: {
+      attendanceLow: 'Attendance low',
+      attendanceFell: 'Attendance dropped',
+      marksLow: 'Marks low',
+      marksFell: 'Marks slipped',
+      examsMissed: (n: number) => (n === 1 ? 'exam missed' : 'exams missed'),
+      feeLate: 'Fee unpaid',
+    },
+    was: 'was',
+    days: (n: number) => (n === 1 ? 'day' : 'days'),
+    noFigure: 'No figure',
+    empty: 'Nobody is drifting right now',
+    emptyHint:
+      'Attendance, results and fees — no student is showing a bad sign in any of the three.',
+    seeAll: 'See everyone',
+    callGuardian: 'Call guardian',
+    noPhone: 'No number',
+    noName: 'No name given',
+    windows: 'Attendance covers the last 30 days, marks the last 120.',
+  },
+
   me: {
     title: 'Mine',
     due: 'Due',

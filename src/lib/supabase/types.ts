@@ -1777,6 +1777,36 @@ export type Database = {
         }
         Relationships: []
       }
+      student_risk: {
+        Row: {
+          coaching_center_id: string | null
+          student_id: string | null
+          student_name: string | null
+          student_code: string | null
+          guardian_phone: string | null
+          sms_opt_out: boolean | null
+          att_marks: number | null
+          att_pct: number | null
+          att_prev_marks: number | null
+          att_prev_pct: number | null
+          marks_pct: number | null
+          marks_prev_pct: number | null
+          marks_prev_n: number | null
+          exams_missed: number | null
+          fee_days_late: number | null
+          fee_owed_bdt: number | null
+          att_low: boolean | null
+          att_fell: boolean | null
+          marks_low: boolean | null
+          marks_fell: boolean | null
+          marks_missed: boolean | null
+          attendance_flag: boolean | null
+          marks_flag: boolean | null
+          fee_flag: boolean | null
+          signals: number | null
+        }
+        Relationships: []
+      }
     }
     Functions: {
       bootstrap_center: {

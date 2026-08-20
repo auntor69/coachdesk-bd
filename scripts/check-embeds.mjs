@@ -24,6 +24,8 @@
  *
  * Run: node --env-file=.env.local scripts/check-embeds.mjs
  */
+import { readFileSync } from 'node:fs'
+
 const url = process.env.NEXT_PUBLIC_SUPABASE_URL
 const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
 
@@ -31,6 +33,31 @@ if (!url || !key) {
   console.error('NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY must be set.')
   process.exit(1)
 }
+
+/**
+ * The at-risk column list, read out of the module that owns it.
+ *
+ * Copied here as a literal it would be two hand-typed copies of twenty-one column
+ * names, and the copy that went stale would be this one — which is the check, so
+ * it would go on passing while the app 400ed. check-scoping.mjs reads types.ts the
+ * same way and for the same reason.
+ */
+const riskColumns = (() => {
+  const source = readFileSync(
+    new URL('../src/lib/students/risk.ts', import.meta.url),
+    'utf8',
+  )
+  const match = source.match(/export const RISK_COLUMNS\s*=\s*\n?\s*'([^']+)'/)
+  if (!match) {
+    console.error(
+      'check-embeds: could not find RISK_COLUMNS in src/lib/students/risk.ts.\n' +
+        'If it was renamed or reformatted, update the pattern here — a silently\n' +
+        'skipped check is worse than a failing one.',
+    )
+    process.exit(1)
+  }
+  return match[1]
+})()
 
 /** Every embed shape in src/, with where it is used, so a failure names a file. */
 const embeds = [
@@ -72,6 +99,13 @@ const embeds = [
   ['fees/page.tsx', 'fee_reminders', 'invoice_id, channel, created_at'],
   ['fees/actions.ts', 'fee_invoice_balances', 'id, student_id, student_name, remaining_bdt, voided_at'],
   ['dashboard/page.tsx', 'fee_invoice_balances', 'id, student_name, remaining_bdt, due_date, guardian_phone'],
+  // student_risk is here for the schema-cache reason above and for a second one:
+  // its select is twenty-one column names shared by two screens. PostgREST parses
+  // the column list before RLS, so a typo there is a 400 at runtime rather than a
+  // wrong number — but it is a 400 on the owner's home screen, and nothing else in
+  // the gate would see it. The list is read from RISK_COLUMNS above, so this checks
+  // the string the app actually sends.
+  ['dashboard/page.tsx + at-risk/page.tsx', 'student_risk', riskColumns],
 ]
 
 let passed = 0

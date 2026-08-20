@@ -12,10 +12,12 @@ import {
 } from '@/lib/bd/time'
 import { countChasesDue } from '@/lib/fees/reminder-schedule'
 import { ratesForDashboard } from '@/lib/attendance/rates'
+import { studentsAtRisk, RISK_COLUMNS } from '@/lib/students/risk'
 import { sumTaka, tallyOutstanding, formatTaka as taka } from '@/lib/money'
 import { dict, DEFAULT_LOCALE } from '@/lib/i18n'
 import { ReminderEntry } from '@/app/(app)/fees/reminder-entry'
 import { AttendanceRates } from './attendance-rates'
+import { AtRiskCard } from './at-risk-card'
 
 /** getSession, not pageRole — see the note on teach/page.tsx's own. */
 export async function generateMetadata() {
@@ -96,6 +98,7 @@ export default async function DashboardPage() {
     { data: todaySessions },
     { data: chased },
     { data: rates },
+    { data: risky },
   ] = await Promise.all([
     supabase
       .from('students')
@@ -169,6 +172,19 @@ export default async function DashboardPage() {
       .eq('coaching_center_id', session.active.centerId)
       .eq('batch_active', true)
       .in('period_month', [period, addMonths(period, -1)]),
+    // Who is drifting away. Unconditional for the same reason as the two queries
+    // above — the view is staff-admin only, so a teacher gets an empty array out
+    // of a round trip that was already in flight.
+    //
+    // No `.limit()`, though the card shows three. The count under the heading has
+    // to be the real one: "3 students" over the three that fit, when eleven are
+    // flagged, is the card lying about the size of the problem. Every row is one
+    // student with at least one signal, so the worst case is a fraction of the
+    // centre's roll and the ordering has to happen over all of them anyway.
+    supabase
+      .from('student_risk')
+      .select(RISK_COLUMNS)
+      .eq('coaching_center_id', session.active.centerId),
   ])
 
   // Same rule as the fee board, so the two screens cannot drift: only positive
@@ -233,6 +249,11 @@ export default async function DashboardPage() {
     period,
     t.unknownBatch,
   )
+
+  // And the students behind those rates who are on their way out. Worst first,
+  // with the reason for each one already chosen — every threshold is in the view
+  // and the ordering is in one tested function, so this page decides neither.
+  const atRisk = studentsAtRisk(risky, d.risk.noName)
 
   return (
     <div className="flex flex-col gap-5">
@@ -324,6 +345,14 @@ export default async function DashboardPage() {
           locale={locale}
           t={t}
         />
+      )}
+
+      {/* Under the rate card, because that one is the aggregate and this one is the
+          individuals inside it — the same reading order as the outstanding figure
+          above the list of who owes it. Only when somebody is flagged; see the note
+          on the card for why an empty version of it would be worse than none. */}
+      {atRisk.length > 0 && (
+        <AtRiskCard students={atRisk} view={d.common.view} t={d.risk} />
       )}
 
       {overdue.length > 0 && (

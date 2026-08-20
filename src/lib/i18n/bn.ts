@@ -1191,6 +1191,82 @@ export const bn = {
     unknownBatch: 'অজানা ব্যাচ',
   },
   /**
+   * The students who are quietly leaving — `student_risk` put into words.
+   *
+   * Every threshold is in 20260811000014_student_risk.sql and not one of them is
+   * repeated here; the view says which arm fired and this group only names it. So
+   * there is no '৭০%' or '৭ দিন' in any string below, on purpose: the day somebody
+   * tunes a threshold in the migration, none of this wording goes stale.
+   *
+   * The figures are not interpolated either. They are rendered in their own `.num`
+   * elements beside these words, the same as `dashboard.classDays`, because a
+   * Bangla sentence with a percentage in it ends up reading "৫৫% হাজিরা, আগে ছিল
+   * ৮৮%" — two numeral systems in one line, which is harder to read than either
+   * convention alone. Words here, digits there.
+   */
+  risk: {
+    /** Matches the nav entry and the page heading. */
+    title: 'ঝুঁকিতে আছে',
+    /**
+     * Under the heading. Says what the screen is *for*, because "ঝুঁকি" alone
+     * invites the reading that these students are failing — the point is that they
+     * are drifting away, which is a different problem with a different fix.
+     */
+    lead: 'যারা চুপচাপ ছেড়ে দিতে পারে — আজই এক মিনিটের একটা ফোন যাদের ধরে রাখতে পারে।',
+    /** Follows a count in its own element: '৫ জন শিক্ষার্থী'. */
+    count: (_n: number) => 'জন শিক্ষার্থী',
+    /** Also follows a count: '২টি লক্ষণ'. */
+    signalCount: (_n: number) => 'টি লক্ষণ',
+    /**
+     * What to do, not how bad it is. An owner reading 'মাঝারি' has to work out for
+     * themselves what that asks of them, and the whole value of this screen is
+     * that the translation already happened.
+     */
+    levels: {
+      watch: 'খেয়াল রাখুন',
+      talk: 'কথা বলুন',
+      call: 'আজই ফোন করুন',
+    },
+    /**
+     * One label per arm of the view. Each is followed by the figures behind it, so
+     * these stay short enough to sit on one line of a phone beside a percentage.
+     */
+    reasons: {
+      attendanceLow: 'হাজিরা কম',
+      attendanceFell: 'হাজিরা কমে গেছে',
+      marksLow: 'নম্বর কম',
+      marksFell: 'নম্বর পড়ে গেছে',
+      /** Follows the count: '২ পরীক্ষায় অনুপস্থিত'. */
+      examsMissed: (_n: number) => 'পরীক্ষায় অনুপস্থিত',
+      feeLate: 'ফি বাকি',
+    },
+    /** Introduces the earlier figure after a separator: '· আগে ৮৮%'. */
+    was: 'আগে',
+    /** Follows a day count: '১২ দিন'. */
+    days: (_n: number) => 'দিন',
+    /**
+     * When a percentage exists but nothing was marked to build it from. Same words
+     * as dashboard.noRate, because a number missing on two screens for one reason
+     * should not have two names.
+     */
+    noFigure: 'হিসাব নেই',
+    /** The good case, and the one an owner should see most months. */
+    empty: 'এখন কেউ ঝুঁকিতে নেই',
+    emptyHint: 'হাজিরা, পরীক্ষার ফল আর ফি — তিনটির কোনোটিতেই কারও খারাপ লক্ষণ নেই।',
+    /** The dashboard card's link to the full list. */
+    seeAll: 'সবাইকে দেখুন',
+    /** On a row, opening the guardian's number in the phone dialler. */
+    callGuardian: 'অভিভাবককে ফোন',
+    noPhone: 'নম্বর নেই',
+    /** Unreachable through the view — students.name is not null. */
+    noName: 'নাম দেওয়া নেই',
+    /**
+     * The footnote. The only place the windows are stated, and stated in Bangla
+     * numerals because this line has no percentage in it to clash with.
+     */
+    windows: 'হাজিরা শেষ ৩০ দিনের হিসাব, নম্বর শেষ ১২০ দিনের।',
+  },
+  /**
    * A student's or guardian's own screen — the counterpart to `dashboard`.
    *
    * Deliberately small, because this reader cannot act on any of it: they cannot
