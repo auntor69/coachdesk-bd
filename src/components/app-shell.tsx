@@ -38,6 +38,31 @@ type NavItem = { href: Route; label: keyof Dictionary['shell']['nav']; icon: str
  */
 const FEES_TAB: NavItem = { href: '/fees', label: 'fees', icon: '৳' }
 
+/** Named for the same reason, now that three roles reach it. */
+const EXAMS_TAB: NavItem = { href: '/exams', label: 'exams', icon: '✎' }
+
+/**
+ * Owners and managers, who see the same five tabs.
+ *
+ * One array rather than two identical ones, because the two roles had drifted:
+ * both were missing /exams while a teacher had it, and a fix applied to `owner`
+ * alone would have left every manager in the country unable to reach a third of
+ * the product. Written as a shared const rather than merged into one Record key
+ * so that the day an owner-only tab exists it is `[...STAFF_ADMIN_NAV, BILLING]`
+ * and not a re-split of four entries.
+ *
+ * Exams sits after attendance, matching the teacher's bar, so somebody promoted
+ * from teaching finds it where they left it. Settings stays last, where every
+ * app on the phone keeps it.
+ */
+const STAFF_ADMIN_NAV: NavItem[] = [
+  { href: '/dashboard', label: 'home', icon: '⌂' },
+  { href: '/teach', label: 'attendance', icon: '✓' },
+  EXAMS_TAB,
+  FEES_TAB,
+  { href: '/settings', label: 'settings', icon: '⚙' },
+]
+
 /**
  * What each role sees. Icons are text glyphs rather than an icon font or SVG
  * sprite — one less network request on a 3G connection, and they inherit the
@@ -46,24 +71,16 @@ const FEES_TAB: NavItem = { href: '/fees', label: 'fees', icon: '৳' }
  * Keyed by MemberRole rather than string: adding a role to the enum then breaks
  * here until someone decides what that role's navigation is, instead of
  * silently handing them an empty bar.
+ *
+ * Note what this table is not: a plan gate. Every screen here is guarded by role
+ * and permission alone, so a solo teacher on teacher_free — who is the `owner` of
+ * their own centre — gets all five tabs. Exams especially: on the free plan the
+ * owner *is* the teacher, and marks are a third of what they signed up for.
  */
 const NAV: Record<MemberRole, NavItem[]> = {
-  owner: [
-    { href: '/dashboard', label: 'home', icon: '⌂' },
-    { href: '/teach', label: 'attendance', icon: '✓' },
-    FEES_TAB,
-    { href: '/settings', label: 'settings', icon: '⚙' },
-  ],
-  manager: [
-    { href: '/dashboard', label: 'home', icon: '⌂' },
-    { href: '/teach', label: 'attendance', icon: '✓' },
-    FEES_TAB,
-    { href: '/settings', label: 'settings', icon: '⚙' },
-  ],
-  teacher: [
-    { href: '/teach', label: 'attendance', icon: '✓' },
-    { href: '/exams', label: 'exams', icon: '✎' },
-  ],
+  owner: STAFF_ADMIN_NAV,
+  manager: STAFF_ADMIN_NAV,
+  teacher: [{ href: '/teach', label: 'attendance', icon: '✓' }, EXAMS_TAB],
   student: [{ href: '/me', label: 'mine', icon: '⌂' }],
   guardian: [{ href: '/me', label: 'myChild', icon: '⌂' }],
 }
