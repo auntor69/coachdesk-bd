@@ -337,7 +337,20 @@ for (const [name, { kind, cols }] of [...tables].filter(([, t]) => t.kind === 'r
   lines.push('        Insert: {')
   for (const col of cols) {
     // A column is optional on insert when the database can fill it in itself.
-    const optional = !col.not_null || col.has_default || col.is_identity ? '?' : ''
+    //
+    // Three of those the catalogue states outright: nullable, has a DEFAULT, is an
+    // identity column. The fourth it cannot — a BEFORE INSERT trigger that assigns
+    // the value is invisible here, and pg_trigger would only say the table has one,
+    // never which column it writes. Left unhandled, a NOT NULL trigger-assigned
+    // column reads as required and every insert in the app fails to typecheck for a
+    // value the caller is not allowed to choose.
+    //
+    // So the column says so itself: `@generated` anywhere in its COMMENT. Declared
+    // in the migration next to the trigger that does the assigning, which is the
+    // only place that knows, and visible in the database rather than in a list kept
+    // over here that nobody updates. fee_payments.receipt_no is the first one.
+    const generated = /@generated\b/.test(col.comment ?? '')
+    const optional = !col.not_null || col.has_default || col.is_identity || generated ? '?' : ''
     const nullable = col.not_null ? '' : ' | null'
     lines.push(`          ${col.column_name}${optional}: ${tsType(col)}${nullable}`)
   }

@@ -815,6 +815,231 @@ await db.query(
 )
 
 // ---------------------------------------------------------------------------
+// Receipt numbers (20260811000017).
+//
+// The number the owner writes on the slip and the parent reads back down a phone
+// line. Three things have to hold or the receipt is worse than none at all: it
+// must be unique inside the centre, it must not be derived from anything global
+// (centre A's count is not centre B's business), and once issued it must not
+// change — renumbering is how a payment gets hidden.
+// ---------------------------------------------------------------------------
+
+const receiptNo = async (id) =>
+  (await db.query('select receipt_no from fee_payments where id = $1', [id])).rows[0].receipt_no
+
+const nextFor = async (center) =>
+  (
+    await db.query(
+      'select coalesce(max(receipt_no), 0) + 1 as n from fee_payments where coaching_center_id = $1',
+      [center],
+    )
+  ).rows[0].n
+
+const expectA = await nextFor(centerA)
+const rFirst = (await pay(100)).rows[0].id
+const rSecond = (await pay(100)).rows[0].id
+
+check(
+  'a payment is numbered without being told to',
+  (await receiptNo(rFirst)) === expectA,
+  `got ${await receiptNo(rFirst)}, expected ${expectA}`,
+)
+check(
+  'and the next one is the next number',
+  (await receiptNo(rSecond)) === expectA + 1,
+  `got ${await receiptNo(rSecond)}`,
+)
+
+// The isolation that matters. Centre B's rFirst receipt is 1 even though centre A
+// has already issued several: a shared sequence would let an owner read the
+// platform's whole volume off their own receipt book.
+const bInvoice = await one(
+  `insert into fee_invoices (coaching_center_id, student_id, period_month, amount_bdt, due_date)
+   values ($1, $2, '2026-02-01', 500, '2026-02-10') returning id`,
+  [centerB, stB],
+)
+const bPayment = await one(
+  `insert into fee_payments (coaching_center_id, invoice_id, student_id, amount_bdt)
+   values ($1, $2, $3, 500) returning id`,
+  [centerB, bInvoice, stB],
+)
+check(
+  'the other centre numbers from one, not from ours',
+  (await receiptNo(bPayment)) === 1,
+  `centre B got ${await receiptNo(bPayment)} while centre A is at ${expectA + 1}`,
+)
+
+// A used number is never handed out again, and the thing that guarantees it is
+// that a payment cannot be deleted at all. Counting from max() would reissue the
+// top number the moment the newest payment vanished, so the revoke in step 4 of
+// 20260811000017 is load-bearing and not housekeeping.
+check(
+  'a staff admin cannot delete a payment',
+  await deniedAsUser(db, ids.ownerA, 'delete from fee_payments where id = $1', [rSecond]),
+)
+check(
+  'and the receipt is still there to be found',
+  (await receiptNo(rSecond)) === expectA + 1,
+)
+check(
+  'nor can they rewrite the amount the receipt says',
+  await deniedAsUser(db, ids.ownerA, 'update fee_payments set amount_bdt = 9999 where id = $1', [
+    rSecond,
+  ]),
+)
+check(
+  'nor the method it was collected by',
+  await deniedAsUser(db, ids.ownerA, `update fee_payments set method = 'bkash' where id = $1`, [
+    rSecond,
+  ]),
+)
+check(
+  'nor renumber it',
+  await deniedAsUser(db, ids.ownerA, 'update fee_payments set receipt_no = 7 where id = $1', [
+    rSecond,
+  ]),
+)
+
+// The two columns that were handed back. A mistyped bKash transaction id is a
+// real thing an owner has to fix, and fixing it changes no number on the paper.
+await asUser(db, ids.ownerA, async (tx) => {
+  await tx.query(`update fee_payments set reference = 'TRX7788', note = 'retyped' where id = $1`, [
+    rSecond,
+  ])
+})
+check(
+  'a staff admin can correct the reference and the note',
+  (
+    await db.query('select reference, note from fee_payments where id = $1', [rSecond])
+  ).rows[0].reference === 'TRX7788',
+)
+
+// The import path: a centre moving off a paper book keeps the numbers already on
+// the slips its parents are holding.
+const rImported = await one(
+  `insert into fee_payments (coaching_center_id, invoice_id, student_id, amount_bdt, receipt_no)
+   values ($1, $2, $3, 100, 90001) returning id`,
+  [centerA, invoiceAli, stAli],
+)
+check('an explicit receipt number is kept', (await receiptNo(rImported)) === 90001)
+check(
+  'and the next automatic number continues from it',
+  (await receiptNo((await pay(100)).rows[0].id)) === 90002,
+)
+
+// checkRefused is not the helper for this one: it insists the error names a
+// _center_fkey, and the constraint that has to fire here is the unique index.
+// Naming it is the same discipline for the same reason — "the database said no"
+// is cheap to get by accident.
+let duplicate = { ok: false, why: 'accepted' }
+try {
+  await db.query(
+    `insert into fee_payments (coaching_center_id, invoice_id, student_id, amount_bdt, receipt_no)
+     values ($1, $2, $3, 100, 90001)`,
+    [centerA, invoiceAli, stAli],
+  )
+} catch (error) {
+  const message = String(error.message)
+  duplicate = { ok: /fee_payments_center_receipt_key/.test(message), why: message.split('\n')[0] }
+}
+check('the same number cannot be issued twice in one centre', duplicate.ok, duplicate.why)
+
+// The grant above stops a browser session. This one runs as the migration role —
+// the SQL editor, a support script, the next migration — and the trigger stops it
+// too. Two independent mechanisms, because the receipt number is the one thing on
+// the paper that cannot be re-derived from anything else.
+let renumbered = false
+try {
+  await db.query('update fee_payments set receipt_no = 7 where id = $1', [rFirst])
+  renumbered = true
+} catch {
+  /* expected */
+}
+check('not even the migration role can change an issued receipt number', !renumbered)
+check(
+  'and the row still carries the number that was printed',
+  (await receiptNo(rFirst)) === expectA,
+)
+
+// An update that leaves receipt_no alone must still work — the guard is on the
+// column, not on the row.
+await db.query('update fee_payments set note = $2 where id = $1', [rFirst, 'cash counted twice'])
+check(
+  'an unrelated edit to the same row is allowed',
+  (
+    await db.query('select note from fee_payments where id = $1', [rFirst])
+  ).rows[0].note === 'cash counted twice',
+)
+
+// Two mechanisms, proven separately.
+//
+// Every refusal above would also be produced by the REVOKE on its own, which
+// leaves the trigger untested — and 20260811000004 spells out why that is not good
+// enough: a REVOKE only removes grants the revoking role made, so if the live
+// database's grant came from supabase_admin rather than postgres, the revoke
+// succeeds while changing nothing and this suite would be proving a lock that
+// production does not have. One pasted `grant all on all tables in schema public`
+// does the same thing on purpose.
+//
+// So hand the privilege back, inside a transaction that is thrown away, and check
+// that the refusal is still a refusal. RLS cannot be what refuses here: ownerA is a
+// staff admin in centre A and the policy is `for all`, and a policy refusal on
+// DELETE or UPDATE is silent — nought rows, no error. An exception can only be the
+// trigger.
+const guard = { del: '', amount: '', allowed: false }
+await db.query('begin')
+try {
+  await db.query('grant update, delete on public.fee_payments to authenticated')
+  await db.query('set local role authenticated')
+  await db.query(`select set_config('request.jwt.claim.sub', $1, true)`, [ids.ownerA])
+  await db.query('savepoint probe')
+
+  try {
+    await db.query('delete from fee_payments where id = $1', [rFirst])
+  } catch (error) {
+    guard.del = String(error.message)
+  }
+  await db.query('rollback to savepoint probe')
+
+  try {
+    await db.query('update fee_payments set amount_bdt = 1 where id = $1', [rFirst])
+  } catch (error) {
+    guard.amount = String(error.message)
+  }
+  await db.query('rollback to savepoint probe')
+
+  // And the two columns that were handed back still go through, so what is being
+  // observed is a guard on the money and not a trigger that refuses everything.
+  const edited = await db.query(
+    `update fee_payments set note = 'probe' where id = $1 returning note`,
+    [rFirst],
+  )
+  guard.allowed = edited.rows[0]?.note === 'probe'
+} finally {
+  await db.query('rollback')
+}
+
+check(
+  'a trigger refuses the delete even when the privilege is handed back',
+  /cannot be deleted by authenticated/.test(guard.del),
+  guard.del.split('\n')[0] || 'accepted',
+)
+check(
+  'and refuses the amount even when the privilege is handed back',
+  /cannot be rewritten by authenticated/.test(guard.amount),
+  guard.amount.split('\n')[0] || 'accepted',
+)
+check('while still letting the note through', guard.allowed)
+check(
+  'and the thrown-away transaction took the grant with it',
+  await deniedAsUser(db, ids.ownerA, 'delete from fee_payments where id = $1', [rFirst]),
+)
+
+await db.query('delete from fee_payments where coaching_center_id = $1', [centerA])
+await db.query('delete from fee_payments where id = $1', [bPayment])
+await db.query('delete from fee_invoices where id = $1', [bInvoice])
+
+// ---------------------------------------------------------------------------
 // The two writes the fee board makes.
 //
 // Everything above this proves reads. Nothing yet proved that the owner who is
@@ -1991,18 +2216,29 @@ check(
   ),
 )
 
-// UPDATE and DELETE are the two that cannot be asserted with deniedAsUser, and
-// they are the two that would cost the most. A reader who can SELECT a row and has
-// no write policy gets no error from `update` — the row is filtered out and
-// Postgres reports nought rows changed, which deniedAsUser reads as allowed. So
-// the assertion is the stored number. Setting discount_bdt to the full 800 is a
-// legal value that clears fee_invoices_discount_bound, which is the point: if the
-// policy ever opened, a teacher would be writing off the owner's fees and nothing
-// in the schema would stop them.
+// UPDATE is the one that cannot be asserted with deniedAsUser, and it is the one
+// that would cost the most. A reader who can SELECT a row and has no write policy
+// gets no error from `update` — the row is filtered out and Postgres reports nought
+// rows changed, which deniedAsUser reads as allowed. So the assertion is the stored
+// number. Setting discount_bdt to the full 800 is a legal value that clears
+// fee_invoices_discount_bound, which is the point: if the policy ever opened, a
+// teacher would be writing off the owner's fees and nothing in the schema would
+// stop them.
 await asUser(db, ids.karim, async (tx) => {
   await tx.query('update fee_invoices set discount_bdt = 800 where id = $1', [invoiceAli])
-  await tx.query('delete from fee_payments where invoice_id = $1', [invoiceAli])
 })
+
+// Deleting the payment used to belong in that transaction, silently changing
+// nothing. 20260811000017 revoked DELETE on fee_payments from `authenticated`
+// altogether — the receipt series counts from max() and a removed payment would
+// let a used number be handed out again — so it is now a refusal rather than a
+// no-op, which is why it moved out here.
+check(
+  'nor delete the payment on it',
+  await deniedAsUser(db, ids.karim, 'delete from fee_payments where invoice_id = $1', [
+    invoiceAli,
+  ]),
+)
 
 const untouched = (
   await db.query(
@@ -2018,7 +2254,7 @@ check(
   `discount is now ${untouched.discount_bdt}`,
 )
 check(
-  'nor delete the payment on it',
+  'and the payment is still on the record',
   untouched.payments === 1,
   `${untouched.payments} payment(s) left`,
 )
