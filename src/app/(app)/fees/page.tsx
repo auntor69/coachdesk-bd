@@ -1,4 +1,5 @@
 import { forbidden } from 'next/navigation'
+import Link from 'next/link'
 
 import { Card } from '@/components/ui'
 import { pageCenter, getSession, isStaffAdmin, canReadFees } from '@/lib/auth/session'
@@ -263,6 +264,24 @@ export default async function FeesPage() {
           <p className="mt-1 text-sm text-brand-800">
             <span className="num font-semibold">{formatTaka(credit)}</span>{' '}
             {t.inCredit}
+          </p>
+        )}
+        {/* The way out of this card and into the month's takings. Inside it rather
+            than beside it, because the register is what explains the figure above —
+            an owner who wants to know where "collected this month" came from is
+            already looking here. Staff-admin only, like the collecting half of the
+            board: a teacher reads what their own students owe, not the centre's
+            month. The month is named in the URL so the link is bookmarkable and
+            still means this month when it is followed next week. */}
+        {canWrite && (
+          <p className="mt-3">
+            <Link
+              href={`/fees/register?month=${thisMonth}`}
+              className="inline-flex min-h-tap items-center font-medium
+                text-brand-800 underline"
+            >
+              {t.registerLink} →
+            </Link>
           </p>
         )}
       </Card>

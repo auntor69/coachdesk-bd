@@ -32,6 +32,16 @@ export type FeeState = {
   ok?: string
   /** Set when the write succeeded but the owner should read something first. */
   warn?: string
+  /**
+   * The slip that was just created, for the link the row shows next to its
+   * confirmation. Both halves travel: the id is what /fees/receipt needs, and the
+   * number is what the owner reads out to the parent standing in front of them
+   * before anything has been printed.
+   *
+   * Only ever set on success. A row that showed a receipt link after a failed write
+   * would be offering to print a payment that does not exist.
+   */
+  receipt?: { id: string; no: number }
 } | null
 
 /** Cash and the three mobile wallets an owner will actually be handed money in. */
@@ -235,20 +245,30 @@ export async function recordPayment(
   if (!invoice?.id || !invoice.student_id) return { error: t.errors.invoiceMissing }
   if (invoice.voided_at) return { error: t.errors.invoiceVoided }
 
-  const { error: paymentError } = await supabase.from('fee_payments').insert({
-    coaching_center_id: session.active.centerId,
-    invoice_id: invoice.id,
-    student_id: invoice.student_id,
-    amount_bdt: amount,
-    method,
-    reference: reference || null,
-    note: note || null,
-    received_by: session.userId,
-  })
+  // The number comes back rather than being asked for afterwards: it is assigned by
+  // a trigger under an advisory lock (20260811000017), so a second query would be a
+  // guess at which row was ours. `single()` is safe here for the reason it usually
+  // is not — one row was inserted, so exactly one comes back or the insert failed.
+  const { data: payment, error: paymentError } = await supabase
+    .from('fee_payments')
+    .insert({
+      coaching_center_id: session.active.centerId,
+      invoice_id: invoice.id,
+      student_id: invoice.student_id,
+      amount_bdt: amount,
+      method,
+      reference: reference || null,
+      note: note || null,
+      received_by: session.userId,
+    })
+    .select('id, receipt_no')
+    .single()
 
   if (paymentError) {
     return { error: t.errors.paymentFailed }
   }
+
+  const receipt = { id: payment.id, no: payment.receipt_no }
 
   revalidatePath('/fees')
   revalidatePath('/dashboard')
@@ -266,6 +286,7 @@ export async function recordPayment(
     return {
       ok: t.received(name, paid),
       warn: t.stillOwed(formatTaka(stillOwed)),
+      receipt,
     }
   }
 
@@ -273,10 +294,11 @@ export async function recordPayment(
     return {
       ok: t.received(name, paid),
       warn: t.overpaid(formatTaka(-stillOwed)),
+      receipt,
     }
   }
 
-  return { ok: t.receivedInFull(name, paid) }
+  return { ok: t.receivedInFull(name, paid), receipt }
 }
 
 /* -------------------------------------------------------------------------- */

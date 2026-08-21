@@ -101,3 +101,33 @@ summary::-webkit-details-marker {
     transition-duration: 0.01ms !important;
   }
 }
+
+/* Paper.
+ *
+ * Two screens are built to leave the phone: the fee receipt a parent carries
+ * home, and the month's collection register an owner reconciles against a bKash
+ * statement. Only what cannot be a utility class lives here — the page box has
+ * no element to hang a `print:` variant on, and everything else (what is hidden,
+ * what must not split across sheets) stays in the markup next to the thing it
+ * describes, where it can be read at the same time.
+ *
+ * A4 because that is what a Bangladeshi print shop and every office printer in
+ * the country feed. 12mm because the receipt is designed two-to-a-sheet and a
+ * wider margin pushes the second copy's foot onto a third sheet.
+ */
+@page {
+  size: A4;
+  margin: 12mm;
+}
+
+@media print {
+  /* Browsers drop backgrounds when printing, which turns every tinted panel into
+     an unlabelled box. On these two screens the tint is carrying meaning — the
+     paid banner on a receipt, the total row of the register — so ask for it back.
+     Both spellings: the unprefixed property is what the standard says and the
+     -webkit- one is what Chrome on Android still needs. */
+  *, *::before, *::after {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+}

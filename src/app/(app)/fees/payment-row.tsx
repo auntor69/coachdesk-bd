@@ -17,6 +17,8 @@
  */
 import { useActionState, useEffect, useRef, useState } from 'react'
 
+import Link from 'next/link'
+
 import { Alert, Button, Field } from '@/components/ui'
 import { formatDate } from '@/lib/bd/time'
 import { MAX_LABEL } from '@/lib/limits'
@@ -159,6 +161,23 @@ export function PaymentRow({
             <div className="mt-2">
               <Alert tone="warn">{state.warn}</Alert>
             </div>
+          )}
+          {/* Under the confirmation, and only once there is money to print. The
+              number is beside the link rather than inside it because the owner will
+              read it out to the parent before either of them has seen a sheet of
+              paper — and a figure in the middle of a translated sentence would have
+              to be a template filled in the browser for no gain. */}
+          {state?.receipt && (
+            <p className="mt-2">
+              <Link
+                href={`/fees/receipt/${state.receipt.id}`}
+                className="inline-flex min-h-tap items-center font-medium
+                  text-brand-700 underline"
+              >
+                {t.receiptLink}
+              </Link>
+              <span className="num ml-2 text-ink-soft">#{state.receipt.no}</span>
+            </p>
           )}
 
           {/* A settled invoice keeps its history visible but offers no form.

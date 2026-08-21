@@ -180,7 +180,15 @@ export async function AppShell({
 
   return (
     <div className="flex min-h-full flex-col">
-      <header className="sticky top-0 z-10 border-b border-line bg-white/95 backdrop-blur">
+      {/* print:hidden on both the header and the nav below. A receipt is handed
+          across a desk and a register is filed, and neither wants a logout button
+          or four tab icons on it — the sticky header would also reprint at the top
+          of every sheet. What the paper needs instead is the centre's name, which
+          each of those pages prints for itself as a letterhead. */}
+      <header
+        className="sticky top-0 z-10 border-b border-line bg-white/95 backdrop-blur
+          print:hidden"
+      >
         <div className="mx-auto flex w-full max-w-3xl items-center justify-between gap-3 px-4 py-3">
           <div className="min-w-0">
             <Logo className="text-base" />
@@ -204,15 +212,22 @@ export async function AppShell({
       </header>
 
       {/* pb-24 clears the fixed bottom bar; without it the last row of any
-          list sits permanently under the nav and looks like a rendering bug. */}
-      <main className="mx-auto w-full max-w-3xl flex-1 px-4 py-5 pb-24">
+          list sits permanently under the nav and looks like a rendering bug.
+          On paper there is no bar and no phone-width column to centre in, so all
+          of it comes off: @page owns the margins, and max-w-3xl left standing
+          would waste a third of an A4 sheet the register wants for its columns. */}
+      <main
+        className="mx-auto w-full max-w-3xl flex-1 px-4 py-5 pb-24
+          print:max-w-none print:px-0 print:py-0 print:pb-0"
+      >
         {children}
       </main>
 
       {items.length > 1 && (
         <nav
           aria-label={t.mainMenu}
-          className="fixed inset-x-0 bottom-0 z-10 border-t border-line bg-white"
+          className="fixed inset-x-0 bottom-0 z-10 border-t border-line bg-white
+            print:hidden"
         >
           <ul className="mx-auto flex w-full max-w-3xl">
             {items.map((item) => (

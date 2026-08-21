@@ -204,6 +204,8 @@ export const en: Dictionary = {
      */
     yoursOnly: 'Your own batches only',
 
+    registerLink: 'This month’s collection register',
+
     today: 'today',
     yesterday: 'yesterday',
 
@@ -250,6 +252,7 @@ export const en: Dictionary = {
     reference: 'Transaction ID',
     receiving: 'Recording…',
     receive: 'Record payment',
+    receiptLink: 'View receipt',
     methods: {
       cash: 'Cash',
       bkash: 'bKash',
@@ -258,6 +261,56 @@ export const en: Dictionary = {
       bank_transfer: 'Bank',
       other: 'Other',
     },
+  },
+
+  receipt: {
+    title: 'Fee receipt',
+    receiptNo: 'Receipt no.',
+    date: 'Date',
+    student: 'Student',
+    studentCode: 'ID',
+    month: 'Fee for',
+    amount: 'Amount received',
+    method: 'How',
+    reference: 'Transaction ID',
+    billed: 'Total fee for the month',
+    /** "Up to this receipt", not "now" — see the Bangla for why that matters. */
+    balanceAfter: 'Balance after this receipt',
+    paidInFull: 'Paid in full ✓',
+    inCredit: 'In credit',
+    signature: 'Received by',
+    guardianCopy: 'Guardian’s copy',
+    officeCopy: 'Office copy',
+    cutHere: 'Cut here',
+    print: 'Print',
+    backToFees: 'Back to fees',
+    footNote:
+      'This is a computer-generated receipt. Please keep it as proof of payment.',
+    notFound:
+      'Receipt not found. It may belong to another centre, or it may have been removed.',
+  },
+
+  register: {
+    title: 'Collection register',
+    subtitle: 'What came in, and when',
+    month: 'Month',
+    show: 'Show',
+    print: 'Print',
+    backToFees: 'Back to fees',
+
+    colDate: 'Date',
+    colReceipt: 'Receipt',
+    colStudent: 'Student',
+    colMethod: 'How',
+    colReference: 'Transaction ID',
+    colAmount: 'Amount',
+    colRunning: 'Running total',
+
+    total: 'Total collected',
+    byMethod: 'How it came in',
+    entries: (n: number) => `${n} ${n === 1 ? 'payment' : 'payments'}`,
+    empty: 'No money has been recorded for this month yet.',
+    forMonth: (month: string) => `${month}`,
   },
 
   chase: {

@@ -361,6 +361,13 @@ export const bn = {
      */
     yoursOnly: 'শুধু আপনার নিজের ব্যাচের হিসাব',
 
+    /**
+     * The link to the month's collection register. Named for what it is on paper —
+     * every centre already keeps an "আদায় খাতা", and an owner looking for the thing
+     * they reconcile against a bKash statement is looking for that word.
+     */
+    registerLink: 'এই মাসের আদায় খাতা',
+
     /** When a reminder went out, as a person would say it. Anything older is a date. */
     today: 'আজ',
     yesterday: 'গতকাল',
@@ -431,6 +438,13 @@ export const bn = {
     receiving: 'জমা হচ্ছে…',
     receive: 'জমা নিন',
     /**
+     * Appears only after money has actually landed, next to the confirmation. Says
+     * "রসিদ" rather than "প্রিন্ট" because the owner's next thought is the piece of
+     * paper the parent is waiting for, and they may well save it as a PDF and send
+     * it on WhatsApp instead of printing anything.
+     */
+    receiptLink: 'রসিদ দেখুন',
+    /**
      * Keyed by fee_payments.method, so the radio group is one list in both
      * languages and a method added to the enum without a label is a compile error.
      * The wallet names stay as they are written on the apps themselves — a Dhaka
@@ -438,13 +452,109 @@ export const bn = {
      * in their own script.
      */
     methods: {
-      cash: 'নগদ টাকা',
+      // 'ক্যাশ', not 'নগদ টাকা', and the loanword is deliberate: Nagad's brand is
+      // written নগদ, so 'নগদ টাকা' has the wallet's name inside it. On the
+      // collection register those two labels sit in one column and one breakdown
+      // list, and an owner counting the drawer against a line that reads নগদ has
+      // no way to tell which is which. 'ক্যাশ' is what they say out loud anyway
+      // and shares not one letter with the brand.
+      cash: 'ক্যাশ',
       bkash: 'বিকাশ',
       nagad: 'নগদ',
       rocket: 'রকেট',
       bank_transfer: 'ব্যাংক',
       other: 'অন্য',
     },
+  },
+
+  /**
+   * The fee receipt, printed two to a sheet.
+   *
+   * Reads like the slip books already sold in every stationery shop in the
+   * country, because that is what it replaces and an owner should not have to
+   * learn a new layout to hand a parent something familiar. The method labels are
+   * not here — the receipt reads `feeRow.methods`, so a wallet added to the enum
+   * gets one label for the whole product rather than three that drift.
+   */
+  receipt: {
+    title: 'ফি রসিদ',
+    receiptNo: 'রসিদ নং',
+    date: 'তারিখ',
+    student: 'শিক্ষার্থীর নাম',
+    studentCode: 'আইডি',
+    month: 'কোন মাসের ফি',
+    amount: 'জমার পরিমাণ',
+    method: 'কীভাবে',
+    reference: 'ট্রানজেকশন আইডি',
+    /** The invoice's own total, so the two figures below it can be checked. */
+    billed: 'মাসের মোট ফি',
+    /**
+     * "এই রসিদ পর্যন্ত" — up to this receipt — and not "এখন". The figure is
+     * calculated as of this payment and never moves again, which is the only way a
+     * slip printed twice a year apart can say the same thing both times. A receipt
+     * showing today's balance would contradict itself the moment the next payment
+     * lands, and the parent holding it would be right and the paper wrong.
+     */
+    balanceAfter: 'এই রসিদ পর্যন্ত বাকি',
+    paidInFull: 'সম্পূর্ণ পরিশোধ ✓',
+    inCredit: 'বেশি জমা আছে',
+    /** Left blank on the paper, for a pen. */
+    signature: 'গ্রহণকারীর স্বাক্ষর',
+    guardianCopy: 'অভিভাবকের কপি',
+    officeCopy: 'অফিস কপি',
+    cutHere: 'এখানে কেটে নিন',
+    print: 'প্রিন্ট করুন',
+    backToFees: 'ফি-এর তালিকায় ফিরুন',
+    /**
+     * A computer-generated slip that nobody signed is worth saying out loud, so a
+     * parent knows the paper is the record and not a promise.
+     */
+    footNote: 'এটি কম্পিউটারে তৈরি রসিদ। টাকা জমা হওয়ার প্রমাণ হিসেবে যত্ন করে রাখুন।',
+    notFound: 'রসিদটি পাওয়া যায়নি। হয়তো অন্য কোচিংয়ের, বা মুছে ফেলা হয়েছে।',
+  },
+
+  /**
+   * The month's collection register: what came in, in order, with a running total
+   * and a breakdown by method.
+   *
+   * The breakdown is the reason this screen exists rather than being a filter on
+   * the board. An owner reconciles at the end of the day or the month by holding a
+   * bKash statement next to a cash box, and neither of those is one number — they
+   * need "how much of this month came through bKash" separately from "how much was
+   * cash", or the sum agreeing means nothing.
+   */
+  register: {
+    title: 'আদায় খাতা',
+    subtitle: 'কোন মাসে কত টাকা জমা হলো',
+    month: 'মাস',
+    show: 'দেখুন',
+    print: 'প্রিন্ট করুন',
+    backToFees: 'ফি-এর তালিকায় ফিরুন',
+
+    colDate: 'তারিখ',
+    colReceipt: 'রসিদ',
+    colStudent: 'শিক্ষার্থী',
+    colMethod: 'কীভাবে',
+    colReference: 'ট্রানজেকশন আইডি',
+    colAmount: 'টাকা',
+    /**
+     * Its own column and not a footer line. An owner ticking down a printed page
+     * against a wallet statement finds the row where the two stopped agreeing, and
+     * that is only possible if every row carries the total up to it.
+     */
+    colRunning: 'ক্রমিক মোট',
+
+    total: 'মোট আদায়',
+    byMethod: 'কীভাবে এসেছে',
+    /** Payments, not students: one family can pay twice in a month. */
+    entries: (n: number) => `${n}টি জমা`,
+    empty: 'এই মাসে এখনো কোনো টাকা জমা হয়নি।',
+    /**
+     * Same boundary note as the fee board's. This screen is staff-admin only, so
+     * the total is always the whole centre's — but the month is not, and a reader
+     * who has changed it needs to see which one they are looking at.
+     */
+    forMonth: (month: string) => `${month} মাসের হিসাব`,
   },
 
   /** The three chips, and the two reasons there might be none. */
