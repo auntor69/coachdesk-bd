@@ -2730,15 +2730,40 @@ await skipped(examLatest, joy.enrollment)
 // One missed exam for Shanto, who must still stay off the list.
 await skipped(examLatest, shanto.enrollment)
 
+/**
+ * One invoice for one risk fixture, aged by its due date.
+ *
+ * `period_month` is derived from the due date because that is what a real bill
+ * looks like — a month's fee, due in the first days of the next one — and the view
+ * never reads it: the fee arm keys on `due_date`, `voided_at` and what is still
+ * owed. It exists here only to satisfy the one-bill-per-enrollment-per-month
+ * constraint.
+ *
+ * WHICH IS WHY `periodMonthsBack` EXISTS. Two invoices for the same enrollment
+ * must land in different months, and deriving both from a due date makes that an
+ * accident of arithmetic rather than a fact. Kabir's pair used to be 20 and 21
+ * days back, which straddles a month boundary on exactly one day of the month —
+ * the day they were written — and collided on the other thirty. So a second
+ * invoice states its month explicitly and the reader can see that it differs.
+ */
 const riskInvoice = async (student, enrollment, dueDaysBack, amount, opts = {}) => {
   const id = await one(
     `insert into fee_invoices (coaching_center_id, student_id, enrollment_id,
                               period_month, amount_bdt, due_date, voided_at)
      values ($1, $2, $3,
-             date_trunc('month', (current_date - $4::int)::timestamp)::date,
+             (date_trunc('month', (current_date - $4::int)::timestamp)
+               - make_interval(months => $7::int))::date,
              $5, current_date - $4::int, $6)
      returning id`,
-    [centerA, student, enrollment, dueDaysBack, amount, opts.voided ? new Date().toISOString() : null],
+    [
+      centerA,
+      student,
+      enrollment,
+      dueDaysBack,
+      amount,
+      opts.voided ? new Date().toISOString() : null,
+      opts.periodMonthsBack ?? 0,
+    ],
   )
   if (opts.paid) {
     await db.query(
@@ -2762,12 +2787,14 @@ await riskInvoice(faria.id, faria.enrollment, 10, 500)
 const nabila = await riskStudent('Nabila Just Late')
 await riskInvoice(nabila.id, nabila.enrollment, 3, 500)
 
-// Twenty days past due, and settled. Plus a second, voided, invoice at the same
-// age. Both are the kind of row that shows the money as still owed if the view
-// forgets a predicate, and both must leave this student off the list entirely.
+// Twenty days past due, and settled. Plus a second, voided, invoice a month
+// earlier at a similar age. Both are the kind of row that shows the money as
+// still owed if the view forgets a predicate, and both must leave this student
+// off the list entirely. The second is put a month back explicitly, so the two
+// bills never share a (enrollment, period_month) whatever day the suite runs.
 const kabir = await riskStudent('Kabir Settled')
 await riskInvoice(kabir.id, kabir.enrollment, 20, 500, { paid: 500 })
-await riskInvoice(kabir.id, kabir.enrollment, 21, 700, { voided: true })
+await riskInvoice(kabir.id, kabir.enrollment, 21, 700, { voided: true, periodMonthsBack: 1 })
 
 // All three at once, which is the row an owner should phone about today.
 const rifat = await riskStudent('Rifat Everything')
