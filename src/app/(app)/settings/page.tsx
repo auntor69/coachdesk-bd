@@ -246,6 +246,27 @@ export default async function SettingsPage() {
           },
         ]
       : []),
+    /*
+     * The founder's own way in, and the only row here gated on a property of the
+     * reader rather than of the centre. Outside the `staffOnly` spread on purpose:
+     * `is_platform_admin` is not a role in any centre, so it must not depend on
+     * being a manager of this one.
+     *
+     * This is the whole of the panel's discoverability — no nav item, no dashboard
+     * card — because /founder answers with a 404 to everybody else and a link that
+     * 404s for every customer is a link that does not belong in the shell. See
+     * pagePlatformAdmin for why the answer is 404 and not 403.
+     */
+    ...(session.isPlatformAdmin
+      ? [
+          {
+            href: '/founder' as Route,
+            label: t.founder,
+            hint: t.founderHint,
+            count: null,
+          },
+        ]
+      : []),
   ]
 
   return (

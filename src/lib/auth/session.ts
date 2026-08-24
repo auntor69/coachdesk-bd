@@ -12,7 +12,7 @@
  */
 import { cache } from 'react'
 import { cookies } from 'next/headers'
-import { forbidden, redirect } from 'next/navigation'
+import { forbidden, notFound, redirect } from 'next/navigation'
 import type { Route } from 'next'
 
 import { createClient } from '@/lib/supabase/server'
@@ -219,6 +219,29 @@ export async function requireRole(minimum: MemberRole): Promise<CenterSession> {
 /** Owners and managers — the two roles that may change a center's setup. */
 export function isStaffAdmin(session: Session): boolean {
   return session.active ? atLeast(session.active.role, 'manager') : false
+}
+
+/**
+ * The person who sells this product, reading their own founder panel.
+ *
+ * Not a role and not a permission: `is_platform_admin` is a column on `profiles`
+ * that sits outside every centre, because the founder's authority is over the
+ * platform rather than inside any one customer's data. So there is no
+ * `requireCenter` in front of it — the panel lists centres and belongs to none of
+ * them, and the founder's own demo centre being suspended must not lock them out
+ * of the screen that says so.
+ *
+ * The database asks the same question again in `app.is_platform_admin()`, which is
+ * what actually protects the rows. This is the cheap check that keeps a
+ * non-founder from reaching the screen at all; the RPC is the one that would
+ * refuse them if they did.
+ */
+export async function requirePlatformAdmin(): Promise<Session> {
+  const session = await requireUser()
+  if (!session.isPlatformAdmin) {
+    throw new AuthError('forbidden', 'Platform administrators only.')
+  }
+  return session
 }
 
 /**
@@ -567,6 +590,31 @@ export async function pagePermission(
   permission: RosterPermission,
 ): Promise<CenterSession> {
   return pageGuard(() => requirePermission(permission))
+}
+
+/**
+ * requirePlatformAdmin for a page — and the one guard here that does not use
+ * pageGuard, because a 403 is the wrong answer.
+ *
+ * `forbidden()` renders a screen that says "you do not have access to this", which
+ * tells a paying customer who typed /founder that there is something at /founder
+ * to be kept out of. There is no security in hiding it — the RPC behind the screen
+ * refuses them on its own, and the grants refuse a signed-out request before that
+ * — but the founder panel lists every customer by name, and a centre owner
+ * learning it exists learns that their own numbers are on somebody's screen. That
+ * is a conversation to have deliberately, not one to have because of a URL.
+ *
+ * So for anyone who is not the founder, this route simply does not exist. Same
+ * reason it lives at /founder rather than inside the (app) group: no nav item, no
+ * link, no 403 breadcrumb.
+ *
+ * notFound() throws its own interrupt, so — as with pageGuard — nothing may wrap
+ * this in a try/catch that swallows.
+ */
+export async function pagePlatformAdmin(): Promise<Session> {
+  const session = await getSession()
+  if (!session?.isPlatformAdmin) notFound()
+  return session
 }
 
 /**

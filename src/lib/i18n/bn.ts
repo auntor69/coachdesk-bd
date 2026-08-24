@@ -1698,6 +1698,14 @@ export const bn = {
        * them than a description of the screen behind the link.
        */
       plans: 'প্ল্যান ও দাম',
+      /**
+       * The founder's own row, and the only one on this page that appears for a
+       * property of the reader rather than of the centre. It is last because it is
+       * not part of running a coaching centre at all — the account that sees it is
+       * the account that sells the product.
+       */
+      founder: 'গ্রাহক তালিকা',
+      founderHint: 'সব সেন্টার, ব্যবহার আর বিল — শুধু আমার জন্য',
     },
 
     /**
@@ -2296,6 +2304,133 @@ export const bn = {
      * owner who discovers later that the quote moved stops trusting the rest.
      */
     quoteNote: 'এটি হিসাব করে দেখানো দাম। কথা বলে চূড়ান্ত করা হয়।',
+  },
+
+  /**
+   * The founder panel — the one screen in this product whose reader is not a
+   * coaching centre.
+   *
+   * Written in Bangla like everything else, and that is not a formality: the person
+   * reading it is a Bangladeshi student selling to Bangladeshi centre owners, and
+   * an English-only admin screen would be the one place the product stopped being
+   * the thing it claims to be. It also keeps this group under the same test as the
+   * rest of the file, so a key added here without an English twin fails the build.
+   *
+   * Deliberately short. There is no help text, no onboarding, no empty-state
+   * illustration and no explanation of what a column means, because the only reader
+   * wrote the columns. What it does spell out is the two things that are easy to
+   * misread on a glance: which figure is our money and which is the centre's, and
+   * that the gateway column is zero for a reason rather than by accident.
+   */
+  founder: {
+    title: 'গ্রাহক তালিকা',
+    lead: 'সব সেন্টার, কে কতটা ব্যবহার করছে, আর এই মাসে কার কত বিল।',
+    download: 'CSV নামান',
+    empty: 'এখনও কোনও সেন্টার নেই।',
+    emptyHint: 'প্রথম গ্রাহক যোগ হলেই এখানে দেখা যাবে।',
+    /**
+     * The failed-read branch, and it is a separate sentence from `empty` for a
+     * reason worth keeping: "no customers" and "the query broke" look identical on
+     * a blank screen, and the founder is the one person who cannot afford to
+     * mistake the second for the first.
+     */
+    unreadable: 'তালিকা পড়া যায়নি।',
+    unreadableHint: 'আবার লোড করুন। ঠিক না হলে ডেটাবেস দেখতে হবে।',
+    /**
+     * What /api/founder answers anyone who is not the founder. Says nothing about
+     * what would have been there — see the route handler for why it is a 404 and
+     * not a 403.
+     */
+    notFound: 'কিছু পাওয়া যায়নি।',
+    unnamed: 'নাম নেই',
+    noOwner: 'মালিকের নাম পাওয়া যায়নি',
+    /** The window every 30-day count covers, said once at the bottom. */
+    window: 'হাজিরা, পরীক্ষা, আদায় আর মেসেজ — শেষ ৩০ দিনের হিসাব।',
+    /**
+     * Why one column is always zero. Without this line a founder reading their own
+     * panel in six months will think the gateway broke, rather than remembering
+     * that it was never switched on.
+     */
+    gatewayNote: 'গেটওয়ে SMS সব সেন্টারে শূন্য — এখনও BTRC sender ID নেওয়া হয়নি।',
+    /** center_status, in the words the founder would use about a customer. */
+    status: {
+      trial: 'ট্রায়াল',
+      active: 'চালু',
+      suspended: 'বন্ধ',
+      cancelled: 'বাতিল',
+    },
+    /**
+     * The strip across the top. `mrr` is ours and `collected` is theirs, and the two
+     * labels say so — a founder who reads ৳4,50,000 as revenue for a month when it
+     * is what parents paid twelve centres has misunderstood their own business.
+     */
+    totals: {
+      centers: 'সেন্টার',
+      active: 'চালু',
+      trial: 'ট্রায়ালে',
+      quiet: 'চুপচাপ',
+      students: 'শিক্ষার্থী',
+      teachers: 'শিক্ষক',
+      mrr: 'মাসিক বিল (আমাদের)',
+      pipeline: 'ট্রায়ালের সম্ভাবনা',
+      collected: 'সেন্টারগুলো আদায় করেছে',
+      taps: 'মেসেজ পাঠানো হয়েছে',
+      paid: 'আমরা পেয়েছি',
+    },
+    /** One row's labels. Terse — they sit in a line under the centre's name. */
+    bill: 'মাসে',
+    size: {
+      students: 'শিক্ষার্থী',
+      batches: 'ব্যাচ',
+      teachers: 'শিক্ষক',
+    },
+    usage: {
+      attendance: 'হাজিরা',
+      exams: 'পরীক্ষা',
+      payments: 'আদায়',
+      collected: 'টাকা উঠেছে',
+      taps: 'মেসেজ',
+      sms: 'গেটওয়ে',
+      credits: 'ক্রেডিট',
+    },
+    signedUp: (date: string) => `যোগ দিয়েছে ${date}`,
+    lastActive: (date: string) => `শেষ কাজ ${date}`,
+    /** A centre that signed up and never came back. Not a day count. */
+    neverActive: 'একবারও ব্যবহার করেনি',
+    quiet: (days: number) => `${digits(days, 'bn')} দিন চুপচাপ`,
+    paidNothing: 'এখনও টাকা দেয়নি',
+    paidTotal: (amount: string) => `দিয়েছে ${amount}`,
+    /**
+     * The download's column headings. Localised, while every value in the file
+     * stays machine-readable — same split as the centre exports on /api/export, and
+     * for the same reason: a heading is read by a person and a cell is read by a
+     * spreadsheet.
+     */
+    csv: {
+      name: 'সেন্টার',
+      area: 'এলাকা',
+      status: 'অবস্থা',
+      plan: 'প্ল্যান',
+      bill: 'মাসিক বিল',
+      owner: 'মালিক',
+      ownerPhone: 'মালিকের নম্বর',
+      centerPhone: 'সেন্টারের নম্বর',
+      students: 'শিক্ষার্থী',
+      teachers: 'শিক্ষক',
+      batches: 'ব্যাচ',
+      signedUp: 'যোগ দিয়েছে',
+      attendance: 'হাজিরা (৩০ দিন)',
+      exams: 'পরীক্ষা (৩০ দিন)',
+      payments: 'আদায় সংখ্যা (৩০ দিন)',
+      collected: 'আদায় টাকা (৩০ দিন)',
+      taps: 'মেসেজ (৩০ দিন)',
+      sms: 'গেটওয়ে SMS (৩০ দিন)',
+      smsCredits: 'SMS ক্রেডিট',
+      lastActive: 'শেষ কাজ',
+      quietDays: 'চুপচাপ কত দিন',
+      paid: 'মোট দিয়েছে',
+      lastPaid: 'শেষ পেমেন্ট',
+    },
   },
 } as const
 

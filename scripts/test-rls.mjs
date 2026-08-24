@@ -31,6 +31,10 @@ function check(name, condition, detail = '') {
 const ids = {}
 for (const key of [
   'ownerA', 'ownerB', 'karim', 'nasrin', 'rahim', 'guardianUser', 'studentUser',
+  // The founder, and a second owner for centre A. Neither is a member of
+  // anything yet — both are attached where the founder-panel section needs them,
+  // at the bottom, so nothing above this line changes shape.
+  'founder', 'secondOwner',
 ]) {
   ids[key] = (
     await db.query('insert into auth.users (id) values (gen_random_uuid()) returning id')
@@ -4261,6 +4265,216 @@ check(
         and reason not like 'refund:%'`,
     [centerA],
   )) === 0,
+)
+
+console.log('\nFounder panel (platform_centers):')
+
+/*
+ * The one function in this schema that reads past a tenant boundary on purpose,
+ * so it is the one that most needs testing here rather than by looking at it.
+ *
+ * Two things are being checked and they pull in opposite directions. That the
+ * founder can see every centre — otherwise the panel is blank and useless — and
+ * that nobody else can see anything through it, including the owners whose data
+ * it aggregates. A security definer function that got either half wrong would
+ * look identical from the app.
+ *
+ * There is a third thing these cases catch for free, and it is the likeliest bug
+ * of the three: `returns table` puts every output column name into scope as a
+ * plpgsql variable, so an unqualified `status` or `plan` inside the body is
+ * ambiguous — and Postgres does not notice until the function is *called*.
+ * check-migrations only applies the migration, so without a call there is
+ * nothing between that mistake and production.
+ */
+
+// The founder is a member of no centre. That is the whole point of the flag
+// living on profiles rather than in center_members, and the function must answer
+// without a membership to stand on.
+await db.query('update profiles set is_platform_admin = true where id = $1', [ids.founder])
+
+// A name and number to ring, so the owners CTE has something real to return.
+await db.query(
+  `update profiles set full_name = 'Jamil Ahmed', phone = '+8801711000111' where id = $1`,
+  [ids.ownerA],
+)
+
+// A second owner, added now — so `created_at` puts them after the creator and
+// the panel must still name the founding owner. Getting the sort backwards would
+// have the founder ringing whoever was promoted most recently.
+await db.query(
+  `insert into center_members (coaching_center_id, user_id, role) values ($1, $2, 'owner')`,
+  [centerA, ids.secondOwner],
+)
+await db.query(
+  `update profiles set full_name = 'Later Partner' where id = $1`,
+  [ids.secondOwner],
+)
+
+// What centre A has paid us. Nothing in the app writes this table yet, so without
+// a row here the column would be untested zeroes.
+await db.query(
+  `insert into payments (coaching_center_id, amount_bdt, method, paid_at)
+   values ($1, 1999, 'bkash', now() - interval '5 days')`,
+  [centerA],
+)
+
+const centerTotal = Number(
+  (await db.query('select count(*)::int as n from coaching_centers')).rows[0].n,
+)
+
+// One statement per asUser — PGlite is a single connection and a query issued
+// against `db` inside the callback deadlocks against its own transaction. Every
+// figure this is compared with is read afterwards, as superuser.
+const panel = await asUser(db, ids.founder, (tx) =>
+  tx.query('select * from platform_centers()'),
+)
+
+check(
+  'platform admin gets one row per centre',
+  panel.rows.length === centerTotal,
+  `${panel.rows.length} rows for ${centerTotal} centres`,
+)
+
+const rowA = panel.rows.find((r) => r.center_id === centerA)
+check('centre A is in the panel', Boolean(rowA))
+
+/*
+ * The privacy contract, asserted as a column list.
+ *
+ * Aggregates and contact details, and not one column that could carry a child's
+ * name, mark, attendance or arrears — which is what lets this function be
+ * security definer over tables a platform admin is deliberately not allowed to
+ * read. A future column added to the return type fails here, which is the point:
+ * widening this function is a decision that should require editing a test that
+ * says why it was narrow.
+ */
+const PANEL_COLUMNS = [
+  'center_id', 'center_name', 'center_phone', 'bd_area', 'status', 'plan',
+  'created_at', 'owner_name', 'owner_phone', 'students', 'teachers', 'batches',
+  'sms_credit_balance', 'attendance_30d', 'exams_30d', 'fee_payments_30d',
+  'collected_30d', 'taps_30d', 'sms_30d', 'last_active_at', 'paid_bdt',
+  'last_paid_at',
+]
+const panelColumns = Object.keys(rowA ?? {}).sort()
+check(
+  'returns aggregates and contacts only, no student column',
+  JSON.stringify(panelColumns) === JSON.stringify([...PANEL_COLUMNS].sort()),
+  panelColumns.join(', '),
+)
+
+check(
+  'names the founding owner, not the newest',
+  rowA?.owner_name === 'Jamil Ahmed',
+  String(rowA?.owner_name),
+)
+check(
+  'carries the owner mobile to ring',
+  rowA?.owner_phone === '+8801711000111',
+  String(rowA?.owner_phone),
+)
+
+const expectedStudents = Number(
+  (
+    await db.query(
+      `select count(*)::int as n from students
+       where coaching_center_id = $1 and status = 'active'`,
+      [centerA],
+    )
+  ).rows[0].n,
+)
+check(
+  "counts the centre's active students",
+  Number(rowA?.students) === expectedStudents,
+  `${rowA?.students} vs ${expectedStudents}`,
+)
+
+const expectedTeachers = Number(
+  (
+    await db.query(
+      'select count(*)::int as n from teachers where coaching_center_id = $1 and active',
+      [centerA],
+    )
+  ).rows[0].n,
+)
+check(
+  'counts active teachers',
+  Number(rowA?.teachers) === expectedTeachers,
+  `${rowA?.teachers} vs ${expectedTeachers}`,
+)
+
+// The money column, against the same window read the same way. These two
+// disagreeing is how the panel and the /fees register would end up quoting
+// different totals from one table.
+const expectedMoney = (
+  await db.query(
+    `select count(*)::int as n, coalesce(sum(amount_bdt), 0) as total
+     from fee_payments
+     where coaching_center_id = $1 and paid_at >= now() - interval '30 days'`,
+    [centerA],
+  )
+).rows[0]
+check(
+  'counts fee payments in the window',
+  Number(rowA?.fee_payments_30d) === Number(expectedMoney.n),
+  `${rowA?.fee_payments_30d} vs ${expectedMoney.n}`,
+)
+check(
+  'sums collections net of refunds',
+  Number(rowA?.collected_30d) === Number(expectedMoney.total),
+  `${rowA?.collected_30d} vs ${expectedMoney.total}`,
+)
+// Sanity on the sanity check: a zero here would make both assertions above pass
+// while measuring nothing.
+check(
+  'and there were payments to count',
+  Number(expectedMoney.n) > 0,
+  `${expectedMoney.n} payments`,
+)
+
+check(
+  'reads what the centre has paid us',
+  Number(rowA?.paid_bdt) === 1999,
+  String(rowA?.paid_bdt),
+)
+check('and when', rowA?.last_paid_at instanceof Date)
+
+check('reports a last-active timestamp', rowA?.last_active_at instanceof Date)
+
+// Centre B has been through far less of this script than A, but it is a customer
+// and must still get a row with zeroes rather than be dropped by an inner join.
+const rowB = panel.rows.find((r) => r.center_id === centerB)
+check('a quieter centre still gets a row', Boolean(rowB))
+check(
+  'with counts rather than nulls',
+  rowB !== undefined &&
+    rowB.students !== null &&
+    rowB.taps_30d !== null &&
+    Number(rowB.paid_bdt) === 0,
+  `students=${rowB?.students} taps=${rowB?.taps_30d} paid=${rowB?.paid_bdt}`,
+)
+
+/*
+ * And now the half that matters more. An owner is the most plausible attacker
+ * here — they are signed in, they know the product, and the function's own SQL
+ * would happily hand them every competitor's roster size and phone number if the
+ * gate were missing. 42501 rather than an empty set, so this is a refusal and not
+ * a silent zero.
+ */
+check(
+  'a centre owner cannot call it',
+  await deniedAsUser(db, ids.ownerA, 'select * from platform_centers()'),
+)
+check(
+  'a teacher cannot call it',
+  await deniedAsUser(db, ids.karim, 'select * from platform_centers()'),
+)
+check(
+  'a student cannot call it',
+  await deniedAsUser(db, ids.studentUser, 'select * from platform_centers()'),
+)
+check(
+  'a signed-out caller cannot call it',
+  await deniedAsUser(db, null, 'select * from platform_centers()'),
 )
 
 console.log('\nAnonymous access:')
