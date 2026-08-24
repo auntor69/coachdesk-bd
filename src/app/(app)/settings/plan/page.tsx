@@ -25,10 +25,10 @@ export async function generateMetadata() {
 }
 
 /**
- * WHICH FEATURES ARE LISTED, AND WHY IT IS SIX AND NOT TWELVE.
+ * WHICH FEATURES ARE LISTED, AND WHY IT IS SEVEN AND NOT TWELVE.
  *
- * `PlanFeatures` carries twelve flags. Three of them — export, the weekly guardian
- * summary, multiple branches — describe screens nobody has built yet, and two more
+ * `PlanFeatures` carries twelve flags. Two of them — the weekly guardian summary,
+ * multiple branches — describe screens nobody has built yet, and two more
  * (`automatedSms`, `buySmsCredits`) wait on a BTRC sender ID that does not exist.
  * A tick beside any of those on a paid tier would be selling something that cannot
  * be delivered, on the one screen in the app where that is unrecoverable.
@@ -36,7 +36,9 @@ export async function generateMetadata() {
  * So the list is the shipped set, and the note under it says so. A feature moves
  * into this array on the day it works, not on the day it is decided — and because
  * the array is `as const`, adding one here will not compile until it has a name in
- * `labels` below.
+ * `labels` below. `exportReports` arrived by that rule: it had been priced into Pro
+ * since the plan engine was written and stayed off this list until the three sheets
+ * behind /api/export were built and covered by tests.
  */
 const SHIPPED = [
   'attendance',
@@ -44,6 +46,7 @@ const SHIPPED = [
   'feeTracking',
   'manualMessaging',
   'printedReceipts',
+  'exportReports',
   'staffManagement',
 ] as const satisfies readonly FeatureKey[]
 
@@ -130,6 +133,7 @@ export default async function PlanPage() {
     feeTracking: t.fees,
     manualMessaging: t.messaging,
     printedReceipts: t.receipts,
+    exportReports: t.export,
     staffManagement: t.staff,
   }
 

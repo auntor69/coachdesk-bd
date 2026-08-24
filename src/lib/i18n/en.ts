@@ -320,6 +320,38 @@ export const en: Dictionary = {
       `On ${plan} the fee board still shows who paid what. The month on one page — every payment in order, a running total, and how much came through each wallet — comes with ${pro}.`,
   },
 
+  /** See the Bangla for why the headings are translated and the values are not. */
+  exportSheet: {
+    colCode: 'ID',
+    colName: 'Name',
+    colBatch: 'Batch',
+    colMonth: 'Month',
+    colStatus: 'Status',
+    colGuardianPhone: 'Guardian mobile',
+    colClass: 'Class',
+    colInstitution: 'School / college',
+    colStudentPhone: 'Student mobile',
+    colGuardianName: 'Guardian name',
+    colSmsOff: 'SMS off',
+    colAdmitted: 'Admitted on',
+    colDate: 'Date',
+    colReceipt: 'Receipt no.',
+    colMethod: 'How',
+    colReference: 'Transaction ID',
+    colAmount: 'Amount',
+    colBilled: 'Billed',
+    colDiscount: 'Discount',
+    colNet: 'Payable',
+    colPaid: 'Paid',
+    colRemaining: 'Remaining',
+    colDueDate: 'Due date',
+    paid: 'Paid',
+    partial: 'Part paid',
+    unpaid: 'Unpaid',
+    yes: 'Yes',
+    no: 'No',
+  },
+
   chase: {
     noNumber: 'No guardian number on file.',
     addNumber: 'Add one',
@@ -883,6 +915,9 @@ export const en: Dictionary = {
       examTypesHint: 'Weekly, model test, monthly — whatever you run',
       sms: 'SMS',
       smsHint: 'Credits, who is opted out',
+      exports: 'Download files',
+      exportsHint: 'Student list, collections, fee summary',
+      exportsLocked: 'Comes with Teacher Pro',
       /** The free plan allows exactly one, so the singular is the common case. */
       plan: (name: string, batches: number) =>
         `${name} plan: ${batches} ${batches === 1 ? 'batch' : 'batches'}.`,
@@ -916,6 +951,7 @@ export const en: Dictionary = {
       messaging: 'SMS, WhatsApp and calls from your own phone',
       receipts: 'Printed receipts and the collection register',
       staff: 'Adding teachers and sharing out permissions',
+      export: 'Download lists as Excel files',
       onlyBuilt:
         'Only what actually works today is listed here. Anything new is added when it ships.',
 
@@ -1179,6 +1215,46 @@ export const en: Dictionary = {
           'That number is not right. Give an 11-digit mobile number, e.g. 01712345678.',
         walletNeedsNumber: 'Write which number the money should go to as well.',
         numberNeedsWallet: 'bKash, Nagad or Rocket — choose one.',
+      },
+    },
+
+    /** See the Bangla for why the screen and the route's refusals share a group. */
+    export: {
+      title: 'Download files',
+      subtitle: 'Lists you can open in Excel or Google Sheets',
+      month: 'Month',
+      show: 'Show',
+      download: 'Download',
+      asOf: (date: string) => `As of ${date}`,
+      reports: {
+        students: {
+          title: 'Student list',
+          body: 'Name, ID, class, institution, guardian’s name and mobile, which batches they are in, and when they were admitted. Students who have left are included too — the status column says which.',
+        },
+        collections: {
+          title: 'The month’s collections',
+          body: 'Every payment in order: date, receipt number, who paid, cash or bKash, and the transaction ID. The same figures as the printed register.',
+        },
+        dues: {
+          title: 'The month’s fee summary',
+          body: 'What each student was billed, any discount, what has come in, what is still owed, the due date and the guardian’s number. Cancelled bills are left out.',
+        },
+      },
+      opensIn:
+        'The file opens in Excel, Google Sheets or WPS Office. Bangla names come through intact.',
+      lockedTitle: 'This plan does not include downloads',
+      lockedBody: (plan: string, pro: string) =>
+        `On ${plan} you can read every list in the app but not take it out as a file. Downloading the student list, the month’s collections and the fee summary comes with ${pro}.`,
+      seePlans: 'See the plans',
+      errors: {
+        signIn: 'Sign in first.',
+        noCenter: 'This account is not attached to a coaching centre.',
+        forbidden: 'Only the owner or a manager can download files.',
+        needsPlan: 'This plan does not include downloads.',
+        unknownKind: 'That is not a list we can produce.',
+        unreadable: 'The list could not be built. Please try again.',
+        tooLarge: (rows: number) =>
+          `That list is too big (over ${rows} rows). Download it a month at a time, or get in touch.`,
       },
     },
   },

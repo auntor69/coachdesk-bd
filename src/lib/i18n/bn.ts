@@ -579,6 +579,74 @@ export const bn = {
       `${plan} প্ল্যানে কে কত দিয়েছে তা ফি-এর তালিকাতেই দেখা যায়। মাসের পুরো হিসাব এক পাতায় — কোন তারিখে কত, ক্রমিক মোট, বিকাশে কত আর নগদ কত — ${pro}-তে।`,
   },
 
+  /**
+   * The column headings inside the downloaded spreadsheets, and the few cells that
+   * hold a word rather than a number.
+   *
+   * IN THE READER'S OWN LANGUAGE, on purpose, and this needed deciding. The other
+   * option was fixed English headers — `guardian_phone`, `remaining_bdt` — on the
+   * theory that a file might be fed to something. Nothing feeds these to anything:
+   * the file is opened by the owner, or by whoever does their accounts, or by a
+   * teacher who was handed a batch list. A Bangla-first product that answers
+   * "download" with a sheet headed in snake_case has switched languages at the exact
+   * moment somebody is about to email it to somebody else.
+   *
+   * The *values* are a different question and are settled the other way — see the
+   * head of src/lib/export/reports.ts. A date goes out as 2026-08-11 and an amount as
+   * 1250, because a spreadsheet sorts and totals those columns and ১১ আগস্ট cannot be
+   * sorted. Words are read; numbers are computed.
+   *
+   * Nothing here is re-imported by the roster paste box, which parses names and
+   * numbers rather than headings, so a heading changed in this group cannot break
+   * anything an owner already downloaded.
+   */
+  exportSheet: {
+    /* Shared by more than one sheet, so they cannot disagree about a column. */
+    colCode: 'আইডি',
+    colName: 'নাম',
+    colBatch: 'ব্যাচ',
+    colMonth: 'মাস',
+    colStatus: 'অবস্থা',
+    colGuardianPhone: 'অভিভাবকের মোবাইল',
+
+    /* The roster. */
+    colClass: 'শ্রেণি',
+    colInstitution: 'স্কুল / কলেজ',
+    colStudentPhone: 'শিক্ষার্থীর মোবাইল',
+    colGuardianName: 'অভিভাবকের নাম',
+    colSmsOff: 'SMS বন্ধ',
+    colAdmitted: 'ভর্তির তারিখ',
+
+    /* The month's takings. Same words as the printed register's columns, because
+       an owner holding one against the other should not have to translate. */
+    colDate: 'তারিখ',
+    colReceipt: 'রসিদ নম্বর',
+    colMethod: 'কীভাবে',
+    colReference: 'ট্রানজেকশন আইডি',
+    colAmount: 'টাকা',
+
+    /* The month's fee sheet. Five money columns, because the one an owner argues
+       about with a parent is never the same one twice. */
+    colBilled: 'বিল',
+    colDiscount: 'ছাড়',
+    colNet: 'দিতে হবে',
+    colPaid: 'জমা হয়েছে',
+    colRemaining: 'বাকি',
+    colDueDate: 'শেষ তারিখ',
+
+    /**
+     * What an invoice's status column says. Derived from the figures beside it
+     * rather than stored, so these three can never contradict the row they label.
+     */
+    paid: 'পরিশোধ',
+    partial: 'আংশিক',
+    unpaid: 'বাকি',
+
+    /** A tick box, in a column an owner will filter on. */
+    yes: 'হ্যাঁ',
+    no: 'না',
+  },
+
   /** The three chips, and the two reasons there might be none. */
   chase: {
     noNumber: 'অভিভাবকের নম্বর নেই।',
@@ -1584,6 +1652,14 @@ export const bn = {
       examTypesHint: 'সাপ্তাহিক, মডেল টেস্ট, মাসিক — যা আপনি নেন',
       sms: 'SMS',
       smsHint: 'ক্রেডিট, কে SMS পাবে না',
+      exports: 'ফাইল ডাউনলোড',
+      exportsHint: 'শিক্ষার্থীর তালিকা, আদায়, ফি-এর হিসাব',
+      /**
+       * The hint when the plan does not include it, replacing the description above.
+       * A row that describes a screen the reader cannot use is a dead end they only
+       * discover after tapping; saying it here means the tap is a choice.
+       */
+      exportsLocked: 'শিক্ষক প্রো প্ল্যানে পাওয়া যাবে',
       /**
        * The plan the centre is actually on. This line used to read "ফ্রি প্ল্যান:
        * ১টি ব্যাচ" to everybody, including a centre paying for unlimited batches.
@@ -1642,13 +1718,15 @@ export const bn = {
       messaging: 'নিজের ফোন থেকে SMS, WhatsApp, কল',
       receipts: 'ছাপানো রসিদ ও আদায় খাতা',
       staff: 'শিক্ষক যোগ করা আর অনুমতি ভাগ করা',
+      export: 'Excel ফাইলে তালিকা ডাউনলোড',
       /**
-       * Why the list is six rows and not twelve.
+       * Why the list is seven rows and not twelve.
        *
-       * The plan engine knows about export, the weekly guardian summary and
-       * branches; none of the three is built. Listing them with a tick beside a
-       * paid tier would be selling something that does not exist, which is the
-       * one thing a price screen cannot do and survive.
+       * The plan engine knows about the weekly guardian summary and branches;
+       * neither is built. Listing them with a tick beside a paid tier would be
+       * selling something that does not exist, which is the one thing a price
+       * screen cannot do and survive. Export left this list on the day the three
+       * sheets downloaded, not on the day it was priced.
        */
       onlyBuilt: 'যা এখন সত্যিই কাজ করছে শুধু তাই এই তালিকায়। নতুন কিছু চালু হলে যোগ হবে।',
 
@@ -2074,6 +2152,83 @@ export const bn = {
         numberInvalid: 'নম্বরটি ঠিক নেই। ১১ সংখ্যার মোবাইল নম্বর দিন, যেমন ০১৭১২৩৪৫৬৭৮।',
         walletNeedsNumber: 'কোন নম্বরে টাকা যাবে সেটিও লিখুন।',
         numberNeedsWallet: 'বিকাশ, নগদ, নাকি রকেট — বেছে নিন।',
+      },
+    },
+
+    /**
+     * The download screen, and the sentences the download route answers with when it
+     * refuses.
+     *
+     * Both in one group because they are one feature and there is only one place a
+     * reader meets it. The errors come back as plain text over HTTP — the browser
+     * navigated expecting a file, so there is no page to render an error component
+     * into — which is exactly why they have to be full sentences rather than codes.
+     *
+     * Named for the file, not for "backup". A backup implies we would restore it, and
+     * nothing here reads a CSV back in. What this is: the owner's own data, in their
+     * hands, in a format that outlives us.
+     */
+    export: {
+      title: 'ফাইল ডাউনলোড',
+      subtitle: 'Excel বা Google Sheets-এ খোলার মতো তালিকা',
+      month: 'মাস',
+      show: 'দেখুন',
+      download: 'ডাউনলোড করুন',
+      /** Under the roster's button: it is today's list, not the month's above it. */
+      asOf: (date: string) => `${date} পর্যন্ত`,
+      /**
+       * Keyed by ReportId, so a fourth sheet added to the catalogue stops compiling
+       * until it has a name and a sentence in both languages. Each body says what is
+       * in the file, in the order the columns come — an owner deciding which of three
+       * to download should not have to download all three to find out.
+       */
+      reports: {
+        students: {
+          title: 'শিক্ষার্থীর তালিকা',
+          body: 'নাম, আইডি, শ্রেণি, প্রতিষ্ঠান, অভিভাবকের নাম ও মোবাইল, কোন ব্যাচে আছে, ভর্তির তারিখ। যারা এখন আর আসছে না, তারাও থাকবে — অবস্থার ঘরে লেখা থাকবে।',
+        },
+        collections: {
+          title: 'মাসের আদায়',
+          body: 'কোন তারিখে কত টাকা জমা হলো, রসিদ নম্বর, কার কাছ থেকে, বিকাশ না ক্যাশ, ট্রানজেকশন আইডি। ছাপানো আদায় খাতার হিসাবই — Excel-এ।',
+        },
+        dues: {
+          title: 'মাসের ফি হিসাব',
+          body: 'কার কত বিল হলো, কত ছাড়, কত জমা পড়েছে, কত বাকি, শেষ তারিখ আর অভিভাবকের নম্বর। বাতিল করা বিল এতে থাকবে না।',
+        },
+      },
+      /** A CSV is not a word an owner knows. What they need is which app opens it. */
+      opensIn: 'ফাইলটি Excel, Google Sheets বা WPS Office-এ খোলা যাবে। নাম বাংলাতেই ঠিক থাকবে।',
+      /**
+       * The paywall, named for what is missing rather than "locked". The body says
+       * what the reader can still do without paying, because it is true and because a
+       * free teacher with thirty students genuinely can copy a screen by hand.
+       */
+      lockedTitle: 'ফাইল ডাউনলোড এই প্ল্যানে নেই',
+      lockedBody: (plan: string, pro: string) =>
+        `${plan} প্ল্যানে তালিকা অ্যাপেই দেখা যায়, ডাউনলোড করা যায় না। শিক্ষার্থীর তালিকা, মাসের আদায় আর ফি-এর হিসাব ফাইল করে নামাতে ${pro} দরকার।`,
+      seePlans: 'প্ল্যান দেখুন',
+      errors: {
+        signIn: 'আগে লগইন করুন।',
+        noCenter: 'এই অ্যাকাউন্ট কোনো কোচিংয়ের সঙ্গে যুক্ত নয়।',
+        /**
+         * Names both roles, like `settings.errors.forbidden`: a teacher who reads
+         * only "অনুমতি নেই" cannot tell a boundary from a bug. Nothing here is
+         * narrowed to one teacher's batches, so the answer is no rather than a
+         * smaller file.
+         */
+        forbidden: 'ফাইল ডাউনলোড শুধু মালিক বা ম্যানেজার করতে পারেন।',
+        needsPlan: 'এই প্ল্যানে ফাইল ডাউনলোড করা যায় না।',
+        /** A hand-edited URL, or a link from a build that has moved on. */
+        unknownKind: 'কোন তালিকা চাইছেন বোঝা গেল না।',
+        unreadable: 'তালিকা তৈরি করা যায়নি। আবার চেষ্টা করুন।',
+        /**
+         * The ceiling, quoted from the constant the loop actually stops at — so the
+         * number in the sentence cannot drift from the number in the code. A file cut
+         * short looks exactly like a complete one, which is why this is an error a
+         * person reads rather than a shorter download.
+         */
+        tooLarge: (rows: number) =>
+          `তালিকাটি খুব বড় (${digits(rows, 'bn')}টির বেশি সারি)। মাস ধরে ধরে নামান, বা আমাদের জানান।`,
       },
     },
   },

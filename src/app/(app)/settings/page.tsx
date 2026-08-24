@@ -13,7 +13,7 @@ import {
 import { createClient } from '@/lib/supabase/server'
 import { formatBdMobile } from '@/lib/bd/phone'
 import { dict, DEFAULT_LOCALE } from '@/lib/i18n'
-import { planName, hasStaff } from '@/lib/plans'
+import { planName, hasStaff, has } from '@/lib/plans'
 
 /** getSession, not pageRole — see the note on teach/page.tsx's own. */
 export async function generateMetadata() {
@@ -215,6 +215,21 @@ export default async function SettingsPage() {
             href: '/settings/sms' as Route,
             label: t.sms,
             hint: t.smsHint,
+            count: null,
+          },
+          /*
+           * Shown whether or not the plan includes it, unlike the staff row above.
+           * The difference is that this one can be bought: a teacher plan will never
+           * have colleagues on it at any price, so that row leads nowhere, while the
+           * export screen's locked branch is a price and a link. The hint says which
+           * it is, so nobody taps to find out.
+           */
+          {
+            href: '/settings/export' as Route,
+            label: t.exports,
+            hint: has(session.plan, 'exportReports')
+              ? t.exportsHint
+              : t.exportsLocked,
             count: null,
           },
           /*
