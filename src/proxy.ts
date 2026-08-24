@@ -80,9 +80,20 @@ export async function proxy(request: NextRequest) {
   const isPublic = PUBLIC_ROUTES.some((route) => pathname.startsWith(route))
 
   if (!user && !isPublic) {
+    // The whole target, query string included. `pathname` alone was silently
+    // dropping it twice over: the login URL kept a copy of the original
+    // parameters — `clone()` carries them and only the pathname was replaced —
+    // while `next` carried none of them, so signing in landed the reader on a
+    // bare path. A download link is where that stops being cosmetic:
+    // /api/export?kind=collections&month=… comes back as /api/export, which the
+    // handler answers with "that is not a list we can produce". The login action
+    // still refuses anything that is not a same-origin path, so a query string
+    // riding along here cannot become an open redirect.
+    const target = `${pathname}${request.nextUrl.search}`
     const url = request.nextUrl.clone()
     url.pathname = '/login'
-    url.searchParams.set('next', pathname)
+    url.search = ''
+    url.searchParams.set('next', target)
     return NextResponse.redirect(url)
   }
 
