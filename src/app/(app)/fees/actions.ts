@@ -21,6 +21,7 @@ import {
   type CenterSession,
 } from '@/lib/auth/session'
 import { parseTaka, formatTaka, sumTaka } from '@/lib/money'
+import { billableEnrollments } from '@/lib/fees/billable'
 import { currentPeriodMonth } from '@/lib/bd/time'
 import { normalizeBdMobile } from '@/lib/bd/phone'
 import { MAX_LABEL, MAX_TEXT, clamp } from '@/lib/limits'
@@ -92,9 +93,9 @@ function isSession(value: CenterSession | FeeState): value is CenterSession {
  * safe to press twice — the second press inserts nothing and says so, which is
  * the behaviour an owner who lost signal halfway needs.
  *
- * Batches priced at zero are skipped rather than invoiced for ৳0. A centre uses
- * a free batch for a trial week or a scholarship student, and sending that
- * family a bill for nothing is worse than sending them nothing.
+ * Which enrolments are actually billed is billableEnrollments' decision, and the
+ * reasoning for each exclusion is written there — a free batch, a closed one, and a
+ * fee that did not survive the wire.
  */
 export async function generateInvoices(
   _prev: FeeState,
@@ -126,9 +127,13 @@ export async function generateInvoices(
 
   // RLS already limits this to the caller's centre; the explicit filter keeps
   // the query honest if a future policy is ever loosened.
+  //
+  // `active` rides on the embed rather than an `!inner` join filter: supabase-js
+  // infers the row type from the literal select string, and a filtered join degrades
+  // every column on this query to unknown. The filtering happens in JS instead.
   const { data: enrollments, error: rosterError } = await supabase
     .from('enrollments')
-    .select('id, student_id, batches (monthly_fee_bdt)')
+    .select('id, student_id, batches (monthly_fee_bdt, active)')
     .eq('coaching_center_id', session.active.centerId)
     .eq('status', 'active')
 
@@ -136,12 +141,7 @@ export async function generateInvoices(
     return { error: t.errors.rosterUnreadable }
   }
 
-  const billable = (enrollments ?? [])
-    .map((e) => {
-      const batch = Array.isArray(e.batches) ? e.batches[0] : e.batches
-      return { id: e.id, studentId: e.student_id, fee: Number(batch?.monthly_fee_bdt ?? 0) }
-    })
-    .filter((e) => Number.isFinite(e.fee) && e.fee > 0)
+  const billable = billableEnrollments(enrollments ?? [])
 
   if (billable.length === 0) {
     return { error: t.errors.nothingToBill }
@@ -156,7 +156,7 @@ export async function generateInvoices(
       billable.map((e) => ({
         coaching_center_id: session.active.centerId,
         student_id: e.studentId,
-        enrollment_id: e.id,
+        enrollment_id: e.enrollmentId,
         period_month: periodMonth,
         amount_bdt: e.fee,
         due_date: dueDate,

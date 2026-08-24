@@ -970,6 +970,15 @@ export const bn = {
      */
     feeHint: 'এই ব্যাচের প্রতি মাসের ফি। পরে বদলালে পুরোনো বিল বদলাবে না।',
     submit: 'ব্যাচ তৈরি করুন',
+
+    /**
+     * The edit form's own keys. Everything above is shared with it, because it is
+     * the same batch and the same fields.
+     */
+    subjectHint: 'বিষয় বদলালে নতুন পরীক্ষা ওই বিষয়ে বসবে। আগের পরীক্ষার নম্বর যেখানে আছে সেখানেই থাকবে।',
+    /** The one switch on this form that changes what other screens show. */
+    runningLabel: 'ব্যাচটি চলছে',
+    runningHint: 'বন্ধ করলে হাজিরার তালিকা থেকে সরে যাবে, পরের মাসের বিলও হবে না। নম্বর, হাজিরা আর পুরোনো বিল সব ঠিক থাকবে।',
   },
 
   /**
@@ -1751,11 +1760,16 @@ export const bn = {
       addSubject: 'বিষয় যোগ করুন',
 
       created: 'ব্যাচ তৈরি হয়েছে',
+      editTitle: 'ব্যাচ ঠিক করুন',
+      editHint: 'সময়, ফি বা শিক্ষক বদলাতে ট্যাপ করুন',
+      saved: 'ব্যাচ সেভ হয়েছে',
       errors: {
         nameRequired: 'ব্যাচের নাম লিখুন।',
         pickSubject: 'বিষয় বাছুন।',
         feeUnreadable: 'মাসিক ফি ঠিকভাবে লিখুন।',
         endBeforeStart: 'শেষের সময় শুরুর সময়ের পরে হতে হবে।',
+        notFound: 'ব্যাচটি পাওয়া যায়নি।',
+        saveFailed: 'ব্যাচ সেভ করা যায়নি।',
         /**
          * batch_schedules needs both times, so days without them would create
          * the batch and drop the schedule — which looks exactly like a batch
@@ -1770,6 +1784,13 @@ export const bn = {
          */
         scheduleFailed:
           'ব্যাচ তৈরি হয়েছে, কিন্তু ক্লাসের দিন সেভ হয়নি। সেটিংস থেকে ঠিক করুন।',
+        /**
+         * The same half-success on the edit screen, where "fix it from settings" is
+         * no use — settings is where they already are. So it names the one part to
+         * do again instead.
+         */
+        scheduleSaveFailed:
+          'ব্যাচ সেভ হয়েছে, কিন্তু ক্লাসের দিন সেভ হয়নি। দিনগুলো আবার বাছুন।',
       },
     },
 

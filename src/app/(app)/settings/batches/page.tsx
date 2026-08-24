@@ -1,7 +1,7 @@
 import Link from 'next/link'
 
 import { Card } from '@/components/ui'
-import { pagePermission, canManageStudents, getSession } from '@/lib/auth/session'
+import { pagePermission, canManageStudents, isStaffAdmin, getSession } from '@/lib/auth/session'
 import { createClient } from '@/lib/supabase/server'
 import { BatchSlot } from '@/lib/bd/schedule'
 import { dayNameShort } from '@/lib/bd/time'
@@ -37,6 +37,12 @@ export default async function BatchesPage() {
    * The other checkbox is the one that buys it.
    */
   const showCounts = await canManageStudents()
+
+  // Whether a row is a link. A teacher holding `can_manage_batches` may open a batch
+  // and may not change one — 20260811000019 grants that box INSERT and no UPDATE. An
+  // unclickable row is the honest rendering of that; a link to a screen that refuses
+  // them is not.
+  const mayEdit = isStaffAdmin(session)
 
   const { data: batches } = await supabase
     .from('batches')
@@ -97,6 +103,11 @@ export default async function BatchesPage() {
             {t.new}
           </Link>
         </div>
+        {/* Only where it is true. A row that does nothing when tapped is a smaller
+            disappointment than a line of copy that promised it would. */}
+        {mayEdit && rows.length > 0 && (
+          <p className="mt-2 text-sm text-ink-faint">{t.editHint}</p>
+        )}
       </div>
 
       {rows.length === 0 ? (
@@ -106,60 +117,80 @@ export default async function BatchesPage() {
         </Card>
       ) : (
         <ul className="flex flex-col gap-2">
-          {rows.map((row) => (
-            <li
-              key={row.id}
-              className="rounded-xl border border-line bg-white px-4 py-3"
-            >
-              <div className="flex items-start justify-between gap-3">
-                <div className="min-w-0">
-                  <p className="truncate font-medium text-ink">{row.name}</p>
-                  <p className="truncate text-sm text-ink-soft">
-                    {[
-                      row.subjectName,
-                      <BatchSlot
-                        key="slot"
-                        slot={row.slot}
-                        start={row.startTime}
-                        end={row.endTime}
-                        locale={locale}
-                      />,
-                    ]
-                      .filter(Boolean)
-                      .map((part, i) => (
-                        <span key={i}>
-                          {i > 0 && ' · '}
-                          {part}
-                        </span>
-                      ))}
-                  </p>
-                  <p className="text-sm text-ink-faint">
-                    {/* Short day names: five spelled-out ones run past the width of
-                        a phone and truncate mid-week. */}
-                    {row.days.length > 0
-                      ? row.days.map((day) => dayNameShort(day, locale)).join(', ')
-                      : t.everyDay}
-                    {row.teacherName && ` · ${row.teacherName}`}
-                  </p>
-                </div>
-                <div className="shrink-0 text-right">
-                  <p className="num text-sm font-semibold text-ink">
-                    {formatTaka(row.fee)}
-                  </p>
-                  <p className="text-xs text-ink-faint">{t.monthly}</p>
-                  {showCounts && (
-                    <p className="mt-1 text-sm text-ink-soft">
-                      <span className="num">{row.studentCount}</span>{' '}
-                      {t.people(row.studentCount)}
+          {rows.map((row) => {
+            const body = (
+              <>
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="truncate font-medium text-ink">{row.name}</p>
+                    <p className="truncate text-sm text-ink-soft">
+                      {[
+                        row.subjectName,
+                        <BatchSlot
+                          key="slot"
+                          slot={row.slot}
+                          start={row.startTime}
+                          end={row.endTime}
+                          locale={locale}
+                        />,
+                      ]
+                        .filter(Boolean)
+                        .map((part, i) => (
+                          <span key={i}>
+                            {i > 0 && ' · '}
+                            {part}
+                          </span>
+                        ))}
                     </p>
-                  )}
+                    <p className="text-sm text-ink-faint">
+                      {/* Short day names: five spelled-out ones run past the width of
+                          a phone and truncate mid-week. */}
+                      {row.days.length > 0
+                        ? row.days.map((day) => dayNameShort(day, locale)).join(', ')
+                        : t.everyDay}
+                      {row.teacherName && ` · ${row.teacherName}`}
+                    </p>
+                  </div>
+                  <div className="shrink-0 text-right">
+                    <p className="num text-sm font-semibold text-ink">
+                      {formatTaka(row.fee)}
+                    </p>
+                    <p className="text-xs text-ink-faint">{t.monthly}</p>
+                    {showCounts && (
+                      <p className="mt-1 text-sm text-ink-soft">
+                        <span className="num">{row.studentCount}</span>{' '}
+                        {t.people(row.studentCount)}
+                      </p>
+                    )}
+                  </div>
                 </div>
-              </div>
-              {!row.active && (
-                <p className="mt-2 text-sm text-ink-faint">{t.inactive}</p>
-              )}
-            </li>
-          ))}
+                {!row.active && (
+                  <p className="mt-2 text-sm text-ink-faint">{t.inactive}</p>
+                )}
+              </>
+            )
+
+            return (
+              <li key={row.id}>
+                {mayEdit ? (
+                  // The whole row, not a pencil in the corner: the thing an owner
+                  // comes here to change is usually the number they are already
+                  // looking at, and on the phone this is held in one hand.
+                  <Link
+                    href={`/settings/batches/${row.id}`}
+                    className="block rounded-xl border border-line bg-white px-4 py-3
+                      hover:border-brand-300 active:bg-brand-50"
+                  >
+                    {body}
+                  </Link>
+                ) : (
+                  <div className="rounded-xl border border-line bg-white px-4 py-3">
+                    {body}
+                  </div>
+                )}
+              </li>
+            )
+          })}
         </ul>
       )}
     </div>

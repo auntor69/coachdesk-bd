@@ -572,6 +572,12 @@ export const en: Dictionary = {
     feeHint:
       "This batch's fee each month. Changing it later does not change bills already issued.",
     submit: 'Create batch',
+
+    subjectHint:
+      'Change the subject and new exams go under the new one. Marks already taken stay exactly where they are.',
+    runningLabel: 'This batch is running',
+    runningHint:
+      'Switch it off and it leaves the register, and next month’s bill stops with it. Marks, attendance and bills already raised all stay.',
   },
 
   studentForm: {
@@ -985,16 +991,23 @@ export const en: Dictionary = {
       addSubject: 'Add a subject',
 
       created: 'Batch created',
+      editTitle: 'Fix this batch',
+      editHint: 'Tap to change a time, a fee or the teacher',
+      saved: 'Batch saved',
       errors: {
         nameRequired: 'Give the batch a name.',
         pickSubject: 'Choose a subject.',
         feeUnreadable: 'Write the monthly fee properly.',
         endBeforeStart: 'The end time has to be after the start time.',
+        notFound: 'That batch could not be found.',
+        saveFailed: 'Could not save that batch.',
         daysNeedTimes:
           'If you choose which days the class meets, give the start and end times too.',
         duplicate: 'You already have a batch with this name.',
         scheduleFailed:
           'The batch was created, but its class days were not saved. Fix that from settings.',
+        scheduleSaveFailed:
+          'The batch saved, but its class days did not. Choose the days again.',
       },
     },
 

@@ -445,6 +445,207 @@ export async function createBatch(
   return { ok: t.batches.created }
 }
 
+/**
+ * Changing a batch that already exists.
+ *
+ * The twin of updateStudent, and missing for the same length of time: a batch is
+ * where a subject, a teacher, a time and a fee meet, and until now not one of the
+ * four could be corrected. What that cost:
+ *
+ * The fee is the price. Typed with a zero too few, every invoice raised from then on
+ * is wrong, and the only remedy was to open a second batch and move the whole class
+ * into it — which orphans their attendance and their marks, because both hang off
+ * the enrollment.
+ *
+ * A time that moves is the ordinary life of a coaching centre — Ramadan, exam season,
+ * a room double-booked — and the register reads `batch_schedules` to decide which
+ * classes are today. A batch whose days cannot be changed is a register that is wrong
+ * every week until somebody rebuilds the batch.
+ *
+ * A teacher who leaves keeps the batch. `app.my_batch_ids` is what opens attendance
+ * and marks, so until the batch points at somebody else the departed teacher still
+ * holds the class, and the person actually teaching it holds nothing.
+ *
+ * And `active` was write-once at insert, so a batch that stopped running could not be
+ * closed — it stayed on the register and kept billing for ever.
+ *
+ * It also keeps a promise the product had already made: `scheduleFailed` tells an
+ * owner whose batch was created without its days to "fix that from settings", and
+ * there was nothing in settings that could.
+ *
+ * Guarded by rank, like updateStudent and for the same reason: 20260811000019 grants
+ * `can_manage_batches` INSERT on batches and their schedules and deliberately no
+ * UPDATE. Opening a batch is not the same permission as repricing one.
+ */
+export async function updateBatch(
+  _prev: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
+  const session = await staffAdmin()
+  if (!isSession(session)) return session
+
+  const t = dict(session.locale).settings
+
+  const batchId = String(formData.get('batchId') ?? '')
+  if (!batchId) return { error: t.batches.errors.notFound }
+
+  const name = String(formData.get('name') ?? '').trim()
+  const subjectId = String(formData.get('subjectId') ?? '')
+  const teacherId = String(formData.get('teacherId') ?? '')
+  const rawSlot = String(formData.get('slot') ?? '')
+  const monthlyFee = Number(formData.get('monthlyFee') ?? 0)
+  const startTime = parseTime(String(formData.get('startTime') ?? ''))
+  const endTime = parseTime(String(formData.get('endTime') ?? ''))
+  // An unchecked checkbox is absent from FormData, so absence is the off state.
+  const active = formData.get('active') !== null
+
+  // Validated exactly as createBatch validates the same fields — a batch reached
+  // through this form has to end up as legal as one reached through that one.
+  if (!name) return { error: t.batches.errors.nameRequired }
+  if (name.length > MAX_NAME) return { error: nameTooLong(session.locale) }
+  if (!subjectId) return { error: t.batches.errors.pickSubject }
+  if (!Number.isFinite(monthlyFee) || monthlyFee < 0) {
+    return { error: t.batches.errors.feeUnreadable }
+  }
+  if (startTime && endTime && endTime <= startTime) {
+    return { error: t.batches.errors.endBeforeStart }
+  }
+
+  const days = formData
+    .getAll('days')
+    .map((d) => Number(d))
+    .filter((d) => Number.isInteger(d) && d >= 0 && d <= 6)
+
+  if (days.length > 0 && (!startTime || !endTime)) {
+    return { error: t.batches.errors.daysNeedTimes }
+  }
+
+  const slot = SLOTS.has(rawSlot as BatchSlot) ? (rawSlot as BatchSlot) : null
+
+  const supabase = await createClient()
+
+  // Read it back first, scoped by centre as well as by RLS: an owner of two centres
+  // satisfies is_staff_admin for both, so the policy alone would open a batch
+  // belonging to the other one. The old subject and the old active flag are both
+  // needed — one decides whether the enrollments have to follow, the other whether
+  // this save is a reopening that has to pass the plan cap.
+  const { data: before } = await supabase
+    .from('batches')
+    .select('id, subject_id, active')
+    .eq('coaching_center_id', session.active.centerId)
+    .eq('id', batchId)
+    .maybeSingle()
+
+  if (!before) return { error: t.batches.errors.notFound }
+
+  // A batch that was not counted against maxBatches and is about to be. Refused
+  // before anything is written, so the batch stays exactly as it was.
+  if (active && !before.active) {
+    if (await overLimit(session, 'batches', 'maxBatches')) {
+      return { error: t.errors.planLimit }
+    }
+  }
+
+  // The subject is filtered through the centre's own rather than trusted, for the
+  // reason createBatch's own note gives about batchId: this is a public endpoint, and
+  // an id from the other centre would be refused by the composite foreign key as an
+  // error nobody can read.
+  const { data: subjectRow } = await supabase
+    .from('subjects')
+    .select('id')
+    .eq('coaching_center_id', session.active.centerId)
+    .eq('id', subjectId)
+    .maybeSingle()
+
+  if (!subjectRow) return { error: t.batches.errors.pickSubject }
+
+  // Same for the teacher, where the stakes are access rather than a constraint:
+  // teacher_id is what app.my_batch_ids reads, so an id from another centre would
+  // hand somebody else's teacher this batch's attendance and marks.
+  let teacher: string | null = null
+  if (teacherId) {
+    const { data: teacherRow } = await supabase
+      .from('teachers')
+      .select('id')
+      .eq('coaching_center_id', session.active.centerId)
+      .eq('id', teacherId)
+      .maybeSingle()
+    teacher = teacherRow?.id ?? null
+  }
+
+  const { error: saveError } = await supabase
+    .from('batches')
+    .update({
+      subject_id: subjectRow.id,
+      teacher_id: teacher,
+      name,
+      slot,
+      start_time: startTime,
+      end_time: endTime,
+      monthly_fee_bdt: monthlyFee,
+      active,
+    })
+    .eq('coaching_center_id', session.active.centerId)
+    .eq('id', batchId)
+
+  if (saveError) {
+    if (saveError.code === '23505') return { error: t.batches.errors.duplicate }
+    return { error: t.batches.errors.saveFailed }
+  }
+
+  // enrollments.subject_id is a copy taken from the batch when the student was
+  // enrolled, so a batch that changes subject leaves every one of them naming the
+  // old one. Carried over rather than left behind: two rows disagreeing about what a
+  // class teaches is the kind of thing that reads as a bug in whichever screen
+  // happens to surface it.
+  //
+  // Exams are deliberately not touched. exams.subject_id is the subject the exam was
+  // actually sat in, and rewriting history to match a correction made later would
+  // move marks under a subject nobody was taught.
+  if (subjectRow.id !== before.subject_id) {
+    await supabase
+      .from('enrollments')
+      .update({ subject_id: subjectRow.id })
+      .eq('coaching_center_id', session.active.centerId)
+      .eq('batch_id', batchId)
+  }
+
+  // The days are edited as a set, so they are written as one: whatever is on the
+  // form replaces whatever was there. Deleted first even when the new set is empty,
+  // because clearing the days back to "every day" is a thing an owner may well mean.
+  const { error: clearError } = await supabase
+    .from('batch_schedules')
+    .delete()
+    .eq('coaching_center_id', session.active.centerId)
+    .eq('batch_id', batchId)
+
+  if (clearError) return { error: t.batches.errors.scheduleSaveFailed }
+
+  if (days.length > 0 && startTime && endTime) {
+    const { error: scheduleError } = await supabase.from('batch_schedules').insert(
+      days.map((day) => ({
+        coaching_center_id: session.active.centerId,
+        batch_id: batchId,
+        day_of_week: day,
+        start_time: startTime,
+        end_time: endTime,
+      })),
+    )
+
+    // The batch itself saved. Say which half did not rather than reporting a clean
+    // success the teacher would disprove tomorrow morning.
+    if (scheduleError) return { error: t.batches.errors.scheduleSaveFailed }
+  }
+
+  revalidatePath('/settings/batches')
+  revalidatePath('/teach')
+  revalidatePath('/dashboard')
+  // The fee moved, and so did whether this batch is billed at all.
+  revalidatePath('/fees')
+  revalidatePath('/settings')
+  return { ok: t.batches.saved }
+}
+
 export async function createStudent(
   _prev: ActionState,
   formData: FormData,

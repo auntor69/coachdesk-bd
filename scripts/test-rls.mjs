@@ -3653,10 +3653,173 @@ check(
   JSON.stringify(ali),
 )
 
-// Back out, so the sections after this one count what they expect to.
+// Back out, so the sections after this one count what they expect to. The manager
+// stays: the section below is the same person doing the other half of the same job.
 await db.query('delete from enrollments where student_id = any($1::uuid[])', [[stEdit, stSpare]])
 await db.query('delete from guardians where student_id = any($1::uuid[])', [[stEdit, stSpare]])
 await db.query('delete from students where id = any($1::uuid[])', [[stEdit, stSpare]])
+
+// ---------------------------------------------------------------------------
+// Correcting a batch — the price, the hour, the subject, the teacher, the days.
+//
+// The same gap as the section above and for the same reason: until the edit screen
+// existed, `active` was written once at insert and the other four columns never
+// again, so the write half of batches_staff_admin_write and
+// batch_schedules_staff_admin_write had never been exercised either.
+//
+// What makes this worth its own section rather than a repeat of the last one is that
+// two of these columns are not data. `teacher_id` is what app.my_batch_ids resolves,
+// so changing it moves who can read that batch's roster at all — a batch handed over
+// on paper and not here leaves the departed teacher holding the class and the person
+// actually teaching it holding nothing. And `active` is what the register and the
+// billing read, so it must be reachable by a manager and out of reach of everyone
+// else, including the teacher who stands in front of that class every evening.
+//
+// The refusals below are all asserted by reading the stored value back. An UPDATE or
+// DELETE matching no policy touches zero rows and raises nothing, so deniedAsUser
+// cannot see these — and the DELETE one matters most of all: `can_manage_batches`
+// grants INSERT on batch_schedules and no DELETE, and a teacher who could delete
+// what they cannot re-create would be able to empty the week's register for good.
+// ---------------------------------------------------------------------------
+
+console.log('\nCorrecting a batch:')
+
+// Its own batch and its own student, so the sections above keep their counts and
+// closing this one cannot take a class off somebody else's register.
+const bEdit = await batch(centerA, sChem, tNasrin, 'Fix This Batch', 'evening')
+await db.query(
+  `insert into batch_schedules (coaching_center_id, batch_id, day_of_week, start_time, end_time)
+   values ($1, $2, 1, '17:00', '18:30'), ($1, $2, 3, '17:00', '18:30')`,
+  [centerA, bEdit],
+)
+const stBatch = await student(centerA, 'Tanvir Ahmed')
+const eBatch = await enroll(centerA, stBatch, sChem, bEdit)
+
+const batchRow = () =>
+  rowOf(
+    `select name, subject_id, teacher_id, monthly_fee_bdt, start_time, active
+     from batches where id = $1`,
+    [bEdit],
+  )
+const dayList = async () =>
+  (
+    await db.query(
+      'select day_of_week from batch_schedules where batch_id = $1 order by day_of_week',
+      [bEdit],
+    )
+  ).rows
+    .map((r) => r.day_of_week)
+    .join(',')
+
+/** Whether a teacher can see who is in this batch — the thing teacher_id decides. */
+const rosterReach = (user) =>
+  asUser(db, user, (tx) =>
+    n(tx, 'select count(*)::int as n from enrollments where batch_id = $1', [bEdit]),
+  )
+
+// One statement, because the screen saves the five fields together and a policy that
+// admitted four of them would be a screen that half-saved.
+await asManager(
+  `update batches set name = $1, monthly_fee_bdt = 950, start_time = '16:30',
+     end_time = '18:00' where id = $2`,
+  ['Chemistry Evening', bEdit],
+)
+const priced = await batchRow()
+check(
+  'a manager fixes the name, the price and the hour the class actually meets',
+  priced?.name === 'Chemistry Evening'
+    && Number(priced?.monthly_fee_bdt) === 950
+    && String(priced?.start_time).slice(0, 5) === '16:30',
+  JSON.stringify(priced),
+)
+
+check('the teacher who holds the batch reads its roster', (await rosterReach(ids.nasrin)) === 1)
+check('and one who does not hold it reads none of it', (await rosterReach(ids.karim)) === 0)
+
+await asManager('update batches set teacher_id = $1 where id = $2', [tKarim, bEdit])
+check(
+  'handing the batch to another teacher moves the roster with it',
+  (await rosterReach(ids.karim)) === 1 && (await rosterReach(ids.nasrin)) === 0,
+)
+
+// Two statements, as the action issues them: the batch, then the snapshot each
+// enrolment took of it. exams.subject_id is deliberately left alone — that one is
+// the subject an exam was actually sat in, not a copy waiting to be corrected.
+await asManager('update batches set subject_id = $1 where id = $2', [sBio, bEdit])
+await asManager('update enrollments set subject_id = $1 where batch_id = $2', [sBio, bEdit])
+check(
+  'a batch entered under the wrong subject can be moved, and its enrolments follow',
+  (await batchRow())?.subject_id === sBio
+    && (await rowOf('select subject_id from enrollments where id = $1', [eBatch]))?.subject_id
+      === sBio,
+)
+
+// Days are edited as a set, so they are written as one: clear, then insert what was
+// chosen. Both halves have to land, and the clear is the half no teacher gets.
+await asManager('delete from batch_schedules where batch_id = $1', [bEdit])
+check('the class days can be cleared', (await dayList()) === '')
+await asManager(
+  `insert into batch_schedules (coaching_center_id, batch_id, day_of_week, start_time, end_time)
+   values ($1, $2, 2, '16:30', '18:00'), ($1, $2, 4, '16:30', '18:00'),
+          ($1, $2, 6, '16:30', '18:00')`,
+  [centerA, bEdit],
+)
+check('and written back as the set the owner chose', (await dayList()) === '2,4,6')
+
+await asManager('update batches set active = false where id = $1', [bEdit])
+check('a batch that has stopped running can be stopped', (await batchRow())?.active === false)
+
+// Now the teacher who teaches it, with the box ticked. Karim holds this batch as of
+// the reassignment above, so this is the strongest version of the question: not a
+// stranger reaching in, but the person whose class it is.
+await db.query(
+  `insert into teacher_permissions (teacher_id, coaching_center_id, can_manage_batches)
+   values ($1, $2, true)
+   on conflict (teacher_id) do update set can_manage_batches = true`,
+  [tKarim, centerA],
+)
+const asKarim = (sql, params = []) => asUser(db, ids.karim, (tx) => tx.query(sql, params))
+
+await asKarim('update batches set name = $1, monthly_fee_bdt = 100 where id = $2', [
+  'Repriced By Karim',
+  bEdit,
+])
+const held = await batchRow()
+check(
+  'a permitted teacher cannot rename or reprice the class they teach',
+  held?.name === 'Chemistry Evening' && Number(held?.monthly_fee_bdt) === 950,
+  JSON.stringify(held),
+)
+
+await asKarim('update batches set active = true where id = $1', [bEdit])
+check(
+  'nor put a closed batch back on the register, which is a plan limit away',
+  (await batchRow())?.active === false,
+)
+
+await asKarim('delete from batch_schedules where batch_id = $1', [bEdit])
+check(
+  'nor clear the week they could not then put back — INSERT was granted, DELETE was not',
+  (await dayList()) === '2,4,6',
+)
+
+await asOwnerB('update batches set monthly_fee_bdt = 1, active = true where id = $1', [bEdit])
+await asOwnerB('delete from batch_schedules where batch_id = $1', [bEdit])
+const across = await batchRow()
+check(
+  'and an owner of another centre changes nothing about this one’s classes',
+  Number(across?.monthly_fee_bdt) === 950
+    && across?.active === false
+    && (await dayList()) === '2,4,6',
+  JSON.stringify(across),
+)
+
+// Leave the seed as found.
+await db.query('delete from enrollments where batch_id = $1', [bEdit])
+await db.query('delete from students where id = $1', [stBatch])
+await db.query('delete from batch_schedules where batch_id = $1', [bEdit])
+await db.query('delete from batches where id = $1', [bEdit])
+await db.query('delete from teacher_permissions where teacher_id = $1', [tKarim])
 await db.query('delete from center_members where user_id = $1', [managerUser])
 await db.query('delete from auth.users where id = $1', [managerUser])
 
