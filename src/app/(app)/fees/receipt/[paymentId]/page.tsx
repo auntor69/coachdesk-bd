@@ -1,11 +1,13 @@
 import Link from 'next/link'
 import { forbidden, notFound } from 'next/navigation'
 
+import { Card } from '@/components/ui'
 import { pageCenter, getSession, isStaffAdmin } from '@/lib/auth/session'
 import { createClient } from '@/lib/supabase/server'
+import { has, planName, PLANS } from '@/lib/plans'
 import { todayInDhaka, formatDate, formatMonth } from '@/lib/bd/time'
 import { sumTaka, formatTaka } from '@/lib/money'
-import { dict, DEFAULT_LOCALE, type Locale, type T } from '@/lib/i18n'
+import { dict, DEFAULT_LOCALE, type Dictionary, type Locale } from '@/lib/i18n'
 import type { PaymentMethod } from '@/lib/supabase/types'
 import { PrintButton } from '../../print-button'
 
@@ -40,6 +42,13 @@ export async function generateMetadata() {
  * `can_view_fees` reads what their own students owe; issuing the receipt is the
  * act of the person who took the money, and it is signed by them.
  *
+ * A PAID PLAN ONLY for the sheet, and not for the number. The trigger stamps a
+ * receipt number on every payment on every tier, so a free teacher reads it out
+ * to the parent and searches by it later — which is why the locked branch below
+ * still shows it, in the same size the slip would have. What Pro sells is the
+ * paper: a teacher who has handed out thirty printed slips cannot go back to a
+ * notebook, because the parents now expect one.
+ *
  * A miss is notFound() rather than forbidden(), for the reason the exam page gives:
  * RLS decides what is visible, and a 403 on someone else's payment id would confirm
  * that the id exists.
@@ -67,6 +76,62 @@ export default async function ReceiptPage({
     .maybeSingle()
 
   if (!payment) notFound()
+
+  // The paywall, before the three queries the sheet needs. Only the student's name
+  // is fetched instead, because the locked card is not a stub: it confirms that the
+  // money landed on the right child and carries the number the parent will quote.
+  // An owner who taps here and is told nothing at all cannot tell a locked feature
+  // from a payment that failed to save.
+  if (!has(session.plan, 'printedReceipts')) {
+    const { data: locked } = await supabase
+      .from('fee_invoice_balances')
+      .select('student_name')
+      .eq('coaching_center_id', session.active.centerId)
+      .eq('id', payment.invoice_id)
+      .maybeSingle()
+
+    return (
+      <div className="flex flex-col gap-4">
+        <Link
+          href="/fees"
+          className="inline-flex min-h-tap items-center font-medium text-brand-700"
+        >
+          ← {t.backToFees}
+        </Link>
+
+        <Card>
+          <p className="text-sm font-medium text-ink-soft">{t.receiptNo}</p>
+          {/* The same weight it has on the slip. This is the thing that is not
+              withheld, and printing it small next to a paywall would read as a
+              consolation rather than as the answer. */}
+          <p className="num text-3xl font-bold text-ink">{payment.receipt_no}</p>
+
+          <dl className="mt-3 flex flex-col gap-1.5 border-t border-line pt-3">
+            <Line
+              label={t.student}
+              value={locked?.student_name ?? d.common.unknown}
+            />
+            <Line
+              label={t.date}
+              value={formatDate(todayInDhaka(new Date(payment.paid_at)), locale)}
+              num
+            />
+            <Line label={t.amount} value={formatTaka(Number(payment.amount_bdt))} num strong />
+          </dl>
+        </Card>
+
+        <Card>
+          <h2 className="font-semibold text-ink">{t.paperTitle}</h2>
+          <p className="mt-1 text-sm text-ink-soft">
+            {t.paperBody(
+              planName(session.plan, locale),
+              planName(PLANS.teacher_plus, locale),
+            )}
+          </p>
+        </Card>
+      </div>
+    )
+  }
 
   const [{ data: invoice }, { data: center }, { data: siblings }] = await Promise.all([
     // Through the balance view rather than fee_invoices, because `net_bdt` is
@@ -161,7 +226,17 @@ export default async function ReceiptPage({
 }
 
 type CopyProps = {
-  t: T<'receipt'>
+  /**
+   * The whole group, functions and all — not `T<'receipt'>`.
+   *
+   * `T` poisons function leaves because a function cannot be serialised across
+   * the client boundary, and every prop type in this app that does cross one uses
+   * it. `Copy` does not cross one: it renders on the server and emits markup. So
+   * the group arrives intact, and the paywall sentence below can be a function
+   * whose two arguments the compiler checks, rather than a template filled in the
+   * browser with placeholder names nobody type-checks.
+   */
+  t: Dictionary['receipt']
   locale: Locale
   methods: Record<PaymentMethod, string>
   center: { name: string; phone: string | null; address: string | null }

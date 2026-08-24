@@ -4,6 +4,7 @@ import { forbidden } from 'next/navigation'
 import { Card } from '@/components/ui'
 import { pageCenter, getSession, isStaffAdmin } from '@/lib/auth/session'
 import { createClient } from '@/lib/supabase/server'
+import { has, planName, PLANS } from '@/lib/plans'
 import {
   todayInDhaka,
   currentPeriodMonth,
@@ -66,9 +67,15 @@ const METHODS: PaymentMethod[] = [
  * thing, and what is left has to be in the box.
  *
  * STAFF ADMIN ONLY. A teacher with `can_view_fees` reads their own students'
- * arrears on the board; the centre's takings for the month are not that. Nothing
- * here is gated by plan — a solo owner on a free tier reconciles the same way an
- * institution does, and the register is how either of them proves a month.
+ * arrears on the board; the centre's takings for the month are not that.
+ *
+ * AND A PAID PLAN ONLY, which it did not used to be. The argument for leaving it
+ * open was that a solo owner reconciles a month the same way an institution does,
+ * and that is still true — but a paid teacher tier has to sell something, and the
+ * free tier is one batch of thirty, where the fee board already answers who paid
+ * what. Reconciling thirty students against a bKash statement is an afternoon's
+ * scrolling rather than an impossibility. The screen stays reachable and says so
+ * rather than 404ing, for the reason every other locked screen here does.
  */
 export default async function RegisterPage({
   searchParams,
@@ -79,6 +86,35 @@ export default async function RegisterPage({
   const session = await pageCenter()
   if (!isStaffAdmin(session)) forbidden()
 
+  const locale = session.locale
+  const d = dict(locale)
+  const t = d.register
+
+  // Before the queries, not after: this branch draws none of the register, so
+  // reading a month of payments to throw them away would be work done for a
+  // screen that cannot show them.
+  if (!has(session.plan, 'printedReceipts')) {
+    return (
+      <div className="flex flex-col gap-4">
+        <Link
+          href="/fees"
+          className="inline-flex min-h-tap items-center font-medium text-brand-700"
+        >
+          ← {t.backToFees}
+        </Link>
+        <Card>
+          <h1 className="font-semibold text-ink">{t.paperTitle}</h1>
+          <p className="mt-1 text-sm text-ink-soft">
+            {t.paperBody(
+              planName(session.plan, locale),
+              planName(PLANS.teacher_plus, locale),
+            )}
+          </p>
+        </Card>
+      </div>
+    )
+  }
+
   const { month: rawMonth } = await searchParams
   // An unparseable month is this month rather than an error. The parameter is in a
   // URL an owner may have edited or a link somebody shared, and a register that
@@ -87,9 +123,6 @@ export default async function RegisterPage({
   const nextMonth = addMonths(month, 1)
 
   const supabase = await createClient()
-  const locale = session.locale
-  const d = dict(locale)
-  const t = d.register
 
   // The +06:00 offsets are load-bearing, exactly as on the fee board. paid_at is a
   // timestamptz and these are Dhaka calendar boundaries; compared against bare

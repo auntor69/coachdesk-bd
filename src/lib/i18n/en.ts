@@ -288,6 +288,10 @@ export const en: Dictionary = {
       'This is a computer-generated receipt. Please keep it as proof of payment.',
     notFound:
       'Receipt not found. It may belong to another centre, or it may have been removed.',
+    /** The paywall — see the Bangla for why it is named after the paper. */
+    paperTitle: 'The printed slip comes with a paid plan',
+    paperBody: (plan: string, pro: string) =>
+      `${plan} still gives you the receipt number — read it out to the parent, and search by it later. The A4 sheet with both copies, guardian and office, comes with ${pro}.`,
   },
 
   register: {
@@ -311,6 +315,9 @@ export const en: Dictionary = {
     entries: (n: number) => `${n} ${n === 1 ? 'payment' : 'payments'}`,
     empty: 'No money has been recorded for this month yet.',
     forMonth: (month: string) => `${month}`,
+    paperTitle: 'The collection register comes with a paid plan',
+    paperBody: (plan: string, pro: string) =>
+      `On ${plan} the fee board still shows who paid what. The month on one page — every payment in order, a running total, and how much came through each wallet — comes with ${pro}.`,
   },
 
   chase: {

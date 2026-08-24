@@ -511,6 +511,19 @@ export const bn = {
      */
     footNote: 'এটি কম্পিউটারে তৈরি রসিদ। টাকা জমা হওয়ার প্রমাণ হিসেবে যত্ন করে রাখুন।',
     notFound: 'রসিদটি পাওয়া যায়নি। হয়তো অন্য কোচিংয়ের, বা মুছে ফেলা হয়েছে।',
+    /**
+     * The paywall, on the screen that withholds it.
+     *
+     * Named for the paper rather than "locked", because the paper is precisely and
+     * only what is missing. The number above it is real — a trigger assigns it the
+     * moment the money is recorded, on every tier — so a free teacher reads it down
+     * a phone line and searches by it exactly as a paying one does. Saying so is
+     * the point: an owner who thinks the number is also withheld thinks the free
+     * tier cannot take money.
+     */
+    paperTitle: 'ছাপানোর মতো রসিদ এই প্ল্যানে নেই',
+    paperBody: (plan: string, pro: string) =>
+      `${plan} প্ল্যানেও রসিদের নম্বর পাচ্ছেন — অভিভাবককে বলে দিতে পারেন, পরে এই নম্বর দিয়েই খুঁজে বের করতে পারেন। A4 কাগজে দুই কপি — অভিভাবকের আর অফিসের — ছাপাতে ${pro} দরকার।`,
   },
 
   /**
@@ -555,6 +568,15 @@ export const bn = {
      * who has changed it needs to see which one they are looking at.
      */
     forMonth: (month: string) => `${month} মাসের হিসাব`,
+    /**
+     * Locked on the free tier, and the body names what the reader still has rather
+     * than only what they do not. Who paid what is on the fee board either way; the
+     * month as one page — in order, with a running total and a split by wallet — is
+     * the reconciliation, and that is what Pro buys.
+     */
+    paperTitle: 'আদায় খাতা এই প্ল্যানে নেই',
+    paperBody: (plan: string, pro: string) =>
+      `${plan} প্ল্যানে কে কত দিয়েছে তা ফি-এর তালিকাতেই দেখা যায়। মাসের পুরো হিসাব এক পাতায় — কোন তারিখে কত, ক্রমিক মোট, বিকাশে কত আর নগদ কত — ${pro}-তে।`,
   },
 
   /** The three chips, and the two reasons there might be none. */
