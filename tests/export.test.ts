@@ -134,7 +134,7 @@ function rowsOf(table: string, n: number): unknown[] {
 /* The catalogue                                                              */
 /* -------------------------------------------------------------------------- */
 
-test('only the three known report ids are accepted', () => {
+test('only the five known report ids are accepted', () => {
   for (const id of REPORT_IDS) assert.equal(isReportId(id), true)
   // A hand-edited URL, and the two that a loose `in` check would have let through.
   assert.equal(isReportId('payments'), false)
@@ -454,6 +454,379 @@ test('a fee sheet whose batch names fail to load is an error, not a blank column
 })
 
 /* -------------------------------------------------------------------------- */
+/* The month's attendance                                                     */
+/* -------------------------------------------------------------------------- */
+
+/** Five class days in August, which is a realistic three-a-week fortnight. */
+const MET_ON = ['2026-08-03', '2026-08-05', '2026-08-07', '2026-08-10', '2026-08-12']
+
+/** Sessions for one batch, each carrying whatever marks it was given. */
+function sessions(
+  marks: Record<string, (string | undefined)[]>,
+  dates: string[] = MET_ON,
+): { rows: unknown[] } {
+  return {
+    rows: dates.map((session_date, day) => ({
+      batch_id: 'batch-1',
+      session_date,
+      attendance_records: Object.entries(marks)
+        .filter(([, statuses]) => statuses[day] !== undefined)
+        .map(([enrollment_id, statuses]) => ({
+          enrollment_id,
+          status: statuses[day],
+        })),
+    })),
+  }
+}
+
+function enrolment(over: Record<string, unknown> = {}) {
+  return {
+    id: 'enr-1',
+    batch_id: 'batch-1',
+    enrolled_at: '2026-01-10T04:00:00Z',
+    ended_at: null,
+    students: {
+      name: 'রাফিদ হাসান',
+      student_code: 'S-001',
+      guardian_phone: '+8801812345678',
+    },
+    batches: { name: 'Class 9, Morning' },
+    ...over,
+  }
+}
+
+test('an attendance row counts what happened and works out the rate', async () => {
+  const f = fake({
+    attendance_sessions: sessions({
+      'enr-1': ['present', 'present', 'absent', 'late', 'present'],
+    }),
+    enrollments: { rows: [enrolment()] },
+  })
+  const sheet = sheetOf(await buildReport('attendance', context(f.supabase)))
+  const [row] = sheet.rows
+
+  assert.equal(sheet.rows.length, 1)
+  assert.equal(row.length, sheet.header.length)
+  assert.equal(row[0], 'Class 9, Morning')
+  assert.equal(row[1], 'S-001')
+  assert.equal(row[2], 'রাফিদ হাসান')
+  // The local form, exactly as on the roster: this column is dialled, not parsed.
+  assert.equal(row[3], '01812345678')
+  assert.equal(row[4], 5, 'classes held')
+  assert.equal(row[5], 3, 'present')
+  assert.equal(row[6], 1, 'absent')
+  assert.equal(row[7], 1, 'late')
+  assert.equal(row[8], 0, 'excused')
+  assert.equal(row[9], 0, 'not marked')
+  // Late is a day they were there: (3 present + 1 late) of 5.
+  assert.equal(row[10], 80)
+  assert.equal(sheet.period, '2026-08')
+})
+
+test('the attendance month is a plain date range, with no timezone offsets', async () => {
+  // session_date is a `date`, so a +06:00 here would be the bug the collections
+  // sheet has to have — comparing a timestamptz against a bare date.
+  const f = fake({ attendance_sessions: sessions({}), enrollments: { rows: [] } })
+  await buildReport('attendance', context(f.supabase))
+
+  assert.deepEqual(f.queries[0].filters, [
+    'eq coaching_center_id center-1',
+    'gte session_date 2026-08-01',
+    'lt session_date 2026-09-01',
+  ])
+})
+
+test('a student who joined mid-month is only counted against the classes since', async () => {
+  const f = fake({
+    // Marked at the two sessions after they joined; the first three predate them.
+    attendance_sessions: sessions({
+      'enr-1': [undefined, undefined, undefined, 'present', 'present'],
+    }),
+    // 04:00Z on the 8th is 10am Dhaka on the 8th.
+    enrollments: { rows: [enrolment({ enrolled_at: '2026-08-08T04:00:00Z' })] },
+  })
+  const sheet = sheetOf(await buildReport('attendance', context(f.supabase)))
+  const [row] = sheet.rows
+
+  assert.equal(row[4], 2, 'only the classes held after they enrolled')
+  assert.equal(row[9], 0, 'nothing unmarked')
+  assert.equal(row[10], 100, 'a perfect fortnight, not 40%')
+})
+
+test('a student who left before the month is not in it', async () => {
+  const f = fake({
+    attendance_sessions: sessions({}),
+    enrollments: {
+      rows: [enrolment({ ended_at: '2026-07-15T00:00:00Z' })],
+    },
+  })
+  const sheet = sheetOf(await buildReport('attendance', context(f.supabase)))
+  assert.deepEqual(sheet.rows, [])
+})
+
+test('a backfilled mark keeps a row the enrolment dates would have dropped', async () => {
+  // An owner who adds the student in September and then fills in August has an
+  // enrolment younger than its own attendance. Losing those marks would be silent.
+  const f = fake({
+    attendance_sessions: sessions({ 'enr-1': ['present'] }),
+    enrollments: { rows: [enrolment({ enrolled_at: '2026-09-10T04:00:00Z' })] },
+  })
+  const sheet = sheetOf(await buildReport('attendance', context(f.supabase)))
+  const [row] = sheet.rows
+
+  assert.equal(sheet.rows.length, 1)
+  // Never fewer classes held than the student has marks for, so 'not marked'
+  // cannot go negative and the rate cannot exceed 100.
+  assert.equal(row[4], 1)
+  assert.equal(row[9], 0)
+  assert.equal(row[10], 100)
+})
+
+test('an excused day is taken out of the rate rather than counted against it', async () => {
+  const f = fake({
+    attendance_sessions: sessions({
+      'enr-1': ['present', 'present', 'late', 'excused', undefined],
+    }),
+    enrollments: { rows: [enrolment()] },
+  })
+  const [row] = sheetOf(await buildReport('attendance', context(f.supabase))).rows
+
+  assert.equal(row[4], 5, 'five classes were held')
+  assert.equal(row[8], 1, 'excused')
+  assert.equal(row[9], 1, 'the fifth day was never marked')
+  // (2 present + 1 late) of the four days that counted, not of five.
+  assert.equal(row[10], 75)
+})
+
+test('a batch that has not met leaves the rate blank rather than saying nought', async () => {
+  // Every student at 0% is a figure an owner acts on, and it would be about the
+  // teacher who has not opened the register yet.
+  const f = fake({
+    attendance_sessions: { rows: [] },
+    enrollments: { rows: [enrolment()] },
+  })
+  const [row] = sheetOf(await buildReport('attendance', context(f.supabase))).rows
+
+  assert.equal(row[4], 0)
+  assert.equal(row[10], '')
+})
+
+test('a mark this build has never heard of is not counted into another column', async () => {
+  const f = fake({
+    // One class, one mark, and the mark is a word the enum did not have when this
+    // was written — which is what a migration adding a fifth state looks like here.
+    attendance_sessions: sessions({ 'enr-1': ['holiday'] }, ['2026-08-03']),
+    enrollments: { rows: [enrolment()] },
+  })
+  const [row] = sheetOf(await buildReport('attendance', context(f.supabase))).rows
+
+  assert.deepEqual(row.slice(5, 9), [0, 0, 0, 0], 'not silently a present or an absent')
+  assert.equal(row[9], 1, 'counted as unmarked, which is what it is')
+})
+
+test('attendance rows are ordered by batch and then by name', async () => {
+  const f = fake({
+    attendance_sessions: sessions({}),
+    enrollments: {
+      rows: [
+        enrolment({ id: 'c', batches: { name: 'ঘ ব্যাচ' } }),
+        enrolment({
+          id: 'b',
+          batches: { name: 'ক ব্যাচ' },
+          students: { name: 'সাকিব', student_code: 'S-3', guardian_phone: null },
+        }),
+        enrolment({
+          id: 'a',
+          batches: { name: 'ক ব্যাচ' },
+          students: { name: 'আরিফ', student_code: 'S-2', guardian_phone: null },
+        }),
+      ],
+    },
+  })
+  const sheet = sheetOf(await buildReport('attendance', context(f.supabase)))
+
+  assert.deepEqual(
+    sheet.rows.map((row) => [row[0], row[2]]),
+    [
+      ['ক ব্যাচ', 'আরিফ'],
+      ['ক ব্যাচ', 'সাকিব'],
+      ['ঘ ব্যাচ', 'রাফিদ হাসান'],
+    ],
+  )
+})
+
+/* -------------------------------------------------------------------------- */
+/* The month's marks                                                          */
+/* -------------------------------------------------------------------------- */
+
+function exam(over: Record<string, unknown> = {}) {
+  return {
+    title: 'সাপ্তাহিক পরীক্ষা ১',
+    exam_date: '2026-08-12',
+    // Numerics arrive from PostgREST as strings, which is the whole reason the
+    // builder puts Number() round them.
+    total_marks: '50.00',
+    pass_marks: '20.00',
+    batches: { name: 'Class 9, Morning' },
+    subjects: { name: 'Physics', name_bn: 'পদার্থবিজ্ঞান' },
+    exam_types: { name: 'Weekly', name_bn: 'সাপ্তাহিক' },
+    exam_results: [
+      { enrollment_id: 'enr-1', obtained_marks: '38.50', is_absent: false },
+    ],
+    ...over,
+  }
+}
+
+const MARK_ROSTER = {
+  rows: [{ id: 'enr-1', students: { name: 'রাফিদ হাসান', student_code: 'S-001' } }],
+}
+
+test('a marks row carries the exam, the mark and the percentage', async () => {
+  const f = fake({ exams: { rows: [exam()] }, enrollments: MARK_ROSTER })
+  const sheet = sheetOf(await buildReport('marks', context(f.supabase)))
+  const [row] = sheet.rows
+
+  assert.equal(sheet.rows.length, 1)
+  assert.equal(row.length, sheet.header.length)
+  assert.equal(row[0], '2026-08-12')
+  assert.equal(row[1], 'সাপ্তাহিক পরীক্ষা ১')
+  // The centre's own Bangla words for both, since this reader asked for Bangla.
+  assert.equal(row[2], 'সাপ্তাহিক')
+  assert.equal(row[3], 'পদার্থবিজ্ঞান')
+  assert.equal(row[4], 'Class 9, Morning')
+  assert.equal(row[5], 'S-001')
+  assert.equal(row[6], 'রাফিদ হাসান')
+  // Numbers, not the '50.00' strings they arrived as: a spreadsheet has to add
+  // these up and average them.
+  assert.equal(row[7], 50)
+  assert.equal(row[8], 38.5)
+  assert.equal(row[9], 77)
+  assert.equal(row[10], dict('bn').exportSheet.resultPass)
+  assert.equal(sheet.period, '2026-08')
+})
+
+test('an English reader gets the centre’s English names for subject and type', async () => {
+  const f = fake({ exams: { rows: [exam()] }, enrollments: MARK_ROSTER })
+  const [row] = sheetOf(
+    await buildReport('marks', context(f.supabase, { locale: 'en' })),
+  ).rows
+
+  // `name` where the centre typed both, which is the opposite of what a Bangla
+  // reader gets off the same row.
+  assert.equal(row[2], 'Weekly')
+  assert.equal(row[3], 'Physics')
+  assert.equal(row[10], dict('en').exportSheet.resultPass)
+})
+
+test('a student below the pass mark is failed, and one who was away is neither', async () => {
+  const f = fake({
+    exams: {
+      rows: [
+        exam({
+          exam_results: [
+            { enrollment_id: 'enr-1', obtained_marks: '19.00', is_absent: false },
+            { enrollment_id: 'enr-2', obtained_marks: null, is_absent: true },
+          ],
+        }),
+      ],
+    },
+    enrollments: {
+      rows: [
+        ...MARK_ROSTER.rows,
+        { id: 'enr-2', students: { name: 'সাকিব', student_code: 'S-002' } },
+      ],
+    },
+  })
+  const sheet = sheetOf(await buildReport('marks', context(f.supabase)))
+  const d = dict('bn')
+
+  // Alphabetical inside the exam, so সাকিব comes before রাফিদ in Bangla collation.
+  const byName = new Map(sheet.rows.map((row) => [row[6], row]))
+  assert.equal(byName.get('রাফিদ হাসান')?.[10], d.exportSheet.resultFail)
+
+  const away = byName.get('সাকিব')
+  assert.equal(away?.[8], null, 'no mark at all, not a nought')
+  assert.equal(away?.[9], '', 'and so no percentage')
+  assert.equal(away?.[10], d.attendance.absent)
+})
+
+test('an exam with no pass mark set reports no verdict', async () => {
+  const f = fake({
+    exams: { rows: [exam({ pass_marks: null })] },
+    enrollments: MARK_ROSTER,
+  })
+  const [row] = sheetOf(await buildReport('marks', context(f.supabase))).rows
+
+  assert.equal(row[8], 38.5, 'the mark is still there')
+  assert.equal(row[10], '', 'the verdict is not invented')
+})
+
+test('the exam’s own date decides its month, and the range is half-open', async () => {
+  const f = fake({ exams: { rows: [] } })
+  await buildReport('marks', context(f.supabase))
+
+  assert.deepEqual(f.queries[0].filters, [
+    'eq coaching_center_id center-1',
+    'gte exam_date 2026-08-01',
+    'lt exam_date 2026-09-01',
+  ])
+  // Date first, then title: two tests on one day should not come back interleaved.
+  assert.deepEqual(f.queries[0].orders, ['exam_date', 'title'])
+})
+
+test('a month with no exams costs one query, not two', async () => {
+  const f = fake({ exams: { rows: [] } })
+  const sheet = sheetOf(await buildReport('marks', context(f.supabase)))
+
+  assert.deepEqual(sheet.rows, [])
+  assert.equal(f.queries.length, 1, 'nobody to name, so nobody was looked up')
+})
+
+test('a mark whose enrolment cannot be resolved is still exported', async () => {
+  // Losing a mark because a name could not be found would be the worse failure:
+  // the total on the sheet would no longer match the total in the app.
+  const f = fake({ exams: { rows: [exam()] }, enrollments: { rows: [] } })
+  const [row] = sheetOf(await buildReport('marks', context(f.supabase))).rows
+
+  assert.equal(row[6], dict('bn').common.unknown)
+  assert.equal(row[8], 38.5)
+})
+
+test('more marks than the ceiling is an error, even off a single page of exams', async () => {
+  // The marks ride in as an embedded array, so pageAll's own ceiling never sees
+  // them. This is the check that does.
+  const f = fake({
+    exams: {
+      rows: [
+        exam({
+          exam_results: Array.from({ length: MAX_EXPORT_ROWS + 1 }, (_, i) => ({
+            enrollment_id: `enr-${i}`,
+            obtained_marks: '10.00',
+            is_absent: false,
+          })),
+        }),
+      ],
+    },
+    enrollments: { rows: [] },
+  })
+  const result = await buildReport('marks', context(f.supabase))
+
+  assert.equal(result.ok, false)
+  assert.equal(result.ok === false && result.reason, 'tooLarge')
+})
+
+test('an attendance sheet whose roster fails to load is an error', async () => {
+  const f = fake({
+    attendance_sessions: sessions({}),
+    enrollments: { error: 'connection reset' },
+  })
+  const result = await buildReport('attendance', context(f.supabase))
+
+  assert.equal(result.ok, false)
+  assert.equal(result.ok === false && result.reason, 'unreadable')
+})
+
+/* -------------------------------------------------------------------------- */
 /* Shape                                                                      */
 /* -------------------------------------------------------------------------- */
 
@@ -473,7 +846,27 @@ test('every row in every sheet is exactly as wide as its heading, in both langua
       ],
     },
     fee_invoice_balances: { rows: [INVOICE] },
-    enrollments: { rows: [{ id: 'enr-1', batches: null }] },
+    attendance_sessions: sessions({ 'enr-1': ['present'] }),
+    exams: { rows: [exam()] },
+    // One stub, read by four builders that each want different columns off it: the
+    // fee sheet takes the batch name, the marks sheet the student, the attendance
+    // sheet all of it. `batches: null` keeps the fee sheet's unresolvable-batch case.
+    enrollments: {
+      rows: [
+        {
+          id: 'enr-1',
+          batch_id: 'batch-1',
+          enrolled_at: '2026-01-10T04:00:00Z',
+          ended_at: null,
+          students: {
+            name: 'ক',
+            student_code: null,
+            guardian_phone: null,
+          },
+          batches: null,
+        },
+      ],
+    },
   }
 
   const widths: Record<string, number[]> = {}

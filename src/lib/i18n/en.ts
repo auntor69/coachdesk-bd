@@ -345,6 +345,18 @@ export const en: Dictionary = {
     colPaid: 'Paid',
     colRemaining: 'Remaining',
     colDueDate: 'Due date',
+    colSessions: 'Classes held',
+    colUnmarked: 'Not marked',
+    colRate: 'Attendance %',
+    colExam: 'Exam',
+    colExamType: 'Exam type',
+    colSubject: 'Subject',
+    colTotalMarks: 'Full marks',
+    colObtained: 'Marks',
+    colPercent: 'Percent',
+    colResult: 'Result',
+    resultPass: 'Pass',
+    resultFail: 'Fail',
     paid: 'Paid',
     partial: 'Part paid',
     unpaid: 'Unpaid',
@@ -916,7 +928,7 @@ export const en: Dictionary = {
       sms: 'SMS',
       smsHint: 'Credits, who is opted out',
       exports: 'Download files',
-      exportsHint: 'Student list, collections, fee summary',
+      exportsHint: 'Students, collections, fees, attendance, marks',
       exportsLocked: 'Comes with Teacher Pro',
       /** The free plan allows exactly one, so the singular is the common case. */
       plan: (name: string, batches: number) =>
@@ -1239,12 +1251,20 @@ export const en: Dictionary = {
           title: 'The month’s fee summary',
           body: 'What each student was billed, any discount, what has come in, what is still owed, the due date and the guardian’s number. Cancelled bills are left out.',
         },
+        attendance: {
+          title: 'The month’s attendance',
+          body: 'One line per student per batch: classes held, days present, days absent, late, excused, and the attendance rate. The guardian’s number is on the row, so a sorted list is a call list.',
+        },
+        marks: {
+          title: 'The month’s marks',
+          body: 'Every mark from the month’s exams: date, exam name and type, subject, batch, full marks, marks obtained, percentage and pass or fail. Only students whose marks were entered.',
+        },
       },
       opensIn:
         'The file opens in Excel, Google Sheets or WPS Office. Bangla names come through intact.',
       lockedTitle: 'This plan does not include downloads',
       lockedBody: (plan: string, pro: string) =>
-        `On ${plan} you can read every list in the app but not take it out as a file. Downloading the student list, the month’s collections and the fee summary comes with ${pro}.`,
+        `On ${plan} you can read every list in the app but not take it out as a file. Downloading students, collections, fees, attendance and marks comes with ${pro}.`,
       seePlans: 'See the plans',
       errors: {
         signIn: 'Sign in first.',

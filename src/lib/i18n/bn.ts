@@ -634,6 +634,26 @@ export const bn = {
     colRemaining: 'বাকি',
     colDueDate: 'শেষ তারিখ',
 
+    /* The month's attendance. Every state gets a column of its own as well as
+       feeding the rate, so an owner who counts 'দেরি' differently from us can
+       redo the sum from the same row. */
+    colSessions: 'ক্লাস হয়েছে',
+    colUnmarked: 'হাজিরা নেওয়া হয়নি',
+    colRate: 'উপস্থিতির হার %',
+
+    /* The month's marks. পূর্ণমান is the word already on the exam screen and on
+       every question paper in the country, so it is not translated twice. */
+    colExam: 'পরীক্ষা',
+    colExamType: 'পরীক্ষার ধরন',
+    colSubject: 'বিষয়',
+    colTotalMarks: 'পূর্ণমান',
+    colObtained: 'প্রাপ্ত নম্বর',
+    colPercent: 'শতকরা %',
+    colResult: 'ফলাফল',
+    /** Only where the exam has a pass mark set; blank where it has none. */
+    resultPass: 'পাস',
+    resultFail: 'ফেল',
+
     /**
      * What an invoice's status column says. Derived from the figures beside it
      * rather than stored, so these three can never contradict the row they label.
@@ -1653,7 +1673,7 @@ export const bn = {
       sms: 'SMS',
       smsHint: 'ক্রেডিট, কে SMS পাবে না',
       exports: 'ফাইল ডাউনলোড',
-      exportsHint: 'শিক্ষার্থীর তালিকা, আদায়, ফি-এর হিসাব',
+      exportsHint: 'শিক্ষার্থী, আদায়, ফি, হাজিরা, নম্বর',
       /**
        * The hint when the plan does not include it, replacing the description above.
        * A row that describes a screen the reader cannot use is a dead end they only
@@ -2177,10 +2197,10 @@ export const bn = {
       /** Under the roster's button: it is today's list, not the month's above it. */
       asOf: (date: string) => `${date} পর্যন্ত`,
       /**
-       * Keyed by ReportId, so a fourth sheet added to the catalogue stops compiling
-       * until it has a name and a sentence in both languages. Each body says what is
-       * in the file, in the order the columns come — an owner deciding which of three
-       * to download should not have to download all three to find out.
+       * Keyed by ReportId, so a sheet added to the catalogue stops compiling until
+       * it has a name and a sentence in both languages. Each body says what is in
+       * the file, in the order the columns come — an owner deciding which one to
+       * download should not have to download all five to find out.
        */
       reports: {
         students: {
@@ -2195,6 +2215,14 @@ export const bn = {
           title: 'মাসের ফি হিসাব',
           body: 'কার কত বিল হলো, কত ছাড়, কত জমা পড়েছে, কত বাকি, শেষ তারিখ আর অভিভাবকের নম্বর। বাতিল করা বিল এতে থাকবে না।',
         },
+        attendance: {
+          title: 'মাসের হাজিরা',
+          body: 'ব্যাচ ধরে প্রতি শিক্ষার্থীর এক লাইন — কত ক্লাস হয়েছে, কত দিন এসেছে, কত দিন আসেনি, দেরি, ছুটি আর উপস্থিতির হার। সঙ্গে অভিভাবকের নম্বর, যাতে হার কম যাদের, তাদের সোজা ফোন করা যায়।',
+        },
+        marks: {
+          title: 'মাসের নম্বর',
+          body: 'মাসের প্রতিটি পরীক্ষার নম্বর — তারিখ, পরীক্ষার নাম ও ধরন, বিষয়, ব্যাচ, পূর্ণমান, প্রাপ্ত নম্বর, শতকরা আর পাস-ফেল। যাদের নম্বর তোলা হয়েছে, শুধু তারাই থাকবে।',
+        },
       },
       /** A CSV is not a word an owner knows. What they need is which app opens it. */
       opensIn: 'ফাইলটি Excel, Google Sheets বা WPS Office-এ খোলা যাবে। নাম বাংলাতেই ঠিক থাকবে।',
@@ -2205,7 +2233,7 @@ export const bn = {
        */
       lockedTitle: 'ফাইল ডাউনলোড এই প্ল্যানে নেই',
       lockedBody: (plan: string, pro: string) =>
-        `${plan} প্ল্যানে তালিকা অ্যাপেই দেখা যায়, ডাউনলোড করা যায় না। শিক্ষার্থীর তালিকা, মাসের আদায় আর ফি-এর হিসাব ফাইল করে নামাতে ${pro} দরকার।`,
+        `${plan} প্ল্যানে তালিকা অ্যাপেই দেখা যায়, ডাউনলোড করা যায় না। শিক্ষার্থী, আদায়, ফি, হাজিরা আর নম্বরের তালিকা Excel ফাইলে নামাতে ${pro} দরকার।`,
       seePlans: 'প্ল্যান দেখুন',
       errors: {
         signIn: 'আগে লগইন করুন।',

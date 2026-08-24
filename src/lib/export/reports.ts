@@ -1,5 +1,5 @@
 /**
- * The three sheets an owner can download, and what goes in each column.
+ * The five sheets an owner can download, and what goes in each column.
  *
  * WHY THIS EXISTS AT ALL. Everything in the product is a screen on a phone, and a
  * phone is the wrong shape for two jobs a coaching centre actually has: handing the
@@ -37,16 +37,32 @@
  * — `next/headers` included — is ever loaded by a test.
  */
 import type { CsvCell } from '../csv.ts'
-import { dict, type Locale } from '../i18n/index.ts'
+import { dict, localName, type Locale } from '../i18n/index.ts'
 import { addMonths, todayInDhaka } from '../bd/time.ts'
 import { formatBdMobile } from '../bd/phone.ts'
 import type { createClient } from '../supabase/server.ts'
-import type { PaymentMethod, StudentStatus } from '../supabase/types.ts'
+import type {
+  AttendanceStatus,
+  PaymentMethod,
+  StudentStatus,
+} from '../supabase/types.ts'
 
 type Supabase = Awaited<ReturnType<typeof createClient>>
 
-/** The catalogue, in the order the download screen lists them. */
-export const REPORT_IDS = ['students', 'collections', 'dues'] as const
+/**
+ * The catalogue, in the order the download screen lists them.
+ *
+ * Grouped by what the reader is holding it for: who is here, what came in, what is
+ * owed, who is turning up, how they are doing. The two teaching sheets come last
+ * because the money ones are what an owner opens this screen for in month one.
+ */
+export const REPORT_IDS = [
+  'students',
+  'collections',
+  'dues',
+  'attendance',
+  'marks',
+] as const
 
 export type ReportId = (typeof REPORT_IDS)[number]
 
@@ -67,6 +83,8 @@ export const NEEDS_MONTH: Record<ReportId, boolean> = {
   students: false,
   collections: true,
   dues: true,
+  attendance: true,
+  marks: true,
 }
 
 export type Sheet = {
@@ -157,6 +175,25 @@ const INVOICE_COLUMNS = 'student_name, student_code, guardian_phone, amount_bdt,
 
 const ENROLLMENT_COLUMNS = 'id, batches (name)'
 
+/*
+ * The two teaching sheets both read a child table through its parent, and that is a
+ * choice worth stating once. PostgREST can filter on an embedded table with an
+ * `!inner` join — `attendance_records` filtered by `attendance_sessions.session_date`
+ * — but supabase-js then loses the row shape and hands back `unknown` for every
+ * column, and the filter itself is one of the few places PostgREST's semantics
+ * surprise people. The parent is the thing being filtered here anyway: a month of
+ * sessions, a month of exams. So the date filter goes on the parent, where it is
+ * ordinary, and the children ride along as an embedded array.
+ */
+
+const ATTENDANCE_SESSION_COLUMNS = 'batch_id, session_date, attendance_records (enrollment_id, status)'
+
+const ROSTER_COLUMNS = 'id, batch_id, enrolled_at, ended_at, students (name, student_code, guardian_phone), batches (name)'
+
+const EXAM_COLUMNS = 'title, exam_date, total_marks, pass_marks, batches (name), subjects (name, name_bn), exam_types (name, name_bn), exam_results (enrollment_id, obtained_marks, is_absent)'
+
+const MARK_ROSTER_COLUMNS = 'id, students (name, student_code)'
+
 /** A to-one embed arrives as an object, or an array, or null. All three happen. */
 type Embed<T> = T | T[] | null
 
@@ -204,6 +241,49 @@ type InvoiceRow = {
 
 type EnrollmentRow = { id: string; batches: Embed<{ name: string }> }
 
+type SessionRow = {
+  batch_id: string
+  session_date: string
+  attendance_records:
+    | { enrollment_id: string; status: AttendanceStatus }[]
+    | null
+}
+
+type RosterRow = {
+  id: string
+  batch_id: string
+  enrolled_at: string
+  ended_at: string | null
+  students: Embed<{
+    name: string
+    student_code: string | null
+    guardian_phone: string | null
+  }>
+  batches: Embed<{ name: string }>
+}
+
+type ExamRow = {
+  title: string
+  exam_date: string
+  total_marks: number
+  pass_marks: number | null
+  batches: Embed<{ name: string }>
+  subjects: Embed<{ name: string; name_bn: string | null }>
+  exam_types: Embed<{ name: string; name_bn: string | null }>
+  exam_results:
+    | {
+        enrollment_id: string
+        obtained_marks: number | null
+        is_absent: boolean
+      }[]
+    | null
+}
+
+type MarkRosterRow = {
+  id: string
+  students: Embed<{ name: string; student_code: string | null }>
+}
+
 /* -------------------------------------------------------------------------- */
 /* The builders                                                               */
 /* -------------------------------------------------------------------------- */
@@ -227,6 +307,10 @@ export async function buildReport(
       return buildCollections(ctx)
     case 'dues':
       return buildDues(ctx)
+    case 'attendance':
+      return buildAttendance(ctx)
+    case 'marks':
+      return buildMarks(ctx)
   }
 }
 
@@ -474,6 +558,322 @@ async function buildDues(ctx: ReportContext): Promise<BuildResult> {
         t.colStatus,
         t.colDueDate,
         t.colGuardianPhone,
+      ],
+      rows,
+      period: ctx.month.slice(0, 7),
+    },
+  }
+}
+
+/**
+ * Who turned up this month: one row per student per batch, counted not listed.
+ *
+ * NOT THE PAPER REGISTER, AND THAT IS THE DECISION IN THIS FILE MOST WORTH ARGUING
+ * WITH. The obvious shape is the grid a centre already keeps on paper — names down
+ * the side, the days of the month across the top, a mark in each box. It was written
+ * that way first and thrown away, for two reasons. One CSV has one heading row, so
+ * the day columns would have to be a fixed 1–31 while every batch meets on its own
+ * three days a week, which leaves a sheet that is nine-tenths blank and in which
+ * "no class that day" and "class held, nobody marked it" look identical. And a mark
+ * per box is a record to look things up in, which is what the app itself is for: the
+ * register screen already answers "was Rahim here on the 12th" in two taps.
+ *
+ * What no screen answers is "who is slipping", sorted, with a number beside each
+ * name and their guardian's phone in the next column. That is a spreadsheet's job and
+ * it is this sheet.
+ *
+ * THE SESSIONS COLUMN IS PER STUDENT, NOT PER BATCH. A student who enrolled on the
+ * 20th is counted against the classes held after the 20th; charging them for the
+ * whole month's classes would read as three weeks of truancy on their first sheet.
+ * The enrolment's own window bounds it.
+ *
+ * LATE COUNTS AS PRESENT IN THE RATE, AND EXCUSED COMES OUT OF THE DENOMINATOR. A
+ * student who was there but late was there, and a granted leave is not a day they
+ * failed to attend. Both are also in columns of their own, so an owner who disagrees
+ * can work out their own figure from the same row.
+ */
+async function buildAttendance(ctx: ReportContext): Promise<BuildResult> {
+  const d = dict(ctx.locale)
+  const t = d.exportSheet
+  const nextMonth = addMonths(ctx.month, 1)
+
+  const sessions = await pageAll<SessionRow>((from, to) =>
+    ctx.supabase
+      .from('attendance_sessions')
+      .select(ATTENDANCE_SESSION_COLUMNS)
+      .eq('coaching_center_id', ctx.centerId)
+      // `session_date` is a date and not a timestamptz, so these are plain calendar
+      // bounds that need none of the +06:00 the collections sheet lives or dies by.
+      // Half-open anyway, so both monthly sheets are read the same way.
+      .gte('session_date', ctx.month)
+      .lt('session_date', nextMonth)
+      .order('session_date', { ascending: true })
+      .range(from, to),
+  )
+  if ('failed' in sessions) return { ok: false, reason: sessions.failed }
+
+  // When each batch met, and what each student was marked, off the same pass. A
+  // second query for the records would have to name every session id in a URL.
+  const metOn = new Map<string, string[]>()
+  const tally = new Map<string, Tally>()
+
+  for (const session of sessions.rows) {
+    const dates = metOn.get(session.batch_id)
+    if (dates) dates.push(session.session_date)
+    else metOn.set(session.batch_id, [session.session_date])
+
+    for (const record of session.attendance_records ?? []) {
+      const counts = tally.get(record.enrollment_id) ?? blankTally()
+      // A status this build has never heard of is dropped rather than counted into
+      // the wrong column: the enum can grow in a migration before this file knows.
+      if (record.status in counts) counts[record.status] += 1
+      tally.set(record.enrollment_id, counts)
+    }
+  }
+
+  // The whole centre's enrolments, filtered here rather than in the query — the same
+  // trade the fee sheet makes, and for the same reason. The month test needs two
+  // comparisons against a nullable timestamp, which is a PostgREST `or(…)` string
+  // that no reader of this file could check; in JS it is three lines.
+  const roster = await pageAll<RosterRow>((from, to) =>
+    ctx.supabase
+      .from('enrollments')
+      .select(ROSTER_COLUMNS)
+      .eq('coaching_center_id', ctx.centerId)
+      .order('id', { ascending: true })
+      .range(from, to),
+  )
+  if ('failed' in roster) return { ok: false, reason: roster.failed }
+
+  const monthStart = Date.parse(`${ctx.month}T00:00:00+06:00`)
+  const monthEnd = Date.parse(`${nextMonth}T00:00:00+06:00`)
+
+  const assembled: { batch: string; name: string; cells: CsvCell[] }[] = []
+
+  for (const e of roster.rows) {
+    const student = one(e.students)
+    const counts = tally.get(e.id)
+
+    const startedAt = Date.parse(e.enrolled_at)
+    const endedAt = e.ended_at === null ? null : Date.parse(e.ended_at)
+    const overlaps =
+      startedAt < monthEnd && (endedAt === null || endedAt >= monthStart)
+
+    // A mark inside the month keeps the row whatever the dates say. An owner who
+    // adds a student in September and then backfills August's register has an
+    // enrolment younger than its own attendance, and dropping those rows would
+    // quietly lose the marks a teacher sat down and entered.
+    if (!overlaps && !counts) continue
+
+    const from = todayInDhaka(new Date(e.enrolled_at))
+    const until = e.ended_at === null ? null : todayInDhaka(new Date(e.ended_at))
+    const inWindow = (metOn.get(e.batch_id) ?? []).filter(
+      (date) => date >= from && (until === null || date <= until),
+    ).length
+
+    const c = counts ?? blankTally()
+    const marked = c.present + c.absent + c.late + c.excused
+    // Never fewer classes than the student has marks for. The two are counted from
+    // different places — sessions inside the enrolment's window, marks anywhere in
+    // the month — and without this a backfilled mark would produce a negative
+    // "not marked" and a rate above 100%.
+    const held = Math.max(inWindow, marked)
+    const countable = held - c.excused
+    const batch = one(e.batches)?.name ?? ''
+    const name = student?.name ?? d.common.unknown
+
+    assembled.push({
+      batch,
+      name,
+      cells: [
+        batch,
+        student?.student_code,
+        name,
+        formatBdMobile(student?.guardian_phone),
+        held,
+        c.present,
+        c.absent,
+        c.late,
+        c.excused,
+        held - marked,
+        // Blank, not 0, when there is nothing to divide by. A batch that has not met
+        // yet this month would otherwise show every student at 0% — which is a
+        // number an owner acts on, and it would be about the wrong person.
+        countable > 0 ? Math.round(((c.present + c.late) / countable) * 100) : '',
+      ],
+    })
+  }
+
+  // Batch first, then name: a sheet an owner scrolls is read one batch at a time,
+  // and it is the order the register screen already puts students in.
+  assembled.sort(
+    (a, b) =>
+      a.batch.localeCompare(b.batch, 'bn-BD') ||
+      a.name.localeCompare(b.name, 'bn-BD'),
+  )
+
+  return {
+    ok: true,
+    sheet: {
+      header: [
+        t.colBatch,
+        t.colCode,
+        t.colName,
+        t.colGuardianPhone,
+        t.colSessions,
+        d.attendance.present,
+        d.attendance.absent,
+        d.attendance.late,
+        d.attendance.excused,
+        t.colUnmarked,
+        t.colRate,
+      ],
+      rows: assembled.map((row) => row.cells),
+      period: ctx.month.slice(0, 7),
+    },
+  }
+}
+
+type Tally = Record<AttendanceStatus, number>
+
+function blankTally(): Tally {
+  return { present: 0, absent: 0, late: 0, excused: 0 }
+}
+
+/**
+ * A month of marks, one row per mark, exam by exam and alphabetical inside each.
+ *
+ * ONLY MARKS THAT WERE ENTERED. A student with no result row is left out rather than
+ * carried as a blank, because this sheet is the record of an exam and not the list of
+ * what a teacher has left to do — the exam list already shows how many of a batch
+ * have been marked. An absence is an entered mark and is here, in the result column.
+ *
+ * ONE ROW PER STUDENT PER EXAM, WHICH IS THE LONG SHAPE AND DELIBERATELY SO. The
+ * report-card shape — students down the side, subjects across the top — cannot be one
+ * CSV: each batch sits a different set of exams, so there is no column set that fits
+ * two batches. The long shape pivots into every one of those in a spreadsheet, and it
+ * is also the shape a filter works on: one click gives one batch, one subject, or
+ * everybody who failed.
+ *
+ * THE PERCENTAGE IS COMPUTED, NOT STORED. Nothing in the database holds it, marks are
+ * out of whatever that exam was out of, and comparing 38 against 45 across two exams
+ * is exactly the arithmetic an owner should not be doing by hand.
+ */
+async function buildMarks(ctx: ReportContext): Promise<BuildResult> {
+  const d = dict(ctx.locale)
+  const t = d.exportSheet
+  const nextMonth = addMonths(ctx.month, 1)
+
+  const exams = await pageAll<ExamRow>((from, to) =>
+    ctx.supabase
+      .from('exams')
+      .select(EXAM_COLUMNS)
+      .eq('coaching_center_id', ctx.centerId)
+      // A date column again, and the exam's own date — not when the marks were
+      // entered. A test sat on the 30th and marked on the 2nd belongs to the month
+      // it was sat in, which is the month a parent will ask about.
+      .gte('exam_date', ctx.month)
+      .lt('exam_date', nextMonth)
+      .order('exam_date', { ascending: true })
+      .order('title', { ascending: true })
+      .range(from, to),
+  )
+  if ('failed' in exams) return { ok: false, reason: exams.failed }
+
+  // Whose mark each row is. Skipped when the month held no exams, which is every
+  // month for a centre that has not started taking them.
+  const whoIs = new Map<string, { name: string; code: string | null }>()
+  if (exams.rows.length > 0) {
+    const roster = await pageAll<MarkRosterRow>((from, to) =>
+      ctx.supabase
+        .from('enrollments')
+        .select(MARK_ROSTER_COLUMNS)
+        .eq('coaching_center_id', ctx.centerId)
+        .order('id', { ascending: true })
+        .range(from, to),
+    )
+    if ('failed' in roster) return { ok: false, reason: roster.failed }
+    for (const e of roster.rows) {
+      const student = one(e.students)
+      if (student) {
+        whoIs.set(e.id, { name: student.name, code: student.student_code })
+      }
+    }
+  }
+
+  const rows: CsvCell[][] = []
+
+  for (const exam of exams.rows) {
+    const total = Number(exam.total_marks)
+    const passMark = exam.pass_marks === null ? null : Number(exam.pass_marks)
+    const batch = one(exam.batches)?.name ?? ''
+    // The centre's own words for the subject and the kind of test: the reader's
+    // language where they typed both, and whichever one they did type otherwise.
+    const subject = localName(one(exam.subjects), ctx.locale)
+    const kind = localName(one(exam.exam_types), ctx.locale)
+
+    const marks = (exam.exam_results ?? [])
+      .map((result) => ({ result, who: whoIs.get(result.enrollment_id) ?? null }))
+      .sort((a, b) =>
+        (a.who?.name ?? '').localeCompare(b.who?.name ?? '', 'bn-BD'),
+      )
+
+    for (const { result, who } of marks) {
+      const obtained =
+        result.is_absent || result.obtained_marks === null
+          ? null
+          : Number(result.obtained_marks)
+
+      rows.push([
+        exam.exam_date,
+        exam.title,
+        kind,
+        subject,
+        batch,
+        who?.code,
+        who?.name ?? d.common.unknown,
+        total,
+        obtained,
+        // `total_marks > 0` is a CHECK constraint, so the second test is about what
+        // lands in the file if that ever stops being true: a blank, rather than
+        // Infinity in a column somebody averages.
+        obtained === null || total <= 0
+          ? ''
+          : Math.round((obtained / total) * 100),
+        // Absent first: a student who was not there neither passed nor failed, and
+        // an exam with no pass mark set has no verdict to report at all.
+        result.is_absent
+          ? d.attendance.absent
+          : passMark === null || obtained === null
+            ? ''
+            : obtained >= passMark
+              ? t.resultPass
+              : t.resultFail,
+      ])
+    }
+  }
+
+  // The one sheet whose length is not bounded by a paged query: the marks ride in on
+  // the exams as embedded arrays, so thirty exams of two hundred students is six
+  // thousand rows off thirty paged ones. Checked here for the reason pageAll checks
+  // it — a file cut short looks exactly like a complete one.
+  if (rows.length > MAX_EXPORT_ROWS) return { ok: false, reason: 'tooLarge' }
+
+  return {
+    ok: true,
+    sheet: {
+      header: [
+        t.colDate,
+        t.colExam,
+        t.colExamType,
+        t.colSubject,
+        t.colBatch,
+        t.colCode,
+        t.colName,
+        t.colTotalMarks,
+        t.colObtained,
+        t.colPercent,
+        t.colResult,
       ],
       rows,
       period: ctx.month.slice(0, 7),
