@@ -73,10 +73,18 @@ const BENGALI = /[ঀ-৲৴-৿]/
  * the honest translation of the label is the acronym, and the test below has to
  * be told rather than the dictionary bent to satisfy it.
  *
+ * "WhatsApp" is the same decision for a stronger reason: it is a trademark and the
+ * button it labels is the one thing on the plan screen a reader identifies by its
+ * shape rather than by reading it. হোয়াটসঅ্যাপ is a transliteration nobody types.
+ *
  * Listed by exact path, never by pattern, so this stays a list of decisions
  * somebody made and not a hole a whole group can fall through.
  */
-const LATIN_IN_BANGLA = new Set(['settings.hub.sms', 'settings.sms.title'])
+const LATIN_IN_BANGLA = new Set([
+  'settings.hub.sms',
+  'settings.sms.title',
+  'settings.plan.contactWhatsapp',
+])
 
 test('the two dictionaries have exactly the same keys', () => {
   // tsc already proves this — en.ts is typed as bn's shape. Asserted again here

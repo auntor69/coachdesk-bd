@@ -77,13 +77,20 @@ export default async function SettingsPage() {
     ? t.feesGoTo(formatBdMobile(center.payment_number))
     : t.noPaymentNumber
 
+  // The centre's own plan, not the free one. Every tier below `center` has caps,
+  // so this line is read by paying owners too.
+  const maxBatches = session.plan.maxBatches
+  const planLine =
+    maxBatches === null
+      ? t.planUnlimited(planName(session.plan, locale))
+      : t.plan(planName(session.plan, locale), maxBatches)
+
   const items: {
     href: Route
     label: string
     hint: string
     count: number | null
-  }[] = [
-    {
+  }[] = [    {
       href: '/settings/center',
       label: t.center,
       hint: payHint,
@@ -135,15 +142,19 @@ export default async function SettingsPage() {
       hint: t.smsHint,
       count: null,
     },
+    /*
+     * The plan, last, and now a row rather than the grey line this page used to
+     * end with. The sentence is unchanged — it is still the plan and its batch
+     * cap — but it has somewhere to lead. An owner who reads "৫টি ব্যাচ" and
+     * wants a sixth had no next step from a paragraph.
+     */
+    {
+      href: '/settings/plan',
+      label: t.plans,
+      hint: planLine,
+      count: null,
+    },
   ]
-
-  // The centre's own plan, not the free one. Every tier below `center` has caps,
-  // so this line is read by paying owners too.
-  const maxBatches = session.plan.maxBatches
-  const planLine =
-    maxBatches === null
-      ? t.planUnlimited(planName(session.plan, locale))
-      : t.plan(planName(session.plan, locale), maxBatches)
 
   return (
     <div className="flex flex-col gap-5">
@@ -190,8 +201,6 @@ export default async function SettingsPage() {
           </li>
         ))}
       </ul>
-
-      <p className="text-sm text-ink-faint">{planLine}</p>
     </div>
   )
 }

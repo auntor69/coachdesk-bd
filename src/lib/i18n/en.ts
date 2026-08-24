@@ -870,6 +870,53 @@ export const en: Dictionary = {
         `${name} plan: ${batches} ${batches === 1 ? 'batch' : 'batches'}.`,
       planUnlimited: (name: string) =>
         `${name} plan: as many batches as you need.`,
+      plans: 'Plan and pricing',
+    },
+
+    /** See the Bangla for why this screen exists and what it deliberately omits. */
+    plan: {
+      title: 'Plan and pricing',
+      onNow: (name: string) => `You are on ${name}`,
+      freePrice: 'No charge',
+      monthly: (taka: string) => `${taka} a month`,
+      sized: 'Priced by the size of the centre',
+      from: (taka: string) => `From ${taka}`,
+
+      usageTitle: 'What you are using now',
+      batches: 'Batches',
+      students: 'Students',
+      subjects: 'Subjects',
+      teachers: 'Teachers',
+      noCap: 'No limit',
+      perBatchCap: (cap: number) => `Up to ${cap} students in any one batch.`,
+
+      haveTitle: 'This plan includes',
+      lackTitle: 'This plan does not include',
+      attendance: 'Attendance',
+      exams: 'Exams and marks',
+      fees: 'Fees and arrears',
+      messaging: 'SMS, WhatsApp and calls from your own phone',
+      receipts: 'Printed receipts and the collection register',
+      staff: 'Adding teachers and sharing out permissions',
+      onlyBuilt:
+        'Only what actually works today is listed here. Anything new is added when it ships.',
+
+      ladderTitle: 'The plans',
+      addsFree: 'For trying it out — 1 batch, 30 students.',
+      addsPro:
+        'One teacher’s whole coaching — 5 batches, 150 students, printed receipts and the register.',
+      addsCenter:
+        'Add teachers, no cap on batches or students. Priced by how many students you have.',
+      addsInstitution: 'Several branches under one account. Arranged by conversation.',
+      current: 'Your plan',
+
+      contactTitle: 'Want to change plan?',
+      contactBody:
+        'Send a message or call — tell us how many students and teachers, and you get a price.',
+      contactWhatsapp: 'WhatsApp',
+      contactCall: 'Call',
+      contactMessage: (center: string, plan: string) =>
+        `Hello. I am from ${center}, currently on ${plan}. I would like to talk about plans.`,
     },
 
     subjects: {
@@ -1104,5 +1151,24 @@ export const en: Dictionary = {
         numberNeedsWallet: 'bKash, Nagad or Rocket — choose one.',
       },
     },
+  },
+
+  /** See the Bangla for why the calculator's words are a group of their own. */
+  planCalc: {
+    title: 'Work out what a centre costs',
+    body: 'Put in how many students and teachers you have. The price updates as you type.',
+    students: 'How many students',
+    teachers: 'How many teachers',
+    monthly: 'A month',
+    breakdown: 'How that adds up',
+    studentPart: 'For students',
+    seatPart: '{n} extra teachers',
+    seatsIncluded: '{n} teacher seats are included',
+    floorNote: 'Minimum {floor} — a small centre pays this',
+    ratesTitle: 'Per-student rates',
+    bandRow: 'Students {from}–{to} · {rate} each',
+    bandLast: 'Beyond {from} · {rate} each',
+    seatRate: '{n} teachers free, then {rate} each',
+    quoteNote: 'This is a calculated figure. The final price is agreed in conversation.',
   },
 }

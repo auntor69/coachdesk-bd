@@ -1545,6 +1545,82 @@ export const bn = {
         `${name} প্ল্যান: ${digits(batches, 'bn')}টি ব্যাচ।`,
       planUnlimited: (name: string) =>
         `${name} প্ল্যান: ব্যাচ যত লাগে।`,
+      /**
+       * The row that leads to the price screen. It has no hint of its own — the
+       * sentence above is the hint, because the plan a centre is on is more use to
+       * them than a description of the screen behind the link.
+       */
+      plans: 'প্ল্যান ও দাম',
+    },
+
+    /**
+     * The plan screen: what this centre is on, what that includes, and what the
+     * next tier costs.
+     *
+     * It exists because half a dozen screens now name a plan the reader had no way
+     * to look up. A locked feature that says "শিক্ষক প্রো-তে পাবেন" with no price
+     * anywhere in the app is a dead end, and a dead end is where a trial stops.
+     *
+     * Counts inside sentences take Bangla numerals; the usage tallies do not, on
+     * the same split the hub uses — prose is read, a tally is checked. Taka is
+     * always ASCII, in both languages, because it gets re-typed into bKash.
+     */
+    plan: {
+      title: 'প্ল্যান ও দাম',
+      onNow: (name: string) => `আপনি এখন ${name} প্ল্যানে`,
+      freePrice: 'কোনো খরচ নেই',
+      monthly: (taka: string) => `মাসে ${taka}`,
+      /** The centre tiers have no list price — the calculator below is the price. */
+      sized: 'সেন্টারের আকার অনুযায়ী',
+      from: (taka: string) => `${taka} থেকে শুরু`,
+
+      usageTitle: 'এখন যা ব্যবহার হচ্ছে',
+      batches: 'ব্যাচ',
+      students: 'শিক্ষার্থী',
+      subjects: 'বিষয়',
+      teachers: 'শিক্ষক',
+      noCap: 'সীমা নেই',
+      perBatchCap: (cap: number) =>
+        `এক ব্যাচে সর্বোচ্চ ${digits(cap, 'bn')} জন।`,
+
+      haveTitle: 'এই প্ল্যানে আছে',
+      lackTitle: 'এই প্ল্যানে নেই',
+      attendance: 'হাজিরা',
+      exams: 'পরীক্ষা ও নম্বর',
+      fees: 'ফি আর বাকির হিসাব',
+      messaging: 'নিজের ফোন থেকে SMS, WhatsApp, কল',
+      receipts: 'ছাপানো রসিদ ও আদায় খাতা',
+      staff: 'শিক্ষক যোগ করা আর অনুমতি ভাগ করা',
+      /**
+       * Why the list is six rows and not twelve.
+       *
+       * The plan engine knows about export, the weekly guardian summary and
+       * branches; none of the three is built. Listing them with a tick beside a
+       * paid tier would be selling something that does not exist, which is the
+       * one thing a price screen cannot do and survive.
+       */
+      onlyBuilt: 'যা এখন সত্যিই কাজ করছে শুধু তাই এই তালিকায়। নতুন কিছু চালু হলে যোগ হবে।',
+
+      ladderTitle: 'প্ল্যানগুলো',
+      /** One line each: what the tier is for, not a feature list. */
+      addsFree: 'দেখে নেওয়ার জন্য — ১টি ব্যাচ, ৩০ জন শিক্ষার্থী।',
+      addsPro: 'একজন শিক্ষকের পুরো কোচিং — ৫টি ব্যাচ, ১৫০ জন, ছাপানো রসিদ আর আদায় খাতা।',
+      addsCenter: 'শিক্ষক যোগ করা যায়, ব্যাচ-শিক্ষার্থীর সীমা নেই। দাম শিক্ষার্থী সংখ্যা অনুযায়ী।',
+      addsInstitution: 'একাধিক শাখা এক হিসাবের নিচে। কথা বলে ঠিক করা হয়।',
+      current: 'এখন এটিতেই আছেন',
+
+      contactTitle: 'প্ল্যান বদলাতে চান?',
+      contactBody:
+        'একটা মেসেজ দিন বা ফোন করুন — কত শিক্ষার্থী, কত শিক্ষক, সেটা শুনে দাম বলে দেওয়া হবে।',
+      contactWhatsapp: 'WhatsApp',
+      contactCall: 'ফোন করুন',
+      /**
+       * Prefilled, because a message an owner has to compose is a message they do
+       * not send. It names the centre and the plan so the first reply can be an
+       * answer instead of two questions.
+       */
+      contactMessage: (center: string, plan: string) =>
+        `আসসালামু আলাইকুম। আমি ${center} থেকে বলছি, এখন ${plan} প্ল্যানে আছি। প্ল্যান নিয়ে কথা বলতে চাই।`,
     },
 
     subjects: {
@@ -1922,6 +1998,43 @@ export const bn = {
         numberNeedsWallet: 'বিকাশ, নগদ, নাকি রকেট — বেছে নিন।',
       },
     },
+  },
+
+  /**
+   * The centre pricing calculator, which runs in the browser.
+   *
+   * Its own top-level group and not part of `settings.plan`, for the reason
+   * `chaseList` is separate from `chase`: this one crosses the client boundary, so
+   * `T` poisons any function in it and every sentence here has to be a `{name}`
+   * template filled by `fill`. Mixing the two in one group would mean the whole
+   * group could hold no functions at all.
+   *
+   * The bill is shown broken down rather than as one figure, and that is a sales
+   * decision as much as a design one: a single number an owner cannot reconstruct
+   * invites the suspicion that it was invented on the spot, which is exactly what
+   * a founder quoting a price from their own laptop needs to avoid.
+   */
+  planCalc: {
+    title: 'সেন্টারের খরচ হিসাব করুন',
+    body: 'শিক্ষার্থী আর শিক্ষকের সংখ্যা দিন। দাম সঙ্গে সঙ্গে দেখা যাবে।',
+    students: 'শিক্ষার্থী কতজন',
+    teachers: 'শিক্ষক কতজন',
+    monthly: 'মাসে',
+    breakdown: 'হিসাবটা এভাবে',
+    studentPart: 'শিক্ষার্থী বাবদ',
+    seatPart: 'বাড়তি শিক্ষক {n} জন',
+    seatsIncluded: '{n} জন শিক্ষক এমনিতেই আছে',
+    /** Only when it bites, so it explains a number that would otherwise look wrong. */
+    floorNote: 'সর্বনিম্ন {floor} — ছোট সেন্টারেও এটাই',
+    ratesTitle: 'জনপ্রতি রেট',
+    bandRow: '{from}–{to} জন · জনপ্রতি {rate}',
+    bandLast: '{from} জনের পর · জনপ্রতি {rate}',
+    seatRate: '{n} জন শিক্ষক ফ্রি, এরপর জনপ্রতি {rate}',
+    /**
+     * The one number on the screen that is not arithmetic. Said plainly, because an
+     * owner who discovers later that the quote moved stops trusting the rest.
+     */
+    quoteNote: 'এটি হিসাব করে দেখানো দাম। কথা বলে চূড়ান্ত করা হয়।',
   },
 } as const
 
