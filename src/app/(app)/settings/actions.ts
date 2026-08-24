@@ -16,9 +16,11 @@ import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import {
   requireRole,
+  requirePermission,
   getSession,
   AuthError,
   type CenterSession,
+  type RosterPermission,
 } from '@/lib/auth/session'
 import { normalizeBdMobile, phoneToLoginEmail } from '@/lib/bd/phone'
 import {
@@ -58,28 +60,62 @@ export type ActionState = {
 } | null
 
 /**
- * requireRole throws for a signed-out or under-privileged caller. Every action
- * here wants the same sentence rather than a stack trace, so the throw is
- * converted once.
+ * The require* helpers throw for a signed-out or under-privileged caller. Every
+ * action here wants a sentence rather than a stack trace, so the throw is converted
+ * once, in one place, and each guard below supplies only its own wording.
  *
  * Written in the caller's own language, which costs a second read of the session:
- * requireRole threw, so it never handed one back. Worth the round trip — this is
- * the one message a manager sees on the screens they are not allowed to touch,
- * and an English-medium manager reading a lone Bangla sentence under an English
- * form cannot tell a permission boundary from a bug. A signed-out caller has no
- * locale to read, so they get the default.
+ * the check threw, so it never handed one back. Worth the round trip — this is the
+ * one message somebody sees on the screens they are not allowed to touch, and an
+ * English-medium manager reading a lone Bangla sentence under an English form cannot
+ * tell a permission boundary from a bug. A signed-out caller has no locale to read,
+ * so they get the default.
+ *
+ * `message` takes the whole dictionary rather than a string, because it is chosen
+ * before the locale is known.
  */
-async function staffAdmin(): Promise<CenterSession | ActionState> {
+async function guard(
+  check: () => Promise<CenterSession>,
+  message: (d: ReturnType<typeof dict>) => string,
+): Promise<CenterSession | ActionState> {
   try {
-    return await requireRole('manager')
+    return await check()
   } catch (err) {
     if (err instanceof AuthError) {
       const caller = await getSession()
-      const d = dict(caller?.locale ?? DEFAULT_LOCALE)
-      return { error: d.settings.errors.forbidden }
+      return { error: message(dict(caller?.locale ?? DEFAULT_LOCALE)) }
     }
     throw err
   }
+}
+
+/** Owners and managers. Most of this file. */
+async function staffAdmin(): Promise<CenterSession | ActionState> {
+  return guard(
+    () => requireRole('manager'),
+    (d) => d.settings.errors.forbidden,
+  )
+}
+
+/**
+ * Owners and managers, or a teacher the owner ticked the box for.
+ *
+ * The three admissions actions and the batch action use this instead of
+ * `staffAdmin`, which is the whole point of 20260811000019: `can_manage_students`
+ * and `can_manage_batches` were stored, shown and enforced nowhere, because every
+ * action they should have opened asked for a rank a teacher cannot reach.
+ *
+ * A different sentence when it refuses. `forbidden` says only an owner or a manager
+ * may do this, which stopped being true here — a teacher who is refused needs to
+ * know the answer is a checkbox on their own row and who owns it.
+ */
+async function mayManage(
+  permission: RosterPermission,
+): Promise<CenterSession | ActionState> {
+  return guard(
+    () => requirePermission(permission),
+    (d) => d.settings.errors.notPermitted,
+  )
 }
 
 function isSession(value: CenterSession | ActionState): value is CenterSession {
@@ -315,7 +351,7 @@ export async function createBatch(
   _prev: ActionState,
   formData: FormData,
 ): Promise<ActionState> {
-  const session = await staffAdmin()
+  const session = await mayManage('can_manage_batches')
   if (!isSession(session)) return session
 
   const t = dict(session.locale).settings
@@ -411,7 +447,7 @@ export async function createStudent(
   _prev: ActionState,
   formData: FormData,
 ): Promise<ActionState> {
-  const session = await staffAdmin()
+  const session = await mayManage('can_manage_students')
   if (!isSession(session)) return session
 
   const t = dict(session.locale).settings
@@ -546,7 +582,7 @@ export async function importStudents(
   _prev: ActionState,
   formData: FormData,
 ): Promise<ActionState> {
-  const session = await staffAdmin()
+  const session = await mayManage('can_manage_students')
   if (!isSession(session)) return session
 
   const t = dict(session.locale).settings
@@ -1062,16 +1098,10 @@ const WALLETS = new Set<PayoutWallet>(['bkash', 'nagad', 'rocket'])
  * points, so a wrong answer here redirects a month of income.
  */
 async function centerOwner(): Promise<CenterSession | ActionState> {
-  try {
-    return await requireRole('owner')
-  } catch (err) {
-    if (err instanceof AuthError) {
-      const caller = await getSession()
-      const d = dict(caller?.locale ?? DEFAULT_LOCALE)
-      return { error: d.settings.center.errors.ownerOnly }
-    }
-    throw err
-  }
+  return guard(
+    () => requireRole('owner'),
+    (d) => d.settings.center.errors.ownerOnly,
+  )
 }
 
 /**

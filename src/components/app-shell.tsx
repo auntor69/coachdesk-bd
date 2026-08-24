@@ -16,7 +16,7 @@ import { LanguageSwitch } from '@/components/language-switch'
 import { Logo } from '@/components/ui'
 import type { MemberRole } from '@/lib/supabase/types'
 import type { Session } from '@/lib/auth/session'
-import { canReadFees } from '@/lib/auth/session'
+import { canReadFees, canManageStudents, canManageBatches } from '@/lib/auth/session'
 import { formatBdMobile } from '@/lib/bd/phone'
 import { dict, type Dictionary } from '@/lib/i18n'
 
@@ -42,6 +42,17 @@ const FEES_TAB: NavItem = { href: '/fees', label: 'fees', icon: '৳' }
 const EXAMS_TAB: NavItem = { href: '/exams', label: 'exams', icon: '✎' }
 
 /**
+ * Settings, named for the same reason the fee tab is.
+ *
+ * A teacher reaches it when the owner has ticked `can_manage_students` or
+ * `can_manage_batches` — the hub then shows them the one or two rows those boxes
+ * open and nothing else. Until 20260811000019 there was no route in for them at
+ * all, which is half of why the two checkboxes did nothing: the screens were behind
+ * a rank they could not clear, and behind a tab they were never given.
+ */
+const SETTINGS_TAB: NavItem = { href: '/settings', label: 'settings', icon: '⚙' }
+
+/**
  * Owners and managers, who see the same five tabs.
  *
  * One array rather than two identical ones, because the two roles had drifted:
@@ -60,7 +71,7 @@ const STAFF_ADMIN_NAV: NavItem[] = [
   { href: '/teach', label: 'attendance', icon: '✓' },
   EXAMS_TAB,
   FEES_TAB,
-  { href: '/settings', label: 'settings', icon: '⚙' },
+  SETTINGS_TAB,
 ]
 
 /**
@@ -154,6 +165,34 @@ function CenterName({ session, t }: { session: Session; t: Dictionary['shell'] }
   )
 }
 
+/**
+ * A teacher's bar, plus whatever their owner has granted them.
+ *
+ * The three permission checks run together rather than in sequence: they share one
+ * memoised query behind `myTeacherRows`, so the cost is a single round trip either
+ * way, but awaiting them one at a time would make that look like three.
+ *
+ * Settings appears for either roster permission, because the hub itself now decides
+ * which rows to draw — a teacher with only `can_manage_batches` gets the tab and one
+ * row behind it, and that is the honest thing to show rather than a tab that leads
+ * to a page of things they cannot open.
+ */
+async function teacherNav(role: MemberRole): Promise<NavItem[]> {
+  if (role !== 'teacher') return NAV[role]
+
+  const [fees, students, batches] = await Promise.all([
+    canReadFees(),
+    canManageStudents(),
+    canManageBatches(),
+  ])
+
+  return [
+    ...NAV.teacher,
+    ...(fees ? [FEES_TAB] : []),
+    ...(students || batches ? [SETTINGS_TAB] : []),
+  ]
+}
+
 export async function AppShell({
   session,
   children,
@@ -164,19 +203,20 @@ export async function AppShell({
   const role: MemberRole = session.active?.role ?? 'student'
   const t = dict(session.locale).shell
 
-  // The one entry the table above cannot decide, because it turns on a
-  // permission rather than a role. Asked through the same `canReadFees` that
-  // /fees guards itself with, so the tab and the screen can never disagree —
-  // and it is memoised per request, so the layout and the page it wraps cost
-  // one query between them.
+  // The two entries the table above cannot decide, because they turn on a
+  // permission rather than a role. Asked through the same helpers the screens guard
+  // themselves with, so a tab and its screen can never disagree — and each is
+  // memoised per request, so the layout and the page it wraps cost one query
+  // between them rather than one each.
   //
-  // Appended rather than slotted in beside attendance: the two tabs a teacher
-  // already knows keep their positions on the day the permission is granted or
-  // taken away.
-  const items: NavItem[] =
-    role === 'teacher' && (await canReadFees())
-      ? [...NAV.teacher, FEES_TAB]
-      : NAV[role]
+  // Appended rather than slotted in: the two tabs a teacher already knows keep
+  // their positions on the day a permission is granted or taken away, and settings
+  // ends up last, where every app on the phone keeps it.
+  //
+  // Only for `teacher`. The other three roles' bars are complete — a staff-admin
+  // has both tabs already, and a student or guardian holds no teacher row for a
+  // permission to hang off.
+  const items: NavItem[] = await teacherNav(role)
 
   return (
     <div className="flex min-h-full flex-col">

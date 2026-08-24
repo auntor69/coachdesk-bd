@@ -1105,13 +1105,26 @@ export const bn = {
       hint: 'নম্বর দেওয়ার পর অভিভাবককে SMS পাঠাতে পারবেন',
     },
     can_manage_students: {
-      label: 'শিক্ষার্থী যোগ ও সম্পাদনা',
-      /** Names the number, because that is what really changes hands here. */
-      hint: 'অভিভাবকের মোবাইল নম্বরও বদলাতে পারবেন',
+      /**
+       * "ভর্তি" and not "সম্পাদনা". This used to read শিক্ষার্থী যোগ ও সম্পাদনা with a
+       * hint promising the teacher could change a guardian's mobile number — and
+       * nobody could, at any rank: there is no edit-a-student screen in this product
+       * for the owner either. 20260811000019 grants what the screens actually do,
+       * which is read the roster and admit a student, and the label had to come back
+       * down to meet it.
+       */
+      label: 'শিক্ষার্থী ভর্তি',
+      /**
+       * Names the number, because that is what really changes hands here: the grant
+       * is the whole centre's roster, not this teacher's own batches, and an owner
+       * deciding whether to tick it is deciding about every parent's contact.
+       */
+      hint: 'পুরো কোচিংয়ের শিক্ষার্থী তালিকা ও অভিভাবকের নম্বর দেখা, নতুন ভর্তি করা',
     },
     can_manage_batches: {
-      label: 'ব্যাচ তৈরি ও বদল',
-      hint: 'নতুন ব্যাচ খোলা, সময় বদল, ব্যাচে ভর্তি করা',
+      /** Same correction: opening a batch is granted, changing one is not built. */
+      label: 'নতুন ব্যাচ খোলা',
+      hint: 'বিষয়, সময়, কোন দিন ক্লাস আর মাসিক ফি ঠিক করে নতুন ব্যাচ খোলা',
     },
     can_view_fees: {
       label: 'ফি দেখা',
@@ -1458,6 +1471,13 @@ export const bn = {
        * says so separately.
        */
       forbidden: 'এই কাজটি শুধু মালিক বা ম্যানেজার করতে পারেন।',
+      /**
+       * For the screens a teacher *can* be given: শিক্ষার্থী ভর্তি আর ব্যাচ খোলা।
+       * `forbidden` above would tell them only an owner or a manager may do it,
+       * which is now untrue and sends them to ask for the wrong thing — the answer
+       * is one checkbox on their own row, so the sentence says whose checkbox.
+       */
+      notPermitted: 'মালিক আপনাকে এই কাজের অনুমতি দেননি।',
       /**
        * Says what to do about it and that nothing gets taken away. An owner who
        * hits this is a paying customer three taps later or never, and "সীমা শেষ"

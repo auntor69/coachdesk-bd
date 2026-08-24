@@ -647,12 +647,12 @@ export const en: Dictionary = {
       hint: 'Send guardians an SMS once marks are in',
     },
     can_manage_students: {
-      label: 'Add & edit students',
-      hint: 'Includes changing a guardian’s mobile number',
+      label: 'Admit students',
+      hint: 'See the whole centre’s roster and guardian numbers, and admit new students',
     },
     can_manage_batches: {
-      label: 'Create & change batches',
-      hint: 'Open a batch, move its time, enrol students into it',
+      label: 'Open a new batch',
+      hint: 'Set its subject, time, days and monthly fee',
     },
     can_view_fees: {
       label: 'See fees',
@@ -828,6 +828,7 @@ export const en: Dictionary = {
 
     errors: {
       forbidden: 'Only an owner or a manager can do this.',
+      notPermitted: 'The owner has not given you permission to do this.',
       /**
        * "Makes room" and nothing more. This used to promise that every feature
        * stays open either way, on the grounds that the free plan held a smaller

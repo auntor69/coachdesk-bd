@@ -1,7 +1,7 @@
 import Link from 'next/link'
 
 import { Card } from '@/components/ui'
-import { pageRole, getSession } from '@/lib/auth/session'
+import { pagePermission, getSession } from '@/lib/auth/session'
 import { createClient } from '@/lib/supabase/server'
 import { formatBdMobile } from '@/lib/bd/phone'
 import { MAX_IMPORT_ROWS } from '@/lib/bd/roster'
@@ -20,9 +20,14 @@ export async function generateMetadata() {
  * Shows the guardian's number on every row on purpose: it is the field most
  * likely to be wrong, and an owner scanning the list is the only realistic way
  * a wrong one gets caught before a parent complains.
+ *
+ * Which is also why the guard is `can_manage_students` and not a rank. This screen
+ * is every minor's record and every parent's mobile number at the centre, so it is
+ * open to owners and managers and to exactly the teachers an owner ticked a box for
+ * — a box that until 20260811000019 granted nothing at all.
  */
 export default async function StudentsPage() {
-  const session = await pageRole('manager')
+  const session = await pagePermission('can_manage_students')
   const supabase = await createClient()
   const locale = session.locale
   const d = dict(locale)

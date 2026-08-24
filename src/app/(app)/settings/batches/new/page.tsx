@@ -1,7 +1,7 @@
 import Link from 'next/link'
 
 import { Card } from '@/components/ui'
-import { pageRole, getSession } from '@/lib/auth/session'
+import { pagePermission, getSession } from '@/lib/auth/session'
 import { createClient } from '@/lib/supabase/server'
 import { wouldExceed, planName, hasStaff } from '@/lib/plans'
 import { SLOT_ORDER, slotLabel } from '@/lib/bd/schedule'
@@ -17,7 +17,7 @@ export async function generateMetadata() {
 }
 
 export default async function NewBatchPage() {
-  const session = await pageRole('manager')
+  const session = await pagePermission('can_manage_batches')
   const supabase = await createClient()
   const locale = session.locale
   const d = dict(locale)

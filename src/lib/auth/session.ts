@@ -18,7 +18,8 @@ import type { Route } from 'next'
 import { createClient } from '@/lib/supabase/server'
 import { loginEmailToPhone } from '@/lib/bd/phone'
 import { asLocale, type Locale } from '@/lib/i18n'
-import { planFor, type PlanLimits } from '@/lib/plans'
+import type { PermissionKey } from '@/lib/permissions'
+import { hasStaff, planFor, type PlanLimits } from '@/lib/plans'
 import { ACTIVE_CENTER_COOKIE, pickActive, strongestPerCenter } from '@/lib/auth/active-center'
 import type { MemberRole, PlanType } from '@/lib/supabase/types'
 
@@ -220,24 +221,29 @@ export function isStaffAdmin(session: Session): boolean {
   return session.active ? atLeast(session.active.role, 'manager') : false
 }
 
-/** The three permission columns anything outside the settings screens reads. */
-type TeacherPerms = {
-  can_manage_exams: boolean
-  can_send_sms: boolean
-  can_view_fees: boolean
-}
+/**
+ * All five permission columns, keyed off the same list the settings form renders
+ * from — so a sixth checkbox added to `PERMISSION_KEYS` stops compiling here until
+ * the embed below selects it, rather than reading as silently absent.
+ *
+ * The alternative was five hand-written booleans, which is how this started and
+ * which is exactly how two of the five ended up collected nowhere: the type said
+ * three columns, the query asked for three columns, and `can_manage_students` was
+ * never once read by the app that offered it.
+ */
+type TeacherPerms = Record<PermissionKey, boolean>
 
 /**
  * The reader's own `teachers` rows at the active centre, with the permissions
  * that hang off them.
  *
- * One query behind four questions — which batches are mine, may I see fees, may I
- * enter marks, may I message a parent — because several of them are asked on the
- * same request by different files: the shell asks for the nav, the page asks for
- * its own guard, the action asks again because it is a public endpoint. React's
- * `cache` means they share this. Not exported: the helpers below are the useful
- * shapes, and a caller reaching for the rows themselves would be about to
- * re-derive one of them.
+ * One query behind six questions — which batches are mine, may I see fees, may I
+ * enter marks, may I message a parent, may I admit a student, may I open a batch —
+ * because several of them are asked on the same request by different files: the
+ * shell asks for the nav, the page asks for its own guard, the action asks again
+ * because it is a public endpoint. React's `cache` means they share this. Not
+ * exported: the helpers below are the useful shapes, and a caller reaching for the
+ * rows themselves would be about to re-derive one of them.
  *
  * A list rather than a row, and this is not defensiveness. `teachers` has no
  * unique key on (coaching_center_id, user_id), so a centre that entered the same
@@ -257,8 +263,18 @@ const myTeacherRows = cache(
     const supabase = await createClient()
     const { data } = await supabase
       .from('teachers')
+      // Spelled out rather than joined from PERMISSION_KEYS, because PostgREST's
+      // types are inferred from the literal: a computed select string types every
+      // column as unknown and the unwrap below stops being checked at all. The type
+      // above is what keeps the two lists in step.
       .select(
-        'id, teacher_permissions (can_manage_exams, can_send_sms, can_view_fees)',
+        `id, teacher_permissions (
+          can_manage_exams,
+          can_send_sms,
+          can_manage_students,
+          can_manage_batches,
+          can_view_fees
+        )`,
       )
       .eq('coaching_center_id', session.active.centerId)
       .eq('user_id', session.userId)
@@ -378,7 +394,120 @@ export const canReadFees = cache(async (): Promise<boolean> => {
 })
 
 /**
- * The same three checks, for a page rather than a Server Action.
+ * May this reader see the centre's roster and admit students to it?
+ *
+ * The checkbox that did nothing until 20260811000019. It was stored, defaulted,
+ * rendered with a label promising "add & edit students", and read by no policy and
+ * no screen — so an owner who ticked it delegated admissions to a colleague who
+ * then found the same three screens refusing them, and the owner had no way to tell
+ * except by noticing that no students were being added.
+ *
+ * Absent means no, as with fees and for the same reason: the column defaults false
+ * and the grant is the whole centre roster — every minor's record and every
+ * guardian's mobile number at the centre. That is the widest read this app hands to
+ * anybody below manager, and it is wide because the job needs it: the roster screen
+ * *is* the list, and the paste-a-register import deduplicates against every name
+ * already on it, so a teacher who could see only their own batch would re-add half
+ * the centre.
+ *
+ * `hasStaff` because delegating admin work is a centre capability, and the screen
+ * where these boxes are ticked is itself behind that flag. Without this line a
+ * centre that downgraded to a teacher tier would keep every permission it had
+ * granted, on a plan that sells one seat — the leftover teacher rows do not
+ * disappear at the moment the plan changes. The three older helpers above do not
+ * carry the check; they were written before the tiers were settled, and adding it
+ * to them would change three shipped behaviours in a commit about two others.
+ *
+ * app.can_manage_students is the boundary. This decides what to render, and if the
+ * two ever disagree in this direction the screen draws and comes back empty.
+ */
+export const canManageStudents = cache(async (): Promise<boolean> => {
+  const session = await getSession()
+  if (!session?.active) return false
+  if (isStaffAdmin(session)) return true
+  if (!hasStaff(session.plan)) return false
+  if (session.active.role !== 'teacher') return false
+
+  return (await myTeacherRows()).some(
+    (row) => row.perms?.can_manage_students === true,
+  )
+})
+
+/**
+ * May this reader open a batch at the centre?
+ *
+ * The cheaper of the two, because reading batches was never restricted:
+ * `batches_member_read` already shows every member of a centre every batch in it,
+ * so this adds the ability to create one and nothing to what the teacher can see.
+ * What it does add is the monthly fee that comes with a new batch — a figure the
+ * same reader could already read on every existing batch.
+ *
+ * Deliberately does not carry enrolment. Putting an existing student into a batch
+ * is a screen nobody has built, and granting it here would also be a way up:
+ * a teacher assigned to a batch reads its students through app.my_taught_student_ids,
+ * so "enrol anyone into my own batch" is "read anyone". Admissions is the other
+ * checkbox, and an owner who wants both ticks both.
+ */
+export const canManageBatches = cache(async (): Promise<boolean> => {
+  const session = await getSession()
+  if (!session?.active) return false
+  if (isStaffAdmin(session)) return true
+  if (!hasStaff(session.plan)) return false
+  if (session.active.role !== 'teacher') return false
+
+  return (await myTeacherRows()).some(
+    (row) => row.perms?.can_manage_batches === true,
+  )
+})
+
+/**
+ * The two permissions that stand in for a role, so a caller can ask for one the
+ * way it asks for `requireRole('manager')`.
+ *
+ * Only these two. The other three permission columns gate a *part* of a screen — a
+ * send button, a marks field, a column of figures — and their callers want the
+ * boolean so they can render the rest. These two gate whole screens, which is what
+ * makes a throwing guard the right shape.
+ */
+export type RosterPermission = Extract<
+  PermissionKey,
+  'can_manage_students' | 'can_manage_batches'
+>
+
+/**
+ * Total by construction, so a third roster permission cannot be added to the type
+ * above without a check to go with it — a lookup with a hole in it would refuse
+ * every caller and read like a permission that was never granted.
+ */
+const ROSTER_CHECK: Record<RosterPermission, () => Promise<boolean>> = {
+  can_manage_students: canManageStudents,
+  can_manage_batches: canManageBatches,
+}
+
+/**
+ * A member of the centre who either outranks the permission or holds it.
+ *
+ * No `requireRole` in front of it: both checks return true for a staff-admin
+ * already, so the rank is folded into the question rather than asked twice — and
+ * asking `requireRole('manager')` first is precisely the bug this replaces, since
+ * a teacher never clears it however many boxes the owner ticked.
+ *
+ * Throws like the require* helpers, for the Server Actions that catch. Pages call
+ * pagePermission below.
+ */
+export async function requirePermission(
+  permission: RosterPermission,
+): Promise<CenterSession> {
+  const session = await requireCenter()
+  if (await ROSTER_CHECK[permission]()) return session
+  throw new AuthError(
+    'forbidden',
+    `Needs manager or above, or ${permission}; this account is ${session.active.role}.`,
+  )
+}
+
+/**
+ * The same checks, for a page rather than a Server Action.
  *
  * A page and an action want opposite things from a failed authorization. An
  * action has a form in front of it, so it catches `AuthError` and returns a
@@ -426,6 +555,18 @@ export async function pageRole(minimum: MemberRole): Promise<CenterSession> {
 /** requireCenter for a page. See pageGuard. */
 export async function pageCenter(): Promise<CenterSession> {
   return pageGuard(() => requireCenter())
+}
+
+/**
+ * requirePermission for a page: the 403 screen, not a 500. See pageGuard.
+ *
+ * This is what the roster and batch screens now open with, in place of the
+ * `pageRole('manager')` that made the two checkboxes decorative.
+ */
+export async function pagePermission(
+  permission: RosterPermission,
+): Promise<CenterSession> {
+  return pageGuard(() => requirePermission(permission))
 }
 
 /**

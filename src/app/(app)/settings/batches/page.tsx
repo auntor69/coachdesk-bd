@@ -1,7 +1,7 @@
 import Link from 'next/link'
 
 import { Card } from '@/components/ui'
-import { pageRole, getSession } from '@/lib/auth/session'
+import { pagePermission, canManageStudents, getSession } from '@/lib/auth/session'
 import { createClient } from '@/lib/supabase/server'
 import { BatchSlot } from '@/lib/bd/schedule'
 import { dayNameShort } from '@/lib/bd/time'
@@ -16,11 +16,27 @@ export async function generateMetadata() {
 }
 
 export default async function BatchesPage() {
-  const session = await pageRole('manager')
+  const session = await pagePermission('can_manage_batches')
   const supabase = await createClient()
   const locale = session.locale
   const d = dict(locale)
   const t = d.settings.batches
+
+  /**
+   * Whether the headcount beside each batch can be believed.
+   *
+   * `can_manage_batches` grants opening a batch and nothing on the roster, so a
+   * teacher holding only that box reads `enrollments` through app.teaches_batch —
+   * their own classes and no others. The embed below therefore comes back empty for
+   * everyone else's batches and the column would read "0 জন" down the page, which is
+   * the exact failure the note on myTeacherIds describes: a screen showing every
+   * batch in the centre with nobody in it, and a reader with no way to tell that
+   * from a centre that has lost its students.
+   *
+   * So the count is drawn when it is a count and left out when it would be a guess.
+   * The other checkbox is the one that buys it.
+   */
+  const showCounts = await canManageStudents()
 
   const { data: batches } = await supabase
     .from('batches')
@@ -131,10 +147,12 @@ export default async function BatchesPage() {
                     {formatTaka(row.fee)}
                   </p>
                   <p className="text-xs text-ink-faint">{t.monthly}</p>
-                  <p className="mt-1 text-sm text-ink-soft">
-                    <span className="num">{row.studentCount}</span>{' '}
-                    {t.people(row.studentCount)}
-                  </p>
+                  {showCounts && (
+                    <p className="mt-1 text-sm text-ink-soft">
+                      <span className="num">{row.studentCount}</span>{' '}
+                      {t.people(row.studentCount)}
+                    </p>
+                  )}
                 </div>
               </div>
               {!row.active && (

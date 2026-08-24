@@ -1,7 +1,7 @@
 import Link from 'next/link'
 
 import { Card } from '@/components/ui'
-import { pageRole, getSession } from '@/lib/auth/session'
+import { pagePermission, getSession } from '@/lib/auth/session'
 import { createClient } from '@/lib/supabase/server'
 import { roomFor, planName } from '@/lib/plans'
 import { rosterKey } from '@/lib/bd/roster'
@@ -25,7 +25,7 @@ export async function generateMetadata() {
 const HINT_CEILING = 1000
 
 export default async function ImportStudentsPage() {
-  const session = await pageRole('manager')
+  const session = await pagePermission('can_manage_students')
   const supabase = await createClient()
   const centerId = session.active.centerId
   const locale = session.locale

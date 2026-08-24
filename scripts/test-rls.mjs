@@ -2580,6 +2580,455 @@ await db.query('delete from exams where id = any($1)', [[examMine, examSpare, ex
 await db.query(`delete from exams where title in ('Made With No Row', 'Nasrin Unaffected')`)
 await db.query('delete from teacher_permissions where teacher_id = $1', [tKarim])
 
+// ---------------------------------------------------------------------------
+// The last two checkboxes.
+//
+// can_manage_students and can_manage_batches are the fourth and fifth, and they
+// were the two that did nothing at all — not narrowed by a policy that ignored
+// them, like the exam box above, but simply unreferenced. `students` had one write
+// policy on app.is_staff_admin and `batches` had one, every screen behind them asked
+// requireRole('manager'), and a teacher ranks below a manager. So an owner ticking
+// either box handed over exactly nothing while the label said otherwise.
+//
+// 20260811000019 adds SELECT and INSERT, and no more than that. The refusals below
+// are therefore as much the point as the grants: no UPDATE and no DELETE on any of
+// these five tables, because there is no edit-a-student and no edit-a-batch screen
+// in this product for anybody, and a policy wider than any screen is a capability
+// nobody chose to grant.
+//
+// An UPDATE or DELETE that matches no policy touches zero rows and raises nothing,
+// so deniedAsUser cannot see it. Every such assertion here reads the stored value
+// back instead. That is the failure mode that would let a `for all` slip in
+// unnoticed — a passing deniedAsUser and a quietly rewritten row.
+// ---------------------------------------------------------------------------
+
+console.log('\nTeacher roster permissions (can_manage_students, can_manage_batches):')
+
+/**
+ * Set one box on Karim, clearing the other. Both columns default false, so passing
+ * a single flag is enough to say "this one and not the other" — and the upsert
+ * writes both every time so a leftover tick from the previous assertion cannot be
+ * the reason the next one passes.
+ */
+const rosterPerm = (students, batches) =>
+  db.query(
+    `insert into teacher_permissions
+       (teacher_id, coaching_center_id, can_manage_students, can_manage_batches)
+     values ($1, $2, $3, $4)
+     on conflict (teacher_id) do update set
+       can_manage_students = excluded.can_manage_students,
+       can_manage_batches  = excluded.can_manage_batches`,
+    [tKarim, centerA, students, batches],
+  )
+
+const nameOf = async (student) =>
+  (await db.query('select name from students where id = $1', [student])).rows[0]?.name
+
+const batchesNamed = (name) =>
+  countOf('select count(*)::int as n from batches where name = $1', [name])
+
+// Counted as superuser, because the import section above deliberately leaves a
+// register's worth of students at centre A. A hardcoded 2 here would break the day
+// somebody adds a line to that paste — and it would be asserting the wrong thing
+// anyway. What this permission grants is "the whole centre", so the whole centre is
+// what gets counted.
+const rosterA = await countOf(
+  'select count(*)::int as n from students where coaching_center_id = $1',
+  [centerA],
+)
+const guardiansA = await countOf(
+  'select count(*)::int as n from guardians where coaching_center_id = $1',
+  [centerA],
+)
+const enrolmentsA = await countOf(
+  'select count(*)::int as n from enrollments where coaching_center_id = $1',
+  [centerA],
+)
+
+// And Karim's own view, taken while he still has no permissions row: his batch, not
+// the centre. Every "does not widen" assertion below compares against these.
+const [karimSees, karimGuardians, karimEnrolments] = await asUser(
+  db,
+  ids.karim,
+  async (tx) => [
+    await n(tx, 'select count(*)::int as n from students'),
+    await n(tx, 'select count(*)::int as n from guardians'),
+    await n(tx, 'select count(*)::int as n from enrollments'),
+  ],
+)
+
+// No permissions row, which is where every teacher created before this migration
+// sits. Refused, and that is the column agreeing with itself: can_manage_students
+// defaults false, so absence and an unticked box mean the same thing. The exam box
+// reads the same absence the other way because it defaults true.
+//
+// Asserted as a strict inequality with a floor under it: `karimSees > 0` is there so
+// this cannot pass because Karim can see nothing at all, which would make every
+// comparison below vacuous.
+check(
+  'a teacher with no permissions row cannot read the whole roster',
+  karimSees > 0 && karimSees < rosterA,
+  `sees ${karimSees} of ${rosterA}`,
+)
+check(
+  'a teacher with no permissions row cannot admit a student',
+  await deniedAsUser(
+    db,
+    ids.karim,
+    `insert into students (coaching_center_id, name, guardian_phone)
+     values ($1, 'No Row Admitted', '01799999999')`,
+    [centerA],
+  ),
+)
+
+// Ticked. The read is the whole centre and not the teacher's own batch, which is
+// the widening this migration argues for at length: the roster screen *is* the
+// list, and import_students deduplicates a pasted register against every name on
+// it, so a keyhole view would re-add half the centre.
+await rosterPerm(true, false)
+await asUser(db, ids.karim, async (tx) => {
+  check(
+    'a permitted teacher reads every student at the centre',
+    (await n(tx, 'select count(*)::int as n from students')) === rosterA,
+    `expected ${rosterA}`,
+  )
+  check(
+    'and still not the other centre’s',
+    (await n(tx, 'select count(*)::int as n from students where coaching_center_id = $1', [
+      centerB,
+    ])) === 0,
+  )
+  check(
+    'a permitted teacher reads the guardian rows behind them',
+    (await n(tx, 'select count(*)::int as n from guardians')) === guardiansA &&
+      guardiansA > karimGuardians,
+    `expected ${guardiansA}, was ${karimGuardians}`,
+  )
+  check(
+    'a permitted teacher reads every enrolment at the centre',
+    (await n(tx, 'select count(*)::int as n from enrollments')) === enrolmentsA &&
+      enrolmentsA > karimEnrolments,
+    'the roster screen embeds these to name each student’s batches',
+  )
+})
+
+// The whole admission, in the three statements createStudent runs — each with the
+// `returning` that needs SELECT on the new row, which is the half of this migration
+// that is easiest to leave out and looks like a broken form when it is missing.
+await asUser(db, ids.karim, async (tx) => {
+  const admitted = (
+    await tx.query(
+      `insert into students (coaching_center_id, name, guardian_phone)
+       values ($1, 'Admitted By Karim', '01788888888') returning id`,
+      [centerA],
+    )
+  ).rows[0].id
+  check('a permitted teacher admits a student', Boolean(admitted))
+
+  const guardian = (
+    await tx.query(
+      `insert into guardians (coaching_center_id, student_id, name, phone, is_primary)
+       values ($1, $2, 'Admitted father', '01788888888', true) returning id`,
+      [centerA, admitted],
+    )
+  ).rows[0].id
+  check('and the guardian row that makes the parent reachable', Boolean(guardian))
+
+  const enrolment = (
+    await tx.query(
+      `insert into enrollments (coaching_center_id, student_id, subject_id, batch_id)
+       values ($1, $2, $3, $4) returning id`,
+      [centerA, admitted, sChem, bChemEvening],
+    )
+  ).rows[0].id
+  check(
+    'and enrols them into a batch they do not teach themselves',
+    Boolean(enrolment),
+    'admissions is not scoped to your own classes',
+  )
+})
+
+// import_students, which is how a centre's register actually arrives. security
+// invoker, so this is the same grant doing the work — and it exercises the
+// centre-wide read in the one place where a narrow one would silently duplicate.
+await asUser(db, ids.karim, async (tx) => {
+  const { rows } = await tx.query(
+    `select * from import_students($1, $2::jsonb, $3::uuid[])`,
+    [
+      centerA,
+      JSON.stringify([
+        { name: 'Imported One', guardian_phone: '01766666661' },
+        { name: 'Mim Akter', guardian_phone: '01700000000' },
+      ]),
+      [bChemEvening],
+    ],
+  )
+  check('a permitted teacher can import a register', rows[0].added === 1, JSON.stringify(rows[0]))
+  check(
+    'and the centre-wide read is what skips a name already on it',
+    rows[0].already_there === 1,
+    'Mim is in the seed with that number; a batch-scoped read would re-add her',
+  )
+  check('and the new name is enrolled', rows[0].enrolled === 1)
+})
+
+// Not an editor. Both of these match no policy, so both change nothing and raise
+// nothing — the stored value is the only witness.
+await asUser(db, ids.karim, (tx) =>
+  tx.query(`update students set guardian_phone = '01700000009' where id = $1`, [stMim]),
+)
+check(
+  'a permitted teacher cannot change a guardian’s number',
+  (
+    await db.query('select guardian_phone from students where id = $1', [stMim])
+  ).rows[0].guardian_phone === '01700000000',
+  'the label used to promise exactly this; the screen never existed',
+)
+await asUser(db, ids.karim, (tx) =>
+  tx.query('update students set name = $1 where id = $2', ['Renamed By Karim', stMim]),
+)
+check(
+  'a permitted teacher cannot rename a student',
+  (await nameOf(stMim)) === 'Mim Akter',
+)
+await asUser(db, ids.karim, (tx) =>
+  tx.query('delete from students where id = $1', [stMim]),
+)
+check('a permitted teacher cannot delete a student', (await nameOf(stMim)) === 'Mim Akter')
+
+// One box is one box. Admissions does not carry batch creation.
+check(
+  'the students box does not open a batch',
+  await deniedAsUser(
+    db,
+    ids.karim,
+    `insert into batches (coaching_center_id, subject_id, name, monthly_fee_bdt)
+     values ($1, $2, 'Opened By Students Box', 700)`,
+    [centerA, sBio],
+  ),
+)
+check('and none landed', (await batchesNamed('Opened By Students Box')) === 0)
+
+// The other box, on its own. A batch and its schedule, which createBatch writes in
+// the same submit — a batch without its schedule rows is a batch that meets every
+// day, which is the register showing a teacher an empty room.
+await rosterPerm(false, true)
+await asUser(db, ids.karim, async (tx) => {
+  const opened = (
+    await tx.query(
+      `insert into batches (coaching_center_id, subject_id, name, slot, start_time, end_time, monthly_fee_bdt)
+       values ($1, $2, 'Opened By Karim', 'afternoon', '15:00', '16:30', 900) returning id`,
+      [centerA, sBio],
+    )
+  ).rows[0].id
+  check('a permitted teacher opens a batch', Boolean(opened))
+
+  await tx.query(
+    `insert into batch_schedules (coaching_center_id, batch_id, day_of_week, start_time, end_time)
+     values ($1, $2, 3, '15:00', '16:30')`,
+    [centerA, opened],
+  )
+  check(
+    'and writes the days it meets',
+    (await n(tx, 'select count(*)::int as n from batch_schedules where batch_id = $1', [
+      opened,
+    ])) === 1,
+  )
+})
+
+// And it grants nothing on the roster, which is what keeps the two boxes separate.
+// The settings/batches screen leans on exactly this: it draws a headcount per batch
+// only when the reader also holds the students box, because otherwise the column
+// would read "0" beside every batch in the centre.
+//
+// Back to the same two numbers as before any box was ticked — which holds because
+// the student admitted above went into Nasrin's batch, the point the assertion two
+// blocks up makes on purpose.
+await asUser(db, ids.karim, async (tx) => {
+  check(
+    'the batches box does not widen the roster',
+    (await n(tx, 'select count(*)::int as n from students')) === karimSees,
+    `back to his own ${karimSees}`,
+  )
+  check(
+    'nor the enrolments behind it',
+    (await n(tx, 'select count(*)::int as n from enrollments')) === karimEnrolments,
+  )
+})
+check(
+  'the batches box does not admit a student',
+  await deniedAsUser(
+    db,
+    ids.karim,
+    `insert into students (coaching_center_id, name, guardian_phone)
+     values ($1, 'Admitted By Batches Box', '01755555555')`,
+    [centerA],
+  ),
+)
+check('and none landed', (await namedAnywhere('Admitted By Batches Box')) === 0)
+
+// Not an editor here either. batches_member_read means Karim can see this batch;
+// seeing it is not moving its time.
+//
+// 15:30 rather than a later hour on purpose: batches_time_order would reject
+// anything past 16:30, so a version of this that granted UPDATE would raise on the
+// constraint and leave the row unchanged — and this assertion would pass for the
+// wrong reason. A legal time makes the readback the only thing standing in the way.
+await asUser(db, ids.karim, (tx) =>
+  tx.query(`update batches set start_time = '15:30' where name = 'Opened By Karim'`),
+)
+check(
+  'a permitted teacher cannot move a batch’s time',
+  (await n(
+    db,
+    `select count(*)::int as n from batches
+     where name = 'Opened By Karim' and start_time = time '15:00'`,
+  )) === 1,
+  'the label used to promise this too',
+)
+
+// The tenant boundary, which no checkbox crosses. Rahim's box is ticked at centre
+// B; app.can_manage_students takes the centre as an argument and ANDs is_member on
+// top, so both halves have to be his own.
+await db.query(
+  `insert into teacher_permissions
+     (teacher_id, coaching_center_id, can_manage_students, can_manage_batches)
+   values ($1, $2, true, true)
+   on conflict (teacher_id) do update set
+     can_manage_students = true, can_manage_batches = true`,
+  [tRahim, centerB],
+)
+await asUser(db, ids.rahim, async (tx) => {
+  check(
+    'a permitted teacher at B reads none of A’s students',
+    (await n(tx, 'select count(*)::int as n from students where coaching_center_id = $1', [
+      centerA,
+    ])) === 0,
+  )
+})
+check(
+  'a permitted teacher at B cannot admit into A',
+  await deniedAsUser(
+    db,
+    ids.rahim,
+    `insert into students (coaching_center_id, name, guardian_phone)
+     values ($1, 'Admitted Across Centres', '01744444444')`,
+    [centerA],
+  ),
+)
+check('and none landed', (await namedAnywhere('Admitted Across Centres')) === 0)
+check(
+  'a permitted teacher at B cannot open a batch in A',
+  await deniedAsUser(
+    db,
+    ids.rahim,
+    `insert into batches (coaching_center_id, subject_id, name, monthly_fee_bdt)
+     values ($1, $2, 'Opened Across Centres', 700)`,
+    [centerA, sBio],
+  ),
+)
+check('and none landed', (await batchesNamed('Opened Across Centres')) === 0)
+
+// Per teacher, not per centre. Nasrin teaches at A alongside Karim and has no
+// permissions row of her own, so Karim's ticks must not reach her.
+const nasrinSees = await asUser(db, ids.nasrin, (tx) =>
+  n(tx, 'select count(*)::int as n from students'),
+)
+await rosterPerm(true, true)
+await asUser(db, ids.nasrin, async (tx) => {
+  check(
+    'one teacher’s ticked box is not the centre’s',
+    (await n(tx, 'select count(*)::int as n from students')) === nasrinSees &&
+      nasrinSees < rosterA,
+    `still her own ${nasrinSees} of ${rosterA}`,
+  )
+})
+check(
+  'and it does not let her admit either',
+  await deniedAsUser(
+    db,
+    ids.nasrin,
+    `insert into students (coaching_center_id, name, guardian_phone)
+     values ($1, 'Admitted By Nasrin', '01733333333')`,
+    [centerA],
+  ),
+)
+
+// The off switch wins over both ticks. Unlike app.can_manage_exams, these two check
+// teachers.active themselves — there is no app.teaches_batch alongside them to do it
+// — so this is the assertion that says the column is actually being read.
+await db.query('update teachers set active = false where id = $1', [tKarim])
+await asUser(db, ids.karim, async (tx) => {
+  check(
+    'a deactivated teacher reads no roster even with the box ticked',
+    (await n(tx, 'select count(*)::int as n from students')) === 0,
+    'app.my_taught_student_ids resolves through active rows too',
+  )
+})
+check(
+  'a deactivated teacher cannot admit a student even with the box ticked',
+  await deniedAsUser(
+    db,
+    ids.karim,
+    `insert into students (coaching_center_id, name, guardian_phone)
+     values ($1, 'Admitted While Off', '01722222222')`,
+    [centerA],
+  ),
+)
+check('and none landed', (await namedAnywhere('Admitted While Off')) === 0)
+check(
+  'a deactivated teacher cannot open a batch even with the box ticked',
+  await deniedAsUser(
+    db,
+    ids.karim,
+    `insert into batches (coaching_center_id, subject_id, name, monthly_fee_bdt)
+     values ($1, $2, 'Opened While Off', 700)`,
+    [centerA, sBio],
+  ),
+)
+check('and none landed', (await batchesNamed('Opened While Off')) === 0)
+await db.query('update teachers set active = true where id = $1', [tKarim])
+
+// A member who is not a teacher at all. center_members says student, and the
+// helpers are `exists` over teachers — no row, no grant, whatever any checkbox
+// anywhere says.
+check(
+  'a student member cannot admit a student',
+  await deniedAsUser(
+    db,
+    ids.studentUser,
+    `insert into students (coaching_center_id, name, guardian_phone)
+     values ($1, 'Admitted By A Student', '01711000000')`,
+    [centerA],
+  ),
+)
+check('and none landed', (await namedAnywhere('Admitted By A Student')) === 0)
+
+// Leave the seed as found: three students, one guardian and one batch created here,
+// plus both permissions rows. Students go last of the three because guardians and
+// enrollments cascade off them, and the batch after its schedule for the same
+// reason — explicit rather than relying on the cascade, so a schema change that
+// drops one does not quietly leave rows behind for the next section to count.
+await db.query(
+  `delete from enrollments where student_id in
+     (select id from students where name in ('Admitted By Karim', 'Imported One'))`,
+)
+await db.query(
+  `delete from guardians where student_id in
+     (select id from students where name in ('Admitted By Karim', 'Imported One'))`,
+)
+await db.query(
+  `delete from students where name in ('Admitted By Karim', 'Imported One')`,
+)
+await db.query(
+  `delete from batch_schedules where batch_id in
+     (select id from batches where name = 'Opened By Karim')`,
+)
+await db.query(`delete from batches where name = 'Opened By Karim'`)
+await db.query('delete from teacher_permissions where teacher_id = any($1)', [
+  [tKarim, tRahim],
+])
+
 console.log('\nAt-risk students (student_risk arithmetic and reach):')
 
 /*
