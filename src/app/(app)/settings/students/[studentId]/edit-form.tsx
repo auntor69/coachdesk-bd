@@ -20,7 +20,8 @@ import { Alert, Button, Field } from '@/components/ui'
 import { formatBdMobile, normalizeBdMobile } from '@/lib/bd/phone'
 import type { T } from '@/lib/i18n'
 import type { StudentStatus } from '@/lib/supabase/types'
-import { updateStudent, STUDENT_STATUSES, type ActionState } from '../../actions'
+import { STUDENT_STATUSES } from '@/lib/students/status'
+import { updateStudent, type ActionState } from '../../actions'
 import { MAX_NAME, MAX_LABEL } from '@/lib/limits'
 
 type BatchOption = { id: string; label: string }

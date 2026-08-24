@@ -36,6 +36,7 @@ import { PERMISSION_KEYS, type PermissionKey } from '@/lib/permissions'
 import { dict, DEFAULT_LOCALE } from '@/lib/i18n'
 import { nameTooLong, passwordTooShort } from '@/lib/i18n/messages'
 import { roomFor, wouldExceed, hasStaff, type LimitKey } from '@/lib/plans'
+import { STUDENT_STATUSES } from '@/lib/students/status'
 import type {
   BatchSlot,
   Database,
@@ -768,18 +769,6 @@ export async function createStudent(
   revalidatePath('/dashboard')
   return { ok: t.students.added }
 }
-
-/**
- * The statuses an owner may put a student into, in the order the select offers
- * them. `as const satisfies` so widening the enum breaks here rather than quietly
- * leaving a state out of the only screen that can reach it.
- */
-export const STUDENT_STATUSES = [
-  'active',
-  'inactive',
-  'graduated',
-  'dropped',
-] as const satisfies readonly StudentStatus[]
 
 /**
  * What leaving means for the batches the student was in.
