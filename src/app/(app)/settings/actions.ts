@@ -10,6 +10,8 @@
  */
 import { revalidatePath } from 'next/cache'
 
+import type { SupabaseClient } from '@supabase/supabase-js'
+
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import {
@@ -32,7 +34,12 @@ import { PERMISSION_KEYS, type PermissionKey } from '@/lib/permissions'
 import { dict, DEFAULT_LOCALE } from '@/lib/i18n'
 import { nameTooLong, passwordTooShort } from '@/lib/i18n/messages'
 import { roomFor, wouldExceed, hasStaff, type LimitKey } from '@/lib/plans'
-import type { BatchSlot, PayoutWallet, SubjectKind } from '@/lib/supabase/types'
+import type {
+  BatchSlot,
+  Database,
+  PayoutWallet,
+  SubjectKind,
+} from '@/lib/supabase/types'
 
 export type ActionState = {
   error?: string
@@ -123,6 +130,92 @@ async function overLimit(
               .eq('active', true)
 
   return wouldExceed(session.plan, key, count ?? 0)
+}
+
+/**
+ * Which of these batches cannot take `adding` more students.
+ *
+ * Its own function rather than another arm of `overLimit`, because the question is
+ * a different shape: the cap is per batch, so the count has to be taken once per
+ * batch, and the refusal has to name the batch that is full. An owner enrolling
+ * one student into three batches who is told only "this plan is full" has to guess
+ * which of the three to change — and the centre may well have room in the other
+ * two, in which case nobody needs to pay us anything to fix it.
+ *
+ * Returns names, in the paste's own words, for that reason.
+ *
+ * Empty on an uncapped plan without touching the database. The centre tiers have
+ * no per-batch cap at all and this runs on the path every new student takes, so
+ * the common case has to cost nothing. On a capped plan the first query returns
+ * one uuid per active enrollment across at most a handful of batches — a teacher
+ * plan holds 150 students — and the second only runs when a batch is actually
+ * full, which is the screen an owner sees once and then fixes.
+ */
+async function fullBatches(
+  supabase: SupabaseClient<Database>,
+  session: CenterSession,
+  batchIds: string[],
+  adding: number,
+): Promise<string[]> {
+  const cap = session.plan.maxStudentsPerBatch
+  if (cap === null || batchIds.length === 0 || adding <= 0) return []
+
+  // Scoped by centre as well as by RLS, for the reason the enrollment insert
+  // below gives: an owner of two centres satisfies is_staff_admin for both, so
+  // the policy alone would count a batch belonging to the other one.
+  //
+  // Active enrollments only, on the same reasoning as every other cap here: a
+  // student who left the batch should not hold a seat nobody sits in.
+  const { data: taken } = await supabase
+    .from('enrollments')
+    .select('batch_id')
+    .eq('coaching_center_id', session.active.centerId)
+    .eq('status', 'active')
+    .in('batch_id', batchIds)
+
+  const seats = new Map<string, number>()
+  for (const row of taken ?? []) {
+    seats.set(row.batch_id, (seats.get(row.batch_id) ?? 0) + 1)
+  }
+
+  const full = batchIds.filter((id) => (seats.get(id) ?? 0) + adding > cap)
+  if (full.length === 0) return []
+
+  const { data: named } = await supabase
+    .from('batches')
+    .select('name')
+    .eq('coaching_center_id', session.active.centerId)
+    .in('id', full)
+    .order('name')
+
+  return (named ?? []).map((b) => b.name)
+}
+
+/**
+ * The rows of a pasted register that are not on the roster already.
+ *
+ * Split out because two caps need this same number and the roster should only be
+ * read once for both. Matching is on name plus guardian number — the same key the
+ * import itself dedupes by — so the count an owner is refused with is the count
+ * the import would actually have added, and not one line more.
+ *
+ * Generic over the row so it can take the parser's output without this file
+ * needing to name that type; all it looks at is the two fields in the key.
+ */
+async function unknownRows<T extends { name: string; guardian_phone: string }>(
+  supabase: SupabaseClient<Database>,
+  centerId: string,
+  ready: T[],
+): Promise<T[]> {
+  const { data: roster } = await supabase
+    .from('students')
+    .select('name, guardian_phone')
+    .eq('coaching_center_id', centerId)
+
+  const known = new Set(
+    (roster ?? []).map((s) => rosterKey(s.name, s.guardian_phone ?? '')),
+  )
+  return ready.filter((s) => !known.has(rosterKey(s.name, s.guardian_phone)))
 }
 
 export async function createSubject(
@@ -361,6 +454,19 @@ export async function createStudent(
 
   const supabase = await createClient()
 
+  // Before the insert, not after: a student created and then left un-enrolled
+  // because the batch was full is a row the owner has to find and delete, and
+  // they would reasonably assume the whole thing failed.
+  const full = await fullBatches(supabase, session, batchIds, 1)
+  if (full.length > 0) {
+    return {
+      error: t.errors.batchFull(
+        full.join(', '),
+        session.plan.maxStudentsPerBatch ?? 0,
+      ),
+    }
+  }
+
   const { data: student, error } = await supabase
     .from('students')
     .insert({
@@ -472,28 +578,37 @@ export async function importStudents(
     .eq('coaching_center_id', centerId)
     .eq('status', 'active')
   const room = roomFor(session.plan, 'maxStudents', count ?? 0)
+  const perBatchCap = session.plan.maxStudentsPerBatch
 
-  if (room !== null) {
-    const { data: roster } = await supabase
-      .from('students')
-      .select('name, guardian_phone')
-      .eq('coaching_center_id', centerId)
-    const known = new Set(
-      (roster ?? []).map((s) => rosterKey(s.name, s.guardian_phone ?? '')),
-    )
-    const fresh = ready.filter((s) => !known.has(rosterKey(s.name, s.guardian_phone)))
+  // Both caps ask about the same number — how many of these lines are new — so
+  // the roster is read once for both. Rows that are already on it are taken out
+  // first, or re-pasting a register to fix three names would be refused by a
+  // plan that has plenty of room for those three.
+  const fresh =
+    room === null && perBatchCap === null
+      ? ready
+      : await unknownRows(supabase, centerId, ready)
 
-    if (fresh.length > room) {
-      // Two sentences when there is room for some of them, because "the plan is
-      // full" is not true yet and an owner who is told it stops reading. The
-      // plan sentence is the same one every other limit uses.
-      return {
-        error:
-          room === 0
-            ? t.errors.planLimit
-            : `${t.import.errors.roomShort(room, fresh.length)} ${t.errors.planLimit}`,
-      }
+  if (room !== null && fresh.length > room) {
+    // Two sentences when there is room for some of them, because "the plan is
+    // full" is not true yet and an owner who is told it stops reading. The
+    // plan sentence is the same one every other limit uses.
+    return {
+      error:
+        room === 0
+          ? t.errors.planLimit
+          : `${t.import.errors.roomShort(room, fresh.length)} ${t.errors.planLimit}`,
     }
+  }
+
+  // The RPC writes one enrollment per new student per selected batch, so a paste
+  // that fits the roster can still overflow a batch — 40 names into one batch on
+  // a plan that holds 30. Checked before the call rather than inside it because
+  // refusing the paste whole is the point: the RPC is deliberately one statement,
+  // and a half-imported register is exactly what that exists to prevent.
+  const full = await fullBatches(supabase, session, batchIds, fresh.length)
+  if (full.length > 0) {
+    return { error: t.errors.batchFull(full.join(', '), perBatchCap ?? 0) }
   }
 
   // One statement, so a dropped connection either lands the whole register or

@@ -822,12 +822,16 @@ export const en: Dictionary = {
     errors: {
       forbidden: 'Only an owner or a manager can do this.',
       /**
-       * "adds room" rather than "unlocks features", because it does not unlock
-       * any — the free plan holds a smaller centre, not a worse product, and an
-       * owner who has been told otherwise stops believing the next sentence too.
+       * "Makes room" and nothing more. This used to promise that every feature
+       * stays open either way, on the grounds that the free plan held a smaller
+       * centre rather than a worse product. That stopped being true the day the
+       * paywall arrived — a free teacher has no printed receipt, no export and no
+       * parent summary — and a reassurance the reader can disprove in two taps
+       * costs more than it buys.
        */
-      planLimit:
-        'This plan is full. Changing plan makes room — every feature stays open either way.',
+      planLimit: 'This plan is full. Changing plan makes room.',
+      batchFull: (batches: string, cap: number) =>
+        `${batches} — that batch is full. This plan holds ${cap} ${cap === 1 ? 'student' : 'students'} per batch. Put them in another batch, or change plan.`,
       staffNeedsCenter: 'Staff and permissions come with the Coaching Center plan.',
       addFailed: 'That was not added. Please try again.',
       createFailed: 'That was not created. Please try again.',
@@ -856,9 +860,9 @@ export const en: Dictionary = {
       smsHint: 'Credits, who is opted out',
       /** The free plan allows exactly one, so the singular is the common case. */
       plan: (name: string, batches: number) =>
-        `${name} plan: ${batches} ${batches === 1 ? 'batch' : 'batches'}, every feature open, SMS metered.`,
+        `${name} plan: ${batches} ${batches === 1 ? 'batch' : 'batches'}.`,
       planUnlimited: (name: string) =>
-        `${name} plan: as many batches as you need, every feature open, SMS metered.`,
+        `${name} plan: as many batches as you need.`,
     },
 
     subjects: {
@@ -870,7 +874,7 @@ export const en: Dictionary = {
       batches: (n: number) => (n === 1 ? 'batch' : 'batches'),
       capTitle: 'This plan has no room for another subject',
       cap: (name: string, limit: number) =>
-        `The ${name} plan holds ${limit} ${limit === 1 ? 'subject' : 'subjects'}. Every feature stays open — only the number is capped.`,
+        `The ${name} plan holds ${limit} ${limit === 1 ? 'subject' : 'subjects'}.`,
       nameLabel: 'Subject name',
       /** The mirror of the Bangla hint, and true for this reader instead. */
       nameHint: 'Mathematics, for instance — this is the name your lists will show',
@@ -908,7 +912,7 @@ export const en: Dictionary = {
       newTitle: 'New batch',
       capTitle: 'This plan has no room for another batch',
       cap: (name: string, limit: number) =>
-        `The ${name} plan holds ${limit} ${limit === 1 ? 'batch' : 'batches'}. Attendance, exams, SMS, fees — every feature stays open, only the number of batches is capped.`,
+        `The ${name} plan holds ${limit} ${limit === 1 ? 'batch' : 'batches'}. Attendance, exams and fees are all open — only the number of batches is capped.`,
       needSubjectTitle: 'Add a subject first',
       needSubjectBody:
         'A batch belongs to a subject. Without one, marks and fees have nowhere to land.',
@@ -950,7 +954,7 @@ export const en: Dictionary = {
       newTitle: 'New student',
       capTitle: 'This plan has no room for another student',
       cap: (name: string, limit: number) =>
-        `The ${name} plan holds ${limit} ${limit === 1 ? 'student' : 'students'}. Every feature stays open — only the number is capped.`,
+        `The ${name} plan holds ${limit} ${limit === 1 ? 'student' : 'students'}.`,
       added: 'Student added',
       errors: {
         nameRequired: 'Give the student’s name.',
@@ -1057,7 +1061,7 @@ export const en: Dictionary = {
         `The ${name} plan covers ${limit} ${limit === 1 ? 'teacher' : 'teachers'}. The ${center} plan takes as many as you need — every feature stays the same.`,
       soloTitle: 'Teachers & permissions is for coaching centres',
       soloBody: (plan: string, center: string) =>
-        `${plan} is built for one teacher — you. Adding staff, and controlling what each of them can see and do, comes with the ${center} plan. Every other feature is already open.`,
+        `${plan} is built for one teacher — you. Adding staff, and controlling what each of them can see and do, comes with the ${center} plan.`,
       addedWithLogin: 'Teacher and their login created',
       addedNoLogin: 'Teacher added (no login)',
       linked: (name: string) =>

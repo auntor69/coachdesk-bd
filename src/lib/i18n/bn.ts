@@ -1445,9 +1445,22 @@ export const bn = {
        * this sentence is shown to paying centres too, and telling one of them
        * their free plan is full reads as the app having lost track of what they
        * bought. Which plan it is gets named on the screen, next to the number.
+       *
+       * It used to end "সব ফিচার খোলা থাকবে" — every feature stays open. That was
+       * true when every tier carried every feature and is a lie now: a free
+       * teacher has no printed receipt, no export and no parent summary. A
+       * reassurance the reader can disprove in two taps is worse than none.
        */
       planLimit:
-        'এই প্ল্যানের সীমা শেষ। আরও যোগ করতে প্ল্যান বদলাতে হবে — সব ফিচার খোলা থাকবে।',
+        'এই প্ল্যানের সীমা শেষ। আরও যোগ করতে প্ল্যান বদলাতে হবে।',
+      /**
+       * A different refusal from `planLimit`, and it has to be: the centre has
+       * room for the student, just not in that batch. So it names the batch and
+       * offers the move before it offers the upgrade — an owner with four batches
+       * and one full one does not need to pay us anything to fix this.
+       */
+      batchFull: (batches: string, cap: number) =>
+        `${batches} — এই ব্যাচে আর জায়গা নেই। এই প্ল্যানে এক ব্যাচে সর্বোচ্চ ${digits(cap, 'bn')} জন। অন্য ব্যাচে দিন, বা প্ল্যান বদলান।`,
       /**
        * Not a cap being hit — a feature that does not exist on this plan. Worded
        * as what the centre tier is for, because the owner did nothing wrong.
@@ -1507,9 +1520,9 @@ export const bn = {
        * prose. English inflects on it, which is why both are functions.
        */
       plan: (name: string, batches: number) =>
-        `${name} প্ল্যান: ${digits(batches, 'bn')}টি ব্যাচ, সব ফিচার খোলা, SMS সীমিত।`,
+        `${name} প্ল্যান: ${digits(batches, 'bn')}টি ব্যাচ।`,
       planUnlimited: (name: string) =>
-        `${name} প্ল্যান: ব্যাচ যত লাগে, সব ফিচার খোলা, SMS সীমিত।`,
+        `${name} প্ল্যান: ব্যাচ যত লাগে।`,
     },
 
     subjects: {
@@ -1527,7 +1540,7 @@ export const bn = {
        * numerals here: this one is a sentence, not a tally.
        */
       cap: (name: string, limit: number) =>
-        `${name} প্ল্যানে ${digits(limit, 'bn')}টি বিষয়। সব ফিচার খোলা থাকে — শুধু সংখ্যার সীমা।`,
+        `${name} প্ল্যানে ${digits(limit, 'bn')}টি বিষয়।`,
       nameLabel: 'বিষয়ের নাম',
       /**
        * True for whoever is reading it: a Bangla reader's lists show `name_bn`,
@@ -1582,12 +1595,16 @@ export const bn = {
       newTitle: 'নতুন ব্যাচ',
       capTitle: 'এই প্ল্যানে আর ব্যাচ যোগ করা যাবে না',
       /**
-       * Names the four things the cap does *not* touch. The batch limit is the one
+       * Names the three things the cap does *not* touch. The batch limit is the one
        * an owner meets first, and it is the moment the app either reads as a trial
        * with its features locked or as a smaller version of the whole thing.
+       *
+       * Attendance, exams and fees, and no longer SMS — tap-to-send is on every
+       * tier and always will be, but naming SMS next to a cap invited the reading
+       * that a metered allowance comes with the plan, and none does.
        */
       cap: (name: string, limit: number) =>
-        `${name} প্ল্যানে ${digits(limit, 'bn')}টি ব্যাচ। হাজিরা, পরীক্ষা, SMS, ফি — সব ফিচার খোলা থাকে, শুধু ব্যাচের সংখ্যায় সীমা।`,
+        `${name} প্ল্যানে ${digits(limit, 'bn')}টি ব্যাচ। হাজিরা, পরীক্ষা, ফি — সবই খোলা, শুধু ব্যাচের সংখ্যায় সীমা।`,
       needSubjectTitle: 'আগে একটি বিষয় যোগ করুন',
       needSubjectBody:
         'ব্যাচ কোন বিষয়ের, সেটা ছাড়া নম্বর আর ফি ঠিক জায়গায় বসবে না।',
@@ -1652,7 +1669,7 @@ export const bn = {
       capTitle: 'এই প্ল্যানে আর শিক্ষার্থী যোগ করা যাবে না',
       /** Names the plan and its number — see subjects.cap for why, not errors. */
       cap: (name: string, limit: number) =>
-        `${name} প্ল্যানে ${digits(limit, 'bn')} জন শিক্ষার্থী। সব ফিচার খোলা থাকে — শুধু সংখ্যার সীমা।`,
+        `${name} প্ল্যানে ${digits(limit, 'bn')} জন শিক্ষার্থী।`,
       added: 'শিক্ষার্থী যোগ হয়েছে',
       errors: {
         nameRequired: 'শিক্ষার্থীর নাম লিখুন।',
@@ -1821,7 +1838,7 @@ export const bn = {
        */
       soloTitle: 'শিক্ষক ও অনুমতি কোচিং সেন্টারের জন্য',
       soloBody: (plan: string, center: string) =>
-        `${plan} প্ল্যান একজন শিক্ষকের জন্য — আপনি নিজেই। একাধিক শিক্ষক, আর কে কী দেখতে ও করতে পারবে সেই নিয়ন্ত্রণ ${center} প্ল্যানে। বাকি সব ফিচার এখনই খোলা আছে।`,
+        `${plan} প্ল্যান একজন শিক্ষকের জন্য — আপনি নিজেই। একাধিক শিক্ষক, আর কে কী দেখতে ও করতে পারবে সেই নিয়ন্ত্রণ ${center} প্ল্যানে।`,
       addedWithLogin: 'শিক্ষক ও তাঁর লগইন তৈরি হয়েছে',
       addedNoLogin: 'শিক্ষক যোগ হয়েছে (লগইন ছাড়া)',
       /**
