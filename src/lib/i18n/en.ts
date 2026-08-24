@@ -872,6 +872,55 @@ export const en: Dictionary = {
     windows: 'Attendance covers the last 30 days, marks the last 120.',
   },
 
+  progress: {
+    title: 'The week',
+    lead: 'Let a guardian know how their child is doing before the results come out — one message a week, with no bill in it.',
+    covers: (from: string, to: string) => `${from} to ${to}`,
+
+    dueTitle: 'Guardians who can be told today',
+    people: (n: number) => (n === 1 ? 'family' : 'families'),
+
+    attendance: 'Attendance',
+    noRegister: 'No register taken',
+    late: (n: number) => (n === 1 ? 'day late' : 'days late'),
+    excused: (n: number) => (n === 1 ? 'day excused' : 'days excused'),
+    noExam: 'No exam',
+    examsMissed: (n: number) => (n === 1 ? 'exam missed' : 'exams missed'),
+    told: (when: string) => `Told ${when}`,
+
+    noneTitle: 'Nobody new to tell today',
+    noneNoStudents: 'No students have been added yet.',
+    noneAllRecent: 'Every guardian was told within the last few days.',
+    noneNothingRecorded:
+      'No attendance or marks were recorded this week — the list fills up as soon as they are.',
+    noneNoNumbers: 'The families with something to hear about have no guardian number on file.',
+
+    heldSent: (n: number) =>
+      n === 1 ? '1 guardian was told recently' : `${n} guardians were told recently`,
+    heldNothing: (n: number) =>
+      n === 1
+        ? '1 student has no attendance or marks recorded this week'
+        : `${n} students have no attendance or marks recorded this week`,
+    takeRegister: 'Take attendance',
+
+    unreachableTitle: (n: number) =>
+      n === 1 ? '1 guardian has no number' : `${n} guardians have no number`,
+    unreachableBody: (names: string) => `There is no way to tell them without a number — ${names}`,
+    addNumbers: 'Add numbers',
+
+    windowNote:
+      'The figures cover the last 7 days: attendance and exam results. Fees are not in this message — those go out with the reminders.',
+
+    entryDueSuffix: 'guardians can be told how the week went',
+    seeAll: 'See everyone',
+    noName: 'No name given',
+
+    lockedTitle: 'This plan does not include the weekly note',
+    lockedBody: (plan: string, pro: string) =>
+      `On ${plan} you can read attendance and marks in the app, but the week's message to a guardian is not written for you. Telling every family in one tap comes with ${pro}.`,
+    seePlans: 'See the plans',
+  },
+
   me: {
     title: 'Mine',
     due: 'Due',

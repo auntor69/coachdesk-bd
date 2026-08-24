@@ -27,7 +27,7 @@ import { digits } from '@/lib/bd/time'
 import type { Locale, T } from '@/lib/i18n'
 import { fill } from '@/lib/i18n/fill'
 import { buildFeeReminderSms, buildFeeReminderText } from '@/lib/sms/templates'
-import type { FeeReminderChannel, PayoutWallet } from '@/lib/supabase/types'
+import type { OutreachChannel, PayoutWallet } from '@/lib/supabase/types'
 import { logFeeReminder } from './actions'
 
 /**
@@ -109,7 +109,7 @@ export function ChaseChips({
 }: {
   target: ChaseTarget
   center: ReminderCenter
-  onSent?: (channel: FeeReminderChannel) => void
+  onSent?: (channel: OutreachChannel) => void
   t: T<'chase'>
   channels: T<'channels'>
 }) {
@@ -129,7 +129,7 @@ export function ChaseChips({
   const chatBody = buildFeeReminderText(input)
   const phone = target.guardianPhone
 
-  function log(channel: FeeReminderChannel, body: string | null) {
+  function log(channel: OutreachChannel, body: string | null) {
     logFeeReminder({
       invoiceId: target.id,
       channel,

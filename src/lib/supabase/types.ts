@@ -17,9 +17,9 @@ export type AttendanceStatus = 'present' | 'absent' | 'late' | 'excused'
 export type BatchSlot = 'morning' | 'noon' | 'afternoon' | 'evening' | 'night'
 export type CenterStatus = 'trial' | 'active' | 'suspended' | 'cancelled'
 export type EnrollmentStatus = 'active' | 'paused' | 'completed' | 'dropped'
-export type FeeReminderChannel = 'sms' | 'whatsapp' | 'call'
 export type MemberRole = 'owner' | 'manager' | 'teacher' | 'student' | 'guardian'
 export type NoticeAudience = 'all' | 'students' | 'guardians' | 'teachers'
+export type OutreachChannel = 'sms' | 'whatsapp' | 'call'
 export type PaymentMethod = 'cash' | 'bkash' | 'nagad' | 'rocket' | 'bank_transfer' | 'other'
 export type PayoutWallet = 'bkash' | 'nagad' | 'rocket'
 export type PlanType = 'teacher_free' | 'teacher_plus' | 'center' | 'institution'
@@ -857,7 +857,7 @@ export type Database = {
           id: string
           coaching_center_id: string
           invoice_id: string
-          channel: FeeReminderChannel
+          channel: OutreachChannel
           amount_bdt: number
           to_phone: string | null
           body: string | null
@@ -868,7 +868,7 @@ export type Database = {
           id?: string
           coaching_center_id: string
           invoice_id: string
-          channel: FeeReminderChannel
+          channel: OutreachChannel
           amount_bdt: number
           to_phone?: string | null
           body?: string | null
@@ -879,7 +879,7 @@ export type Database = {
           id?: string
           coaching_center_id?: string
           invoice_id?: string
-          channel?: FeeReminderChannel
+          channel?: OutreachChannel
           amount_bdt?: number
           to_phone?: string | null
           body?: string | null
@@ -1150,6 +1150,67 @@ export type Database = {
             isOneToOne: true
             referencedRelation: 'users'
             referencedColumns: ['id']
+          },
+        ]
+      }
+      progress_updates: {
+        Row: {
+          id: string
+          coaching_center_id: string
+          student_id: string
+          channel: OutreachChannel
+          covers_from: string
+          covers_to: string
+          to_phone: string | null
+          body: string | null
+          sent_by: string | null
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          coaching_center_id: string
+          student_id: string
+          channel: OutreachChannel
+          covers_from: string
+          covers_to: string
+          to_phone?: string | null
+          body?: string | null
+          sent_by?: string | null
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          coaching_center_id?: string
+          student_id?: string
+          channel?: OutreachChannel
+          covers_from?: string
+          covers_to?: string
+          to_phone?: string | null
+          body?: string | null
+          sent_by?: string | null
+          created_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'progress_updates_coaching_center_id_fkey'
+            columns: ['coaching_center_id']
+            isOneToOne: false
+            referencedRelation: 'coaching_centers'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'progress_updates_sent_by_fkey'
+            columns: ['sent_by']
+            isOneToOne: false
+            referencedRelation: 'users'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'progress_updates_student_id_center_fkey'
+            columns: ['student_id', 'coaching_center_id']
+            isOneToOne: false
+            referencedRelation: 'students'
+            referencedColumns: ['id', 'coaching_center_id']
           },
         ]
       }
@@ -1789,6 +1850,32 @@ export type Database = {
         }
         Relationships: []
       }
+      student_progress_week: {
+        Row: {
+          coaching_center_id: string | null
+          student_id: string | null
+          student_name: string | null
+          student_code: string | null
+          guardian_phone: string | null
+          sms_opt_out: boolean | null
+          week_from: string | null
+          week_to: string | null
+          sessions_counted: number | null
+          sessions_present: number | null
+          sessions_absent: number | null
+          sessions_late: number | null
+          sessions_excused: number | null
+          exams_taken: number | null
+          exams_missed: number | null
+          marks_pct: number | null
+          last_exam_title: string | null
+          last_exam_obtained: number | null
+          last_exam_total: number | null
+          last_exam_date: string | null
+          last_sent_at: string | null
+        }
+        Relationships: []
+      }
       student_risk: {
         Row: {
           coaching_center_id: string | null
@@ -1871,9 +1958,9 @@ export type Database = {
       batch_slot: BatchSlot
       center_status: CenterStatus
       enrollment_status: EnrollmentStatus
-      fee_reminder_channel: FeeReminderChannel
       member_role: MemberRole
       notice_audience: NoticeAudience
+      outreach_channel: OutreachChannel
       payment_method: PaymentMethod
       payout_wallet: PayoutWallet
       plan_type: PlanType

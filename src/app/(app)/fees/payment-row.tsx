@@ -25,7 +25,7 @@ import { MAX_LABEL } from '@/lib/limits'
 import type { Locale, T } from '@/lib/i18n'
 import { fill } from '@/lib/i18n/fill'
 import { formatTaka as taka } from '@/lib/money'
-import type { FeeReminderChannel, PaymentMethod } from '@/lib/supabase/types'
+import type { OutreachChannel, PaymentMethod } from '@/lib/supabase/types'
 import { recordPayment, type FeeState } from './actions'
 import {
   ChaseChips,
@@ -78,7 +78,7 @@ export type FeeRow = ChaseTarget & {
   paid: number
   /** "today" / "yesterday" / a date, written server-side. Null if never chased. */
   remindedDay: string | null
-  remindedVia: FeeReminderChannel | null
+  remindedVia: OutreachChannel | null
 }
 
 export function PaymentRow({
@@ -364,7 +364,7 @@ function Reminder({
   chase: T<'chase'>
   channels: T<'channels'>
 }) {
-  const [sentVia, setSentVia] = useState<FeeReminderChannel | null>(null)
+  const [sentVia, setSentVia] = useState<OutreachChannel | null>(null)
 
   const day = sentVia ? t.justNow : row.remindedDay
   const via = sentVia ?? row.remindedVia

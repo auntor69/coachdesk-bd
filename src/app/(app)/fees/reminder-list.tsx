@@ -21,7 +21,7 @@ import { digits } from '@/lib/bd/time'
 import type { Locale, T } from '@/lib/i18n'
 import { fill } from '@/lib/i18n/fill'
 import type { ReminderStage } from '@/lib/fees/reminder-schedule'
-import type { FeeReminderChannel } from '@/lib/supabase/types'
+import type { OutreachChannel } from '@/lib/supabase/types'
 import { ChaseChips, lateLabel, type ChaseTarget, type ReminderCenter } from './reminder-chips'
 
 export type ChaseRow = ChaseTarget & {
@@ -68,7 +68,7 @@ export function ReminderList({
   // Which invoices have been chased since this page loaded, and how. Kept here
   // rather than in each row so the counter at the top can be honest about how
   // much of the list is left.
-  const [done, setDone] = useState<Record<string, FeeReminderChannel>>({})
+  const [done, setDone] = useState<Record<string, OutreachChannel>>({})
 
   // The list as it was when the screen opened, frozen on purpose — later props
   // are ignored.
@@ -147,8 +147,8 @@ function Row({
   center: ReminderCenter
   locale: Locale
   words: ListWords
-  sentVia: FeeReminderChannel | undefined
-  onSent: (channel: FeeReminderChannel) => void
+  sentVia: OutreachChannel | undefined
+  onSent: (channel: OutreachChannel) => void
 }) {
   const { t, chase, channels, common } = words
 

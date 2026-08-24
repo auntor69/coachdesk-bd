@@ -10,14 +10,21 @@ import {
   addMonths,
   formatDate,
 } from '@/lib/bd/time'
+import { has } from '@/lib/plans'
 import { countChasesDue } from '@/lib/fees/reminder-schedule'
 import { ratesForDashboard } from '@/lib/attendance/rates'
 import { studentsAtRisk, RISK_COLUMNS } from '@/lib/students/risk'
+import {
+  progressToTell,
+  PROGRESS_COUNT_COLUMNS,
+  type ProgressCountRow,
+} from '@/lib/students/progress'
 import { sumTaka, tallyOutstanding, formatTaka as taka } from '@/lib/money'
 import { dict, DEFAULT_LOCALE } from '@/lib/i18n'
 import { ReminderEntry } from '@/app/(app)/fees/reminder-entry'
 import { AttendanceRates } from './attendance-rates'
 import { AtRiskCard } from './at-risk-card'
+import { ProgressEntry } from './progress-entry'
 
 /** getSession, not pageRole — see the note on teach/page.tsx's own. */
 export async function generateMetadata() {
@@ -90,6 +97,23 @@ export default async function DashboardPage() {
 
   if (mine) batchCountQuery = batchCountQuery.in('teacher_id', mine)
 
+  /**
+   * Whether to ask for the week's progress aggregate at all.
+   *
+   * The only conditional query on this page, and it earns it twice. The view is
+   * staff-admin, so a teacher would pay for a round trip that returns nothing — but
+   * so would the risk and rate queries below, and those are left unconditional for
+   * exactly that reason. What is different here is the plan: a free teacher cannot
+   * open the screen this counts for, and running a seven-day aggregate over every
+   * student to render a door they will be shown a paywall behind is work done for
+   * nobody. Everything else on this page is available on every plan.
+   */
+  const seeProgress = isAdmin && has(session.plan, 'parentSummary')
+
+  // Resolved, not queried, when the door is not being drawn. Typed so the
+  // destructured `weekly` below is the view's rows or nothing, rather than `any`.
+  const noProgress: { data: ProgressCountRow[] | null } = { data: null }
+
   const [
     { count: studentCount },
     { count: batchCount },
@@ -99,6 +123,7 @@ export default async function DashboardPage() {
     { data: chased },
     { data: rates },
     { data: risky },
+    { data: weekly },
   ] = await Promise.all([
     supabase
       .from('students')
@@ -185,6 +210,16 @@ export default async function DashboardPage() {
       .from('student_risk')
       .select(RISK_COLUMNS)
       .eq('coaching_center_id', session.active.centerId),
+    // How many guardians can be told how their child's week went. Six columns of
+    // the twenty the /progress screen reads — the door needs a number, not names —
+    // and counted by the same function that screen lists with, so the two cannot
+    // disagree. Conditional; see `seeProgress` above for why this one query is.
+    seeProgress
+      ? supabase
+          .from('student_progress_week')
+          .select(PROGRESS_COUNT_COLUMNS)
+          .eq('coaching_center_id', session.active.centerId)
+      : noProgress,
   ])
 
   // Same rule as the fee board, so the two screens cannot drift: only positive
@@ -254,6 +289,10 @@ export default async function DashboardPage() {
   // with the reason for each one already chosen — every threshold is in the view
   // and the ordering is in one tested function, so this page decides neither.
   const atRisk = studentsAtRisk(risky, d.risk.noName)
+
+  // And the families who can be told how that week went. Zero is a real answer here
+  // rather than a reason to hide the door — see the note on ProgressEntry.
+  const toTell = progressToTell(weekly)
 
   return (
     <div className="flex flex-col gap-5">
@@ -354,6 +393,13 @@ export default async function DashboardPage() {
       {atRisk.length > 0 && (
         <AtRiskCard students={atRisk} view={d.common.view} t={d.risk} />
       )}
+
+      {/* Directly under the two cards about how the term is going, because it is
+          what an owner does with them: the rates and the drifting names are what
+          the centre knows, and this is the door to telling the families. Below the
+          fee worklist rather than beside it — the money is what keeps the centre
+          open, and one screen cannot have two most-important errands. */}
+      {seeProgress && <ProgressEntry toTell={toTell} t={d.progress} />}
 
       {overdue.length > 0 && (
         <div>

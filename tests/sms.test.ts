@@ -6,6 +6,9 @@ import {
   buildResultSms,
   buildFeeReminderSms,
   buildFeeReminderText,
+  buildProgressSummarySms,
+  buildProgressSummaryText,
+  type ProgressSummaryInput,
 } from '../src/lib/sms/templates.ts'
 
 test('plain ASCII is GSM-7 and fits 160 characters', () => {
@@ -379,3 +382,224 @@ test('the WhatsApp reminder always carries the number, on its own line', () => {
   })
   assert.ok(!without.includes('ফি পাঠাতে পারেন'), without)
 })
+
+/* -------------------------------------------------------------------------- */
+/* The weekly progress summary                                                */
+/* -------------------------------------------------------------------------- */
+
+/** A full week, to be overridden one field at a time. */
+function week(over: Partial<ProgressSummaryInput> = {}): ProgressSummaryInput {
+  return {
+    studentName: 'রাফিদ হাসান',
+    weekFrom: '2026-08-19',
+    weekTo: '2026-08-25',
+    sessionsCounted: 6,
+    sessionsPresent: 5,
+    sessionsLate: 1,
+    examTitle: 'পদার্থবিজ্ঞান',
+    examObtained: 45,
+    examTotal: 50,
+    examsMissed: 0,
+    centerName: 'আলো কোচিং',
+    ...over,
+  }
+}
+
+test('a weekly summary names the child, the attendance, the mark and the centre', () => {
+  const sms = buildProgressSummarySms(week())
+
+  assert.equal(sms.segments, 1, sms.body)
+  assert.ok(sms.body.includes('রাফিদ হাসান'), sms.body)
+  assert.ok(sms.body.includes('5/6'), sms.body)
+  assert.ok(sms.body.includes('45/50'), sms.body)
+  assert.ok(sms.body.includes('আলো কোচিং'), sms.body)
+})
+
+test('both figures stay in ASCII, because a parent reads them back', () => {
+  // The rule the rest of the product follows for money and marks, extended to the
+  // attendance ratio: this is the figure that gets quoted down the phone, and one
+  // that has to be converted in somebody's head first gets repeated wrong.
+  const sms = buildProgressSummarySms(week())
+  assert.ok(!/[০-৯]/.test(sms.body), sms.body)
+})
+
+test('the worst case a real centre can produce still costs one SMS', () => {
+  // Everything at its maximum at once: a name with no space in it so it occupies
+  // the whole budget, a long subject title, a perfect score in three digits, a
+  // twelve-session week, and a centre name past the brand budget. This is the test
+  // that forces the ladder to exist — the exam title cannot survive here.
+  const sms = buildProgressSummarySms(
+    week({
+      studentName: 'মোহাম্মদসাদিয়ারহমান',
+      examTitle: 'উচ্চতরগণিতসাপ্তাহিক',
+      examObtained: 100,
+      examTotal: 100,
+      sessionsCounted: 12,
+      sessionsPresent: 12,
+      centerName: 'উত্তরা আইডিয়াল কোচিং সেন্টার ও একাডেমি',
+    }),
+  )
+
+  assert.equal(sms.segments, 1, sms.body)
+  assert.equal(measureSms(sms.body).encoding, 'ucs2')
+  // The three things that must survive any amount of trimming.
+  assert.ok(sms.body.startsWith('মোহাম্মদ'), sms.body)
+  assert.ok(sms.body.includes('12/12'), sms.body)
+  assert.ok(sms.body.includes('100/100'), sms.body)
+  assert.ok(sms.body.includes('উত্তরা'), sms.body)
+})
+
+test('the exam title is what gets given up, never a figure', () => {
+  // A parent learns the same thing from "পরীক্ষা 45/50" as from the subject name,
+  // and only one of those costs thirteen characters. The subject is in the WhatsApp
+  // version, which is free.
+  //
+  // Three-digit figures on both sides, because that is where the title stops
+  // fitting: with 5/6 and 45/50 there is room for all of it and the ladder never
+  // has to descend, which is the outcome to want and not the one to test.
+  const sms = buildProgressSummarySms(
+    week({
+      studentName: 'মোহাম্মদসাদিয়ারহমান',
+      examTitle: 'উচ্চতরগণিতসাপ্তাহিক',
+      examObtained: 100,
+      examTotal: 100,
+      sessionsCounted: 12,
+      sessionsPresent: 12,
+      centerName: 'উত্তরা আইডিয়াল কোচিং সেন্টার ও একাডেমি',
+    }),
+  )
+  assert.equal(sms.segments, 1, sms.body)
+  assert.ok(!sms.body.includes('উচ্চতর'), sms.body)
+  assert.ok(sms.body.includes('পরীক্ষা 100/100'), sms.body)
+
+  // And where it does fit, it is kept — the ladder descends only under pressure.
+  const roomy = buildProgressSummarySms(week({ examTitle: 'পদার্থবিজ্ঞান' }))
+  assert.ok(roomy.body.includes('পদার্থবিজ্ঞান 45/50'), roomy.body)
+})
+
+test('a subject name goes whole or not at all', () => {
+  // পদার্থবিজ্ঞান is thirteen code points and one of the four subjects a coaching
+  // centre types most. A budget that clipped it would put "পদার্থবিজ্ঞা" — not a
+  // word — on a parent's phone, so the budget is set above it.
+  const physics = buildProgressSummarySms(week({ examTitle: 'পদার্থবিজ্ঞান' }))
+  assert.ok(physics.body.includes('পদার্থবিজ্ঞান'), physics.body)
+
+  // One word that genuinely will not fit is dropped for the generic word rather
+  // than cut in half.
+  const runOn = buildProgressSummarySms(week({ examTitle: 'উচ্চতরগণিতসাপ্তাহিকপরীক্ষা' }))
+  assert.ok(runOn.body.includes('পরীক্ষা 45/50'), runOn.body)
+  assert.ok(!runOn.body.includes('উচ্চতর'), runOn.body)
+
+  // A multi-word title still trims to a whole word, which is a title somebody
+  // wrote rather than a fragment of one.
+  const long = buildProgressSummarySms(week({ examTitle: 'সাপ্তাহিক পরীক্ষা ২০২৬' }))
+  assert.ok(long.body.includes('সাপ্তাহিক'), long.body)
+  assert.ok(!long.body.includes('২০২৬'), long.body)
+})
+
+test('attendance alone and a mark alone each make a sentence', () => {
+  const attOnly = buildProgressSummarySms(
+    week({ examTitle: null, examObtained: null, examTotal: null }),
+  )
+  assert.equal(attOnly.segments, 1, attOnly.body)
+  assert.ok(attOnly.body.includes('5/6'), attOnly.body)
+  assert.ok(!attOnly.body.includes('/50'), attOnly.body)
+
+  const marksOnly = buildProgressSummarySms(week({ sessionsCounted: 0, sessionsPresent: 0 }))
+  assert.equal(marksOnly.segments, 1, marksOnly.body)
+  assert.ok(marksOnly.body.includes('45/50'), marksOnly.body)
+  // No "হাজিরা 0/0" — nobody took the register, which is not a week the child
+  // missed. See student_progress_week's comment on the same distinction.
+  assert.ok(!marksOnly.body.includes('0/0'), marksOnly.body)
+})
+
+test('nothing recorded produces no message at all', () => {
+  // The screen offers no chip in this case, and an empty body is what says so. A
+  // template that invented a sentence about an unrecorded week would put the
+  // centre's own omission in front of a parent as a fact about their child.
+  const sms = buildProgressSummarySms(
+    week({
+      sessionsCounted: 0,
+      sessionsPresent: 0,
+      examTitle: null,
+      examObtained: null,
+      examTotal: null,
+    }),
+  )
+  assert.equal(sms.body, '')
+  assert.equal(sms.segments, 0)
+})
+
+test('marks lose trailing zeros on the way into the message', () => {
+  // numeric(6,2) reaches the app as 45.00. "45.00/50.00" reads as a machine
+  // talking; lib/students/progress.ts converts, and this is the sentence that
+  // proves the conversion arrives.
+  const sms = buildProgressSummarySms(week({ examObtained: 45, examTotal: 50 }))
+  assert.ok(sms.body.includes('45/50'), sms.body)
+  assert.ok(!sms.body.includes('45.00'), sms.body)
+})
+
+test('the WhatsApp summary says what 70 characters cannot', () => {
+  const text = buildProgressSummaryText(
+    week({
+      studentName: 'মোহাম্মদ সাদিয়া রহমান',
+      examTitle: 'উচ্চতর গণিত সাপ্তাহিক',
+      examsMissed: 2,
+      centerName: 'উত্তরা আইডিয়াল কোচিং সেন্টার ও একাডেমি',
+    }),
+  )
+
+  // Nothing is metered here, so nothing is clamped.
+  assert.ok(text.startsWith('প্রিয় অভিভাবক,'), text)
+  assert.ok(text.includes('মোহাম্মদ সাদিয়া রহমান'), text)
+  assert.ok(text.includes('উচ্চতর গণিত সাপ্তাহিক'), text)
+  assert.ok(text.includes('উত্তরা আইডিয়াল কোচিং সেন্টার ও একাডেমি'), text)
+  // The window, in Bangla numerals — dates are read, never re-typed.
+  assert.ok(text.includes('১৯ আগস্ট ২০২৬'), text)
+  assert.ok(text.includes('২৫ আগস্ট ২০২৬'), text)
+  // The mark keeps its ASCII ratio inside a Bangla sentence. Both halves of the
+  // numeral rule, in one message.
+  assert.ok(text.includes('45/50'), text)
+  // The absence a parent most needs to hear about, and the SMS has no room for.
+  assert.ok(text.includes('২টি পরীক্ষায় অনুপস্থিত'), text)
+  assert.ok(text.includes('কোনো প্রশ্ন থাকলে জানাবেন।'), text)
+})
+
+test('the absence is stated rather than left to be subtracted', () => {
+  const missed = buildProgressSummaryText(week({ sessionsCounted: 6, sessionsPresent: 5 }))
+  assert.ok(missed.includes('৬ দিনের ক্লাসে ৫ দিন উপস্থিত, ১ দিন অনুপস্থিত'), missed)
+
+  // A perfect week reads as one, not as "0 days absent".
+  const perfect = buildProgressSummaryText(week({ sessionsCounted: 6, sessionsPresent: 6 }))
+  assert.ok(perfect.includes('৬ দিনই উপস্থিত'), perfect)
+  assert.ok(!perfect.includes('অনুপস্থিত'), perfect)
+})
+
+test('lateness is its own clause and only when it happened', () => {
+  const late = buildProgressSummaryText(week({ sessionsLate: 2 }))
+  assert.ok(late.includes('২ দিন দেরিতে এসেছে'), late)
+
+  const punctual = buildProgressSummaryText(week({ sessionsLate: 0 }))
+  assert.ok(!punctual.includes('দেরিতে'), punctual)
+})
+
+test('nothing dangles in the WhatsApp summary when there is nothing to say', () => {
+  const text = buildProgressSummaryText(
+    week({
+      sessionsCounted: 0,
+      sessionsPresent: 0,
+      sessionsLate: 0,
+      examTitle: null,
+      examObtained: null,
+      examTotal: null,
+      examsMissed: 0,
+    }),
+  )
+  assert.ok(!text.includes('হাজিরা'), text)
+  assert.ok(!text.includes('পরীক্ষা'), text)
+  // Still addressed and still signed, because the screen only offers this when
+  // there is something above it.
+  assert.ok(text.startsWith('প্রিয় অভিভাবক,'), text)
+  assert.ok(text.includes('- আলো কোচিং'), text)
+})
+

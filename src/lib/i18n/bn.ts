@@ -1530,6 +1530,108 @@ export const bn = {
      */
     windows: 'হাজিরা শেষ ৩০ দিনের হিসাব, নম্বর শেষ ১২০ দিনের।',
   },
+
+  /**
+   * The weekly note home — the one message this product sends that is not about
+   * money.
+   *
+   * Every word here is chosen against the sentence a Bangladeshi parent says when
+   * a coaching centre's number shows up on their phone: "কত টাকা?" So the heading
+   * does not say রিপোর্ট (which promises a document nobody will read), the lead
+   * says out loud that there is no bill in it, and the footnote repeats that at the
+   * bottom of the screen. An owner who thinks this is another dunning list will not
+   * use it, and a parent who learns it isn't will open the next one.
+   *
+   * Ratios stay ASCII on the row — `5/6`, `45/50` — for the reason `risk` gives
+   * about percentages and one this screen makes sharper: the parent reads that
+   * figure back down the phone, and the digits on the owner's screen must be the
+   * digits in the message. Counts in prose take Bangla numerals as usual.
+   */
+  progress: {
+    /** Matches the nav entry and the page heading. Short, because the nav is. */
+    title: 'সপ্তাহের খবর',
+    /**
+     * Says what the screen is for in the words that make it worth doing. "টাকার
+     * কথা ছাড়া" is not decoration — it is the whole difference between this and
+     * every other message a coaching centre has ever sent a family.
+     */
+    lead: 'ফল বেরোনোর আগেই অভিভাবক জানুক ছেলেমেয়ে কেমন করছে — সপ্তাহে একটা মেসেজ, টাকার কথা ছাড়া।',
+    /** The seven days everything on the screen is counted over. */
+    covers: (from: string, to: string) => `${from} থেকে ${to}`,
+
+    dueTitle: 'আজ যাদের অভিভাবককে জানানো যায়',
+    /** Follows a count set four times larger, in its own element. See `reminders.people`. */
+    people: (_n: number) => 'জনকে',
+
+    /** On a row, before the ASCII ratio: 'হাজিরা 5/6'. */
+    attendance: 'হাজিরা',
+    /**
+     * Not '0/0'. A week with no register is a hole in the centre's own records, and
+     * saying so is the honest version — the alternative reads to an owner as a
+     * child who came to nothing, which is what a parent would then be told.
+     */
+    noRegister: 'হাজিরা তোলা হয়নি',
+    /** Follows a count: '১ দিন দেরি'. The word matches `attendance.late`. */
+    late: (_n: number) => 'দিন দেরি',
+    /** Follows a count: '১ দিন ছুটি'. The word matches `attendance.excused`. */
+    excused: (_n: number) => 'দিন ছুটি',
+    /** No exam at all this week — different from having sat one and scored badly. */
+    noExam: 'পরীক্ষা হয়নি',
+    /** Follows a count: '২ পরীক্ষায় অনুপস্থিত'. Same words as `risk.reasons`. */
+    examsMissed: (_n: number) => 'পরীক্ষায় অনুপস্থিত',
+    /** On a row that was done recently: 'গত বৃহস্পতিবার জানানো হয়েছে'. */
+    told: (when: string) => `${when} জানানো হয়েছে`,
+
+    noneTitle: 'আজ নতুন করে কাউকে জানানোর নেই',
+    /**
+     * Which of the three, because "nothing to do" reads as a broken screen to an
+     * owner who can see a hundred and fifty names on the students page. Same call
+     * `reminders` makes about its own empty state.
+     */
+    noneNoStudents: 'এখনো কোনো শিক্ষার্থী যোগ করা হয়নি।',
+    noneAllRecent: 'সবার অভিভাবককে গত কয়েক দিনেই জানানো হয়েছে।',
+    noneNothingRecorded: 'এ সপ্তাহে কারও হাজিরা বা পরীক্ষার ফল লেখা হয়নি — লেখা হলেই এই তালিকা ভরে যাবে।',
+    /** Everything recorded, nobody reachable. The card below names them. */
+    noneNoNumbers: 'যাদের খবর জানানোর মতো কিছু আছে, তাদের অভিভাবকের নম্বর নেই।',
+
+    /** Counted, not listed: an owner does not need the names of finished families. */
+    heldSent: (n: number) => `${n} জনের অভিভাবককে সম্প্রতি জানানো হয়েছে`,
+    /**
+     * The one line that replaces a hundred and fifty rows each saying the same
+     * thing, with the link that fixes it beside it.
+     */
+    heldNothing: (n: number) => `${n} জনের এ সপ্তাহে হাজিরা বা পরীক্ষা কিছুই লেখা হয়নি`,
+    takeRegister: 'হাজিরা নিন',
+
+    unreachableTitle: (n: number) => `${n} জনের অভিভাবকের নম্বর নেই`,
+    unreachableBody: (names: string) => `নম্বর ছাড়া জানানোর উপায় নেই — ${names}`,
+    addNumbers: 'নম্বর যোগ করুন',
+
+    /**
+     * The footnote. States the window in Bangla numerals — no ratio on this line to
+     * clash with — and says once more, at the bottom of the screen, that this
+     * message asks for nothing.
+     */
+    windowNote: 'হিসাব শেষ ৭ দিনের: হাজিরা আর পরীক্ষার ফল। ফির কথা এই মেসেজে নেই — সেটা রিমাইন্ডারে আলাদা।',
+
+    /** The door onto this screen, from the dashboard. Borrows `title` for the label. */
+    entryDueSuffix: 'জনের অভিভাবককে সপ্তাহের খবর জানানো যায়',
+    seeAll: 'সবাইকে দেখুন',
+    /** Unreachable through the view — students.name is not null. */
+    noName: 'নাম দেওয়া নেই',
+
+    /**
+     * The paywall, named for what is missing rather than "locked", exactly as the
+     * export screen's is. The body says what a free teacher can still do, because
+     * they genuinely can: the figures are on the student's own page, and reading
+     * them out on the phone is what every centre does today.
+     */
+    lockedTitle: 'সাপ্তাহিক খবর এই প্ল্যানে নেই',
+    lockedBody: (plan: string, pro: string) =>
+      `${plan} প্ল্যানে হাজিরা আর নম্বর অ্যাপে দেখা যায়, কিন্তু অভিভাবককে পাঠানোর জন্য সপ্তাহের মেসেজ তৈরি হয় না। এক ট্যাপে সবার অভিভাবককে জানাতে ${pro} দরকার।`,
+    seePlans: 'প্ল্যান দেখুন',
+  },
+
   /**
    * A student's or guardian's own screen — the counterpart to `dashboard`.
    *

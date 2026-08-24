@@ -1,0 +1,154 @@
+'use client'
+
+/**
+ * The three ways to tell one family how their child's week went.
+ *
+ * The same shape as the fee chase's chips and deliberately not the same component.
+ * They share every mechanic — a deep link that hands the message to the owner's own
+ * phone, a fire-and-forget log, an opt-out that silences the two message channels
+ * and never the call — and they differ in the one thing that matters: what the
+ * message says, and which table remembers that it was sent. Merging them would mean
+ * a component taking a message builder and a logger as props, which is two features
+ * wearing one name.
+ *
+ * The message is built here rather than on the server for the reason ChaseChips
+ * gives: the row already carries every input, and shipping two rendered strings per
+ * student down to a phone on 3G to save two pure function calls is the wrong trade.
+ */
+import Link from 'next/link'
+
+import type { T } from '@/lib/i18n'
+import {
+  buildProgressSummarySms,
+  buildProgressSummaryText,
+} from '@/lib/sms/templates'
+import type { OutreachChannel } from '@/lib/supabase/types'
+import { logProgressUpdate } from './actions'
+
+/** Everything one weekly note needs to know about a student, and nothing else. */
+export type ProgressTarget = {
+  studentId: string
+  name: string
+  /** The window the view counted over, carried so all four names agree. */
+  weekFrom: string
+  weekTo: string
+  sessionsCounted: number
+  sessionsPresent: number
+  sessionsLate: number
+  examTitle: string | null
+  examObtained: number | null
+  examTotal: number | null
+  examsMissed: number
+  /** E.164, or null when the centre has not recorded one. */
+  guardianPhone: string | null
+  smsOptOut: boolean
+}
+
+/** One tap target, identical for all three — see the note on ChaseChips's own. */
+const CHIP =
+  'inline-flex min-h-tap items-center rounded-xl border-2 border-line px-4' +
+  ' font-medium text-ink-soft transition-colors active:bg-brand-50'
+
+export function ProgressChips({
+  target,
+  centerName,
+  onSent,
+  t,
+  channels,
+}: {
+  target: ProgressTarget
+  centerName: string
+  onSent?: (channel: OutreachChannel) => void
+  /** `chase`, borrowed whole: the two screens fail to reach a family the same way. */
+  t: T<'chase'>
+  channels: T<'channels'>
+}) {
+  const input = {
+    studentName: target.name,
+    weekFrom: target.weekFrom,
+    weekTo: target.weekTo,
+    sessionsCounted: target.sessionsCounted,
+    sessionsPresent: target.sessionsPresent,
+    sessionsLate: target.sessionsLate,
+    examTitle: target.examTitle,
+    examObtained: target.examObtained,
+    examTotal: target.examTotal,
+    examsMissed: target.examsMissed,
+    centerName,
+  }
+
+  // Empty when the week holds neither a counted session nor an exam. The screen
+  // never lists such a row — it counts them in one line at the bottom instead — so
+  // this is a guard against a stale page rather than an expected state, and the
+  // answer to it is to offer the call and not a message with nothing in it.
+  const smsBody = buildProgressSummarySms(input).body
+  const chatBody = buildProgressSummaryText(input)
+  const sayable = smsBody.length > 0
+  const phone = target.guardianPhone
+
+  function log(channel: OutreachChannel, body: string | null) {
+    logProgressUpdate({
+      studentId: target.studentId,
+      channel,
+      coversFrom: target.weekFrom,
+      coversTo: target.weekTo,
+      toPhone: phone,
+      body,
+    })
+      .then((result) => {
+        if (result.logged) onSent?.(channel)
+      })
+      .catch(() => {})
+  }
+
+  if (phone === null) {
+    return (
+      <p className="text-sm text-ink-soft">
+        {t.noNumber}{' '}
+        <Link href="/settings/students" className="font-medium text-brand-700">
+          {t.addNumber}
+        </Link>
+      </p>
+    )
+  }
+
+  return (
+    <>
+      <div className="flex flex-wrap gap-2">
+        {/* An opt-out is a preference about messages, so it silences both message
+            channels — and neither of them silences the call. A phone call is a
+            person, not a broadcast, and a family that asked not to be texted has
+            not asked never to be spoken to. */}
+        {!target.smsOptOut && sayable && (
+          <>
+            <a
+              // "?&body=" rather than "?body=": iOS historically wanted the
+              // separator to be "&" and Android wants "?", and this form is the one
+              // both parse. The empty first parameter is ignored.
+              href={`sms:${phone}?&body=${encodeURIComponent(smsBody)}`}
+              onClick={() => log('sms', smsBody)}
+              className={CHIP}
+            >
+              {channels.sms}
+            </a>
+            <a
+              // wa.me wants the number without the +.
+              href={`https://wa.me/${phone.slice(1)}?text=${encodeURIComponent(chatBody)}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              onClick={() => log('whatsapp', chatBody)}
+              className={CHIP}
+            >
+              {channels.whatsapp}
+            </a>
+          </>
+        )}
+        <a href={`tel:${phone}`} onClick={() => log('call', null)} className={CHIP}>
+          {channels.call}
+        </a>
+      </div>
+
+      {target.smsOptOut && <p className="mt-2 text-sm text-ink-faint">{t.optedOut}</p>}
+    </>
+  )
+}

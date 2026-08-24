@@ -3446,6 +3446,429 @@ await asUser(db, ids.studentUser, async (tx) => {
 })
 
 // ---------------------------------------------------------------------------
+// The week a parent hears about — student_progress_week and progress_updates.
+//
+// This is the second aggregate in the product a parent gets quoted back at them,
+// and the first that goes out with no threshold in front of it: whatever the view
+// counts is what a family is told their child did this week, in the centre's own
+// name, from the owner's own handset. So the arithmetic is not a nicety. Three of
+// its rules are ones a plausible-looking view gets wrong, and each of the three is
+// a sentence a centre cannot take back once it has been sent:
+//
+//   * an excused absence is not an absence. A centre that marked a child excused
+//     already accepted the reason, and "came to 3 of 4 classes" tells that parent
+//     their child skipped one. It is the single line in this feature that would
+//     get the feature switched off.
+//   * the exam the message names is the last one they SAT. Ranking an absence
+//     first leaves the marks line empty for a child who sat two tests and missed
+//     the third — so the parent who most needs a mark reads none.
+//   * percentages, never raw marks. 32 out of 40 and 45 out of 50 average to 85%;
+//     averaged as marks they come to 38.5, which is a figure about nothing.
+//
+// Asserted student by student and never as a count of the view, for the reason the
+// risk section gives: nine of its fixtures are active students in this centre with
+// attendance inside this window, so any total here would be a test about them.
+//
+// Its own batch, because attendance_sessions is unique on (batch_id, session_date)
+// and stating dates relative to today inside somebody else's batch collides on
+// whichever day the suite happens to run.
+//
+// AND WHY NO OFFSET BELOW IS MORE THAN 5. The window is seven *Dhaka* days and
+// these fixtures are seeded against Postgres's `current_date`, which is UTC here.
+// Dhaka is UTC+6, so from 18:00 UTC onwards the view's `week_to` is already
+// tomorrow by that reckoning and `week_from` is current_date - 5 — a session six
+// days back would leave the window for those six hours a day, giving a suite that
+// is green in Dhaka daylight and red at midnight. Days 0 to 5 are inside the
+// window under both readings and day 10 is outside under both.
+// ---------------------------------------------------------------------------
+
+console.log('\nThe week a parent hears about (student_progress_week and its log):')
+
+const bWeek = await one(
+  `insert into batches (coaching_center_id, subject_id, teacher_id, name, slot)
+   values ($1, $2, $3, 'Week Note Batch', 'evening') returning id`,
+  [centerA, sBio, tKarim],
+)
+
+const weekSession = (daysBack) =>
+  one(
+    `insert into attendance_sessions (coaching_center_id, batch_id, session_date)
+     values ($1, $2, current_date - $3::int) returning id`,
+    [centerA, bWeek, daysBack],
+  )
+
+const weekSessions = []
+for (const day of [0, 1, 2, 3, 4, 5]) weekSessions.push(await weekSession(day))
+const staleSession = await weekSession(10)
+
+const weekStudent = async (name, status = 'active') => {
+  const id = await one(
+    `insert into students (coaching_center_id, name, status, guardian_phone)
+     values ($1, $2, $3::student_status, '01788000000') returning id`,
+    [centerA, name, status],
+  )
+  return { id, enrollment: await enroll(centerA, id, sBio, bWeek) }
+}
+
+const attendWeek = async (enrollment, statuses) => {
+  for (const [i, status] of statuses.entries()) {
+    await mark(centerA, weekSessions[i], enrollment, status)
+  }
+}
+
+// Six sessions in the window: present four times, late once — which counts as
+// having turned up, exactly as batch_attendance_monthly settled — and absent once.
+// The seventh mark is on the session ten days back and is also an absence, and the
+// assertion that matters is that it never appears: a window that leaked by a day
+// would tell this parent their child missed two classes.
+const nadia = await weekStudent('Nadia Full Week')
+await attendWeek(nadia.enrollment, [
+  'present', 'present', 'present', 'late', 'absent', 'present',
+])
+await mark(centerA, staleSession, nadia.enrollment, 'absent')
+
+// Three attended and one excused, so the denominator is 3 and not 4.
+const emon = await weekStudent('Emon Excused')
+await attendWeek(emon.enrollment, ['present', 'present', 'present', 'excused'])
+
+const weekExam = (title, daysBack, total) =>
+  one(
+    `insert into exams (coaching_center_id, subject_id, batch_id, teacher_id,
+                        title, total_marks, exam_date)
+     values ($1, $2, $3, $4, $5, $6, current_date - $7::int) returning id`,
+    [centerA, sBio, bWeek, tKarim, title, total, daysBack],
+  )
+
+const examStale = await weekExam('Week Exam Ten Days Back', 10, 100)
+const examMid = await weekExam('Week Exam Mid', 4, 40)
+const examNew = await weekExam('Week Exam New', 1, 50)
+
+const weekScore = (exam, enrollment, obtained) =>
+  db.query(
+    `insert into exam_results (coaching_center_id, exam_id, enrollment_id, obtained_marks)
+     values ($1, $2, $3, $4)`,
+    [centerA, exam, enrollment, obtained],
+  )
+
+const weekSkipped = (exam, enrollment) =>
+  db.query(
+    `insert into exam_results (coaching_center_id, exam_id, enrollment_id, is_absent)
+     values ($1, $2, $3, true)`,
+    [centerA, exam, enrollment],
+  )
+
+// 32 out of 40 then 45 out of 50 — 80% and 90%, averaging 85. Read as raw marks
+// they average 38.5. The 20 out of 100 ten days ago belongs to a week this message
+// does not describe and must move neither figure.
+const sabbir = await weekStudent('Sabbir Two Exams')
+await weekScore(examStale, sabbir.enrollment, 20)
+await weekScore(examMid, sabbir.enrollment, 32)
+await weekScore(examNew, sabbir.enrollment, 45)
+
+// Sat the earlier test, missed the later one. Her parent hears the 32 out of 40 she
+// actually got, and hears that she missed one — both facts, neither replacing the
+// other.
+const tuli = await weekStudent('Tuli Missed Latest')
+await weekScore(examMid, tuli.enrollment, 32)
+await weekSkipped(examNew, tuli.enrollment)
+
+// Two tests on one day, which is an ordinary Thursday in a coaching centre. Both
+// rows state their created_at, because a tie broken by whichever insert the clock
+// happened to separate is a test that goes red once a year for a reason nobody can
+// reproduce.
+const sameDay = (title, hoursBack) =>
+  one(
+    `insert into exams (coaching_center_id, subject_id, batch_id, teacher_id,
+                        title, total_marks, exam_date, created_at)
+     values ($1, $2, $3, $4, $5, 100, current_date - 2, now() - $6::interval)
+     returning id`,
+    [centerA, sBio, bWeek, tKarim, title, hoursBack],
+  )
+const examMorning = await sameDay('Week Exam Morning', '3 hours')
+const examAfternoon = await sameDay('Week Exam Afternoon', '1 hour')
+
+const sohana = await weekStudent('Sohana Same Day')
+await weekScore(examMorning, sohana.enrollment, 40)
+await weekScore(examAfternoon, sohana.enrollment, 90)
+
+// A full week behind her and gone from the roster. Her guardian does not want a
+// weekly note about a seat she left, and a view that sent one would be the centre
+// advertising that it has not noticed.
+const bristi = await weekStudent('Bristi Left', 'dropped')
+await attendWeek(bristi.enrollment, ['present', 'present', 'present'])
+
+const weekRow = async (tx, student) =>
+  (
+    await tx.query(
+      `select student_name, guardian_phone, sms_opt_out,
+              (week_to - week_from)::int as window_days,
+              (week_to - current_date)::int as ends_in,
+              sessions_counted, sessions_present, sessions_absent,
+              sessions_late, sessions_excused,
+              exams_taken, exams_missed, marks_pct,
+              last_exam_title, last_exam_obtained, last_exam_total,
+              (last_exam_date = current_date - 1) as exam_was_yesterday,
+              last_sent_at
+       from student_progress_week where student_id = $1`,
+      [student],
+    )
+  ).rows[0] ?? null
+
+await asUser(db, ids.ownerA, async (tx) => {
+  const r = await weekRow(tx, nadia.id)
+  check(
+    'the week is seven days long and says which seven',
+    Number(r?.window_days) === 6,
+    `week_to - week_from = ${r?.window_days}`,
+  )
+  check(
+    'and it ends on the Dhaka day, which is today or already tomorrow in UTC',
+    Number(r?.ends_in) === 0 || Number(r?.ends_in) === 1,
+    `week_to - current_date = ${r?.ends_in}`,
+  )
+  check(
+    'five of six classes attended, with the late day counted as attendance',
+    Number(r?.sessions_counted) === 6
+      && Number(r?.sessions_present) === 5
+      && Number(r?.sessions_late) === 1
+      && Number(r?.sessions_absent) === 1,
+    JSON.stringify(r),
+  )
+  check(
+    'and last week’s absence stays in last week',
+    Number(r?.sessions_counted) === 6,
+    `counted ${r?.sessions_counted}, which would be 7 if the window leaked`,
+  )
+  check(
+    'the number the message goes to comes down with the row',
+    r?.guardian_phone === '01788000000' && r?.sms_opt_out === false,
+  )
+
+  const e = await weekRow(tx, emon.id)
+  check(
+    'an excused day is not an absence, and not a class either',
+    Number(e?.sessions_counted) === 3
+      && Number(e?.sessions_present) === 3
+      && Number(e?.sessions_absent) === 0
+      && Number(e?.sessions_excused) === 1,
+    JSON.stringify(e),
+  )
+
+  const s = await weekRow(tx, sabbir.id)
+  check(
+    'two tests average as percentages of their own totals, not as marks',
+    Number(s?.exams_taken) === 2 && Number(s?.marks_pct) === 85,
+    `taken ${s?.exams_taken}, pct ${s?.marks_pct} — 39 would mean raw marks`,
+  )
+  check(
+    'the message names the newest result, with its own total beside it',
+    s?.last_exam_title === 'Week Exam New'
+      && Number(s?.last_exam_obtained) === 45
+      && Number(s?.last_exam_total) === 50
+      && s?.exam_was_yesterday === true,
+    JSON.stringify(s),
+  )
+  check(
+    'and a mark from ten days ago is in neither figure',
+    Number(s?.exams_taken) === 2 && Number(s?.marks_pct) === 85,
+  )
+
+  const t = await weekRow(tx, tuli.id)
+  check(
+    'a missed test is counted as missed and never averaged as a nought',
+    Number(t?.exams_taken) === 1
+      && Number(t?.exams_missed) === 1
+      && Number(t?.marks_pct) === 80,
+    JSON.stringify(t),
+  )
+  check(
+    'and the mark named is the one she sat, not the blank she did not',
+    t?.last_exam_title === 'Week Exam Mid' && Number(t?.last_exam_obtained) === 32,
+    `${t?.last_exam_title} ${t?.last_exam_obtained}`,
+  )
+
+  const so = await weekRow(tx, sohana.id)
+  check(
+    'two tests on one day break the tie on the hour they were entered',
+    so?.last_exam_title === 'Week Exam Afternoon'
+      && Number(so?.last_exam_obtained) === 90
+      && Number(so?.marks_pct) === 65,
+    JSON.stringify(so),
+  )
+
+  check(
+    'a student who has left gets no weekly note about the seat they left',
+    (await weekRow(tx, bristi.id)) === null,
+  )
+
+  check(
+    'a student never told anything reads as never, not as long ago',
+    (await weekRow(tx, emon.id))?.last_sent_at === null,
+  )
+
+  check(
+    "owner A sees no part of centre B's week",
+    (await n(
+      tx,
+      'select count(*)::int as n from student_progress_week where coaching_center_id = $1',
+      [centerB],
+    )) === 0,
+  )
+})
+
+// ---------------------------------------------------------------------------
+// The record of having told them.
+//
+// Two failure modes, and the table exists for both: send twice and the message
+// becomes noise a family stops reading, skip one and the child whose attendance is
+// sliding is exactly the one whose parent heard nothing.
+// ---------------------------------------------------------------------------
+
+const NOTE = `insert into progress_updates
+   (coaching_center_id, student_id, channel, covers_from, covers_to,
+    to_phone, body, created_at)
+ values ($1, $2, $3::outreach_channel, current_date - 6, current_date,
+         $4, $5, now() - $6::interval)
+ returning id`
+
+await asUser(db, ids.ownerA, async (tx) => {
+  check(
+    'the owner can record having told a family how the week went',
+    (
+      await tx.query(NOTE, [
+        centerA,
+        nadia.id,
+        'sms',
+        '+8801788000000',
+        'Nadia came to 5 of 6 classes this week.',
+        '3 days',
+      ])
+    ).rows.length === 1,
+  )
+
+  // The same family, again, by phone — which is what an owner does when the SMS
+  // went to a number nobody answers.
+  await tx.query(NOTE, [centerA, nadia.id, 'call', null, null, '1 hour'])
+  check(
+    'and again on another channel, because a note is not a lock',
+    (await n(tx, 'select count(*)::int as n from progress_updates where student_id = $1', [
+      nadia.id,
+    ])) === 2,
+  )
+
+  const r = await weekRow(tx, nadia.id)
+  check(
+    'the roster shows the latest of the two, which is what stops a second send',
+    r?.last_sent_at instanceof Date
+      && Date.now() - r.last_sent_at.getTime() < 6 * 3600 * 1000,
+    String(r?.last_sent_at),
+  )
+  check(
+    'and telling one family leaves every other row saying never',
+    (await weekRow(tx, sabbir.id))?.last_sent_at === null,
+  )
+})
+
+const NOTE_MIN = `insert into progress_updates
+   (coaching_center_id, student_id, channel, covers_from, covers_to)
+ values ($1, $2, 'sms', current_date - 6, current_date)`
+
+// Named centre B in its own tenant column so its RLS check passes; what refuses it
+// is the composite foreign key to (id, coaching_center_id) on students.
+check(
+  "owner B cannot log a note against centre A's student",
+  await deniedAsUser(db, ids.ownerB, NOTE_MIN, [centerB, nadia.id]),
+)
+check(
+  'nor by naming the centre the student actually belongs to',
+  await deniedAsUser(db, ids.ownerB, NOTE_MIN, [centerA, nadia.id]),
+)
+check(
+  'a teacher cannot log one, for the same reason they cannot read the week',
+  await deniedAsUser(db, ids.karim, NOTE_MIN, [centerA, nadia.id]),
+)
+check(
+  'a note cannot claim a window that ends before it starts',
+  await deniedAsUser(
+    db,
+    ids.ownerA,
+    `insert into progress_updates
+       (coaching_center_id, student_id, channel, covers_from, covers_to)
+     values ($1, $2, 'sms', current_date, current_date - 7)`,
+    [centerA, nadia.id],
+  ),
+)
+
+// The predicate the view carries itself, and the reason it does. A teacher's own
+// RLS would let some rows through — their batch's register, their subject's marks —
+// and the aggregate would come out as a fraction of the child's week wearing the
+// whole week's name, then be read to a parent as fact. Karim teaches this very
+// batch, which is what makes the assertion worth making.
+await asUser(db, ids.karim, async (tx) => {
+  check(
+    'a teacher reads nothing from the week, not a narrowed version of it',
+    (await n(tx, 'select count(*)::int as n from student_progress_week')) === 0,
+  )
+  check(
+    'and cannot see which families have been told',
+    (await n(tx, 'select count(*)::int as n from progress_updates')) === 0,
+  )
+})
+
+await asUser(db, ids.guardianUser, async (tx) => {
+  check(
+    'a guardian cannot read the tally of how often the centre remembered them',
+    (await n(tx, 'select count(*)::int as n from progress_updates')) === 0,
+  )
+  check(
+    'nor the roster their own child sits on',
+    (await n(tx, 'select count(*)::int as n from student_progress_week')) === 0,
+  )
+})
+
+await asUser(db, ids.studentUser, async (tx) => {
+  check(
+    'a student reads neither the week nor the log of it',
+    (await n(tx, 'select count(*)::int as n from student_progress_week')) === 0
+      && (await n(tx, 'select count(*)::int as n from progress_updates')) === 0,
+  )
+})
+
+await asUser(db, null, async (tx) => {
+  check(
+    'a signed-out reader reads neither',
+    (await n(tx, 'select count(*)::int as n from student_progress_week')) === 0
+      && (await n(tx, 'select count(*)::int as n from progress_updates')) === 0,
+  )
+})
+
+await asUser(db, ids.ownerB, async (tx) => {
+  check(
+    'owner B sees their own student’s week and none of centre A’s notes',
+    (await weekRow(tx, stB)) !== null
+      && (await n(tx, 'select count(*)::int as n from progress_updates')) === 0,
+  )
+})
+
+// A student leaving the centre for good takes the record of what their family was
+// told with them, which is what the composite FK's cascade is for. On a throwaway
+// student, so the rows asserted above survive.
+const stScratch = await weekStudent('Scratch Note Student')
+await db.query(
+  `insert into progress_updates (coaching_center_id, student_id, channel, covers_from, covers_to)
+   values ($1, $2, 'whatsapp', current_date - 6, current_date)`,
+  [centerA, stScratch.id],
+)
+await db.query('delete from enrollments where student_id = $1', [stScratch.id])
+await db.query('delete from students where id = $1', [stScratch.id])
+check(
+  'deleting a student takes the record of what their family was told',
+  (await n(db, 'select count(*)::int as n from progress_updates where student_id = $1', [
+    stScratch.id,
+  ])) === 0,
+)
+
+// ---------------------------------------------------------------------------
 // Correcting a student, and marking one who has left.
 //
 // The section further up settled what a permitted teacher cannot do to the roster:

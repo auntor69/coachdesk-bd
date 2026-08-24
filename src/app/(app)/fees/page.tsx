@@ -16,7 +16,7 @@ import { normalizeBdMobile } from '@/lib/bd/phone'
 import { sumTaka, tallyOutstanding, formatTaka } from '@/lib/money'
 import { countChasesDue } from '@/lib/fees/reminder-schedule'
 import { dict, DEFAULT_LOCALE, type Locale } from '@/lib/i18n'
-import type { FeeReminderChannel } from '@/lib/supabase/types'
+import type { OutreachChannel } from '@/lib/supabase/types'
 import { InvoiceGenerator } from './invoice-generator'
 import { PaymentRow, type FeeRow, type ReminderCenter } from './payment-row'
 import { ReminderEntry } from './reminder-entry'
@@ -163,7 +163,7 @@ export default async function FeesPage() {
   // is well inside it.
   const lastChase = new Map<
     string,
-    { on: string; day: string; via: FeeReminderChannel }
+    { on: string; day: string; via: OutreachChannel }
   >()
   for (const r of chased ?? []) {
     if (!r.invoice_id || lastChase.has(r.invoice_id)) continue
@@ -365,7 +365,7 @@ type ViewRow = {
  */
 function toRow(
   today: string,
-  lastChase: Map<string, { on: string; day: string; via: FeeReminderChannel }>,
+  lastChase: Map<string, { on: string; day: string; via: OutreachChannel }>,
   /** `common.unknown`, in the reader's language. See below for why not ''. */
   unknown: string,
 ) {

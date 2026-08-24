@@ -5,7 +5,7 @@
 import { measureSms } from './encoding.ts'
 import { formatTaka } from '../money.ts'
 import { formatBdMobile, normalizeBdMobile } from '../bd/phone.ts'
-import { monthName, formatDate } from '../bd/time.ts'
+import { monthName, formatDate, toBanglaDigits } from '../bd/time.ts'
 // Type-only, so Node erases the whole statement rather than loading the
 // generated types module when these tests run outside the bundler.
 import type { PayoutWallet } from '../supabase/types.ts'
@@ -294,6 +294,252 @@ export function buildFeeReminderSms(input: FeeReminderInput): FeeReminderSms {
   }
 
   return { body: terse, segments: bare.segments }
+}
+
+/* -------------------------------------------------------------------------- */
+/* The weekly progress summary                                                */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * What a guardian is told once a week.
+ *
+ * ATTENDANCE AND MARKS, AND NO FEE. The masterplan's Tier 2 names exactly those
+ * two, and the omission is deliberate rather than an oversight — fees have their
+ * own screen, their own schedule and their own dedup table, none of which knows
+ * about this one, so a fee sentence here would let two features chase the same
+ * family in the same week each certain it was the first. It would also turn the
+ * only message a parent gets from this product that is not about money into
+ * another one that is. See 20260811000021_progress_summary.sql.
+ *
+ * THE WINDOW IS CARRIED, NOT ASSUMED. `weekFrom`/`weekTo` come from the view that
+ * counted the sessions, so the sentence a parent reads names the same seven days
+ * the figures were taken from — and the row recording the send freezes the same
+ * pair. A template that said "this week" and computed its own dates would drift
+ * from the numbers beside it the moment a request crossed midnight.
+ */
+export type ProgressSummaryInput = {
+  studentName: string
+  /** YYYY-MM-DD, inclusive. */
+  weekFrom: string
+  /** YYYY-MM-DD, inclusive. */
+  weekTo: string
+  /** Sessions that counted against them — excused ones are already excluded. */
+  sessionsCounted: number
+  /** Present or late. Both are "they came". */
+  sessionsPresent: number
+  /** Arrived late, a subset of present. Mentioned only where there is room. */
+  sessionsLate: number
+  /** The one result worth naming, or null when nothing was tested. */
+  examTitle?: string | null
+  examObtained?: number | null
+  examTotal?: number | null
+  /** Tests they were marked absent from. Its own sentence, never a zero. */
+  examsMissed: number
+  centerName: string
+}
+
+/** Shorter than a result SMS allows, because this message carries two figures. */
+export const PROGRESS_NAME_BUDGET = 14
+
+/**
+ * How much of an exam title this template will carry.
+ *
+ * Sixteen because পদার্থবিজ্ঞান — Physics, and one of the four subject names a
+ * Bangladeshi coaching centre types most — is thirteen code points on its own, and a
+ * budget that clipped it would put "পদার্থবিজ্ঞা" in front of a parent. জীববিজ্ঞান
+ * and উচ্চতর গণিত fit inside the same number.
+ *
+ * It is still the first thing the ladder gives up, wholesale rather than clipped;
+ * see `examTitleFor`.
+ */
+const PROGRESS_TITLE_BUDGET = 16
+
+/**
+ * The subject to name, or nothing.
+ *
+ * `clamp` trims to a whole word wherever it can, and falls back to a mid-word cut
+ * only when the first word alone is over budget. For a student's name that fallback
+ * is the right call — a parent reading a shortened name still knows which child it
+ * is. For a subject it is not: "পদার্থবিজ্ঞা" is not a subject, it is a bug printed
+ * on somebody's phone, and this template already has an honest shorter word for the
+ * same thing. So a single word that will not fit is dropped, and the ladder's next
+ * rung says "পরীক্ষা".
+ *
+ * A multi-word title still trims: "সাপ্তাহিক পরীক্ষা ২০২৬" becomes "সাপ্তাহিক", which
+ * is a title somebody wrote rather than a fragment of one.
+ */
+function examTitleFor(raw: string | null | undefined): string {
+  const text = (raw ?? '').trim().replace(/\s+/g, ' ')
+  if (!text) return ''
+  const first = text.split(' ')[0]
+  if ([...first].length > PROGRESS_TITLE_BUDGET) return ''
+  return clamp(text, PROGRESS_TITLE_BUDGET)
+}
+
+/**
+ * "5/6" — the week's attendance as one compound figure.
+ *
+ * ASCII, like marks and unlike every other count in a Bangla sentence, and for the
+ * same reason `marksText` is: this is the figure a parent quotes back down the
+ * phone ("you said five of six, he was there all week"), and a ratio that has to
+ * be converted in somebody's head before it can be repeated is a ratio that gets
+ * repeated wrong. The prose form below uses Bangla numerals, because there the two
+ * numbers are words in a sentence rather than one figure to be read out.
+ */
+function attendanceRatio(present: number, counted: number): string {
+  return `${present}/${counted}`
+}
+
+export type ProgressSummary = {
+  body: string
+  /** Zero when there was nothing true to say; every caller checks `body` first. */
+  segments: number
+}
+
+/**
+ * The weekly summary, sized for one SMS.
+ *
+ * Phrasing degrades in steps, the same ladder shape the fee reminder uses and for
+ * the same reason: a long name, a long subject title and a long centre name
+ * genuinely cannot coexist with a natural sentence inside 70 UCS-2 characters, and
+ * the thing to give up is the wording — never the attendance figure, never the
+ * mark, and never who is asking.
+ *
+ * WHAT GOES FIRST IS THE EXAM TITLE. "পদার্থবিজ্ঞান 45/50" and "পরীক্ষা 45/50" tell
+ * a parent the same thing about their child; only one of them costs sixteen
+ * characters. The subject is named in the WhatsApp version, which is free — and it
+ * goes whole or not at all, because a clipped subject name is worse than a generic
+ * one. See `examTitleFor`.
+ *
+ * A student with no counted sessions and no result produces no message. The screen
+ * offers no chip in that case — there is nothing true to say — so this returns an
+ * empty body rather than inventing a sentence about a week that was not recorded.
+ */
+export function buildProgressSummarySms(input: ProgressSummaryInput): ProgressSummary {
+  const brand = clamp(input.centerName, BRAND_BUDGET - 2)
+  const name = clamp(input.studentName, PROGRESS_NAME_BUDGET)
+  const title = examTitleFor(input.examTitle)
+  const tail = ` -${brand}`
+
+  const hasAtt = input.sessionsCounted > 0
+  const hasMarks =
+    input.examObtained !== null &&
+    input.examObtained !== undefined &&
+    typeof input.examTotal === 'number' &&
+    input.examTotal > 0
+
+  const att = attendanceRatio(input.sessionsPresent, input.sessionsCounted)
+  const marks = hasMarks
+    ? marksText(input.examObtained as number, input.examTotal as number)
+    : ''
+
+  // Nothing recorded either way. See the note above: an empty body is the honest
+  // answer, and every caller checks `body` before offering a link.
+  if (!hasAtt && !hasMarks) return { body: '', segments: 0 }
+
+  const ladder: string[] = []
+
+  if (hasAtt && hasMarks) {
+    if (title) ladder.push(`${name}: হাজিরা ${att}, ${title} ${marks}।`)
+    ladder.push(`${name}: হাজিরা ${att}, পরীক্ষা ${marks}।`)
+    ladder.push(`${name}: হাজিরা ${att}, ${marks}।`)
+  } else if (hasAtt) {
+    ladder.push(`${name}: এ সপ্তাহে হাজিরা ${att}।`)
+    ladder.push(`${name}: হাজিরা ${att}।`)
+  } else {
+    if (title) ladder.push(`${name}: ${title} ${marks}।`)
+    ladder.push(`${name}: পরীক্ষা ${marks}।`)
+  }
+
+  for (const line of ladder) {
+    const body = `${line}${tail}`
+    if (measureSms(body).segments <= 1) return { body, segments: 1 }
+  }
+
+  // Nothing fit, which takes a name and a centre name both at their limits. Send
+  // the terse rung anyway rather than dropping a figure: one extra segment costs
+  // the owner one SMS from their own handset, a message with the numbers missing
+  // costs them the only reason to send it.
+  const terse = `${ladder[ladder.length - 1]}${tail}`
+  return { body: terse, segments: measureSms(terse).segments }
+}
+
+/**
+ * The same summary for WhatsApp, where nothing is metered.
+ *
+ * So it says what 70 characters cannot: which seven days, the subject that was
+ * tested, and the exams the child was absent from — which is the sentence a parent
+ * most needs and the SMS has no room for at all. It also asks them to reply, and
+ * that is the point of sending progress rather than only ever sending bills: the
+ * first message from a coaching centre that is not a demand for money is the one
+ * that makes the next demand answerable.
+ *
+ * "প্রিয় অভিভাবক" rather than a religious greeting, for the reason the fee
+ * reminder gives: the default salutation in Bangladesh assumes a Muslim family and
+ * a centre's roster is not uniformly one thing.
+ *
+ * Prose counts use Bangla numerals here while the mark keeps its ASCII ratio —
+ * both halves of the rule the rest of the product follows, in one message. A
+ * number inside a Bangla sentence is a word; a score is a figure that gets read
+ * aloud against a report card.
+ */
+export function buildProgressSummaryText(input: ProgressSummaryInput): string {
+  const from = formatDate(input.weekFrom)
+  const to = formatDate(input.weekTo)
+
+  const lines: string[] = ['প্রিয় অভিভাবক,', '']
+  lines.push(`${input.studentName} — ${from} থেকে ${to} পর্যন্ত সপ্তাহের রিপোর্ট।`)
+  lines.push('')
+
+  if (input.sessionsCounted > 0) {
+    const counted = toBanglaDigits(input.sessionsCounted)
+    const present = toBanglaDigits(input.sessionsPresent)
+    const absent = input.sessionsCounted - input.sessionsPresent
+
+    // The absence is stated rather than left to be worked out. A parent who has to
+    // subtract two numbers to find out their child missed a class is a parent who
+    // does not find out.
+    lines.push(
+      absent > 0
+        ? `হাজিরা: ${counted} দিনের ক্লাসে ${present} দিন উপস্থিত, ${toBanglaDigits(absent)} দিন অনুপস্থিত।`
+        : `হাজিরা: ${counted} দিনের ক্লাসে ${present} দিনই উপস্থিত ছিল।`,
+    )
+
+    // Late is not absent and must not read as it. Its own clause, and only when it
+    // happened — a nil report on lateness would make every message longer to say
+    // nothing.
+    if (input.sessionsLate > 0) {
+      lines.push(`${toBanglaDigits(input.sessionsLate)} দিন দেরিতে এসেছে।`)
+    }
+  }
+
+  const hasMarks =
+    input.examObtained !== null &&
+    input.examObtained !== undefined &&
+    typeof input.examTotal === 'number' &&
+    input.examTotal > 0
+
+  if (hasMarks) {
+    const marks = marksText(input.examObtained as number, input.examTotal as number)
+    const title = (input.examTitle ?? '').trim()
+    lines.push(title ? `পরীক্ষা: ${title} — ${marks}।` : `পরীক্ষা: ${marks}।`)
+  }
+
+  // Absence from a test is a fact about the child, never a zero in the marks
+  // column. Reported even when there is no mark beside it, because "sat none of
+  // this week's tests" is the whole of what happened.
+  if (input.examsMissed > 0) {
+    lines.push(
+      `${toBanglaDigits(input.examsMissed)}টি পরীক্ষায় অনুপস্থিত ছিল।`,
+    )
+  }
+
+  lines.push('')
+  lines.push('কোনো প্রশ্ন থাকলে জানাবেন।')
+  lines.push('')
+  lines.push(`- ${input.centerName}`)
+
+  return lines.join('\n')
 }
 
 /**

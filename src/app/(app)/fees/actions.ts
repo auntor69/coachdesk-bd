@@ -26,7 +26,7 @@ import { currentPeriodMonth } from '@/lib/bd/time'
 import { normalizeBdMobile } from '@/lib/bd/phone'
 import { MAX_LABEL, MAX_TEXT, clamp } from '@/lib/limits'
 import { dict, DEFAULT_LOCALE } from '@/lib/i18n'
-import type { FeeReminderChannel, PaymentMethod } from '@/lib/supabase/types'
+import type { OutreachChannel, PaymentMethod } from '@/lib/supabase/types'
 
 export type FeeState = {
   error?: string
@@ -306,7 +306,7 @@ export async function recordPayment(
 /* -------------------------------------------------------------------------- */
 
 /** The three ways an owner can reach a parent from the board today. */
-const CHANNELS = new Set<FeeReminderChannel>(['sms', 'whatsapp', 'call'])
+const CHANNELS = new Set<OutreachChannel>(['sms', 'whatsapp', 'call'])
 
 /**
  * Comfortably longer than the WhatsApp text, which is the longest of the three.
@@ -322,7 +322,7 @@ const MAX_AMOUNT = 99_999_999
 
 export type FeeReminderLog = {
   invoiceId: string
-  channel: FeeReminderChannel
+  channel: OutreachChannel
   /** What the board showed as owed at the moment the owner tapped. */
   amount: number
   /** The guardian number the link was aimed at; null for anything unparseable. */
