@@ -8,8 +8,14 @@ import {
   roomFor,
   wouldExceed,
   hasStaff,
+  has,
   monthlyBillBdt,
+  studentChargeBdt,
+  teacherChargeBdt,
+  STUDENT_BANDS,
   CENTER_MONTHLY_FLOOR_BDT,
+  CENTER_FREE_TEACHER_SEATS,
+  CENTER_TEACHER_SEAT_BDT,
 } from '../src/lib/plans.ts'
 import { LOCALES } from '../src/lib/i18n/locale.ts'
 
@@ -48,31 +54,199 @@ test('room is what a bulk import needs, and never negative', () => {
   // The import refuses a paste whole and says how many would have fit, so this
   // number is read aloud to an owner. A negative one would be nonsense, and a
   // centre downgraded below its current roster is exactly how it happens.
-  assert.equal(roomFor(PLANS.teacher_free, 'maxStudents', 0), 60)
-  assert.equal(roomFor(PLANS.teacher_free, 'maxStudents', 58), 2)
-  assert.equal(roomFor(PLANS.teacher_free, 'maxStudents', 60), 0)
+  assert.equal(roomFor(PLANS.teacher_free, 'maxStudents', 0), 30)
+  assert.equal(roomFor(PLANS.teacher_free, 'maxStudents', 28), 2)
+  assert.equal(roomFor(PLANS.teacher_free, 'maxStudents', 30), 0)
   assert.equal(roomFor(PLANS.teacher_free, 'maxStudents', 400), 0)
   assert.equal(roomFor(PLANS.center, 'maxStudents', 400), null)
 })
 
-test('a tiny centre still pays the floor, a big one pays per enrollment', () => {
-  assert.equal(monthlyBillBdt(PLANS.teacher_free, 40), 0)
-  assert.equal(monthlyBillBdt(PLANS.teacher_plus, 40), 300)
-  assert.equal(monthlyBillBdt(PLANS.center, 10), CENTER_MONTHLY_FLOOR_BDT)
-  assert.equal(monthlyBillBdt(PLANS.center, 200), 1600)
+test('the tiers do not overlap, which is what makes the prices defensible', () => {
+  // The pricing bug this replaced. Teacher Pro used to hold 300 students, which
+  // put a teacher's ceiling above a small centre's floor: the same 250-student
+  // customer could stand in either tier and pay either ৳499 or several thousand.
+  // Pro's cap must stay at or below the point where a centre plan starts making
+  // sense, or the gap needs justifying with features instead of scale.
+  assert.ok(
+    PLANS.teacher_plus.maxStudents !== null
+      && PLANS.teacher_plus.maxStudents <= 150,
+    'Teacher Pro reaches into centre territory',
+  )
+  // And the wall itself: one teacher, at any price. A purchasable second seat
+  // would rebuild the overlap from the other side.
+  assert.equal(PLANS.teacher_plus.maxTeachers, 1)
+  assert.equal(hasStaff(PLANS.teacher_plus), false)
 })
 
-test('no tier is sold as a worse product, only a smaller one', () => {
-  // The whole pitch, asserted: every feature except multiple branches is on at
-  // every price. A cap on scale is a sales conversation; a cap on capability is
-  // a teacher who never finds out what the app does.
-  for (const plan of Object.values(PLANS)) {
-    const { multipleBranches, ...rest } = plan.features
-    void multipleBranches
-    for (const [feature, on] of Object.entries(rest)) {
-      assert.equal(on, true, `${plan.id} withholds ${feature}`)
+test('both student caps bite, because they stop different things', () => {
+  // A total cap alone would let 150 students sit in one batch, which is a lecture
+  // hall rather than the five-batches-of-thirty the tier is sold as.
+  const pro = PLANS.teacher_plus
+  assert.equal(wouldExceed(pro, 'maxStudentsPerBatch', 29), false)
+  assert.equal(wouldExceed(pro, 'maxStudentsPerBatch', 30), true)
+  assert.equal(wouldExceed(pro, 'maxStudents', 149), false)
+  assert.equal(wouldExceed(pro, 'maxStudents', 150), true)
+  // And the caps have to agree with the pitch: five batches at thirty each.
+  assert.equal(
+    (pro.maxBatches ?? 0) * (pro.maxStudentsPerBatch ?? 0),
+    pro.maxStudents,
+  )
+})
+
+test('the free tier withholds exactly what sells Pro, and nothing else', () => {
+  // The paywall, asserted. Every tier used to carry every feature, which meant a
+  // paid teacher tier would have sold nothing the free one already did.
+  const free = PLANS.teacher_free
+
+  // The hook. Gating any of these would mean a teacher never finds out what the
+  // product does, and teachers are how we reach centre owners.
+  for (const feature of ['attendance', 'exams', 'feeTracking', 'manualMessaging'] as const) {
+    assert.equal(has(free, feature), true, `free withholds ${feature}`)
+  }
+
+  // What Pro is for.
+  for (const feature of ['printedReceipts', 'exportReports', 'parentSummary', 'buySmsCredits'] as const) {
+    assert.equal(has(free, feature), false, `free gives away ${feature}`)
+    assert.equal(has(PLANS.teacher_plus, feature), true, `Pro withholds ${feature}`)
+  }
+})
+
+test('every tier above free is a superset of the one below it', () => {
+  // A ladder, not four unrelated bundles: an upgrade must never take something
+  // away, or a centre that grows discovers a feature it used to have. Asserted
+  // over the whole flag set so a new flag cannot be added to one tier only.
+  const ladder = [PLANS.teacher_free, PLANS.teacher_plus, PLANS.center, PLANS.institution]
+
+  for (let i = 1; i < ladder.length; i++) {
+    const lower = ladder[i - 1]
+    const upper = ladder[i]
+    for (const [feature, on] of Object.entries(lower.features)) {
+      if (!on) continue
+      assert.equal(
+        upper.features[feature as keyof typeof upper.features],
+        true,
+        `${upper.id} takes ${feature} away from ${lower.id}`,
+      )
     }
   }
+})
+
+test('no tier promises an automated SMS it cannot send', () => {
+  // Not a pricing decision — a factual one. No sender ID exists, so no gateway
+  // exists, so an allowance here would be a counter decrementing against nothing
+  // while a teacher is told the parent was messaged. The day an aggregator is
+  // live this test is what says which line to change.
+  for (const plan of Object.values(PLANS)) {
+    assert.equal(plan.monthlySmsCredits, 0, `${plan.id} promises credits`)
+    assert.equal(has(plan, 'automatedSms'), false, `${plan.id} promises automation`)
+  }
+})
+
+test('tap-to-send is on every tier, including free', () => {
+  // It costs us nothing, needs no licence, and cannot be switched off by a
+  // regulator — so it is the one thing the free tier gets without limit. It is
+  // also the whole messaging story until an aggregator exists.
+  for (const plan of Object.values(PLANS)) {
+    assert.equal(has(plan, 'manualMessaging'), true, `${plan.id} cannot message`)
+  }
+})
+
+test('the student bands are marginal, so the bill never falls as a centre grows', () => {
+  // The pricing-page bug this shape prevents. With a flat rate per band, a centre
+  // at 301 students (301 × ৳12 = ৳3,612) would pay less than one at 300
+  // (300 × ৳18 = ৳5,400) — a price list that makes the founder look like they
+  // cannot count, and an owner who discovers it will enrol a phantom student.
+  //
+  // Walked one student at a time across every boundary, because a band arithmetic
+  // error is invisible in a spot check and obvious here.
+  let previous = 0
+  for (let n = 1; n <= 700; n++) {
+    const bill = studentChargeBdt(n)
+    assert.ok(bill > previous, `bill fell or flattened at ${n} students`)
+    previous = bill
+  }
+})
+
+test('each band charges only the students inside it', () => {
+  // The first band, exactly.
+  assert.equal(studentChargeBdt(100), 100 * 25)
+  // One over: the 101st student is charged at the second band's rate, not the
+  // whole roster re-rated.
+  assert.equal(studentChargeBdt(101), 100 * 25 + 18)
+  // The stated example from the pricing conversation: 250 students.
+  assert.equal(studentChargeBdt(250), 100 * 25 + 150 * 18)
+  // Across three bands.
+  assert.equal(studentChargeBdt(400), 100 * 25 + 200 * 18 + 100 * 12)
+  // Into the open-ended last band.
+  assert.equal(studentChargeBdt(900), 100 * 25 + 200 * 18 + 300 * 12 + 300 * 8)
+})
+
+test('a zero or nonsense roster costs nothing rather than NaN', () => {
+  // These figures reach a pricing calculator an owner is typing into, and NaN on
+  // a price is worse than any number.
+  for (const n of [0, -5, Number.NaN, Number.POSITIVE_INFINITY]) {
+    assert.equal(studentChargeBdt(n), 0, `${n} students`)
+    assert.equal(teacherChargeBdt(n), 0, `${n} teachers`)
+  }
+})
+
+test('the bands are ordered and taper, which is the only reason the taper works', () => {
+  // Guards the table rather than the arithmetic: a band inserted out of order, or
+  // one whose rate rises, would compute a plausible-looking bill that contradicts
+  // the pitch. The last band must be open-ended or a large centre bills as zero
+  // past its ceiling.
+  let previousUpTo = 0
+  for (const [i, band] of STUDENT_BANDS.entries()) {
+    const last = i === STUDENT_BANDS.length - 1
+    if (last) {
+      assert.equal(band.upTo, null, 'the last band must be open-ended')
+    } else {
+      assert.ok(band.upTo !== null && band.upTo > previousUpTo, `band ${i} is out of order`)
+      assert.ok(band.rateBdt > STUDENT_BANDS[i + 1].rateBdt, `band ${i} does not taper`)
+      previousUpTo = band.upTo
+    }
+  }
+})
+
+test('two teacher seats are included and the rest are charged', () => {
+  assert.equal(teacherChargeBdt(1), 0)
+  assert.equal(teacherChargeBdt(CENTER_FREE_TEACHER_SEATS), 0)
+  assert.equal(teacherChargeBdt(3), CENTER_TEACHER_SEAT_BDT)
+  assert.equal(teacherChargeBdt(30), 28 * CENTER_TEACHER_SEAT_BDT)
+})
+
+test('a small centre pays the floor, and its staff on top of it', () => {
+  assert.equal(monthlyBillBdt(PLANS.teacher_free, 40), 0)
+  assert.equal(monthlyBillBdt(PLANS.teacher_plus, 40), 499)
+
+  // Fifty students bills ৳1,250 of students, which is under the floor. The floor
+  // is the base model and nothing goes under it.
+  assert.equal(monthlyBillBdt(PLANS.center, 50), CENTER_MONTHLY_FLOOR_BDT)
+
+  // The floor applies to the student charge, not to the total: a small centre that
+  // hires a sixth teacher pays the floor PLUS those seats, rather than having the
+  // seats quietly swallowed by it.
+  assert.equal(
+    monthlyBillBdt(PLANS.center, 50, 6),
+    CENTER_MONTHLY_FLOOR_BDT + 4 * CENTER_TEACHER_SEAT_BDT,
+  )
+
+  // And a centre past the floor pays what the bands say, plus seats.
+  assert.equal(monthlyBillBdt(PLANS.center, 250, 6), 5200 + 400)
+})
+
+test('the bill counts students, not enrollments', () => {
+  // The correction this replaced, asserted so it cannot come back. The old
+  // signature took `activeEnrollments`, and a centre charges by subject — so a
+  // student taking Physics, Chemistry and Maths was billed three times. At ৳25
+  // that is ৳75 for one child, which is not a number anybody was quoted.
+  //
+  // One student in three subjects and one student in one subject cost the same,
+  // because they are one student. Were the bill still per-enrollment, three
+  // subjects would treble it.
+  assert.equal(studentChargeBdt(1), 25)
+  assert.equal(studentChargeBdt(3), 75)
+  assert.notEqual(studentChargeBdt(3), 3 * 3 * 25)
 })
 
 test('staff belongs to the centre tiers, not the solo ones', () => {
