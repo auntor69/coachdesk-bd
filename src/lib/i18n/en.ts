@@ -593,6 +593,17 @@ export const en: Dictionary = {
     codeHint: 'The centre’s own roll or ID, if it keeps one',
     codePlaceholder: '2026-041',
     submit: 'Add student',
+
+    statusLabel: 'Status',
+    statusHint:
+      'Stop a student and next month’s bill stops with them. Bills and receipts already raised stay exactly as they are.',
+    status: {
+      active: 'Coming',
+      inactive: 'Stopped for now',
+      graduated: 'Finished',
+      dropped: 'Left',
+    },
+    batchHint: 'Tick to put them in a batch, untick to take them out',
   },
 
   importForm: {
@@ -1011,6 +1022,10 @@ export const en: Dictionary = {
       cap: (name: string, limit: number) =>
         `The ${name} plan holds ${limit} ${limit === 1 ? 'student' : 'students'}.`,
       added: 'Student added',
+
+      editTitle: 'Fix their details',
+      editHint: 'Tap to fix a name or a number',
+      saved: 'Details saved',
       errors: {
         nameRequired: 'Give the student’s name.',
         /** ASCII digits in the example — see the Bangla for why they differ. */
@@ -1019,6 +1034,7 @@ export const en: Dictionary = {
         studentPhone: 'That student number is not right.',
         duplicateCode: 'A student with this ID already exists.',
         notFound: 'Student not found.',
+        saveFailed: 'Could not save those details.',
       },
     },
 

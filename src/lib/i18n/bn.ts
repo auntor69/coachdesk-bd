@@ -1002,6 +1002,28 @@ export const bn = {
     codeHint: 'সেন্টারের নিজের রোল বা আইডি, থাকলে',
     codePlaceholder: '২০২৬-০৪১',
     submit: 'শিক্ষার্থী যোগ করুন',
+
+    /**
+     * The edit form's own keys. Everything above is shared with it — the fields are
+     * the same fields, and a second copy of "অভিভাবকের মোবাইল" is a second thing
+     * to keep in step.
+     */
+    statusLabel: 'অবস্থা',
+    /**
+     * Says what the status *does*, because the consequence is the whole reason an
+     * owner comes here: a student marked বন্ধ stops being billed next month, and
+     * one left সক্রিয় keeps getting invoices after they have gone.
+     */
+    statusHint: 'বন্ধ করলে পরের মাস থেকে আর বিল হবে না। আগের বিল আর রসিদ ঠিক থাকবে।',
+    status: {
+      active: 'সক্রিয়',
+      /** Reversible in the owner's head — "আপাতত আসছে না" — so the batches pause. */
+      inactive: 'আপাতত বন্ধ',
+      graduated: 'পাস করেছে',
+      dropped: 'ছেড়ে দিয়েছে',
+    },
+    /** Ticking and unticking is the whole batch-change UI, so it says so. */
+    batchHint: 'টিক দিলে ব্যাচে যোগ হবে, টিক তুলে দিলে ওই ব্যাচ থেকে বাদ যাবে',
   },
 
   /**
@@ -1789,6 +1811,19 @@ export const bn = {
       cap: (name: string, limit: number) =>
         `${name} প্ল্যানে ${digits(limit, 'bn')} জন শিক্ষার্থী।`,
       added: 'শিক্ষার্থী যোগ হয়েছে',
+
+      /**
+       * Changing what is already there. The heading is the student's own name, so
+       * this is only what sits above it.
+       */
+      editTitle: 'তথ্য ঠিক করুন',
+      /**
+       * On the roster row, telling the owner the row is worth tapping. The number
+       * on it is the field most likely to be wrong, and until this screen existed
+       * there was nothing to be done about a wrong one.
+       */
+      editHint: 'নম্বর বা নাম ঠিক করতে ট্যাপ করুন',
+      saved: 'তথ্য সেভ হয়েছে',
       errors: {
         nameRequired: 'শিক্ষার্থীর নাম লিখুন।',
         /**
@@ -1801,6 +1836,8 @@ export const bn = {
         /** students.student_code is unique per centre when it is given at all. */
         duplicateCode: 'এই আইডিতে শিক্ষার্থী আগেই আছে।',
         notFound: 'শিক্ষার্থী পাওয়া যায়নি।',
+        /** The save itself failed — see errors.addFailed for the add path's twin. */
+        saveFailed: 'তথ্য সেভ করা যায়নি।',
       },
     },
 

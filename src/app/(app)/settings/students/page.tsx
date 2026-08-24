@@ -1,7 +1,7 @@
 import Link from 'next/link'
 
 import { Card } from '@/components/ui'
-import { pagePermission, getSession } from '@/lib/auth/session'
+import { pagePermission, isStaffAdmin, getSession } from '@/lib/auth/session'
 import { createClient } from '@/lib/supabase/server'
 import { formatBdMobile } from '@/lib/bd/phone'
 import { MAX_IMPORT_ROWS } from '@/lib/bd/roster'
@@ -32,6 +32,12 @@ export default async function StudentsPage() {
   const locale = session.locale
   const d = dict(locale)
   const t = d.settings.students
+
+  // Whether a row is a link. A permitted teacher may read this list and admit to it
+  // and may not edit it — see 20260811000019, which grants that box SELECT and
+  // INSERT and no UPDATE. An unclickable row is the honest rendering of that; a link
+  // to a screen that refuses them is not.
+  const mayEdit = isStaffAdmin(session)
 
   const { data: students } = await supabase
     .from('students')
@@ -81,6 +87,11 @@ export default async function StudentsPage() {
             <p className="mt-1 text-ink-soft">
               {limit === null ? t.count(activeCount) : t.used(activeCount, limit)}
             </p>
+            {/* Only where it is true. A row that does nothing when tapped is a
+                smaller disappointment than a line of copy that promised it would. */}
+            {mayEdit && rows.length > 0 && (
+              <p className="text-sm text-ink-faint">{t.editHint}</p>
+            )}
           </div>
           <Link
             href="/settings/students/new"
@@ -129,11 +140,8 @@ export default async function StudentsPage() {
         </Card>
       ) : (
         <ul className="flex flex-col gap-2">
-          {rows.map((row) => (
-            <li
-              key={row.id}
-              className="rounded-xl border border-line bg-white px-4 py-3"
-            >
+          {rows.map((row) => {
+            const body = (
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">
                   <p className="truncate font-medium text-ink">
@@ -167,8 +175,29 @@ export default async function StudentsPage() {
                   )}
                 </div>
               </div>
-            </li>
-          ))}
+            )
+
+            return (
+              <li key={row.id}>
+                {mayEdit ? (
+                  // The whole row, not a pencil in the corner: the thing an owner
+                  // wants to fix is usually the number they are already looking at,
+                  // and on the phone this is held in one hand.
+                  <Link
+                    href={`/settings/students/${row.id}`}
+                    className="block rounded-xl border border-line bg-white px-4 py-3
+                      hover:border-brand-300 active:bg-brand-50"
+                  >
+                    {body}
+                  </Link>
+                ) : (
+                  <div className="rounded-xl border border-line bg-white px-4 py-3">
+                    {body}
+                  </div>
+                )}
+              </li>
+            )
+          })}
         </ul>
       )}
     </div>

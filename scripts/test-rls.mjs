@@ -3442,6 +3442,225 @@ await asUser(db, ids.studentUser, async (tx) => {
 })
 
 // ---------------------------------------------------------------------------
+// Correcting a student, and marking one who has left.
+//
+// The section further up settled what a permitted teacher cannot do to the roster:
+// `can_manage_students` grants SELECT and INSERT and deliberately no UPDATE. This
+// settles the other half — that somebody can. Until the edit screen existed no code
+// in this product had ever issued an UPDATE against students, guardians or
+// enrollments, so the write half of the `for all` policies they were given back in
+// 20260811000002 had never once been exercised.
+//
+// That is a worse gap than it sounds, for the reason the teacher section gives: an
+// UPDATE matching no policy touches zero rows and raises nothing. The screen would
+// say "details saved", the roster would come back showing the old number, and the
+// owner would conclude they had mistyped it a second time. So every assertion here
+// reads the stored value back rather than trusting a silent success.
+//
+// And a manager, not an owner. `is_staff_admin` is has_role(owner, manager) and
+// every staff write in the product keys off it, yet no manager had ever acted in
+// this suite — while a centre's second-in-command is exactly who does this job.
+// ---------------------------------------------------------------------------
+
+console.log('\nCorrecting a student on the roster:')
+
+const managerUser = (
+  await db.query('insert into auth.users (id) values (gen_random_uuid()) returning id')
+).rows[0].id
+await addMember(centerA, managerUser, 'manager')
+
+// This section's own student, so ending their enrollments cannot disturb the counts
+// the sections above measured.
+const stEdit = await student(centerA, 'Sumaiya Islam')
+await db.query(
+  `insert into guardians (coaching_center_id, student_id, phone, name)
+   values ($1, $2, '01755500000', 'Sumaiya mother')`,
+  [centerA, stEdit],
+)
+const eEdit = await enroll(centerA, stEdit, sChem, bChemEvening)
+
+// One with no guardian row at all — a student imported before guardians existed, or
+// one whose guardian insert failed. The edit screen repairs that rather than noticing
+// it, which needs INSERT on a table the same save is updating.
+const stSpare = await student(centerA, 'Nusrat Jahan')
+
+const rowOf = async (sql, params = []) => (await db.query(sql, params)).rows[0]
+
+const editRow = () =>
+  rowOf('select name, guardian_phone, status from students where id = $1', [stEdit])
+const guardianRow = () =>
+  rowOf('select phone, name from guardians where student_id = $1', [stEdit])
+const enrolmentRow = () =>
+  rowOf('select status, ended_at from enrollments where id = $1', [eEdit])
+
+// One statement per transaction, and every readback outside it. PGlite is a single
+// connection, so a `db.query` issued from inside an asUser callback waits on the
+// transaction that is waiting on it — the suite hangs rather than fails, which is a
+// worse thing for a gate to do than either.
+const asManager = (sql, params = []) =>
+  asUser(db, managerUser, (tx) => tx.query(sql, params))
+
+await asUser(db, managerUser, async (tx) => {
+  check(
+    'a manager reads their own centre and not the other one',
+    (await n(tx, 'select count(*)::int as n from students where coaching_center_id = $1', [
+      centerA,
+    ])) > 0
+      && (await n(tx, 'select count(*)::int as n from students where coaching_center_id = $1', [
+        centerB,
+      ])) === 0,
+  )
+
+  check(
+    'and their own centre’s parents, which is what the roster shows on every row',
+    (await n(tx, 'select count(*)::int as n from guardians where coaching_center_id = $1', [
+      centerB,
+    ])) === 0,
+  )
+})
+
+await asManager('update students set name = $1 where id = $2', ['Sumaiya Islam Khan', stEdit])
+check(
+  'a manager can fix a name somebody typed wrong',
+  (await nameOf(stEdit)) === 'Sumaiya Islam Khan',
+)
+
+// The whole reason this screen exists. Two columns because two features read two
+// different ones — result-dispatch sends to guardians.phone, the fee board view
+// selects students.guardian_phone — so a policy that let one through and not the
+// other would fix half the product and leave the other half texting a stranger.
+await asManager('update students set guardian_phone = $1 where id = $2', ['01755511111', stEdit])
+await asManager('update guardians set phone = $1 where student_id = $2', ['01755511111', stEdit])
+check(
+  "both copies of the guardian's number move together",
+  (await editRow())?.guardian_phone === '01755511111'
+    && (await guardianRow())?.phone === '01755511111',
+  JSON.stringify([(await editRow())?.guardian_phone, (await guardianRow())?.phone]),
+)
+
+// Not a label: this is what stops next month's bill. generateInvoices reads every
+// active enrollment in the centre, so a student who leaves and whose enrollments
+// stay active keeps appearing on the fee board and their parent keeps being asked.
+await asManager(`update enrollments set status = 'paused', ended_at = now() where id = $1`, [
+  eEdit,
+])
+const ended = await enrolmentRow()
+check(
+  'a manager can take a student out of a batch, with a date on it',
+  ended?.status === 'paused' && ended?.ended_at !== null,
+  JSON.stringify(ended),
+)
+
+// The one transition this screen brings back on its own. The row is reused rather
+// than re-inserted because (student_id, batch_id) is unique — a second insert would
+// raise 23505 and the owner would be told the batch was somehow already theirs.
+await asManager(`update enrollments set status = 'active', ended_at = null where id = $1`, [
+  eEdit,
+])
+const revived = await enrolmentRow()
+check(
+  'and put them back into the same one',
+  revived?.status === 'active' && revived?.ended_at === null,
+  JSON.stringify(revived),
+)
+
+await asManager(
+  `insert into enrollments (coaching_center_id, student_id, subject_id, batch_id)
+   values ($1, $2, $3, $4)`,
+  [centerA, stEdit, sBio, bBioMorning],
+)
+check(
+  'and move them into a batch nobody asked the manager to teach',
+  (await countOf(
+    `select count(*)::int as n from enrollments where student_id = $1 and status = 'active'`,
+    [stEdit],
+  )) === 2,
+)
+
+await asManager(
+  `insert into guardians (coaching_center_id, student_id, phone, name)
+   values ($1, $2, '01755522222', 'Nusrat father')`,
+  [centerA, stSpare],
+)
+check(
+  'a student who arrived without a guardian row can be given one',
+  (await countOf('select count(*)::int as n from guardians where student_id = $1', [
+    stSpare,
+  ])) === 1,
+)
+
+await asManager(`update students set status = 'dropped' where id = $1`, [stEdit])
+check(
+  'and a student who has left can be marked as having left',
+  (await editRow())?.status === 'dropped',
+)
+
+// Put them back, because the cross-centre assertions below read this row.
+await db.query(`update students set status = 'active' where id = $1`, [stEdit])
+
+await asManager('update students set name = $1 where id = $2', ['Manager Reached B', stB])
+check('a manager at A cannot rename a student at B', (await nameOf(stB)) === 'Jubayer Khan')
+
+const asOwnerB = (sql, params = []) => asUser(db, ids.ownerB, (tx) => tx.query(sql, params))
+
+await asOwnerB('update students set name = $1 where id = $2', ['Owner B Reached A', stEdit])
+await asOwnerB('update students set guardian_phone = $1 where id = $2', ['01799999999', stEdit])
+await asOwnerB('update guardians set phone = $1 where student_id = $2', ['01799999999', stEdit])
+await asOwnerB(`update enrollments set status = 'dropped' where id = $1`, [eEdit])
+
+const unreached = await editRow()
+check(
+  "an owner of another centre changes nothing about centre A's student",
+  unreached?.name === 'Sumaiya Islam Khan'
+    && unreached?.guardian_phone === '01755511111'
+    && (await guardianRow())?.phone === '01755511111'
+    && (await enrolmentRow())?.status === 'active',
+  JSON.stringify(unreached),
+)
+
+// A parent panel is deliberately not being built, so nothing in the product ever
+// needed this write — and a parent who could rewrite their own number could redirect
+// a centre's SMS to it, or opt a centre out of reaching them without the centre ever
+// seeing why the messages stopped.
+await asUser(db, ids.guardianUser, async (tx) => {
+  check(
+    'a parent reads their own row and no other parent’s',
+    (await n(tx, 'select count(*)::int as n from guardians')) === 1,
+  )
+})
+
+await asUser(db, ids.guardianUser, (tx) =>
+  tx.query(`update guardians set phone = '01766600000' where student_id = $1`, [stAli]),
+)
+check(
+  'and cannot point the centre at a different number',
+  (await rowOf('select phone from guardians where student_id = $1', [stAli]))?.phone
+    === '01711111111',
+)
+
+// Likewise a student marking themselves graduated: it would take them off the fee
+// board, which is the same thing as writing off what they owe.
+await asUser(db, ids.studentUser, (tx) =>
+  tx.query(`update students set status = 'graduated' where id = $1`, [stAli]),
+)
+await asUser(db, ids.studentUser, (tx) =>
+  tx.query('update students set guardian_phone = null where id = $1', [stAli]),
+)
+const ali = await rowOf('select status, guardian_phone from students where id = $1', [stAli])
+check(
+  'a student cannot pass themselves or lose their own guardian number',
+  ali?.status === 'active' && ali?.guardian_phone !== null,
+  JSON.stringify(ali),
+)
+
+// Back out, so the sections after this one count what they expect to.
+await db.query('delete from enrollments where student_id = any($1::uuid[])', [[stEdit, stSpare]])
+await db.query('delete from guardians where student_id = any($1::uuid[])', [[stEdit, stSpare]])
+await db.query('delete from students where id = any($1::uuid[])', [[stEdit, stSpare]])
+await db.query('delete from center_members where user_id = $1', [managerUser])
+await db.query('delete from auth.users where id = $1', [managerUser])
+
+// ---------------------------------------------------------------------------
 // The SMS delivery worker — claim, settle, cancel, reap.
 //
 // This is the first code in the product that spends and un-spends credits

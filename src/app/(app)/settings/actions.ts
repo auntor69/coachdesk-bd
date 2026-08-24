@@ -39,7 +39,9 @@ import { roomFor, wouldExceed, hasStaff, type LimitKey } from '@/lib/plans'
 import type {
   BatchSlot,
   Database,
+  EnrollmentStatus,
   PayoutWallet,
+  StudentStatus,
   SubjectKind,
 } from '@/lib/supabase/types'
 
@@ -564,6 +566,278 @@ export async function createStudent(
   revalidatePath('/teach')
   revalidatePath('/dashboard')
   return { ok: t.students.added }
+}
+
+/**
+ * The statuses an owner may put a student into, in the order the select offers
+ * them. `as const satisfies` so widening the enum breaks here rather than quietly
+ * leaving a state out of the only screen that can reach it.
+ */
+export const STUDENT_STATUSES = [
+  'active',
+  'inactive',
+  'graduated',
+  'dropped',
+] as const satisfies readonly StudentStatus[]
+
+/**
+ * What leaving means for the batches the student was in.
+ *
+ * Not one value for all three, because the distinction is the difference between a
+ * batch that ran its course and one somebody walked out of, and `completed` written
+ * over as `dropped` cannot be recovered. `paused` for `inactive` is the pair that
+ * does the most work: a student who has stopped coming for a while is the common
+ * case, and it is the only one this screen brings back on its own.
+ */
+const ENROLMENT_END: Record<Exclude<StudentStatus, 'active'>, EnrollmentStatus> = {
+  inactive: 'paused',
+  graduated: 'completed',
+  dropped: 'dropped',
+}
+
+/**
+ * Fixing what somebody typed, and marking who has left.
+ *
+ * The screen this serves did not exist until now, which made the roster a list an
+ * owner could read and not correct. Two things made that expensive rather than
+ * merely annoying:
+ *
+ * The guardian's mobile number is the product's entire delivery channel, and it is
+ * the field most likely to be wrong — the roster shows it on every row precisely so
+ * a wrong one gets caught. Caught, and then nothing could be done: re-admitting the
+ * student under a corrected number would have orphaned their attendance, their marks
+ * and their fee history. And the roster's own warning card counts the students with
+ * no number at all, which was a dead end pointing at a screen that did not exist.
+ *
+ * And a student who leaves keeps being billed. `generateInvoices` reads every active
+ * enrollment in the centre, so without a way to end one, next month's board carries a
+ * row for somebody who is not coming — and the reminder worklist asks their parent
+ * for it. So the status here is not a label: it ends the enrollments, which is what
+ * stops the bill.
+ *
+ * Guarded by rank rather than by `can_manage_students`, matching the policies:
+ * 20260811000019 grants a permitted teacher SELECT and INSERT and deliberately no
+ * UPDATE, because "admit students" is what that box says and editing a guardian's
+ * number is not that. A teacher reaching this action is refused twice — here, and
+ * again by RLS if this check were ever removed.
+ */
+export async function updateStudent(
+  _prev: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
+  const session = await staffAdmin()
+  if (!isSession(session)) return session
+
+  const t = dict(session.locale).settings
+
+  const studentId = String(formData.get('studentId') ?? '')
+  if (!studentId) return { error: t.students.errors.notFound }
+
+  const name = String(formData.get('name') ?? '').trim()
+  const rawGuardianPhone = String(formData.get('guardianPhone') ?? '')
+  const guardianName = String(formData.get('guardianName') ?? '').trim()
+  const rawStudentPhone = String(formData.get('phone') ?? '')
+  const institution = clamp(String(formData.get('institution') ?? '').trim(), MAX_NAME)
+  const classLevel = clamp(String(formData.get('classLevel') ?? '').trim(), MAX_LABEL)
+  const studentCode = clamp(String(formData.get('studentCode') ?? '').trim(), MAX_LABEL)
+  const batchIds = formData.getAll('batchIds').map(String).filter(Boolean)
+
+  const rawStatus = String(formData.get('status') ?? '')
+  const status: StudentStatus = (STUDENT_STATUSES as readonly string[]).includes(rawStatus)
+    ? (rawStatus as StudentStatus)
+    : 'active'
+
+  if (!name) return { error: t.students.errors.nameRequired }
+  if (name.length > MAX_NAME) return { error: nameTooLong(session.locale) }
+  if (guardianName.length > MAX_NAME) return { error: nameTooLong(session.locale) }
+
+  // Still required, and still validated, for the reason createStudent gives: a
+  // number that does not work fails silently a month later. An edit is where a
+  // wrong one gets fixed, so this is the last place to be lenient about it.
+  const guardianPhone = normalizeBdMobile(rawGuardianPhone)
+  if (!guardianPhone) return { error: t.students.errors.guardianPhone }
+
+  const studentPhone = rawStudentPhone.trim()
+    ? normalizeBdMobile(rawStudentPhone)
+    : null
+  if (rawStudentPhone.trim() && !studentPhone) {
+    return { error: t.students.errors.studentPhone }
+  }
+
+  const supabase = await createClient()
+
+  // Read the row back before writing it, scoped by centre as well as by RLS: an
+  // owner of two centres satisfies is_staff_admin for both, so the policy alone
+  // would let an id from the other one through. The previous status is needed
+  // anyway — it decides whether this save is a reactivation, and a reactivation has
+  // to pass the plan cap.
+  const { data: before } = await supabase
+    .from('students')
+    .select('id, status')
+    .eq('coaching_center_id', session.active.centerId)
+    .eq('id', studentId)
+    .maybeSingle()
+
+  if (!before) return { error: t.students.errors.notFound }
+
+  // A student who was not counted against maxStudents and is about to be. Checked
+  // before anything is written, so a refusal leaves the roster exactly as it was.
+  if (status === 'active' && before.status !== 'active') {
+    if (await overLimit(session, 'students', 'maxStudents')) {
+      return { error: t.errors.planLimit }
+    }
+  }
+
+  // Everything the batch checkboxes might change, decided before the first write
+  // for the same reason: the per-batch cap has to refuse the whole save rather
+  // than half of it.
+  const { data: existing } = await supabase
+    .from('enrollments')
+    .select('id, batch_id, status')
+    .eq('coaching_center_id', session.active.centerId)
+    .eq('student_id', studentId)
+
+  const enrolments = existing ?? []
+  const live = enrolments.filter((e) => e.status === 'active' || e.status === 'paused')
+
+  // The checkbox set is authoritative only while the student is coming. Any other
+  // status means they have gone, and the boxes the form hid do not get a say.
+  //
+  // Filtered through the centre's own batches rather than trusted: this is a public
+  // endpoint, and a batch id from the other centre would otherwise become an
+  // enrollment that RLS has no reason to refuse — the tenant column on the row would
+  // be this centre's.
+  const wanted = new Set<string>(
+    status === 'active' && batchIds.length > 0
+      ? (
+          await supabase
+            .from('batches')
+            .select('id')
+            .eq('coaching_center_id', session.active.centerId)
+            .in('id', batchIds)
+        ).data?.map((b) => b.id) ?? []
+      : [],
+  )
+
+  const toRevive = enrolments.filter((e) => e.status !== 'active' && wanted.has(e.batch_id))
+  const toInsert = [...wanted].filter((id) => !enrolments.some((e) => e.batch_id === id))
+  const toEnd = status === 'active' ? live.filter((e) => !wanted.has(e.batch_id)) : live
+
+  // One seat is one seat whether it is new or coming back, so both count against
+  // the per-batch cap — and neither is written if any of them is full.
+  const filling = [...toRevive.map((e) => e.batch_id), ...toInsert]
+  const full = await fullBatches(supabase, session, filling, 1)
+  if (full.length > 0) {
+    return {
+      error: t.errors.batchFull(full.join(', '), session.plan.maxStudentsPerBatch ?? 0),
+    }
+  }
+
+  const { error: saveError } = await supabase
+    .from('students')
+    .update({
+      name,
+      status,
+      student_code: studentCode || null,
+      phone: studentPhone,
+      guardian_name: guardianName || null,
+      guardian_phone: guardianPhone,
+      institution: institution || null,
+      class_level: classLevel || null,
+    })
+    .eq('coaching_center_id', session.active.centerId)
+    .eq('id', studentId)
+
+  if (saveError) {
+    if (saveError.code === '23505') return { error: t.students.errors.duplicateCode }
+    return { error: t.students.errors.saveFailed }
+  }
+
+  // Both copies of the number, because two different features read two different
+  // columns. `guardians.phone` is what result-dispatch sends to; the fee board view
+  // selects `students.guardian_phone`, so the reminder worklist reads that one.
+  // Updating only one of them fixes half the product and leaves the other half
+  // texting a stranger — which is worse than the original typo, because the owner
+  // has now watched themselves correct it.
+  const { data: touched } = await supabase
+    .from('guardians')
+    .update({ phone: guardianPhone, name: guardianName || null })
+    .eq('coaching_center_id', session.active.centerId)
+    .eq('student_id', studentId)
+    .eq('is_primary', true)
+    .select('id')
+
+  // No primary guardian row at all: a student imported before guardians existed, or
+  // one whose guardian insert failed. The edit is where that gets repaired rather
+  // than noticed, so it is created instead of skipped.
+  if ((touched ?? []).length === 0) {
+    await supabase.from('guardians').insert({
+      coaching_center_id: session.active.centerId,
+      student_id: studentId,
+      name: guardianName || null,
+      phone: guardianPhone,
+      is_primary: true,
+    })
+  }
+
+  if (toEnd.length > 0) {
+    // ended_at as well as the status, because a status on its own cannot say when.
+    // The invoices already raised for these months are left alone: the student was
+    // taught, so the money is owed, and a bill that disappears when somebody leaves
+    // is a bill the centre never collects.
+    await supabase
+      .from('enrollments')
+      .update({
+        status: status === 'active' ? 'dropped' : ENROLMENT_END[status],
+        ended_at: new Date().toISOString(),
+      })
+      .eq('coaching_center_id', session.active.centerId)
+      .in(
+        'id',
+        toEnd.map((e) => e.id),
+      )
+  }
+
+  if (toRevive.length > 0) {
+    await supabase
+      .from('enrollments')
+      .update({ status: 'active', ended_at: null })
+      .eq('coaching_center_id', session.active.centerId)
+      .in(
+        'id',
+        toRevive.map((e) => e.id),
+      )
+  }
+
+  if (toInsert.length > 0) {
+    // The batch's own subject, for the reason createStudent gives: a chosen one can
+    // disagree with the batch and the marks screen then shows the wrong list.
+    const { data: batches } = await supabase
+      .from('batches')
+      .select('id, subject_id')
+      .eq('coaching_center_id', session.active.centerId)
+      .in('id', toInsert)
+
+    if (batches && batches.length > 0) {
+      await supabase.from('enrollments').insert(
+        batches.map((b) => ({
+          coaching_center_id: session.active.centerId,
+          student_id: studentId,
+          subject_id: b.subject_id,
+          batch_id: b.id,
+        })),
+      )
+    }
+  }
+
+  revalidatePath('/settings/students')
+  revalidatePath('/teach')
+  revalidatePath('/dashboard')
+  // The two screens that read a guardian's number: the fee board and the reminder
+  // worklist behind it, and the at-risk list, which names the parent to call.
+  revalidatePath('/fees')
+  revalidatePath('/at-risk')
+  return { ok: t.students.saved }
 }
 
 /**
