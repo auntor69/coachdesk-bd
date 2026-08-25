@@ -11,6 +11,8 @@
  */
 import { useActionState, useEffect, useMemo, useRef, useState } from 'react'
 
+import { useOffline } from 'next/offline'
+
 import { Alert, Button } from '@/components/ui'
 import { clearDraft, useSavedDraft, writeDraft } from '@/lib/drafts'
 import { fill } from '@/lib/i18n/fill'
@@ -78,6 +80,17 @@ export function MarksSheet({
     saveMarks,
     null,
   )
+
+  /**
+   * Whether the phone has lost the network, for the save button's label alone —
+   * the same three-state button as the register, for the same reason. See the
+   * longer note in teach/[batchId]/attendance-roster.tsx: with
+   * `experimental.useOffline` on, this save sits pending and replays itself when
+   * the signal returns, and a button that reads "সেভ হচ্ছে…" for ten minutes reads
+   * as a hang. The thing a teacher does about a hang is force-quit, which is the
+   * one action that loses the sheet localStorage was holding for them.
+   */
+  const offline = useOffline()
 
   // Same draft strategy as the register, and the same module: a teacher entering
   // thirty marks on a mid-range phone loses the tab to a phone call often enough
@@ -341,7 +354,8 @@ export function MarksSheet({
         </div>
         {!readOnly && (
           <Button type="submit" full disabled={pending}>
-            {pending ? common.saving : t.save}
+            {/* Three states, not two — see the register's note. */}
+            {pending ? (offline ? common.willSend : common.saving) : t.save}
           </Button>
         )}
       </div>

@@ -9,8 +9,14 @@ import { createServerClient } from '@supabase/ssr'
  * this runs, a new owner would be bounced to /login seconds after creating
  * their account. The page itself redirects signed-out visitors, so nothing is
  * exposed — this only removes a race from the worst possible moment.
+ *
+ * /offline is here because public/sw.js has to be able to fetch it, and the worker may
+ * install on the login screen — before anybody has signed in. A redirect to /login
+ * cached as the offline fallback would mean an installed app opening with no signal
+ * shows a login form it cannot submit. The page reads no session and no cookie by
+ * design, precisely so that being public costs nothing; see its own note.
  */
-const PUBLIC_ROUTES = ['/login', '/signup', '/onboarding', '/auth']
+const PUBLIC_ROUTES = ['/login', '/signup', '/onboarding', '/auth', '/offline']
 
 /**
  * Routes authenticated by a bearer token instead of a cookie.

@@ -42,6 +42,22 @@ export const bn = {
   common: {
     save: 'সেভ করুন',
     saving: 'সেভ হচ্ছে…',
+    /**
+     * `saving` when there is no network, and a different sentence rather than a
+     * variation on it.
+     *
+     * `experimental.useOffline` holds a save that had no signal and replays it when one
+     * comes back, so nothing is lost — but "সেভ হচ্ছে…" for ten minutes is a lie, and a
+     * teacher reading it concludes the app has hung. What they do about that is
+     * force-quit, which is the one action that loses the sheet localStorage was keeping
+     * for them. This says what is happening and that it needs nothing from them.
+     *
+     * Shared, because it is the same promise on every screen that makes it — and
+     * because the two screens that make it most, the register and the marks sheet, are
+     * exactly the two a teacher fills standing up with thirty rows on screen. See
+     * next.config.ts for what actually holds the request.
+     */
+    willSend: 'সংযোগ ফিরলে পাঠানো হবে…',
     add: 'যোগ করুন',
     adding: 'যোগ হচ্ছে…',
     creating: 'তৈরি হচ্ছে…',
@@ -163,6 +179,41 @@ export const bn = {
     title: 'পাতাটি খুঁজে পাওয়া যায়নি',
     body: 'লিংকটি পুরোনো হতে পারে, বা জিনিসটি মুছে ফেলা হয়েছে।',
     home: 'আমার স্ক্রিনে ফিরুন',
+  },
+
+  /**
+   * What the app says when the network is gone.
+   *
+   * `banner` appears on every screen; the rest is the /offline page, which the service
+   * worker serves for a cold start with no signal. That page renders *both* languages
+   * and this group is read for both — it is a cached file handed to whoever opens the
+   * app next, so it is the one screen in the product that cannot know who is reading
+   * it. See src/app/offline/page.tsx.
+   *
+   * Every sentence here is about the same fear and answers it the same way: the work
+   * is not lost. A teacher who has marked twenty-eight of thirty students and then
+   * seen "no connection" needs to be told that before anything else, because the
+   * alternative they are weighing is going back to the paper register.
+   */
+  offline: {
+    /** Across the top of whatever screen they are on, the moment the network drops. */
+    banner: 'সংযোগ নেই — যা লিখছেন তা ফোনে সেভ থাকছে, সংযোগ ফিরলে পাঠানো হবে',
+    title: 'সংযোগ নেই',
+    /**
+     * Deliberately about the register rather than about the network. "Check your
+     * connection" is advice they do not need — they know — and it says nothing about
+     * the thing they are actually worried about.
+     */
+    body:
+      'ইন্টারনেট ছাড়া নতুন পাতা খোলা যায় না। তবে আপনার আধা-নেওয়া হাজিরা বা নম্বর '
+      + 'এই ফোনেই সেভ আছে — সংযোগ ফিরলে অ্যাপে ঢুকে সেভ করলেই চলে যাবে।',
+    retry: 'আবার চেষ্টা করুন',
+    /**
+     * Replaces `retry` while the phone reports no network at all, so nobody taps a
+     * button that cannot work. Not "you are offline" — they can see that from the
+     * heading; this is the button saying it knows.
+     */
+    stillOffline: 'এখনও সংযোগ নেই',
   },
 
   /**

@@ -10,6 +10,8 @@
  */
 import { useActionState, useEffect, useMemo, useRef, useState } from 'react'
 
+import { useOffline } from 'next/offline'
+
 import { Alert, Button } from '@/components/ui'
 import { clearDraft, useSavedDraft, writeDraft } from '@/lib/drafts'
 import { MAX_TEXT } from '@/lib/limits'
@@ -101,6 +103,22 @@ export function AttendanceRoster({
     saveAttendance,
     null,
   )
+
+  /**
+   * Whether the phone has lost the network, for the save button's label alone.
+   *
+   * `experimental.useOffline` means the save does not fail when there is no signal — it
+   * sits pending and replays itself when the connection comes back. Which is the right
+   * behaviour and completely invisible: the button reads "সেভ হচ্ছে…" and keeps reading
+   * it, for a minute, for ten minutes, for as long as the corridor is out of range. A
+   * teacher watching that concludes the app has hung, and the thing they do about it —
+   * force-quit — is the one action that loses the sheet localStorage was holding for
+   * them. So this exists to keep them from defeating their own safety net.
+   *
+   * Only the label. Nothing here retries, queues or reconciles anything; see the note
+   * on the flag in next.config.ts.
+   */
+  const offline = useOffline()
 
   // A draft in localStorage, keyed by batch and date. See lib/drafts for why the
   // read is a store subscription and not an effect, and why what the teacher has
@@ -274,7 +292,10 @@ export function AttendanceRoster({
           </span>
         </div>
         <Button type="submit" full disabled={pending}>
-          {pending ? common.saving : saveLabel}
+          {/* Three states, not two. Idle is the batch name; saving is saving; and
+              saving with no signal is a promise, because that is the one case where
+              the wait has no end a teacher can predict. */}
+          {pending ? (offline ? common.willSend : common.saving) : saveLabel}
         </Button>
       </div>
     </form>

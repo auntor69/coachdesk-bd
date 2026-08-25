@@ -20,6 +20,7 @@ export const en: Dictionary = {
   common: {
     save: 'Save',
     saving: 'Saving…',
+    willSend: 'Will send when the connection returns…',
     add: 'Add',
     adding: 'Adding…',
     creating: 'Creating…',
@@ -76,6 +77,17 @@ export const en: Dictionary = {
     title: 'We could not find that page',
     body: 'The link may be old, or what it pointed at was deleted.',
     home: 'Back to my screen',
+  },
+
+  offline: {
+    banner: 'No connection — what you type is kept on this phone and sent when it returns',
+    title: 'No connection',
+    body:
+      'A new page cannot load without the internet. Your half-marked register or '
+      + 'marks sheet is still saved on this phone — open the app once you have a '
+      + 'signal and saving will go through.',
+    retry: 'Try again',
+    stillOffline: 'Still no connection',
   },
 
   attendance: {

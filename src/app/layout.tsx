@@ -1,6 +1,9 @@
 import type { Metadata, Viewport } from 'next'
 import { Hind_Siliguri } from 'next/font/google'
 
+import { OfflineBanner } from '@/components/offline-banner'
+import { ServiceWorker } from '@/components/service-worker'
+import { dict } from '@/lib/i18n'
 import { readerLocale } from '@/lib/i18n/server'
 
 import './globals.css'
@@ -27,6 +30,17 @@ export const metadata: Metadata = {
     'হাজিরা, পরীক্ষার ফলাফল, ফি এবং অভিভাবককে SMS — এক জায়গায়। '
     + 'Attendance, exam results, fees and parent SMS for Bangladeshi coaching centres.',
   appleWebApp: { capable: true, statusBarStyle: 'default', title: 'CoachDesk' },
+  /**
+   * iOS reads none of app/manifest.ts's icons — a home-screen icon there comes from
+   * `<link rel="apple-touch-icon">` and nothing else, so an iPhone owner who installed
+   * this would get a screenshot of the page as their icon. Both entries point into
+   * public/icons, which src/proxy.ts exempts from the session check: a browser fetches
+   * an icon before it has decided anything about who is asking.
+   */
+  icons: {
+    icon: '/icons/icon-192.png',
+    apple: '/icons/apple-touch-icon.png',
+  },
 }
 
 export const viewport: Viewport = {
@@ -54,7 +68,16 @@ export default async function RootLayout({ children }: LayoutProps<'/'>) {
 
   return (
     <html lang={locale} className={`${bangla.variable} h-full antialiased`}>
-      <body className="min-h-full flex flex-col">{children}</body>
+      <body className="min-h-full flex flex-col">
+        {/* Both here rather than in (app)'s shell, and for the same reason: the network
+            can be gone on the login screen too, and a signup that appears to do nothing
+            is where a new owner decides the product does not work. The banner renders
+            null while there is a connection and the registrar renders null always, so
+            the cost on every other screen is two client components' worth of nothing. */}
+        <OfflineBanner text={dict(locale).offline.banner} />
+        <ServiceWorker />
+        {children}
+      </body>
     </html>
   )
 }
