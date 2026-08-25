@@ -9,6 +9,7 @@ import { MAX_NAME } from '../src/lib/limits.ts'
 import { MIN_PASSWORD } from '../src/lib/auth/password.ts'
 import { digits } from '../src/lib/bd/time.ts'
 import { CHASE_EMPTY_REASONS, STAGE_ORDER } from '../src/lib/fees/reminder-schedule.ts'
+import { PROGRESS_EMPTY_REASONS } from '../src/lib/students/progress.ts'
 import { PERMISSION_KEYS, PERMISSION_DEFAULTS } from '../src/lib/permissions.ts'
 import { WALLET_LABEL_BN } from '../src/lib/sms/templates.ts'
 import { UCS2_SEGMENT } from '../src/lib/sms/encoding.ts'
@@ -235,6 +236,27 @@ test('an empty worklist has a sentence for every reason it can be empty', () => 
   }
   assert.match(en.reminders.noneBecause.allUnreachable, /number/i)
   assert.match(bn.reminders.noneBecause.allUnreachable, /নম্বর/)
+})
+
+test('an empty weekly list has a sentence for every reason it can be empty', () => {
+  // The progress screen's own version of the above, keyed by ProgressEmptyReason.
+  for (const locale of LOCALES) {
+    const { noneBecause } = dict(locale).progress
+    for (const reason of PROGRESS_EMPTY_REASONS) {
+      assert.ok(noneBecause[reason], `${locale}.progress.noneBecause.${reason}`)
+    }
+    assert.equal(Object.keys(noneBecause).length, PROGRESS_EMPTY_REASONS.length)
+  }
+
+  // Two of the four are only true because they say "still to tell" — they describe
+  // the students who are neither finished nor blank, not the whole week. A copy edit
+  // that widened either one back into a universal claim would put a false sentence
+  // above the card that names the exceptions, which is the bug they were narrowed
+  // to fix. See progressEmptyReason.
+  assert.match(en.progress.noneBecause.nothingRecorded, /still to tell/)
+  assert.match(en.progress.noneBecause.noNumbers, /still to tell/)
+  assert.match(bn.progress.noneBecause.nothingRecorded, /এখনো জানানো বাকি/)
+  assert.match(bn.progress.noneBecause.noNumbers, /এখনো জানানো বাকি/)
 })
 
 test('every teacher permission has a label and a hint in both languages', () => {

@@ -2,9 +2,11 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 
 import {
+  progressEmptyReason,
   progressTotals,
   progressToTell,
   weeklyProgress,
+  PROGRESS_EMPTY_REASONS,
   SUMMARY_AGAIN_AFTER_DAYS,
   type ProgressRow,
 } from '../src/lib/students/progress.ts'
@@ -311,6 +313,157 @@ test('totals of nothing are zeroes, not NaN', () => {
   for (const [key, value] of Object.entries(totals)) {
     assert.equal(value, 0, key)
   }
+})
+
+/* -------------------------------------------------------------------------- */
+/* Why the list came out empty                                                */
+/* -------------------------------------------------------------------------- */
+
+/** Totals built by hand, so each case below states only what it is about. */
+function tally(fields: Partial<ReturnType<typeof progressTotals>> = {}) {
+  const base = {
+    students: 0,
+    send: 0,
+    sent: 0,
+    nothing: 0,
+    noNumber: 0,
+    withAttendance: 0,
+    withMarks: 0,
+    ...fields,
+  }
+  // The invariant the page's own totals hold: every student is in exactly one
+  // status. Asserted here so a case below cannot describe a week that cannot exist.
+  assert.equal(
+    base.send + base.sent + base.nothing + base.noNumber,
+    base.students,
+    'the four statuses must account for every student',
+  )
+  return base
+}
+
+test('a list with families in it explains nothing', () => {
+  assert.equal(progressEmptyReason(tally({ students: 1, send: 1 })), null)
+  assert.equal(
+    progressEmptyReason(tally({ students: 40, send: 1, sent: 20, nothing: 12, noNumber: 7 })),
+    null,
+  )
+})
+
+test('a centre with no students is told that, and not that its week is empty', () => {
+  // Both are true of a brand-new centre and only one of them is useful. "No
+  // attendance was recorded this week" to somebody who has not added a student yet
+  // sends them to the register instead of to the students page.
+  assert.equal(progressEmptyReason(tally()), 'noStudents')
+})
+
+test('a week nobody wrote down sends the owner to the register', () => {
+  assert.equal(
+    progressEmptyReason(tally({ students: 20, nothing: 20 })),
+    'nothingRecorded',
+  )
+})
+
+test('families told already never make the screen claim the unreachable ones were', () => {
+  // The bug this function was extracted for. Five families were told this week and
+  // three have no guardian number on file, so the screen printed "every guardian was
+  // told within the last few days" — directly above the card naming the three
+  // nobody could tell.
+  //
+  // The owner's next move differs by answer: 'allRecent' means close the app,
+  // 'noNumbers' means open the students page and collect three numbers.
+  assert.equal(
+    progressEmptyReason(tally({ students: 8, sent: 5, noNumber: 3 })),
+    'noNumbers',
+  )
+
+  // Same for a week with a register hole in it: 'allRecent' outranked it whenever
+  // `sent` was the larger group, which on a normal week it always is.
+  assert.equal(
+    progressEmptyReason(tally({ students: 12, sent: 10, nothing: 2 })),
+    'nothingRecorded',
+  )
+
+  // 'allRecent' is now reachable only when the told families are all of them, which
+  // is the only state that sentence is true in.
+  assert.equal(progressEmptyReason(tally({ students: 9, sent: 9 })), 'allRecent')
+})
+
+test('the larger remedy is the one named, and a tie goes to the phone numbers', () => {
+  // A centre with a hundred unrecorded weeks and one missing number should be told
+  // to take the register; the same centre the other way round should be sent to the
+  // students page. This is the one judgement in the function, and it is about which
+  // sentence is more use rather than which situation is worse.
+  assert.equal(
+    progressEmptyReason(tally({ students: 101, nothing: 100, noNumber: 1 })),
+    'nothingRecorded',
+  )
+  assert.equal(
+    progressEmptyReason(tally({ students: 101, nothing: 1, noNumber: 100 })),
+    'noNumbers',
+  )
+  // Ties go to the numbers: asking a family for a phone number takes days and
+  // taking a register takes a minute, so the slower errand is the one to start.
+  assert.equal(
+    progressEmptyReason(tally({ students: 6, nothing: 3, noNumber: 3 })),
+    'noNumbers',
+  )
+})
+
+test('every reason is reachable, and the list of them is complete', () => {
+  // PROGRESS_EMPTY_REASONS is what the dictionary test iterates to prove copy exists
+  // for each one, so a reason in the type but absent from the array would ship a
+  // card with nothing under its heading. Each is produced here from a week a real
+  // centre can have.
+  const produced = new Set([
+    progressEmptyReason(tally()),
+    progressEmptyReason(tally({ students: 2, nothing: 2 })),
+    progressEmptyReason(tally({ students: 2, noNumber: 2 })),
+    progressEmptyReason(tally({ students: 2, sent: 2 })),
+  ])
+  assert.deepEqual([...produced].sort(), [...PROGRESS_EMPTY_REASONS].sort())
+})
+
+test('the reason agrees with the rows the screen would draw', () => {
+  // The end-to-end check, from view rows rather than a hand-built tally: a reason
+  // and a non-empty list must never both appear, in either direction.
+  const weeks: ProgressRow[][] = [
+    [],
+    [row({ student_id: 'go' })],
+    [row({ student_id: 'nophone', guardian_phone: null })],
+    [row({ student_id: 'done', last_sent_at: daysAgo(1) })],
+    [
+      row({ student_id: 'done', last_sent_at: daysAgo(1) }),
+      row({ student_id: 'nophone', guardian_phone: null }),
+    ],
+    [
+      row({ student_id: 'go' }),
+      row({ student_id: 'done', last_sent_at: daysAgo(1) }),
+      row({ student_id: 'nophone', guardian_phone: null }),
+      row({
+        student_id: 'blank',
+        sessions_counted: 0,
+        sessions_present: 0,
+        exams_taken: 0,
+        exams_missed: 0,
+      }),
+    ],
+  ]
+
+  for (const week of weeks) {
+    const list = weeklyProgress(week, '—', NOW)
+    const rows = list.filter((s) => s.status === 'send')
+    const reason = progressEmptyReason(progressTotals(list))
+    assert.equal(
+      reason === null,
+      rows.length > 0,
+      `${week.length} rows produced ${rows.length} to tell and reason ${reason}`,
+    )
+  }
+
+  // And the mixed week above, which is the one the old ternary got wrong: told and
+  // unreachable together, nothing to send.
+  const mixed = weeklyProgress(weeks[4]!, '—', NOW)
+  assert.equal(progressEmptyReason(progressTotals(mixed)), 'noNumbers')
 })
 
 /* -------------------------------------------------------------------------- */

@@ -391,6 +391,74 @@ export function progressTotals(list: readonly ProgressStudent[]): ProgressTotals
 }
 
 /**
+ * Why this week's list came out empty.
+ *
+ * 'noStudents' — nobody on the roster yet. A new centre, and the only one of the
+ * four where the fix is not on this screen's own subject.
+ *
+ * 'nothingRecorded' — the students still to tell have no attendance and no marks
+ * this week. A hole in the centre's own week, and the fix is a register.
+ *
+ * 'noNumbers' — the families still to tell have no guardian number on file. A data
+ * problem, and the slowest of the three to fix: somebody has to ask the family.
+ *
+ * 'allRecent' — every guardian was told within the last few days. The finished one.
+ *
+ * "Still to tell" is doing real work in two of those sentences, and it is what
+ * makes them true rather than merely reassuring. When this function answers
+ * 'noNumbers' the families already told are excluded by those two words, so the
+ * screen no longer has to claim something universal about a mixed week.
+ */
+export type ProgressEmptyReason =
+  | 'noStudents'
+  | 'nothingRecorded'
+  | 'noNumbers'
+  | 'allRecent'
+
+/**
+ * In the order `progressEmptyReason` asks the questions, which is also the order a
+ * dictionary and its test iterate. Exported so copy for a fifth reason cannot be
+ * forgotten — see tests/i18n.test.ts.
+ */
+export const PROGRESS_EMPTY_REASONS: readonly ProgressEmptyReason[] = [
+  'noStudents',
+  'nothingRecorded',
+  'noNumbers',
+  'allRecent',
+]
+
+/**
+ * Which of the four situations an empty list is, or null when it is not empty.
+ *
+ * Returning null rather than leaving the caller to ask `send === 0` for itself is
+ * the point: the page then has one value that both decides whether to draw the
+ * "nothing to do" card and says what it should read, so the two can never
+ * disagree. Its sibling `chaseEmptyReason` in ../fees/reminder-schedule.ts exists
+ * for the same reason, after the fee worklist shipped that exact disagreement.
+ *
+ * 'allRecent' is last, and that is the fix this function was extracted for. The
+ * page used to reach it whenever `sent` outnumbered whatever else was going on, so
+ * a week with five families told and three with no number on file printed "every
+ * guardian was told within the last few days" directly above a card naming the
+ * three nobody could tell. It is now reachable only when `sent` accounts for every
+ * student, which is the only state that sentence is true in.
+ *
+ * The two remedies are ordered by size rather than by kind, which is the one
+ * judgement here. A centre with a hundred unrecorded weeks and one missing phone
+ * number should be told to take the register; the same centre with one unrecorded
+ * week and a hundred missing numbers should be sent to the students page. Ties go
+ * to 'noNumbers' because collecting a phone number takes days and taking a register
+ * takes a minute.
+ */
+export function progressEmptyReason(totals: ProgressTotals): ProgressEmptyReason | null {
+  if (totals.send > 0) return null
+  if (totals.students === 0) return 'noStudents'
+  if (totals.nothing > totals.noNumber) return 'nothingRecorded'
+  if (totals.noNumber > 0) return 'noNumbers'
+  return 'allRecent'
+}
+
+/**
  * How many families can be told today — the number on the dashboard's door.
  *
  * Takes rows straight off the view, so the caller can select six columns instead of

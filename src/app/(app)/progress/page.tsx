@@ -9,6 +9,7 @@ import { normalizeBdMobile } from '@/lib/bd/phone'
 import {
   weeklyProgress,
   progressTotals,
+  progressEmptyReason,
   PROGRESS_COLUMNS,
 } from '@/lib/students/progress'
 import { dict, DEFAULT_LOCALE } from '@/lib/i18n'
@@ -112,6 +113,14 @@ export default async function ProgressPage() {
   const toTell = students.filter((s) => s.status === 'send')
   const unreachable = students.filter((s) => s.status === 'noNumber')
 
+  /**
+   * Whether to say "nothing to do", and which of the four things that means.
+   *
+   * One value for both, so the card and its sentence can never disagree — see
+   * progressEmptyReason, which is where the ordering and the reason for it live.
+   */
+  const emptyReason = progressEmptyReason(totals)
+
   const rows: ProgressRowView[] = toTell.map((s) => {
     const facts: string[] = []
 
@@ -185,7 +194,7 @@ export default async function ProgressPage() {
         )}
       </div>
 
-      {rows.length > 0 ? (
+      {rows.length > 0 && (
         <>
           <Card className="border-brand-200 bg-brand-50">
             <p className="text-sm font-medium text-brand-800">{t.dueTitle}</p>
@@ -204,23 +213,16 @@ export default async function ProgressPage() {
             words={{ t: d.chaseList, chase: d.chase, channels: d.channels }}
           />
         </>
-      ) : (
+      )}
+
+      {/* Two separate blocks rather than one ternary, like the fee worklist: the
+          list is drawn from the rows and the card from the reason, and neither
+          decides for the other. `emptyReason` is null exactly when there are rows,
+          so they cannot both appear. */}
+      {emptyReason && (
         <Card>
           <p className="font-medium text-ink">{t.noneTitle}</p>
-          <p className="mt-1 text-sm text-ink-soft">
-            {/* Which of the four, because "nothing to do" reads as a broken screen
-                to an owner who can see a hundred and fifty names on the students
-                page. The bigger reason wins where two apply: a centre with a
-                hundred unrecorded weeks and two families told on Tuesday is not a
-                centre that has finished. */}
-            {totals.students === 0
-              ? t.noneNoStudents
-              : totals.nothing > 0 && totals.nothing >= totals.sent
-                ? t.noneNothingRecorded
-                : totals.sent > 0
-                  ? t.noneAllRecent
-                  : t.noneNoNumbers}
-          </p>
+          <p className="mt-1 text-sm text-ink-soft">{t.noneBecause[emptyReason]}</p>
         </Card>
       )}
 

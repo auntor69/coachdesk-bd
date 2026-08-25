@@ -1647,15 +1647,24 @@ export const bn = {
 
     noneTitle: 'আজ নতুন করে কাউকে জানানোর নেই',
     /**
-     * Which of the three, because "nothing to do" reads as a broken screen to an
+     * Which of the four, because "nothing to do" reads as a broken screen to an
      * owner who can see a hundred and fifty names on the students page. Same call
-     * `reminders` makes about its own empty state.
+     * `reminders` makes about its own empty state, and keyed the same way — by
+     * ProgressEmptyReason, so a fifth situation cannot ship without a sentence.
+     *
+     * Every one of these is true of exactly the students it describes. Two of them
+     * say "যাদের এখনো জানানো বাকি", and those three words are what stops the
+     * screen claiming something about a whole week when only part of it applies —
+     * see progressEmptyReason for the version that got that wrong.
      */
-    noneNoStudents: 'এখনো কোনো শিক্ষার্থী যোগ করা হয়নি।',
-    noneAllRecent: 'সবার অভিভাবককে গত কয়েক দিনেই জানানো হয়েছে।',
-    noneNothingRecorded: 'এ সপ্তাহে কারও হাজিরা বা পরীক্ষার ফল লেখা হয়নি — লেখা হলেই এই তালিকা ভরে যাবে।',
-    /** Everything recorded, nobody reachable. The card below names them. */
-    noneNoNumbers: 'যাদের খবর জানানোর মতো কিছু আছে, তাদের অভিভাবকের নম্বর নেই।',
+    noneBecause: {
+      noStudents: 'এখনো কোনো শিক্ষার্থী যোগ করা হয়নি।',
+      nothingRecorded:
+        'যাদের এখনো জানানো বাকি, তাদের এ সপ্তাহের হাজিরা বা পরীক্ষার ফল লেখা হয়নি — লেখা হলেই এই তালিকা ভরে যাবে।',
+      /** Everything recorded, nobody reachable. The card below names them. */
+      noNumbers: 'যাদের এখনো জানানো বাকি, তাদের অভিভাবকের নম্বর নেই।',
+      allRecent: 'সবার অভিভাবককে গত কয়েক দিনেই জানানো হয়েছে।',
+    },
 
     /** Counted, not listed: an owner does not need the names of finished families. */
     heldSent: (n: number) => `${n} জনের অভিভাবককে সম্প্রতি জানানো হয়েছে`,

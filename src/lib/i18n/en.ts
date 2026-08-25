@@ -904,11 +904,13 @@ export const en: Dictionary = {
     told: (when: string) => `Told ${when}`,
 
     noneTitle: 'Nobody new to tell today',
-    noneNoStudents: 'No students have been added yet.',
-    noneAllRecent: 'Every guardian was told within the last few days.',
-    noneNothingRecorded:
-      'No attendance or marks were recorded this week — the list fills up as soon as they are.',
-    noneNoNumbers: 'The families with something to hear about have no guardian number on file.',
+    noneBecause: {
+      noStudents: 'No students have been added yet.',
+      nothingRecorded:
+        'The students still to tell have no attendance or marks recorded this week — the list fills up as soon as they do.',
+      noNumbers: 'The families still to tell have no guardian number on file.',
+      allRecent: 'Every guardian was told within the last few days.',
+    },
 
     heldSent: (n: number) =>
       n === 1 ? '1 guardian was told recently' : `${n} guardians were told recently`,
