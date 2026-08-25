@@ -2476,7 +2476,14 @@ export const bn = {
       mrr: 'মাসিক বিল (আমাদের)',
       pipeline: 'ট্রায়ালের সম্ভাবনা',
       collected: 'সেন্টারগুলো আদায় করেছে',
-      taps: 'মেসেজ পাঠানো হয়েছে',
+      /**
+       * Two tap-to-send figures and not one "মেসেজ", because they answer different
+       * questions: `taps` is a centre using this to get paid, `notes` is a teacher
+       * using it to keep parents. Which of the two a customer does is the most
+       * useful thing on this screen when deciding what to build next.
+       */
+      taps: 'ফি রিমাইন্ডার গেছে',
+      notes: 'সপ্তাহের খবর গেছে',
       paid: 'আমরা পেয়েছি',
     },
     /** One row's labels. Terse — they sit in a line under the centre's name. */
@@ -2491,7 +2498,8 @@ export const bn = {
       exams: 'পরীক্ষা',
       payments: 'আদায়',
       collected: 'টাকা উঠেছে',
-      taps: 'মেসেজ',
+      taps: 'রিমাইন্ডার',
+      notes: 'সপ্তাহের খবর',
       sms: 'গেটওয়ে',
       credits: 'ক্রেডিট',
     },
@@ -2525,7 +2533,8 @@ export const bn = {
       exams: 'পরীক্ষা (৩০ দিন)',
       payments: 'আদায় সংখ্যা (৩০ দিন)',
       collected: 'আদায় টাকা (৩০ দিন)',
-      taps: 'মেসেজ (৩০ দিন)',
+      taps: 'ফি রিমাইন্ডার (৩০ দিন)',
+      notes: 'সপ্তাহের খবর (৩০ দিন)',
       sms: 'গেটওয়ে SMS (৩০ দিন)',
       smsCredits: 'SMS ক্রেডিট',
       lastActive: 'শেষ কাজ',

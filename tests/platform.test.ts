@@ -49,6 +49,7 @@ function row(over: Partial<PlatformCenterRow> = {}): PlatformCenterRow {
     // that touches money depends on this being a string and not a number.
     collected_30d: '41500.00',
     taps_30d: 57,
+    notes_30d: 9,
     sms_30d: 0,
     last_active_at: '2026-08-24T11:00:00.000Z',
     paid_bdt: '1999.00',
@@ -175,6 +176,7 @@ test('missing values become the fact they stand for, not NaN', () => {
         collected_30d: null,
         paid_bdt: null,
         taps_30d: null,
+        notes_30d: null,
         last_active_at: null,
         last_paid_at: null,
       }),
@@ -229,18 +231,39 @@ test('MRR counts active centres only, and trials sit in the pipeline', () => {
   assert.equal(totals.teachers, 8)
 })
 
-test('taps and gateway sends are totalled separately', () => {
-  // One is free from the owner's own handset and one costs us money per segment.
-  // A single "messages" figure would hide which kind of customer this is on the
-  // day an aggregator exists.
+test('the three send figures are totalled apart from each other', () => {
+  // Fee chases and week notes are both free from the owner's own handset; gateway
+  // sends cost us money per segment. All three stay separate for two different
+  // reasons, and a single "messages" figure would lose both: which kind of
+  // customer this is, and what they cost us.
   const list = customers(
-    [row({ taps_30d: 57, sms_30d: 0 }), row({ center_id: 'c2', taps_30d: 12, sms_30d: 4 })],
+    [
+      row({ taps_30d: 57, notes_30d: 9, sms_30d: 0 }),
+      row({ center_id: 'c2', taps_30d: 12, notes_30d: 40, sms_30d: 4 }),
+    ],
     'x',
     NOW,
   )
   const totals = platformTotals(list)
   assert.equal(totals.taps30d, 69)
+  assert.equal(totals.notes30d, 49)
   assert.equal(totals.sms30d, 4)
+})
+
+test('a centre whose only use of the product is the week note is not silent', () => {
+  // The bug this exists to catch, and the worst class this panel can have: a Pro
+  // teacher who collects cash in the room and sends forty parents a note every
+  // week reading as a customer who sends nothing. A founder acts on that — they
+  // ring the wrong centre, or write off a live one.
+  const c = customers(
+    [row({ taps_30d: 0, notes_30d: 40, sms_30d: 0, plan: 'teacher_plus' })],
+    'x',
+    NOW,
+  )[0]
+
+  assert.equal(c.taps30d, 0)
+  assert.equal(c.notes30d, 40)
+  assert.equal(platformTotals([c]).notes30d, 40)
 })
 
 test('totals of nothing are zeroes, not NaN', () => {
@@ -272,6 +295,7 @@ const HEADINGS = {
   payments: 'আদায় সংখ্যা',
   collected: 'আদায় টাকা',
   taps: 'মেসেজ',
+  notes: 'সপ্তাহের খবর',
   sms: 'গেটওয়ে SMS',
   smsCredits: 'SMS ক্রেডিট',
   lastActive: 'শেষ কাজ',
@@ -314,6 +338,9 @@ test('money and counts leave as bare numbers a spreadsheet can total', () => {
   assert.equal(at(HEADINGS.paid), 1999)
   assert.equal(at(HEADINGS.students), 40)
   assert.equal(csvCell(at(HEADINGS.collected)), '41500')
+  // Its own column, and not folded into the chases beside it.
+  assert.equal(at(HEADINGS.taps), 57)
+  assert.equal(at(HEADINGS.notes), 9)
 })
 
 test('dates leave as ISO timestamps, which sort and subtract', () => {

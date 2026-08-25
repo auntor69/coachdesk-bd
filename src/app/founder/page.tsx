@@ -135,6 +135,7 @@ export default async function FounderPage() {
             <Stat label={t.totals.students} value={String(totals.students)} />
             <Stat label={t.totals.teachers} value={String(totals.teachers)} />
             <Stat label={t.totals.taps} value={String(totals.taps30d)} />
+            <Stat label={t.totals.notes} value={String(totals.notes30d)} />
           </dl>
 
           <p>
@@ -230,6 +231,10 @@ export default async function FounderPage() {
                         value={formatTaka(c.collected30d)}
                       />
                       <Usage label={t.usage.taps} value={c.taps30d} />
+                      {/* Both taps, separately. A centre chasing fees and a
+                          teacher keeping parents are two different customers,
+                          and one "messages" figure would hide which. */}
+                      <Usage label={t.usage.notes} value={c.notes30d} />
                       {/* Kept beside the taps rather than added to them: one is
                           free and one costs us money. See the migration. */}
                       <Usage label={t.usage.sms} value={c.sms30d} />

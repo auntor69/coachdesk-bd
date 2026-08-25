@@ -66,6 +66,7 @@ export type PlatformCenterRow = {
   fee_payments_30d: number | null
   collected_30d: string | number | null
   taps_30d: number | null
+  notes_30d: number | null
   sms_30d: number | null
   last_active_at: string | null
   paid_bdt: string | number | null
@@ -113,8 +114,17 @@ export type Customer = {
   feePayments30d: number
   /** Taka this centre collected from parents through the product, net of refunds. */
   collected30d: number
-  /** Tap-to-send chases from the owner's own handset. Free, and the large one. */
+  /** Tap-to-send fee chases from the owner's own handset. Free, and the large one. */
   taps30d: number
+  /**
+   * Weekly progress notes, also tap-to-send and also free, counted apart.
+   *
+   * Apart from `taps30d` because the two are two different products: chases mean a
+   * centre using this to get paid, notes mean a teacher using it to keep parents.
+   * Which of the two a customer does is the most useful thing on this screen when
+   * the question is what to build next, and a sum cannot be un-summed.
+   */
+  notes30d: number
   /** Metered gateway sends. Zero everywhere until a BTRC sender ID exists. */
   sms30d: number
   lastActiveAt: string | null
@@ -193,6 +203,7 @@ export function customers(
       feePayments30d: count(row.fee_payments_30d),
       collected30d: taka(row.collected_30d),
       taps30d: count(row.taps_30d),
+      notes30d: count(row.notes_30d),
       sms30d: count(row.sms_30d),
       lastActiveAt,
       daysQuiet,
@@ -234,6 +245,7 @@ export type PlatformTotals = {
   pipelineBdt: number
   collected30d: number
   taps30d: number
+  notes30d: number
   sms30d: number
   paidBdt: number
 }
@@ -250,6 +262,7 @@ export function platformTotals(list: readonly Customer[]): PlatformTotals {
     pipelineBdt: 0,
     collected30d: 0,
     taps30d: 0,
+    notes30d: 0,
     sms30d: 0,
     paidBdt: 0,
   }
@@ -268,6 +281,7 @@ export function platformTotals(list: readonly Customer[]): PlatformTotals {
     totals.teachers += c.teachers
     totals.collected30d += c.collected30d
     totals.taps30d += c.taps30d
+    totals.notes30d += c.notes30d
     totals.sms30d += c.sms30d
     totals.paidBdt += c.paidBdt
   }
@@ -303,6 +317,7 @@ export type CustomerCsvHeadings = {
   payments: string
   collected: string
   taps: string
+  notes: string
   sms: string
   smsCredits: string
   lastActive: string
@@ -356,6 +371,7 @@ export function customersSheet(
     h.payments,
     h.collected,
     h.taps,
+    h.notes,
     h.sms,
     h.smsCredits,
     h.lastActive,
@@ -384,6 +400,7 @@ export function customersSheet(
     c.feePayments30d,
     c.collected30d,
     c.taps30d,
+    c.notes30d,
     c.sms30d,
     c.smsCredits,
     c.lastActiveAt,

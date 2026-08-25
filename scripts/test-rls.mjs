@@ -4775,7 +4775,7 @@ const PANEL_COLUMNS = [
   'center_id', 'center_name', 'center_phone', 'bd_area', 'status', 'plan',
   'created_at', 'owner_name', 'owner_phone', 'students', 'teachers', 'batches',
   'sms_credit_balance', 'attendance_30d', 'exams_30d', 'fee_payments_30d',
-  'collected_30d', 'taps_30d', 'sms_30d', 'last_active_at', 'paid_bdt',
+  'collected_30d', 'taps_30d', 'notes_30d', 'sms_30d', 'last_active_at', 'paid_bdt',
   'last_paid_at',
 ]
 const panelColumns = Object.keys(rowA ?? {}).sort()
@@ -4861,6 +4861,55 @@ check(
 )
 check('and when', rowA?.last_paid_at instanceof Date)
 
+/*
+ * The two tap-to-send counts, and why they are two.
+ *
+ * 20260811000022 added notes_30d because until it did, the most likely Pro
+ * customer there is — a teacher who takes cash in the room and whose entire use of
+ * the product is telling parents how the week went — read on this panel as a
+ * centre that sends nothing. A founder acts on that figure: they ring the wrong
+ * customer, or write off a live one.
+ *
+ * Read from the tables rather than hardcoded. Centre A's own chases are zero here
+ * and that is not an oversight — the collection-board section further up clears
+ * fee_reminders twice so its own assertions start from a known board — so the
+ * figure that proves the columns are wired to different tables is a delta, taken
+ * on centre B below.
+ */
+const expectedTaps = Number(
+  (
+    await db.query(
+      `select count(*)::int as n from fee_reminders
+       where coaching_center_id = $1 and created_at >= now() - interval '30 days'`,
+      [centerA],
+    )
+  ).rows[0].n,
+)
+const expectedNotes = Number(
+  (
+    await db.query(
+      `select count(*)::int as n from progress_updates
+       where coaching_center_id = $1 and created_at >= now() - interval '30 days'`,
+      [centerA],
+    )
+  ).rows[0].n,
+)
+check(
+  'counts the fee chases in the window',
+  Number(rowA?.taps_30d) === expectedTaps,
+  `${rowA?.taps_30d} vs ${expectedTaps}`,
+)
+check(
+  'counts the weekly progress note in a column of its own',
+  Number(rowA?.notes_30d) === expectedNotes,
+  `${rowA?.notes_30d} vs ${expectedNotes}`,
+)
+check(
+  'and there were notes to count, so that column is not passing on zeroes',
+  expectedNotes > 0,
+  `${expectedNotes} notes`,
+)
+
 check('reports a last-active timestamp', rowA?.last_active_at instanceof Date)
 
 // Centre B has been through far less of this script than A, but it is a customer
@@ -4872,8 +4921,70 @@ check(
   rowB !== undefined &&
     rowB.students !== null &&
     rowB.taps_30d !== null &&
+    rowB.notes_30d !== null &&
     Number(rowB.paid_bdt) === 0,
-  `students=${rowB?.students} taps=${rowB?.taps_30d} paid=${rowB?.paid_bdt}`,
+  `students=${rowB?.students} taps=${rowB?.taps_30d} notes=${rowB?.notes_30d} paid=${rowB?.paid_bdt}`,
+)
+
+/*
+ * And a progress note is a sign of life, not merely a count.
+ *
+ * The customer this column was added for is quiet on every other measure by
+ * definition — no register, no exam, no payment recorded, because they teach one
+ * batch and take the money in the room. Leave the notes CTE out of `greatest(...)`
+ * and the panel reports them as never having come back, which is the same wrong
+ * phone call by a different route. Centre B, whose activity is sparse enough that a
+ * note stamped now is provably the newest thing it has done.
+ */
+const noteNow = (
+  await db.query(
+    `insert into progress_updates
+       (coaching_center_id, student_id, channel, covers_from, covers_to)
+     values ($1, $2, 'sms', current_date - 6, current_date)
+     returning created_at`,
+    [centerB, stB],
+  )
+).rows[0].created_at
+const panelAfterNote = await asUser(db, ids.founder, (tx) =>
+  tx.query('select * from platform_centers()'),
+)
+const rowBAfter = panelAfterNote.rows.find((r) => r.center_id === centerB)
+check(
+  'a progress note counts as the centre having come back',
+  rowBAfter?.last_active_at instanceof Date &&
+    rowBAfter.last_active_at.getTime() === noteNow.getTime(),
+  `${rowBAfter?.last_active_at} vs ${noteNow}`,
+)
+check(
+  'and lands in the note column rather than the chase column',
+  Number(rowBAfter?.notes_30d) === Number(rowB?.notes_30d) + 1 &&
+    Number(rowBAfter?.taps_30d) === Number(rowB?.taps_30d),
+  `notes ${rowB?.notes_30d}→${rowBAfter?.notes_30d}, chases ${rowB?.taps_30d}→${rowBAfter?.taps_30d}`,
+)
+
+// And the other half of the same 2×2: a fee chase must move the chase column and
+// leave the notes alone. Without this, a function that had wired both CTEs to
+// progress_updates would pass everything above. Centre B's own invoice was deleted
+// by the cascade tests, so a fresh one — the reminder's composite FK requires it.
+const bInvoiceLate = await one(
+  `insert into fee_invoices (coaching_center_id, student_id, period_month, amount_bdt, due_date)
+   values ($1, $2, '2026-08-01', 500, '2026-08-10') returning id`,
+  [centerB, stB],
+)
+await db.query(
+  `insert into fee_reminders (coaching_center_id, invoice_id, channel, amount_bdt)
+   values ($1, $2, 'sms', 500)`,
+  [centerB, bInvoiceLate],
+)
+const panelAfterChase = await asUser(db, ids.founder, (tx) =>
+  tx.query('select * from platform_centers()'),
+)
+const rowBChase = panelAfterChase.rows.find((r) => r.center_id === centerB)
+check(
+  'a fee chase moves the chase column and leaves the notes where they were',
+  Number(rowBChase?.taps_30d) === Number(rowBAfter?.taps_30d) + 1 &&
+    Number(rowBChase?.notes_30d) === Number(rowBAfter?.notes_30d),
+  `chases ${rowBAfter?.taps_30d}→${rowBChase?.taps_30d}, notes ${rowBAfter?.notes_30d}→${rowBChase?.notes_30d}`,
 )
 
 /*
