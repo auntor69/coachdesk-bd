@@ -8,6 +8,7 @@ import { normalizeBdMobile } from '@/lib/bd/phone'
 import { sumTaka, formatTaka } from '@/lib/money'
 import {
   chaseDecision,
+  chaseEmptyReason,
   STAGE_ORDER,
   type ReminderStage,
 } from '@/lib/fees/reminder-schedule'
@@ -189,6 +190,21 @@ export default async function RemindersPage() {
     paymentNumber: centerRow?.payment_number ?? null,
   }
 
+  /**
+   * Whether to say "nothing to do", and which of the four things that means.
+   *
+   * One value for both, so the card and its sentence can never disagree — the last
+   * version asked `due === 0` for the card and a separate ternary for the text, and
+   * the ternary had a case the card did not. See chaseEmptyReason for the ordering.
+   */
+  const emptyReason = chaseEmptyReason({
+    owing: invoices.length,
+    due,
+    held,
+    waiting,
+    unreachable: unreachable.length,
+  })
+
   return (
     <div className="flex flex-col gap-5">
       <div>
@@ -213,19 +229,10 @@ export default async function RemindersPage() {
         </Card>
       )}
 
-      {due === 0 && (
+      {emptyReason && (
         <Card>
           <p className="font-medium text-ink">{t.noneTitle}</p>
-          <p className="mt-1 text-sm text-ink-soft">
-            {/* Three different situations, and an owner deserves to know which one
-                they are in. "Nothing to do" reads as a broken screen when they can
-                see twelve unpaid rows on the fee board. */}
-            {invoices.length === 0
-              ? t.noneNothingOwed
-              : held > 0
-                ? t.noneAllRecent
-                : t.noneNotDueYet}
-          </p>
+          <p className="mt-1 text-sm text-ink-soft">{t.noneBecause[emptyReason]}</p>
         </Card>
       )}
 

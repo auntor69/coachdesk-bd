@@ -8,7 +8,7 @@ import { nameTooLong, passwordTooShort } from '../src/lib/i18n/messages.ts'
 import { MAX_NAME } from '../src/lib/limits.ts'
 import { MIN_PASSWORD } from '../src/lib/auth/password.ts'
 import { digits } from '../src/lib/bd/time.ts'
-import { STAGE_ORDER } from '../src/lib/fees/reminder-schedule.ts'
+import { CHASE_EMPTY_REASONS, STAGE_ORDER } from '../src/lib/fees/reminder-schedule.ts'
 import { PERMISSION_KEYS, PERMISSION_DEFAULTS } from '../src/lib/permissions.ts'
 import { WALLET_LABEL_BN } from '../src/lib/sms/templates.ts'
 import { UCS2_SEGMENT } from '../src/lib/sms/encoding.ts'
@@ -205,6 +205,36 @@ test('every reminder stage has a heading and a reason in both languages', () => 
     !/\btoday\b/i.test(en.reminders.stages.due),
     en.reminders.stages.due,
   )
+})
+
+test('an empty worklist has a sentence for every reason it can be empty', () => {
+  // /fees/reminders renders this from a lookup keyed by ChaseEmptyReason, so a
+  // fifth reason added to the schedule without copy would put "undefined" under a
+  // heading that says there is nothing to do — on the screen an owner opens
+  // specifically to be told what to do.
+  //
+  // The reason this is keyed at all, rather than three flat strings and a ternary
+  // in the page: the ternary had a case the card did not, and the screen told an
+  // owner "no deadline is close yet" directly above a card naming families weeks
+  // overdue. See chaseEmptyReason.
+  for (const locale of LOCALES) {
+    const { noneBecause } = dict(locale).reminders
+    for (const reason of CHASE_EMPTY_REASONS) {
+      assert.ok(noneBecause[reason], `${locale}.reminders.noneBecause.${reason}`)
+    }
+    assert.equal(Object.keys(noneBecause).length, CHASE_EMPTY_REASONS.length)
+  }
+
+  // 'allUnreachable' is the one of the four that is not "relax", and its whole job
+  // is to point at the fix. A copy edit that softened it into another reassurance
+  // would restore the original bug with the branching intact.
+  for (const locale of LOCALES) {
+    const { noneBecause } = dict(locale).reminders
+    const reassuring = [noneBecause.nothingOwed, noneBecause.allRecent, noneBecause.notDueYet]
+    assert.ok(!reassuring.includes(noneBecause.allUnreachable), noneBecause.allUnreachable)
+  }
+  assert.match(en.reminders.noneBecause.allUnreachable, /number/i)
+  assert.match(bn.reminders.noneBecause.allUnreachable, /নম্বর/)
 })
 
 test('every teacher permission has a label and a hint in both languages', () => {

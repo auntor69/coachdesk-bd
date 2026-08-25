@@ -398,10 +398,13 @@ export const en: Dictionary = {
     atStake: 'owed in this list',
 
     noneTitle: 'Nobody needs reminding today',
-    noneNothingOwed: 'No fees are outstanding.',
-    noneAllRecent:
-      'Everyone who owes has been told recently. Give them a few days.',
-    noneNotDueYet: 'The fees still owed have not reached their deadline yet.',
+    noneBecause: {
+      nothingOwed: 'No fees are outstanding.',
+      allUnreachable:
+        'Everyone due a reminder today has no guardian number on file.',
+      allRecent: 'Everyone who owes has been told recently. Give them a few days.',
+      notDueYet: 'The fees still owed have not reached their deadline yet.',
+    },
 
     heldCount: (n: number) => `${n} told recently`,
     waitingCount: (n: number) => `${n} not yet at their deadline`,

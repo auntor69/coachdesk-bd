@@ -764,13 +764,25 @@ export const bn = {
 
     noneTitle: 'আজ কাউকে মনে করানোর দরকার নেই',
     /**
-     * Three different situations, and an owner deserves to know which one they are
-     * in: "nothing to do" reads as a broken screen to someone who can see twelve
-     * unpaid rows on the board.
+     * Why the list is empty, which is a different question from whether it is.
+     * Four situations and an owner deserves to know which one they are in: a bare
+     * "nothing to do" reads as a broken screen to someone who can see twelve unpaid
+     * rows on the board. Keyed by ChaseEmptyReason, so a fifth reason added to the
+     * schedule cannot ship without copy — see chaseEmptyReason and the i18n test.
      */
-    noneNothingOwed: 'কোনো ফি বাকি নেই।',
-    noneAllRecent: 'যাদের বাকি আছে, সবাইকে সম্প্রতি বলা হয়েছে। কয়েক দিন সময় দিন।',
-    noneNotDueYet: 'যে ফি বাকি আছে, তার শেষ তারিখ এখনো আসেনি।',
+    noneBecause: {
+      nothingOwed: 'কোনো ফি বাকি নেই।',
+      /**
+       * The one of the four that is not "relax". The list is empty because the
+       * phone numbers are missing, not because the money came in — and the card
+       * below it names the students and links to where the numbers go. Without
+       * this line the screen said "শেষ তারিখ এখনো আসেনি" directly above a card
+       * listing families whose deadline had passed weeks ago.
+       */
+      allUnreachable: 'যাদের আজ মনে করানোর কথা, তাদের কারও অভিভাবকের নম্বর নেই।',
+      allRecent: 'যাদের বাকি আছে, সবাইকে সম্প্রতি বলা হয়েছে। কয়েক দিন সময় দিন।',
+      notDueYet: 'যে ফি বাকি আছে, তার শেষ তারিখ এখনো আসেনি।',
+    },
 
     heldCount: (n: number) => `${n} জনকে সম্প্রতি বলা হয়েছে`,
     waitingCount: (n: number) => `${n} জনের শেষ তারিখ এখনো আসেনি`,

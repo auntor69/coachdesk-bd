@@ -3,9 +3,12 @@ import assert from 'node:assert/strict'
 
 import {
   chaseDecision,
+  chaseEmptyReason,
+  CHASE_EMPTY_REASONS,
   countChasesDue,
   reminderStage,
   STAGE_ORDER,
+  type ChaseTally,
 } from '../src/lib/fees/reminder-schedule.ts'
 
 /** Every case here is relative to this one due date, in Dhaka calendar days. */
@@ -276,6 +279,106 @@ test('the worklist is ordered oldest debt first', () => {
   // Not the order the stages occur in. An owner with twenty minutes should spend
   // them on the six-week-old debt, not on the friendly pre-deadline nudges.
   assert.deepEqual(STAGE_ORDER, ['owing', 'late', 'due', 'soon'])
+})
+
+/** A tally with nothing in it, so each case below only states what it is about. */
+function tally(fields: Partial<ChaseTally> = {}): ChaseTally {
+  return { owing: 0, due: 0, held: 0, waiting: 0, unreachable: 0, ...fields }
+}
+
+test('a worklist with rows in it explains nothing', () => {
+  // The card does not appear at all, so there is no sentence to get wrong. Even
+  // with every other counter loaded: one sendable row means there is work today.
+  assert.equal(chaseEmptyReason(tally({ owing: 1, due: 1 })), null)
+  assert.equal(
+    chaseEmptyReason(tally({ owing: 40, due: 1, held: 12, waiting: 20, unreachable: 7 })),
+    null,
+  )
+})
+
+test('a centre with every fee paid is told so, plainly', () => {
+  assert.equal(chaseEmptyReason(tally()), 'nothingOwed')
+})
+
+test('unreachable families are named before the screen says to relax', () => {
+  // The bug this function was extracted for. Three families are weeks past their
+  // deadline with no guardian number on file, so they were pulled out of the
+  // schedule for a data reason — and the screen printed "the fees still owed have
+  // not reached their deadline yet" directly above the card listing them by name.
+  //
+  // The owner's next move differs by answer: 'notDueYet' means close the app,
+  // 'allUnreachable' means go and collect three phone numbers.
+  assert.equal(
+    chaseEmptyReason(tally({ owing: 3, unreachable: 3 })),
+    'allUnreachable',
+  )
+
+  // And it outranks the other reassuring answer for the same reason.
+  assert.equal(
+    chaseEmptyReason(tally({ owing: 5, held: 4, unreachable: 1 })),
+    'allUnreachable',
+  )
+  assert.equal(
+    chaseEmptyReason(tally({ owing: 9, held: 3, waiting: 5, unreachable: 1 })),
+    'allUnreachable',
+  )
+})
+
+test('a family held back today is more worth saying than one due next month', () => {
+  // Both are "nothing to do", but only one of them was due today. An owner who
+  // messaged four families on Sunday and opens the screen on Monday wants to hear
+  // that those four were counted, not that some other deadline is far off.
+  assert.equal(chaseEmptyReason(tally({ owing: 4, held: 4 })), 'allRecent')
+  assert.equal(chaseEmptyReason(tally({ owing: 10, held: 2, waiting: 8 })), 'allRecent')
+})
+
+test('money owed with no deadline in sight is the quiet case', () => {
+  assert.equal(chaseEmptyReason(tally({ owing: 6, waiting: 6 })), 'notDueYet')
+})
+
+test('every reason is reachable, and the list of them is complete', () => {
+  // CHASE_EMPTY_REASONS is what the dictionary test iterates to prove copy exists
+  // for each one, so a reason present in the type but absent from the array would
+  // ship a screen with no sentence on it. Each is produced here from a tally a
+  // real centre can be in.
+  const produced = new Set([
+    chaseEmptyReason(tally()),
+    chaseEmptyReason(tally({ owing: 2, unreachable: 2 })),
+    chaseEmptyReason(tally({ owing: 2, held: 2 })),
+    chaseEmptyReason(tally({ owing: 2, waiting: 2 })),
+  ])
+  assert.deepEqual([...produced].sort(), [...CHASE_EMPTY_REASONS].sort())
+})
+
+test('the four counters and the worklist account for every unpaid invoice', () => {
+  // The invariant the page has to hold up for any of the above to mean anything:
+  // the loop puts each outstanding row in exactly one of due / held / waiting /
+  // unreachable, so `owing` is their sum. Rebuilt here from chaseDecision so a
+  // change to the schedule that strands a row shows up as a failure.
+  const today = '2026-08-22'
+  const rows = [
+    { dueDate: DUE, lastRemindedOn: null, reachable: true },
+    { dueDate: DUE, lastRemindedOn: '2026-08-22', reachable: true },
+    { dueDate: DUE, lastRemindedOn: null, reachable: false },
+    { dueDate: '2026-09-30', lastRemindedOn: null, reachable: true },
+    { dueDate: '2026-08-20', lastRemindedOn: '2026-08-21', reachable: true },
+    { dueDate: '2026-08-25', lastRemindedOn: null, reachable: true },
+    { dueDate: '2026-08-22', lastRemindedOn: '2026-08-21', reachable: true },
+  ]
+
+  const counted = tally({ owing: rows.length })
+  for (const row of rows) {
+    const decision = chaseDecision(row, today)
+    if (!decision.stage) counted.waiting++
+    else if (!decision.chase) counted.held++
+    else if (!row.reachable) counted.unreachable++
+    else counted.due++
+  }
+
+  assert.equal(counted.due + counted.held + counted.waiting + counted.unreachable, rows.length)
+  assert.equal(counted.due, countChasesDue(rows, today))
+  // Two sendable rows, so no card — and the tally the page builds agrees.
+  assert.equal(chaseEmptyReason(counted), null)
 })
 
 /** Local so these tests do not lean on the module they are checking. */

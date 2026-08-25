@@ -247,3 +247,78 @@ export function countChasesDue(rows: ChaseCandidate[], today: string): number {
  * pre-deadline nudges buries that under the pleasant work.
  */
 export const STAGE_ORDER: readonly ReminderStage[] = ['owing', 'late', 'due', 'soon']
+
+/**
+ * Why today's worklist came out empty.
+ *
+ * 'nothingOwed' — the good one. No unpaid invoice on the board at all.
+ *
+ * 'allUnreachable' — every family who should hear from the centre today has no
+ * guardian number on file. The only one of the four that is not "relax": these
+ * rows can be months past their deadline, and the fix is on the students screen.
+ *
+ * 'allRecent' — the families who are due were contacted recently enough that
+ * today would be too soon. Nothing to do, and nothing wrong.
+ *
+ * 'notDueYet' — money is owed, no deadline is close enough to be worth a message.
+ */
+export type ChaseEmptyReason =
+  | 'nothingOwed'
+  | 'allUnreachable'
+  | 'allRecent'
+  | 'notDueYet'
+
+/**
+ * In the order `chaseEmptyReason` asks the questions, which is also the order a
+ * dictionary and its test iterate. Exported so copy for a fifth reason cannot be
+ * forgotten — see tests/i18n.test.ts.
+ */
+export const CHASE_EMPTY_REASONS: readonly ChaseEmptyReason[] = [
+  'nothingOwed',
+  'allUnreachable',
+  'allRecent',
+  'notDueYet',
+]
+
+/** Today's worklist, counted. Every unpaid invoice lands in exactly one field. */
+export type ChaseTally = {
+  /** Unpaid invoices on the board, reachable or not, due or not. */
+  owing: number
+  /** Due a message today and sendable. The worklist itself. */
+  due: number
+  /** Inside a stage, but covered already or inside the cooldown. */
+  held: number
+  /** Not yet inside any stage — the deadline is too far off. */
+  waiting: number
+  /** Inside a stage and otherwise sendable, but no guardian number on file. */
+  unreachable: number
+}
+
+/**
+ * Which of the four situations an empty worklist is, or null when it is not empty.
+ *
+ * Returning null rather than taking `due` on faith is deliberate: the caller then
+ * has one value that both decides whether to render the "nothing to do" card and
+ * says what it should read, so the two can never disagree.
+ *
+ * The order of the questions is the whole content of this function.
+ *
+ * `unreachable` is asked before either reassuring answer. Those rows left the
+ * schedule for a data reason, not a calendar one, so answering with "no deadline
+ * is close yet" printed a contradiction directly above the card naming families
+ * who were weeks late. That was the bug this function exists to have a test for.
+ *
+ * Then held before waiting, because a held family was due today and a waiting one
+ * was not, and the more urgent fact is the more useful one. `notDueYet` is last as
+ * the only answer left: with invoices on file, every one of them increments `due`,
+ * `held`, `waiting` or `unreachable`, so reaching it means `waiting` carries them
+ * all.
+ */
+export function chaseEmptyReason(tally: ChaseTally): ChaseEmptyReason | null {
+  if (tally.due > 0) return null
+  if (tally.owing === 0) return 'nothingOwed'
+  if (tally.unreachable > 0) return 'allUnreachable'
+  if (tally.held > 0) return 'allRecent'
+  return 'notDueYet'
+}
+
