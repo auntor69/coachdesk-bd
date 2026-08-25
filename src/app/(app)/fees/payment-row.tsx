@@ -112,6 +112,22 @@ export function PaymentRow({
   const [method, setMethod] = useState<string>('cash')
   const formRef = useRef<HTMLFormElement>(null)
 
+  /**
+   * A DOM id that is unique across the whole board, and it has to be.
+   *
+   * `Field` falls back to the input's `name` when given no id, which is right on a
+   * screen with one form and wrong on this one: a batch of forty students puts forty
+   * `id="amount"` in the document, and `<label for="amount">` resolves to whichever
+   * came first. Tapping the amount label on the seventh row would focus the first
+   * row's field — money typed against the wrong child, which is the one mistake this
+   * screen exists to prevent. Every row is in the DOM whether its `<details>` is open
+   * or not, so collapsing them does not help.
+   *
+   * Keyed on the invoice id rather than the index, so it survives the board being
+   * re-sorted and matches the `invoiceId` the form actually posts.
+   */
+  const fid = (name: string) => `${name}-${row.id}`
+
   // Clear the typed amount once it has been recorded, so a second tap on the
   // same row cannot accidentally take the money twice. The field falls back to
   // whatever is now outstanding, which the server has just recalculated.
@@ -219,6 +235,7 @@ export function PaymentRow({
 
                 <Field
                   label={t.amount}
+                  id={fid('amount')}
                   name="amount"
                   // Not type="number": it strips the thousands separator an owner
                   // may type and refuses Bangla digits outright, and parseTaka
@@ -232,8 +249,18 @@ export function PaymentRow({
                 />
 
                 <div className="flex flex-col gap-1.5">
-                  <span className="font-medium text-ink">{t.method}</span>
-                  <div role="radiogroup" className="flex flex-wrap gap-2">
+                  {/* Not a `<label>`: it names a group of six radios, and a label
+                      may only point at one control. `aria-labelledby` is how a
+                      radiogroup gets a name, and without it a screen reader
+                      announces six unexplained wallets. */}
+                  <span id={fid('method')} className="font-medium text-ink">
+                    {t.method}
+                  </span>
+                  <div
+                    role="radiogroup"
+                    aria-labelledby={fid('method')}
+                    className="flex flex-wrap gap-2"
+                  >
                     {METHODS.map((m) => (
                       <label
                         key={m}
@@ -261,6 +288,7 @@ export function PaymentRow({
                 {method !== 'cash' && (
                   <Field
                     label={`${t.reference} (${common.optional})`}
+                    id={fid('reference')}
                     name="reference"
                     placeholder="8N7A6B5C4D"
                     maxLength={MAX_LABEL}
