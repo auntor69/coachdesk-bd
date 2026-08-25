@@ -792,6 +792,7 @@ export type Database = {
           note: string | null
           created_at: string
           receipt_no: number
+          idempotency_key: string | null
         }
         Insert: {
           id?: string
@@ -806,6 +807,7 @@ export type Database = {
           note?: string | null
           created_at?: string
           receipt_no?: number
+          idempotency_key?: string | null
         }
         Update: {
           id?: string
@@ -820,6 +822,7 @@ export type Database = {
           note?: string | null
           created_at?: string
           receipt_no?: number
+          idempotency_key?: string | null
         }
         Relationships: [
           {
@@ -1062,6 +1065,7 @@ export type Database = {
           paid_at: string
           recorded_by: string | null
           created_at: string
+          idempotency_key: string | null
         }
         Insert: {
           id?: string
@@ -1076,6 +1080,7 @@ export type Database = {
           paid_at?: string
           recorded_by?: string | null
           created_at?: string
+          idempotency_key?: string | null
         }
         Update: {
           id?: string
@@ -1090,6 +1095,7 @@ export type Database = {
           paid_at?: string
           recorded_by?: string | null
           created_at?: string
+          idempotency_key?: string | null
         }
         Relationships: [
           {

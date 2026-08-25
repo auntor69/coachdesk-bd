@@ -24,6 +24,7 @@ import { parseTaka, formatTaka, sumTaka } from '@/lib/money'
 import { billableEnrollments } from '@/lib/fees/billable'
 import { currentPeriodMonth } from '@/lib/bd/time'
 import { normalizeBdMobile } from '@/lib/bd/phone'
+import { readIdempotencyKey, UNIQUE_VIOLATION } from '@/lib/idempotency'
 import { MAX_LABEL, MAX_TEXT, clamp } from '@/lib/limits'
 import { dict, DEFAULT_LOCALE } from '@/lib/i18n'
 import type { OutreachChannel, PaymentMethod } from '@/lib/supabase/types'
@@ -193,6 +194,12 @@ export async function generateInvoices(
  * ordinary; 15000 typed where 1500 was meant is a typo. Blocking the first to
  * catch the second would be wrong, so both go through and the owner is told
  * what the family is now in credit for.
+ *
+ * Safe to arrive twice. The form sends a uuid it minted once, the unique index in
+ * 20260811000025 refuses the second row carrying it, and this answers that refusal
+ * with the receipt the first one wrote — so a lost response, a double tap, or a
+ * request Next replayed when the network came back all leave one payment on the
+ * record. See ./payment-row.tsx for when the browser mints a new one.
  */
 export async function recordPayment(
   _prev: FeeState,
@@ -223,6 +230,11 @@ export async function recordPayment(
   // typed it — which is the right kind of wrong.
   const reference = clamp(String(formData.get('reference') ?? '').trim(), MAX_LABEL)
   const note = clamp(String(formData.get('note') ?? '').trim(), MAX_TEXT)
+
+  // Null if the browser could not mint one, which records the payment with no retry
+  // protection rather than refusing it. See lib/idempotency.ts for why that is the
+  // right way round.
+  const key = readIdempotencyKey(formData.get('idempotencyKey'))
 
   const supabase = await createClient()
 
@@ -260,22 +272,68 @@ export async function recordPayment(
       reference: reference || null,
       note: note || null,
       received_by: session.userId,
+      idempotency_key: key,
     })
     .select('id, receipt_no')
     .single()
 
-  if (paymentError) {
-    return { error: t.errors.paymentFailed }
-  }
+  // Whether this request is the second arrival of a payment already on the record.
+  // Only that changes below — the owner is shown the same confirmation either way,
+  // deliberately: "received ৳1500 from Karim" is true, complete, and the sentence
+  // they need. Telling them it was "already recorded" would read as a warning that
+  // they had taken the money twice, which is the fear this screen exists to answer,
+  // not to provoke.
+  let replay = false
+  let receipt: { id: string; no: number }
 
-  const receipt = { id: payment.id, no: payment.receipt_no }
+  if (paymentError) {
+    // The one error that is not a failure: the unique index in 20260811000025
+    // refusing a second row for a submit that is already recorded. Guarded on `key`
+    // as well as the code, because without a key that index cannot be the one that
+    // fired and a 23505 from somewhere else — the receipt-number index, if the
+    // trigger's max() ever came out low — is a genuine failure.
+    if (!key || paymentError.code !== UNIQUE_VIOLATION) {
+      return { error: t.errors.paymentFailed }
+    }
+
+    const { data: existing } = await supabase
+      .from('fee_payments')
+      .select('id, receipt_no, invoice_id, amount_bdt')
+      .eq('coaching_center_id', session.active.centerId)
+      .eq('idempotency_key', key)
+      .maybeSingle()
+
+    // Checked against what this request asked for, not trusted for being findable.
+    // A key that turns up on a different invoice or a different amount is a key
+    // reused where it should not have been, and answering that with a receipt would
+    // put a slip in a parent's hand for a payment against another child. There is no
+    // sentence worth writing for it: it cannot happen from this form, and if it does
+    // the honest report is that the payment did not go through.
+    if (
+      !existing
+      || existing.invoice_id !== invoice.id
+      || Number(existing.amount_bdt) !== amount
+    ) {
+      return { error: t.errors.paymentFailed }
+    }
+
+    replay = true
+    receipt = { id: existing.id, no: existing.receipt_no }
+  } else {
+    receipt = { id: payment.id, no: payment.receipt_no }
+  }
 
   revalidatePath('/fees')
   revalidatePath('/dashboard')
   revalidatePath('/me')
 
   const wasOwed = Number(invoice.remaining_bdt ?? 0)
-  const stillOwed = sumTaka([wasOwed, -amount])
+  // On a replay the payment is already in the view's sum — `remaining_bdt` is
+  // `net - paid` (20260811000006) and the row it is being deduplicated against was
+  // written before this request read the invoice. Subtracting again would tell the
+  // owner the family still owes money they have handed over, on the one screen where
+  // that sentence starts an argument.
+  const stillOwed = replay ? wasOwed : sumTaka([wasOwed, -amount])
   // A view cannot prove student_name is not null, though fee_invoices says it is.
   // 'অজানা' beside a figure is visibly wrong and gets asked about; 'undefined' is
   // not a word in either language.

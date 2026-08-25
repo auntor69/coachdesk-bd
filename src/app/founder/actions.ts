@@ -46,6 +46,7 @@ import {
 import { createAdminClient } from '@/lib/supabase/admin'
 import { addMonths, formatMonth } from '@/lib/bd/time'
 import { dict, DEFAULT_LOCALE } from '@/lib/i18n'
+import { readIdempotencyKey, UNIQUE_VIOLATION } from '@/lib/idempotency'
 import { MAX_LABEL, MAX_TEXT, clamp } from '@/lib/limits'
 import { formatTaka, parseTaka } from '@/lib/money'
 import { PLANS, planFor, planName, type PlanId } from '@/lib/plans'
@@ -131,6 +132,10 @@ function isSession(value: Session | FounderState): value is Session {
  * today; a row written by hand beside a hand-recorded receipt would be a second place
  * for a plan to be recorded and the two would disagree within a month. What a
  * subscription would have told us, the coverage window on the payment already does.
+ *
+ * Safe to arrive twice. The form sends a uuid it minted once and the unique index in
+ * 20260811000025 refuses the second row carrying it, so a lost response or a replayed
+ * request cannot inflate the one total that says whether this business works.
  */
 export async function recordCenterPayment(
   _prev: FounderState,
@@ -169,6 +174,10 @@ export async function recordCenterPayment(
   const reference = clamp(String(formData.get('reference') ?? ''), MAX_LABEL)
   const note = clamp(String(formData.get('note') ?? ''), MAX_TEXT)
 
+  // Null if the browser could not mint one, which records the receipt with no retry
+  // protection rather than refusing it.
+  const key = readIdempotencyKey(formData.get('idempotencyKey'))
+
   const admin = createAdminClient()
 
   // The centre is read before the insert for the error message, not for safety: the
@@ -201,9 +210,38 @@ export async function recordCenterPayment(
     covers_period_end: coversTo,
     note: note || null,
     recorded_by: session.userId,
+    idempotency_key: key,
   })
 
-  if (error) return { error: words.failed }
+  if (error) {
+    // The one error that is not a failure: the unique index in 20260811000025 refusing
+    // a second row for a receipt already entered. Guarded on `key` too, because
+    // without one that index cannot be what fired.
+    if (!key || error.code !== UNIQUE_VIOLATION) return { error: words.failed }
+
+    // Read back and check it against what this request asked for. The founder is told
+    // the same thing either way — the receipt exists, for this centre, for this money,
+    // over this window — and a stored row that disagrees on any of those means the key
+    // was reused somewhere it should not have been, which is not a receipt to confirm.
+    //
+    // scoped-by: this is the founder panel, and the key is unique per centre, so the
+    // filter on coaching_center_id below is what makes the lookup mean anything.
+    const { data: existing } = await admin
+      .from('payments')
+      .select('id, amount_bdt, covers_period_start, covers_period_end')
+      .eq('coaching_center_id', centerId)
+      .eq('idempotency_key', key)
+      .maybeSingle()
+
+    if (
+      !existing
+      || Number(existing.amount_bdt) !== amount
+      || existing.covers_period_start !== from
+      || existing.covers_period_end !== coversTo
+    ) {
+      return { error: words.failed }
+    }
+  }
 
   revalidatePath('/founder')
 

@@ -1039,6 +1039,110 @@ check(
   await deniedAsUser(db, ids.ownerA, 'delete from fee_payments where id = $1', [rFirst]),
 )
 
+// ---------------------------------------------------------------------------
+// One tap, one payment (20260811000025).
+//
+// The failure this closes is not an attack, it is a Tuesday: the insert lands, the
+// response dies on the way back to the phone, the owner sees an error for money that
+// was in fact taken, and taps again. Everything above has just proved that neither
+// row can then be deleted by anybody — which is what makes a duplicate permanent
+// rather than embarrassing.
+//
+// Asserted here rather than in a unit test because the guarantee is a unique index.
+// The application cannot provide it: two requests a millisecond apart both pass any
+// "does one already exist" check it could make, and only the database is holding a
+// lock while it decides.
+// ---------------------------------------------------------------------------
+
+const tapKey = '3f5a9c11-7b2d-4e18-9a44-0c6e8b1d2f70'
+const rTapped = await one(
+  `insert into fee_payments
+     (coaching_center_id, invoice_id, student_id, amount_bdt, idempotency_key)
+   values ($1, $2, $3, 250, $4) returning id`,
+  [centerA, invoiceAli, stAli, tapKey],
+)
+check('a payment carrying a token is recorded', Boolean(rTapped))
+
+// Named, for the reason the receipt-number duplicate above is named: "the database
+// said no" is cheap to get by accident, and a NOT NULL or a check constraint firing
+// here would read as a pass while leaving the double-charge wide open.
+let replayed = { ok: false, why: 'accepted — a second row was written' }
+try {
+  await db.query(
+    `insert into fee_payments
+       (coaching_center_id, invoice_id, student_id, amount_bdt, idempotency_key)
+     values ($1, $2, $3, 250, $4)`,
+    [centerA, invoiceAli, stAli, tapKey],
+  )
+} catch (error) {
+  const message = String(error.message)
+  replayed = {
+    ok: /fee_payments_center_idempotency_key/.test(message),
+    why: message.split('\n')[0],
+  }
+}
+check('the same tap arriving twice is refused the second time', replayed.ok, replayed.why)
+
+// And the losing insert cost the centre nothing. `app.assign_receipt_no` counts
+// max()+1 under an advisory lock held to commit rather than drawing from a sequence,
+// so the number it briefly computed rolls back with it — no gap in the receipt book,
+// which an audit reads as a removed page.
+check(
+  'and left no gap in the receipt book',
+  (await nextFor(centerA)) === (await receiptNo(rTapped)) + 1,
+  `next is ${await nextFor(centerA)} after receipt ${await receiptNo(rTapped)}`,
+)
+
+// The token is scoped to the centre, like every other uniqueness in this schema.
+// Two owners cannot collide by accident, and — more to the point — nothing a browser
+// sends can reach across the boundary to claim a key another centre is using.
+const bTapped = await one(
+  `insert into fee_payments
+     (coaching_center_id, invoice_id, student_id, amount_bdt, idempotency_key)
+   values ($1, $2, $3, 250, $4) returning id`,
+  [centerB, bInvoice, stB, tapKey],
+)
+check('the same token in another centre is a different payment', Boolean(bTapped))
+
+// Two deliberate payments on the same invoice for the same amount on the same day is
+// an ordinary thing — a parent settling two months in one visit — which is why the
+// key has to come from the browser at all. Nothing in the row can tell that apart
+// from a duplicate, so a fresh token must always be accepted.
+check(
+  'a fresh token on the same invoice for the same amount is allowed',
+  Boolean(
+    await one(
+      `insert into fee_payments
+         (coaching_center_id, invoice_id, student_id, amount_bdt, idempotency_key)
+       values ($1, $2, $3, 250, $4) returning id`,
+      [centerA, invoiceAli, stAli, '8d1e4a02-6c3f-4b57-8e29-5f0a7c9d3b64'],
+    ),
+  ),
+)
+
+// And a payment with no token at all still goes in, as many times as it likes. The
+// CSV import writes these, every row that predates the column has one, and a browser
+// with no crypto.randomUUID sends nothing — a null key must mean "no retry
+// protection", never "refused". `pay` is the helper the sections above used, and it
+// names no token, which is what makes it the right probe for this.
+check(
+  'payments with no token are not deduplicated against each other',
+  Boolean((await pay(70)).rows[0].id) && Boolean((await pay(70)).rows[0].id),
+)
+
+// The key is an identity, so it cannot be edited into a different one — a cleared key
+// stops absorbing the retry it exists for, and a key set on a row before the real
+// submit arrives would have that submit answered with a receipt for money nobody
+// handed over. Same fence as the amount and the method.
+check(
+  'a staff admin cannot rewrite the token on a recorded payment',
+  await deniedAsUser(db, ids.ownerA, 'update fee_payments set idempotency_key = null where id = $1', [
+    rTapped,
+  ]),
+)
+
+await db.query('delete from fee_payments where id = $1', [bTapped])
+
 await db.query('delete from fee_payments where coaching_center_id = $1', [centerA])
 await db.query('delete from fee_payments where id = $1', [bPayment])
 await db.query('delete from fee_invoices where id = $1', [bInvoice])

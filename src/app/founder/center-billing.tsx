@@ -26,6 +26,7 @@
 import { useActionState, useEffect, useRef } from 'react'
 
 import { Alert, Button, Field } from '@/components/ui'
+import { mintIdempotencyKey } from '@/lib/idempotency'
 import { MAX_LABEL, MAX_TEXT } from '@/lib/limits'
 import type { CenterStatus, PaymentMethod } from '@/lib/supabase/types'
 import type { PlanId } from '@/lib/plans'
@@ -136,13 +137,31 @@ export function CenterBilling({
    */
   const fid = (name: string) => `${name}-${centerId}`
 
-  // Clear the amount once it is recorded. `disabled={paying}` is what stops a double
-  // tap mid-flight; this is what stops the tap that comes after the confirmation, on a
-  // form still holding the figure that was just banked. There is no idempotency key on
-  // a hand-recorded receipt and no way to delete one, so the same money entered twice
-  // is a number the founder has to reconcile by hand.
+  /**
+   * The token that makes this receipt arrive once however many times it is delivered.
+   * The founder's connection is the same connection every centre owner has, and the
+   * total these rows feed is the one number that says whether this business works.
+   * See lib/idempotency.ts.
+   *
+   * A ref into the DOM rather than React state: the server and the browser would mint
+   * two different uuids for the same markup, so this value cannot come out of render.
+   */
+  const keyRef = useRef<HTMLInputElement>(null)
+
   useEffect(() => {
+    // Clear the amount once it is recorded. `disabled={paying}` is what stops a double
+    // tap mid-flight, the token below is what stops one submit being delivered twice,
+    // and this is what stops the tap that comes after the confirmation on a form still
+    // holding the figure that was just banked — three different failures, and a
+    // hand-recorded receipt cannot be deleted afterwards.
     if (payState?.ok) payForm.current?.reset()
+
+    // Then the token, in that order: `reset()` returns every control to its default
+    // and this input has no default, so minting first would leave it empty. Minted on
+    // mount and again after a recorded receipt — a centre paying twice in one sitting
+    // is ordinary, and the spent token would collide with the row already there.
+    const input = keyRef.current
+    if (input && (payState?.ok || !input.value)) input.value = mintIdempotencyKey()
   }, [payState])
 
   return (
@@ -160,6 +179,10 @@ export function CenterBilling({
         {/* ------------------------------------------------------------------ */}
         <form ref={payForm} action={payAction} className="flex flex-col gap-3">
           <input type="hidden" name="centerId" value={centerId} />
+          {/* No value in the markup, on purpose: written after mount by the effect
+              above, because a uuid minted during render would differ between the
+              server and the browser. */}
+          <input type="hidden" name="idempotencyKey" ref={keyRef} />
           <p className="font-semibold text-ink">{words.payTitle}</p>
 
           {payState?.error && <Alert>{payState.error}</Alert>}

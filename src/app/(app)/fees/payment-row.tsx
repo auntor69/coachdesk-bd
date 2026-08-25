@@ -21,6 +21,7 @@ import Link from 'next/link'
 
 import { Alert, Button, Field } from '@/components/ui'
 import { formatDate } from '@/lib/bd/time'
+import { mintIdempotencyKey } from '@/lib/idempotency'
 import { MAX_LABEL } from '@/lib/limits'
 import type { Locale, T } from '@/lib/i18n'
 import { fill } from '@/lib/i18n/fill'
@@ -128,11 +129,38 @@ export function PaymentRow({
    */
   const fid = (name: string) => `${name}-${row.id}`
 
-  // Clear the typed amount once it has been recorded, so a second tap on the
-  // same row cannot accidentally take the money twice. The field falls back to
-  // whatever is now outstanding, which the server has just recalculated.
+  /**
+   * The token that makes this form's submit arrive once however many times it is
+   * delivered. See lib/idempotency.ts for the failure it exists for — the short
+   * version is that the insert can land while the response does not, and a fee
+   * payment cannot be deleted afterwards by anybody.
+   *
+   * A ref into the DOM rather than a piece of React state, and it has to be: the
+   * server and the browser would mint two different uuids for the same markup, so
+   * this value cannot come out of render at all. Setting it from an effect is
+   * exactly what an effect is for — the input is an external system holding a value
+   * React does not own.
+   */
+  const keyRef = useRef<HTMLInputElement>(null)
+
   useEffect(() => {
+    // Clear the typed amount once it has been recorded, so a second tap on the same
+    // row cannot accidentally take the money twice. The field falls back to whatever
+    // is now outstanding, which the server has just recalculated.
     if (state?.ok) formRef.current?.reset()
+
+    // Then the token, in that order: `reset()` puts every control back to its default
+    // and this input has no default, so minting first would hand the next payment an
+    // empty one.
+    //
+    // Minted on mount (nothing in the input yet) and again once money has been
+    // recorded (the old token is spent — reusing it would collide with the row
+    // already there and answer the next parent's payment with the previous receipt,
+    // which is a real payment silently not recorded, worse than the double it
+    // prevents). Not after an error: nothing was written, so keeping the token means
+    // resubmitting the same amount is still deduplicated.
+    const input = keyRef.current
+    if (input && (state?.ok || !input.value)) input.value = mintIdempotencyKey()
   }, [state])
 
   const settled = row.remaining <= 0
@@ -232,6 +260,10 @@ export function PaymentRow({
 
               <form ref={formRef} action={formAction} className="flex flex-col gap-3">
                 <input type="hidden" name="invoiceId" value={row.id} />
+                {/* No value in the markup, on purpose: it is written after mount by
+                    the effect above, because a uuid minted during render would be a
+                    different one on the server than in the browser. */}
+                <input type="hidden" name="idempotencyKey" ref={keyRef} />
 
                 <Field
                   label={t.amount}
