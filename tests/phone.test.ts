@@ -70,6 +70,27 @@ test('displays numbers the way Bangladeshis read them', () => {
   assert.equal(formatBdMobile(null), '')
 })
 
+test('the number on the screen is the number the link dials', () => {
+  // Three screens now print a number beside a `tel:` link that carries it in
+  // E.164 — the at-risk row, the founder panel and the plan screen's sales chip.
+  // Two notations for one number is fine and is what a Bangladeshi expects to
+  // read; two *different numbers* would have an owner reading digits down the
+  // phone that are not the ones their handset dialled. So what is displayed has
+  // to normalise back to what is linked.
+  for (const e164 of [
+    '+8801712345678',
+    '+8801911000000',
+    '+8801312345678',
+  ]) {
+    assert.equal(normalizeBdMobile(formatBdMobile(e164)), e164)
+  }
+
+  // And the fallback: a number stored before the validator existed comes back
+  // untouched, so the text and the href are the same string rather than two
+  // guesses at it.
+  assert.equal(formatBdMobile('12345'), '12345')
+})
+
 test('phone maps to a stable synthetic login address and back', () => {
   const email = phoneToLoginEmail('01712345678')
   assert.equal(email, '8801712345678@phone.coachdesk.invalid')

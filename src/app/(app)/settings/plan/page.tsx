@@ -3,7 +3,7 @@ import Link from 'next/link'
 import { Card } from '@/components/ui'
 import { pageRole, getSession } from '@/lib/auth/session'
 import { createClient } from '@/lib/supabase/server'
-import { normalizeBdMobile } from '@/lib/bd/phone'
+import { formatBdMobile, normalizeBdMobile } from '@/lib/bd/phone'
 import { dict, DEFAULT_LOCALE } from '@/lib/i18n'
 import { formatTaka } from '@/lib/money'
 import {
@@ -286,11 +286,23 @@ export default async function PlanPage() {
               {t.contactWhatsapp}
             </a>
             <a
+              // The number is printed rather than hidden behind "Call", because
+              // `tel:` opens nothing on a laptop and this is the one control on the
+              // one screen where a centre decides to start paying us. A dead button
+              // here is a lost sale; the digits work on any device. ASCII in both
+              // languages — it is dialled, not read as prose.
               href={`tel:${salesPhone}`}
               className="inline-flex min-h-tap items-center rounded-xl border-2
                 border-line px-4 font-medium text-ink-soft"
             >
               {t.contactCall}
+              {/* `ml-1` and not a JSX space. This anchor is an inline-flex, and a
+                  space there is worth exactly zero pixels — measured: 152.03px wide
+                  with the space, 152.03px without, 156.03px with this margin. The
+                  at-risk row spaces the same two parts with a plain JSX space and is
+                  right to, because that anchor is an inline-block, where the space
+                  is 3.27px of real layout. */}
+              <span className="num ml-1">{formatBdMobile(salesPhone)}</span>
             </a>
           </div>
         </Card>

@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react'
 
+import { formatBdMobile } from '@/lib/bd/phone'
 import { formatTaka } from '@/lib/money'
 import type { RiskReason, RiskStudent } from '@/lib/students/risk'
 import type { Dictionary } from '@/lib/i18n'
@@ -18,10 +19,11 @@ import type { Dictionary } from '@/lib/i18n'
  * English inflects on counts that Bangla ignores, and `T<>` maps function leaves
  * to `never` to keep them out of client bundles.
  *
- * No locale threading. Every figure here is a percentage, a taka amount or a day
- * count, and all three stay ASCII in both languages — a row reading "১২ দিন ·
- * 55%" would be two numeral systems in one line. The rule and the reason are the
- * same as on `AttendanceRates`.
+ * No locale threading. Every figure here is a percentage, a taka amount, a day
+ * count or a phone number, and all four stay ASCII in both languages — a row
+ * reading "১২ দিন · 55%" would be two numeral systems in one line, and a number
+ * an owner dials must be the digits on their keypad. The rule and the reason are
+ * the same as on `AttendanceRates`.
  */
 
 /**
@@ -109,6 +111,14 @@ function Reason({ reason, t }: { reason: RiskReason; t: Dictionary['risk'] }) {
  *
  * The call link is not suppressed by an SMS opt-out, matching the reminder chips:
  * a family that asked not to be texted has not asked never to be spoken to.
+ *
+ * THE NUMBER IS PRINTED, not hidden behind the label. `tel:` opens nothing on a
+ * laptop, and this row is the one place an owner sees a drifting student without
+ * already being on that student's page — so a label alone left them clicking a
+ * link that did nothing, with the number they wanted sitting in the href. Unlike
+ * the fee and progress chips there is nothing to un-record here, which is why this
+ * needs no pointer query: the number is worth showing on a phone too, since it is
+ * what the owner reads back to whoever picks up.
  */
 export function RiskStudentRow({ student, t }: { student: RiskStudent; t: Dictionary['risk'] }) {
   return (
@@ -140,7 +150,8 @@ export function RiskStudentRow({ student, t }: { student: RiskStudent; t: Dictio
           href={`tel:${student.guardianPhone}`}
           className="mt-1.5 inline-block text-sm font-medium text-brand-700 underline underline-offset-2"
         >
-          {t.callGuardian}
+          {t.callGuardian}{' '}
+          <span className="num">{formatBdMobile(student.guardianPhone)}</span>
         </a>
       ) : (
         <p className="mt-1.5 text-sm text-ink-faint">{t.noPhone}</p>
