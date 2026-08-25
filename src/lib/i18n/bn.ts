@@ -718,11 +718,27 @@ export const bn = {
     no: 'না',
   },
 
-  /** The three chips, and the two reasons there might be none. */
+  /**
+   * The three chips, the two reasons there might be none, and what the two message
+   * chips turn into on a laptop — where `sms:` and `tel:` open nothing, so copying
+   * is the honest version of the same action. See src/lib/pointer.ts.
+   */
   chase: {
     noNumber: 'অভিভাবকের নম্বর নেই।',
     addNumber: 'যোগ করে নিন',
     optedOut: 'এই পরিবার এসএমএস পেতে চায় না — ফোন করা যাবে।',
+
+    /** Short, because it sits where 'এসএমএস' and 'কল' sat and the row is 375px. */
+    copySms: 'বার্তা কপি',
+    copyNumber: 'নম্বর কপি',
+
+    /** `title` tooltips, so only ever read on a device with a mouse. */
+    copySmsHint: 'ফোনে পেস্ট করে পাঠিয়ে দিন।',
+    copyNumberHint: 'ফোন থেকে ডায়াল করুন।',
+
+    copied: 'কপি হয়েছে ✓',
+    /** Nothing is recorded when this shows — see the English note. */
+    copyFailed: 'কপি করা যায়নি',
   },
 
   /**

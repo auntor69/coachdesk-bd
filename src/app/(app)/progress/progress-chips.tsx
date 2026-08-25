@@ -14,10 +14,16 @@
  * The message is built here rather than on the server for the reason ChaseChips
  * gives: the row already carries every input, and shipping two rendered strings per
  * student down to a phone on 3G to save two pure function calls is the wrong trade.
+ *
+ * The desktop shape is shared, though, because it is about the device and not about
+ * the message: on a laptop the two dead links become the message and the number to
+ * copy. See ../../../components/chase-chip.tsx and ../../../lib/pointer.ts.
  */
 import Link from 'next/link'
 
+import { CHIP, CopyChip } from '@/components/chase-chip'
 import type { T } from '@/lib/i18n'
+import { useFinePointer } from '@/lib/pointer'
 import {
   buildProgressSummarySms,
   buildProgressSummaryText,
@@ -43,11 +49,6 @@ export type ProgressTarget = {
   guardianPhone: string | null
   smsOptOut: boolean
 }
-
-/** One tap target, identical for all three — see the note on ChaseChips's own. */
-const CHIP =
-  'inline-flex min-h-tap items-center rounded-xl border-2 border-line px-4' +
-  ' font-medium text-ink-soft transition-colors active:bg-brand-50'
 
 export function ProgressChips({
   target,
@@ -86,6 +87,11 @@ export function ProgressChips({
   const sayable = smsBody.length > 0
   const phone = target.guardianPhone
 
+  // See the note on ChaseChips's own: a laptop opens neither `sms:` nor `tel:`, so
+  // on one it is offered the message and the number to copy. Called before the early
+  // return below only because hooks cannot be conditional.
+  const finePointer = useFinePointer()
+
   function log(channel: OutreachChannel, body: string | null) {
     logProgressUpdate({
       studentId: target.studentId,
@@ -121,18 +127,34 @@ export function ProgressChips({
             not asked never to be spoken to. */}
         {!target.smsOptOut && sayable && (
           <>
+            {/* The week's note, either handed to the phone's messaging app or put
+                on the clipboard for the phone the owner is not holding. Same
+                words, same position, same row in progress_updates — and on the
+                desktop side the row is written only once the copy succeeded. */}
+            {finePointer ? (
+              <CopyChip
+                text={smsBody}
+                label={t.copySms}
+                hint={t.copySmsHint}
+                copied={t.copied}
+                failed={t.copyFailed}
+                onCopied={() => log('sms', smsBody)}
+              />
+            ) : (
+              <a
+                // "?&body=" rather than "?body=": iOS historically wanted the
+                // separator to be "&" and Android wants "?", and this form is the
+                // one both parse. The empty first parameter is ignored.
+                href={`sms:${phone}?&body=${encodeURIComponent(smsBody)}`}
+                onClick={() => log('sms', smsBody)}
+                className={CHIP}
+              >
+                {channels.sms}
+              </a>
+            )}
             <a
-              // "?&body=" rather than "?body=": iOS historically wanted the
-              // separator to be "&" and Android wants "?", and this form is the one
-              // both parse. The empty first parameter is ignored.
-              href={`sms:${phone}?&body=${encodeURIComponent(smsBody)}`}
-              onClick={() => log('sms', smsBody)}
-              className={CHIP}
-            >
-              {channels.sms}
-            </a>
-            <a
-              // wa.me wants the number without the +.
+              // wa.me wants the number without the +. Unbranched on purpose: this
+              // one already works on a laptop, because WhatsApp Web exists.
               href={`https://wa.me/${phone.slice(1)}?text=${encodeURIComponent(chatBody)}`}
               target="_blank"
               rel="noopener noreferrer"
@@ -143,9 +165,20 @@ export function ProgressChips({
             </a>
           </>
         )}
-        <a href={`tel:${phone}`} onClick={() => log('call', null)} className={CHIP}>
-          {channels.call}
-        </a>
+        {finePointer ? (
+          <CopyChip
+            text={phone}
+            label={t.copyNumber}
+            hint={t.copyNumberHint}
+            copied={t.copied}
+            failed={t.copyFailed}
+            onCopied={() => log('call', null)}
+          />
+        ) : (
+          <a href={`tel:${phone}`} onClick={() => log('call', null)} className={CHIP}>
+            {channels.call}
+          </a>
+        )}
       </div>
 
       {target.smsOptOut && <p className="mt-2 text-sm text-ink-faint">{t.optedOut}</p>}

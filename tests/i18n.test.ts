@@ -259,6 +259,38 @@ test('an empty weekly list has a sentence for every reason it can be empty', () 
   assert.match(bn.progress.noneBecause.noNumbers, /এখনো জানানো বাকি/)
 })
 
+test('the desktop chips read as a different action, not as the dead one', () => {
+  // On a laptop `sms:` and `tel:` open nothing, so both chips become a copy — see
+  // src/lib/pointer.ts. What the copy is *called* is load-bearing: a button still
+  // labelled "SMS" that only reaches the clipboard is the same lie the dead link
+  // told, one step earlier.
+  for (const locale of LOCALES) {
+    const { chase, channels } = dict(locale)
+    assert.notEqual(chase.copySms, channels.sms, `${locale}.chase.copySms`)
+    assert.notEqual(chase.copyNumber, channels.call, `${locale}.chase.copyNumber`)
+    assert.notEqual(chase.copySms, chase.copyNumber, `${locale}.chase.copySms`)
+  }
+
+  // Both hints exist to say the one thing the label cannot: the message still goes
+  // from the owner's own handset, at their own operator's rate. They are `title`
+  // tooltips, so they are only ever read on the device that has these chips.
+  assert.match(en.chase.copySmsHint, /phone/i)
+  assert.match(en.chase.copyNumberHint, /phone/i)
+  assert.match(bn.chase.copySmsHint, /ফোন/)
+  assert.match(bn.chase.copyNumberHint, /ফোন/)
+
+  // The confirmation and the failure land in the same slot on the same chip, and
+  // only one of them means a row was written to fee_reminders. Two strings that
+  // read alike would put the false record back — the owner sees the chip change,
+  // assumes the family was told, and moves down the list.
+  for (const locale of LOCALES) {
+    const { copied, copyFailed } = dict(locale).chase
+    assert.notEqual(copied, copyFailed, `${locale}.chase.copyFailed`)
+    assert.ok(copied.includes('✓'), `${locale}.chase.copied is missing its tick`)
+    assert.ok(!copyFailed.includes('✓'), `${locale}.chase.copyFailed has a tick`)
+  }
+})
+
 test('every teacher permission has a label and a hint in both languages', () => {
   // Both screens render this table from PERMISSION_KEYS, so a sixth switch added
   // to the migration and the key list without copy for it would put a nameless

@@ -20,12 +20,19 @@
  * carries every input it needs, and shipping three rendered strings per invoice
  * down to a phone on 3G to save two pure function calls is the wrong trade. It is
  * the same function the cron worker will call when there is a gateway.
+ *
+ * ON A LAPTOP two of the three links open nothing, so on one the owner is offered
+ * the message and the number to copy instead — same words, same order, same table.
+ * See ../../../lib/pointer.ts for why the question is a media query, and
+ * ../../../components/chase-chip.tsx for why a copy is a chase.
  */
 import Link from 'next/link'
 
+import { CHIP, CopyChip } from '@/components/chase-chip'
 import { digits } from '@/lib/bd/time'
 import type { Locale, T } from '@/lib/i18n'
 import { fill } from '@/lib/i18n/fill'
+import { useFinePointer } from '@/lib/pointer'
 import { buildFeeReminderSms, buildFeeReminderText } from '@/lib/sms/templates'
 import type { OutreachChannel, PayoutWallet } from '@/lib/supabase/types'
 import { logFeeReminder } from './actions'
@@ -58,12 +65,6 @@ export type ChaseTarget = {
   guardianPhone: string | null
   smsOptOut: boolean
 }
-
-/** One tap target. Deliberately identical for all three — which channel a family
- *  actually reads is the centre's knowledge, not something to rank for them. */
-const CHIP =
-  'inline-flex min-h-tap items-center rounded-xl border-2 border-line px-4' +
-  ' font-medium text-ink-soft transition-colors active:bg-brand-50'
 
 /**
  * "9 days late", in the reader's language and numerals.
@@ -129,6 +130,11 @@ export function ChaseChips({
   const chatBody = buildFeeReminderText(input)
   const phone = target.guardianPhone
 
+  // A laptop cannot open `sms:` or `tel:`, so on one it is offered the message and
+  // the number instead. Asked before the early return below only because hooks
+  // cannot be called conditionally; the answer is unused when there is no phone.
+  const finePointer = useFinePointer()
+
   function log(channel: OutreachChannel, body: string | null) {
     logFeeReminder({
       invoiceId: target.id,
@@ -163,18 +169,34 @@ export function ChaseChips({
             not asked never to be spoken to. */}
         {!target.smsOptOut && (
           <>
+            {/* The message, either handed to the phone's own messaging app or put
+                on the clipboard for the phone the owner is not holding. Same
+                position, same message, same row in fee_reminders — and on the
+                desktop side the row is written only once the copy succeeded. */}
+            {finePointer ? (
+              <CopyChip
+                text={smsBody}
+                label={t.copySms}
+                hint={t.copySmsHint}
+                copied={t.copied}
+                failed={t.copyFailed}
+                onCopied={() => log('sms', smsBody)}
+              />
+            ) : (
+              <a
+                // "?&body=" rather than "?body=": iOS historically wanted the
+                // separator to be "&" and Android wants "?", and this form is the
+                // one both parse. The empty first parameter is ignored.
+                href={`sms:${phone}?&body=${encodeURIComponent(smsBody)}`}
+                onClick={() => log('sms', smsBody)}
+                className={CHIP}
+              >
+                {channels.sms}
+              </a>
+            )}
             <a
-              // "?&body=" rather than "?body=": iOS historically wanted the
-              // separator to be "&" and Android wants "?", and this form is the
-              // one both parse. The empty first parameter is ignored.
-              href={`sms:${phone}?&body=${encodeURIComponent(smsBody)}`}
-              onClick={() => log('sms', smsBody)}
-              className={CHIP}
-            >
-              {channels.sms}
-            </a>
-            <a
-              // wa.me wants the number without the +.
+              // wa.me wants the number without the +. Unbranched on purpose: this
+              // one already works on a laptop, because WhatsApp Web exists.
               href={`https://wa.me/${phone.slice(1)}?text=${encodeURIComponent(chatBody)}`}
               target="_blank"
               rel="noopener noreferrer"
@@ -185,9 +207,20 @@ export function ChaseChips({
             </a>
           </>
         )}
-        <a href={`tel:${phone}`} onClick={() => log('call', null)} className={CHIP}>
-          {channels.call}
-        </a>
+        {finePointer ? (
+          <CopyChip
+            text={phone}
+            label={t.copyNumber}
+            hint={t.copyNumberHint}
+            copied={t.copied}
+            failed={t.copyFailed}
+            onCopied={() => log('call', null)}
+          />
+        ) : (
+          <a href={`tel:${phone}`} onClick={() => log('call', null)} className={CHIP}>
+            {channels.call}
+          </a>
+        )}
       </div>
 
       {target.smsOptOut && (

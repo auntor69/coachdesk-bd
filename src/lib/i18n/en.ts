@@ -381,6 +381,33 @@ export const en: Dictionary = {
     addNumber: 'Add one',
     optedOut:
       'This family has asked not to be texted — a call is still fine.',
+
+    /**
+     * What the two message chips become on a laptop, where `sms:` and `tel:` open
+     * nothing at all. Not "SMS (does not work here)" — a different control that
+     * does work, so the desktop does the thing a desktop is good at and hands the
+     * job to the phone.
+     */
+    copySms: 'Copy message',
+    copyNumber: 'Copy number',
+
+    /**
+     * The hints are `title` tooltips, so they are only ever read on the device
+     * that has a pointer to hover — which is the same device these chips appear
+     * on. They carry the one fact the label cannot: the sending still happens on
+     * the owner's own phone, from their own number, as it always did.
+     */
+    copySmsHint: 'Paste it on your phone to send it.',
+    copyNumberHint: 'Dial it from your phone.',
+
+    /** Replaces the label for a moment. The tick is doing the work in both. */
+    copied: 'Copied ✓',
+    /**
+     * Shown instead of the tick, and nothing is recorded when it appears — a
+     * family the owner could not copy a number for has not been chased. Rare
+     * enough to be a surprise, so it says what happened rather than what to do.
+     */
+    copyFailed: 'Could not copy',
   },
 
   chaseList: {
