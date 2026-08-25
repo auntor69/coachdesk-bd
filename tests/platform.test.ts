@@ -54,6 +54,9 @@ function row(over: Partial<PlatformCenterRow> = {}): PlatformCenterRow {
     last_active_at: '2026-08-24T11:00:00.000Z',
     paid_bdt: '1999.00',
     last_paid_at: '2026-08-01T06:00:00.000Z',
+    // A `date`, and one that has not run out yet: the default row is a customer who
+    // is paid up, so every `owes` test below has to say what it changed.
+    paid_through: '2026-08-31',
     ...over,
   }
 }
@@ -179,6 +182,7 @@ test('missing values become the fact they stand for, not NaN', () => {
         notes_30d: null,
         last_active_at: null,
         last_paid_at: null,
+        paid_through: null,
       }),
     ],
     'নাম নেই',
@@ -196,6 +200,12 @@ test('missing values become the fact they stand for, not NaN', () => {
   assert.equal(c.status, 'trial')
   assert.equal(c.plan, 'teacher_free')
   assert.equal(c.billBdt, 0)
+  // Null is its own answer, not a date and not a zero: nothing has been paid, or
+  // what was paid did not say what it bought. The screen omits the line.
+  assert.equal(c.paidThrough, null)
+  // And a row with nothing in it does not owe. Trial, free tier, no bill — three
+  // separate reasons, and any one of them is enough.
+  assert.equal(c.owes, false)
 })
 
 test('a row with no centre id is skipped rather than rendered', () => {
@@ -229,6 +239,101 @@ test('MRR counts active centres only, and trials sit in the pipeline', () => {
   // are how big the thing is, not how much it earns.
   assert.equal(totals.students, 160)
   assert.equal(totals.teachers, 8)
+})
+
+/* -------------------------------------------------------------------------- */
+/* Who owes money                                                             */
+/* -------------------------------------------------------------------------- */
+
+test('owes is a live billing customer whose coverage has run out', () => {
+  // NOW is 25 August 2026, 09:00 UTC — which is 3pm in Dhaka, so the founder's day
+  // is unambiguously the 25th and no fixture here sits on the boundary.
+  const list = customers(
+    [
+      row({ center_id: 'current', paid_through: '2026-08-31' }),
+      row({ center_id: 'lapsed', paid_through: '2026-07-31' }),
+      row({ center_id: 'never', paid_through: null }),
+      // The last day of coverage is a day they have paid for, not the first day
+      // they owe. A founder ringing a customer on the morning of the day their
+      // month expires is the mistake this boundary exists to prevent.
+      row({ center_id: 'today', paid_through: '2026-08-25' }),
+      row({ center_id: 'yesterday', paid_through: '2026-08-24' }),
+    ],
+    'x',
+    NOW,
+  )
+
+  const owes = (id: string) => list.find((c) => c.centerId === id)!.owes
+
+  assert.equal(owes('current'), false)
+  assert.equal(owes('lapsed'), true)
+  // Never paid, and switched on anyway. This is the pay-first-at-signup case
+  // half-done, and it is the row the founder most needs to see.
+  assert.equal(owes('never'), true)
+  assert.equal(owes('today'), false, 'the last day covered is still covered')
+  assert.equal(owes('yesterday'), true)
+})
+
+test('only a live centre on a billing plan can owe anything', () => {
+  const lapsed = { paid_through: '2026-07-31' } as const
+
+  const list = customers(
+    [
+      row({ center_id: 'live', status: 'active', ...lapsed }),
+      row({ center_id: 'trying', status: 'trial', ...lapsed }),
+      row({ center_id: 'stopped', status: 'suspended', ...lapsed }),
+      row({ center_id: 'gone', status: 'cancelled', ...lapsed }),
+      // A free teacher owes nothing at any date, which is the whole point of the
+      // tier. Marking one as owing would put a non-customer on the call list.
+      row({ center_id: 'free', status: 'active', plan: 'teacher_free', ...lapsed }),
+    ],
+    'x',
+    NOW,
+  )
+
+  const owes = (id: string) => list.find((c) => c.centerId === id)!.owes
+
+  assert.equal(owes('live'), true)
+  assert.equal(owes('trying'), false, 'a trial owes nothing by definition')
+  // Suspended is usually suspended *because* nothing was paid. Counting those
+  // would turn the call list into a graveyard — see the note on `owes`.
+  assert.equal(owes('stopped'), false)
+  assert.equal(owes('gone'), false)
+  assert.equal(owes('free'), false)
+})
+
+test('the paid-up boundary is Dhaka’s day, not UTC’s', () => {
+  // 1am in Dhaka on the 1st of September is still 7pm on the 31st of August in UTC.
+  // A UTC date would call this centre paid up for another five hours; the founder
+  // holding the phone is in Dhaka and it is September.
+  const dhakaFirst = new Date('2026-08-31T19:00:00.000Z')
+
+  const c = customers([row({ paid_through: '2026-08-31' })], 'x', dhakaFirst)[0]
+  assert.equal(c.owes, true)
+
+  // And the mirror: 11pm on the 31st in Dhaka is the 31st, and covered.
+  const dhakaLast = new Date('2026-08-31T17:00:00.000Z')
+  assert.equal(customers([row({ paid_through: '2026-08-31' })], 'x', dhakaLast)[0].owes, false)
+})
+
+test('the totals carry the call list and one month of what is on it', () => {
+  const list = customers(
+    [
+      row({ center_id: 'a', status: 'active', students: 40, teachers: 2, paid_through: '2026-07-31' }),
+      row({ center_id: 'b', status: 'active', students: 40, teachers: 2, paid_through: null }),
+      row({ center_id: 'c', status: 'active', students: 40, teachers: 2, paid_through: '2026-08-31' }),
+      row({ center_id: 'd', status: 'trial', students: 40, teachers: 2, paid_through: null }),
+    ],
+    'x',
+    NOW,
+  )
+
+  const totals = platformTotals(list)
+  assert.equal(totals.owing, 2)
+  assert.equal(totals.owedBdt, CENTER_MONTHLY_FLOOR_BDT * 2)
+  // A subset of MRR by construction — every centre counted is active and billing.
+  // If this ever exceeds mrrBdt, one of the two rules has drifted.
+  assert.ok(totals.owedBdt <= totals.mrrBdt)
 })
 
 test('the three send figures are totalled apart from each other', () => {
@@ -302,6 +407,8 @@ const HEADINGS = {
   quietDays: 'চুপচাপ কত দিন',
   paid: 'মোট দিয়েছে',
   lastPaid: 'শেষ পেমেন্ট',
+  paidThrough: 'কোন তারিখ পর্যন্ত দেওয়া',
+  owes: 'বিল বাকি',
 }
 
 const WORDS = {
@@ -312,6 +419,8 @@ const WORDS = {
     suspended: 'বন্ধ',
     cancelled: 'বাতিল',
   } as const,
+  yes: 'বাকি',
+  no: 'দেওয়া আছে',
 }
 
 test('the sheet has one row per centre and a heading for every column', () => {
@@ -351,6 +460,21 @@ test('dates leave as ISO timestamps, which sort and subtract', () => {
   assert.equal(at(HEADINGS.signedUp), '2026-06-01T04:00:00.000Z')
   assert.equal(at(HEADINGS.lastActive), '2026-08-24T11:00:00.000Z')
   assert.equal(at(HEADINGS.quietDays), 0)
+  // A `date` column, so no time and no Z — already sortable and already the shape
+  // the founder's spreadsheet will subtract from.
+  assert.equal(at(HEADINGS.paidThrough), '2026-08-31')
+})
+
+test('the owes column is a word, so it can be filtered on', () => {
+  const paid = customers([row({ paid_through: '2026-08-31' })], 'x', NOW)
+  const late = customers([row({ paid_through: '2026-07-31' })], 'x', NOW)
+  const { header, rows } = customersSheet([...paid, ...late], WORDS)
+  const at = (i: number) => rows[i][header.indexOf(HEADINGS.owes)]
+
+  // Not TRUE/FALSE and not 1/0. This column is read and filtered by one person in
+  // one language, and the heading beside it is in that language too.
+  assert.equal(at(0), 'দেওয়া আছে')
+  assert.equal(at(1), 'বাকি')
 })
 
 test('the status word is localised and the plan is its product name', () => {

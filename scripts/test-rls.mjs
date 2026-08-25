@@ -4733,11 +4733,33 @@ await db.query(
   [ids.secondOwner],
 )
 
-// What centre A has paid us. Nothing in the app writes this table yet, so without
-// a row here the column would be untested zeroes.
+/*
+ * What centre A has paid us, as three receipts that disagree with each other on
+ * purpose.
+ *
+ * The one thing `paid_through` has to get right is that it is the furthest date any
+ * payment covers and not the window on the newest payment. So: an annual receipt
+ * taken forty days ago that covers most of a year, a monthly one taken five days ago
+ * that covers a month, and a historic row with no coverage window at all. If
+ * `paid_through` reads from the newest row it comes back a month out and the founder
+ * rings a customer who is ten months in credit. If max() stopped ignoring nulls, the
+ * third row would blank the column for a centre that has demonstrably paid.
+ *
+ * Relative to current_date rather than literal months, so this fixture does not
+ * expire. See the note at the top of the progress-view section about why no offset
+ * here may be large in the *other* direction — these are all well clear of the
+ * seven-Dhaka-day window that constrains those.
+ */
 await db.query(
-  `insert into payments (coaching_center_id, amount_bdt, method, paid_at)
-   values ($1, 1999, 'bkash', now() - interval '5 days')`,
+  `insert into payments
+     (coaching_center_id, amount_bdt, method, paid_at,
+      covers_period_start, covers_period_end)
+   values
+     ($1, 1999, 'bkash', now() - interval '40 days',
+      current_date - 40, current_date + 325),
+     ($1, 1999, 'bkash', now() - interval '5 days',
+      current_date - 5, current_date + 25),
+     ($1, 500, 'cash', now() - interval '20 days', null, null)`,
   [centerA],
 )
 
@@ -4776,7 +4798,7 @@ const PANEL_COLUMNS = [
   'created_at', 'owner_name', 'owner_phone', 'students', 'teachers', 'batches',
   'sms_credit_balance', 'attendance_30d', 'exams_30d', 'fee_payments_30d',
   'collected_30d', 'taps_30d', 'notes_30d', 'sms_30d', 'last_active_at', 'paid_bdt',
-  'last_paid_at',
+  'last_paid_at', 'paid_through',
 ]
 const panelColumns = Object.keys(rowA ?? {}).sort()
 check(
@@ -4856,10 +4878,53 @@ check(
 
 check(
   'reads what the centre has paid us',
-  Number(rowA?.paid_bdt) === 1999,
+  Number(rowA?.paid_bdt) === 4498,
   String(rowA?.paid_bdt),
 )
 check('and when', rowA?.last_paid_at instanceof Date)
+
+/*
+ * How far that money reaches, which is a different question from when it arrived.
+ *
+ * The fixture above pays annually forty days ago and monthly five days ago, so
+ * `last_paid_at` points at the monthly receipt and `paid_through` must point past the
+ * annual one. A version of this column built on the newest row — the obvious
+ * implementation, and the one the header of 20260811000023 argues against — passes
+ * every other assertion here and fails this one.
+ */
+const expectedThrough = (
+  await db.query(
+    'select max(covers_period_end) as through from payments where coaching_center_id = $1',
+    [centerA],
+  )
+).rows[0].through
+const asDay = (v) => (v instanceof Date ? v.toISOString().slice(0, 10) : String(v))
+
+check(
+  'reads the furthest date any payment covers',
+  rowA?.paid_through != null && asDay(rowA.paid_through) === asDay(expectedThrough),
+  `${asDay(rowA?.paid_through)} vs ${asDay(expectedThrough)}`,
+)
+check(
+  'which is the annual window and not the newest receipt',
+  rowA?.paid_through != null &&
+    rowA.last_paid_at instanceof Date &&
+    // A month past the newest payment would be the wrong answer by ten months. The
+    // annual window runs to current_date + 325, so anything inside a year of the
+    // last receipt means the max() collapsed to one row.
+    new Date(asDay(rowA.paid_through)).getTime() - rowA.last_paid_at.getTime() >
+      200 * 86_400_000,
+  `${asDay(rowA?.paid_through)} against a last payment of ${rowA?.last_paid_at}`,
+)
+check(
+  'and a receipt with no coverage window does not blank it',
+  (await db.query(
+    `select count(*)::int as n from payments
+     where coaching_center_id = $1 and covers_period_end is null`,
+    [centerA],
+  )).rows[0].n > 0,
+  'the fixture must contain a windowless payment for the line above to mean anything',
+)
 
 /*
  * The two tap-to-send counts, and why they are two.
@@ -4924,6 +4989,14 @@ check(
     rowB.notes_30d !== null &&
     Number(rowB.paid_bdt) === 0,
   `students=${rowB?.students} taps=${rowB?.taps_30d} notes=${rowB?.notes_30d} paid=${rowB?.paid_bdt}`,
+)
+// paid_bdt coalesces to 0 and paid_through deliberately does not. "This centre has
+// paid nothing" and "we do not know what this money bought" are different facts, and
+// only the first of them is a number.
+check(
+  'and a paid-up date of null rather than an epoch',
+  rowB !== undefined && rowB.paid_through === null,
+  String(rowB?.paid_through),
 )
 
 /*
@@ -5009,6 +5082,94 @@ check(
 check(
   'a signed-out caller cannot call it',
   await deniedAsUser(db, null, 'select * from platform_centers()'),
+)
+
+/*
+ * THE PROPERTY THE FOUNDER'S RECORD-A-PAYMENT FORM RESTS ON.
+ *
+ * src/app/founder/actions.ts writes `payments` and `coaching_centers.plan` through
+ * createAdminClient(), which is service_role and bypasses every policy below. That
+ * looks like laziness until you read what it is working around: `payments` has one
+ * policy and it is SELECT-only, and 20260811000004 revoked UPDATE on
+ * coaching_centers and re-granted it for five harmless columns with a trigger behind
+ * them. Money and a customer's tier are deliberately unreachable from a browser
+ * session, because a session token is a thing that leaks.
+ *
+ * The consequence is that inside that file `requirePlatformAdmin()` is not defence in
+ * depth — it is the entire door. These cases assert the wall it is a door in, and the
+ * founder is tested alongside the owner on purpose: the flag on their profile buys
+ * read access to the panel and no write access to anything, so a stolen founder
+ * session cannot invent a receipt or switch a paying customer onto the free tier.
+ */
+console.log('\nBilling is service_role only:')
+
+const PAY = `insert into payments (coaching_center_id, amount_bdt, method)
+             values ($1, 5000, 'bkash')`
+
+check(
+  'an owner cannot record a payment against their own centre',
+  await deniedAsUser(db, ids.ownerA, PAY, [centerA]),
+)
+check(
+  'and neither can the platform admin, from a browser session',
+  await deniedAsUser(db, ids.founder, PAY, [centerA]),
+)
+check(
+  'an owner cannot edit what they have paid us',
+  await deniedAsUser(
+    db,
+    ids.ownerA,
+    'update payments set amount_bdt = 1 where coaching_center_id = $1',
+    [centerA],
+  ),
+)
+check(
+  'an owner cannot delete a receipt',
+  await deniedAsUser(db, ids.ownerA, 'delete from payments where coaching_center_id = $1', [
+    centerA,
+  ]),
+)
+check(
+  'a teacher cannot read what the centre pays us at all',
+  await asUser(db, ids.karim, (tx) =>
+    n(tx, 'select count(*)::int as n from payments'),
+  ) === 0,
+)
+// The read half, which has to keep working — the owner's own billing screen shows
+// them their receipts, and the panel above is the founder reading everyone's.
+check(
+  'but an owner can still read their own',
+  (await asUser(db, ids.ownerA, (tx) =>
+    n(tx, 'select count(*)::int as n from payments'),
+  )) === 3,
+)
+check(
+  "and cannot read another centre's",
+  (await asUser(db, ids.ownerB, (tx) =>
+    n(tx, 'select count(*)::int as n from payments'),
+  )) === 0,
+)
+
+// The other half of the same wall: the tier itself. A founder who could write this
+// from a browser could hand themselves a free institution plan; an owner who could
+// would stop paying.
+check(
+  'an owner cannot move their centre onto another plan',
+  await deniedAsUser(
+    db,
+    ids.ownerA,
+    `update coaching_centers set plan = 'institution' where id = $1`,
+    [centerA],
+  ),
+)
+check(
+  'and neither can the platform admin, from a browser session',
+  await deniedAsUser(
+    db,
+    ids.founder,
+    `update coaching_centers set status = 'active' where id = $1`,
+    [centerA],
+  ),
 )
 
 console.log('\nAnonymous access:')

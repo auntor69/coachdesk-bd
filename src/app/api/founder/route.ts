@@ -67,6 +67,10 @@ export async function GET(): Promise<Response> {
   const { header, rows } = customersSheet(list, {
     headings: t.csv,
     status: t.status,
+    // The words the `owes` column holds. Localised rather than TRUE/FALSE so the
+    // column can be filtered on in the same language as its heading.
+    yes: t.owed.yes,
+    no: t.owed.no,
   })
 
   const name = customersFileName()

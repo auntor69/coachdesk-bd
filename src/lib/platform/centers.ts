@@ -28,7 +28,7 @@ import type { CsvCell } from '../csv.ts'
 import type { Locale } from '../i18n/locale.ts'
 import { monthlyBillBdt, planFor, planName, type PlanId } from '../plans.ts'
 import { formatTaka } from '../money.ts'
-import { digits } from '../bd/time.ts'
+import { digits, todayInDhaka } from '../bd/time.ts'
 
 /** Matches `center_status` in 20260811000001_init_schema.sql. */
 export type CenterStatus = 'trial' | 'active' | 'suspended' | 'cancelled'
@@ -71,6 +71,8 @@ export type PlatformCenterRow = {
   last_active_at: string | null
   paid_bdt: string | number | null
   last_paid_at: string | null
+  /** A `date`, so YYYY-MM-DD with no time. Null when nothing says what was bought. */
+  paid_through: string | null
 }
 
 /**
@@ -135,6 +137,25 @@ export type Customer = {
   /** All-time taka received from this centre. Zero until a payment is recorded. */
   paidBdt: number
   lastPaidAt: string | null
+  /**
+   * The furthest day any payment from this centre covers, or null if none says.
+   *
+   * A calendar date and not a timestamp, straight through for formatting: it is a
+   * billing boundary, not an instant, and the day it lands on does not move with a
+   * timezone.
+   */
+  paidThrough: string | null
+  /**
+   * A live customer whose paid-up date has passed, or who has never paid at all.
+   *
+   * Deliberately narrow. Only `active` centres on a billing plan can owe anything —
+   * the same rule `mrrBdt` uses, and for the same reason: a trial owes nothing by
+   * definition, a free teacher owes nothing at any date, and a cancelled centre is
+   * not a debt but a decision that has already been made. Widening this to suspended
+   * centres would light up every account that was switched off *because* it never
+   * paid, turning a call list into a graveyard.
+   */
+  owes: boolean
 }
 
 function count(value: number | null | undefined): number {
@@ -168,6 +189,13 @@ export function customers(
 ): Customer[] {
   const list: Customer[] = []
 
+  // The founder's own calendar day, so "paid up until the 31st" stops meaning owed on
+  // the 31st. Dhaka is six hours ahead of UTC, so a UTC date lags the local one from
+  // midnight to 6am: a centre whose coverage ran out yesterday would still read as
+  // paid up through the whole of the founder's morning, which is exactly when this
+  // list gets worked through.
+  const today = todayInDhaka(now)
+
   for (const row of rows ?? []) {
     // No id means nothing can be keyed, linked or rung. Unreachable through the
     // function, which selects a primary key; cheap to skip if it ever is.
@@ -176,6 +204,7 @@ export function customers(
     const students = count(row.students)
     const teachers = count(row.teachers)
     const plan = row.plan ?? 'teacher_free'
+    const status = row.status ?? 'trial'
 
     const lastActiveAt = row.last_active_at ?? null
     const lastActiveMs = lastActiveAt ? Date.parse(lastActiveAt) : NaN
@@ -183,12 +212,15 @@ export function customers(
       ? Math.max(0, Math.floor((now.getTime() - lastActiveMs) / MS_PER_DAY))
       : null
 
+    const billBdt = monthlyBillBdt(planFor(plan), students, teachers)
+    const paidThrough = row.paid_through ?? null
+
     list.push({
       centerId: row.center_id,
       name: row.center_name || unnamed,
       phone: row.center_phone ?? null,
       area: row.bd_area ?? null,
-      status: row.status ?? 'trial',
+      status,
       plan,
       createdAt: row.created_at ?? null,
       ownerName: row.owner_name ?? null,
@@ -197,7 +229,7 @@ export function customers(
       teachers,
       batches: count(row.batches),
       smsCredits: count(row.sms_credit_balance),
-      billBdt: monthlyBillBdt(planFor(plan), students, teachers),
+      billBdt,
       attendance30d: count(row.attendance_30d),
       exams30d: count(row.exams_30d),
       feePayments30d: count(row.fee_payments_30d),
@@ -214,6 +246,12 @@ export function customers(
       quiet: daysQuiet === null || daysQuiet >= QUIET_AFTER_DAYS,
       paidBdt: taka(row.paid_bdt),
       lastPaidAt: row.last_paid_at ?? null,
+      paidThrough,
+      // String comparison, which is exact on two YYYY-MM-DD and needs no parsing. A
+      // null paid_through on a billing centre is the pay-first-at-signup case that
+      // did not happen, so it counts as owing.
+      owes:
+        status === 'active' && billBdt > 0 && (paidThrough === null || paidThrough < today),
     })
   }
 
@@ -248,6 +286,18 @@ export type PlatformTotals = {
   notes30d: number
   sms30d: number
   paidBdt: number
+  /** Live customers past their paid-up date. The founder's call list. */
+  owing: number
+  /**
+   * What those customers owe for the month they are in, at today's size.
+   *
+   * A month and not the arrears to date, because arrears would need a per-centre
+   * history this panel does not have and would be wrong the moment a centre changed
+   * size. One month of billing is the honest, checkable version of "this is what is
+   * sitting out there", and it is a subset of `mrrBdt` by construction — every centre
+   * counted here is `active` and billing.
+   */
+  owedBdt: number
 }
 
 export function platformTotals(list: readonly Customer[]): PlatformTotals {
@@ -265,6 +315,8 @@ export function platformTotals(list: readonly Customer[]): PlatformTotals {
     notes30d: 0,
     sms30d: 0,
     paidBdt: 0,
+    owing: 0,
+    owedBdt: 0,
   }
 
   for (const c of list) {
@@ -277,6 +329,10 @@ export function platformTotals(list: readonly Customer[]): PlatformTotals {
       totals.pipelineBdt += c.billBdt
     }
     if (c.quiet) totals.quiet += 1
+    if (c.owes) {
+      totals.owing += 1
+      totals.owedBdt += c.billBdt
+    }
     totals.students += c.students
     totals.teachers += c.teachers
     totals.collected30d += c.collected30d
@@ -324,12 +380,17 @@ export type CustomerCsvHeadings = {
   quietDays: string
   paid: string
   lastPaid: string
+  paidThrough: string
+  owes: string
 }
 
 export type CustomerCsvWords = {
   headings: CustomerCsvHeadings
   /** One word per center_status, so a spreadsheet filter reads in Bangla. */
   status: Record<CenterStatus, string>
+  /** The two words the `owes` column holds, so it can be filtered on. */
+  yes: string
+  no: string
 }
 
 /**
@@ -378,6 +439,8 @@ export function customersSheet(
     h.quietDays,
     h.paid,
     h.lastPaid,
+    h.paidThrough,
+    h.owes,
   ]
 
   const rows: CsvCell[][] = list.map((c) => [
@@ -407,6 +470,10 @@ export function customersSheet(
     c.daysQuiet,
     c.paidBdt,
     c.lastPaidAt,
+    c.paidThrough,
+    // A word rather than a boolean: TRUE/FALSE in a Bangla sheet is a column the
+    // reader has to translate in their head, and a spreadsheet filters on either.
+    c.owes ? words.yes : words.no,
   ])
 
   return { header, rows }

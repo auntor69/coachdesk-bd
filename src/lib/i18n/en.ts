@@ -1384,6 +1384,9 @@ export const en: Dictionary = {
       taps: 'Fee reminders sent',
       notes: 'Week notes sent',
       paid: 'We have received',
+      /** The call list, and one month of what is on it. See the Bangla note. */
+      owing: 'Owing now',
+      owed: 'Owed (one month)',
     },
     bill: 'A month',
     size: {
@@ -1407,6 +1410,53 @@ export const en: Dictionary = {
     quiet: (days: number) => `Quiet for ${days} ${days === 1 ? 'day' : 'days'}`,
     paidNothing: 'Has not paid yet',
     paidTotal: (amount: string) => `Paid ${amount}`,
+    paidThrough: (date: string) => `Paid up to ${date}`,
+    owed: {
+      badge: 'Owes',
+      yes: 'Owes',
+      no: 'Paid up',
+    },
+    /** Composed by the Server Action, on the server. See the Bangla note. */
+    paymentSaved: (amount: string, from: string, to: string) =>
+      `Recorded ${amount} — ${from} to ${to}.`,
+    paymentSavedMonth: (amount: string, month: string) =>
+      `Recorded ${amount} — for ${month}.`,
+    planSaved: (plan: string, state: string) => `Now ${plan} · ${state}.`,
+    tooMuch: (max: string) =>
+      `More than ${max} at once is not allowed. Check the figure again.`,
+    overLimit: (plan: string) =>
+      `This centre already holds more students or teachers than ${plan} allows. `
+      + `Nothing has been deleted, but adding more will now be blocked.`,
+    /** String leaves only — this group is handed to a client component. */
+    money: {
+      open: 'Money and plan',
+      payTitle: 'Record a payment',
+      amount: 'Amount',
+      amountHint: 'This month’s bill is prefilled — change it if they paid something else.',
+      method: 'How it came',
+      coversFrom: 'From which month',
+      months: 'How many months',
+      reference: 'Transaction ID',
+      referenceHint: 'The bKash or Nagad TrxID. Leave blank for cash.',
+      note: 'Note',
+      pay: 'Record payment',
+      paying: 'Recording…',
+      planTitle: 'Plan and status',
+      plan: 'Plan',
+      state: 'Status',
+      apply: 'Change',
+      applying: 'Changing…',
+      notActive: 'Payment recorded, but this centre is not switched on yet — change the status below.',
+      forbidden: 'Not allowed.',
+      noCenter: 'That centre was not found.',
+      badAmount: 'That amount could not be read.',
+      badMethod: 'That payment method is not one of the choices.',
+      badPeriod: 'That month is not one of the choices. Pick again.',
+      badMonths: 'That number of months is not one of the choices.',
+      badPlan: 'That plan is not one of the choices.',
+      badStatus: 'That status is not one of the choices.',
+      failed: 'Could not save it. Try again.',
+    },
     csv: {
       name: 'Centre',
       area: 'Area',
@@ -1432,6 +1482,8 @@ export const en: Dictionary = {
       quietDays: 'Days quiet',
       paid: 'Paid to us',
       lastPaid: 'Last payment',
+      paidThrough: 'Paid up to',
+      owes: 'Owes',
     },
   },
 }

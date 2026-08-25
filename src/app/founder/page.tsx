@@ -4,10 +4,11 @@ import { Card } from '@/components/ui'
 import { pagePlatformAdmin } from '@/lib/auth/session'
 import { createClient } from '@/lib/supabase/server'
 import { formatBdMobile } from '@/lib/bd/phone'
-import { formatDate, todayInDhaka } from '@/lib/bd/time'
+import { digits, formatDate, formatMonth, todayInDhaka } from '@/lib/bd/time'
 import { dict } from '@/lib/i18n'
 import { formatTaka } from '@/lib/money'
-import { planFor, planName } from '@/lib/plans'
+import { PLANS, planFor, planName, type PlanId } from '@/lib/plans'
+import { MONTHS_COVERED, periodChoices } from '@/lib/platform/billing'
 import {
   billLabel,
   customers,
@@ -15,6 +16,7 @@ import {
   sizeLine,
   type CenterStatus,
 } from '@/lib/platform/centers'
+import { CenterBilling } from './center-billing'
 
 /*
  * NO generateMetadata, on purpose.
@@ -34,6 +36,12 @@ const STATUS_STYLE: Record<CenterStatus, string> = {
   suspended: 'border-red-200 bg-red-50 text-red-700',
   cancelled: 'border-line bg-surface-alt text-ink-soft',
 }
+
+/** The order the plan dropdown offers, cheapest first — an upgrade path read down. */
+const PLAN_ORDER = Object.keys(PLANS) as PlanId[]
+
+/** The order the status dropdown offers, matching center_status. */
+const STATUS_ORDER: CenterStatus[] = ['trial', 'active', 'suspended', 'cancelled']
 
 /**
  * The founder's own screen: every centre, what it costs them, and whether they
@@ -85,6 +93,32 @@ export default async function FounderPage() {
   const dhakaDay = (iso: string | null) =>
     iso ? formatDate(todayInDhaka(new Date(iso)), locale) : null
 
+  /*
+   * The dropdown contents, built once for the whole list rather than per card.
+   *
+   * All four are localised here and travel as `{ value, label }`, so the client
+   * component that renders them holds no dictionary and no formatter — see the note at
+   * the top of ./center-billing.tsx. The months a payment may cover are re-derived
+   * inside the action from the same function, which is what makes the `<select>`
+   * unnecessary to trust.
+   */
+  const periods = periodChoices().map((month) => ({
+    value: month,
+    label: formatMonth(month, locale),
+  }))
+
+  // Just the numeral. The control's own label says "how many months", so repeating the
+  // unit in every option would be four words of noise — and it sidesteps English
+  // needing "1 month" against "3 months" for no gain.
+  const months = MONTHS_COVERED.map((n) => ({ value: n, label: digits(n, locale) }))
+
+  const plans = PLAN_ORDER.map((id) => ({
+    value: id,
+    label: planName(PLANS[id], locale),
+  }))
+
+  const statuses = STATUS_ORDER.map((s) => ({ value: s, label: t.status[s] }))
+
   return (
     <main className="mx-auto flex w-full max-w-5xl flex-1 flex-col gap-5 px-4 py-5">
       <div>
@@ -128,6 +162,11 @@ export default async function FounderPage() {
             <Stat label={t.totals.mrr} value={formatTaka(totals.mrrBdt)} />
             <Stat label={t.totals.pipeline} value={formatTaka(totals.pipelineBdt)} />
             <Stat label={t.totals.paid} value={formatTaka(totals.paidBdt)} />
+            {/* The call list, and what it is worth. Beside "we have received"
+                rather than beside the billing figure on purpose: monthly billing
+                is what the customers are worth, these two are what is missing. */}
+            <Stat label={t.totals.owing} value={String(totals.owing)} />
+            <Stat label={t.totals.owed} value={formatTaka(totals.owedBdt)} />
             <Stat
               label={t.totals.collected}
               value={formatTaka(totals.collected30d)}
@@ -184,6 +223,20 @@ export default async function FounderPage() {
                       >
                         {t.status[c.status]}
                       </span>
+                      {/* The one chip on this screen that is filled rather than
+                          tinted, because it is the only one about money. Two
+                          red-on-pink chips side by side — this and "gone quiet" —
+                          would read as one vague alarm, and they are different
+                          problems: a centre can be paid up and idle, or busy and
+                          three weeks late. */}
+                      {c.owes && (
+                        <span
+                          className="rounded-lg border border-red-600 bg-red-600
+                            px-2 py-0.5 text-xs font-semibold text-white"
+                        >
+                          {t.owed.badge}
+                        </span>
+                      )}
                       {/* Marked, not moved — see the note on `customers`. */}
                       {c.quiet && (
                         <span
@@ -247,10 +300,30 @@ export default async function FounderPage() {
                         c.paidBdt > 0
                           ? t.paidTotal(formatTaka(c.paidBdt))
                           : t.paidNothing,
+                        // What the money bought, which is the fact the badge above
+                        // is derived from. Shown even when the date is past, so a
+                        // founder on the phone can say "you are covered to the end
+                        // of June" instead of only "you owe".
+                        c.paidThrough &&
+                          t.paidThrough(formatDate(c.paidThrough, locale)),
                       ]
                         .filter(Boolean)
                         .join(' · ')}
                     </p>
+
+                    <CenterBilling
+                      centerId={c.centerId}
+                      plan={c.plan}
+                      status={c.status}
+                      suggestedAmount={c.billBdt}
+                      periods={periods}
+                      months={months}
+                      plans={plans}
+                      statuses={statuses}
+                      words={t.money}
+                      // The fee board's own wallet names, not a second copy.
+                      methods={d.feeRow.methods}
+                    />
                   </Card>
                 </li>
               )

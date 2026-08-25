@@ -2485,6 +2485,14 @@ export const bn = {
       taps: 'ফি রিমাইন্ডার গেছে',
       notes: 'সপ্তাহের খবর গেছে',
       paid: 'আমরা পেয়েছি',
+      /**
+       * The call list, and the money on it. `owing` counts live customers whose
+       * paid-up date has passed; `owed` is one month of their billing and not their
+       * arrears to date — see PlatformTotals for why the honest figure is the one
+       * that can be checked.
+       */
+      owing: 'বিল বাকি',
+      owed: 'বাকি (এক মাসের)',
     },
     /** One row's labels. Terse — they sit in a line under the centre's name. */
     bill: 'মাসে',
@@ -2510,6 +2518,84 @@ export const bn = {
     quiet: (days: number) => `${digits(days, 'bn')} দিন চুপচাপ`,
     paidNothing: 'এখনও টাকা দেয়নি',
     paidTotal: (amount: string) => `দিয়েছে ${amount}`,
+    /** How far the money they have given us reaches. The renewal date, in effect. */
+    paidThrough: (date: string) => `${date} পর্যন্ত দেওয়া`,
+    /**
+     * A live centre past its paid-up date. Red on the card, one word in the CSV.
+     *
+     * "বিল বাকি" and not "বাকেয়া": the second is the correct accounting word and the
+     * first is what a coaching centre owner and a founder actually say to each other
+     * on the phone. This screen is read by one person and it is not an accountant.
+     */
+    owed: {
+      badge: 'বিল বাকি',
+      yes: 'বাকি',
+      no: 'দেওয়া আছে',
+    },
+    /**
+     * The sentences the two forms come back with.
+     *
+     * FUNCTIONS, AND THAT IS WHY THEY ARE HERE RATHER THAN IN `money` BELOW. A group
+     * containing a function cannot be handed to a client component at all — Next
+     * refuses to serialise it — so `money` is kept to string leaves and passed whole,
+     * while every sentence with a taka figure or a month in it is composed by the
+     * Server Action, on the server, and travels back inside its own result. See the
+     * note at the top of src/app/founder/center-billing.tsx.
+     */
+    paymentSaved: (amount: string, from: string, to: string) =>
+      `${amount} লেখা হয়েছে — ${from} থেকে ${to} পর্যন্ত।`,
+    /** One month covered, where "August to August" would read like a mistake. */
+    paymentSavedMonth: (amount: string, month: string) =>
+      `${amount} লেখা হয়েছে — ${month}-এর জন্য।`,
+    planSaved: (plan: string, state: string) => `এখন ${plan} · ${state}।`,
+    tooMuch: (max: string) =>
+      `একবারে ${max}-এর বেশি লেখা যাবে না। অঙ্কটা আরেকবার দেখুন।`,
+    overLimit: (plan: string) =>
+      `${plan}-এর সীমার চেয়ে বেশি শিক্ষার্থী বা শিক্ষক আছে। পুরনো কিছু মুছে যায়নি, `
+      + `কিন্তু নতুন যোগ করা এখন আটকাবে।`,
+    /**
+     * The two forms behind "টাকা ও প্ল্যান" on each card.
+     *
+     * STRING LEAVES ONLY. This is the one group in the file that is handed straight to
+     * a client component, so a function added here would break the founder panel at
+     * render time rather than at compile time. Anything needing a number in it goes
+     * above, next to `paidTotal`.
+     */
+    money: {
+      open: 'টাকা ও প্ল্যান',
+      payTitle: 'পেমেন্ট লিখুন',
+      amount: 'কত টাকা',
+      /** Said because the field is not empty, and a prefilled figure gets trusted. */
+      amountHint: 'এই মাসের বিল বসানো আছে — অন্য অঙ্ক হলে বদলে নিন।',
+      method: 'কীভাবে এসেছে',
+      coversFrom: 'কোন মাস থেকে',
+      months: 'কত মাসের',
+      reference: 'ট্রানজেকশন আইডি',
+      referenceHint: 'বিকাশ/নগদের TrxID। ক্যাশ হলে খালি রাখুন।',
+      note: 'নোট',
+      pay: 'পেমেন্ট লিখুন',
+      paying: 'লেখা হচ্ছে…',
+      planTitle: 'প্ল্যান ও অবস্থা',
+      plan: 'প্ল্যান',
+      state: 'অবস্থা',
+      apply: 'বদলান',
+      applying: 'বদলানো হচ্ছে…',
+      /**
+       * Money in, account still switched off — the pay-first-at-signup case half
+       * done. A warning rather than something the action fixes itself, because
+       * turning a customer on is a decision.
+       */
+      notActive: 'টাকা লেখা হয়েছে, কিন্তু সেন্টারটা এখনও চালু করা হয়নি — নিচে অবস্থা বদলান।',
+      forbidden: 'এটা করার অনুমতি নেই।',
+      noCenter: 'সেন্টারটা পাওয়া যায়নি।',
+      badAmount: 'টাকার অঙ্কটা পড়া যায়নি।',
+      badMethod: 'কীভাবে এসেছে সেটা ঠিক নেই।',
+      badPeriod: 'মাসটা ঠিক নেই। আবার বেছে নিন।',
+      badMonths: 'কত মাসের, সেটা ঠিক নেই।',
+      badPlan: 'প্ল্যানটা ঠিক নেই।',
+      badStatus: 'অবস্থাটা ঠিক নেই।',
+      failed: 'লেখা যায়নি। আবার চেষ্টা করুন।',
+    },
     /**
      * The download's column headings. Localised, while every value in the file
      * stays machine-readable — same split as the centre exports on /api/export, and
@@ -2541,6 +2627,8 @@ export const bn = {
       quietDays: 'চুপচাপ কত দিন',
       paid: 'মোট দিয়েছে',
       lastPaid: 'শেষ পেমেন্ট',
+      paidThrough: 'কোন তারিখ পর্যন্ত দেওয়া',
+      owes: 'বিল বাকি',
     },
   },
 } as const
