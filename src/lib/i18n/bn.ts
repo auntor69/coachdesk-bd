@@ -1567,6 +1567,12 @@ export const bn = {
      */
     notesTrimmedCount: (n: number, names: string) =>
       `${n} জনের মন্তব্য SMS-এ জায়গা হচ্ছে না — ${names}`,
+    /**
+     * On a row of the tap-to-send list, for a family already told about this
+     * exam. The date is Bangla numerals like every other date; it is the answer
+     * to "did somebody already do this one" and nothing is read down a phone.
+     */
+    toldOn: (date: string) => `${date} তারিখে জানানো হয়েছে ✓`,
 
     /**
      * What the three writes return, resolved in the action. `marksSaved` reads
@@ -1719,6 +1725,30 @@ export const bn = {
     sending: 'পাঠানো হচ্ছে…',
     decline: 'এখন পাঠাবেন না',
     noUndo: 'পাঠানোর পর আর ফেরানো যায় না',
+  },
+
+  /**
+   * The way a result actually reaches a parent today: the owner's own phone.
+   *
+   * The gate above spends credits that no centre has and no screen can buy — no
+   * BTRC sender ID means no aggregator means no gateway — so until one exists this
+   * section is the whole feature, not a fallback beside it. A client component, so
+   * strings only; the per-row facts and `exams.toldOn` are written by the page.
+   */
+  resultNotices: {
+    title: 'অভিভাবককে ফলাফল জানান',
+    /**
+     * Says all three things an owner needs before tapping: it is their own phone,
+     * it costs the app nothing, and the tick is a record and not a delivery
+     * report. The last one matters — we know they tapped, not that anyone read it.
+     */
+    body:
+      'নিচের নাম থেকে বেছে নিন — আপনার ফোনের SMS বা হোয়াটসঅ্যাপ খুলে যাবে, লেখা বসানো থাকবে। কোনো ক্রেডিট লাগবে না, আপনার নম্বর থেকেই যাবে। কাকে জানানো হয়েছে তা এখানে টিক দিয়ে রাখা হবে।',
+    saveMarksFirst: 'নম্বর সেভ করার পর অভিভাবকদের জানানোর তালিকা এখানে আসবে।',
+    noNumbers:
+      'যাদের নম্বর সেভ করা আছে, তাদের অভিভাবককে এখান থেকে জানানো যাবে। এখনও কারও নম্বর নেই।',
+    /** The row's fact for a student who did not sit the paper. Never a zero. */
+    absent: 'অনুপস্থিত',
   },
 
   /** Creating an exam. Four fields, a client component. */

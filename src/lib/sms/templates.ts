@@ -128,6 +128,75 @@ export function previewResultSms(input: ResultSmsInput): string {
   return buildResultSms(input).body
 }
 
+/**
+ * The same result for WhatsApp, where nothing is metered.
+ *
+ * So it says what 70 characters cannot, and the thing it most has room for is the
+ * one thing the SMS gives up first: the teacher's note. `buildResultSms` drops
+ * that note whenever keeping it would buy a second segment, which is the right
+ * call when somebody is paying by the segment and the wrong one here — "হাতের
+ * লেখা ভালো করতে হবে" is the whole reason a parent reads the message twice, and
+ * it costs nothing on this channel. Nothing is clamped either: the full name, the
+ * full exam title, the full note.
+ *
+ * ABSENCE IS ITS OWN SENTENCE AND NEVER A ZERO. A child marked absent has no mark
+ * by constraint, and a parent who reads "0" concludes something about their child
+ * that the centre did not say. The same rule the weekly summary follows.
+ *
+ * THE PASS MARK IS NAMED WHEN THERE IS ONE, and only then. A number on its own —
+ * "34/50" — is a fact a parent cannot act on unless they know what was needed,
+ * and most of them do not; a centre that set no pass mark has not decided, and
+ * inventing a threshold here would put the app's opinion in the centre's mouth.
+ * Never a verdict, though: the numbers are stated and the parent draws the
+ * conclusion, because "ফেল করেছে" from an automated message about a weekly test
+ * is how a child gets hit.
+ *
+ * "প্রিয় অভিভাবক" rather than a religious greeting, for the reason the fee
+ * reminder gives: the default salutation in Bangladesh assumes a Muslim family,
+ * and a coaching centre's roster is not uniformly one thing.
+ */
+export function buildResultText(
+  input: ResultSmsInput & { passMarks?: number | null },
+): string {
+  const name = input.studentName.trim()
+  const title = input.examTitle.trim()
+  const note = (input.note ?? '').trim().replace(/\s+/g, ' ')
+
+  const lines: string[] = ['প্রিয় অভিভাবক,', '']
+  lines.push(title ? `${name} — ${title}।` : `${name} — পরীক্ষার ফলাফল।`)
+  lines.push('')
+
+  if (input.isAbsent) {
+    lines.push('এই পরীক্ষায় অনুপস্থিত ছিল।')
+  } else {
+    lines.push(`প্রাপ্ত নম্বর: ${marksText(input.obtainedMarks, input.totalMarks)}`)
+    // Only a real threshold, and only one that this exam could actually be
+    // measured against. A pass mark at or above the total is a typo somebody
+    // made on the exam form, and repeating it to a parent spreads the typo.
+    if (
+      typeof input.passMarks === 'number'
+      && input.passMarks > 0
+      && input.passMarks < input.totalMarks
+    ) {
+      lines.push(`পাস নম্বর: ${String(Number(input.passMarks.toFixed(2))).replace(/\.00$/, '')}`)
+    }
+  }
+
+  // Its own paragraph, because this is the sentence the parent will read to the
+  // child, and one buried at the end of a line of figures is one they skim past.
+  if (note) {
+    lines.push('')
+    lines.push(`শিক্ষকের মন্তব্য: ${note}`)
+  }
+
+  lines.push('')
+  lines.push('কোনো প্রশ্ন থাকলে জানাবেন।')
+  lines.push('')
+  lines.push(`- ${input.centerName}`)
+
+  return lines.join('\n')
+}
+
 /* -------------------------------------------------------------------------- */
 /* Fee reminders                                                              */
 /* -------------------------------------------------------------------------- */

@@ -4,11 +4,12 @@ import { notFound } from 'next/navigation'
 import { Card } from '@/components/ui'
 import { pageRole, getSession, canSendSms, canManageExams } from '@/lib/auth/session'
 import { createClient } from '@/lib/supabase/server'
-import { formatDate } from '@/lib/bd/time'
+import { formatDate, todayInDhaka } from '@/lib/bd/time'
 import { planResultSms } from '@/lib/sms/result-dispatch'
 import { smsProviderConfigured } from '@/lib/sms/provider'
 import { dict, localName, DEFAULT_LOCALE } from '@/lib/i18n'
 import { MarksSheet, type MarksRow } from './marks-sheet'
+import { ResultNotices, type ResultRowView } from './result-notices'
 import { SmsGate } from './sms-gate'
 
 /** getSession, not pageRole — see the note on teach/page.tsx's own. */
@@ -57,19 +58,29 @@ export default async function ExamPage({
 
   if (!exam) notFound()
 
-  const [{ data: enrollments }, { data: results }] = await Promise.all([
-    supabase
-      .from('enrollments')
-      .select('id, students (id, name, student_code)')
-      .eq('coaching_center_id', session.active.centerId)
-      .eq('batch_id', exam.batch_id)
-      .eq('status', 'active'),
-    supabase
-      .from('exam_results')
-      .select('enrollment_id, obtained_marks, is_absent, note')
-      .eq('coaching_center_id', session.active.centerId)
-      .eq('exam_id', exam.id),
-  ])
+  const [{ data: enrollments }, { data: results }, { data: notices }] =
+    await Promise.all([
+      supabase
+        .from('enrollments')
+        .select('id, students (id, name, student_code)')
+        .eq('coaching_center_id', session.active.centerId)
+        .eq('batch_id', exam.batch_id)
+        .eq('status', 'active'),
+      supabase
+        .from('exam_results')
+        .select('enrollment_id, obtained_marks, is_absent, note')
+        .eq('coaching_center_id', session.active.centerId)
+        .eq('exam_id', exam.id),
+      // Who has already been told, from anybody's phone, on any visit. Ordered so
+      // the first row per student is the most recent — the index is on exactly
+      // this, so the sort is free.
+      supabase
+        .from('result_notices')
+        .select('student_id, created_at')
+        .eq('coaching_center_id', session.active.centerId)
+        .eq('exam_id', exam.id)
+        .order('created_at', { ascending: false }),
+    ])
 
   const saved = new Map(
     (results ?? []).map((r) => [
@@ -107,6 +118,16 @@ export default async function ExamPage({
     // screens in one order and can go down the two lists in parallel.
     .sort((a, b) => a.name.localeCompare(b.name, 'bn-BD'))
 
+  // student_code by student id, for the notice list below. `planResultSms` answers
+  // who may be told and what to say — not what the register calls them.
+  const codes = new Map<string, string | null>()
+  for (const enrollment of enrollments ?? []) {
+    const student = Array.isArray(enrollment.students)
+      ? enrollment.students[0]
+      : enrollment.students
+    if (student) codes.set(student.id, student.student_code)
+  }
+
   // The same function the send action uses, so the count and cost shown here
   // are the count and cost that will actually be charged.
   const plan = await planResultSms(supabase, {
@@ -143,6 +164,56 @@ export default async function ExamPage({
   const skippedOptedOut = plan?.skippedOptedOut ?? 0
   const withoutMarks = plan?.withoutMarks ?? rows.length
   const notesTrimmed = plan?.notesTrimmed ?? []
+
+  /*
+   * The list that can actually reach a parent tonight.
+   *
+   * The gate below spends credits, and no centre has any: the column defaults to
+   * zero, every tier grants zero a month, and nothing in the product can top it up
+   * — because there is no BTRC sender ID, so no aggregator, so no gateway. So the
+   * gate has never sent anybody's marks to anybody, on any plan. This list is the
+   * same answer fees and the weekly note already had: the message written out, the
+   * owner's own phone, nothing metered. See result_notices.
+   */
+  const toldAt = new Map<string, string>()
+  for (const notice of notices ?? []) {
+    // Newest first out of the query, so the first row for a student is the latest
+    // send and the rest are the times before it.
+    if (!toldAt.has(notice.student_id)) {
+      toldAt.set(notice.student_id, notice.created_at)
+    }
+  }
+
+  const noticeRows: ResultRowView[] = (plan?.recipients ?? []).map((r) => {
+    const told = toldAt.get(r.studentId)
+    return {
+      studentId: r.studentId,
+      name: r.studentName,
+      studentCode: codes.get(r.studentId) ?? null,
+      phone: r.phone,
+      smsBody: r.body,
+      chatBody: r.chatBody,
+      preferredChannel: r.preferredChannel,
+      // An absence is a result and never a zero, the same call buildResultText
+      // makes. The em dash is for a row with neither — a mark row saved blank,
+      // which the sheet allows and the message describes as "no mark yet".
+      fact: r.isAbsent
+        ? d.resultNotices.absent
+        : `${r.obtainedMarks ?? '—'}/${Number(exam.total_marks)}`,
+      told: told ? t.toldOn(formatDate(todayInDhaka(new Date(told)), locale)) : null,
+    }
+  })
+
+  // The same three counts the gate lists, for the same reason: a teacher looking
+  // at a list of twelve names on a batch of forty needs to know where the other
+  // twenty-eight went before they assume the screen is broken.
+  const noticeNotes = [
+    withoutMarks > 0 ? t.withoutMarksCount(withoutMarks) : null,
+    skippedNoPhone > 0 ? t.noPhoneCount(skippedNoPhone) : null,
+    skippedOptedOut > 0 ? t.optedOutCount(skippedOptedOut) : null,
+  ].filter((line): line is string => line !== null)
+
+  const providerLive = smsProviderConfigured()
 
   return (
     <div className="flex flex-col gap-5">
@@ -185,50 +256,90 @@ export default async function ExamPage({
             common={d.common}
           />
 
-          <SmsGate
-            examId={exam.id}
-            recipientCount={recipientCount}
-            creditCost={creditCost}
-            balance={balance}
-            preview={
-              first
-                ? {
-                    heading: t.previewFor(first.studentName),
-                    body: first.body,
-                    segmentNote: `${t.segments(first.segments)} · ${
-                      d.smsGate.perPersonNote
-                    }`,
-                  }
-                : null
-            }
-            skippedOptedOut={skippedOptedOut}
-            skippedNoPhone={skippedNoPhone}
-            withoutMarks={withoutMarks}
-            notesTrimmed={notesTrimmed.length}
-            anyMultiSegment={plan?.anyMultiSegment ?? false}
-            alreadySentAt={exam.sms_sent_at}
-            declinedAt={exam.sms_declined_at}
-            providerLive={smsProviderConfigured()}
-            canSend={canSend}
-            t={d.smsGate}
-            common={d.common}
-            lines={{
-              recipients: t.recipients(recipientCount),
-              cost: t.credits(creditCost),
-              balance: t.balanceNow(balance),
-              shortfall: t.shortfall(creditCost - balance),
-              withoutMarks: t.withoutMarksCount(withoutMarks),
-              noPhone: t.noPhoneCount(skippedNoPhone),
-              optedOut: t.optedOutCount(skippedOptedOut),
-              notesTrimmed: t.notesTrimmedCount(
-                notesTrimmed.length,
-                // Every name, not the first few. The list is as long as the
-                // number of notes a teacher wrote that morning, and truncating
-                // it would hide the very student they need to go back to.
-                notesTrimmed.join(', '),
-              ),
-            }}
-          />
+          {/* Above the metered gate, because it is the one of the two that
+              works. A teacher who has just saved forty marks wants the next
+              thing under their thumb to be the first parent. */}
+          {canSend &&
+            (noticeRows.length > 0 ? (
+              <ResultNotices
+                examId={exam.id}
+                rows={noticeRows}
+                notes={noticeNotes}
+                words={{
+                  t: d.resultNotices,
+                  list: d.chaseList,
+                  chase: d.chase,
+                  channels: d.channels,
+                }}
+              />
+            ) : (
+              <Card>
+                <h2 className="font-semibold text-ink">{d.resultNotices.title}</h2>
+                <p className="mt-1 text-sm text-ink-soft">
+                  {withoutMarks > 0
+                    ? d.resultNotices.saveMarksFirst
+                    : d.resultNotices.noNumbers}
+                </p>
+                {skippedNoPhone > 0 && (
+                  <p className="num mt-2 text-sm text-ink-faint">
+                    {t.noPhoneCount(skippedNoPhone)}
+                  </p>
+                )}
+              </Card>
+            ))}
+
+          {/* The metered queue, now only when it can do something: a gateway is
+              configured, or a send already happened and this is the record of
+              it, or the reader has no permission and this is where that is said.
+              Drawn unconditionally before, which meant every exam page carried a
+              send button that arithmetic guaranteed was disabled, under a red
+              line about credits no screen in the product can sell. */}
+          {(providerLive || exam.sms_sent_at || !canSend) && (
+            <SmsGate
+              examId={exam.id}
+              recipientCount={recipientCount}
+              creditCost={creditCost}
+              balance={balance}
+              preview={
+                first
+                  ? {
+                      heading: t.previewFor(first.studentName),
+                      body: first.body,
+                      segmentNote: `${t.segments(first.segments)} · ${
+                        d.smsGate.perPersonNote
+                      }`,
+                    }
+                  : null
+              }
+              skippedOptedOut={skippedOptedOut}
+              skippedNoPhone={skippedNoPhone}
+              withoutMarks={withoutMarks}
+              notesTrimmed={notesTrimmed.length}
+              anyMultiSegment={plan?.anyMultiSegment ?? false}
+              alreadySentAt={exam.sms_sent_at}
+              declinedAt={exam.sms_declined_at}
+              providerLive={providerLive}
+              canSend={canSend}
+              t={d.smsGate}
+              common={d.common}
+              lines={{
+                recipients: t.recipients(recipientCount),
+                cost: t.credits(creditCost),
+                balance: t.balanceNow(balance),
+                shortfall: t.shortfall(creditCost - balance),
+                withoutMarks: t.withoutMarksCount(withoutMarks),
+                noPhone: t.noPhoneCount(skippedNoPhone),
+                optedOut: t.optedOutCount(skippedOptedOut),
+                notesTrimmed: t.notesTrimmedCount(
+                  notesTrimmed.length,
+                  // Every name, not the first few. The list is as long as the
+                  // number of notes a teacher wrote that morning, and truncating
+                  // it would hide the very student they need to go back to.
+                  notesTrimmed.join(', '),
+                ),
+              }}
+            />
+          )}
         </>
       )}
     </div>

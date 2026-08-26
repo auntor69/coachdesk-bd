@@ -1252,6 +1252,71 @@ export type Database = {
           },
         ]
       }
+      result_notices: {
+        Row: {
+          id: string
+          coaching_center_id: string
+          exam_id: string
+          student_id: string
+          channel: OutreachChannel
+          to_phone: string | null
+          body: string | null
+          sent_by: string | null
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          coaching_center_id: string
+          exam_id: string
+          student_id: string
+          channel: OutreachChannel
+          to_phone?: string | null
+          body?: string | null
+          sent_by?: string | null
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          coaching_center_id?: string
+          exam_id?: string
+          student_id?: string
+          channel?: OutreachChannel
+          to_phone?: string | null
+          body?: string | null
+          sent_by?: string | null
+          created_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'result_notices_coaching_center_id_fkey'
+            columns: ['coaching_center_id']
+            isOneToOne: false
+            referencedRelation: 'coaching_centers'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'result_notices_exam_id_center_fkey'
+            columns: ['exam_id', 'coaching_center_id']
+            isOneToOne: false
+            referencedRelation: 'exams'
+            referencedColumns: ['id', 'coaching_center_id']
+          },
+          {
+            foreignKeyName: 'result_notices_sent_by_fkey'
+            columns: ['sent_by']
+            isOneToOne: false
+            referencedRelation: 'users'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'result_notices_student_id_center_fkey'
+            columns: ['student_id', 'coaching_center_id']
+            isOneToOne: false
+            referencedRelation: 'students'
+            referencedColumns: ['id', 'coaching_center_id']
+          },
+        ]
+      }
       schema_migrations: {
         Row: {
           filename: string

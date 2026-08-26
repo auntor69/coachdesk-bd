@@ -692,6 +692,8 @@ export const en: Dictionary = {
      */
     notesTrimmedCount: (n: number, names: string) =>
       `${n} ${n === 1 ? 'note is' : 'notes are'} too long to send — ${names}`,
+    /** On a row of the tap-to-send list, for a family already told. */
+    toldOn: (date: string) => `Told ${date} ✓`,
 
     marksSaved: (entered: number, absent: number) => {
       const who = `${entered} ${entered === 1 ? 'student' : 'students'}`
@@ -787,6 +789,17 @@ export const en: Dictionary = {
     sending: 'Sending…',
     decline: 'Not now',
     noUndo: 'Once sent, it cannot be taken back',
+  },
+
+  /** Telling parents from the centre's own phone. See the Bangla note. */
+  resultNotices: {
+    title: 'Tell guardians the result',
+    body:
+      "Pick a name below and your phone's SMS or WhatsApp app opens with the message already written. No credits, and it goes from your own number. Whoever you tell is ticked off here.",
+    saveMarksFirst: 'Save the marks and the list of guardians to tell appears here.',
+    noNumbers:
+      'Guardians with a saved number can be told from here. None have been recorded yet.',
+    absent: 'Absent',
   },
 
   examForm: {

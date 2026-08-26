@@ -4,6 +4,7 @@ import assert from 'node:assert/strict'
 import { measureSms, creditCost } from '../src/lib/sms/encoding.ts'
 import {
   buildResultSms,
+  buildResultText,
   buildFeeReminderSms,
   buildFeeReminderText,
   buildProgressSummarySms,
@@ -167,6 +168,95 @@ test('marks keep ASCII digits and lose trailing zeros', () => {
 
   assert.ok(sms.body.includes('42.5/50'), sms.body)
   assert.ok(!/[০-৯]/.test(sms.body.split(':')[1] ?? ''), 'marks must stay ASCII')
+})
+
+/* -------------------------------------------------------------------------- */
+/* The same result, unmetered                                                 */
+/* -------------------------------------------------------------------------- */
+
+test('the chat version gives up nothing to fit', () => {
+  const LONG_NAME = 'মোহাম্মদ আব্দুল্লাহ আল মামুন চৌধুরী'
+  const LONG_TITLE = 'দ্বিতীয় সাময়িক মডেল টেস্ট পরীক্ষা ২০২৬'
+  const NOTE = 'হাতের লেখা আরও ভালো করতে হবে এবং নিয়মিত ক্লাসে আসতে হবে'
+
+  const input = {
+    studentName: LONG_NAME,
+    examTitle: LONG_TITLE,
+    obtainedMarks: 88.5,
+    totalMarks: 100,
+    isAbsent: false,
+    centerName: CENTER,
+    note: NOTE,
+  }
+
+  // The same inputs the metered builder has to clamp. WhatsApp meters nothing, so
+  // every one of them survives here — including the note, which is the first
+  // thing buildResultSms drops.
+  const sms = buildResultSms(input)
+  assert.equal(sms.trimmed, true, 'the metered version should have dropped the note')
+
+  const text = buildResultText(input)
+  assert.ok(text.includes(LONG_NAME), text)
+  assert.ok(text.includes(LONG_TITLE), text)
+  assert.ok(text.includes(NOTE), text)
+  assert.ok(text.includes('88.5/100'), text)
+  assert.ok(text.includes(CENTER), 'the centre still signs it')
+})
+
+test('an absent student is words in the chat version too', () => {
+  const text = buildResultText({
+    studentName: 'রাফিদ',
+    examTitle: 'সাপ্তাহিক',
+    obtainedMarks: null,
+    totalMarks: 50,
+    isAbsent: true,
+    passMarks: 20,
+    centerName: CENTER,
+  })
+
+  assert.ok(text.includes('অনুপস্থিত'), text)
+  assert.ok(!text.includes('0/50'), 'absent must never read as zero marks')
+  // No marks means no pass mark either: quoting one against an absence invites
+  // the reading that the child scored below it.
+  assert.ok(!text.includes('20'), text)
+})
+
+test('the pass mark is named only when it is a real threshold', () => {
+  const base = {
+    studentName: 'রাফিদ',
+    examTitle: 'সাপ্তাহিক',
+    obtainedMarks: 42,
+    totalMarks: 50,
+    isAbsent: false,
+    centerName: CENTER,
+  }
+
+  assert.ok(buildResultText({ ...base, passMarks: 20 }).includes('20'), 'a real pass mark')
+  assert.ok(!buildResultText({ ...base, passMarks: null }).includes('পাস'), 'none set')
+  assert.ok(!buildResultText({ ...base, passMarks: 0 }).includes('পাস'), 'zero is not one')
+  assert.ok(
+    !buildResultText({ ...base, passMarks: 50 }).includes('পাস'),
+    'a pass mark equal to the total is a data-entry slip, not a threshold',
+  )
+})
+
+test('the chat version never delivers a verdict', () => {
+  // A parent hearing "your child failed" from an automated message is how a child
+  // gets hit. The numbers go out; the judgement is the teacher's to make in person.
+  const failed = buildResultText({
+    studentName: 'রাফিদ',
+    examTitle: 'সাপ্তাহিক',
+    obtainedMarks: 9,
+    totalMarks: 50,
+    passMarks: 20,
+    isAbsent: false,
+    centerName: CENTER,
+  })
+
+  assert.ok(failed.includes('9/50'), failed)
+  for (const verdict of ['ফেল', 'অকৃতকার্য', 'খারাপ', 'পাস করেছে', 'কৃতকার্য']) {
+    assert.ok(!failed.includes(verdict), `${verdict} must never appear: ${failed}`)
+  }
 })
 
 /* -------------------------------------------------------------------------- */

@@ -25,7 +25,9 @@ import {
   type CenterSession,
 } from '@/lib/auth/session'
 import { todayInDhaka } from '@/lib/bd/time'
+import { normalizeBdMobile } from '@/lib/bd/phone'
 import { planResultSms } from '@/lib/sms/result-dispatch'
+import type { OutreachChannel } from '@/lib/supabase/types'
 import { MAX_NAME, MAX_NOTE, clamp } from '@/lib/limits'
 import { dict, DEFAULT_LOCALE } from '@/lib/i18n'
 import { nameTooLong } from '@/lib/i18n/messages'
@@ -612,4 +614,130 @@ export async function sendResultSms(
   revalidatePath('/settings/sms')
 
   return { ok: true, message: t.smsQueued(plan.recipients.length, cost) }
+}
+
+/* -------------------------------------------------------------------------- */
+/* Telling one family, from the centre's own phone                            */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * The queue above is the only way this product could tell a parent about marks,
+ * and it has never told anybody: `sms_credit_balance` defaults to 0, every tier
+ * grants 0 a month, and no screen can top it up — so `creditCost > balance` is
+ * true for every centre and the gate disables its own button. That is correct
+ * behaviour for a metered send with no gateway behind it. It is not an answer for
+ * a teacher who marked forty papers tonight.
+ *
+ * So results get the same second way out that fees and the weekly note already
+ * have: a link that opens the owner's own SMS or WhatsApp app with the message
+ * written, and a row here saying it happened. Costs nothing, needs no sender ID,
+ * and works on the free tier — `manualMessaging` is true on every plan and always
+ * will be. See supabase/migrations/20260811000032_result_notices.sql.
+ */
+
+/** The three ways somebody at the centre can reach a family from their handset. */
+const NOTICE_CHANNELS = new Set<OutreachChannel>(['sms', 'whatsapp', 'call'])
+
+/**
+ * Longer than the WhatsApp text, which is the longest of the two messages.
+ *
+ * Capped because this string arrives from the browser. It is *not* rebuilt here
+ * from the marks, for the reason `logFeeReminder` gives about its amount: the row
+ * answers "what did I tell them", and a message regenerated at log time could
+ * describe a mark that was corrected between the tap and the insert.
+ */
+const MAX_NOTICE_BODY = 1000
+
+export type ResultNoticeLog = {
+  examId: string
+  studentId: string
+  channel: OutreachChannel
+  /** The guardian number the link was aimed at; null for anything unparseable. */
+  toPhone?: string | null
+  /** The exact text put in front of whoever tapped. Null for a call. */
+  body?: string | null
+}
+
+/**
+ * Records that one family was told about one exam.
+ *
+ * Called from a chip's tap handler and not a form, because the tap has to do two
+ * things at once: hand the message to the phone's own SMS or WhatsApp app, and
+ * leave a note that it happened. The link does the first; nothing here interferes
+ * with it, and a failure here never blocks it.
+ *
+ * Re-verifies `canSendSms()` even though the page did. A Server Action is a public
+ * HTTP endpoint, and the owner's "send SMS" tickbox is the one thing standing
+ * between a teacher and forty families — a check that only lives on the screen in
+ * front of it is not a check.
+ *
+ * Returns whether the row was written. The caller ticks the row only on true, so
+ * the sheet never shows a tick it has no record of.
+ */
+export async function logResultNotice(
+  input: ResultNoticeLog,
+): Promise<{ logged: boolean }> {
+  const caller = await teacherOrAbove()
+  // The error string is deliberately dropped: there is no form here and no place
+  // to put a sentence, so an unauthorised tap leaves the row unticked and that is
+  // the whole of the feedback. teacherOrAbove is reused rather than inlining
+  // requireRole so this file has one answer to "who may touch an exam".
+  if (!caller.ok) return { logged: false }
+  const { session } = caller
+
+  if (!(await canSendSms())) return { logged: false }
+
+  const examId = String(input?.examId ?? '')
+  const studentId = String(input?.studentId ?? '')
+  const channel = input?.channel
+  if (!examId || !studentId || !NOTICE_CHANNELS.has(channel)) return { logged: false }
+
+  const supabase = await createClient()
+
+  // Both read back through the caller's own client, so RLS decides whether this
+  // exam and this student are theirs at all. The composite foreign keys would
+  // refuse a cross-tenant pair anyway; this turns that into a quiet no-op instead
+  // of a 500 out of Postgres, and it is the only defence against a studentId
+  // typed by hand into a fetch.
+  const [{ data: exam }, { data: student }] = await Promise.all([
+    supabase
+      .from('exams')
+      .select('id')
+      .eq('coaching_center_id', session.active.centerId)
+      .eq('id', examId)
+      .maybeSingle(),
+    // No status filter, unlike logProgressUpdate. A student who left last month
+    // still sat this paper and still has a mark on it, so they are on the sheet
+    // and their guardian is owed the result — requiring `active` here would make
+    // the chip tap, open the message, and silently record nothing.
+    supabase
+      .from('students')
+      .select('id')
+      .eq('coaching_center_id', session.active.centerId)
+      .eq('id', studentId)
+      .maybeSingle(),
+  ])
+
+  if (!exam?.id || !student?.id) return { logged: false }
+
+  const body = String(input?.body ?? '').slice(0, MAX_NOTICE_BODY)
+
+  const { error } = await supabase.from('result_notices').insert({
+    coaching_center_id: session.active.centerId,
+    exam_id: exam.id,
+    student_id: student.id,
+    channel,
+    // Normalised so the column keeps the one meaning it is documented to have.
+    // Null rather than the raw string when it will not parse: a record saying the
+    // message went to "01712-34" is worse than one admitting it does not know.
+    to_phone: normalizeBdMobile(input?.toPhone),
+    body: body || null,
+    sent_by: session.userId,
+  })
+
+  if (error) return { logged: false }
+
+  revalidatePath(`/exams/${exam.id}`)
+
+  return { logged: true }
 }

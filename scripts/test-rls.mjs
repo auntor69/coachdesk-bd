@@ -6740,6 +6740,213 @@ check(
   ),
 )
 
+// ---------------------------------------------------------------------------
+// Telling a family their child's result, from the centre's own phone.
+//
+// The queue in sms_logs is written by the service role and never by a browser, so
+// teacher_permissions.can_send_sms had no database half until now. result_notices
+// IS written by whoever tapped the chip, which is what app.can_send_sms is for.
+//
+// Every refusal below is paired with a read that still works, for the reason the
+// can_manage_exams section gives: a teacher whose owner unticked "send SMS" is
+// still the person the parent will ask whether anybody called. Reading is not
+// sending, and collapsing these three policies into one `for all` would take the
+// ticks off the screen of exactly that teacher.
+// ---------------------------------------------------------------------------
+
+console.log('\nResult notices (tap-to-send, can_send_sms):')
+
+// Karim's own batch, inserted by the migration role so everything below is about
+// the policy and not about whether the fixture happened to be writable.
+const examNotice = await one(
+  `insert into exams (coaching_center_id, subject_id, batch_id, teacher_id, title, total_marks, exam_date)
+   values ($1, $2, $3, $4, 'Bio Notice Test', 50, current_date) returning id`,
+  [centerA, sBio, bBioMorning, tKarim],
+)
+
+const NOTICE = `insert into result_notices
+   (coaching_center_id, exam_id, student_id, channel, to_phone, body)
+ values ($1, $2, $3, $4::outreach_channel, $5, $6)`
+
+const noticeCount = async (tx = db, exam = examNotice) =>
+  n(tx, 'select count(*)::int as n from result_notices where exam_id = $1', [exam])
+
+const smsPerm = (value) =>
+  db.query(
+    `insert into teacher_permissions (teacher_id, coaching_center_id, can_send_sms)
+     values ($1, $2, $3)
+     on conflict (teacher_id) do update set can_send_sms = excluded.can_send_sms`,
+    [tKarim, centerA, value],
+  )
+
+// No permissions row at all — where bootstrap_center leaves an owner's own teacher
+// row, and where every teacher created before 20260811000032 sits. Allowed, exactly
+// as can_manage_exams reads the same absence: the column defaults to true, so the
+// absence agrees with the column and only an explicit false changes the answer.
+await asUser(db, ids.karim, async (tx) => {
+  await tx.query(NOTICE, [
+    centerA,
+    examNotice,
+    stAli,
+    'whatsapp',
+    '+8801711111111',
+    'Ali got 44/50 in Bio Notice Test.',
+  ])
+})
+check('with no permissions row a teacher can record having told a family', (await noticeCount()) === 1)
+
+// A notice is a receipt, not a lock. The screen ticks a family off once told, but
+// a parent who did not read the SMS gets called, and both taps are true.
+await asUser(db, ids.karim, async (tx) => {
+  await tx.query(NOTICE, [centerA, examNotice, stAli, 'call', '+8801711111111', null])
+})
+check('the same family can be told twice, on two channels', (await noticeCount()) === 2)
+
+// The one answer that changes it: the owner unticking the box.
+await smsPerm(false)
+check(
+  'a teacher with can_send_sms off cannot record a notice',
+  await deniedAsUser(db, ids.karim, NOTICE, [
+    centerA,
+    examNotice,
+    stAli,
+    'sms',
+    '+8801711111111',
+    'Ali got 44/50.',
+  ]),
+)
+check('the refusal wrote nothing', (await noticeCount()) === 2)
+
+// ...and cannot be worked around by naming somebody else as the sender, because
+// the policy asks who is connected and not what the row claims.
+check(
+  'an unticked teacher cannot record a notice under the owner as sender',
+  await deniedAsUser(
+    db,
+    ids.karim,
+    `insert into result_notices (coaching_center_id, exam_id, student_id, channel, sent_by)
+     values ($1, $2, $3, 'sms', $4)`,
+    [centerA, examNotice, stAli, ids.ownerA],
+  ),
+)
+
+// Reading is not sending. This is the whole reason the table has three policies
+// instead of one: the teacher standing in front of the class needs to answer "has
+// anybody told my parents" whether or not they are the one allowed to do it.
+await asUser(db, ids.karim, async (tx) => {
+  check('a teacher with can_send_sms off still sees who was told', (await noticeCount(tx)) === 2)
+})
+
+await smsPerm(true)
+await asUser(db, ids.karim, async (tx) => {
+  await tx.query(NOTICE, [centerA, examNotice, stAli, 'sms', '+8801711111111', 'Ali got 44/50.'])
+})
+check('ticking the box back on restores the send', (await noticeCount()) === 3)
+
+// Nasrin teaches Chemistry and has no permissions row at all, so can_send_sms says
+// yes for her and only teaches_batch is left to refuse — which is the pairing the
+// function's comment insists on. Permission answers "may this person message a
+// parent", never "which parents".
+check(
+  "a permitted teacher cannot record a notice on another teacher's batch",
+  await deniedAsUser(db, ids.nasrin, NOTICE, [
+    centerA,
+    examNotice,
+    stAli,
+    'sms',
+    '+8801711111111',
+    'Ali got 44/50.',
+  ]),
+)
+await asUser(db, ids.nasrin, async (tx) => {
+  check("a teacher cannot read notices for another teacher's batch", (await noticeCount(tx)) === 0)
+})
+
+// The owner is a staff admin and never consults a permissions row — bootstrap_center
+// leaves them without one, and the app tier says owners and managers pay for the
+// credits so they may always spend them.
+await asUser(db, ids.ownerA, async (tx) => {
+  await tx.query(NOTICE, [centerA, examNotice, stMim, 'whatsapp', '+8801722222222', 'Mim: 40/50.'])
+  check('the owner sees every notice in their centre', (await noticeCount(tx)) === 4)
+})
+check('the owner can record a notice without any permissions row', (await noticeCount()) === 4)
+
+// Cross-tenant, both ways round. Naming their own centre trips the composite FK
+// before RLS is reached; naming centre A trips RLS. Either refusal is enough on
+// its own, and a hole would need both to be open at once.
+check(
+  "owner B cannot record a notice on centre A's exam under centre B",
+  await deniedAsUser(db, ids.ownerB, NOTICE, [
+    centerB,
+    examNotice,
+    stAli,
+    'sms',
+    '+8801711111111',
+    'x',
+  ]),
+)
+check(
+  "owner B cannot record a notice by naming centre A",
+  await deniedAsUser(db, ids.ownerB, NOTICE, [
+    centerA,
+    examNotice,
+    stAli,
+    'sms',
+    '+8801711111111',
+    'x',
+  ]),
+)
+check('neither attempt left a row', (await noticeCount()) === 4)
+
+// Inside one centre, a notice still cannot cite a student the exam has nothing to
+// do with — this one belongs to centre B, and the composite FK refuses before the
+// question of who is allowed to send comes up.
+check(
+  "the owner cannot cite another centre's student on their own exam",
+  await deniedAsUser(db, ids.ownerA, NOTICE, [
+    centerA,
+    examNotice,
+    stB,
+    'sms',
+    '+8801711111111',
+    'x',
+  ]),
+)
+
+// The family is not shown the centre's own diligence log, the same call
+// fee_reminders and progress_updates made. Ali's guardian reads Ali's marks
+// elsewhere; how promptly the centre passed them on is not their row.
+await asUser(db, ids.guardianUser, async (tx) => {
+  check('a guardian reads no notices about their own child', (await noticeCount(tx)) === 0)
+})
+await asUser(db, ids.studentUser, async (tx) => {
+  check('a student reads no notices about themselves', (await noticeCount(tx)) === 0)
+})
+
+// Both parents of the row are on delete cascade, so removing a student mid-term or
+// deleting an exam set by mistake does not leave a message addressed to nobody.
+// Thrown-away fixtures, so the four rows asserted above survive to the end.
+const stGone = await student(centerA, 'Cascade Test Child')
+const examGone = await one(
+  `insert into exams (coaching_center_id, subject_id, batch_id, teacher_id, title, total_marks, exam_date)
+   values ($1, $2, $3, $4, 'Bio Cascade Test', 50, current_date) returning id`,
+  [centerA, sBio, bBioMorning, tKarim],
+)
+await db.query(NOTICE, [centerA, examGone, stGone, 'sms', '+8801733333333', 'cascade'])
+await db.query(NOTICE, [centerA, examNotice, stGone, 'sms', '+8801733333333', 'cascade'])
+check('the throwaway notices exist', (await noticeCount(db, examGone)) === 1)
+
+await db.query('delete from exams where id = $1', [examGone])
+check('deleting an exam takes its notices with it', (await noticeCount(db, examGone)) === 0)
+
+await db.query('delete from students where id = $1', [stGone])
+check('deleting a student takes their notices with them', (await noticeCount()) === 4)
+
+// Leave the permissions table as this section found it — empty for Karim — so the
+// founder-panel and anonymous sections below see the same shape every other block
+// hands them.
+await db.query('delete from teacher_permissions where teacher_id = $1', [tKarim])
+
 console.log('\nAnonymous access:')
 
 await asUser(db, null, async (tx) => {
@@ -6749,6 +6956,10 @@ await asUser(db, null, async (tx) => {
     (await n(tx, 'select count(*)::int as n from guardians')) === 0,
   )
   check('signed-out user reads no centers', (await n(tx, 'select count(*)::int as n from coaching_centers')) === 0)
+  check(
+    'signed-out user reads no record of who was told a result',
+    (await n(tx, 'select count(*)::int as n from result_notices')) === 0,
+  )
 })
 
 check(

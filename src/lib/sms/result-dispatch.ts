@@ -2,8 +2,8 @@ import 'server-only'
 
 import type { SupabaseClient } from '@supabase/supabase-js'
 
-import type { Database } from '@/lib/supabase/types'
-import { buildResultSms } from './templates'
+import type { Database, OutreachChannel } from '@/lib/supabase/types'
+import { buildResultSms, buildResultText } from './templates'
 import { measureSms } from './encoding'
 
 /**
@@ -24,6 +24,32 @@ export type ResultRecipient = {
   phone: string
   body: string
   segments: number
+  /**
+   * The marks themselves, unformatted, so a screen can put '45/50' beside the name
+   * without fetching the sheet a second time or re-deriving it from `body`. Absent
+   * is its own flag and never a zero — see buildResultText.
+   */
+  obtainedMarks: number | null
+  isAbsent: boolean
+  /**
+   * The same result written for WhatsApp, where nothing is metered — so it keeps
+   * the teacher's note that `body` drops rather than buy a second segment.
+   *
+   * Built here rather than in the browser, which is the opposite of the call
+   * ProgressChips makes and right for the opposite reason. Its row already carries
+   * every input, so rendering there costs nothing; these inputs are a three-level
+   * embed and an exam's pass mark the page does not otherwise fetch, so building
+   * in the browser would mean shipping the raw marks and re-deriving them — more
+   * bytes, and two places that have to agree about what a parent is told.
+   */
+  chatBody: string
+  /**
+   * How this family is actually reachable, as the owner marked it on
+   * /settings/sms. Orders the chips and colours one of them; it is a preference
+   * and never a permission — `sms_opt_out` above is the only thing that silences
+   * a channel, and a family filtered out by it never reaches this list.
+   */
+  preferredChannel: OutreachChannel | null
 }
 
 type GuardianRow = {
@@ -86,7 +112,7 @@ export async function planResultSms(
 ): Promise<ResultDispatchPlan | null> {
   const { data: exam } = await supabase
     .from('exams')
-    .select('id, title, total_marks')
+    .select('id, title, total_marks, pass_marks')
     .eq('coaching_center_id', centerId)
     .eq('id', examId)
     .maybeSingle()
@@ -100,7 +126,7 @@ export async function planResultSms(
        enrollments (
          id,
          students (
-           id, name, guardian_phone, sms_opt_out,
+           id, name, guardian_phone, sms_opt_out, preferred_channel,
            guardians (id, phone, is_primary, sms_opt_out)
          )
        )`,
@@ -167,6 +193,22 @@ export async function planResultSms(
       phone,
       body: sms.body,
       segments: sms.segments,
+      obtainedMarks: result.obtained_marks === null ? null : Number(result.obtained_marks),
+      isAbsent: result.is_absent,
+      // The same facts, unclamped and with the note kept. Nothing is metered on
+      // WhatsApp, so nothing has to be given up to fit.
+      chatBody: buildResultText({
+        studentName: student.name,
+        examTitle: exam.title,
+        obtainedMarks:
+          result.obtained_marks === null ? null : Number(result.obtained_marks),
+        totalMarks: Number(exam.total_marks),
+        passMarks: exam.pass_marks === null ? null : Number(exam.pass_marks),
+        isAbsent: result.is_absent,
+        centerName,
+        note: result.note,
+      }),
+      preferredChannel: student.preferred_channel,
     })
   }
 
