@@ -57,6 +57,26 @@ export function dhakaDayOfWeek(now: Date = new Date()): number {
 }
 
 /**
+ * The day of the week a given YYYY-MM-DD fell on, 0 = Sunday.
+ *
+ * The same numbering as `dhakaDayOfWeek` and therefore as `extract(dow)` and
+ * `batch_schedules.day_of_week`, but for a calendar day rather than a moment.
+ * Walking back through last week to find which day a batch last met is arithmetic
+ * on dates, and there is no instant involved to have a timezone.
+ *
+ * Parsed at UTC noon like `daysBetween` and `addDays`, so the twelve hours of
+ * slack in either direction make it impossible for any offset quirk to answer
+ * with the neighbouring day. Returns -1 for a string that is not a date, which is
+ * a value no schedule can hold, so a malformed date matches no class rather than
+ * matching Sunday's.
+ */
+export function dayOfWeekOn(isoDate: string): number {
+  const at = Date.parse(`${isoDate}T12:00:00Z`)
+  if (Number.isNaN(at)) return -1
+  return new Date(at).getUTCDay()
+}
+
+/**
  * Day and month names in both languages.
  *
  * Hard-coded rather than taken from Intl, which does have bn-BD data: Intl's

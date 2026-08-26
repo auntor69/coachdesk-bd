@@ -348,13 +348,45 @@ export const bn = {
     noStudentsBody: 'শিক্ষার্থী যোগ করলে এখানে হাজিরা নেওয়া যাবে।',
 
     /**
-     * Three the register shows but cannot be handed: each takes an argument, and
-     * a function cannot cross into a client component. So they live on this side
-     * of the boundary and are resolved before they travel — `saved` by the action
-     * that knows the count, the other two by the page, which knows the batch and
-     * every name on the roster.
+     * The two days a register cannot be taken for, said as sentences.
+     *
+     * A form that renders and then fails on save is the version of this that
+     * teaches a teacher nothing except not to trust the screen. So the page draws
+     * the reason instead of the roster, and always with the way out next to it —
+     * today's register is one tap away and a teacher who reached tomorrow by
+     * accident should not have to find it themselves.
+     *
+     * `closedAdmin` is the other half: an owner *may* write into last month, so
+     * they get the form and a line saying which day they are actually on. Nobody
+     * fixing a register three weeks late is doing it by accident, and being told
+     * so is worth more than being stopped.
+     */
+    futureTitle: 'এই ক্লাস এখনও হয়নি',
+    futureBody:
+      'যে ক্লাস এখনও হয়নি তার হাজিরা নেওয়া যায় না — ক্লাসে তো এখনও কেউ আসেনি। ক্লাস শেষ হলে হাজিরা নিন।',
+    closedTitle: 'এই তারিখের হাজিরা বন্ধ',
+    closedBody:
+      'আজকের ক্লাস আর শেষ ক্লাসের হাজিরা নেওয়া বা ঠিক করা যায়। এর চেয়ে পুরোনো হাজিরা বদলাতে মালিককে বলুন।',
+    closedAdmin:
+      'এটি পুরোনো তারিখ। মালিক হিসেবে আপনি এখনও এখানে হাজিরা লিখতে পারবেন, তবে প্রতিটি নাম একবারই বদলানো যাবে।',
+    takeToday: 'আজকের হাজিরা নিন',
+
+    /**
+     * The strings the register shows but cannot be handed: each takes an argument,
+     * and a function cannot cross into a client component. So they live on this
+     * side of the boundary and are resolved before they travel — the two counts by
+     * the action that knows them, the rest by the page, which knows the batch, the
+     * last class and every name on the roster.
      */
     saved: (n: number) => `হাজিরা সেভ হয়েছে — ${n} জন`,
+    /**
+     * The save that could not do everything it was asked. Not an error: what the
+     * teacher changed is saved, and this is the part that was already settled — so
+     * the sentence leads with the good news and then says what did not move, which
+     * is the order they need it in to know whether to go and ask the owner.
+     */
+    savedExcept: (n: number) =>
+      `হাজিরা সেভ হয়েছে। ${n} জনের হাজিরা আগেই একবার বদলানো হয়েছে, তাই সেটি আর বদলায়নি।`,
     /** The radiogroup's label, which is all a screen reader has to place the row. */
     rowLabel: (name: string) => `${name} — হাজিরা`,
     /**
@@ -362,6 +394,12 @@ export const bn = {
      * batches in a morning needs to know which register they are about to write.
      */
     saveFor: (batch: string) => `${batch} — হাজিরা সেভ করুন`,
+    /**
+     * The link to the other register still open. The date is already formatted by
+     * the page — Bangla numerals and a Bangla month, because this one is a date and
+     * not a count.
+     */
+    lastClass: (date: string) => `শেষ ক্লাসের হাজিরা — ${date}`,
 
     /**
      * What the save action returns when it refuses. Nested in the screen's group
@@ -375,6 +413,14 @@ export const bn = {
     errors: {
       forbidden: 'আপনার এই কাজের অনুমতি নেই।',
       noBatch: 'ব্যাচ পাওয়া যায়নি।',
+      /**
+       * The date the page would have forgiven. Refused here rather than quietly
+       * replaced with today, which is how a bad link overwrote a good register.
+       */
+      badDate: 'তারিখটি ঠিক নেই। আবার চেষ্টা করুন।',
+      futureDate: 'যে ক্লাস এখনও হয়নি তার হাজিরা নেওয়া যায় না।',
+      closedDate:
+        'এই তারিখের হাজিরা আর বদলানো যাবে না। আজকের বা শেষ ক্লাসের হাজিরা নিন।',
       noStudents: 'কোনো শিক্ষার্থী পাওয়া যায়নি।',
       rosterUnreadable: 'শিক্ষার্থীর তালিকা পড়া যায়নি।',
       emptyBatch: 'এই ব্যাচে কোনো শিক্ষার্থী নেই।',
@@ -393,8 +439,23 @@ export const bn = {
    * name stays in `teach` above and arrives already written.
    */
   roster: {
-    alreadyTaken:
-      'এই ব্যাচের হাজিরা আগে নেওয়া হয়েছে। বদলে আবার সেভ করলে আগের হাজিরা বদলে যাবে।',
+    alreadyTaken: 'এই ব্যাচের হাজিরা আগে নেওয়া হয়েছে।',
+    /**
+     * The budget, said once, next to the sentence that says the register exists.
+     * One change per name and not one per register, because the reason the owner
+     * asked for a correction at all is a student walking in five minutes late —
+     * and a second late arrival must not find the register already spent.
+     */
+    finalEdit: 'প্রতিটি নাম আর একবার বদলানো যাবে।',
+    /**
+     * The answer to "can I press present as many times as I like?" — yes, and it
+     * costs nothing, because nothing leaves the phone until save. Worth a line of
+     * its own: a teacher who thinks each tap is a write taps carefully, slowly, and
+     * loses to the paper register.
+     */
+    tapFreely: 'যত খুশি ট্যাপ করুন — সেভ না চাপলে কিছুই জমা হয় না।',
+    /** Read out for a row whose buttons are gone, where sighted readers see a chip. */
+    lockedRow: 'একবার বদলানো হয়েছে, আর বদলানো যাবে না',
     note: 'নোট',
     notePlaceholder: 'যেমন: ছুটির কারণে ক্লাস তাড়াতাড়ি শেষ',
   },

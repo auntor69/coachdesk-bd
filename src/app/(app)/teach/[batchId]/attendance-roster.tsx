@@ -26,21 +26,42 @@ export type RosterStudent = {
   /** "<name> — হাজিরা", written by the page. See its comment. */
   rowLabel: string
   status: AttendanceStatus
+  /**
+   * This mark has already been changed once and the database will refuse another.
+   * Drawn as what it is instead of as three buttons that would fail — the whole
+   * reason ATTENDANCE_MAX_REVISION is mirrored on this side of the wire.
+   */
+  locked: boolean
 }
 
 /**
+ * What each status looks like at a glance.
+ *
  * Glyph and colour together, never colour alone: red-green colour blindness is
- * around 8% of men, and a register that reads as "all the same" to them is
- * worse than no register. Excused is not offered here — it is a decision made
- * after the fact, from the batch history, not while standing in front of a class.
+ * around 8% of men, and a register that reads as "all the same" to them is worse
+ * than no register.
+ *
+ * `excused` has a glyph but no button. It is a decision made after the fact, from
+ * the batch history, not while standing in front of a class — but a settled row
+ * still has to draw whatever it happens to hold.
+ */
+const GLYPH: Record<AttendanceStatus, string> = {
+  present: '✓',
+  late: '⏱',
+  absent: '✕',
+  excused: '—',
+}
+
+/**
+ * The three a teacher taps, in the order they tap them.
  *
  * The label is a key into the shared `attendance` group rather than a string, so
  * this table stays one table in both languages.
  */
-const CHOICES: { status: 'present' | 'late' | 'absent'; glyph: string }[] = [
-  { status: 'present', glyph: '✓' },
-  { status: 'late', glyph: '⏱' },
-  { status: 'absent', glyph: '✕' },
+const CHOICES: { status: 'present' | 'late' | 'absent' }[] = [
+  { status: 'present' },
+  { status: 'late' },
+  { status: 'absent' },
 ]
 
 const CHOICE_ON: Record<string, string> = {
@@ -133,9 +154,17 @@ export function AttendanceRoster({
   // student who has since left the batch: an id nobody is enrolled under never
   // gets looked up. `??` and not `||` — every status is a non-empty string, but
   // the next person to add one should not have to know that.
+  //
+  // A settled mark is the server's value and nothing else. A draft written before
+  // it settled would otherwise draw a status the database has already refused to
+  // accept, which is a screen quietly disagreeing with the record.
   const marks = useMemo(() => {
     const merged: Record<string, AttendanceStatus> = {}
     for (const s of students) {
+      if (s.locked) {
+        merged[s.enrollmentId] = s.status
+        continue
+      }
       const saved = draft?.[s.enrollmentId]
       merged[s.enrollmentId] =
         tapped[s.enrollmentId] ?? (isStatus(saved) ? saved : s.status)
@@ -146,6 +175,12 @@ export function AttendanceRoster({
   useEffect(() => {
     if (state?.ok) clearDraft(draftKey)
   }, [state, draftKey])
+
+  /** Rows with nothing left to spend. No buttons are drawn for them; see setStatus. */
+  const locked = useMemo(
+    () => new Set(students.filter((s) => s.locked).map((s) => s.enrollmentId)),
+    [students],
+  )
 
   /**
    * The map as of the last tap, which is not the same thing as `marks`.
@@ -159,6 +194,11 @@ export function AttendanceRoster({
   const latest = useRef<Record<string, AttendanceStatus> | null>(null)
 
   function setStatus(enrollmentId: string, status: AttendanceStatus) {
+    // Belt and braces. A settled row renders no buttons, so nothing here should be
+    // reachable — but the draft in localStorage is written from this function, and
+    // a draft holding a status the database will refuse is a red error on the next
+    // save for something the teacher cannot see or undo.
+    if (locked.has(enrollmentId)) return
     const next = { ...(latest.current ?? marks), [enrollmentId]: status }
     latest.current = next
     setTapped(next)
@@ -188,10 +228,18 @@ export function AttendanceRoster({
         </div>
       )}
 
-      {alreadyTaken && !state && (
-        <p className="rounded-xl bg-surface-alt px-4 py-3 text-sm text-ink-soft">
-          {t.alreadyTaken}
-        </p>
+      {/* Two things a teacher has no way to know from looking at the screen: that
+          tapping costs nothing, and that a taken register has one change left per
+          mark. Both go away once there is a result to read instead. */}
+      {!state && (
+        <div className="rounded-xl bg-surface-alt px-4 py-3 text-sm text-ink-soft">
+          {alreadyTaken && (
+            <p className="font-medium text-ink">
+              {t.alreadyTaken} {t.finalEdit}
+            </p>
+          )}
+          <p className={alreadyTaken ? 'mt-1' : undefined}>{t.tapFreely}</p>
+        </div>
       )}
 
       <ul className="flex flex-col gap-2">
@@ -224,33 +272,50 @@ export function AttendanceRoster({
                 value={current}
               />
 
-              <div
-                role="radiogroup"
-                aria-label={student.rowLabel}
-                className="flex shrink-0 gap-1"
-              >
-                {CHOICES.map((choice) => {
-                  const on = current === choice.status
-                  return (
-                    <button
-                      key={choice.status}
-                      type="button"
-                      role="radio"
-                      aria-checked={on}
-                      aria-label={statusLabels[choice.status]}
-                      onClick={() => setStatus(student.enrollmentId, choice.status)}
-                      className={`grid h-11 w-11 place-items-center rounded-lg border-2
-                        text-lg transition-colors ${
-                          on
-                            ? CHOICE_ON[choice.status]
-                            : 'border-line bg-white text-ink-faint'
-                        }`}
-                    >
-                      <span aria-hidden>{choice.glyph}</span>
-                    </button>
-                  )
-                })}
-              </div>
+              {student.locked ? (
+                /* A mark that is now the record. Same height as a live row so a
+                   register with one settled name in it does not look broken, and
+                   the status is spelled out rather than left as a colour — this is
+                   the one row a teacher cannot re-read by tapping it. */
+                <div
+                  className="grid h-11 shrink-0 place-items-center rounded-lg border-2
+                    border-line bg-surface-alt px-3"
+                >
+                  <span className="text-sm font-medium text-ink-soft">
+                    <span aria-hidden>{GLYPH[current]} </span>
+                    {statusLabels[current]}
+                    <span className="sr-only"> — {t.lockedRow}</span>
+                  </span>
+                </div>
+              ) : (
+                <div
+                  role="radiogroup"
+                  aria-label={student.rowLabel}
+                  className="flex shrink-0 gap-1"
+                >
+                  {CHOICES.map((choice) => {
+                    const on = current === choice.status
+                    return (
+                      <button
+                        key={choice.status}
+                        type="button"
+                        role="radio"
+                        aria-checked={on}
+                        aria-label={statusLabels[choice.status]}
+                        onClick={() => setStatus(student.enrollmentId, choice.status)}
+                        className={`grid h-11 w-11 place-items-center rounded-lg border-2
+                          text-lg transition-colors ${
+                            on
+                              ? CHOICE_ON[choice.status]
+                              : 'border-line bg-white text-ink-faint'
+                          }`}
+                      >
+                        <span aria-hidden>{GLYPH[choice.status]}</span>
+                      </button>
+                    )
+                  })}
+                </div>
+              )}
             </li>
           )
         })}

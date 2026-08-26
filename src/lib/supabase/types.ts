@@ -41,6 +41,7 @@ export type Database = {
           status: AttendanceStatus
           marked_at: string
           marked_by: string | null
+          revision: number
         }
         Insert: {
           id?: string
@@ -50,6 +51,7 @@ export type Database = {
           status: AttendanceStatus
           marked_at?: string
           marked_by?: string | null
+          revision?: number
         }
         Update: {
           id?: string
@@ -59,6 +61,7 @@ export type Database = {
           status?: AttendanceStatus
           marked_at?: string
           marked_by?: string | null
+          revision?: number
         }
         Relationships: [
           {

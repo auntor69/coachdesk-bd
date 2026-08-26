@@ -11,6 +11,12 @@ import {
 import { createClient } from '@/lib/supabase/server'
 import { BatchSlot } from '@/lib/bd/schedule'
 import { todayInDhaka, formatDate } from '@/lib/bd/time'
+import {
+  ATTENDANCE_MAX_REVISION,
+  attendanceVerdict,
+  isDateString,
+  lastClassDate,
+} from '@/lib/attendance/window'
 import { dict, localName, DEFAULT_LOCALE } from '@/lib/i18n'
 import type { AttendanceStatus } from '@/lib/supabase/types'
 import { AttendanceRoster, type RosterStudent } from './attendance-roster'
@@ -26,8 +32,10 @@ export async function generateMetadata() {
 /**
  * Attendance entry for one batch on one day.
  *
- * ?date= lets a teacher backfill a class they forgot. It is validated here and
- * again in the action — a page check only decides what to render.
+ * ?date= lets a teacher fix the class they have just taught or the last one they
+ * took. Which days those are is decided in src/lib/attendance/window.ts and again
+ * in the action; a page check only decides what to render, and this one renders a
+ * refusal as a sentence rather than as an empty form that fails on save.
  */
 export default async function AttendancePage({
   params,
@@ -48,8 +56,11 @@ export default async function AttendancePage({
   const t = d.teach
 
   const today = todayInDhaka()
-  const sessionDate =
-    date && /^\d{4}-\d{2}-\d{2}$/.test(date) && date <= today ? date : today
+  // Forgiving where the action is strict. A mangled bookmark should show a teacher
+  // today's register rather than an error — but a date that is a real day and
+  // simply not writable is kept, so the screen can say which day it is and why,
+  // instead of silently swapping in a different one.
+  const sessionDate = date && isDateString(date) ? date : today
 
   // Which centre this batch is in is RLS's question, and a miss is a 404 rather
   // than a 403 so the URL cannot be used to probe which batch IDs exist in other
@@ -78,25 +89,55 @@ export default async function AttendancePage({
   const mine = isStaffAdmin(session) ? null : await myTeacherIds()
   if (mine && (!batch.teacher_id || !mine.includes(batch.teacher_id))) forbidden()
 
-  const [{ data: enrollments }, { data: existingSession }] = await Promise.all([
-    supabase
-      .from('enrollments')
-      .select('id, students (id, name, student_code)')
-      .eq('coaching_center_id', session.active.centerId)
-      .eq('batch_id', batchId)
-      .eq('status', 'active'),
-    supabase
-      .from('attendance_sessions')
-      .select('id, note, attendance_records (enrollment_id, status)')
-      .eq('coaching_center_id', session.active.centerId)
-      .eq('batch_id', batchId)
-      .eq('session_date', sessionDate)
-      .maybeSingle(),
-  ])
+  const [{ data: enrollments }, { data: existingSession }, { data: schedules }, { data: recent }] =
+    await Promise.all([
+      supabase
+        .from('enrollments')
+        .select('id, students (id, name, student_code)')
+        .eq('coaching_center_id', session.active.centerId)
+        .eq('batch_id', batchId)
+        .eq('status', 'active'),
+      supabase
+        .from('attendance_sessions')
+        .select('id, note, attendance_records (enrollment_id, status, revision)')
+        .eq('coaching_center_id', session.active.centerId)
+        .eq('batch_id', batchId)
+        .eq('session_date', sessionDate)
+        .maybeSingle(),
+      supabase
+        .from('batch_schedules')
+        .select('day_of_week')
+        .eq('coaching_center_id', session.active.centerId)
+        .eq('batch_id', batchId),
+      // The last day this batch has a register for, which reopens an extra class
+      // the timetable never knew about.
+      supabase
+        .from('attendance_sessions')
+        .select('session_date')
+        .eq('coaching_center_id', session.active.centerId)
+        .eq('batch_id', batchId)
+        .lt('session_date', today)
+        .order('session_date', { ascending: false })
+        .limit(1)
+        .maybeSingle(),
+    ])
 
-  const previous = new Map<string, AttendanceStatus>()
+  const lastClass = lastClassDate(
+    today,
+    (schedules ?? []).map((s) => s.day_of_week),
+    recent?.session_date ?? null,
+  )
+  const verdict = attendanceVerdict(sessionDate, today, lastClass)
+  // An owner or manager may still write into a closed day, and is told that is
+  // what they are doing. A teacher gets the card below instead of a form.
+  const writable = verdict === 'open' || (verdict === 'closed' && isStaffAdmin(session))
+
+  const previous = new Map<string, { status: AttendanceStatus; revision: number }>()
   for (const record of existingSession?.attendance_records ?? []) {
-    previous.set(record.enrollment_id, record.status)
+    previous.set(record.enrollment_id, {
+      status: record.status,
+      revision: record.revision,
+    })
   }
 
   const students: RosterStudent[] = (enrollments ?? [])
@@ -105,6 +146,7 @@ export default async function AttendancePage({
         ? enrollment.students[0]
         : enrollment.students
       if (!student) return null
+      const before = previous.get(enrollment.id)
       return {
         enrollmentId: enrollment.id,
         name: student.name,
@@ -115,7 +157,11 @@ export default async function AttendancePage({
         // which row it is on.
         rowLabel: t.rowLabel(student.name),
         // Present is the default for an unmarked student — see the roster.
-        status: previous.get(enrollment.id) ?? ('present' as AttendanceStatus),
+        status: before?.status ?? ('present' as AttendanceStatus),
+        // This mark has spent its one correction and the trigger will refuse
+        // another. Drawn as a settled row rather than as three buttons that would
+        // fail, which is the whole reason the constant is mirrored in TypeScript.
+        locked: (before?.revision ?? 0) >= ATTENDANCE_MAX_REVISION,
       }
     })
     .filter((s): s is RosterStudent => s !== null)
@@ -160,23 +206,79 @@ export default async function AttendancePage({
         </p>
       </div>
 
-      {students.length === 0 ? (
+      {verdict === 'future' ? (
+        <Card>
+          <h2 className="font-semibold text-ink">{t.futureTitle}</h2>
+          <p className="mt-1 text-sm text-ink-soft">{t.futureBody}</p>
+          <Link
+            href={`/teach/${batch.id}`}
+            className="mt-3 inline-flex min-h-tap items-center text-sm font-medium
+              text-brand-700"
+          >
+            {t.takeToday} →
+          </Link>
+        </Card>
+      ) : !writable ? (
+        <Card>
+          <h2 className="font-semibold text-ink">{t.closedTitle}</h2>
+          <p className="mt-1 text-sm text-ink-soft">{t.closedBody}</p>
+          <div className="flex flex-col">
+            {lastClass && (
+              <Link
+                href={`/teach/${batch.id}?date=${lastClass}`}
+                className="mt-3 inline-flex min-h-tap items-center text-sm font-medium
+                  text-brand-700"
+              >
+                {t.lastClass(formatDate(lastClass, locale))} →
+              </Link>
+            )}
+            <Link
+              href={`/teach/${batch.id}`}
+              className="inline-flex min-h-tap items-center text-sm font-medium
+                text-brand-700"
+            >
+              {t.takeToday} →
+            </Link>
+          </div>
+        </Card>
+      ) : students.length === 0 ? (
         <Card>
           <h2 className="font-semibold text-ink">{t.noStudentsTitle}</h2>
           <p className="mt-1 text-sm text-ink-soft">{t.noStudentsBody}</p>
         </Card>
       ) : (
-        <AttendanceRoster
-          batchId={batch.id}
-          saveLabel={t.saveFor(batch.name)}
-          sessionDate={sessionDate}
-          students={students}
-          note={existingSession?.note ?? ''}
-          alreadyTaken={Boolean(existingSession)}
-          t={d.roster}
-          statusLabels={d.attendance}
-          common={d.common}
-        />
+        <>
+          {verdict === 'closed' && (
+            <div className="rounded-xl border-2 border-amber-300 bg-amber-50 px-4 py-3">
+              <p className="text-sm text-amber-900">{t.closedAdmin}</p>
+            </div>
+          )}
+
+          <AttendanceRoster
+            batchId={batch.id}
+            saveLabel={t.saveFor(batch.name)}
+            sessionDate={sessionDate}
+            students={students}
+            note={existingSession?.note ?? ''}
+            alreadyTaken={Boolean(existingSession)}
+            t={d.roster}
+            statusLabels={d.attendance}
+            common={d.common}
+          />
+
+          {/* The other register a teacher may still fix, from the one they are on.
+              Without it the only way to reach yesterday is to know that ?date=
+              exists, which no teacher does. */}
+          {sessionDate === today && lastClass && (
+            <Link
+              href={`/teach/${batch.id}?date=${lastClass}`}
+              className="inline-flex min-h-tap items-center text-sm font-medium
+                text-brand-700"
+            >
+              {t.lastClass(formatDate(lastClass, locale))} →
+            </Link>
+          )}
+        </>
       )}
     </div>
   )

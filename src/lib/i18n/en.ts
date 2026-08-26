@@ -148,14 +148,31 @@ export const en: Dictionary = {
     noStudentsTitle: 'No students in this batch',
     noStudentsBody: 'Add students and you can mark their attendance here.',
 
+    futureTitle: 'This class has not happened yet',
+    futureBody:
+      'Attendance cannot be taken for a class that has not happened — nobody is in it yet. Mark it once the class is over.',
+    closedTitle: 'This date is closed',
+    closedBody:
+      'Today’s class and your last class can be marked or corrected. To change anything older than that, ask the owner.',
+    closedAdmin:
+      'This is an older date. As an owner you can still write attendance here, but each name can only be changed once.',
+    takeToday: 'Mark today',
+
     saved: (n: number) =>
       `Attendance saved — ${n} ${n === 1 ? 'student' : 'students'}`,
+    savedExcept: (n: number) =>
+      `Attendance saved. ${n} ${n === 1 ? 'mark had' : 'marks had'} already been corrected once, so ${n === 1 ? 'it' : 'they'} did not change.`,
     rowLabel: (name: string) => `${name} — attendance`,
     saveFor: (batch: string) => `${batch} — Save attendance`,
+    lastClass: (date: string) => `Attendance for the last class — ${date}`,
 
     errors: {
       forbidden: 'You do not have permission to do this.',
       noBatch: 'Batch not found.',
+      badDate: 'That date is not right. Please try again.',
+      futureDate: 'Attendance cannot be taken for a class that has not happened.',
+      closedDate:
+        'This date can no longer be changed. Mark today’s class or your last one.',
       noStudents: 'No students were sent.',
       rosterUnreadable: 'Could not read the student list.',
       emptyBatch: 'This batch has no students.',
@@ -164,8 +181,10 @@ export const en: Dictionary = {
   },
 
   roster: {
-    alreadyTaken:
-      'This batch already has attendance for this date. Saving again replaces what was there.',
+    alreadyTaken: 'This batch already has attendance for this date.',
+    finalEdit: 'Each name can be changed once more.',
+    tapFreely: 'Tap as often as you like — nothing is sent until you press save.',
+    lockedRow: 'already corrected once, cannot change again',
     note: 'Note',
     notePlaceholder: 'e.g. class ended early for a holiday',
   },

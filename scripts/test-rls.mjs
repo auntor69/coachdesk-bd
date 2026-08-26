@@ -2798,6 +2798,427 @@ await asUser(db, null, async (tx) => {
 })
 
 // ---------------------------------------------------------------------------
+// The window a register may be written in, and the one correction inside it.
+//
+// 20260811000031 closed two holes that had nothing to do with who may write and
+// everything to do with when. The rules are carried in TypeScript as well, in
+// src/lib/attendance/window.ts, so a teacher is told before they tap — but the
+// rule that holds is the one in the database, and a rule nobody checks is a rule
+// that quietly stops existing.
+//
+// A batch of its own, for the reason the risk section gives further down:
+// attendance_sessions is unique on (batch_id, session_date) and this section needs
+// today's date specifically. Its own students too, so nothing here drags Ali or
+// Mim through the views below. Both go away at the bottom, and the way they go is
+// itself the last assertion.
+//
+// Every date here is written as Dhaka's, exactly as the guard reads it. PGlite
+// runs in UTC, so `current_date + 1` is the same calendar day as Dhaka's tomorrow
+// for six hours out of every twenty-four — a future-date test written that way
+// would pass all afternoon and fail between midnight and six in Bangladesh, which
+// is the half of the day a coaching centre never runs and a CI box often does.
+// ---------------------------------------------------------------------------
+
+console.log('\nThe attendance window and the one correction (20260811000031):')
+
+const bWindow = await one(
+  `insert into batches (coaching_center_id, subject_id, teacher_id, name, slot)
+   values ($1, $2, $3, 'Window Fixture Batch', 'morning') returning id`,
+  [centerA, sBio, tKarim],
+)
+
+const windowPupil = async (name) => {
+  const id = await one(
+    `insert into students (coaching_center_id, name, guardian_phone)
+     values ($1, $2, '01799000001') returning id`,
+    [centerA, name],
+  )
+  return { id, enrollment: await enroll(centerA, id, sBio, bWindow) }
+}
+
+const tardy = await windowPupil('Shuvo Late')
+const steady = await windowPupil('Tania Steady')
+
+/** The message a browser session gets back, or '' when the write went through. */
+const tried = async (userId, sql, params = []) => {
+  try {
+    await asUser(db, userId, (tx) => tx.query(sql, params))
+    return ''
+  } catch (error) {
+    return String(error.message)
+  }
+}
+
+const DHAKA_TOMORROW = "(now() at time zone 'Asia/Dhaka')::date + 1"
+const DHAKA_TODAY = "(now() at time zone 'Asia/Dhaka')::date"
+
+const openRegister = (userId, day) =>
+  tried(
+    userId,
+    `insert into attendance_sessions
+       (coaching_center_id, batch_id, session_date, teacher_id)
+     values ($1, $2, ${day}, $3)`,
+    [centerA, bWindow, tKarim],
+  )
+
+// The hole the migration's header quotes a line of code for. Until it, the action
+// replaced a future date with today rather than refusing it — so a teacher who
+// reached tomorrow's URL and tapped save overwrote this morning's absences with a
+// screen that starts every student present, and was told it had saved.
+const futureTeacher = await openRegister(ids.karim, DHAKA_TOMORROW)
+check(
+  'a teacher cannot open a register for a class that has not happened',
+  /has not arrived yet in Dhaka/.test(futureTeacher),
+  futureTeacher.split('\n')[0] || 'accepted',
+)
+
+// The owner too, unlike every other guard in this schema. This one is not about
+// permission: there is nobody in a class that has not been taught, so there is
+// nothing for anybody to write down, and an owner who could would only be
+// recording a guess.
+const futureOwner = await openRegister(ids.ownerA, DHAKA_TOMORROW)
+check(
+  'and neither can the owner, because this is not a matter of permission',
+  /has not arrived yet in Dhaka/.test(futureOwner),
+  futureOwner.split('\n')[0] || 'accepted',
+)
+
+check(
+  'and neither attempt left a register behind',
+  (await n(
+    db,
+    'select count(*)::int as n from attendance_sessions where batch_id = $1',
+    [bWindow],
+  )) === 0,
+)
+
+check(
+  "today's register goes in, which is the screen's whole job",
+  (await openRegister(ids.karim, DHAKA_TODAY)) === '',
+)
+
+const sToday = await one(
+  `select id from attendance_sessions
+    where batch_id = $1 and session_date = (now() at time zone 'Asia/Dhaka')::date`,
+  [bWindow],
+)
+
+// The other half of the future rule, and the reason it only has to be checked on
+// insert: a register that cannot change its day is inside the bound forever.
+const movedDay = await tried(
+  ids.karim,
+  'update attendance_sessions set session_date = session_date - 1 where id = $1',
+  [sToday],
+)
+check(
+  'a register cannot be moved to another day, so a past one cannot become tomorrow',
+  /cannot be moved by/.test(movedDay),
+  movedDay.split('\n')[0] || 'accepted',
+)
+
+// Karim teaches Bio Morning as well, so RLS would let this through on both sides —
+// which is exactly why the trigger has to be the thing that refuses it. A register
+// moved sideways files thirty children's attendance against a class they were
+// never in.
+const movedBatch = await tried(
+  ids.karim,
+  'update attendance_sessions set batch_id = $2 where id = $1',
+  [sToday, bBioMorning],
+)
+check(
+  'nor to another batch, though the teacher teaches that one too',
+  /cannot be moved by/.test(movedBatch),
+  movedBatch.split('\n')[0] || 'accepted',
+)
+
+check(
+  'and the register is still where it was, on both counts',
+  await (async () => {
+    const { rows } = await db.query(
+      `select batch_id, session_date = (now() at time zone 'Asia/Dhaka')::date as today
+         from attendance_sessions where id = $1`,
+      [sToday],
+    )
+    return rows[0].batch_id === bWindow && rows[0].today === true
+  })(),
+)
+
+// The note is an aside about the class — "power cut, finished early" — not a fact
+// about a child. A centre adding to it an hour later should not be spending
+// anything, and nothing about it is frozen.
+check(
+  'while the note stays writable, because it is not a mark',
+  (await tried(ids.karim, 'update attendance_sessions set note = $2 where id = $1', [
+    sToday,
+    'কারেন্ট চলে গিয়েছিল, ক্লাস আগে ছেড়ে দিয়েছি',
+  ])) === '',
+)
+
+// Both halves of the fence, in the order they are reached. The grant is gone, so
+// this fails at executor startup with 42501 before a row is scanned and before the
+// trigger fires — which is why the message is Postgres's own and not the guard's.
+const deletedRegister = await tried(
+  ids.ownerA,
+  'delete from attendance_sessions where id = $1',
+  [sToday],
+)
+check(
+  'a register cannot be deleted from a browser session, owner or not',
+  /permission denied/.test(deletedRegister),
+  deletedRegister.split('\n')[0] || 'accepted',
+)
+check(
+  'and it survived the attempt',
+  (await n(db, 'select count(*)::int as n from attendance_sessions where id = $1', [
+    sToday,
+  ])) === 1,
+)
+
+/**
+ * A mark as the server role writes one: signed by somebody else and dated two
+ * hours ago.
+ *
+ * Backdated on purpose. A correction has to move `marked_at`, and asserting that
+ * against a stamp written microseconds earlier is a test that depends on how long
+ * PGlite took to reach the next statement. Two hours is a margin no scheduler
+ * closes. It doubles as the proof of the exemption: the server role keeps what it
+ * was given, so an import can carry the hour a register was really taken.
+ */
+const backdated = (enrollment, status) =>
+  db.query(
+    `insert into attendance_records
+       (coaching_center_id, session_id, enrollment_id, status, marked_at, marked_by)
+     values ($1, $2, $3, $4::attendance_status, now() - interval '2 hours', $5)`,
+    [centerA, sToday, enrollment, status, ids.nasrin],
+  )
+
+const markOf = async (enrollment) =>
+  (
+    await db.query(
+      `select status::text as status, revision, marked_by,
+              marked_at::text as marked_at,
+              marked_at < now() - interval '1 hour' as backdated
+         from attendance_records where session_id = $1 and enrollment_id = $2`,
+      [sToday, enrollment],
+    )
+  ).rows[0] ?? null
+
+/** What the register sends for one student, as PostgREST compiles it. */
+const setMark = (userId, enrollment, status, extra = '') =>
+  tried(
+    userId,
+    `update attendance_records set status = $3::attendance_status${extra}
+      where session_id = $1 and enrollment_id = $2`,
+    [sToday, enrollment, status],
+  )
+
+// A hand-made call claiming all three of the columns the trigger owns. The
+// register sends `marked_by` and nothing else, and sends the right one, so nothing
+// in the product produces this — which is the point: the only thing standing
+// between a forged call and a colleague's name on somebody else's decision is the
+// trigger.
+check(
+  'a mark goes in for the class that happened',
+  (await tried(
+    ids.karim,
+    `insert into attendance_records
+       (coaching_center_id, session_id, enrollment_id, status,
+        revision, marked_at, marked_by)
+     values ($1, $2, $3, 'present', 1, now() - interval '2 hours', $4)`,
+    [centerA, sToday, steady.enrollment, ids.nasrin],
+  )) === '',
+)
+
+const takenFresh = await markOf(steady.enrollment)
+check(
+  'at revision 0, however the client numbered it',
+  takenFresh?.revision === 0,
+  String(takenFresh?.revision),
+)
+check(
+  'signed by whoever called it, not by the colleague the call named',
+  takenFresh?.marked_by === ids.karim,
+  String(takenFresh?.marked_by),
+)
+check(
+  'and dated by the server clock, not backdated to before the class',
+  takenFresh?.backdated === false,
+  String(takenFresh?.marked_at),
+)
+
+// The offline replay, which re-sends every student in the batch. Nothing changed,
+// so nothing was re-made: not the count, not the clock, not the signature.
+check(
+  're-saving the same mark is free, which is what makes the offline replay safe',
+  (await setMark(ids.karim, steady.enrollment, 'present')) === '',
+)
+check(
+  'and moved nothing at all',
+  await (async () => {
+    const again = await markOf(steady.enrollment)
+    return (
+      again.revision === 0 &&
+      again.marked_at === takenFresh.marked_at &&
+      again.marked_by === takenFresh.marked_by
+    )
+  })(),
+)
+
+await backdated(tardy.enrollment, 'present')
+
+const asImported = await markOf(tardy.enrollment)
+check(
+  'the server role keeps the hour and the hand it was given',
+  asImported.revision === 0 &&
+    asImported.backdated === true &&
+    asImported.marked_by === ids.nasrin,
+  JSON.stringify(asImported),
+)
+
+// The case the budget exists for at all: the register goes in at 4:05 and a boy
+// walks in at 4:10.
+check(
+  'a mark may be corrected once, which is the late arrival this was asked for',
+  (await setMark(ids.karim, tardy.enrollment, 'late')) === '',
+)
+
+const corrected = await markOf(tardy.enrollment)
+check(
+  'the correction spends the one revision it has',
+  corrected.revision === 1,
+  String(corrected.revision),
+)
+check(
+  'and is signed and dated by the correction rather than by the original',
+  corrected.marked_by === ids.karim && corrected.backdated === false,
+  JSON.stringify(corrected),
+)
+
+// Twice is where it stops. Nothing in the product reaches this — the register draws
+// a settled row as a settled row, and the action drops it before sending — but all
+// of that is code somebody can edit, and this is not.
+const twice = await setMark(ids.karim, tardy.enrollment, 'absent')
+check(
+  'a second correction is refused: the mark is now the record',
+  /already been corrected once/.test(twice),
+  twice.split('\n')[0] || 'accepted',
+)
+check(
+  'and the first correction still stands',
+  (await markOf(tardy.enrollment)).status === 'late',
+)
+
+// The case that would have broken the replay if the budget had been spent by an
+// UPDATE rather than by a changed value: `useOffline` re-sends the whole register,
+// settled rows included, and it must go on being free forever.
+check(
+  'while re-sending the settled mark unchanged is still free',
+  (await setMark(ids.karim, tardy.enrollment, 'late')) === '',
+)
+check(
+  'and still moves nothing',
+  await (async () => {
+    const still = await markOf(tardy.enrollment)
+    return still.revision === 1 && still.marked_at === corrected.marked_at
+  })(),
+)
+
+// Per mark and not per register, which is the whole of the difference. A budget
+// spent on the first boy who came in late would leave the second one knowably wrong
+// and unfixable.
+check(
+  'the boy beside him has his own correction, unspent',
+  (await setMark(ids.karim, steady.enrollment, 'absent')) === '',
+)
+check(
+  'and spending it does not touch the settled mark next to it',
+  (await markOf(steady.enrollment)).revision === 1 &&
+    (await markOf(tardy.enrollment)).revision === 1,
+)
+
+// Ali's enrollment, in a batch this register is not for. A mark that could be
+// re-pointed at another child is a mark that arrives on a row with no corrections
+// spent — the budget by the back door, and a child's attendance filed against
+// somebody else on the way through.
+const repointed = await tried(
+  ids.karim,
+  `update attendance_records set enrollment_id = $3
+    where session_id = $1 and enrollment_id = $2`,
+  [sToday, tardy.enrollment, eAli],
+)
+check(
+  'a mark cannot be moved to another student',
+  /cannot be moved by/.test(repointed),
+  repointed.split('\n')[0] || 'accepted',
+)
+
+// The other way round the budget, and the reason DELETE is revoked on a table
+// nothing in the product ever deletes from: a settled mark that could be deleted
+// would come back at revision 0 with its correction spent on nobody.
+const deletedMark = await tried(
+  ids.karim,
+  'delete from attendance_records where session_id = $1 and enrollment_id = $2',
+  [sToday, tardy.enrollment],
+)
+check(
+  'and cannot be deleted and taken again fresh',
+  /permission denied/.test(deletedMark),
+  deletedMark.split('\n')[0] || 'accepted',
+)
+
+// The one caller that goes past all of it. A support session repairing a register
+// somebody typed wrong is not a screen, and it is not charged for a correction that
+// was already spent — `excused` is only reachable this way, which is why the
+// register never offers the button.
+await db.query(
+  `update attendance_records set status = 'excused'
+    where session_id = $1 and enrollment_id = $2`,
+  [sToday, tardy.enrollment],
+)
+const repaired = await markOf(tardy.enrollment)
+check(
+  'while the server role may still correct a settled mark',
+  repaired.status === 'excused',
+  repaired.status,
+)
+check(
+  'and is not charged a revision for it',
+  repaired.revision === 1,
+  String(repaired.revision),
+)
+
+// The one thing `revoke delete` must not break, asserted because nothing else in
+// this file would notice if it did — and what it would look like from a phone is a
+// centre that cannot close a batch it stopped running.
+//
+// Postgres runs a referential action as the owner of the *referencing* table rather
+// than as the caller, so a cascade reaches the guard as a server role and passes,
+// and reaches the revoked grant with privileges it never needed. There are two
+// paths down to the marks here, through the register and through the enrolment, and
+// both of them are cascades.
+check(
+  'an owner can still close a batch with a register and settled marks inside it',
+  (await tried(ids.ownerA, 'delete from batches where id = $1', [bWindow])) === '',
+)
+check(
+  'and the register went with it, marks and all',
+  (await n(db, 'select count(*)::int as n from attendance_sessions where id = $1', [
+    sToday,
+  ])) === 0 &&
+    (await n(
+      db,
+      'select count(*)::int as n from attendance_records where session_id = $1',
+      [sToday],
+    )) === 0,
+)
+
+// The two fixtures leave, so the roster counts and the worklists below stay about
+// the students those sections wrote.
+await db.query('delete from students where id = any($1::uuid[])', [
+  [tardy.id, steady.id],
+])
+
+// ---------------------------------------------------------------------------
 // The teacher fee permission.
 //
 // teacher_permissions.can_view_fees shipped in the init migration and was read by
