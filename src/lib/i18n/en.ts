@@ -345,6 +345,7 @@ export const en: Dictionary = {
     colStudentPhone: 'Student mobile',
     colGuardianName: 'Guardian name',
     colSmsOff: 'SMS off',
+    colChannel: 'How to reach',
     colAdmitted: 'Admitted on',
     colDate: 'Date',
     colReceipt: 'Receipt no.',
@@ -827,7 +828,11 @@ export const en: Dictionary = {
   },
 
   optOutList: {
-    title: 'Who does not get SMS',
+    title: 'How each family is reached',
+    channelHint:
+      'Mark the way a family actually answers and that button comes first on the fee and weekly-news rows. No button ever disappears.',
+    channelAny: 'Not known',
+    channelFor: 'How to reach {name}',
     noNumber: 'No number',
     on: 'On',
     off: 'Off',
@@ -1235,6 +1240,8 @@ export const en: Dictionary = {
     sms: {
       optedOut: 'SMS turned off',
       optedIn: 'SMS turned on',
+      channelSaved: 'Saved how to reach this family',
+      channelCleared: 'No channel marked for this family',
 
       title: 'SMS',
       balance: 'You have',

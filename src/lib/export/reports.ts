@@ -43,6 +43,7 @@ import { formatBdMobile } from '../bd/phone.ts'
 import type { createClient } from '../supabase/server.ts'
 import type {
   AttendanceStatus,
+  OutreachChannel,
   PaymentMethod,
   StudentStatus,
 } from '../supabase/types.ts'
@@ -167,7 +168,7 @@ async function pageAll<T>(
  * lines with a `+` and every column comes back as an error type.
  */
 
-const STUDENT_COLUMNS = 'name, student_code, class_level, institution, phone, guardian_name, guardian_phone, status, sms_opt_out, admitted_on, enrollments (status, batches (name))'
+const STUDENT_COLUMNS = 'name, student_code, class_level, institution, phone, guardian_name, guardian_phone, status, sms_opt_out, preferred_channel, admitted_on, enrollments (status, batches (name))'
 
 const PAYMENT_COLUMNS = 'receipt_no, amount_bdt, method, reference, paid_at, students (name, student_code)'
 
@@ -211,6 +212,7 @@ type StudentRow = {
   guardian_phone: string | null
   status: StudentStatus
   sms_opt_out: boolean
+  preferred_channel: OutreachChannel | null
   admitted_on: string | null
   enrollments: { status: string; batches: Embed<{ name: string }> }[] | null
 }
@@ -362,6 +364,22 @@ async function buildStudents(ctx: ReportContext): Promise<BuildResult> {
     activeBatchNames(s).join(' · '),
     d.studentForm.status[s.status] ?? s.status,
     s.sms_opt_out ? t.yes : t.no,
+    /*
+     * Next to the opt-out because they are the two contact columns and an owner
+     * reading the file wants them together — one says whether this family may be
+     * messaged, the other which button gets tapped first.
+     *
+     * It is here at all because this is the column the centre *typed*. Everything
+     * else on the row came off an admission form and could be retyped from one;
+     * which of three channels a particular father actually answers is a thing the
+     * owner learned over a term, 150 times, and it exists nowhere but this
+     * database. A file an owner keeps before switching phones has to contain it.
+     *
+     * The same word the dropdown that set it uses, including for null — "not
+     * known" is the honest reading, and an empty cell would be indistinguishable
+     * from a column the export forgot.
+     */
+    s.preferred_channel ? d.channels[s.preferred_channel] : d.optOutList.channelAny,
     s.admitted_on,
   ])
 
@@ -379,6 +397,7 @@ async function buildStudents(ctx: ReportContext): Promise<BuildResult> {
         t.colBatch,
         t.colStatus,
         t.colSmsOff,
+        t.colChannel,
         t.colAdmitted,
       ],
       rows,

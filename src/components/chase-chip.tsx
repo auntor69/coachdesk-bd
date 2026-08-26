@@ -23,23 +23,52 @@ import { useState } from 'react'
 import { copyText } from '@/lib/clipboard'
 
 /**
- * One tap target. Deliberately identical for all of them — which channel a family
- * actually reads is the centre's knowledge, not something to rank for them.
- *
- * `min-h-tap` and not a fixed height: these are pressed with a thumb in a corridor
- * between classes, and the row they sit in already knows how much space it has.
+ * Everything every chip shares. `min-h-tap` and not a fixed height: these are
+ * pressed with a thumb in a corridor between classes, and the row they sit in
+ * already knows how much space it has.
  */
-export const CHIP =
-  'inline-flex min-h-tap items-center rounded-xl border-2 border-line px-4' +
-  ' font-medium text-ink-soft transition-colors active:bg-brand-50'
+const BASE =
+  'inline-flex min-h-tap items-center rounded-xl border-2 px-4 font-medium' +
+  ' transition-colors'
+
+/** The default. Three of these, or two of these beside one of the below. */
+const CHIP = `${BASE} border-line text-ink-soft active:bg-brand-50`
 
 /**
- * `hover:` and a hand cursor, added only here. This chip renders on exactly the
- * devices where both mean something — Tailwind v4's preflight gives a `<button>`
+ * The one the owner marked as how this family is actually reachable.
+ *
+ * These used to be deliberately identical, on the grounds that which channel a
+ * family reads is the centre's knowledge and not something for us to rank. That
+ * still holds — and is exactly why one of them is now coloured, because the centre
+ * has somewhere to write that knowledge down (students.preferred_channel) and this
+ * is it being read back. Nothing here infers anything.
+ *
+ * It carries its weight twice. It says "this is the one that works for this family",
+ * and it is the chip ../lib/students/channel.ts has moved to the front — so the
+ * button in an unfamiliar position is also the button that looks different, which
+ * is what keeps a thumb working down a long list from tapping the wrong one.
+ */
+const LEAD_CHIP =
+  `${BASE} border-brand-500 bg-brand-50 text-brand-800 active:bg-brand-100`
+
+/**
+ * Which of the two. `chipClass` is exported and the two constants are not, so that
+ * a screen rendering a chase chip has to answer "is this the marked one?" — passing
+ * `false` is a decision, where reaching for a bare class name would have been a
+ * chip that silently ignores the family's preference.
+ */
+export function chipClass(lead: boolean): string {
+  return lead ? LEAD_CHIP : CHIP
+}
+
+/**
+ * `hover:` and a hand cursor, added only for the copy chips. They render on exactly
+ * the devices where both mean something — Tailwind v4's preflight gives a `<button>`
  * `cursor: default`, which on the one control a desktop owner has would read as
  * decoration.
  */
 const COPY_CHIP = `${CHIP} cursor-pointer hover:bg-brand-50`
+const LEAD_COPY_CHIP = `${LEAD_CHIP} cursor-pointer hover:bg-brand-100`
 
 /** How long the chip says it copied before going back to offering to. */
 const CONFIRM_MS = 2500
@@ -63,6 +92,7 @@ export function CopyChip({
   hint,
   copied,
   failed,
+  lead = false,
   onCopied,
 }: {
   text: string
@@ -70,6 +100,8 @@ export function CopyChip({
   hint: string
   copied: string
   failed: string
+  /** True on the channel the owner marked — see LEAD_CHIP. */
+  lead?: boolean
   onCopied: () => void
 }) {
   const [state, setState] = useState<'idle' | 'copied' | 'failed'>('idle')
@@ -92,7 +124,7 @@ export function CopyChip({
         void run()
       }}
       title={hint}
-      className={COPY_CHIP}
+      className={lead ? LEAD_COPY_CHIP : COPY_CHIP}
     >
       {state === 'copied' ? copied : state === 'failed' ? failed : label}
     </button>

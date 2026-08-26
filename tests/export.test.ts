@@ -168,6 +168,9 @@ const STUDENT = {
   guardian_phone: '+8801812345678',
   status: 'active',
   sms_opt_out: false,
+  // Nobody has said, which is where every student starts and what most rows in a
+  // real download will hold.
+  preferred_channel: null,
   admitted_on: '2026-01-15',
   enrollments: [
     { status: 'active', batches: { name: 'Class 9, Morning' } },
@@ -193,7 +196,10 @@ test('a roster row carries the numbers as a person reads them', async () => {
   assert.equal(row[6], '01812345678')
   assert.equal(row[8], d.studentForm.status.active)
   assert.equal(row[9], d.exportSheet.no)
-  assert.equal(row[10], '2026-01-15')
+  // Nobody marked, and the cell says so in words. An empty cell here would be
+  // indistinguishable from an export that dropped the column.
+  assert.equal(row[10], d.optOutList.channelAny)
+  assert.equal(row[11], '2026-01-15')
   // A snapshot is dated by the day it was taken, not by ctx.month.
   assert.equal(sheet.period, todayInDhaka())
 })
@@ -230,6 +236,29 @@ test('an unknown status falls back to the code rather than a blank cell', async 
   const f = fake({ students: { rows: [odd] } })
   const sheet = sheetOf(await buildReport('students', context(f.supabase)))
   assert.equal(sheet.rows[0][8], 'transferred')
+})
+
+test('how a family is reached comes out in words, in the reader’s language', async () => {
+  /*
+   * The column the centre typed rather than copied off an admission form, so it is
+   * the one worth having in a file. Asserted against the dictionary the settings
+   * dropdown reads from, not against a literal: if the two ever disagreed, an owner
+   * would set "WhatsApp" on the screen and read something else back out of their
+   * own backup.
+   */
+  const marked = { ...STUDENT, preferred_channel: 'whatsapp' }
+  const f = fake({ students: { rows: [marked] } })
+
+  for (const locale of ['bn', 'en'] as const) {
+    const sheet = sheetOf(
+      await buildReport('students', context(f.supabase, { locale })),
+    )
+    assert.equal(sheet.rows[0][10], dict(locale).channels.whatsapp)
+    // Beside the opt-out, because they are the two contact columns and the pair is
+    // read together. This also pins the position the previous test's index depends on.
+    assert.equal(sheet.header[9], dict(locale).exportSheet.colSmsOff)
+    assert.equal(sheet.header[10], dict(locale).exportSheet.colChannel)
+  }
 })
 
 /* -------------------------------------------------------------------------- */

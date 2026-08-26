@@ -18,6 +18,7 @@
  * these tests run under `node --test`, which resolves neither tsconfig paths nor
  * extensionless specifiers.
  */
+import type { OutreachChannel } from '../supabase/types.ts'
 
 /**
  * One row of student_progress_week as PostgREST hands it back.
@@ -54,6 +55,12 @@ export type ProgressRow = {
   last_exam_total: string | number | null
   last_exam_date: string | null
   last_sent_at: string | null
+  /**
+   * Last, because that is where `create or replace view` would let it go — see
+   * 20260811000026. It rides along for the chase chips and nothing in this file
+   * reads it beyond copying it across.
+   */
+  preferred_channel: OutreachChannel | null
 }
 
 /**
@@ -67,7 +74,7 @@ export type ProgressRow = {
  * reaches PostgREST as part of a column name.
  */
 export const PROGRESS_COLUMNS =
-  'student_id, student_name, student_code, guardian_phone, sms_opt_out, week_from, week_to, sessions_counted, sessions_present, sessions_absent, sessions_late, sessions_excused, exams_taken, exams_missed, marks_pct, last_exam_title, last_exam_obtained, last_exam_total, last_exam_date, last_sent_at'
+  'student_id, student_name, student_code, guardian_phone, sms_opt_out, preferred_channel, week_from, week_to, sessions_counted, sessions_present, sessions_absent, sessions_late, sessions_excused, exams_taken, exams_missed, marks_pct, last_exam_title, last_exam_obtained, last_exam_total, last_exam_date, last_sent_at'
 
 /**
  * The five columns the dashboard's count needs, and nothing else.
@@ -143,6 +150,12 @@ export type ProgressStudent = {
   guardianPhone: string | null
   /** Silences the two message chips, never the call. Same rule as fee reminders. */
   smsOptOut: boolean
+  /**
+   * Which chip goes first for this family, or null when nobody has said. Carried
+   * rather than decided here: this file judges the *week*, and how a family likes
+   * to be reached is not a fact about the week. See ./channel.ts.
+   */
+  preferredChannel: OutreachChannel | null
   /** Carried from the view so the message, the screen and the log agree. */
   weekFrom: string
   weekTo: string
@@ -306,6 +319,7 @@ export function weeklyProgress(
       code: row.student_code ?? null,
       guardianPhone: row.guardian_phone ?? null,
       smsOptOut: row.sms_opt_out ?? false,
+      preferredChannel: row.preferred_channel ?? null,
       // The view always returns both; falling back to the empty string keeps a
       // malformed row off the screen's date formatter rather than crashing it.
       weekFrom: row.week_from ?? '',

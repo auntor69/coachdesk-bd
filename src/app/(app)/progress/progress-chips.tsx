@@ -18,16 +18,22 @@
  * The desktop shape is shared, though, because it is about the device and not about
  * the message: on a laptop the two dead links become the message and the number to
  * copy. See ../../../components/chase-chip.tsx and ../../../lib/pointer.ts.
+ *
+ * So is the order they come in, which is per family and the owner's to set — the
+ * father who answers WhatsApp and never opens a text answers it about marks as well
+ * as about money. See ../../../lib/students/channel.ts.
  */
+import { Fragment, type ReactNode } from 'react'
 import Link from 'next/link'
 
-import { CHIP, CopyChip } from '@/components/chase-chip'
+import { chipClass, CopyChip } from '@/components/chase-chip'
 import type { T } from '@/lib/i18n'
 import { useFinePointer } from '@/lib/pointer'
 import {
   buildProgressSummarySms,
   buildProgressSummaryText,
 } from '@/lib/sms/templates'
+import { chaseOrder, CHASE_CHANNELS } from '@/lib/students/channel'
 import type { OutreachChannel } from '@/lib/supabase/types'
 import { logProgressUpdate } from './actions'
 
@@ -48,6 +54,12 @@ export type ProgressTarget = {
   /** E.164, or null when the centre has not recorded one. */
   guardianPhone: string | null
   smsOptOut: boolean
+  /**
+   * How this family is actually reachable, as the owner marked it on
+   * /settings/sms. One column, read by both chase screens: a father who answers
+   * WhatsApp and never opens a text does that about marks as well as about money.
+   */
+  preferredChannel: OutreachChannel | null
 }
 
 export function ProgressChips({
@@ -118,67 +130,95 @@ export function ProgressChips({
     )
   }
 
-  return (
-    <>
-      <div className="flex flex-wrap gap-2">
-        {/* An opt-out is a preference about messages, so it silences both message
-            channels — and neither of them silences the call. A phone call is a
-            person, not a broadcast, and a family that asked not to be texted has
-            not asked never to be spoken to. */}
-        {!target.smsOptOut && sayable && (
-          <>
-            {/* The week's note, either handed to the phone's messaging app or put
-                on the clipboard for the phone the owner is not holding. Same
-                words, same position, same row in progress_updates — and on the
-                desktop side the row is written only once the copy succeeded. */}
-            {finePointer ? (
-              <CopyChip
-                text={smsBody}
-                label={t.copySms}
-                hint={t.copySmsHint}
-                copied={t.copied}
-                failed={t.copyFailed}
-                onCopied={() => log('sms', smsBody)}
-              />
-            ) : (
-              <a
-                // "?&body=" rather than "?body=": iOS historically wanted the
-                // separator to be "&" and Android wants "?", and this form is the
-                // one both parse. The empty first parameter is ignored.
-                href={`sms:${phone}?&body=${encodeURIComponent(smsBody)}`}
-                onClick={() => log('sms', smsBody)}
-                className={CHIP}
-              >
-                {channels.sms}
-              </a>
-            )}
-            <a
-              // wa.me wants the number without the +. Unbranched on purpose: this
-              // one already works on a laptop, because WhatsApp Web exists.
-              href={`https://wa.me/${phone.slice(1)}?text=${encodeURIComponent(chatBody)}`}
-              target="_blank"
-              rel="noopener noreferrer"
-              onClick={() => log('whatsapp', chatBody)}
-              className={CHIP}
-            >
-              {channels.whatsapp}
-            </a>
-          </>
-        )}
-        {finePointer ? (
+  // An opt-out is a preference about messages, so it silences both message
+  // channels — and neither of them silences the call. A phone call is a person, not
+  // a broadcast, and a family that asked not to be texted has not asked never to be
+  // spoken to. An empty week silences the same two for a different reason: there is
+  // nothing to write down, and a call is how you say "nothing happened this week".
+  //
+  // This list is the only thing that removes a chip. `preferredChannel` reorders
+  // what survives it and colours one of them, so a preference naming a channel this
+  // family is opted out of comes to nothing rather than overriding the opt-out.
+  const { order, marked } = chaseOrder(
+    target.preferredChannel,
+    target.smsOptOut || !sayable ? ['call'] : CHASE_CHANNELS,
+  )
+
+  // An arrow bound to a const, not a `function` declaration: `phone` is a const
+  // that the guard above narrowed to a string, and TypeScript keeps that narrowing
+  // inside a closure created after it while widening it straight back to
+  // `string | null` inside a hoisted declaration.
+  const chip = (channel: OutreachChannel): ReactNode => {
+    const className = chipClass(channel === marked)
+    switch (channel) {
+      case 'sms':
+        // The week's note, either handed to the phone's messaging app or put on the
+        // clipboard for the phone the owner is not holding. Same words, same
+        // position, same row in progress_updates — and on the desktop side the row
+        // is written only once the copy succeeded.
+        return finePointer ? (
+          <CopyChip
+            text={smsBody}
+            label={t.copySms}
+            hint={t.copySmsHint}
+            copied={t.copied}
+            failed={t.copyFailed}
+            lead={marked === 'sms'}
+            onCopied={() => log('sms', smsBody)}
+          />
+        ) : (
+          <a
+            // "?&body=" rather than "?body=": iOS historically wanted the
+            // separator to be "&" and Android wants "?", and this form is the
+            // one both parse. The empty first parameter is ignored.
+            href={`sms:${phone}?&body=${encodeURIComponent(smsBody)}`}
+            onClick={() => log('sms', smsBody)}
+            className={className}
+          >
+            {channels.sms}
+          </a>
+        )
+      case 'whatsapp':
+        return (
+          <a
+            // wa.me wants the number without the +. Unbranched on purpose: this
+            // one already works on a laptop, because WhatsApp Web exists.
+            href={`https://wa.me/${phone.slice(1)}?text=${encodeURIComponent(chatBody)}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            onClick={() => log('whatsapp', chatBody)}
+            className={className}
+          >
+            {channels.whatsapp}
+          </a>
+        )
+      case 'call':
+        return finePointer ? (
           <CopyChip
             text={phone}
             label={t.copyNumber}
             hint={t.copyNumberHint}
             copied={t.copied}
             failed={t.copyFailed}
+            lead={marked === 'call'}
             onCopied={() => log('call', null)}
           />
         ) : (
-          <a href={`tel:${phone}`} onClick={() => log('call', null)} className={CHIP}>
+          <a href={`tel:${phone}`} onClick={() => log('call', null)} className={className}>
             {channels.call}
           </a>
-        )}
+        )
+    }
+  }
+
+  return (
+    <>
+      <div className="flex flex-wrap gap-2">
+        {/* The key lives on a Fragment rather than on each element inside `chip`,
+            so that there is one place to get it right instead of five. */}
+        {order.map((channel) => (
+          <Fragment key={channel}>{chip(channel)}</Fragment>
+        ))}
       </div>
 
       {target.smsOptOut && <p className="mt-2 text-sm text-ink-faint">{t.optedOut}</p>}

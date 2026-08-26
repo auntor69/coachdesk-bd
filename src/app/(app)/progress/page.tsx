@@ -171,6 +171,7 @@ export default async function ProgressPage() {
       // E.164, and a number entered before the validator existed may not be in it.
       guardianPhone: normalizeBdMobile(s.guardianPhone),
       smsOptOut: s.smsOptOut,
+      preferredChannel: s.preferredChannel,
       facts,
       // Converted to a Dhaka calendar day, not sliced off the ISO string:
       // created_at comes back in UTC, so a note sent at 1am Dhaka would read as

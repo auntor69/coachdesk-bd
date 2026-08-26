@@ -36,6 +36,7 @@ import { PERMISSION_KEYS, type PermissionKey } from '@/lib/permissions'
 import { dict, DEFAULT_LOCALE } from '@/lib/i18n'
 import { nameTooLong, passwordTooShort } from '@/lib/i18n/messages'
 import { roomFor, wouldExceed, hasStaff, type LimitKey } from '@/lib/plans'
+import { asPreferredChannel } from '@/lib/students/channel'
 import { STUDENT_STATUSES } from '@/lib/students/status'
 import type {
   BatchSlot,
@@ -1178,6 +1179,63 @@ export async function toggleSmsOptOut(
   revalidatePath('/settings/sms')
   revalidatePath('/settings/students')
   return { ok: optOut ? t.sms.optedOut : t.sms.optedIn }
+}
+
+/**
+ * Which of the three chase buttons goes first for one family.
+ *
+ * The owner learns in week one that this father never opens a text and answers
+ * WhatsApp inside a minute, and until now there was nowhere to write that down —
+ * so they re-remembered it thirty times a month. This is the whole of the write
+ * path for it. See src/lib/students/channel.ts for what it changes on the screen,
+ * and 20260811000026 for why the product asks rather than guesses.
+ *
+ * A PREFERENCE IS NOT A PERMISSION. This cannot silence a channel and cannot
+ * un-silence one: sms_opt_out is the only column that decides who may be messaged,
+ * and it is set by the switch beside this on the same row. Marking a family as
+ * WhatsApp-preferred while they are opted out of messages leaves them opted out,
+ * and the mark quietly does nothing until that switch changes.
+ *
+ * Anything unrecognised becomes null rather than an error. This is a public HTTP
+ * endpoint like every Server Action, so the value in the FormData is whatever the
+ * caller put there; `asPreferredChannel` is what stands between that and an enum
+ * column. There is nothing to tell a user about a value no dropdown can produce,
+ * and "nobody has said" is the honest reading of a channel we do not recognise.
+ */
+export async function setPreferredChannel(
+  _prev: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
+  const session = await staffAdmin()
+  if (!isSession(session)) return session
+
+  const t = dict(session.locale).settings
+
+  const studentId = String(formData.get('studentId') ?? '')
+  const channel = asPreferredChannel(formData.get('channel'))
+  if (!studentId) return { error: t.students.errors.notFound }
+
+  const supabase = await createClient()
+  // Scoped to the active centre as well as the id, for the reason toggleSmsOptOut
+  // gives: an owner of two centres passes RLS for both, and studentId arrives in a
+  // FormData that anyone signed in can post.
+  const { error } = await supabase
+    .from('students')
+    .update({ preferred_channel: channel })
+    .eq('coaching_center_id', session.active.centerId)
+    .eq('id', studentId)
+
+  if (error) return { error: t.errors.changeFailed }
+
+  revalidatePath('/settings/sms')
+  // The three screens that draw chase chips. Without these the owner marks a
+  // channel, goes to the fee board, and finds the chips in the old order — which
+  // reads as the setting not having saved, and the next thing they do is set it
+  // again.
+  revalidatePath('/fees')
+  revalidatePath('/fees/reminders')
+  revalidatePath('/progress')
+  return { ok: channel ? t.sms.channelSaved : t.sms.channelCleared }
 }
 
 // ---------------------------------------------------------------------------

@@ -698,6 +698,42 @@ await asUser(db, ids.ownerA, async (tx) => {
   )
 })
 
+/*
+ * The chase chips' passenger column, on the view that feeds two of the three
+ * screens drawing them. 20260811000026 restated 185 lines of view body to add it,
+ * which is exactly the kind of change that survives review and loses a column, so
+ * both reads below insist on `null` rather than on anything falsy: a column the
+ * view stopped selecting arrives as undefined and fails these.
+ */
+await db.query(`update students set preferred_channel = 'whatsapp' where id = $1`, [
+  stAli,
+])
+await asUser(db, ids.ownerA, async (tx) => {
+  const row = (
+    await tx.query('select preferred_channel from fee_invoice_balances where id = $1', [
+      invoiceAli,
+    ])
+  ).rows[0]
+  check(
+    'how the family likes to be reached rides down with the invoice',
+    row?.preferred_channel === 'whatsapp',
+    `got ${JSON.stringify(row)}`,
+  )
+})
+// Back to nobody having said, which is the state every assertion after this one
+// was written against.
+await db.query('update students set preferred_channel = null where id = $1', [stAli])
+await asUser(db, ids.ownerA, async (tx) => {
+  check(
+    'and clearing the mark comes through as null, not as a missing column',
+    (
+      await tx.query('select preferred_channel from fee_invoice_balances where id = $1', [
+        invoiceAli,
+      ])
+    ).rows[0]?.preferred_channel === null,
+  )
+})
+
 // The one that matters. Centre B has no invoices at all, so a leak shows up as
 // any number other than zero.
 await asUser(db, ids.ownerB, async (tx) => {
@@ -2900,6 +2936,16 @@ check(
   (await nameOf(stMim)) === 'Mim Akter',
 )
 await asUser(db, ids.karim, (tx) =>
+  tx.query(`update students set preferred_channel = 'call' where id = $1`, [stMim]),
+)
+check(
+  'nor mark how a family is reached, which is the owner’s relationship',
+  (
+    await db.query('select preferred_channel from students where id = $1', [stMim])
+  ).rows[0].preferred_channel === null,
+  'a teacher runs a batch; who a centre talks to and how is not a batch fact',
+)
+await asUser(db, ids.karim, (tx) =>
   tx.query('delete from students where id = $1', [stMim]),
 )
 check('a permitted teacher cannot delete a student', (await nameOf(stMim)) === 'Mim Akter')
@@ -3704,7 +3750,7 @@ await attendWeek(bristi.enrollment, ['present', 'present', 'present'])
 const weekRow = async (tx, student) =>
   (
     await tx.query(
-      `select student_name, guardian_phone, sms_opt_out,
+      `select student_name, guardian_phone, sms_opt_out, preferred_channel,
               (week_to - week_from)::int as window_days,
               (week_to - current_date)::int as ends_in,
               sessions_counted, sessions_present, sessions_absent,
@@ -3746,6 +3792,14 @@ await asUser(db, ids.ownerA, async (tx) => {
   check(
     'the number the message goes to comes down with the row',
     r?.guardian_phone === '01788000000' && r?.sms_opt_out === false,
+  )
+  check(
+    'and so does how the family likes to be reached, which orders the chips',
+    // `=== null` and not a falsy test on purpose: a column the view forgot to
+    // select reads as undefined, so this fails loudly if 20260811000026's
+    // create-or-replace ever gets replaced by one that drops the passenger.
+    r?.preferred_channel === null,
+    `nobody has said for Nadia, so this must arrive as null: ${r?.preferred_channel}`,
   )
 
   const e = await weekRow(tx, emon.id)
@@ -4054,6 +4108,33 @@ await asManager('update students set name = $1 where id = $2', ['Sumaiya Islam K
 check(
   'a manager can fix a name somebody typed wrong',
   (await nameOf(stEdit)) === 'Sumaiya Islam Khan',
+)
+
+/*
+ * How this family is reached, which is the owner's to say and nobody else's — the
+ * teacher check further down is the other half of this one, and neither is worth
+ * much alone. Read on its own rather than added to editRow(): every assertion in
+ * this block was written against those three columns, and widening a shared helper
+ * to prove one new thing is how a passing suite starts hiding a regression.
+ */
+const channelOf = async () =>
+  (await rowOf('select preferred_channel from students where id = $1', [stEdit]))
+    ?.preferred_channel
+await asManager(`update students set preferred_channel = 'whatsapp' where id = $1`, [stEdit])
+check(
+  'a manager can mark that this family answers WhatsApp',
+  (await channelOf()) === 'whatsapp',
+  String(await channelOf()),
+)
+
+// Clearing has to work too, and not only to leave the table as the next assertion
+// expects: an owner who guessed wrong in week one needs a way to say "I don't know"
+// again, and a column that can be set but never unset makes a guess permanent.
+await asManager('update students set preferred_channel = null where id = $1', [stEdit])
+check(
+  'and can go back to not knowing, which is where every student starts',
+  (await channelOf()) === null,
+  String(await channelOf()),
 )
 
 // The whole reason this screen exists. Two columns because two features read two

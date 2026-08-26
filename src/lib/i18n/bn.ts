@@ -666,6 +666,9 @@ export const bn = {
     colStudentPhone: 'শিক্ষার্থীর মোবাইল',
     colGuardianName: 'অভিভাবকের নাম',
     colSmsOff: 'SMS বন্ধ',
+    /* Short, because it is a column heading in a spreadsheet and not a sentence.
+       The cell under it holds the same three words the settings dropdown offers. */
+    colChannel: 'যোগাযোগের মাধ্যম',
     colAdmitted: 'ভর্তির তারিখ',
 
     /* The month's takings. Same words as the printed register's columns, because
@@ -1457,7 +1460,19 @@ export const bn = {
    * is the whole interaction — there is no save step to explain.
    */
   optOutList: {
-    title: 'কে SMS পাবে না',
+    title: 'পরিবারকে কীভাবে জানানো হবে',
+    /**
+     * Why the dropdown is here and what it does *not* do. The second sentence is
+     * the load-bearing one: an owner who thinks marking WhatsApp turns SMS off
+     * would use this instead of the switch beside it, and then wonder why the
+     * family still got a text.
+     */
+    channelHint:
+      'যে মাধ্যমে পরিবার সত্যিই সাড়া দেয় সেটি বেছে দিন — ফি ও সাপ্তাহিক খবরের সারিতে সেই বোতামটি আগে থাকবে। কোনো বোতাম হারিয়ে যাবে না।',
+    /** The blank option. Not a fourth channel: nobody has said, and that is fine. */
+    channelAny: 'জানা নেই',
+    /** Screen-reader label for the dropdown; filled per row in the browser. */
+    channelFor: 'কীভাবে জানানো হবে — {name}',
     /** A guardian number the centre never got. Not an error: plenty are missing. */
     noNumber: 'নম্বর নেই',
     /** On the switch itself: what is true now, not what tapping it does. */
@@ -2197,6 +2212,13 @@ export const bn = {
     sms: {
       optedOut: 'SMS বন্ধ করা হয়েছে',
       optedIn: 'SMS চালু করা হয়েছে',
+      /**
+       * Deliberately does not name the channel. The row's dropdown already shows
+       * which one was picked, and a sentence repeating it is one more place for
+       * the two to disagree after a failed write.
+       */
+      channelSaved: 'কীভাবে জানানো হবে তা রাখা হয়েছে',
+      channelCleared: 'কোনো মাধ্যম বেছে নেওয়া নেই',
 
       /** Latin in a Bangla dictionary, and allowlisted as such — see the test. */
       title: 'SMS',

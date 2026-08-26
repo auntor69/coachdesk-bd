@@ -1506,6 +1506,7 @@ export type Database = {
           admitted_on: string
           created_at: string
           updated_at: string
+          preferred_channel: OutreachChannel | null
         }
         Insert: {
           id?: string
@@ -1525,6 +1526,7 @@ export type Database = {
           admitted_on?: string
           created_at?: string
           updated_at?: string
+          preferred_channel?: OutreachChannel | null
         }
         Update: {
           id?: string
@@ -1544,6 +1546,7 @@ export type Database = {
           admitted_on?: string
           created_at?: string
           updated_at?: string
+          preferred_channel?: OutreachChannel | null
         }
         Relationships: [
           {
@@ -1853,6 +1856,7 @@ export type Database = {
           student_code: string | null
           guardian_phone: string | null
           sms_opt_out: boolean | null
+          preferred_channel: OutreachChannel | null
         }
         Relationships: []
       }
@@ -1879,6 +1883,7 @@ export type Database = {
           last_exam_total: number | null
           last_exam_date: string | null
           last_sent_at: string | null
+          preferred_channel: OutreachChannel | null
         }
         Relationships: []
       }

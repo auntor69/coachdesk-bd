@@ -56,7 +56,7 @@ export default async function SmsSettingsPage() {
       .limit(1000),
     supabase
       .from('students')
-      .select('id, name, guardian_phone, sms_opt_out')
+      .select('id, name, guardian_phone, sms_opt_out, preferred_channel')
       .eq('coaching_center_id', session.active.centerId)
       .eq('status', 'active')
       .order('name', { ascending: true }),
@@ -96,6 +96,7 @@ export default async function SmsSettingsPage() {
     name: student.name,
     guardianPhone: student.guardian_phone,
     optOut: student.sms_opt_out,
+    preferredChannel: student.preferred_channel,
   }))
 
   const off = optOutStudents.filter((s) => s.optOut).length
@@ -207,6 +208,7 @@ export default async function SmsSettingsPage() {
           // and a function cannot cross into a client component.
           subtitle={off === 0 ? t.optOutNone : t.optOutSome(off)}
           t={d.optOutList}
+          channels={d.channels}
         />
       )}
     </div>

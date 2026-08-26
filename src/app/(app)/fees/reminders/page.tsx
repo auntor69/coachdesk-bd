@@ -25,7 +25,7 @@ export async function generateMetadata() {
 }
 
 /** One line — supabase-js parses this at the type level and only from a literal. */
-const COLUMNS = 'id, student_name, student_code, remaining_bdt, due_date, period_month, guardian_phone, sms_opt_out'
+const COLUMNS = 'id, student_name, student_code, remaining_bdt, due_date, period_month, guardian_phone, sms_opt_out, preferred_channel'
 
 /**
  * Today's chase list: the families to message now, and nobody else.
@@ -147,6 +147,8 @@ export default async function RemindersPage() {
       // E.164, and a number entered before the validator existed may not be in it.
       guardianPhone: normalizeBdMobile(invoice.guardian_phone),
       smsOptOut: invoice.sms_opt_out ?? false,
+      // Null means nobody has said, which is the order the chips already have.
+      preferredChannel: invoice.preferred_channel ?? null,
     }
 
     // Pulled out of the schedule entirely rather than shown with a dead chip. A

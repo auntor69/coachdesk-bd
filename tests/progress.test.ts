@@ -50,6 +50,9 @@ function row(over: Partial<ProgressRow> = {}): ProgressRow {
     last_exam_total: '50.00',
     last_exam_date: '2026-08-23',
     last_sent_at: null,
+    // Nobody has said how this family likes to be reached, which is the state
+    // every student starts in and the one the chip order falls back on.
+    preferred_channel: null,
     ...over,
   }
 }

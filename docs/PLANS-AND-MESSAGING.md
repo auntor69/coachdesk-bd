@@ -228,18 +228,41 @@ parent a message they never got.
 
 What we *can* do, and should:
 
-1. **Infer from behaviour, never claim.** We already log every reminder with its
-   channel in `fee_reminders`. If an owner sent WhatsApp to a family and later
-   sent SMS to the same family for the same invoice, that is weak evidence
-   WhatsApp did not land. After two such fallbacks, stop offering WhatsApp first
-   for that number and reorder the chips. No badge, no claim — just a quieter
-   button.
-2. **Let the owner mark it.** One field on the student: preferred channel —
-   *don't know / WhatsApp / SMS / call*. The owner learns this in week one and
-   currently has nowhere to write it down. This is cheap, honest, and better than
-   any detection we could fake.
-3. **Reorder rather than hide.** A chip that vanished would look broken. Keep all
-   three, put the likely one first.
+1. **~~Infer from behaviour, never claim.~~ Withdrawn — do not build this.** The
+   idea was: `fee_reminders` logs every reminder with its channel, so an owner who
+   sent WhatsApp and later sent SMS to the same family for the same invoice is weak
+   evidence WhatsApp did not land; after two such fallbacks, stop offering WhatsApp
+   first. It is wrong, and writing the migration is what made it obvious. **The
+   overwhelmingly commoner reason for a second channel is that the family has not
+   paid yet**, which is exactly what a diligent owner escalates through — so the
+   product would learn to demote WhatsApp for the families it works best on, and the
+   harder an owner chased, the worse the ordering would get. There is no signal in
+   the log that separates "the message did not arrive" from "the message arrived and
+   the money did not". Item 2 is not a cheaper substitute for this; it is the correct
+   answer, because the owner *can* tell those two apart and we cannot.
+2. **Let the owner mark it. — Built.** `students.preferred_channel`
+   (`outreach_channel`, nullable, no default) with NULL as a real fourth answer
+   meaning *nobody has said*. Set from Settings → SMS, one dropdown per row beside
+   the opt-out switch. `src/lib/students/channel.ts` holds the ordering; migration
+   `20260811000026` adds the column and carries it through
+   `fee_invoice_balances` and `student_progress_week` so the fee board, the chase
+   list and the weekly-news screen all read it. It is also a column on the roster
+   export, because it is the one field on a student the centre *typed* — everything
+   else could be retyped off an admission form, and which of three channels a
+   particular father answers is a term's worth of learning that exists nowhere else.
+3. **Reorder rather than hide. — Built, and bounded.** All three chips always
+   render; **exactly one** moves, to the front, and the other two keep their
+   relative order — three layouts, not six. An owner works down 150 rows with a
+   thumb, and a mis-tap both opens the wrong app and writes a row claiming that
+   channel was used. The chip that moved is also the one drawn in brand colour, so
+   the button in an unfamiliar position is the button that looks different.
+
+**A preference is not a permission.** `sms_opt_out` is the only column that decides
+who may be messaged; `preferred_channel` can only reorder what the opt-out already
+allowed. A family opted out of messages is offered the call chip and nothing else,
+whatever their mark says — enforced in `chaseOrder`, in `tests/channel.test.ts`, and
+by an RLS check that a teacher cannot write the column at all (who a centre talks to
+and how is not a batch fact).
 
 ### Money from WhatsApp: don't, yet
 
@@ -302,17 +325,23 @@ the desktop's weakness into something.
 1. **Per-tier features + the new limit keys** (`maxStudentsPerBatch`,
    `canBuyCredits`, `automatedSms`). Tiers as specified above. Enforced in
    `plans.ts`, in the RLS/billing guard, and on the screens — with the locked
-   feature *visible and explained*, never hidden.
-2. **Receipt gating**, per §1: number on free, paper on Pro.
+   feature *visible and explained*, never hidden. **— Built.**
+2. **Receipt gating**, per §1: number on free, paper on Pro. **— Built.**
 3. **Device-aware chips**, per §4. Small, self-contained, no schema change.
-4. **`preferred_channel` on students**, per §3, plus chip reordering from
-   `fee_reminders` history.
+   **— Built.**
+4. **`preferred_channel` on students**, per §3, plus chip reordering.
+   **— Built, minus the history inference.** The owner's mark and the reordering
+   shipped (migration `20260811000026`, `src/lib/students/channel.ts`, the dropdown
+   on Settings → SMS). The *"from `fee_reminders` history"* half is **withdrawn, not
+   pending** — see §3 item 1 for why inferring a dead channel from a second reminder
+   would systematically demote the channel that works best. Nothing is left to do
+   here; do not re-open it as a to-do.
 5. **Per-centre sender ID** (§2 Option B) — `sendSms()` takes a config, three
    new encrypted columns. Only when a centre asks; not before.
 6. **Centre pricing calculator**, once the band figures are real.
 
-Items 1–4 I can do without you. Item 5 needs the aggregator account. Item 6
-needs your pricing decision.
+Items 1–4 are done. Item 5 needs the aggregator account. Item 6 needs your
+pricing decision — which makes it the next thing that needs you, not me.
 
 ---
 

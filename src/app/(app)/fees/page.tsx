@@ -33,7 +33,7 @@ export async function generateMetadata() {
  * literal — split this across two lines with a `+` and TypeScript widens it to
  * `string`, the parse fails, and every column comes back as GenericStringError.
  */
-const COLUMNS = 'id, student_name, student_code, amount_bdt, discount_bdt, net_bdt, paid_bdt, remaining_bdt, due_date, period_month, guardian_phone, sms_opt_out'
+const COLUMNS = 'id, student_name, student_code, amount_bdt, discount_bdt, net_bdt, paid_bdt, remaining_bdt, due_date, period_month, guardian_phone, sms_opt_out, preferred_channel'
 
 /**
  * The fee board — who has paid, who has not, by how many days, and the button
@@ -353,6 +353,7 @@ type ViewRow = {
   period_month: string | null
   guardian_phone: string | null
   sms_opt_out: boolean | null
+  preferred_channel: OutreachChannel | null
 }
 
 /**
@@ -394,6 +395,11 @@ function toRow(
       // Null defaults to opted-in, matching the column's own default. The row
       // still cannot message a family with no number at all.
       smsOptOut: v.sms_opt_out ?? false,
+      // Null is the common case and means nobody has said, which the chips read
+      // as "keep the order you have always had". Passed through untouched: the
+      // view carries the enum, and inventing a default here would be the product
+      // guessing at exactly the thing the owner is being asked to tell it.
+      preferredChannel: v.preferred_channel ?? null,
       remindedDay: chase?.day ?? null,
       remindedVia: chase?.via ?? null,
     }
