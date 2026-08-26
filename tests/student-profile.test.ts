@@ -293,11 +293,24 @@ function invoice(
   net: string | number,
   paid: string | number,
   remaining: string | number,
+  /**
+   * The waiver, when there is one. Optional because almost no bill has one — and a
+   * bill without one has its fee and its net equal, which is exactly what the view
+   * returns for it.
+   */
+  waiver?: {
+    billed: string | number
+    discount: string | number
+    reason?: string | null
+  },
 ): ProfileInvoiceRow {
   return {
     id,
     period_month: month,
     due_date: due,
+    amount_bdt: waiver?.billed ?? net,
+    discount_bdt: waiver?.discount ?? 0,
+    discount_reason: waiver?.reason ?? null,
     net_bdt: net,
     paid_bdt: paid,
     remaining_bdt: remaining,
@@ -421,4 +434,79 @@ test('fees: nothing billed is an empty panel, not a paid-up one', () => {
   assert.equal(empty.outstanding, 0)
   assert.equal(empty.credit, 0)
   assert.equal(empty.overdueSince, null)
+})
+
+test('fees: a waiver arrives as three figures and none of them is recomputed', () => {
+  // ৳2,000 charged, ৳500 waived, ৳1,500 payable, ৳1,000 in — so ৳500 still owed.
+  // The point of the assertion is that all four come off the view: the moment this
+  // file works out net from billed minus discount there are two answers to what the
+  // family owes, and the fee board's is the other one.
+  const { lines } = feeHistory(
+    [
+      invoice('i1', '2026-08-01', '2026-08-10', 1500, 1000, 500, {
+        billed: 2000,
+        discount: 500,
+        reason: 'দুই ভাইবোন একসাথে পড়ে',
+      }),
+    ],
+    TODAY,
+  )
+
+  assert.equal(lines[0].billed, 2000)
+  assert.equal(lines[0].discount, 500)
+  assert.equal(lines[0].net, 1500)
+  assert.equal(lines[0].remaining, 500)
+  assert.equal(lines[0].discountReason, 'দুই ভাইবোন একসাথে পড়ে')
+})
+
+test('fees: a bill with no waiver reports none, and its fee is its net', () => {
+  // The condition the row is drawn on. `discount > 0` and not `discount !== null`,
+  // because the column defaults to 0 and the view hands back '0.00'.
+  const { lines } = feeHistory(
+    [invoice('i1', '2026-08-01', '2026-08-10', '2000.00', 0, '2000.00')],
+    TODAY,
+  )
+
+  assert.equal(lines[0].discount, 0)
+  assert.equal(lines[0].billed, 2000)
+  assert.equal(lines[0].discountReason, null)
+})
+
+test('fees: a waiver reason of only whitespace is no reason at all', () => {
+  // Otherwise the screen prints "ছাড়ের কারণ:" with nothing after it, which reads as
+  // a reason the app has lost rather than one nobody wrote.
+  const { lines } = feeHistory(
+    [
+      invoice('i1', '2026-08-01', '2026-08-10', 1500, 0, 1500, {
+        billed: 2000,
+        discount: 500,
+        reason: '   ',
+      }),
+    ],
+    TODAY,
+  )
+
+  assert.equal(lines[0].discountReason, null)
+})
+
+test('fees: the whole fee waived is a bill of nothing, not a missing bill', () => {
+  // A real case — a student carried through a term free — and the row still belongs
+  // on the panel: it is the record of the arrangement.
+  const { lines, outstanding } = feeHistory(
+    [
+      invoice('i1', '2026-08-01', '2026-08-10', 0, 0, 0, {
+        billed: 2000,
+        discount: 2000,
+        reason: 'পুরো ফি ছাড়',
+      }),
+    ],
+    TODAY,
+  )
+
+  assert.equal(lines.length, 1)
+  assert.equal(lines[0].billed, 2000)
+  assert.equal(lines[0].discount, 2000)
+  assert.equal(lines[0].net, 0)
+  assert.equal(lines[0].late, false)
+  assert.equal(outstanding, 0)
 })

@@ -184,11 +184,17 @@ export default async function StudentProfilePage({
        * here: numeric(10,2) through a JS float can leave a paid-up invoice owing
        * about 2e-13, which is greater than zero. See lib/money's header and the
        * same note on /me.
+       *
+       * `amount_bdt`, `discount_bdt` and `discount_reason` are the fee before any
+       * waiver, the waiver, and why it was granted. All three are read and none is
+       * computed: a bill with ৳৫০০ waived off it used to arrive here as a plain
+       * ৳১,৫০০ net, so the one screen an owner opens with a parent on the phone was
+       * the one screen that could not answer "why is our bill smaller".
        */
       mayReadFees
         ? supabase
             .from('fee_invoice_balances')
-            .select('id, period_month, due_date, net_bdt, paid_bdt, remaining_bdt')
+            .select('id, period_month, due_date, amount_bdt, discount_bdt, discount_reason, net_bdt, paid_bdt, remaining_bdt')
             .eq('coaching_center_id', centerId)
             .eq('student_id', studentId)
             .is('voided_at', null)
@@ -521,6 +527,26 @@ export default async function StudentProfilePage({
                         </span>
                       )}
                     </p>
+                    {/* The waiver, under the month it was granted on and only when
+                        there is one. The figure on the right of this row is what the
+                        family owes today; these two lines are why it is not the batch's
+                        fee, which is the question this screen gets opened to answer.
+                        Not truncated, unlike the lines above it: an owner reading the
+                        arrangement back to a parent needs the whole of it, and the
+                        reason is at most MAX_TEXT characters. */}
+                    {line.discount > 0 && (
+                      <div className="mt-1">
+                        <p className="num text-sm text-ink-soft">
+                          {t.fees.waived(formatTaka(line.billed), formatTaka(line.discount))}
+                        </p>
+                        {line.discountReason && (
+                          <p className="mt-0.5 text-sm text-ink-soft">
+                            <span className="text-ink-faint">{d.discount.reasonLabel}:</span>{' '}
+                            {line.discountReason}
+                          </p>
+                        )}
+                      </div>
+                    )}
                   </div>
                   <p className="shrink-0 text-right text-sm">
                     {line.remaining > 0 ? (

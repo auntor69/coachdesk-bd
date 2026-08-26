@@ -479,6 +479,7 @@ export const en: Dictionary = {
     colAmount: 'Amount',
     colBilled: 'Billed',
     colDiscount: 'Discount',
+    colDiscountReason: 'Why discounted',
     colNet: 'Payable',
     colPaid: 'Paid',
     colRemaining: 'Remaining',
@@ -1094,6 +1095,7 @@ export const en: Dictionary = {
       settled: 'Paid ✓',
       lateDays: (n: number) => (n === 1 ? 'day late' : 'days late'),
       hidden: 'Fees are kept by the owner or a manager.',
+      waived: (billed: string, discount: string) => `Fee ${billed} · waived ${discount}`,
       limitNote: (n: number) =>
         n === 1 ? 'Showing the last month.' : `Showing the last ${n} months.`,
     },

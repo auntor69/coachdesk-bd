@@ -339,6 +339,7 @@ const INVOICE = {
   guardian_phone: '+8801812345678',
   amount_bdt: 1200,
   discount_bdt: 200,
+  discount_reason: 'দুই ভাইবোন একসাথে পড়ে',
   net_bdt: 1000,
   paid_bdt: 400,
   remaining_bdt: 600,
@@ -375,11 +376,33 @@ test('a fee row says what is owed and what state the bill is in', async () => {
   // Joined in JS, because a PostgREST embed through a view is not reliable.
   assert.equal(row[2], 'ক্লাস ১০ সকাল')
   assert.equal(row[3], '2026-08')
-  assert.deepEqual(row.slice(4, 9), [1200, 200, 1000, 400, 600])
-  assert.equal(row[9], t.partial)
-  assert.equal(row[10], '2026-08-10')
-  assert.equal(row[11], '01812345678')
+  // Billed, waived, why, payable, in, left. The reason sits beside its figure and
+  // not at the end of the row: a waiver read without it looks like a mistake.
+  assert.deepEqual(row.slice(4, 10), [1200, 200, 'দুই ভাইবোন একসাথে পড়ে', 1000, 400, 600])
+  assert.equal(row[10], t.partial)
+  assert.equal(row[11], '2026-08-10')
+  assert.equal(row[12], '01812345678')
   assert.equal(sheet.period, '2026-08')
+})
+
+test('a bill with nothing waived leaves the reason column empty, not the word for none', async () => {
+  // A CSV has one shape for every row, so the column is written either way. Blank is
+  // the honest cell: any placeholder would sort and filter as a value.
+  const f = fake({
+    fee_invoice_balances: {
+      rows: [
+        { ...INVOICE, discount_bdt: 0, discount_reason: null, net_bdt: 1200 },
+        // Whitespace only — an owner who tabbed through the box. Not a reason, and it
+        // does not look empty in a spreadsheet either.
+        { ...INVOICE, student_name: 'খ', discount_reason: '   ' },
+      ],
+    },
+    enrollments: { rows: [] },
+  })
+  const sheet = sheetOf(await buildReport('dues', context(f.supabase)))
+
+  assert.equal(sheet.rows[0][6], '')
+  assert.equal(sheet.rows[1][6], '')
 })
 
 test('paid, part paid and unpaid are told apart by what is left, not by what came in', async () => {
@@ -402,10 +425,10 @@ test('paid, part paid and unpaid are told apart by what is left, not by what cam
   const t = dict('bn').exportSheet
 
   assert.deepEqual(
-    sheet.rows.map((r) => r[9]),
+    sheet.rows.map((r) => r[10]),
     [t.paid, t.partial, t.unpaid, t.paid, t.paid],
   )
-  assert.deepEqual(sheet.rows[4].slice(6, 9), [0, 0, 0])
+  assert.deepEqual(sheet.rows[4].slice(7, 10), [0, 0, 0])
 })
 
 test('an empty month costs one query, not two', async () => {

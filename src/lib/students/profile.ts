@@ -343,6 +343,10 @@ export type ProfileInvoiceRow = {
   id: string | null
   period_month: string | null
   due_date: string | null
+  /** The fee the centre charges, before any waiver. */
+  amount_bdt: string | number | null
+  discount_bdt: string | number | null
+  discount_reason: string | null
   net_bdt: string | number | null
   paid_bdt: string | number | null
   remaining_bdt: string | number | null
@@ -354,6 +358,23 @@ export type FeeLine = {
   /** YYYY-MM-01. The month billed for, which is not always the month due. */
   periodMonth: string
   dueDate: string | null
+  /**
+   * `amount_bdt` — the fee, before the waiver. Carried alongside `net` rather than
+   * derived from it, and neither is derived from the other here: Postgres subtracts
+   * once, in the view, and this file only ever reads the three figures it produced.
+   */
+  billed: number
+  /** `discount_bdt`. Zero on almost every bill, which is why the line is conditional. */
+  discount: number
+  /**
+   * The owner's own words for why, or null.
+   *
+   * This is the only place the answer to "why is this family's bill smaller" is
+   * written down, and this is the screen it gets asked on — an owner with a parent on
+   * the phone, months after whoever granted it has forgotten. The figure without the
+   * reason is the half that raises the question rather than settling it.
+   */
+  discountReason: string | null
   net: number
   paid: number
   /** Positive is owed, negative is a credit on the invoice. Never rounded here. */
@@ -395,7 +416,8 @@ export type FeeHistory = {
  * Money arithmetic that has to be exact stays in Postgres — `remaining_bdt` is
  * computed by the view, because numeric(10,2) through a JS float can leave a paid-up
  * invoice owing 2e-13. What happens here is only ever addition of figures the view
- * already settled.
+ * already settled. The fee, the waiver and the net are three of those figures and are
+ * carried side by side rather than one being subtracted from another.
  */
 export function feeHistory(
   rows: readonly ProfileInvoiceRow[] | null | undefined,
@@ -420,6 +442,11 @@ export function feeHistory(
       // is worse than one headed with none.
       periodMonth: row.period_month ?? (dueDate ? `${dueDate.slice(0, 7)}-01` : ''),
       dueDate,
+      billed: num(row.amount_bdt) ?? 0,
+      discount: num(row.discount_bdt) ?? 0,
+      // Trimmed, so a reason of three spaces does not put an empty labelled line on
+      // the screen. Empty becomes null, which is the one thing the renderer checks.
+      discountReason: row.discount_reason?.trim() || null,
       net: num(row.net_bdt) ?? 0,
       paid: num(row.paid_bdt) ?? 0,
       remaining,

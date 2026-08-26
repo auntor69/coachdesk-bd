@@ -1152,6 +1152,10 @@ export const bn = {
        about with a parent is never the same one twice. */
     colBilled: 'বিল',
     colDiscount: 'ছাড়',
+    /* Beside the figure, and it is the owner's own words rather than anything the app
+       chose. The sheet is what gets opened next year, or by whoever takes the desk
+       over: 'ছাড় ৫০০' on its own is the question, and this column is the answer. */
+    colDiscountReason: 'ছাড়ের কারণ',
     colNet: 'দিতে হবে',
     colPaid: 'জমা হয়েছে',
     colRemaining: 'বাকি',
@@ -2250,6 +2254,20 @@ export const bn = {
        * teacher handed this screen by their owner needs to know who to ask.
        */
       hidden: 'ফি-এর হিসাব রাখেন মালিক বা ম্যানেজার।',
+      /**
+       * Why this family's bill is smaller than the batch's fee.
+       *
+       * THIS IS THE SCREEN THE QUESTION GETS ASKED ON. An owner opens one student when a
+       * parent rings, and until now the row showed only what was left owing — so a ৳২,০০০
+       * fee with a ৳৫০০ waiver on it read as a plain ৳১,৫০০ bill, and the person on the
+       * phone had no way to see the arrangement they were being asked about. The board has
+       * shown it since the waiver could be granted; this is where it is read out.
+       *
+       * The fee and the waiver, in that order, and never the subtraction: the figure the
+       * family owes is already the big number on the right of the same row, and printing it
+       * a third time here would be the second answer docs §4 forbids.
+       */
+      waived: (billed: string, discount: string) => `ফি ${billed} · ছাড় ${discount}`,
       limitNote: (n: number) => `শেষ ${digits(n, 'bn')} মাসের ইনভয়েস দেখানো হচ্ছে।`,
     },
   },

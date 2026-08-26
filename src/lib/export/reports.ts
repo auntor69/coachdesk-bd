@@ -172,7 +172,7 @@ const STUDENT_COLUMNS = 'name, student_code, class_level, institution, phone, gu
 
 const PAYMENT_COLUMNS = 'receipt_no, amount_bdt, method, reference, paid_at, students (name, student_code)'
 
-const INVOICE_COLUMNS = 'student_name, student_code, guardian_phone, amount_bdt, discount_bdt, net_bdt, paid_bdt, remaining_bdt, due_date, period_month, enrollment_id'
+const INVOICE_COLUMNS = 'student_name, student_code, guardian_phone, amount_bdt, discount_bdt, discount_reason, net_bdt, paid_bdt, remaining_bdt, due_date, period_month, enrollment_id'
 
 const ENROLLMENT_COLUMNS = 'id, batches (name)'
 
@@ -233,6 +233,7 @@ type InvoiceRow = {
   guardian_phone: string | null
   amount_bdt: number | null
   discount_bdt: number | null
+  discount_reason: string | null
   net_bdt: number | null
   paid_bdt: number | null
   remaining_bdt: number | null
@@ -491,6 +492,13 @@ async function buildCollections(ctx: ReportContext): Promise<BuildResult> {
  * VOIDED INVOICES ARE LEFT OUT. A cancelled bill is not a bill, and including it
  * would mean the billed column no longer totals to what the centre charged — which
  * is the one number somebody will add up by hand to check us.
+ *
+ * A WAIVER GETS TWO COLUMNS, THE FIGURE AND THE REASON. The figure alone is the
+ * column that starts the argument — a fee of ৳2,000 that came out payable at ৳1,500
+ * with no note beside it is indistinguishable, on a sheet, from a mistake. The reason
+ * is free text an owner typed on the board, so it is the one cell here that is not a
+ * figure, a date or a name; `toCsv` quotes it like any other, and it is capped at
+ * MAX_TEXT where it is written.
  */
 async function buildDues(ctx: ReportContext): Promise<BuildResult> {
   const d = dict(ctx.locale)
@@ -552,6 +560,13 @@ async function buildDues(ctx: ReportContext): Promise<BuildResult> {
       (v.period_month ?? ctx.month).slice(0, 7),
       Number(v.amount_bdt ?? 0),
       Number(v.discount_bdt ?? 0),
+      // The owner's own words for the waiver, next to its figure. Written to the
+      // sheet even on a row that waived nothing — a CSV has one shape for every
+      // row — but empty there, so the column reads as blank rather than as a reason
+      // somebody forgot to give. Trimmed for the same reason the profile screen
+      // trims it: a cell of three spaces is not a reason and does not look empty
+      // in a spreadsheet either.
+      v.discount_reason?.trim() ?? '',
       Number(v.net_bdt ?? 0),
       paid,
       remaining,
@@ -571,6 +586,7 @@ async function buildDues(ctx: ReportContext): Promise<BuildResult> {
         t.colMonth,
         t.colBilled,
         t.colDiscount,
+        t.colDiscountReason,
         t.colNet,
         t.colPaid,
         t.colRemaining,
