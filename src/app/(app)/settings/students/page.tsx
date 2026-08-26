@@ -1,10 +1,12 @@
 import Link from 'next/link'
 
 import { Card } from '@/components/ui'
+import { SearchBox, SearchEmpty } from '@/components/search-box'
 import { pagePermission, getSession } from '@/lib/auth/session'
 import { createClient } from '@/lib/supabase/server'
 import { formatBdMobile } from '@/lib/bd/phone'
 import { MAX_IMPORT_ROWS } from '@/lib/bd/roster'
+import { searchTerms, matchesSearch, MAX_QUERY } from '@/lib/search'
 import { dict, DEFAULT_LOCALE } from '@/lib/i18n'
 
 /** getSession, not pageRole — see the note on teach/page.tsx's own. */
@@ -25,13 +27,29 @@ export async function generateMetadata() {
  * is every minor's record and every parent's mobile number at the centre, so it is
  * open to owners and managers and to exactly the teachers an owner ticked a box for
  * — a box that until 20260811000019 granted nothing at all.
+ *
+ * AND IT IS SEARCHABLE, which matters more here than anywhere else in the product:
+ * this is the only roster, so it is the only way anybody reaches a student's page,
+ * and at three hundred names "the only way" was a scroll. The box filters the list
+ * and leaves the headcount, the plan limit and the missing-number warning alone —
+ * those are facts about the centre, and a roster filtered to one family must not
+ * report that the centre has one student in it or that one number is missing.
  */
-export default async function StudentsPage() {
+export default async function StudentsPage({
+  searchParams,
+}: {
+  // A Promise in Next 16, and awaiting it is not optional.
+  searchParams: Promise<{ q?: string }>
+}) {
   const session = await pagePermission('can_manage_students')
   const supabase = await createClient()
   const locale = session.locale
   const d = dict(locale)
   const t = d.settings.students
+
+  const { q: rawQuery } = await searchParams
+  const query = (rawQuery ?? '').slice(0, MAX_QUERY)
+  const terms = searchTerms(query)
 
   const { data: students } = await supabase
     .from('students')
@@ -65,6 +83,14 @@ export default async function StudentsPage() {
   const activeCount = rows.filter((r) => r.active).length
   const limit = session.plan.maxStudents
   const missingPhone = rows.filter((r) => r.active && !r.guardianPhone).length
+
+  // The same three fields the box promises and the fee board searches — a name, the
+  // code on the slip, the number that rang them. Deliberately not the batch or the
+  // class: one matcher over one set of fields is what lets an owner learn the box
+  // once. See lib/search.ts.
+  const shown = terms.length === 0
+    ? rows
+    : rows.filter((r) => matchesSearch([r.name, r.code, r.guardianPhone], terms))
 
   return (
     <div className="flex flex-col gap-5">
@@ -132,74 +158,91 @@ export default async function StudentsPage() {
           <p className="mt-1 text-sm text-ink-soft">{t.emptyBody}</p>
         </Card>
       ) : (
-        <ul className="flex flex-col gap-2">
-          {rows.map((row) => {
-            const body = (
-              <div className="flex items-start justify-between gap-3">
-                <div className="min-w-0">
-                  <p className="truncate font-medium text-ink">
-                    {row.name}
-                    {!row.active && (
-                      <span className="ml-2 text-sm text-ink-faint">{t.inactive}</span>
-                    )}
-                  </p>
-                  {row.batchNames.length > 0 && (
-                    <p className="truncate text-sm text-ink-soft">
-                      {row.batchNames.join(' · ')}
-                    </p>
-                  )}
-                  <p className="truncate text-sm text-ink-faint">
-                    {[row.classLevel, row.institution].filter(Boolean).join(' · ')}
-                  </p>
-                </div>
-                <div className="shrink-0 text-right">
-                  <p className="num text-sm text-ink-soft">
-                    {row.guardianPhone ? (
-                      formatBdMobile(row.guardianPhone)
-                    ) : (
-                      <span className="font-medium text-absent">{t.noPhone}</span>
-                    )}
-                  </p>
-                  {row.smsOptOut && (
-                    <p className="text-xs text-ink-faint">{t.smsOff}</p>
-                  )}
-                  {row.code && (
-                    <p className="num text-xs text-ink-faint">{row.code}</p>
-                  )}
-                </div>
-              </div>
-            )
+        <>
+          {/* Below the import card and the missing-number warning, directly above
+              the list. Both of those are about the roster as a whole and stay put
+              while the list narrows. */}
+          <SearchBox
+            q={query}
+            t={d.search}
+            count={{ shown: shown.length, total: rows.length }}
+          />
 
-            return (
-              <li key={row.id}>
-                {/*
-                  The whole row, and it opens the student rather than the edit form.
-                  This is the only roster in the app, so it is the only way anybody
-                  reaches a student — a row that went straight to a form left the
-                  student's own page reachable from nowhere but the at-risk list,
-                  which is to say invisible to every centre whose students are fine.
+          {shown.length === 0 ? (
+            /* Not `t.emptyTitle` — "no students yet" under a filtered roster would
+               read as a lost database rather than a mistyped name. */
+            <SearchEmpty t={d.search} />
+          ) : (
+            <ul className="flex flex-col gap-2">
+              {shown.map((row) => {
+                const body = (
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="truncate font-medium text-ink">
+                        {row.name}
+                        {!row.active && (
+                          <span className="ml-2 text-sm text-ink-faint">{t.inactive}</span>
+                        )}
+                      </p>
+                      {row.batchNames.length > 0 && (
+                        <p className="truncate text-sm text-ink-soft">
+                          {row.batchNames.join(' · ')}
+                        </p>
+                      )}
+                      <p className="truncate text-sm text-ink-faint">
+                        {[row.classLevel, row.institution].filter(Boolean).join(' · ')}
+                      </p>
+                    </div>
+                    <div className="shrink-0 text-right">
+                      <p className="num text-sm text-ink-soft">
+                        {row.guardianPhone ? (
+                          formatBdMobile(row.guardianPhone)
+                        ) : (
+                          <span className="font-medium text-absent">{t.noPhone}</span>
+                        )}
+                      </p>
+                      {row.smsOptOut && (
+                        <p className="text-xs text-ink-faint">{t.smsOff}</p>
+                      )}
+                      {row.code && (
+                        <p className="num text-xs text-ink-faint">{row.code}</p>
+                      )}
+                    </div>
+                  </div>
+                )
 
-                  Editing is one tap further, on a button at the top of that page,
-                  and the tap is cheaper than it looks: the field most likely to be
-                  wrong is the guardian's number, which is printed on this row, so an
-                  owner checking the roster never taps in until they have found the
-                  one to fix.
+                return (
+                  <li key={row.id}>
+                    {/*
+                      The whole row, and it opens the student rather than the edit form.
+                      This is the only roster in the app, so it is the only way anybody
+                      reaches a student — a row that went straight to a form left the
+                      student's own page reachable from nowhere but the at-risk list,
+                      which is to say invisible to every centre whose students are fine.
 
-                  Clickable for every reader who gets this far, including a permitted
-                  teacher whose rows used to do nothing — they may not edit a student
-                  and there was never a reason they could not read one.
-                */}
-                <Link
-                  href={`/students/${row.id}`}
-                  className="block rounded-xl border border-line bg-white px-4 py-3
-                    hover:border-brand-300 active:bg-brand-50"
-                >
-                  {body}
-                </Link>
-              </li>
-            )
-          })}
-        </ul>
+                      Editing is one tap further, on a button at the top of that page,
+                      and the tap is cheaper than it looks: the field most likely to be
+                      wrong is the guardian's number, which is printed on this row, so an
+                      owner checking the roster never taps in until they have found the
+                      one to fix.
+
+                      Clickable for every reader who gets this far, including a permitted
+                      teacher whose rows used to do nothing — they may not edit a student
+                      and there was never a reason they could not read one.
+                    */}
+                    <Link
+                      href={`/students/${row.id}`}
+                      className="block rounded-xl border border-line bg-white px-4 py-3
+                        hover:border-brand-300 active:bg-brand-50"
+                    >
+                      {body}
+                    </Link>
+                  </li>
+                )
+              })}
+            </ul>
+          )}
+        </>
       )}
     </div>
   )

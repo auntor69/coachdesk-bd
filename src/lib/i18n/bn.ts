@@ -124,6 +124,76 @@ export const bn = {
   },
 
   /**
+   * The box that finds one student in a screen full of them.
+   *
+   * One group shared by every list that has a search box, for the same reason
+   * there is one `matchesSearch` behind all of them: a box labelled differently on
+   * the fee board and on the roster reads as two features, and an owner who learns
+   * that one of them searches phone numbers has no reason to believe the other
+   * does.
+   *
+   * NOT IN `common`, and the reason is structural rather than tidiness. `common`
+   * is handed whole to client components (`common={d.common}`), and `T` poisons
+   * function leaves — so a group containing `showing` below could never cross that
+   * boundary. Kept apart, it can hold the count function it needs.
+   */
+  search: {
+    /** Above the box, and read out by a screen reader in place of it. */
+    label: 'খুঁজুন',
+    /**
+     * What is searchable, said as a list rather than as "খুঁজুন" again.
+     *
+     * The three things an owner actually has in front of them: the name they were
+     * told, the code on last month's slip, and the number that rang them. Nobody
+     * discovers that a phone number works by guessing.
+     */
+    placeholder: 'নাম, আইডি বা ফোন নম্বর',
+    /**
+     * The same box on a sheet of payments, where none of those three is what the
+     * reader has in their hand.
+     *
+     * An owner searching the collection register is holding a bKash statement or a
+     * parent's slip, so what they have is a transaction ID or a receipt number —
+     * and offering them "ফোন নম্বর" on a sheet that carries no phone column would
+     * be the box promising something it cannot do. The matcher is the same; only
+     * the fields underneath and this line differ, which is why it is a second
+     * string here and not a second component.
+     */
+    placeholderPayments: 'নাম, রসিদ নম্বর বা ট্রানজেকশন আইডি',
+    /**
+     * The submit button, which is not decoration — see the note on the register's
+     * month form. A bare input with no button needs JavaScript to do what Enter
+     * does on a hardware keyboard and nothing does on Android Chrome.
+     */
+    go: 'খুঁজুন',
+    /** Empties the box. Says what comes back, not what is being removed. */
+    clear: 'সব দেখান',
+    /**
+     * The count above a filtered list.
+     *
+     * The whole reason the filter is honest. Every figure on these screens is
+     * still the centre's — the outstanding total does not become Ali's outstanding
+     * because somebody typed his name — so the list has to say out loud that it is
+     * showing a part of itself. Without this line a fee board filtered to one
+     * family looks like a centre with one family and a total that makes no sense.
+     *
+     * Prose counts, so Bangla numerals.
+     */
+    showing: (shown: number, total: number) =>
+      `${digits(total, 'bn')}টির মধ্যে ${digits(shown, 'bn')}টি দেখানো হচ্ছে`,
+    /**
+     * Nothing matched.
+     *
+     * Says the search found nothing, never that there is nothing — the list
+     * underneath is empty because of the box above it, and an owner who reads
+     * "কোনো ফি বাকি নেই" here would close the screen believing it.
+     */
+    none: 'এই খোঁজে কিছু পাওয়া যায়নি।',
+    /** Under `none`: the thing to try, not an apology. */
+    noneHint: 'বানান দেখে নিন, বা কম অক্ষর লিখে খুঁজুন।',
+  },
+
+  /**
    * The frame every signed-in screen sits in. Nav labels are short because they
    * sit under a glyph in a 48px tab on a 375px phone — four tabs means about
    * nine characters each before they truncate.

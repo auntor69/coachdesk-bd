@@ -2,6 +2,7 @@ import { forbidden } from 'next/navigation'
 import Link from 'next/link'
 
 import { Card } from '@/components/ui'
+import { SearchBox, SearchEmpty } from '@/components/search-box'
 import { pageCenter, getSession, isStaffAdmin, canReadFees } from '@/lib/auth/session'
 import { createClient } from '@/lib/supabase/server'
 import {
@@ -14,6 +15,7 @@ import {
 } from '@/lib/bd/time'
 import { normalizeBdMobile } from '@/lib/bd/phone'
 import { sumTaka, tallyOutstanding, formatTaka } from '@/lib/money'
+import { searchTerms, matchesSearch, MAX_QUERY } from '@/lib/search'
 import { countChasesDue } from '@/lib/fees/reminder-schedule'
 import { cancelledBills } from '@/lib/fees/void'
 import { dict, DEFAULT_LOCALE, type Locale } from '@/lib/i18n'
@@ -83,8 +85,23 @@ const CANCELLED_OPEN_UP_TO = 5
  * is the debt worth chasing — plus this month's settled invoices, so the day's
  * collections stay visible and a payment just recorded does not vanish off the
  * screen along with its confirmation.
+ *
+ * AND A SEARCH BOX, because three hundred students is the whole product working.
+ * It filters the list and nothing else: the outstanding total, the two counts, the
+ * month's collection and the chase count are all computed from the unfiltered rows
+ * and do not move when somebody types. An owner searching for "আলী" is asking
+ * which of these rows is Ali's; they are not asking for the centre's outstanding
+ * to become Ali's outstanding, and a board whose headline figure changed as they
+ * typed would be a board they could not read a total off at all. The count under
+ * the box says how much of the list is in view, which is what keeps the short list
+ * from reading as a short board. Matching is in lib/search.ts, where it is tested.
  */
-export default async function FeesPage() {
+export default async function FeesPage({
+  searchParams,
+}: {
+  // A Promise in Next 16, and awaiting it is not optional.
+  searchParams: Promise<{ q?: string }>
+}) {
   const session = await pageCenter()
   if (!(await canReadFees())) forbidden()
 
@@ -100,6 +117,14 @@ export default async function FeesPage() {
   const locale = session.locale
   const d = dict(locale)
   const t = d.fees
+
+  // The query as typed, kept for the box's own value, and as words for matching.
+  // Awaited here rather than beside the fetches because nothing in the queries
+  // depends on it — the search happens over rows the board was going to read
+  // anyway, which is the point of doing it in memory. See lib/search.ts.
+  const { q: rawQuery } = await searchParams
+  const query = (rawQuery ?? '').slice(0, MAX_QUERY)
+  const terms = searchTerms(query)
 
   const [
     { data: owing },
@@ -273,6 +298,22 @@ export default async function FeesPage() {
   // instead of travelling to the browser.
   const cancelledList = cancelledBills(cancelled, d.common.unknown)
 
+  // The two lists as the board will actually draw them, and the last thing computed
+  // on purpose: every figure above is already fixed against the full set, so there is
+  // no way for a filtered list to reach a total. A student's name, their code and
+  // their guardian's number, which is exactly what the box says it searches — and the
+  // number is in there because two children of the same name are told apart by it.
+  const shown = terms.length === 0
+    ? rows
+    : rows.filter((r) => matchesSearch([r.name, r.studentCode, r.guardianPhone], terms))
+
+  // The cancelled list narrows with the board rather than sitting under it unfiltered.
+  // A search is a question about one family, and a fold-out list still naming thirty
+  // others would answer a question nobody asked.
+  const shownCancelled = terms.length === 0
+    ? cancelledList
+    : cancelledList.filter((b) => matchesSearch([b.name, b.studentCode], terms))
+
   return (
     <div className="flex flex-col gap-5">
       <div>
@@ -374,29 +415,48 @@ export default async function FeesPage() {
           </p>
         </Card>
       ) : (
-        <ul className="flex flex-col gap-2">
-          {rows.map((row) => (
-            <PaymentRow
-              key={row.id}
-              row={row}
-              center={centerPay}
-              locale={locale}
-              readOnly={!canWrite}
-              // One object built once for the whole board. Seven groups of words
-              // reach every row, and React sends each distinct value down once
-              // however many rows share it.
-              words={{
-                t: d.feeRow,
-                chase: d.chase,
-                channels: d.channels,
-                cancel: d.cancel,
-                refund: d.refund,
-                discount: d.discount,
-                common: d.common,
-              }}
-            />
-          ))}
-        </ul>
+        <>
+          {/* Directly above the list it filters, and below every figure it does
+              not. Nothing is preserved through it because this page has no other
+              search param — the month on the register's links is built fresh from
+              `thisMonth`, not read from the URL. */}
+          <SearchBox
+            q={query}
+            t={d.search}
+            count={{ shown: shown.length, total: rows.length }}
+          />
+
+          {shown.length === 0 ? (
+            /* Not `t.emptyTitle`. "No fees are outstanding" under a filtered list
+               is the app telling an owner the centre is settled up because they
+               mistyped a name — see SearchEmpty. */
+            <SearchEmpty t={d.search} />
+          ) : (
+            <ul className="flex flex-col gap-2">
+              {shown.map((row) => (
+                <PaymentRow
+                  key={row.id}
+                  row={row}
+                  center={centerPay}
+                  locale={locale}
+                  readOnly={!canWrite}
+                  // One object built once for the whole board. Seven groups of words
+                  // reach every row, and React sends each distinct value down once
+                  // however many rows share it.
+                  words={{
+                    t: d.feeRow,
+                    chase: d.chase,
+                    channels: d.channels,
+                    cancel: d.cancel,
+                    refund: d.refund,
+                    discount: d.discount,
+                    common: d.common,
+                  }}
+                />
+              ))}
+            </ul>
+          )}
+        </>
       )}
 
       {/* Under the board, never above it. These are bills that are already off every
@@ -408,17 +468,17 @@ export default async function FeesPage() {
           confirmation the tap gets; on the day an owner closes a batch and cancels
           thirty, that stops being true and burying the board would be the worse
           failure. The count is in the summary either way, so nothing is hidden. */}
-      {cancelledList.length > 0 && (
-        <details open={cancelledList.length <= CANCELLED_OPEN_UP_TO}>
+      {shownCancelled.length > 0 && (
+        <details open={shownCancelled.length <= CANCELLED_OPEN_UP_TO}>
           <summary
             className="flex min-h-tap cursor-pointer list-none items-center
               font-medium text-ink-soft"
           >
-            {t.cancelledCount(cancelledList.length)}
+            {t.cancelledCount(shownCancelled.length)}
           </summary>
           <p className="mb-2 text-sm text-ink-faint">{t.cancelledBody}</p>
           <ul className="flex flex-col gap-2">
-            {cancelledList.map((bill) => (
+            {shownCancelled.map((bill) => (
               <CancelledRow key={bill.id} bill={bill} locale={locale} t={d.cancel} />
             ))}
           </ul>

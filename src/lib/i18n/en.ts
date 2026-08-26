@@ -43,6 +43,17 @@ export const en: Dictionary = {
     somethingWentWrong: 'Something went wrong',
   },
 
+  search: {
+    label: 'Search',
+    placeholder: 'Name, ID or phone number',
+    placeholderPayments: 'Name, receipt no. or transaction ID',
+    go: 'Search',
+    clear: 'Show all',
+    showing: (shown: number, total: number) => `Showing ${shown} of ${total}`,
+    none: 'Nothing matches that search.',
+    noneHint: 'Check the spelling, or try fewer characters.',
+  },
+
   shell: {
     logout: 'Log out',
     mainMenu: 'Main menu',

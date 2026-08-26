@@ -2,6 +2,7 @@ import Link from 'next/link'
 import { forbidden } from 'next/navigation'
 
 import { Card } from '@/components/ui'
+import { SearchBox, SearchEmpty } from '@/components/search-box'
 import { pageCenter, getSession, isStaffAdmin } from '@/lib/auth/session'
 import { createClient } from '@/lib/supabase/server'
 import { has, planName, PLANS } from '@/lib/plans'
@@ -12,6 +13,7 @@ import {
   formatMonth,
 } from '@/lib/bd/time'
 import { formatTaka } from '@/lib/money'
+import { searchTerms, matchesSearch, MAX_QUERY } from '@/lib/search'
 import { registerRows, tallyRegister } from '@/lib/fees/register'
 import { dict, DEFAULT_LOCALE } from '@/lib/i18n'
 import { PrintButton } from '../print-button'
@@ -62,6 +64,15 @@ const MONTH_RE = /^\d{4}-\d{2}-01$/
  * STAFF ADMIN ONLY. A teacher with `can_view_fees` reads their own students'
  * arrears on the board; the centre's takings for the month are not that.
  *
+ * THE SEARCH BOX FILTERS THE SHEET AND NOTHING ELSE — not the running column, not
+ * the foot, not the breakdown. That is the opposite of what a filter usually means
+ * and it is the only version that is any use here: an owner searching a
+ * transaction ID is trying to find one line in a statement they are working down,
+ * and a running total that restarted at their query would answer a question about
+ * a month that does not exist. So every figure stays the month's, the running
+ * column still says what the month had taken by that row, and the count above the
+ * table — which prints, unlike the box — says the sheet is a part of itself.
+ *
  * AND A PAID PLAN ONLY, which it did not used to be. The argument for leaving it
  * open was that a solo owner reconciles a month the same way an institution does,
  * and that is still true — but a paid teacher tier has to sell something, and the
@@ -74,7 +85,7 @@ export default async function RegisterPage({
   searchParams,
 }: {
   // A Promise in Next 16, and awaiting it is not optional.
-  searchParams: Promise<{ month?: string }>
+  searchParams: Promise<{ month?: string; q?: string }>
 }) {
   const session = await pageCenter()
   if (!isStaffAdmin(session)) forbidden()
@@ -108,12 +119,14 @@ export default async function RegisterPage({
     )
   }
 
-  const { month: rawMonth } = await searchParams
+  const { month: rawMonth, q: rawQuery } = await searchParams
   // An unparseable month is this month rather than an error. The parameter is in a
   // URL an owner may have edited or a link somebody shared, and a register that
   // refuses to draw is less useful than one that draws the obvious month.
   const month = MONTH_RE.test(rawMonth ?? '') ? (rawMonth as string) : currentPeriodMonth()
   const nextMonth = addMonths(month, 1)
+  const query = (rawQuery ?? '').slice(0, MAX_QUERY)
+  const terms = searchTerms(query)
 
   const supabase = await createClient()
 
@@ -155,6 +168,19 @@ export default async function RegisterPage({
   const rows = registerRows(payments, d.common.unknown)
   const tally = tallyRegister(rows)
 
+  // Which rows the sheet draws, and the only thing the query touches. `tally` is
+  // already fixed above against the whole month, and each row's `running` was
+  // accumulated over the whole month too — so a filtered sheet shows the real
+  // running total at each of the lines it kept, which is exactly what somebody
+  // matching a wallet statement needs. The four fields are the identifiers the row
+  // actually prints: the name, the student's code, the receipt number a parent
+  // quotes, and the transaction ID on the statement.
+  const shown = terms.length === 0
+    ? rows
+    : rows.filter((r) =>
+        matchesSearch([r.name, r.code, String(r.receiptNo), r.reference], terms),
+      )
+
   // This month and the eleven before it. Backwards only: a register is a record of
   // what happened, and there is nothing to record in a month that has not started.
   const months = Array.from({ length: 12 }, (_, i) => {
@@ -180,6 +206,9 @@ export default async function RegisterPage({
           not fire a navigation on a bare <select> change, so a form that relied on
           onChange would need JavaScript to do what a button does for free. */}
       <form method="get" className="flex items-end gap-2 print:hidden">
+        {/* Carries the search across a change of month, because "the same family,
+            last month" is the commonest second question an owner asks here. */}
+        {query && <input type="hidden" name="q" value={query} />}
         <label className="flex min-w-0 flex-1 flex-col gap-1.5">
           <span className="font-medium text-ink">{t.month}</span>
           <select
@@ -219,9 +248,29 @@ export default async function RegisterPage({
         </Card>
       ) : (
         <>
-          {/* overflow-x-auto on a phone, and nothing on paper — A4 is wider than
+          {/* Between the letterhead and the table, so the printed sheet reads
+              "CENTRE / register / August / showing 5 of 120" in that order — the
+              caveat lands before the rows it applies to rather than after them. */}
+          <SearchBox
+            q={query}
+            t={d.search}
+            placeholder={d.search.placeholderPayments}
+            // The month, or clearing the box would silently throw the reader back
+            // to the current one — from a sheet they had chosen deliberately.
+            keep={{ month }}
+            count={{ shown: shown.length, total: rows.length }}
+          />
+
+          {shown.length === 0 ? (
+            /* Not `t.empty` — "no money was recorded this month" is a statement
+               about the centre, and printing it because somebody mistyped a
+               transaction ID would be the sheet contradicting its own total. The
+               breakdown below stays: it is still the month's, and still true. */
+            <SearchEmpty t={d.search} />
+          ) : (
+          /* overflow-x-auto on a phone, and nothing on paper — A4 is wider than
               the widest of these columns needs, so the print sheet has no scroll
-              container to strand a column inside. */}
+              container to strand a column inside. */
           <div className="-mx-4 overflow-x-auto px-4 print:mx-0 print:overflow-visible print:px-0">
             <table className="w-full min-w-[42rem] border-collapse text-sm">
               <thead>
@@ -239,7 +288,7 @@ export default async function RegisterPage({
                 </tr>
               </thead>
               <tbody>
-                {rows.map((r) => (
+                {shown.map((r) => (
                   <tr
                     key={r.id}
                     className="border-b border-line break-inside-avoid align-top"
@@ -285,6 +334,10 @@ export default async function RegisterPage({
                 ))}
               </tbody>
               <tfoot>
+                {/* Still the month's, on a filtered sheet as much as on a whole
+                    one. `tally` was taken before the query was applied — see the
+                    note at the head of this file for why a running total that
+                    restarted at somebody's search would be worse than useless. */}
                 <tr className="bg-brand-50 font-bold text-brand-900">
                   <td className="px-2 py-2" colSpan={5}>
                     {t.total} · {t.entries(tally.entries)}
@@ -296,7 +349,7 @@ export default async function RegisterPage({
               </tfoot>
             </table>
           </div>
-
+          )}
           {/* The half that can actually be checked against something. Kept out of
               the table's foot so it survives the table breaking across sheets. */}
           <section className="break-inside-avoid rounded-xl border border-line bg-white p-4">
