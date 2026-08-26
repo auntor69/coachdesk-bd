@@ -22,6 +22,7 @@ import {
 } from '@/lib/auth/session'
 import { parseTaka, formatTaka, sumTaka } from '@/lib/money'
 import { billableEnrollments } from '@/lib/fees/billable'
+import { cancelVerdict } from '@/lib/fees/void'
 import { currentPeriodMonth } from '@/lib/bd/time'
 import { normalizeBdMobile } from '@/lib/bd/phone'
 import { readIdempotencyKey, UNIQUE_VIOLATION } from '@/lib/idempotency'
@@ -471,4 +472,175 @@ export async function logFeeReminder(
   revalidatePath('/fees')
 
   return { logged: true }
+}
+
+/* -------------------------------------------------------------------------- */
+/* Cancelling a bill that should not have been raised                         */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * The columns both writes below read back before deciding anything.
+ *
+ * One literal, for the reason the board's COLUMNS gives: supabase-js parses the
+ * select string at the type level, and a concatenation widens to `string` and takes
+ * every column with it.
+ */
+const VOID_COLUMNS = 'id, student_name, paid_bdt, voided_at'
+
+/**
+ * Cancels a bill that should not have been raised.
+ *
+ * WHY THE PRODUCT NEEDS THIS AT ALL. The generator bills every active enrolment, so a
+ * student who left in June and whose enrolment nobody closed is billed in July — and
+ * until this existed, that ৳2,000 was permanent. It sat in the outstanding total on
+ * the board, in the arrears the month-close screen opens the next month with, and on
+ * the worklist telling the owner to message a parent whose child does not come here
+ * any more. `voided_at` had been in the schema since the first migration and no screen
+ * could set it.
+ *
+ * The word on the button is "cancel", not "void": an owner in Bandarban is not doing
+ * accounting, they are undoing a mistake. The column keeps the schema's name.
+ *
+ * WHAT IT REFUSES is a bill with money on it, and the reasoning is in
+ * lib/fees/void.ts. Refunding first is the way through, which is a negative payment —
+ * and there is no button for that yet, so the refusal says what is true rather than
+ * pointing at a screen that does not exist.
+ *
+ * Safe to arrive twice, like every write in this app: a bill already cancelled is
+ * answered with the same confirmation as the first time. `useOffline` replays Server
+ * Actions when a phone comes back on the network, and a second arrival must not read
+ * as a failure.
+ *
+ * The database checks all of this again in app.guard_invoice_void(), and that is not
+ * belt-and-braces for its own sake: this function runs behind a Server Action, which
+ * is a public HTTP endpoint, and the trigger is the only one of the two that a crafted
+ * request cannot skip.
+ */
+export async function voidInvoice(
+  _prev: FeeState,
+  formData: FormData,
+): Promise<FeeState> {
+  const session = await feeAdmin()
+  if (!isSession(session)) return session
+
+  const t = dict(session.locale).fees
+
+  const invoiceId = String(formData.get('invoiceId') ?? '')
+  if (!invoiceId) return { error: t.errors.noInvoice }
+
+  // Optional, and clamped rather than refused for the reason `clamp` gives. An owner
+  // cancelling a bill for a child who left has nothing to explain, and a required
+  // field here would be answered with a full stop.
+  const reason = clamp(String(formData.get('reason') ?? '').trim(), MAX_TEXT)
+
+  const supabase = await createClient()
+
+  // Read through the view, never from the form. It decides three things the client
+  // cannot be trusted for: that the invoice exists and is in this centre (RLS), what
+  // has been paid against it, and whether it is already cancelled.
+  const { data: invoice } = await supabase
+    .from('fee_invoice_balances')
+    .select(VOID_COLUMNS)
+    .eq('coaching_center_id', session.active.centerId)
+    .eq('id', invoiceId)
+    .maybeSingle()
+
+  if (!invoice?.id) return { error: t.errors.invoiceMissing }
+
+  const name = invoice.student_name ?? dict(session.locale).common.unknown
+  const verdict = cancelVerdict({
+    paid: Number(invoice.paid_bdt ?? 0),
+    voidedAt: invoice.voided_at,
+  })
+
+  // The replay, and the one case that is a success without a write. Told in the same
+  // words as the first time: "Karim's bill is cancelled" is true either way, and
+  // "already cancelled" would read as a warning that they had done something twice.
+  if (verdict === 'already') return { ok: t.invoiceCancelled(name) }
+  if (verdict === 'paid') return { error: t.errors.cancelPaid }
+
+  // `is('voided_at', null)` in the filter as well as in the verdict above. Two
+  // requests a moment apart both pass the read, and this is what makes the second one
+  // change nothing — the same reason the payment insert leans on a unique index rather
+  // than on having looked first.
+  //
+  // voided_at is sent and then overwritten by the trigger with now(). Deliberate on
+  // both sides: PostgREST needs a value to write, and a timestamp from a client could
+  // be backdated into a month the owner has already closed and been shown.
+  const { error } = await supabase
+    .from('fee_invoices')
+    .update({ voided_at: new Date().toISOString(), void_reason: reason || null })
+    .eq('coaching_center_id', session.active.centerId)
+    .eq('id', invoice.id)
+    .is('voided_at', null)
+
+  // Includes the trigger's own refusal, which can only fire on a payment that landed
+  // between the read above and this write. The owner is told the bill has money on it,
+  // which is the true and useful sentence in that race.
+  if (error) return { error: t.errors.cancelFailed }
+
+  revalidatePath('/fees')
+  revalidatePath('/dashboard')
+  revalidatePath('/me')
+
+  return { ok: t.invoiceCancelled(name) }
+}
+
+/**
+ * Puts a cancelled bill back.
+ *
+ * Here because cancelling is one tap and a mis-tap is a family silently stopping to
+ * owe money — nothing else in this product removes a debt, so nothing else needs an
+ * undo this badly. It is also the only way back: a cancelled invoice keeps its unique
+ * (enrollment_id, period_month), so re-running the generator will not raise a
+ * replacement, which is the right behaviour for a student who left and a trap for
+ * somebody who cancelled the wrong row.
+ *
+ * No money check on the way back. A cancelled bill has none on it — that is what
+ * cancelling required — and restoring one only puts an amount back on a family's
+ * ledger that was billed to them in the first place.
+ *
+ * Idempotent, same as its opposite: a bill that already stands is answered as
+ * restored.
+ */
+export async function restoreInvoice(
+  _prev: FeeState,
+  formData: FormData,
+): Promise<FeeState> {
+  const session = await feeAdmin()
+  if (!isSession(session)) return session
+
+  const t = dict(session.locale).fees
+
+  const invoiceId = String(formData.get('invoiceId') ?? '')
+  if (!invoiceId) return { error: t.errors.noInvoice }
+
+  const supabase = await createClient()
+
+  const { data: invoice } = await supabase
+    .from('fee_invoice_balances')
+    .select(VOID_COLUMNS)
+    .eq('coaching_center_id', session.active.centerId)
+    .eq('id', invoiceId)
+    .maybeSingle()
+
+  if (!invoice?.id) return { error: t.errors.invoiceMissing }
+
+  const name = invoice.student_name ?? dict(session.locale).common.unknown
+
+  // The trigger clears voided_by and void_reason alongside, so a restored bill carries
+  // no trace of a cancellation it is no longer under.
+  const { error } = await supabase
+    .from('fee_invoices')
+    .update({ voided_at: null })
+    .eq('coaching_center_id', session.active.centerId)
+    .eq('id', invoice.id)
+
+  if (error) return { error: t.errors.restoreFailed }
+
+  revalidatePath('/fees')
+  revalidatePath('/dashboard')
+  revalidatePath('/me')
+
+  return { ok: t.invoiceRestored(name) }
 }

@@ -15,9 +15,11 @@ import {
 import { normalizeBdMobile } from '@/lib/bd/phone'
 import { sumTaka, tallyOutstanding, formatTaka } from '@/lib/money'
 import { countChasesDue } from '@/lib/fees/reminder-schedule'
+import { cancelledBills } from '@/lib/fees/void'
 import { dict, DEFAULT_LOCALE, type Locale } from '@/lib/i18n'
 import type { OutreachChannel } from '@/lib/supabase/types'
 import { InvoiceGenerator } from './invoice-generator'
+import { CancelledRow } from './cancel-bill'
 import { PaymentRow, type FeeRow, type ReminderCenter } from './payment-row'
 import { ReminderEntry } from './reminder-entry'
 
@@ -34,6 +36,23 @@ export async function generateMetadata() {
  * `string`, the parse fails, and every column comes back as GenericStringError.
  */
 const COLUMNS = 'id, student_name, student_code, amount_bdt, discount_bdt, net_bdt, paid_bdt, remaining_bdt, due_date, period_month, guardian_phone, sms_opt_out, preferred_channel'
+
+/**
+ * The cancelled list needs a name, a month, what is no longer owed, and the owner's
+ * own note. One line, for the reason above.
+ */
+const CANCELLED_COLUMNS = 'id, student_name, student_code, period_month, net_bdt, voided_at, void_reason'
+
+/**
+ * Show the cancelled list open rather than folded away up to this many rows.
+ *
+ * Cancelling is a correction, so the normal number is one or two and the outcome of the
+ * tap has to be visible — the row leaves the board above and appears here, which is the
+ * only confirmation the action gets (see cancel-bill.tsx). Past a handful it is a batch
+ * that closed, nobody is checking each name, and an open list that long would bury the
+ * board it belongs under.
+ */
+const CANCELLED_OPEN_UP_TO = 5
 
 /**
  * The fee board — who has paid, who has not, by how many days, and the button
@@ -87,6 +106,7 @@ export default async function FeesPage() {
     { data: settled },
     { data: monthPayments },
     { data: chased },
+    { data: cancelled },
     { data: center },
   ] = await Promise.all([
       supabase
@@ -138,6 +158,28 @@ export default async function FeesPage() {
             .eq('coaching_center_id', session.active.centerId)
             .gte('created_at', `${addMonths(thisMonth, -1)}T00:00:00+06:00`)
             .order('created_at', { ascending: false })
+        : Promise.resolve({ data: null }),
+      // The bills cancelled recently, so a mistaken tap has a way back and a
+      // deliberate one has visible evidence. Everything else on this board reads
+      // `voided_at is null`; this is the one query that asks for the other side of it.
+      //
+      // Bounded by the same window as the reminders above and for a related reason: a
+      // cancellation made in error is noticed within minutes, not months, and a list
+      // that grew forever would end up longer than the board and quietly stop being
+      // read. What falls off the end is not lost — a cancelled bill is out of every
+      // total, which is what the owner asked for — it simply stops being offered back.
+      //
+      // Staff-admin only, like the generator and the chase list. A teacher with
+      // can_view_fees reads what their own students owe; who cancelled what is the
+      // owner's record of correcting their own books, and there is no restore button on
+      // a read-only board for the list to lead to.
+      canWrite
+        ? supabase
+            .from('fee_invoice_balances')
+            .select(CANCELLED_COLUMNS)
+            .eq('coaching_center_id', session.active.centerId)
+            .not('voided_at', 'is', null)
+            .gte('voided_at', `${addMonths(thisMonth, -1)}T00:00:00+06:00`)
         : Promise.resolve({ data: null }),
       // Where a parent should send the money. Read once for the whole board
       // rather than per row: it is one value for the centre, and every reminder
@@ -225,6 +267,11 @@ export default async function FeesPage() {
     paymentWallet: center?.payment_wallet ?? null,
     paymentNumber: center?.payment_number ?? null,
   }
+
+  // Newest cancellation first, sorted in the shared function rather than in the query
+  // above — see lib/fees/void.ts for why `voided_at` is sorted on and then dropped
+  // instead of travelling to the browser.
+  const cancelledList = cancelledBills(cancelled, d.common.unknown)
 
   return (
     <div className="flex flex-col gap-5">
@@ -335,18 +382,45 @@ export default async function FeesPage() {
               center={centerPay}
               locale={locale}
               readOnly={!canWrite}
-              // One object built once for the whole board. Four groups of words
+              // One object built once for the whole board. Five groups of words
               // reach every row, and React sends each distinct value down once
               // however many rows share it.
               words={{
                 t: d.feeRow,
                 chase: d.chase,
                 channels: d.channels,
+                cancel: d.cancel,
                 common: d.common,
               }}
             />
           ))}
         </ul>
+      )}
+
+      {/* Under the board, never above it. These are bills that are already off every
+          total — nothing here is owed and nothing here is to be chased — so they must
+          not compete with the list of families who do owe money.
+
+          Open for the first handful, folded past that. A cancelled bill leaves the
+          board the instant the revalidation lands, so this list appearing is the only
+          confirmation the tap gets; on the day an owner closes a batch and cancels
+          thirty, that stops being true and burying the board would be the worse
+          failure. The count is in the summary either way, so nothing is hidden. */}
+      {cancelledList.length > 0 && (
+        <details open={cancelledList.length <= CANCELLED_OPEN_UP_TO}>
+          <summary
+            className="flex min-h-tap cursor-pointer list-none items-center
+              font-medium text-ink-soft"
+          >
+            {t.cancelledCount(cancelledList.length)}
+          </summary>
+          <p className="mb-2 text-sm text-ink-faint">{t.cancelledBody}</p>
+          <ul className="flex flex-col gap-2">
+            {cancelledList.map((bill) => (
+              <CancelledRow key={bill.id} bill={bill} locale={locale} t={d.cancel} />
+            ))}
+          </ul>
+        </details>
       )}
     </div>
   )

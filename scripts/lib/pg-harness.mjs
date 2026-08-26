@@ -65,6 +65,20 @@ const AUTH_STUB = `
     end if;
   end
   $$;
+
+  -- Supabase grants these, and until the invoice-void trigger (20260811000028) nothing
+  -- here needed them: every other auth.uid() caller in the schema is either an RLS
+  -- policy expression, which Postgres evaluates as the table owner, or a SECURITY
+  -- DEFINER function, which runs as its owner. A SECURITY INVOKER trigger is the first
+  -- thing to reach auth.uid() with the caller's own privileges, and without these two
+  -- lines it fails with "permission denied for schema auth" — a lock the real database
+  -- does not have.
+  --
+  -- Checked against the live project rather than assumed: has_schema_privilege(
+  -- 'authenticated', 'auth', 'usage') and has_function_privilege('authenticated',
+  -- 'auth.uid()', 'execute') are both true there.
+  grant usage on schema auth to anon, authenticated, service_role;
+  grant execute on function auth.uid(), auth.role() to anon, authenticated, service_role;
 `
 
 export async function bootDatabase({ verbose = false } = {}) {

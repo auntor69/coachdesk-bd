@@ -453,6 +453,36 @@ export const bn = {
     overpaid: (amount: string) =>
       `প্রয়োজনের চেয়ে ${amount} বেশি জমা হয়েছে। ভুল হলে এখনই দেখে নিন।`,
 
+    /**
+     * What cancelling and restoring a bill say back.
+     *
+     * The child's name first, like `received`, and for the same reason: the fear is
+     * not that the button failed, it is that it fired on the wrong row. "বাতিল হয়েছে"
+     * with a name on it is checkable at a glance.
+     *
+     * The same sentence answers a second, replayed request — see the action. So it
+     * says what is now true rather than what just happened; "আগেই বাতিল করা হয়েছে"
+     * would read as a warning to an owner whose only mistake was a bad signal.
+     */
+    invoiceCancelled: (name: string) => `${name} — বিলটি বাতিল করা হয়েছে।`,
+    invoiceRestored: (name: string) => `${name} — বিলটি আবার চালু করা হয়েছে।`,
+
+    /**
+     * The section under the board that holds them.
+     *
+     * The heading is the count, because it is a fold: an owner who cancelled one bill
+     * a minute ago and an owner looking at thirty from a batch that closed both need
+     * the number before they need anything else, and a separate title beside it would
+     * only repeat the word.
+     *
+     * "এই বিলগুলো আর কারো বাকিতে নেই" is the whole point of the body — the owner needs
+     * to know these names are off the total and off the chase list, because that is
+     * what they pressed the button for.
+     */
+    cancelledCount: (n: number) => `${digits(n, 'bn')}টি বাতিল করা বিল`,
+    cancelledBody:
+      'এই বিলগুলো আর কারো বাকিতে নেই, মোট বকেয়ায় নেই, এবং কাউকে এগুলোর জন্য মনে করিয়ে দেওয়া হবে না। ভুলে বাতিল হলে আবার চালু করে নিন।',
+
     errors: {
       forbidden: 'ফি-এর হিসাব শুধু মালিক বা ম্যানেজার রাখতে পারেন।',
       dueDayRange: 'তারিখ ১ থেকে ২৮-এর মধ্যে দিন।',
@@ -467,6 +497,21 @@ export const bn = {
       invoiceMissing: 'ইনভয়েসটি পাওয়া যায়নি।',
       invoiceVoided: 'এই ইনভয়েসটি বাতিল করা হয়েছে।',
       paymentFailed: 'টাকা জমা হয়নি। আবার চেষ্টা করুন।',
+      /**
+       * The one rule cancelling has, said in terms of the money rather than the
+       * database: a bill that has been paid cannot simply stop existing, because a
+       * cancelled bill leaves the hisab altogether and the family's payment would go
+       * with it while the cash stayed in the drawer.
+       *
+       * It names the way through — hand the money back as a return entry — without
+       * pointing at a screen. There is no refund button yet, and a message that sent
+       * an owner looking for one would be worse than one that tells them what has to
+       * be true.
+       */
+      cancelPaid:
+        'এই বিলে টাকা জমা আছে, তাই এটি বাতিল করা যাবে না। আগে টাকা ফেরত দিয়ে হিসাবে তুলুন, তারপর বাতিল করা যাবে।',
+      cancelFailed: 'বিলটি বাতিল হয়নি। আবার চেষ্টা করুন।',
+      restoreFailed: 'বিলটি আবার চালু হয়নি। আবার চেষ্টা করুন।',
     },
   },
 
@@ -523,6 +568,77 @@ export const bn = {
       bank_transfer: 'ব্যাংক',
       other: 'অন্য',
     },
+  },
+
+  /**
+   * Cancelling a bill that should not have been raised, and putting one back.
+   *
+   * Its own group rather than more of `feeRow`, because two different components read
+   * it — the control under a board row and the struck-through row in the cancelled
+   * list — and neither should carry the other's words across the wire.
+   *
+   * THE WORD IS "বাতিল", NOT A WORD FOR VOIDING. The schema calls the column
+   * `voided_at` and will go on calling it that; an owner in Bandarban is not doing
+   * accounting, they are undoing a mistake, and "বিল বাতিল" is what they would say to
+   * the person sitting next to them.
+   *
+   * Strings only, `{}` templates where a figure goes — both readers are client
+   * components. See ./fill.ts.
+   */
+  cancel: {
+    /**
+     * The way in. Deliberately a plain underlined word at the foot of the panel and
+     * not a button: it sits on the same screen as "জমা নিন", which is tapped fifty
+     * times a day, and the two must not look alike. Nothing here is undone by
+     * tapping it — the confirm step is.
+     */
+    open: 'বিলটি বাতিল করুন',
+    /** The step that actually asks. */
+    heading: 'বিলটি বাতিল করবেন?',
+    /**
+     * Says what changes, in the three places the owner will look for it afterwards.
+     * Not a scare warning: cancelling is reversible and the restore button is right
+     * there, so the sentence describes rather than threatens.
+     */
+    warning:
+      'বিলটি আর বাকির হিসাবে থাকবে না, মোট বকেয়া থেকে বাদ যাবে, আর অভিভাবককে এটির জন্য মনে করিয়ে দেওয়া হবে না।',
+    /**
+     * Optional, and it says so. A bill raised against a child who left is self-evident
+     * to the person cancelling it, and a required box here would be answered with a
+     * full stop. Three weeks later, though, "কেন এটা বাতিল হলো" is a real question, and
+     * this is the only place the answer can come from.
+     */
+    reason: 'কেন বাতিল করছেন',
+    reasonHint: 'যেমন: জুন মাসেই কোচিং ছেড়ে দিয়েছে',
+    confirm: 'হ্যাঁ, বাতিল করুন',
+    cancelling: 'বাতিল হচ্ছে…',
+    /** The way out of the confirm step, and the wider tap target of the two. */
+    keep: 'না, থাকুক',
+
+    /**
+     * When the bill has money on it. Shown at the confirm step instead of the form,
+     * rather than by hiding the control: an owner who cannot find the button assumes
+     * the app is broken, and one who is told why learns the rule at the moment it
+     * matters.
+     *
+     * Shorter than `fees.errors.cancelPaid` and deliberately not the same literal.
+     * That one is read after a failed write, alone on a red line, and has to carry the
+     * whole rule; this one sits directly under the figure showing what was paid, so it
+     * only has to name the way through.
+     */
+    paidTitle: 'এই বিলটি বাতিল করা যাবে না',
+    paidNote: 'এই বিলে টাকা জমা আছে। আগে টাকা ফেরত দিন, তারপর বাতিল করা যাবে।',
+
+    /**
+     * One row of the cancelled list: which month's bill it was, what is no longer
+     * owed, and why.
+     */
+    forMonth: '{month} মাসের বিল',
+    amount: '{amount} — আর দিতে হবে না',
+    /** Above the owner's own words, when they left any. */
+    reasonLabel: 'কারণ',
+    restore: 'আবার চালু করুন',
+    restoring: 'চালু হচ্ছে…',
   },
 
   /**

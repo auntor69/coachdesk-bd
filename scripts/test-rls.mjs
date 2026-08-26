@@ -1285,6 +1285,299 @@ await db.query('delete from fee_payments where invoice_id = $1', [mimInvoice])
 await db.query('delete from fee_invoices where id = $1', [mimInvoice])
 
 // ---------------------------------------------------------------------------
+// Cancelling a bill that should not have been raised (20260811000028).
+//
+// The hole this closes had been open since migration 1: `voided_at` existed, every
+// read path in the app honoured it, and no write path could set it — so a student who
+// left in June went on owing ৳2,000 in the headline figure, in the month-close arrears
+// and on the chase worklist, forever.
+//
+// What is asserted here is the shape of the correction, and every one of these is a
+// thing the browser must not be able to do:
+//
+//   * cancel a bill that has money on it, because a cancelled invoice leaves the
+//     balances entirely and the family's payment would vanish from their own record
+//     while staying in the centre's takings;
+//   * backdate the cancellation into a month the owner has already closed and shown
+//     somebody;
+//   * name who did it, rather than have it recorded;
+//   * rewrite what was billed, which is what every report in the product is made of;
+//   * delete the bill, because a bill that was issued is a thing that happened.
+//
+// And two things it must be able to do: cancel an unpaid bill, and put one back — the
+// slot stays taken by a cancelled invoice, so restore is the only way back and a
+// mistaken tap without it is permanent.
+// ---------------------------------------------------------------------------
+
+console.log('\nCancelling a bill (void, restore, and the fence around both):')
+
+// Its own invoice, deleted at the end. Nothing else in the suite may see a voided row:
+// the sections below count invoices, and a cancelled one is still a row.
+//
+// enrollment_id is left null on purpose — unique (enrollment_id, period_month) never
+// conflicts on a null, so this fixture cannot collide with the generator's seeds.
+const voidInv = await one(
+  `insert into fee_invoices (coaching_center_id, student_id, period_month, amount_bdt, due_date)
+   values ($1, $2, '2026-05-01', 2000, '2026-05-10') returning id`,
+  [centerA, stAli],
+)
+
+const invoiceState = async (id = voidInv) =>
+  (
+    await db.query(
+      `select voided_at, voided_by, void_reason, amount_bdt, period_month::text as period_month
+       from fee_invoices where id = $1`,
+      [id],
+    )
+  ).rows[0]
+
+// A teacher first, because this is the half the can_view_fees probe further down can no
+// longer prove. Karim can read this invoice and holds the column grant on voided_at, so
+// privileges let the statement through and RLS is the only thing left standing between
+// him and cancelling a debt. A policy refusal on UPDATE is silent — nought rows, no
+// error — so the assertion is the stored row.
+await asUser(db, ids.karim, async (tx) => {
+  await tx.query('update fee_invoices set voided_at = now() where id = $1', [voidInv])
+})
+check(
+  'a teacher cannot cancel a bill, even one they can read',
+  (await invoiceState()).voided_at === null,
+)
+
+// And the other centre, which is the same silence for a different reason.
+await asUser(db, ids.ownerB, async (tx) => {
+  await tx.query('update fee_invoices set voided_at = now() where id = $1', [voidInv])
+})
+check("nor can the other centre's owner", (await invoiceState()).voided_at === null)
+
+// The write the product actually makes. voided_at is sent because PostgREST needs a
+// value to write; the trigger overwrites it. void_reason is the owner's own words.
+await asUser(db, ids.ownerA, async (tx) => {
+  await tx.query(
+    `update fee_invoices set voided_at = '2020-01-01', void_reason = 'left in June' where id = $1`,
+    [voidInv],
+  )
+})
+const cancelled = await invoiceState()
+check('a staff admin can cancel an unpaid bill', cancelled.voided_at !== null)
+check(
+  'and the reason is kept in their own words',
+  cancelled.void_reason === 'left in June',
+  `reason is ${cancelled.void_reason}`,
+)
+// The one that matters most on this screen. A client-supplied stamp would let a bill be
+// cancelled into a month the owner has already closed and reported on, so the trigger
+// takes now() and ignores what was sent — 2020 is six years before the fixture.
+check(
+  'the cancellation is stamped by the database, not by the browser',
+  new Date(cancelled.voided_at).getUTCFullYear() >= 2026,
+  `stamped ${cancelled.voided_at}`,
+)
+// voided_by is not in the grant at all, so the browser could not have sent it. That it
+// is nonetheless the right person is the trigger reading auth.uid().
+check(
+  'and it records who did it without letting them claim it',
+  cancelled.voided_by === ids.ownerA,
+  `voided_by is ${cancelled.voided_by}`,
+)
+check(
+  'a browser cannot name the canceller even to name itself',
+  await deniedAsUser(db, ids.ownerA, 'update fee_invoices set voided_by = $2 where id = $1', [
+    voidInv,
+    ids.karim,
+  ]),
+)
+
+// Restore, which is the only way back: the cancelled invoice keeps its unique
+// (enrollment_id, period_month), so re-running the generator will not raise a
+// replacement. The two columns beside voided_at are cleared by the trigger rather than
+// by the app — a live bill carries no cancellation.
+await asUser(db, ids.ownerA, async (tx) => {
+  await tx.query('update fee_invoices set voided_at = null where id = $1', [voidInv])
+})
+const restored = await invoiceState()
+check('a staff admin can put a cancelled bill back', restored.voided_at === null)
+check(
+  'and the restored bill carries no trace of the cancellation',
+  restored.voided_by === null && restored.void_reason === null,
+  `voided_by ${restored.voided_by}, reason ${restored.void_reason}`,
+)
+
+// Now the rule that is the whole of lib/fees/void.ts. Money on the bill.
+await db.query(
+  `insert into fee_payments (coaching_center_id, invoice_id, student_id, amount_bdt)
+   values ($1, $2, $3, 500)`,
+  [centerA, voidInv, stAli],
+)
+check(
+  'a bill with money on it cannot be cancelled',
+  await deniedAsUser(db, ids.ownerA, 'update fee_invoices set voided_at = now() where id = $1', [
+    voidInv,
+  ]),
+)
+check('so the bill is still standing', (await invoiceState()).voided_at === null)
+
+// A refund is a negative payment in this schema, never a deletion, and netting to zero
+// is what makes the bill cancellable again. This is the documented way through the
+// refusal above, and the same reading month-close.ts and the board's arithmetic take.
+await db.query(
+  `insert into fee_payments (coaching_center_id, invoice_id, student_id, amount_bdt, note)
+   values ($1, $2, $3, -500, 'handed back')`,
+  [centerA, voidInv, stAli],
+)
+await asUser(db, ids.ownerA, async (tx) => {
+  await tx.query('update fee_invoices set voided_at = now() where id = $1', [voidInv])
+})
+check(
+  'a payment handed back in full leaves a bill that can be cancelled',
+  (await invoiceState()).voided_at !== null,
+)
+check(
+  'and both payments are still on the record',
+  (
+    await db.query('select count(*)::int as n from fee_payments where invoice_id = $1', [
+      voidInv,
+    ])
+  ).rows[0].n === 2,
+)
+
+// Everything a bill says about what was billed. These are the numbers every report in
+// the product is built from, and a bill silently moved from May to June changes a month
+// the owner has already shown somebody.
+for (const [what, sql] of [
+  ['the amount', 'update fee_invoices set amount_bdt = 1 where id = $1'],
+  ['the discount', 'update fee_invoices set discount_bdt = 2000 where id = $1'],
+  ['the month it is for', `update fee_invoices set period_month = '2026-06-01' where id = $1`],
+  ['the deadline', `update fee_invoices set due_date = '2026-12-31' where id = $1`],
+  ['which student it is for', 'update fee_invoices set student_id = $2 where id = $1'],
+]) {
+  check(
+    `a staff admin cannot rewrite ${what}`,
+    await deniedAsUser(db, ids.ownerA, sql, sql.includes('$2') ? [voidInv, stMim] : [voidInv]),
+  )
+}
+check(
+  'nor delete the bill',
+  await deniedAsUser(db, ids.ownerA, 'delete from fee_invoices where id = $1', [voidInv]),
+)
+const stillThere = await invoiceState()
+check(
+  'and the bill still says what was billed',
+  Number(stillThere.amount_bdt) === 2000 && String(stillThere.period_month).startsWith('2026-05'),
+  `${stillThere.amount_bdt} for ${stillThere.period_month}`,
+)
+
+// Two mechanisms, proven separately — the same argument 20260811000004 and
+// 20260811000017 make and this suite already makes for fee_payments. Every refusal above
+// would also be produced by the REVOKE on its own, which leaves the trigger untested;
+// and a REVOKE only removes grants the revoking role made, so if the live database's
+// grant on this table came from supabase_admin rather than postgres, the statement
+// succeeds while changing nothing and this suite would be proving a lock production does
+// not have.
+//
+// So hand the privilege back inside a transaction that is thrown away. RLS cannot be
+// what refuses: ownerA is a staff admin in centre A and the policy is `for all`, and a
+// policy refusal on UPDATE or DELETE is silent. An exception can only be the trigger.
+const vGuard = { del: '', amount: '', month: '', paid: '', allowed: false }
+await db.query('begin')
+try {
+  await db.query('grant update, delete on public.fee_invoices to authenticated')
+  await db.query('set local role authenticated')
+  await db.query(`select set_config('request.jwt.claim.sub', $1, true)`, [ids.ownerA])
+  await db.query('savepoint probe')
+
+  try {
+    await db.query('delete from fee_invoices where id = $1', [voidInv])
+  } catch (error) {
+    vGuard.del = String(error.message)
+  }
+  await db.query('rollback to savepoint probe')
+
+  try {
+    await db.query('update fee_invoices set amount_bdt = 1 where id = $1', [voidInv])
+  } catch (error) {
+    vGuard.amount = String(error.message)
+  }
+  await db.query('rollback to savepoint probe')
+
+  try {
+    await db.query(`update fee_invoices set period_month = '2026-06-01' where id = $1`, [voidInv])
+  } catch (error) {
+    vGuard.month = String(error.message)
+  }
+  await db.query('rollback to savepoint probe')
+
+  // The money rule, with the privilege in hand. Restore it first, put a payment on it,
+  // then try to cancel: the trigger has to refuse a bill that has been paid however the
+  // request got here.
+  await db.query('update fee_invoices set voided_at = null where id = $1', [voidInv])
+  await db.query(
+    `insert into fee_payments (coaching_center_id, invoice_id, student_id, amount_bdt)
+     values ($1, $2, $3, 100)`,
+    [centerA, voidInv, stAli],
+  )
+  try {
+    await db.query('update fee_invoices set voided_at = now() where id = $1', [voidInv])
+  } catch (error) {
+    vGuard.paid = String(error.message)
+  }
+  await db.query('rollback to savepoint probe')
+
+  // And both directions still go through, so what is being observed is a guard on the
+  // specific writes and not a trigger that refuses everything it is handed.
+  const back = await db.query(
+    `update fee_invoices set voided_at = null where id = $1 returning voided_at`,
+    [voidInv],
+  )
+  const gone = await db.query(
+    `update fee_invoices set voided_at = now() where id = $1 returning voided_at`,
+    [voidInv],
+  )
+  vGuard.allowed = back.rows[0]?.voided_at === null && gone.rows[0]?.voided_at !== null
+} finally {
+  await db.query('rollback')
+}
+
+check(
+  'a trigger refuses the delete even when the privilege is handed back',
+  /cannot be deleted by authenticated/.test(vGuard.del),
+  vGuard.del.split('\n')[0] || 'accepted',
+)
+check(
+  'and refuses the amount even when the privilege is handed back',
+  /cannot be rewritten by authenticated/.test(vGuard.amount),
+  vGuard.amount.split('\n')[0] || 'accepted',
+)
+check(
+  'and refuses to move the bill into another month',
+  /cannot be rewritten by authenticated/.test(vGuard.month),
+  vGuard.month.split('\n')[0] || 'accepted',
+)
+check(
+  'and refuses to cancel a bill that has been paid',
+  /cannot be cancelled/.test(vGuard.paid),
+  vGuard.paid.split('\n')[0] || 'accepted',
+)
+check('while still letting a cancellation and a restore through', vGuard.allowed)
+check(
+  'and the thrown-away transaction took the grant with it',
+  await deniedAsUser(db, ids.ownerA, 'delete from fee_invoices where id = $1', [voidInv]),
+)
+
+// The server role is exempt, which is what makes a support case and the next migration
+// possible at all. Asserted rather than assumed: if the guard ever stopped checking
+// current_user, every db:push touching this table would start failing.
+await db.query('update fee_invoices set amount_bdt = 2500 where id = $1', [voidInv])
+check(
+  'the migration role can still correct a bill',
+  Number((await invoiceState()).amount_bdt) === 2500,
+)
+
+// Put the seed back. Voided or not, this is a row, and the sections below count them.
+await db.query('delete from fee_payments where invoice_id = $1', [voidInv])
+await db.query('delete from fee_invoices where id = $1', [voidInv])
+
+// ---------------------------------------------------------------------------
 // The record of having chased a fee.
 //
 // Three things here are not obvious from reading the migration.
@@ -2360,17 +2653,32 @@ check(
   ),
 )
 
-// UPDATE is the one that cannot be asserted with deniedAsUser, and it is the one
-// that would cost the most. A reader who can SELECT a row and has no write policy
-// gets no error from `update` — the row is filtered out and Postgres reports nought
-// rows changed, which deniedAsUser reads as allowed. So the assertion is the stored
-// number. Setting discount_bdt to the full 800 is a legal value that clears
-// fee_invoices_discount_bound, which is the point: if the policy ever opened, a
-// teacher would be writing off the owner's fees and nothing in the schema would
-// stop them.
-await asUser(db, ids.karim, async (tx) => {
-  await tx.query('update fee_invoices set discount_bdt = 800 where id = $1', [invoiceAli])
-})
+// UPDATE used to be the one that could not be asserted with deniedAsUser, and the
+// original probe here set discount_bdt to the full 800 and then read the column back:
+// a reader who can SELECT a row and has no write policy gets no error from `update`,
+// because the row is filtered out and Postgres reports nought rows changed, which
+// deniedAsUser reads as allowed.
+//
+// 20260811000028 narrowed the grant on this table to (voided_at, void_reason), so a
+// write to discount_bdt is now a column-privilege failure — raised at executor startup,
+// before any row is scanned, and therefore raised whether or not the policy would have
+// matched anything. Which means the strong form of the assertion is available, and this
+// is it. Writing off the owner's fees is the thing that would cost the most: 800 clears
+// fee_invoices_discount_bound, so it is a legal value, and if either fence ever opened a
+// teacher would be cancelling debts for free.
+//
+// What this no longer proves is the policy — it stops at the grant. That half moved to
+// the invoice-cancellation section, which has an unpaid invoice to aim a teacher at and
+// so can tell a policy refusal apart from the trigger's.
+check(
+  'a teacher cannot write the fee off, not even on an invoice they can read',
+  await deniedAsUser(
+    db,
+    ids.karim,
+    'update fee_invoices set discount_bdt = 800 where id = $1',
+    [invoiceAli],
+  ),
+)
 
 // Deleting the payment used to belong in that transaction, silently changing
 // nothing. 20260811000017 revoked DELETE on fee_payments from `authenticated`
@@ -2386,16 +2694,21 @@ check(
 
 const untouched = (
   await db.query(
-    `select f.discount_bdt,
+    `select f.discount_bdt, f.voided_at,
             (select count(*)::int from fee_payments p where p.invoice_id = f.id) as payments
      from fee_invoices f where f.id = $1`,
     [invoiceAli],
   )
 ).rows[0]
 check(
-  'a teacher cannot write the fee off, not even one they can read',
+  'the fee is still owed in full',
   Number(untouched.discount_bdt) === 0,
   `discount is now ${untouched.discount_bdt}`,
+)
+check(
+  'and the bill is still standing',
+  untouched.voided_at === null,
+  `voided_at is now ${untouched.voided_at}`,
 )
 check(
   'and the payment is still on the record',

@@ -28,6 +28,7 @@ import { fill } from '@/lib/i18n/fill'
 import { formatTaka as taka } from '@/lib/money'
 import type { OutreachChannel, PaymentMethod } from '@/lib/supabase/types'
 import { recordPayment, type FeeState } from './actions'
+import { CancelBill } from './cancel-bill'
 import {
   ChaseChips,
   lateLabel,
@@ -53,8 +54,8 @@ const METHODS: PaymentMethod[] = [
 ]
 
 /**
- * The four groups this row and its chips need. Not the locale's dictionary and not
- * a provider: one group per component keeps the payload to the strings actually
+ * The groups this row and the things inside it need. Not the locale's dictionary and
+ * not a provider: one group per component keeps the payload to the strings actually
  * rendered, and the board ships one copy of these for the whole page however many
  * rows are on it.
  */
@@ -62,6 +63,7 @@ type RowWords = {
   t: T<'feeRow'>
   chase: T<'chase'>
   channels: T<'channels'>
+  cancel: T<'cancel'>
   common: T<'common'>
 }
 
@@ -105,7 +107,7 @@ export function PaymentRow({
    */
   readOnly?: boolean
 }) {
-  const { t, chase, channels, common } = words
+  const { t, chase, channels, cancel, common } = words
   const [state, formAction, pending] = useActionState<FeeState, FormData>(
     recordPayment,
     null,
@@ -334,6 +336,21 @@ export function PaymentRow({
               </form>
             </>
           )}
+
+          {/* Last thing in the panel, under both branches, because it belongs to
+              neither: a bill raised against the wrong child is as likely to have been
+              paid off as not, and hiding the way out of one behind "this is settled"
+              would leave the ৳0 duplicates on the board forever.
+
+              Its own separator and its own quiet styling — see cancel-bill.tsx for why
+              it must not look like the button above it. `row.paid` is the netted
+              figure, so a payment already handed back does not stand in the way. */}
+          <CancelBill
+            invoiceId={row.id}
+            paid={row.paid}
+            t={cancel}
+            common={common}
+          />
         </div>
       </details>
     </li>

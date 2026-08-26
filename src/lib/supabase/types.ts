@@ -725,6 +725,8 @@ export type Database = {
           voided_at: string | null
           created_at: string
           updated_at: string
+          voided_by: string | null
+          void_reason: string | null
         }
         Insert: {
           id?: string
@@ -739,6 +741,8 @@ export type Database = {
           voided_at?: string | null
           created_at?: string
           updated_at?: string
+          voided_by?: string | null
+          void_reason?: string | null
         }
         Update: {
           id?: string
@@ -753,6 +757,8 @@ export type Database = {
           voided_at?: string | null
           created_at?: string
           updated_at?: string
+          voided_by?: string | null
+          void_reason?: string | null
         }
         Relationships: [
           {
@@ -775,6 +781,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: 'students'
             referencedColumns: ['id', 'coaching_center_id']
+          },
+          {
+            foreignKeyName: 'fee_invoices_voided_by_fkey'
+            columns: ['voided_by']
+            isOneToOne: false
+            referencedRelation: 'users'
+            referencedColumns: ['id']
           },
         ]
       }
@@ -1899,6 +1912,7 @@ export type Database = {
           guardian_phone: string | null
           sms_opt_out: boolean | null
           preferred_channel: OutreachChannel | null
+          void_reason: string | null
         }
         Relationships: []
       }

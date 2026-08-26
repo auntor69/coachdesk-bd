@@ -233,6 +233,13 @@ export const en: Dictionary = {
     overpaid: (amount: string) =>
       `${amount} more than was owed has been received. Check it now if that is a mistake.`,
 
+    invoiceCancelled: (name: string) => `${name} — the bill is cancelled.`,
+    invoiceRestored: (name: string) => `${name} — the bill is back.`,
+
+    cancelledCount: (n: number) => `${n} cancelled ${n === 1 ? 'bill' : 'bills'}`,
+    cancelledBody:
+      'These bills are nobody’s arrears any more. They are out of the outstanding total, and no guardian will be reminded about them. Put one back if it was cancelled by mistake.',
+
     errors: {
       forbidden: 'Only an owner or a manager can keep the fee records.',
       dueDayRange: 'Pick a day between 1 and 28.',
@@ -247,6 +254,10 @@ export const en: Dictionary = {
       invoiceMissing: 'Invoice not found.',
       invoiceVoided: 'This invoice has been cancelled.',
       paymentFailed: 'The payment was not recorded. Please try again.',
+      cancelPaid:
+        'This bill has money against it, so it cannot be cancelled. Refund the money first and record the refund, then it can be cancelled.',
+      cancelFailed: 'The bill was not cancelled. Please try again.',
+      restoreFailed: 'The bill was not put back. Please try again.',
     },
   },
 
@@ -274,6 +285,28 @@ export const en: Dictionary = {
       bank_transfer: 'Bank',
       other: 'Other',
     },
+  },
+
+  cancel: {
+    open: 'Cancel this bill',
+    heading: 'Cancel this bill?',
+    warning:
+      'It will stop being anybody’s arrears, come out of the outstanding total, and no guardian will be reminded about it.',
+    reason: 'Why are you cancelling it',
+    reasonHint: 'e.g. left the coaching in June',
+    confirm: 'Yes, cancel it',
+    cancelling: 'Cancelling…',
+    keep: 'No, keep it',
+
+    paidTitle: 'This bill cannot be cancelled',
+    paidNote:
+      'There is money against this bill. Refund it first, and then it can be cancelled.',
+
+    forMonth: 'Bill for {month}',
+    amount: '{amount} — no longer owed',
+    reasonLabel: 'Reason',
+    restore: 'Put it back',
+    restoring: 'Putting it back…',
   },
 
   receipt: {
