@@ -73,6 +73,18 @@ export type PlatformCenterRow = {
   last_paid_at: string | null
   /** A `date`, so YYYY-MM-DD with no time. Null when nothing says what was bought. */
   paid_through: string | null
+  /**
+   * The centre's open upgrade request, from a left join, so all three are null
+   * together when there isn't one.
+   *
+   * The one column on this row that came from the customer rather than from their
+   * behaviour: everything else here is counted, and this is asked for. Which is why
+   * it is worth a chip on the card and a tile in the totals — a founder with eleven
+   * customers and one asking to pay more has exactly one thing to do today.
+   */
+  wants_plan: PlanId | null
+  wants_since: string | null
+  wants_note: string | null
 }
 
 /**
@@ -156,6 +168,19 @@ export type Customer = {
    * paid, turning a call list into a graveyard.
    */
   owes: boolean
+  /**
+   * The tier this centre has asked to be moved onto, or null if they have not asked.
+   *
+   * Not a plan they are on and not a plan they are entitled to — `coaching_centers.plan`
+   * stays locked to the founder's own action, and this is a note saying "ring me". The
+   * distinction matters on the screen: a chip that read like a tier would have a
+   * founder believing a customer is already paying for something nobody has invoiced.
+   */
+  wantsPlan: PlanId | null
+  /** When they asked. ISO through, formatted by the caller. */
+  wantsSince: string | null
+  /** Whatever the owner typed with the request. Usually empty; occasionally the deal. */
+  wantsNote: string | null
 }
 
 function count(value: number | null | undefined): number {
@@ -252,6 +277,12 @@ export function customers(
       // did not happen, so it counts as owing.
       owes:
         status === 'active' && billBdt > 0 && (paidThrough === null || paidThrough < today),
+      wantsPlan: row.wants_plan ?? null,
+      wantsSince: row.wants_since ?? null,
+      // Trimmed to nothing rather than kept as whitespace: the screen decides whether
+      // to render a line by asking whether this is null, and a note of three spaces
+      // would draw an empty quotation mark under a customer's name.
+      wantsNote: row.wants_note?.trim() || null,
     })
   }
 
@@ -298,6 +329,15 @@ export type PlatformTotals = {
    * counted here is `active` and billing.
    */
   owedBdt: number
+  /**
+   * Customers who have asked to change plan and not been answered yet.
+   *
+   * The only figure in this row that is a to-do rather than a measurement, which is
+   * why it earns a place beside twelve numbers about money: everything else here
+   * describes what already happened, and this one is somebody waiting for a phone
+   * call. Zero is the normal reading and the useful one — a non-zero is work.
+   */
+  asking: number
 }
 
 export function platformTotals(list: readonly Customer[]): PlatformTotals {
@@ -317,6 +357,7 @@ export function platformTotals(list: readonly Customer[]): PlatformTotals {
     paidBdt: 0,
     owing: 0,
     owedBdt: 0,
+    asking: 0,
   }
 
   for (const c of list) {
@@ -329,6 +370,9 @@ export function platformTotals(list: readonly Customer[]): PlatformTotals {
       totals.pipelineBdt += c.billBdt
     }
     if (c.quiet) totals.quiet += 1
+    // Counted whatever the status. A trial asking to be put on Centre is the single
+    // most valuable row this panel can hold, and a status filter here would drop it.
+    if (c.wantsPlan) totals.asking += 1
     if (c.owes) {
       totals.owing += 1
       totals.owedBdt += c.billBdt
@@ -382,6 +426,9 @@ export type CustomerCsvHeadings = {
   lastPaid: string
   paidThrough: string
   owes: string
+  wants: string
+  wantsSince: string
+  wantsNote: string
 }
 
 export type CustomerCsvWords = {
@@ -441,6 +488,9 @@ export function customersSheet(
     h.lastPaid,
     h.paidThrough,
     h.owes,
+    h.wants,
+    h.wantsSince,
+    h.wantsNote,
   ]
 
   const rows: CsvCell[][] = list.map((c) => [
@@ -474,6 +524,12 @@ export function customersSheet(
     // A word rather than a boolean: TRUE/FALSE in a Bangla sheet is a column the
     // reader has to translate in their head, and a spreadsheet filters on either.
     c.owes ? words.yes : words.no,
+    // Blank rather than a word when nobody asked, so sorting this column puts the
+    // customers who did at one end. The product name for the same reason the `plan`
+    // column carries one — this file is read by a person.
+    c.wantsPlan ? planName(planFor(c.wantsPlan), 'en') : null,
+    c.wantsSince,
+    c.wantsNote,
   ])
 
   return { header, rows }

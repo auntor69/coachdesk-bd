@@ -1079,11 +1079,28 @@ export const en: Dictionary = {
 
       contactTitle: 'Want to change plan?',
       contactBody:
-        'Send a message or call — tell us how many students and teachers, and you get a price.',
+        'Tell us which plan you want and we will ring you — your student and teacher counts are already in front of us.',
       contactWhatsapp: 'WhatsApp',
       contactCall: 'Call',
       contactMessage: (center: string, plan: string) =>
         `Hello. I am from ${center}, currently on ${plan}. I would like to talk about plans.`,
+      /** See the Bangla for why this sentence is not inside `upgrade`. */
+      pendingRequest: (plan: string, date: string) =>
+        `You asked for ${plan} on ${date}. We will ring you.`,
+      upgrade: {
+        pick: 'Which plan?',
+        note: 'Anything we should know?',
+        noteHint: 'Optional. How many students you expect, when you want to start.',
+        send: 'Ask us to change my plan',
+        sending: 'Sending…',
+        withdraw: 'Cancel this request',
+        withdrawing: 'Cancelling…',
+        ownerOnly: 'Only the centre owner can ask for a plan change.',
+        badPlan: 'That plan is not one of the choices.',
+        failed: 'Could not send it. Try again.',
+        sent: 'Got it. We will ring you on the owner’s number.',
+        withdrawn: 'Request cancelled.',
+      },
     },
 
     subjects: {
@@ -1438,6 +1455,8 @@ export const en: Dictionary = {
       /** The call list, and one month of what is on it. See the Bangla note. */
       owing: 'Owing now',
       owed: 'Owed (one month)',
+      /** A job, not a measurement, and the one tile you want reading zero. */
+      asking: 'Asking to upgrade',
     },
     bill: 'A month',
     size: {
@@ -1508,6 +1527,16 @@ export const en: Dictionary = {
       badStatus: 'That status is not one of the choices.',
       failed: 'Could not save it. Try again.',
     },
+    /** Outside `asked` because it takes an argument. See the Bangla note. */
+    askedFor: (plan: string) => `Asked for ${plan}`,
+    /** String leaves only — this group is handed to a client component. */
+    asked: {
+      /** Not "Upgraded" — it means the call happened. See the Bangla note. */
+      markHandled: 'We have spoken',
+      marking: 'Saving…',
+      handled: 'Taken off the list.',
+      failed: 'Could not do it. Try again.',
+    },
     csv: {
       name: 'Centre',
       area: 'Area',
@@ -1535,6 +1564,10 @@ export const en: Dictionary = {
       lastPaid: 'Last payment',
       paidThrough: 'Paid up to',
       owes: 'Owes',
+      /** Last on the row: sort by these and you have the call list. */
+      wants: 'Plan asked for',
+      wantsSince: 'Asked on',
+      wantsNote: 'What they wrote',
     },
   },
 }

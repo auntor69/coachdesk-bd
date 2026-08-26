@@ -1818,6 +1818,48 @@ export type Database = {
           },
         ]
       }
+      upgrade_requests: {
+        Row: {
+          coaching_center_id: string
+          requested_plan: PlanType
+          note: string | null
+          requested_by: string | null
+          created_at: string
+          handled_at: string | null
+        }
+        Insert: {
+          coaching_center_id: string
+          requested_plan: PlanType
+          note?: string | null
+          requested_by?: string | null
+          created_at?: string
+          handled_at?: string | null
+        }
+        Update: {
+          coaching_center_id?: string
+          requested_plan?: PlanType
+          note?: string | null
+          requested_by?: string | null
+          created_at?: string
+          handled_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'upgrade_requests_coaching_center_id_fkey'
+            columns: ['coaching_center_id']
+            isOneToOne: true
+            referencedRelation: 'coaching_centers'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'upgrade_requests_requested_by_fkey'
+            columns: ['requested_by']
+            isOneToOne: false
+            referencedRelation: 'users'
+            referencedColumns: ['id']
+          },
+        ]
+      }
     }
     Views: {
       batch_attendance_monthly: {
@@ -1957,7 +1999,7 @@ export type Database = {
       }
       platform_centers: {
         Args: Record<PropertyKey, never>
-        Returns: { center_id: string; center_name: string; center_phone: string; bd_area: string; status: CenterStatus; plan: PlanType; created_at: string; owner_name: string; owner_phone: string; students: number; teachers: number; batches: number; sms_credit_balance: number; attendance_30d: number; exams_30d: number; fee_payments_30d: number; collected_30d: number; taps_30d: number; notes_30d: number; sms_30d: number; last_active_at: string; paid_bdt: number; last_paid_at: string; paid_through: string }[]
+        Returns: { center_id: string; center_name: string; center_phone: string; bd_area: string; status: CenterStatus; plan: PlanType; created_at: string; owner_name: string; owner_phone: string; students: number; teachers: number; batches: number; sms_credit_balance: number; attendance_30d: number; exams_30d: number; fee_payments_30d: number; collected_30d: number; taps_30d: number; notes_30d: number; sms_30d: number; last_active_at: string; paid_bdt: number; last_paid_at: string; paid_through: string; wants_plan: PlanType; wants_since: string; wants_note: string }[]
       }
       reap_stranded_sms: {
         Args: Record<PropertyKey, never>

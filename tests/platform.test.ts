@@ -57,6 +57,12 @@ function row(over: Partial<PlatformCenterRow> = {}): PlatformCenterRow {
     // A `date`, and one that has not run out yet: the default row is a customer who
     // is paid up, so every `owes` test below has to say what it changed.
     paid_through: '2026-08-31',
+    // Nobody has asked for anything. The left join in platform_centers() returns all
+    // three as null together, so the default customer is one with no open request and
+    // every test about a request has to opt in.
+    wants_plan: null,
+    wants_since: null,
+    wants_note: null,
     ...over,
   }
 }
@@ -379,6 +385,72 @@ test('totals of nothing are zeroes, not NaN', () => {
 })
 
 /* -------------------------------------------------------------------------- */
+/* Who asked to change plan                                                   */
+/* -------------------------------------------------------------------------- */
+
+test('an open request comes through as a plan, a date and what they wrote', () => {
+  const c = customers(
+    [
+      row({
+        plan: 'teacher_plus',
+        wants_plan: 'center',
+        wants_since: '2026-08-20T05:00:00.000Z',
+        wants_note: 'Two branches from Ashwin',
+      }),
+    ],
+    'x',
+    NOW,
+  )[0]
+
+  // The tier they are on is untouched by the asking. A shaper that let the request
+  // overwrite `plan` would have the founder panel showing a customer as Centre
+  // before anybody had invoiced them for it.
+  assert.equal(c.plan, 'teacher_plus')
+  assert.equal(c.wantsPlan, 'center')
+  assert.equal(c.wantsSince, '2026-08-20T05:00:00.000Z')
+  assert.equal(c.wantsNote, 'Two branches from Ashwin')
+})
+
+test('a centre nobody has heard from carries no request at all', () => {
+  const c = customers([row()], 'x', NOW)[0]
+  assert.equal(c.wantsPlan, null)
+  assert.equal(c.wantsSince, null)
+  assert.equal(c.wantsNote, null)
+})
+
+test('a note of nothing but whitespace is no note', () => {
+  // The card renders the quotation marks by asking whether this is null, so three
+  // spaces would draw an empty “” under a customer's name.
+  const c = customers(
+    [row({ wants_plan: 'center', wants_note: '   \n  ' })],
+    'x',
+    NOW,
+  )[0]
+  assert.equal(c.wantsNote, null)
+  assert.equal(c.wantsPlan, 'center', 'the request itself still stands')
+})
+
+test('the asking total counts requests whatever the centre’s status', () => {
+  const list = customers(
+    [
+      row({ center_id: 'a', status: 'active', wants_plan: 'institution' }),
+      // The most valuable row this panel can hold: somebody on a free trial asking
+      // to be put on a paid tier. A status filter here would drop it.
+      row({ center_id: 'b', status: 'trial', wants_plan: 'center' }),
+      row({ center_id: 'c', status: 'suspended', wants_plan: 'center' }),
+      row({ center_id: 'd', status: 'active' }),
+    ],
+    'x',
+    NOW,
+  )
+
+  assert.equal(platformTotals(list).asking, 3)
+  // And it is a count of customers, not of the money — the two tiles beside it are
+  // taka and this one is a queue length.
+  assert.equal(platformTotals([]).asking, 0)
+})
+
+/* -------------------------------------------------------------------------- */
 /* The download                                                               */
 /* -------------------------------------------------------------------------- */
 
@@ -409,6 +481,9 @@ const HEADINGS = {
   lastPaid: 'শেষ পেমেন্ট',
   paidThrough: 'কোন তারিখ পর্যন্ত দেওয়া',
   owes: 'বিল বাকি',
+  wants: 'যে প্ল্যান চেয়েছে',
+  wantsSince: 'কবে চেয়েছে',
+  wantsNote: 'যা লিখেছে',
 }
 
 const WORDS = {
@@ -485,6 +560,58 @@ test('the status word is localised and the plan is its product name', () => {
   assert.equal(at(HEADINGS.status), 'বন্ধ')
   // Not `teacher_plus`. Nobody calls it that, and this file is read by a person.
   assert.equal(at(HEADINGS.plan), PLANS.teacher_plus.nameEn)
+})
+
+test('the request columns are last, and blank for the centres who never asked', () => {
+  const asked = customers(
+    [
+      row({
+        center_id: 'asked',
+        plan: 'teacher_plus',
+        wants_plan: 'center',
+        wants_since: '2026-08-20T05:00:00.000Z',
+        wants_note: 'Two branches from Ashwin',
+      }),
+    ],
+    'x',
+    NOW,
+  )
+  const quietly = customers([row({ center_id: 'quiet' })], 'x', NOW)
+  const { header, rows } = customersSheet([...asked, ...quietly], WORDS)
+  const at = (i: number, heading: string) => rows[i][header.indexOf(heading)]
+
+  // The product name, like the `plan` column beside it — this file is read by a
+  // person, and the tier they are on and the tier they want must be comparable at a
+  // glance rather than one being an enum and the other a name.
+  assert.equal(at(0, HEADINGS.wants), PLANS.center.nameEn)
+  assert.equal(at(0, HEADINGS.plan), PLANS.teacher_plus.nameEn)
+  // ISO through, so the founder's own sheet can sort the call list by who has been
+  // waiting longest.
+  assert.equal(at(0, HEADINGS.wantsSince), '2026-08-20T05:00:00.000Z')
+  assert.equal(at(0, HEADINGS.wantsNote), 'Two branches from Ashwin')
+
+  // Blank and not a word: sorting this column has to put everybody who asked at one
+  // end, and "—" or "No" would sort in among the plan names.
+  assert.equal(at(1, HEADINGS.wants), null)
+  assert.equal(at(1, HEADINGS.wantsSince), null)
+  assert.equal(at(1, HEADINGS.wantsNote), null)
+})
+
+test('a note a centre owner typed cannot run in the founder’s spreadsheet', () => {
+  // The one free-text field on this sheet a customer controls end to end: an owner
+  // types it into /settings/plan and the founder opens it in Excel. `+` rather than
+  // `=` because it is the realistic case — the note most owners will write is the
+  // number they want ringing, and a cell beginning `+880` is a formula to Excel.
+  const list = customers(
+    [row({ wants_plan: 'center', wants_note: '+8801711000111 ring me' })],
+    'x',
+    NOW,
+  )
+  const { header, rows } = customersSheet(list, WORDS)
+  assert.equal(
+    csvCell(rows[0][header.indexOf(HEADINGS.wantsNote)]),
+    "'+8801711000111 ring me",
+  )
 })
 
 test('a centre name that looks like a formula is neutralised on the way out', () => {

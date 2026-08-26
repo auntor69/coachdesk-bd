@@ -1972,8 +1972,12 @@ export const bn = {
       current: 'এখন এটিতেই আছেন',
 
       contactTitle: 'প্ল্যান বদলাতে চান?',
+      /**
+       * Rewritten when the form arrived. It used to say "message or call", which was
+       * only true where the founder's number had been filled in — and it never was.
+       */
       contactBody:
-        'একটা মেসেজ দিন বা ফোন করুন — কত শিক্ষার্থী, কত শিক্ষক, সেটা শুনে দাম বলে দেওয়া হবে।',
+        'কোন প্ল্যান চান বলে দিন, আমরা ফোন করব — আপনার শিক্ষার্থী আর শিক্ষকের সংখ্যা আমাদের কাছেই আছে।',
       contactWhatsapp: 'WhatsApp',
       contactCall: 'ফোন করুন',
       /**
@@ -1983,6 +1987,40 @@ export const bn = {
        */
       contactMessage: (center: string, plan: string) =>
         `আসসালামু আলাইকুম। আমি ${center} থেকে বলছি, এখন ${plan} প্ল্যানে আছি। প্ল্যান নিয়ে কথা বলতে চাই।`,
+      /**
+       * What the owner sees while a request is open.
+       *
+       * OUTSIDE `upgrade` BELOW, and it has to be: that group is handed to a client
+       * component whole, and Next refuses to serialise a group containing a function.
+       * So the one sentence here with a plan and a date in it is composed by the
+       * page, on the server, and travels as a plain string. Same rule as the founder
+       * panel's `money` group.
+       */
+      pendingRequest: (plan: string, date: string) =>
+        `${date} তারিখে ${plan} চেয়েছেন। আমরা ফোন করব।`,
+      /**
+       * The request form. STRING LEAVES ONLY — see `pendingRequest` above.
+       *
+       * "চাইছি" and not "আপগ্রেড": an owner asks, and what happens next is a phone
+       * call, not a switch flipping. A button that said "upgrade now" would promise
+       * something no code in this product can do — the tier only moves when the
+       * founder moves it.
+       */
+      upgrade: {
+        pick: 'কোন প্ল্যান?',
+        note: 'কিছু জানানোর আছে?',
+        noteHint: 'না লিখলেও চলবে। কত শিক্ষার্থী হবে, কখন থেকে শুরু করতে চান।',
+        send: 'প্ল্যান বদলাতে চাই',
+        sending: 'পাঠানো হচ্ছে…',
+        withdraw: 'অনুরোধ বাতিল করুন',
+        withdrawing: 'বাতিল হচ্ছে…',
+        /** A manager sees this instead of the form. The owner pays, the owner decides. */
+        ownerOnly: 'প্ল্যান বদলানোর অনুরোধ শুধু সেন্টারের মালিক করতে পারেন।',
+        badPlan: 'প্ল্যানটা ঠিক নেই।',
+        failed: 'পাঠানো যায়নি। আবার চেষ্টা করুন।',
+        sent: 'পেয়েছি। মালিকের নম্বরে ফোন করা হবে।',
+        withdrawn: 'অনুরোধ বাতিল হয়েছে।',
+      },
     },
 
     subjects: {
@@ -2603,6 +2641,15 @@ export const bn = {
        */
       owing: 'বিল বাকি',
       owed: 'বাকি (এক মাসের)',
+      /**
+       * The only tile that is a job rather than a measurement.
+       *
+       * "চাইছে" — present tense, still waiting. Every other figure in this strip
+       * describes something that already happened; this one is a customer sitting by
+       * their phone, which is why it sits in the first row beside the counts and not
+       * down among the money.
+       */
+      asking: 'প্ল্যান চাইছে',
     },
     /** One row's labels. Terse — they sit in a line under the centre's name. */
     bill: 'মাসে',
@@ -2707,6 +2754,30 @@ export const bn = {
       failed: 'লেখা যায়নি। আবার চেষ্টা করুন।',
     },
     /**
+     * "সেন্টার প্ল্যান চেয়েছে" — an owner raised their hand on /settings/plan.
+     *
+     * OUTSIDE `asked`, and for the same reason `paymentSaved` sits outside `money`:
+     * this one takes an argument, and `asked` goes to a client component whole. The
+     * date is appended by the page rather than passed in here, so a request with no
+     * timestamp still reads as a sentence.
+     */
+    askedFor: (plan: string) => `${plan} চেয়েছে`,
+    /**
+     * The tick-off button on a request.
+     *
+     * STRING LEAVES ONLY — handed straight to a client component, like `money`.
+     *
+     * "কথা হয়েছে" and not "হয়ে গেছে": the button does not mean the customer was
+     * upgraded, it means the founder rang them. Half of these calls end in "next
+     * term", and the queue has to empty for those too.
+     */
+    asked: {
+      markHandled: 'কথা হয়েছে',
+      marking: 'লেখা হচ্ছে…',
+      handled: 'তালিকা থেকে সরানো হলো।',
+      failed: 'করা যায়নি। আবার চেষ্টা করুন।',
+    },
+    /**
      * The download's column headings. Localised, while every value in the file
      * stays machine-readable — same split as the centre exports on /api/export, and
      * for the same reason: a heading is read by a person and a cell is read by a
@@ -2739,6 +2810,14 @@ export const bn = {
       lastPaid: 'শেষ পেমেন্ট',
       paidThrough: 'কোন তারিখ পর্যন্ত দেওয়া',
       owes: 'বিল বাকি',
+      /**
+       * The three columns that are not measurements. Last on the row on purpose —
+       * everything before them is what the centre did, these are what it asked for,
+       * and a founder sorting the sheet by "wants" gets the call list.
+       */
+      wants: 'যে প্ল্যান চেয়েছে',
+      wantsSince: 'কবে চেয়েছে',
+      wantsNote: 'যা লিখেছে',
     },
   },
 } as const

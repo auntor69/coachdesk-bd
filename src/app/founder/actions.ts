@@ -1,7 +1,8 @@
 'use server'
 
 /**
- * The founder's own writes: money a centre paid us, and what plan they are on.
+ * The founder's own writes: money a centre paid us, what plan they are on, and
+ * ticking off a customer who asked to change tier.
  *
  * THE ONLY PLACE IN THE APP THAT WRITES `payments`. Until this file existed the
  * founder panel's "we have received" column read ৳0 for every customer forever,
@@ -33,6 +34,13 @@
  * while the dropdown happens to be showing "Centre" has silently trebled that
  * customer's bill and will find out when they complain. Separate forms, separate
  * submits, and neither can move the other's data.
+ *
+ * THE THIRD ACTION IS THE ODD ONE OUT and deliberately does not use the admin client.
+ * `markUpgradeHandled` writes `upgrade_requests`, which has a policy for exactly this
+ * — `upgrade_requests_platform_update` — so the write can be checked by the database
+ * instead of trusted from here. Nothing about a request is money or a tier, so there
+ * is no trigger standing in the way and no reason to reach past RLS. Where a policy
+ * can do the job, the policy does the job.
  */
 
 import { revalidatePath } from 'next/cache'
@@ -44,6 +52,7 @@ import {
   type Session,
 } from '@/lib/auth/session'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { createClient } from '@/lib/supabase/server'
 import { addMonths, formatMonth } from '@/lib/bd/time'
 import { dict, DEFAULT_LOCALE } from '@/lib/i18n'
 import { readIdempotencyKey, UNIQUE_VIOLATION } from '@/lib/idempotency'
@@ -348,4 +357,59 @@ export async function setCenterPlan(
   return over
     ? { ok: applied, warn: t.overLimit(planName(limits, session.locale)) }
     : { ok: applied }
+}
+
+/**
+ * Ticks off a customer who asked to change plan.
+ *
+ * Not the same event as changing their tier, and that is why it is its own button.
+ * Half the requests this panel will show do not end in an upgrade — a centre asks,
+ * the founder rings them, and the answer is "next term" or "actually we are
+ * shrinking". `setCenterPlan` records what was decided; this records that the
+ * conversation happened, so the queue empties for the right reason. Wiring the tick
+ * into the plan change instead would leave every "we talked and left it as it was"
+ * sitting in the list for ever, and a list that never empties stops being read.
+ *
+ * THE ROW IS KEPT, NOT DELETED. `handled_at` is stamped and the request stays, which
+ * is what stops the owner's own screen flipping back to an empty form the moment the
+ * founder acts — /settings/plan reads `handled_at is null`, so the pending card
+ * disappears while the fact that they asked does not. An owner who wants to ask again
+ * gets a fresh row, dated the day they asked again; see the note on requestUpgrade.
+ *
+ * Safe to arrive twice: `handled_at is null` in the filter means the second delivery
+ * matches nothing and the timestamp on the first one stands. That matters more than it
+ * looks — without it a replay would move the handled time forward every time, which is
+ * the only record of how quickly a customer got answered.
+ */
+export async function markUpgradeHandled(
+  _prev: FounderState,
+  formData: FormData,
+): Promise<FounderState> {
+  const gate = await founder()
+  if (!isSession(gate)) return gate
+
+  const session = gate
+  const t = dict(session.locale).founder
+
+  const centerId = String(formData.get('centerId') ?? '')
+  if (!centerId) return { error: t.money.noCenter }
+
+  // The session's own client, not the admin one. See the note at the top of the file:
+  // `upgrade_requests_platform_update` exists precisely so this write is checked by
+  // the database rather than waved through by a service key.
+  const supabase = await createClient()
+
+  // scoped-by: coaching_center_id is filtered below; the id came from the founder's
+  // own list, and app.is_platform_admin() in the policy is what authorises the write.
+  const { error } = await supabase
+    .from('upgrade_requests')
+    .update({ handled_at: new Date().toISOString() })
+    .eq('coaching_center_id', centerId)
+    .is('handled_at', null)
+
+  if (error) return { error: t.asked.failed }
+
+  revalidatePath('/founder')
+
+  return { ok: t.asked.handled }
 }

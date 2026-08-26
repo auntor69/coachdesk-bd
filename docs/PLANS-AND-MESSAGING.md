@@ -483,11 +483,22 @@ convenient the copy is.
    what we actually bill — change a rate in `plans.ts` and both the screen and the
    invoice move together. What is still soft is the **rates**, which is a
    conversation rather than a build; it has moved to §6.
+7. **A way to say yes. — Built**, and it was not on the original list because the
+   gap it closes only became visible once item 6 shipped. The calculator told an
+   owner exactly what Center would cost them and then the screen ended: the one
+   control that turned that into money was a contact card gated on a config value
+   nobody had filled in. So an owner asks in-app instead — migration
+   `20260811000027`, `settings/plan/upgrade-request.tsx`, and three new columns on
+   `platform_centers()` that put the request on the customer's own card in the
+   founder panel, next to their counts, their bill and their mobile number. Owner
+   only, no plan gate — a free teacher tapping it is the most valuable caller this
+   table has — and it grants nothing: `coaching_centers.plan` stays writable only by
+   us, so the worst a forged request achieves is a phone call worth making.
 
 **Everything on this list is built except item 5, and item 5 is waiting on you.**
-That is the honest summary: there is no next engineering step here that I can take
-without either an aggregator account or a decision from you. The §6 list is where
-the remaining work lives.
+That is the honest summary: the only engineering step left on this list needs either
+an aggregator account or a decision from you. The §6 list is where the remaining work
+lives.
 
 ---
 
@@ -499,11 +510,16 @@ you know what was assumed on your behalf.
 
 ### Blocking
 
-- **Your phone number, as one line of config.** `NEXT_PUBLIC_SALES_PHONE` is read
-  by the plan screen and is empty, so the "get in touch to upgrade" card does not
-  render. A centre owner looking at the Center tier right now has no way to reach
-  you. This is the cheapest item on the list and the only one that directly costs
-  revenue today.
+- **Your phone number, as one line of config.** `NEXT_PUBLIC_SALES_PHONE` is empty,
+  so the WhatsApp and call buttons on the plan screen do not render. This used to be
+  the item that cost revenue outright, because the whole "get in touch to upgrade"
+  card was gated on it — an owner who had just read the Center price reached the
+  bottom of the page and found nothing. That is fixed: the card is always there now,
+  and an owner taps **"প্ল্যান বদলাতে চাই"**, picks a tier, and the request lands on
+  their own card in your founder panel beside their student count, their monthly
+  bill and a `tel:` link to their mobile. You ring them. So the number is no longer
+  blocking a sale — it is the difference between them being able to reach you *now*
+  and having to wait for you to open the panel. Still the cheapest item on the list.
 - **The ৳1,999 floor and the ৳25 first band** (§1). One conversation with one real
   owner. Not the whole rate table — the ৳12 and ৳8 bands are theoretical until you
   have a nine-hundred-student customer, so they can wait. The old

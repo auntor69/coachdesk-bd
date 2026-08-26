@@ -4,6 +4,7 @@ import { Card } from '@/components/ui'
 import { pageRole, getSession } from '@/lib/auth/session'
 import { createClient } from '@/lib/supabase/server'
 import { formatBdMobile, normalizeBdMobile } from '@/lib/bd/phone'
+import { formatDate, todayInDhaka } from '@/lib/bd/time'
 import { dict, DEFAULT_LOCALE } from '@/lib/i18n'
 import { formatTaka } from '@/lib/money'
 import {
@@ -11,11 +12,14 @@ import {
   CENTER_MONTHLY_FLOOR_BDT,
   has,
   hasStaff,
+  planFor,
   planName,
   type FeatureKey,
+  type PlanId,
   type PlanLimits,
 } from '@/lib/plans'
 import { PriceCalculator } from './calculator'
+import { UpgradeRequest } from './upgrade-request'
 
 /** getSession, not pageRole — see the note on teach/page.tsx's own. */
 export async function generateMetadata() {
@@ -74,9 +78,18 @@ const LADDER: PlanLimits[] = [
  *
  * NOTHING HERE CHARGES ANYBODY. There is no payment rail yet — centres are signed
  * up in person, by the founder, from their own laptop — so the call to action is a
- * prefilled WhatsApp message and a phone number. That is honest about how the
- * business currently works, and it is also the highest-converting thing available:
- * the founder answers.
+ * request the founder reads on their own panel, beside this centre's name, owner,
+ * phone number and exact monthly bill. That is honest about how the business
+ * currently works, and it is also the highest-converting thing available: the founder
+ * answers.
+ *
+ * THE REQUEST FORM IS NOT GATED ON A PHONE NUMBER, and it used to be. The whole
+ * contact card sat behind `NEXT_PUBLIC_SALES_PHONE`, which is empty in every
+ * deployment because the founder's own number is not in the repo — so an owner who
+ * had read the calculator and decided to buy reached the bottom of this page and
+ * found nothing at all. Gating a dead WhatsApp chip was right; gating the card was
+ * not, because the alternative was never "no way to get in touch", it was "no way we
+ * bothered to build". The chips are still conditional. The form never is.
  */
 export default async function PlanPage() {
   const session = await pageRole('manager')
@@ -85,11 +98,20 @@ export default async function PlanPage() {
   const t = dict(locale).settings.plan
   const plan = session.plan
 
+  /**
+   * Only an owner may file or read a request — `upgrade_requests_owner_read` says so,
+   * so a manager's query would come back empty regardless. Skipped rather than sent
+   * and discarded, because this page is otherwise four counts and a manager has no
+   * use for a round trip that can only answer "nothing".
+   */
+  const isOwner = session.active.role === 'owner'
+
   const [
     { count: batchCount },
     { count: studentCount },
     { count: subjectCount },
     { count: teacherCount },
+    { data: asked },
   ] = await Promise.all([
     supabase
       .from('batches')
@@ -111,6 +133,17 @@ export default async function PlanPage() {
       .select('id', { count: 'exact', head: true })
       .eq('coaching_center_id', session.active.centerId)
       .eq('active', true),
+    // This centre's open request, if there is one. `handled_at is null` is what makes
+    // it open: a request the founder has ticked off is history, and showing it back
+    // as pending would have the owner waiting for a call that already happened.
+    isOwner
+      ? supabase
+          .from('upgrade_requests')
+          .select('requested_plan, note, created_at')
+          .eq('coaching_center_id', session.active.centerId)
+          .is('handled_at', null)
+          .maybeSingle()
+      : Promise.resolve({ data: null }),
   ])
 
   const usage: { label: string; used: number; limit: number | null }[] = [
@@ -142,12 +175,49 @@ export default async function PlanPage() {
 
   // Blank in every deployment until the founder puts their own number in. Absent
   // rather than a dead chip: a WhatsApp button that opens a chat with nobody is
-  // worse than no button, and this is the screen where trust is being built.
+  // worse than no button, and this is the screen where trust is being built. What is
+  // no longer gated on it is the card itself — see the note at the top.
   const salesPhone = normalizeBdMobile(process.env.NEXT_PUBLIC_SALES_PHONE ?? '')
   const salesMessage = t.contactMessage(
     session.active.centerName,
     planName(plan, locale),
   )
+
+  /*
+   * The tiers an owner may ask to be moved onto: the paid ones, minus the one they
+   * are already on.
+   *
+   * Priced in the option label, because a dropdown that reads "Centre" is asking
+   * somebody to remember a figure from four cards up the page. The same `priceLine`
+   * the ladder above uses, so the two cannot disagree.
+   */
+  const askable = LADDER.filter(
+    (tier) => tier.id !== 'teacher_free' && tier.id !== plan.id,
+  )
+  const choices = askable.map((tier) => ({
+    value: tier.id,
+    label: `${planName(tier, locale)} · ${priceLine(tier, t)}`,
+  }))
+
+  // The next rung up, which is what almost every request is: a free teacher wanting
+  // Pro, a Pro teacher past 150 students wanting Centre. An owner already on the top
+  // tier is offered the nearest one below, because there is nothing above it to sell.
+  const rung = (id: PlanId) => LADDER.findIndex((tier) => tier.id === id)
+  const suggested =
+    askable.find((tier) => rung(tier.id) > rung(plan.id))?.id
+    ?? askable[askable.length - 1].id
+
+  // Composed here rather than in the client component, and not inside `t.upgrade`
+  // either: the group below is handed across the server/client boundary whole, so a
+  // function in it would not serialise. It names a plan and a date, and the date
+  // carries Bangla numerals in Bangla. A Dhaka calendar day, so a request filed at
+  // 1am local is not reported as yesterday.
+  const pendingLine = asked
+    ? t.pendingRequest(
+        planName(planFor(asked.requested_plan), locale),
+        formatDate(todayInDhaka(new Date(asked.created_at)), locale),
+      )
+    : null
 
   return (
     <div className="flex flex-col gap-5">
@@ -270,11 +340,29 @@ export default async function PlanPage() {
 
       <PriceCalculator t={dict(locale).planCalc} locale={locale} />
 
-      {salesPhone && (
-        <Card>
-          <h2 className="font-semibold text-ink">{t.contactTitle}</h2>
-          <p className="mt-1 text-sm text-ink-soft">{t.contactBody}</p>
-          <div className="mt-3 flex flex-wrap gap-2">
+      <Card>
+        <h2 className="font-semibold text-ink">{t.contactTitle}</h2>
+        <p className="mt-1 text-sm text-ink-soft">{t.contactBody}</p>
+
+        {isOwner ? (
+          <UpgradeRequest
+            choices={choices}
+            suggested={suggested}
+            pendingLine={pendingLine}
+            pendingNote={asked?.note ?? null}
+            words={t.upgrade}
+          />
+        ) : (
+          /* A manager gets the sentence rather than a form that would be refused.
+             Whoever pays for this decides what it costs — the same line
+             `upgrade_requests_owner_insert` draws in the database. */
+          <p className="mt-3 text-sm text-ink-faint">{t.upgrade.ownerOnly}</p>
+        )}
+
+        {salesPhone && (
+          <div
+            className="mt-4 flex flex-wrap gap-2 border-t border-line pt-3"
+          >
             <a
               // wa.me wants the number without the +, exactly as the fee chips do.
               href={`https://wa.me/${salesPhone.slice(1)}?text=${encodeURIComponent(salesMessage)}`}
@@ -305,8 +393,8 @@ export default async function PlanPage() {
               <span className="num ml-1">{formatBdMobile(salesPhone)}</span>
             </a>
           </div>
-        </Card>
-      )}
+        )}
+      </Card>
     </div>
   )
 }

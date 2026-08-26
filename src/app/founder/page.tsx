@@ -17,6 +17,7 @@ import {
   type CenterStatus,
 } from '@/lib/platform/centers'
 import { CenterBilling } from './center-billing'
+import { AskedToUpgrade } from './asked-to-upgrade'
 
 /*
  * NO generateMetadata, on purpose.
@@ -159,6 +160,10 @@ export default async function FounderPage() {
             <Stat label={t.totals.active} value={String(totals.active)} />
             <Stat label={t.totals.trial} value={String(totals.trial)} />
             <Stat label={t.totals.quiet} value={String(totals.quiet)} />
+            {/* The only tile that is a to-do rather than a measurement, and the
+                only one whose useful reading is zero. First row on purpose: a
+                customer waiting to be sold to outranks every figure below it. */}
+            <Stat label={t.totals.asking} value={String(totals.asking)} />
             <Stat label={t.totals.mrr} value={formatTaka(totals.mrrBdt)} />
             <Stat label={t.totals.pipeline} value={formatTaka(totals.pipelineBdt)} />
             <Stat label={t.totals.paid} value={formatTaka(totals.paidBdt)} />
@@ -253,6 +258,27 @@ export default async function FounderPage() {
                     <p className="mt-2 text-sm text-ink-soft">
                       {sizeLine(c, locale, t.size)}
                     </p>
+
+                    {/* Above the phone number, because the two are read together:
+                        they asked for this, ring that. Only when there is an open
+                        request — a handled one is history and this panel is a
+                        working list. */}
+                    {c.wantsPlan && (
+                      <AskedToUpgrade
+                        centerId={c.centerId}
+                        // Composed here, not in the component: `askedFor` is a
+                        // function and `t.asked` crosses into a client component
+                        // whole, so the two cannot live in the same group.
+                        line={[
+                          t.askedFor(planName(planFor(c.wantsPlan), locale)),
+                          c.wantsSince && dhakaDay(c.wantsSince),
+                        ]
+                          .filter(Boolean)
+                          .join(' · ')}
+                        note={c.wantsNote}
+                        words={t.asked}
+                      />
+                    )}
 
                     {/* Who to ring, as a link that dials on the phone the founder
                         is holding. The one contact detail this panel carries, and

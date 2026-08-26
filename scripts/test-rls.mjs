@@ -4977,13 +4977,21 @@ check('centre A is in the panel', Boolean(rowA))
  * read. A future column added to the return type fails here, which is the point:
  * widening this function is a decision that should require editing a test that
  * says why it was narrow.
+ *
+ * The three `wants_*` columns are the one widening so far, and they are the only
+ * kind that is easy to justify: they come from `upgrade_requests`, which is a row
+ * the centre's own owner wrote *to us*, about their own billing. `wants_note` is
+ * free text and therefore the single most dangerous column on this list — the
+ * argument for it is that the owner typing it is the only person it can be about,
+ * and the alternative was a founder ringing a customer without reading what they
+ * had said. Nothing else in this schema is allowed through on that reasoning.
  */
 const PANEL_COLUMNS = [
   'center_id', 'center_name', 'center_phone', 'bd_area', 'status', 'plan',
   'created_at', 'owner_name', 'owner_phone', 'students', 'teachers', 'batches',
   'sms_credit_balance', 'attendance_30d', 'exams_30d', 'fee_payments_30d',
   'collected_30d', 'taps_30d', 'notes_30d', 'sms_30d', 'last_active_at', 'paid_bdt',
-  'last_paid_at', 'paid_through',
+  'last_paid_at', 'paid_through', 'wants_plan', 'wants_since', 'wants_note',
 ]
 const panelColumns = Object.keys(rowA ?? {}).sort()
 check(
@@ -5268,6 +5276,288 @@ check(
   'a signed-out caller cannot call it',
   await deniedAsUser(db, null, 'select * from platform_centers()'),
 )
+
+// ---------------------------------------------------------------------------
+// "I want to pay you" — upgrade_requests.
+//
+// The only row in this schema a customer writes about their own billing, and the
+// only one the founder panel carries that was asked for rather than counted. Two
+// separate things need proving and they fail in opposite directions.
+//
+// THE GATE. Owner-only, not staff-admin, which is the line payments and
+// sms_credit_ledger already draw: asking to be put on a ৳12,100-a-month plan
+// commits somebody else's money, and a manager doing it would make the founder's
+// confirmation call an awkward one. A teacher must not reach it at all. And the
+// platform admin sits on the odd side of the fence on purpose — read every request
+// and tick any of them off, file none — because a request the founder wrote on the
+// customer's behalf would be a note to self in the column that means "the customer
+// asked", and the entire value of this table is that the distinction holds.
+//
+// THE WIRING. `handled_at is null` lives in the panel's join, so a ticked-off
+// request has to leave the founder's screen while the row stays in the table. That
+// is what stops the owner's own /settings/plan flipping back to a blank form the
+// moment the founder acts, and there is no way to check it by reading either half
+// alone.
+//
+// Every write here is followed by a readback as superuser rather than trusted. An
+// UPDATE or DELETE that matches no policy touches zero rows and raises nothing —
+// so a hole in the gate and a correct refusal look identical from the caller, and
+// only the stored row can tell them apart.
+// ---------------------------------------------------------------------------
+
+console.log('\nAsking to change plan (upgrade_requests):')
+
+// This section's own manager. The one created for the roster-editing section was
+// deleted along with its membership so the sections between could count what they
+// expected, and a centre's second-in-command is exactly who might try this.
+const askManager = (
+  await db.query('insert into auth.users (id) values (gen_random_uuid()) returning id')
+).rows[0].id
+await addMember(centerA, askManager, 'manager')
+
+const requestRow = async (center = centerA) =>
+  (
+    await db.query(
+      `select requested_plan, note, requested_by, handled_at
+       from upgrade_requests where coaching_center_id = $1`,
+      [center],
+    )
+  ).rows[0]
+
+const requestCount = async () =>
+  Number((await db.query('select count(*)::int as n from upgrade_requests')).rows[0].n)
+
+// Nobody has asked for anything yet, and the panel read at the top of this section
+// proves the three columns are null rather than absent for such a centre. A join
+// that turned "no request" into a dropped row would have taken the customer off
+// the founder's screen entirely.
+check(
+  'a centre with no request has three null columns, not a missing row',
+  rowA !== undefined &&
+    rowA.wants_plan === null &&
+    rowA.wants_since === null &&
+    rowA.wants_note === null,
+  `${rowA?.wants_plan} / ${rowA?.wants_since} / ${rowA?.wants_note}`,
+)
+
+const FILE_REQUEST = `insert into upgrade_requests
+  (coaching_center_id, requested_plan, note, requested_by)
+  values ($1, 'center', $2, $3)`
+
+check(
+  'a teacher cannot file one',
+  await deniedAsUser(db, ids.karim, FILE_REQUEST, [centerA, 'me please', ids.karim]),
+)
+check(
+  'and neither can a manager, because this is billing',
+  await deniedAsUser(db, askManager, FILE_REQUEST, [centerA, 'me please', askManager]),
+)
+check(
+  'nor the platform admin, whose panel column means the customer asked',
+  await deniedAsUser(db, ids.founder, FILE_REQUEST, [centerA, 'sold it to them', ids.founder]),
+)
+check(
+  'a signed-out caller cannot file one',
+  await deniedAsUser(db, null, FILE_REQUEST, [centerA, 'anon', null]),
+)
+check('and none of those landed', (await requestCount()) === 0)
+
+// The owner of another centre, which is the interesting cross-tenant case: they
+// are an owner, so `is_owner` is true of *something* — just not of this centre.
+check(
+  "an owner cannot file one against another centre",
+  await deniedAsUser(db, ids.ownerB, FILE_REQUEST, [centerA, 'not mine', ids.ownerB]),
+)
+
+await asUser(db, ids.ownerA, (tx) =>
+  tx.query(FILE_REQUEST, [centerA, 'Two branches from Ashwin', ids.ownerA]),
+)
+const filed = await requestRow()
+check(
+  'the centre owner can ask to be put on Centre',
+  filed?.requested_plan === 'center' &&
+    filed.note === 'Two branches from Ashwin' &&
+    filed.requested_by === ids.ownerA &&
+    filed.handled_at === null,
+  `${filed?.requested_plan} / ${filed?.note} / handled ${filed?.handled_at}`,
+)
+
+/*
+ * The property the Server Action's upsert rests on, and the reason the centre is
+ * the primary key rather than a column on an append-only table.
+ *
+ * `experimental.useOffline` replays a Server Action whose response was lost, so an
+ * owner tapping once in a corridor with one bar can deliver the same insert three
+ * times. `requestUpgrade` passes `onConflict: 'coaching_center_id'`, which is only
+ * idempotent if the database has a conflict to detect — this asserts it does.
+ */
+check(
+  'a second request for the same centre conflicts rather than queueing',
+  await deniedAsUser(db, ids.ownerA, FILE_REQUEST, [centerA, 'again', ids.ownerA]),
+)
+check('so the centre still has exactly one', (await requestCount()) === 1)
+
+// Reads. The owner sees their own; nobody else in the building sees anything.
+check(
+  'the owner reads their own request',
+  (await asUser(db, ids.ownerA, (tx) =>
+    n(tx, 'select count(*)::int as n from upgrade_requests'),
+  )) === 1,
+)
+check(
+  'the owner of the other centre reads none of it',
+  (await asUser(db, ids.ownerB, (tx) =>
+    n(tx, 'select count(*)::int as n from upgrade_requests'),
+  )) === 0,
+)
+check(
+  'a teacher reads none of it',
+  (await asUser(db, ids.karim, (tx) =>
+    n(tx, 'select count(*)::int as n from upgrade_requests'),
+  )) === 0,
+)
+check(
+  'a manager reads none of it either',
+  (await asUser(db, askManager, (tx) =>
+    n(tx, 'select count(*)::int as n from upgrade_requests'),
+  )) === 0,
+)
+check(
+  'a signed-out caller reads none of it',
+  (await asUser(db, null, (tx) =>
+    n(tx, 'select count(*)::int as n from upgrade_requests'),
+  )) === 0,
+)
+check(
+  'the platform admin reads every request, which is the panel',
+  (await asUser(db, ids.founder, (tx) =>
+    n(tx, 'select count(*)::int as n from upgrade_requests'),
+  )) === 1,
+)
+
+// The panel wiring, first half: the request reaches the founder's card.
+const panelAsked = await asUser(db, ids.founder, (tx) =>
+  tx.query('select * from platform_centers()'),
+)
+const rowAsked = panelAsked.rows.find((r) => r.center_id === centerA)
+check(
+  'and it arrives on the customer’s own card, with what they wrote',
+  rowAsked?.wants_plan === 'center' &&
+    rowAsked.wants_since instanceof Date &&
+    rowAsked.wants_note === 'Two branches from Ashwin',
+  `${rowAsked?.wants_plan} / ${rowAsked?.wants_since} / ${rowAsked?.wants_note}`,
+)
+// A left join onto a table keyed by something other than the centre would double
+// this row, and every total across the top of the panel with it.
+check(
+  'without duplicating the centre in the list',
+  panelAsked.rows.length === centerTotal,
+  `${panelAsked.rows.length} rows for ${centerTotal} centres`,
+)
+check(
+  'and the tier they are actually on is untouched by the asking',
+  rowAsked?.plan === rowA?.plan,
+  `${rowAsked?.plan} vs ${rowA?.plan}`,
+)
+
+// Nobody but the founder may tick one off. Read back rather than trusting the
+// absence of an error: an UPDATE filtered away by RLS is a silent no-op.
+const TICK = `update upgrade_requests set handled_at = now() where coaching_center_id = $1`
+await asUser(db, ids.karim, (tx) => tx.query(TICK, [centerA])).catch(() => {})
+check(
+  'a teacher cannot mark a request handled',
+  (await requestRow())?.handled_at === null,
+)
+await asUser(db, askManager, (tx) => tx.query(TICK, [centerA])).catch(() => {})
+check(
+  'and neither can a manager',
+  (await requestRow())?.handled_at === null,
+)
+
+await asUser(db, ids.founder, (tx) => tx.query(TICK, [centerA]))
+check(
+  'the founder can tick it off',
+  (await requestRow())?.handled_at instanceof Date,
+  String((await requestRow())?.handled_at),
+)
+// The whole point of stamping rather than deleting: /settings/plan reads
+// `handled_at is null`, so the owner's pending card disappears while the fact that
+// they asked survives. A founder who could delete this would be able to erase the
+// only record of a customer having tried to give us money.
+check(
+  'and the row stays, because it is the record that they asked',
+  (await requestCount()) === 1,
+)
+check(
+  'the founder cannot delete it',
+  (await deniedAsUser(
+    db,
+    ids.founder,
+    'delete from upgrade_requests where coaching_center_id = $1',
+    [centerA],
+  )) || (await requestCount()) === 1,
+)
+
+// The panel wiring, second half: ticked off means gone from the screen.
+const panelHandled = await asUser(db, ids.founder, (tx) =>
+  tx.query('select * from platform_centers()'),
+)
+const rowHandled = panelHandled.rows.find((r) => r.center_id === centerA)
+check(
+  'a handled request leaves the panel rather than lingering as a badge',
+  rowHandled?.wants_plan === null &&
+    rowHandled.wants_since === null &&
+    rowHandled.wants_note === null,
+  `${rowHandled?.wants_plan} / ${rowHandled?.wants_since} / ${rowHandled?.wants_note}`,
+)
+check(
+  'while the centre keeps its row and its figures',
+  rowHandled !== undefined && Number(rowHandled.students) === Number(rowA?.students),
+  `${rowHandled?.students} vs ${rowA?.students}`,
+)
+
+// Withdrawal. An owner who changes their mind should not have to take the phone
+// call to say so — and nobody else may take the request off their behalf.
+check(
+  'a teacher cannot withdraw a request',
+  (await deniedAsUser(
+    db,
+    ids.karim,
+    'delete from upgrade_requests where coaching_center_id = $1',
+    [centerA],
+  )) || (await requestCount()) === 1,
+)
+check(
+  "an owner cannot withdraw another centre's",
+  (await deniedAsUser(
+    db,
+    ids.ownerB,
+    'delete from upgrade_requests where coaching_center_id = $1',
+    [centerA],
+  )) || (await requestCount()) === 1,
+)
+await asUser(db, ids.ownerA, (tx) =>
+  tx.query('delete from upgrade_requests where coaching_center_id = $1', [centerA]),
+)
+check('the owner can withdraw their own', (await requestCount()) === 0)
+
+// And the request cannot outlive the customer. `on delete cascade` rather than a
+// nightly sweep: a cancelled centre whose request stayed behind would sit on the
+// founder's call list for ever, pointing at a centre that no longer exists.
+const askDoomed = await one(
+  `insert into coaching_centers (name, plan, status) values ('Asked Then Left', 'teacher_free', 'trial')
+   returning id`,
+)
+await db.query(FILE_REQUEST, [askDoomed, 'signing up next week', null])
+await db.query('delete from coaching_centers where id = $1', [askDoomed])
+check(
+  'a deleted centre takes its request with it',
+  (await requestCount()) === 0,
+)
+
+// Back out, so the sections below count the memberships they expect to.
+await db.query('delete from center_members where user_id = $1', [askManager])
+await db.query('delete from auth.users where id = $1', [askManager])
 
 /*
  * THE PROPERTY THE FOUNDER'S RECORD-A-PAYMENT FORM RESTS ON.
