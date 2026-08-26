@@ -236,6 +236,8 @@ export const en: Dictionary = {
     invoiceCancelled: (name: string) => `${name} — the bill is cancelled.`,
     invoiceRestored: (name: string) => `${name} — the bill is back.`,
 
+    refunded: (name: string, amount: string) => `${name} — ${amount} handed back.`,
+
     cancelledCount: (n: number) => `${n} cancelled ${n === 1 ? 'bill' : 'bills'}`,
     cancelledBody:
       'These bills are nobody’s arrears any more. They are out of the outstanding total, and no guardian will be reminded about them. Put one back if it was cancelled by mistake.',
@@ -255,9 +257,14 @@ export const en: Dictionary = {
       invoiceVoided: 'This invoice has been cancelled.',
       paymentFailed: 'The payment was not recorded. Please try again.',
       cancelPaid:
-        'This bill has money against it, so it cannot be cancelled. Refund the money first and record the refund, then it can be cancelled.',
+        'This bill has money against it, so it cannot be cancelled. Use “Refund money” above to record the refund, then it can be cancelled.',
       cancelFailed: 'The bill was not cancelled. Please try again.',
       restoreFailed: 'The bill was not put back. Please try again.',
+
+      refundNothing: 'No money came in against this bill, so there is nothing to hand back.',
+      refundTooMuch: (max: string) =>
+        `This bill holds ${max}. No more than that can be handed back.`,
+      refundFailed: 'The refund was not recorded. Please try again.',
     },
   },
 
@@ -300,13 +307,30 @@ export const en: Dictionary = {
 
     paidTitle: 'This bill cannot be cancelled',
     paidNote:
-      'There is money against this bill. Refund it first, and then it can be cancelled.',
+      'There is money against this bill. Use “Refund money” above to record the refund first, and then it can be cancelled.',
 
     forMonth: 'Bill for {month}',
     amount: '{amount} — no longer owed',
     reasonLabel: 'Reason',
     restore: 'Put it back',
     restoring: 'Putting it back…',
+  },
+
+  refund: {
+    open: 'Refund money',
+    heading: 'How much are you handing back?',
+    held: 'This bill holds {amount}',
+    credit: '{amount} of that is more than was owed',
+    warning:
+      'A refund cannot be deleted or edited afterwards. Count the money out, hand it over, and then write it here.',
+    amount: 'How much you handed back',
+    method: 'How you handed it back',
+    note: 'Why you are handing it back',
+    noteHint: 'e.g. left the coaching',
+    confirm: 'Record the refund',
+    refunding: 'Recording…',
+    keep: 'No, leave it',
+    receiptLink: 'View refund receipt',
   },
 
   receipt: {
@@ -319,6 +343,11 @@ export const en: Dictionary = {
     amount: 'Amount received',
     method: 'How',
     reference: 'Transaction ID',
+    /** The same sheet when the money went the other way — see the Bangla. */
+    refundTitle: 'Refund receipt',
+    refundAmount: 'Amount handed back',
+    refundFootNote:
+      'This is a computer-generated refund receipt. This money was handed back to the guardian — please keep it as proof.',
     billed: 'Total fee for the month',
     /** "Up to this receipt", not "now" — see the Bangla for why that matters. */
     balanceAfter: 'Balance after this receipt',

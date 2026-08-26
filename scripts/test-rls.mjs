@@ -1578,6 +1578,152 @@ await db.query('delete from fee_payments where invoice_id = $1', [voidInv])
 await db.query('delete from fee_invoices where id = $1', [voidInv])
 
 // ---------------------------------------------------------------------------
+// The floor under a refund (20260811000029).
+//
+// A refund is a fee_payments row with a negative amount. That has been legal since the
+// first migration — `check (amount_bdt <> 0)`, and every total in the product nets
+// rather than counts — so nothing here is testing a new permission. What is being
+// tested is the one bound that was missing: per invoice, the sum of every payment must
+// stay at or above zero.
+//
+// WHY IT MATTERS MORE THAN THE OTHER GUARDS. A fee payment cannot be deleted by anybody
+// and cannot be rewritten even by the migration role (20260811000017). A refund of
+// ৳5,000 typed into a bill that took ৳500 is therefore permanent the instant it
+// commits, and the only correction available afterwards is a third row that reads,
+// forever, as if the family paid ৳4,500 they never paid. There is no screen that can be
+// built later to fix that, so the assertion is that it does not land.
+//
+// AND WHY THE SERVER ROLE IS NOT EXEMPT HERE, unlike every other guard in this schema.
+// The others refuse an edit a support case or a later migration might legitimately need
+// to make. This one refuses arithmetic that is never right, so a migration needing it
+// would be a migration with a bug — which is why the bare-superuser probe below expects
+// a refusal rather than a pass.
+// ---------------------------------------------------------------------------
+
+console.log('\nHanding money back (the floor under a refund):')
+
+const refundInv = await one(
+  `insert into fee_invoices (coaching_center_id, student_id, period_month, amount_bdt, due_date)
+   values ($1, $2, '2026-07-01', 2000, '2026-07-10') returning id`,
+  [centerA, stAli],
+)
+// Nobody ever pays this one. It is the "wrong row" case: an owner aiming a refund at a
+// bill that never took any money.
+const dryInv = await one(
+  `insert into fee_invoices (coaching_center_id, student_id, period_month, amount_bdt, due_date)
+   values ($1, $2, '2026-07-01', 1000, '2026-07-10') returning id`,
+  [centerA, stMim],
+)
+
+/** The netted total the guard reads: what came in, less what went back. */
+const nettedOn = async (id) =>
+  Number(
+    (
+      await db.query(
+        `select coalesce(sum(amount_bdt), 0) as netted
+         from fee_payments where invoice_id = $1`,
+        [id],
+      )
+    ).rows[0].netted,
+  )
+
+/**
+ * A payment row written by a staff admin, exactly as the board writes one — negative
+ * amounts included, because a refund is not a different table or a different privilege.
+ * Returns the guard's message, or '' when the row landed.
+ */
+const writeMoney = async (invoiceId, studentId, amount, userId = ids.ownerA) => {
+  try {
+    await asUser(db, userId, (tx) =>
+      tx.query(
+        `insert into fee_payments (coaching_center_id, invoice_id, student_id, amount_bdt)
+         values ($1, $2, $3, $4)`,
+        [centerA, invoiceId, studentId, amount],
+      ),
+    )
+    return ''
+  } catch (error) {
+    return String(error.message)
+  }
+}
+
+check('money coming in is written as it always was', !(await writeMoney(refundInv, stAli, 2000)))
+check('and the bill holds it', (await nettedOn(refundInv)) === 2000)
+
+check('part of what came in may go back', !(await writeMoney(refundInv, stAli, -500)))
+check('and the bill nets down to what is left', (await nettedOn(refundInv)) === 1500)
+
+// The one this whole migration exists for: a slipped digit on the way out of the drawer.
+const pastIt = await writeMoney(refundInv, stAli, -1501)
+check(
+  'a taka past what is left is refused',
+  /more than it received/.test(pastIt),
+  pastIt.split('\n')[0] || 'accepted',
+)
+check('and the bill is untouched by the attempt', (await nettedOn(refundInv)) === 1500)
+
+// The case the feature was built for: the student left, the bill is being cancelled, and
+// everything on it goes home with the parent.
+check('all of what is left may go back', !(await writeMoney(refundInv, stAli, -1500)))
+check('leaving the bill holding nothing', (await nettedOn(refundInv)) === 0)
+
+const drained = await writeMoney(refundInv, stAli, -1)
+check(
+  'and a bill already handed back in full has nothing more',
+  /more than it received/.test(drained),
+  drained.split('\n')[0] || 'accepted',
+)
+
+// Deliberately not bounded: a parent who overpays leaves credit at the child's name, and
+// handing that back is the ordinary case. ৳2,500 on a ৳2,000 bill, ৳500 back.
+check('an overpayment may be handed back', !(await writeMoney(refundInv, stAli, 2500)))
+check('the credit goes back like any other refund', !(await writeMoney(refundInv, stAli, -500)))
+check('leaving the bill holding what it was billed', (await nettedOn(refundInv)) === 2000)
+
+const wrongRow = await writeMoney(dryInv, stMim, -100)
+check(
+  'a bill nobody paid has nothing to hand back',
+  /more than it received/.test(wrongRow),
+  wrongRow.split('\n')[0] || 'accepted',
+)
+check('and nothing landed on it', (await nettedOn(dryInv)) === 0)
+
+// No server-role exemption, unlike every other guard in this schema — see the note
+// above. The bare db.query runs as the PGlite superuser, which is what db:push and a
+// support session are.
+let asServer = ''
+try {
+  await db.query(
+    `insert into fee_payments (coaching_center_id, invoice_id, student_id, amount_bdt)
+     values ($1, $2, $3, -2001)`,
+    [centerA, refundInv, stAli],
+  )
+} catch (error) {
+  asServer = String(error.message)
+}
+check(
+  'the migration role is refused too, alone among the guards here',
+  /more than it received/.test(asServer),
+  asServer.split('\n')[0] || 'accepted',
+)
+
+// And it is a bound rather than a ban: the same role writing a refund that fits goes
+// through, so what is being observed is the arithmetic and not a trigger that refuses
+// every negative row it is handed.
+await db.query(
+  `insert into fee_payments (coaching_center_id, invoice_id, student_id, amount_bdt)
+   values ($1, $2, $3, -2000)`,
+  [centerA, refundInv, stAli],
+)
+check('while a refund that fits still goes through', (await nettedOn(refundInv)) === 0)
+
+// Put the seed back: the sections below count invoices and payments.
+await db.query('delete from fee_payments where invoice_id = any($1)', [
+  [refundInv, dryInv],
+])
+await db.query('delete from fee_invoices where id = any($1)', [[refundInv, dryInv]])
+
+// ---------------------------------------------------------------------------
 // The record of having chased a fee.
 //
 // Three things here are not obvious from reading the migration.

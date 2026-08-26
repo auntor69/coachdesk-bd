@@ -29,6 +29,8 @@ import { formatTaka as taka } from '@/lib/money'
 import type { OutreachChannel, PaymentMethod } from '@/lib/supabase/types'
 import { recordPayment, type FeeState } from './actions'
 import { CancelBill } from './cancel-bill'
+import { MethodPicker } from './method-picker'
+import { RefundBill } from './refund'
 import {
   ChaseChips,
   lateLabel,
@@ -37,21 +39,6 @@ import {
 } from './reminder-chips'
 
 export type { ReminderCenter }
-
-/**
- * Cash first, then the wallets an owner is actually handed money through. Values
- * only — the labels are looked up in the dictionary, so this stays one list in
- * both languages and a wallet added to the enum without a label is a compile
- * error rather than a blank chip.
- */
-const METHODS: PaymentMethod[] = [
-  'cash',
-  'bkash',
-  'nagad',
-  'rocket',
-  'bank_transfer',
-  'other',
-]
 
 /**
  * The groups this row and the things inside it need. Not the locale's dictionary and
@@ -64,6 +51,7 @@ type RowWords = {
   chase: T<'chase'>
   channels: T<'channels'>
   cancel: T<'cancel'>
+  refund: T<'refund'>
   common: T<'common'>
 }
 
@@ -107,12 +95,12 @@ export function PaymentRow({
    */
   readOnly?: boolean
 }) {
-  const { t, chase, channels, cancel, common } = words
+  const { t, chase, channels, cancel, refund, common } = words
   const [state, formAction, pending] = useActionState<FeeState, FormData>(
     recordPayment,
     null,
   )
-  const [method, setMethod] = useState<string>('cash')
+  const [method, setMethod] = useState<PaymentMethod>('cash')
   const formRef = useRef<HTMLFormElement>(null)
 
   /**
@@ -228,8 +216,9 @@ export function PaymentRow({
 
           {/* A settled invoice keeps its history visible but offers no form.
               Recording more money against a paid bill is either a correction or
-              a refund, and neither has a button yet — doing it by accident is
-              the likelier outcome of leaving the field here. */}
+              a refund; the refund has its own control below, which turns a
+              positive figure negative on the way in, and a correction is not
+              something this field can express. */}
           {settled ? (
             <>
               <p className="num mt-2 text-sm text-ink-soft">
@@ -282,42 +271,13 @@ export function PaymentRow({
                   className="num"
                 />
 
-                <div className="flex flex-col gap-1.5">
-                  {/* Not a `<label>`: it names a group of six radios, and a label
-                      may only point at one control. `aria-labelledby` is how a
-                      radiogroup gets a name, and without it a screen reader
-                      announces six unexplained wallets. */}
-                  <span id={fid('method')} className="font-medium text-ink">
-                    {t.method}
-                  </span>
-                  <div
-                    role="radiogroup"
-                    aria-labelledby={fid('method')}
-                    className="flex flex-wrap gap-2"
-                  >
-                    {METHODS.map((m) => (
-                      <label
-                        key={m}
-                        className={`inline-flex min-h-tap cursor-pointer items-center
-                          rounded-xl border-2 px-4 font-medium transition-colors ${
-                            method === m
-                              ? 'border-brand-500 bg-brand-50 text-brand-800'
-                              : 'border-line text-ink-soft'
-                          }`}
-                      >
-                        <input
-                          type="radio"
-                          name="method"
-                          value={m}
-                          checked={method === m}
-                          onChange={() => setMethod(m)}
-                          className="sr-only"
-                        />
-                        {t.methods[m]}
-                      </label>
-                    ))}
-                  </div>
-                </div>
+                <MethodPicker
+                  id={fid('method')}
+                  legend={t.method}
+                  labels={t.methods}
+                  value={method}
+                  onChange={setMethod}
+                />
 
                 {method !== 'cash' && (
                   <Field
@@ -337,10 +297,31 @@ export function PaymentRow({
             </>
           )}
 
-          {/* Last thing in the panel, under both branches, because it belongs to
-              neither: a bill raised against the wrong child is as likely to have been
-              paid off as not, and hiding the way out of one behind "this is settled"
-              would leave the ৳0 duplicates on the board forever.
+          {/* Money out, and only when there is any on the bill: a control whose only
+              possible answer is "this family has paid nothing" is a control that
+              teaches an owner to distrust the panel. `row.paid` is the netted figure,
+              so a bill already handed back in full loses this again.
+
+              Above the cancel step rather than below it, because it is the step that
+              unblocks the cancel step — cancel.paidNote points up at it by name — and
+              because keeping the two money forms next to each other leaves the bottom
+              of the panel to the one control that is about the bill rather than the
+              cash. */}
+          {row.paid > 0 && (
+            <RefundBill
+              invoiceId={row.id}
+              paid={row.paid}
+              remaining={row.remaining}
+              t={refund}
+              methods={t.methods}
+              common={common}
+            />
+          )}
+
+          {/* Last thing in the panel, under every branch, because it belongs to
+              none of them: a bill raised against the wrong child is as likely to have
+              been paid off as not, and hiding the way out of one behind "this is
+              settled" would leave the ৳0 duplicates on the board forever.
 
               Its own separator and its own quiet styling — see cancel-bill.tsx for why
               it must not look like the button above it. `row.paid` is the netted

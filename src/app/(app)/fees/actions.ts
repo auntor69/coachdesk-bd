@@ -23,6 +23,7 @@ import {
 import { parseTaka, formatTaka, sumTaka } from '@/lib/money'
 import { billableEnrollments } from '@/lib/fees/billable'
 import { cancelVerdict } from '@/lib/fees/void'
+import { refundVerdict, refundable } from '@/lib/fees/refund'
 import { currentPeriodMonth } from '@/lib/bd/time'
 import { normalizeBdMobile } from '@/lib/bd/phone'
 import { readIdempotencyKey, UNIQUE_VIOLATION } from '@/lib/idempotency'
@@ -217,9 +218,10 @@ export async function recordPayment(
   const amount = parseTaka(String(formData.get('amount') ?? ''))
   if (amount === null) return { error: t.errors.amountUnreadable }
   if (amount === 0) return { error: t.errors.amountZero }
-  // Refunds exist in the schema as negative payments and the board's arithmetic
-  // handles them, but there is no refund button yet, so a negative here is a
-  // mistyped amount rather than an intention.
+  // A refund is a negative payment and has its own form below this one, which turns a
+  // positive figure negative on the way in. So a negative typed *here* is a slipped
+  // minus rather than an intention, and the two forms never have to guess which one
+  // the owner meant.
   if (amount < 0) return { error: t.errors.amountNegative }
 
   const rawMethod = String(formData.get('method') ?? 'cash') as PaymentMethod
@@ -643,4 +645,171 @@ export async function restoreInvoice(
   revalidatePath('/me')
 
   return { ok: t.invoiceRestored(name) }
+}
+
+/* -------------------------------------------------------------------------- */
+/* Money back out                                                             */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * What the refund box needs to know about the bill it is aimed at.
+ *
+ * `paid_bdt` is the netted total, so a bill already partly refunded offers only what
+ * is left — this action never counts payment rows. `remaining_bdt` is the view's own
+ * answer for what is owed (`net - paid`, 20260811000006) and is not recomputed here,
+ * for the reason docs §4 gives: two screens must not derive the same figure twice.
+ */
+const REFUND_COLUMNS = 'id, student_id, student_name, remaining_bdt, paid_bdt, voided_at'
+
+/**
+ * Hands money back: a second payment row with a negative amount, and its own receipt.
+ *
+ * NOT AN EDIT AND NOT A DELETE, because neither is available to anybody — see
+ * 20260811000017, which revokes both from the browser and refuses even the migration
+ * role a new receipt number. So the register still adds up to the cash in the drawer,
+ * and the parent holding the first slip can be handed the second.
+ *
+ * THE CEILING IS WHAT CAME IN, and lib/fees/refund.ts is the rule. Read here as well
+ * as on the form because this is a public HTTP endpoint and a missing button is not a
+ * check, and again in app.guard_payment_floor() which is the copy that cannot be
+ * talked out of it. A refund past zero cannot be undone by anything — that is why it
+ * is checked three times.
+ *
+ * A CANCELLED BILL IS REFUSED. Money on a cancelled invoice cannot happen (cancelling
+ * required a netted zero), so there is nothing to hand back; and a payment row against
+ * a bill that is out of every total would be money the product cannot show anywhere.
+ * Restore it first if the cancellation was the mistake.
+ *
+ * Idempotent through the same key and the same unique index as recordPayment, for the
+ * same reason at greater cost: `useOffline` replays Server Actions when a phone comes
+ * back on the network, and a refund that lands twice is cash out of the drawer twice
+ * with no way to take either row back.
+ */
+export async function refundPayment(
+  _prev: FeeState,
+  formData: FormData,
+): Promise<FeeState> {
+  const session = await feeAdmin()
+  if (!isSession(session)) return session
+
+  const t = dict(session.locale).fees
+
+  const invoiceId = String(formData.get('invoiceId') ?? '')
+  if (!invoiceId) return { error: t.errors.noInvoice }
+
+  // Positive on the way in: the owner types what they are handing over, and this is
+  // the one place in the product that turns it negative. A form that asked for "-500"
+  // would be a form somebody types 500 into.
+  const amount = parseTaka(String(formData.get('amount') ?? ''))
+  if (amount === null) return { error: t.errors.amountUnreadable }
+
+  const rawMethod = String(formData.get('method') ?? 'cash') as PaymentMethod
+  const method = METHODS.has(rawMethod) ? rawMethod : 'cash'
+  const note = clamp(String(formData.get('note') ?? '').trim(), MAX_TEXT)
+  const key = readIdempotencyKey(formData.get('idempotencyKey'))
+
+  const supabase = await createClient()
+
+  const { data: invoice } = await supabase
+    .from('fee_invoice_balances')
+    .select(REFUND_COLUMNS)
+    .eq('coaching_center_id', session.active.centerId)
+    .eq('id', invoiceId)
+    .maybeSingle()
+
+  if (!invoice?.id || !invoice.student_id) return { error: t.errors.invoiceMissing }
+  if (invoice.voided_at) return { error: t.errors.invoiceVoided }
+
+  const received = Number(invoice.paid_bdt ?? 0)
+
+  switch (refundVerdict({ received, amount })) {
+    case 'unreadable':
+      return { error: t.errors.amountUnreadable }
+    case 'zero':
+      return { error: t.errors.amountZero }
+    case 'nothing':
+      return { error: t.errors.refundNothing }
+    // Names the ceiling rather than only refusing. The owner is standing at a drawer
+    // deciding how much to count out, and "up to ৳1,500" is the answer they need.
+    case 'tooMuch':
+      return { error: t.errors.refundTooMuch(formatTaka(refundable(received))) }
+  }
+
+  const { data: payment, error: paymentError } = await supabase
+    .from('fee_payments')
+    .insert({
+      coaching_center_id: session.active.centerId,
+      invoice_id: invoice.id,
+      student_id: invoice.student_id,
+      amount_bdt: -amount,
+      method,
+      note: note || null,
+      received_by: session.userId,
+      idempotency_key: key,
+    })
+    .select('id, receipt_no')
+    .single()
+
+  let replay = false
+  let receipt: { id: string; no: number }
+
+  if (paymentError) {
+    // Everything here is recordPayment's reasoning, including why the existing row is
+    // checked against what this request asked for rather than trusted for being
+    // findable. The one difference is the sign: the row that deduplicates a refund of
+    // ৳500 holds -500, and a key that turns up against +500 is a payment, not this.
+    if (!key || paymentError.code !== UNIQUE_VIOLATION) {
+      return { error: t.errors.refundFailed }
+    }
+
+    const { data: existing } = await supabase
+      .from('fee_payments')
+      .select('id, receipt_no, invoice_id, amount_bdt')
+      .eq('coaching_center_id', session.active.centerId)
+      .eq('idempotency_key', key)
+      .maybeSingle()
+
+    if (
+      !existing
+      || existing.invoice_id !== invoice.id
+      || Number(existing.amount_bdt) !== -amount
+    ) {
+      return { error: t.errors.refundFailed }
+    }
+
+    replay = true
+    receipt = { id: existing.id, no: existing.receipt_no }
+  } else {
+    receipt = { id: payment.id, no: payment.receipt_no }
+  }
+
+  revalidatePath('/fees')
+  revalidatePath('/dashboard')
+  revalidatePath('/me')
+
+  const name = invoice.student_name ?? dict(session.locale).common.unknown
+  const back = formatTaka(amount)
+
+  const wasOwed = Number(invoice.remaining_bdt ?? 0)
+  // A refund moves the family towards owing, so it *adds* to what is outstanding. On
+  // a replay it is already in the view's sum — the row this is being deduplicated
+  // against was written before this request read the invoice — so adding again would
+  // tell the owner the family owes money nobody has taken back.
+  const owedNow = replay ? wasOwed : sumTaka([wasOwed, amount])
+
+  // Where the bill stands afterwards, in the same three shapes recordPayment uses,
+  // because it is the same question asked from the other side of the desk. The usual
+  // outcome is the first: a refunded bill is an owed bill, and if the student has left
+  // then cancelling it is the next thing the owner wants — which the control directly
+  // below this form now offers, the money that was blocking it having gone. The middle
+  // case is a parent who overpaid getting some but not all of the credit back.
+  if (owedNow > 0) {
+    return { ok: t.refunded(name, back), warn: t.stillOwed(formatTaka(owedNow)), receipt }
+  }
+
+  if (owedNow < 0) {
+    return { ok: t.refunded(name, back), warn: t.overpaid(formatTaka(-owedNow)), receipt }
+  }
+
+  return { ok: t.refunded(name, back), receipt }
 }

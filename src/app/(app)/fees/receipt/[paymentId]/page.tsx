@@ -49,6 +49,14 @@ export async function generateMetadata() {
  * paper: a teacher who has handed out thirty printed slips cannot go back to a
  * notebook, because the parents now expect one.
  *
+ * THE SAME SHEET PRINTS A REFUND, because a refund is a `fee_payments` row with a
+ * negative amount and nothing else — see lib/fees/refund.ts. So one flag runs through
+ * this page: the slip names itself in words, the amount block says what was handed back
+ * rather than what came in, and the figure is printed unsigned. Everything else is
+ * unchanged, including the as-of balance, which nets the refund by arithmetic that was
+ * already correct. A parent who was given cash back has nothing in writing until this
+ * is printed, which is the whole reason it is the same page and not a stub.
+ *
  * A miss is notFound() rather than forbidden(), for the reason the exam page gives:
  * RLS decides what is visible, and a 403 on someone else's payment id would confirm
  * that the id exists.
@@ -76,6 +84,17 @@ export default async function ReceiptPage({
     .maybeSingle()
 
   if (!payment) notFound()
+
+  /**
+   * Which direction the money went. `fee_payments.amount_bdt` is `check (<> 0)`, so
+   * there is no third case — and the sign is the only thing that distinguishes a refund
+   * row from a payment row, by design: the register nets rather than counts, and one
+   * table is what keeps the drawer reconcilable.
+   */
+  const amount = Number(payment.amount_bdt)
+  const isRefund = amount < 0
+  /** Unsigned on the paper. The words say which way it went; see the dictionary. */
+  const shown = Math.abs(amount)
 
   // The paywall, before the three queries the sheet needs. Only the student's name
   // is fetched instead, because the locked card is not a stub: it confirms that the
@@ -105,6 +124,12 @@ export default async function ReceiptPage({
               withheld, and printing it small next to a paywall would read as a
               consolation rather than as the answer. */}
           <p className="num text-3xl font-bold text-ink">{payment.receipt_no}</p>
+          {/* Named here too, and for the same reason as on the sheet: this card is
+              read to confirm the money landed on the right child, and "জমার পরিমাণ"
+              over a refund would confirm the opposite of what happened. */}
+          {isRefund && (
+            <p className="mt-1 font-semibold text-ink">{t.refundTitle}</p>
+          )}
 
           <dl className="mt-3 flex flex-col gap-1.5 border-t border-line pt-3">
             <Line
@@ -116,7 +141,12 @@ export default async function ReceiptPage({
               value={formatDate(todayInDhaka(new Date(payment.paid_at)), locale)}
               num
             />
-            <Line label={t.amount} value={formatTaka(Number(payment.amount_bdt))} num strong />
+            <Line
+              label={isRefund ? t.refundAmount : t.amount}
+              value={formatTaka(shown)}
+              num
+              strong
+            />
           </dl>
         </Card>
 
@@ -193,7 +223,8 @@ export default async function ReceiptPage({
     studentName: invoice.student_name ?? d.common.unknown,
     studentCode: invoice.student_code,
     periodMonth: invoice.period_month,
-    amount: Number(payment.amount_bdt),
+    amount: shown,
+    isRefund,
     method: payment.method,
     reference: payment.reference,
     billed: net,
@@ -245,7 +276,9 @@ type CopyProps = {
   studentName: string
   studentCode: string | null
   periodMonth: string | null
+  /** Unsigned. `isRefund` carries the direction, so that the paper can say it in words. */
   amount: number
+  isRefund: boolean
   method: PaymentMethod
   reference: string | null
   billed: number
@@ -290,6 +323,20 @@ function Copy({ label, ...p }: CopyProps & { label: string }) {
         </div>
       </header>
 
+      {/* Across the slip, not tucked into a corner, and in words rather than a colour:
+          these sheets come off the cheapest black-and-white laser in the building, and
+          a parent filing this next to last month's payment slip has to be able to tell
+          the two apart at a glance in a year's time. The border is decoration on top of
+          a sentence that already says it. */}
+      {p.isRefund && (
+        <p
+          className="mt-3 rounded-lg border-2 border-late px-3 py-1.5 text-center
+            font-bold text-ink"
+        >
+          {t.refundTitle}
+        </p>
+      )}
+
       <dl className="mt-3 flex flex-col gap-1.5">
         <Line label={t.date} value={formatDate(p.date, locale)} num />
         <Line
@@ -307,11 +354,23 @@ function Copy({ label, ...p }: CopyProps & { label: string }) {
         {p.reference && <Line label={t.reference} value={p.reference} num />}
       </dl>
 
-      {/* The amount, set apart. This is the figure the receipt is for. */}
-      <div className="mt-3 flex items-baseline justify-between gap-4 rounded-lg
-        bg-brand-50 px-3 py-2">
-        <span className="font-medium text-brand-800">{t.amount}</span>
-        <span className="num text-2xl font-bold text-brand-900">
+      {/* The amount, set apart. This is the figure the receipt is for. Green is money
+          in; a refund gets the neutral fill and a ruled edge instead, because green on
+          a slip for money going out is the one wrong signal on the page. Both keep
+          `text-ink` — the direction is in the label, not in a hue somebody's printer
+          or eyes may not resolve. */}
+      <div
+        className={`mt-3 flex items-baseline justify-between gap-4 rounded-lg px-3 py-2
+          ${p.isRefund ? 'border-2 border-late bg-surface-alt' : 'bg-brand-50'}`}
+      >
+        <span className={`font-medium ${p.isRefund ? 'text-ink' : 'text-brand-800'}`}>
+          {p.isRefund ? t.refundAmount : t.amount}
+        </span>
+        <span
+          className={`num text-2xl font-bold ${
+            p.isRefund ? 'text-ink' : 'text-brand-900'
+          }`}
+        >
           {formatTaka(p.amount)}
         </span>
       </div>
@@ -334,7 +393,9 @@ function Copy({ label, ...p }: CopyProps & { label: string }) {
       </dl>
 
       <div className="mt-6 flex items-end justify-between gap-4">
-        <p className="max-w-[60%] text-xs text-ink-faint">{t.footNote}</p>
+        <p className="max-w-[60%] text-xs text-ink-faint">
+          {p.isRefund ? t.refundFootNote : t.footNote}
+        </p>
         {/* A blank line for a pen. A printed name would be worse than nothing: the
             slip's authority comes from the person who took the cash signing it in
             front of the parent, and a pre-printed signature is exactly what a

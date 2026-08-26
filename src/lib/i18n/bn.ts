@@ -468,6 +468,17 @@ export const bn = {
     invoiceRestored: (name: string) => `${name} — বিলটি আবার চালু করা হয়েছে।`,
 
     /**
+     * What handing money back says. The name first, like `received`, and for the same
+     * reason turned around: the fear is that the cash went out against the wrong child.
+     *
+     * "ফেরত দেওয়া হয়েছে" and not "লেখা হলো". The row records what happened at the desk,
+     * and what happened is that the parent was given the money — the entry is how the
+     * hisab keeps up, not the event. It also answers a replayed request unchanged, so
+     * it says what is now true rather than what just happened.
+     */
+    refunded: (name: string, amount: string) => `${name} — ${amount} ফেরত দেওয়া হয়েছে।`,
+
+    /**
      * The section under the board that holds them.
      *
      * The heading is the count, because it is a fold: an owner who cancelled one bill
@@ -503,15 +514,32 @@ export const bn = {
        * cancelled bill leaves the hisab altogether and the family's payment would go
        * with it while the cash stayed in the drawer.
        *
-       * It names the way through — hand the money back as a return entry — without
-       * pointing at a screen. There is no refund button yet, and a message that sent
-       * an owner looking for one would be worse than one that tells them what has to
-       * be true.
+       * Names the control that unblocks it, since there is now one directly above the
+       * cancel step on the same panel. Read after a failed write, alone on a red line,
+       * so it carries the whole rule and not just the pointer.
        */
       cancelPaid:
-        'এই বিলে টাকা জমা আছে, তাই এটি বাতিল করা যাবে না। আগে টাকা ফেরত দিয়ে হিসাবে তুলুন, তারপর বাতিল করা যাবে।',
+        'এই বিলে টাকা জমা আছে, তাই এটি বাতিল করা যাবে না। উপরের "টাকা ফেরত দিন" দিয়ে টাকা ফেরতের হিসাব লিখুন, তারপর বাতিল করা যাবে।',
       cancelFailed: 'বিলটি বাতিল হয়নি। আবার চেষ্টা করুন।',
       restoreFailed: 'বিলটি আবার চালু হয়নি। আবার চেষ্টা করুন।',
+
+      /**
+       * The two ways a refund is refused, beyond the amount checks it shares with the
+       * payment form.
+       *
+       * `refundNothing` means the owner is on the wrong row — nothing came in against
+       * this bill, so there is nothing to hand back — and it says so rather than
+       * repeating "টাকার পরিমাণ", which would send them back to the box to try a
+       * smaller number.
+       *
+       * `refundTooMuch` names the ceiling instead of only refusing it. The owner is
+       * standing at a drawer deciding how much to count out, and the figure is the
+       * answer they need; it is pre-formatted, because it is money.
+       */
+      refundNothing: 'এই বিলে কোনো টাকা জমা হয়নি, তাই ফেরত দেওয়ার কিছু নেই।',
+      refundTooMuch: (max: string) =>
+        `এই বিলে জমা আছে ${max}, এর বেশি ফেরত দেওয়া যাবে না।`,
+      refundFailed: 'টাকা ফেরতের হিসাব লেখা হয়নি। আবার চেষ্টা করুন।',
     },
   },
 
@@ -623,11 +651,12 @@ export const bn = {
      *
      * Shorter than `fees.errors.cancelPaid` and deliberately not the same literal.
      * That one is read after a failed write, alone on a red line, and has to carry the
-     * whole rule; this one sits directly under the figure showing what was paid, so it
-     * only has to name the way through.
+     * whole rule; this one sits directly under the figure showing what was paid, and
+     * the control it names is a finger's width above it.
      */
     paidTitle: 'এই বিলটি বাতিল করা যাবে না',
-    paidNote: 'এই বিলে টাকা জমা আছে। আগে টাকা ফেরত দিন, তারপর বাতিল করা যাবে।',
+    paidNote:
+      'এই বিলে টাকা জমা আছে। উপরের "টাকা ফেরত দিন" দিয়ে আগে টাকা ফেরতের হিসাব লিখুন, তারপর বাতিল করা যাবে।',
 
     /**
      * One row of the cancelled list: which month's bill it was, what is no longer
@@ -639,6 +668,78 @@ export const bn = {
     reasonLabel: 'কারণ',
     restore: 'আবার চালু করুন',
     restoring: 'চালু হচ্ছে…',
+  },
+
+  /**
+   * Handing money back out of the drawer.
+   *
+   * WHY IT IS ITS OWN GROUP and not more of `feeRow`: the panel that reads these is a
+   * separate client component, so folding them into the row's words would put a refund
+   * form's wording on the wire for every one of forty rows on a collection day. The six
+   * method labels are the exception and stay in `feeRow.methods`, shared rather than
+   * copied — one list keyed by the enum is what stops "বিকাশ" on one form and something
+   * else on the other.
+   *
+   * THE WORD IS "ফেরত", which is what an owner says and what a parent hears. Not
+   * "রিফান্ড", which is the English word in Bengali letters and reads as a bank's term
+   * on a screen that is otherwise plain speech.
+   *
+   * The tone is deliberately not alarming. Handing back a leaving student's fee is an
+   * ordinary, decent thing to do, and a form covered in warnings would make an owner
+   * hesitate over it in front of the parent. Exactly one sentence says the entry cannot
+   * be unwritten, because that part is true and they need it before they type a figure.
+   *
+   * Strings only, `{}` templates where a figure goes — the reader is a client component.
+   * See ./fill.ts.
+   */
+  refund: {
+    /**
+     * The way in, and quiet for the same reason as `cancel.open`: it shares a panel
+     * with "জমা নিন", which is tapped fifty times a day, and money going out must not
+     * be one mistap away from money coming in. Nothing happens when it is tapped —
+     * the form below it is where anything is decided.
+     */
+    open: 'টাকা ফেরত দিন',
+    heading: 'কত টাকা ফেরত দিচ্ছেন?',
+    /**
+     * The ceiling, above the empty box. Netted, so a bill that has already had ৳500
+     * handed back offers what is left rather than what it originally took — the owner
+     * never has to work out the difference, and the server refuses anything past it.
+     */
+    held: 'এই বিলে জমা আছে {amount}',
+    /**
+     * Only when the family is actually in credit, and it is the second of the two
+     * figures an owner might mean by "ফেরত": all of it, because the student left, or
+     * just the extra hundred taka the parent handed over by mistake.
+     */
+    credit: 'এর মধ্যে {amount} বেশি জমা আছে',
+    /**
+     * The one hard fact, said once. A payment cannot be deleted or edited by anybody,
+     * so a slipped digit here can only ever be answered by a second entry that reads,
+     * forever, as money that changed hands and did not.
+     */
+    warning:
+      'টাকা ফেরতের হিসাব পরে মুছে ফেলা বা বদলানো যায় না। তাই টাকা গুনে হাতে দিয়ে, তারপর এখানে লিখুন।',
+    /** Past tense on purpose: it is written after the cash has left the drawer. */
+    amount: 'কত টাকা ফেরত দিলেন',
+    method: 'কীভাবে ফেরত দিলেন',
+    /**
+     * Optional. Nobody seeing a parent out of the door will fill it in, but "এই টাকা
+     * কেন ফেরত গেল" is a real question three weeks later and this is the only place an
+     * answer can come from.
+     */
+    note: 'কেন ফেরত দিচ্ছেন',
+    noteHint: 'যেমন: কোচিং ছেড়ে দিয়েছে',
+    confirm: 'ফেরতের হিসাব লিখুন',
+    refunding: 'লেখা হচ্ছে…',
+    /** The way out, and the wider tap target of the two. */
+    keep: 'না, থাকুক',
+    /**
+     * The slip for money that went out. Says "ফেরতের রসিদ" and not just "রসিদ", because
+     * the parent is being handed a second piece of paper and the two must not look like
+     * two payments — the printed slip says so as well.
+     */
+    receiptLink: 'ফেরতের রসিদ দেখুন',
   },
 
   /**
@@ -660,6 +761,24 @@ export const bn = {
     amount: 'জমার পরিমাণ',
     method: 'কীভাবে',
     reference: 'ট্রানজেকশন আইডি',
+    /**
+     * The same sheet, when the money went the other way.
+     *
+     * WHY THE SLIP MUST SAY SO. A refund is a `fee_payments` row with a negative amount,
+     * so without these three keys this page would hand a parent a "ফি রসিদ" for money
+     * that left the drawer — the one document in the product a family keeps, saying the
+     * opposite of what happened. The figure is printed unsigned and the words carry the
+     * direction, because "-৳৫০০" under a label that reads "জমার পরিমাণ" is worse than
+     * either half alone.
+     *
+     * `refundTitle` is drawn in a box across the slip rather than tucked into a corner,
+     * and it is words rather than a colour: these sheets are printed on the cheapest
+     * black-and-white laser in the building.
+     */
+    refundTitle: 'টাকা ফেরতের রসিদ',
+    refundAmount: 'ফেরত দেওয়া টাকা',
+    refundFootNote:
+      'এটি কম্পিউটারে তৈরি টাকা ফেরতের রসিদ। এই টাকা অভিভাবকের হাতে ফেরত দেওয়া হয়েছে — প্রমাণ হিসেবে যত্ন করে রাখুন।',
     /** The invoice's own total, so the two figures below it can be checked. */
     billed: 'মাসের মোট ফি',
     /**
@@ -672,7 +791,15 @@ export const bn = {
     balanceAfter: 'এই রসিদ পর্যন্ত বাকি',
     paidInFull: 'সম্পূর্ণ পরিশোধ ✓',
     inCredit: 'বেশি জমা আছে',
-    /** Left blank on the paper, for a pen. */
+    /**
+     * Left blank on the paper, for a pen.
+     *
+     * "গ্রহণকারীর" — whoever received — and not "মালিকের", which is why the same word
+     * works on both sheets. On a fee receipt the centre received the money and the
+     * person who took it signs; on a refund receipt the guardian received it and the
+     * guardian signs, which is the signature that matters more of the two, because it
+     * is the centre's only record that the cash actually left the building.
+     */
     signature: 'গ্রহণকারীর স্বাক্ষর',
     guardianCopy: 'অভিভাবকের কপি',
     officeCopy: 'অফিস কপি',

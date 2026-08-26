@@ -382,7 +382,7 @@ export default async function FeesPage() {
               center={centerPay}
               locale={locale}
               readOnly={!canWrite}
-              // One object built once for the whole board. Five groups of words
+              // One object built once for the whole board. Six groups of words
               // reach every row, and React sends each distinct value down once
               // however many rows share it.
               words={{
@@ -390,6 +390,7 @@ export default async function FeesPage() {
                 chase: d.chase,
                 channels: d.channels,
                 cancel: d.cancel,
+                refund: d.refund,
                 common: d.common,
               }}
             />
