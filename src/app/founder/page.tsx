@@ -180,6 +180,11 @@ export default async function FounderPage() {
             <Stat label={t.totals.teachers} value={String(totals.teachers)} />
             <Stat label={t.totals.taps} value={String(totals.taps30d)} />
             <Stat label={t.totals.notes} value={String(totals.notes30d)} />
+            {/* All four tap-to-send counts, never a sum. The absence figure is the
+                one to watch: it is the only message that happens every day, so it
+                is the closest thing this panel has to "have they adopted it". */}
+            <Stat label={t.totals.results} value={String(totals.results30d)} />
+            <Stat label={t.totals.absences} value={String(totals.absences30d)} />
           </dl>
 
           <p>
@@ -310,10 +315,14 @@ export default async function FounderPage() {
                         value={formatTaka(c.collected30d)}
                       />
                       <Usage label={t.usage.taps} value={c.taps30d} />
-                      {/* Both taps, separately. A centre chasing fees and a
-                          teacher keeping parents are two different customers,
-                          and one "messages" figure would hide which. */}
+                      {/* All four taps, separately. A centre chasing fees, a
+                          teacher keeping parents, a marks message after a test
+                          and a same-evening absence are four different
+                          customers, and one "messages" figure would hide which
+                          of them this is. */}
                       <Usage label={t.usage.notes} value={c.notes30d} />
+                      <Usage label={t.usage.results} value={c.results30d} />
+                      <Usage label={t.usage.absences} value={c.absences30d} />
                       {/* Kept beside the taps rather than added to them: one is
                           free and one costs us money. See the migration. */}
                       <Usage label={t.usage.sms} value={c.sms30d} />

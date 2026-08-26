@@ -3574,13 +3574,17 @@ export const bn = {
       pipeline: 'ট্রায়ালের সম্ভাবনা',
       collected: 'সেন্টারগুলো আদায় করেছে',
       /**
-       * Two tap-to-send figures and not one "মেসেজ", because they answer different
-       * questions: `taps` is a centre using this to get paid, `notes` is a teacher
-       * using it to keep parents. Which of the two a customer does is the most
-       * useful thing on this screen when deciding what to build next.
+       * Four tap-to-send figures and not one "মেসেজ", because they answer four
+       * different questions: `taps` is a centre using this to get paid, `notes` is
+       * a teacher using it to keep parents, `results` is the marks hook, and
+       * `absences` is the daily habit leaving the building. Which of the four a
+       * customer does is the most useful thing on this screen when deciding what to
+       * build next, and a total would hide exactly that.
        */
       taps: 'ফি রিমাইন্ডার গেছে',
       notes: 'সপ্তাহের খবর গেছে',
+      results: 'রেজাল্ট গেছে',
+      absences: 'অনুপস্থিতির খবর গেছে',
       paid: 'আমরা পেয়েছি',
       /**
        * The call list, and the money on it. `owing` counts live customers whose
@@ -3614,6 +3618,8 @@ export const bn = {
       collected: 'টাকা উঠেছে',
       taps: 'রিমাইন্ডার',
       notes: 'সপ্তাহের খবর',
+      results: 'রেজাল্ট',
+      absences: 'অনুপস্থিতি',
       sms: 'গেটওয়ে',
       credits: 'ক্রেডিট',
     },
@@ -3751,6 +3757,8 @@ export const bn = {
       collected: 'আদায় টাকা (৩০ দিন)',
       taps: 'ফি রিমাইন্ডার (৩০ দিন)',
       notes: 'সপ্তাহের খবর (৩০ দিন)',
+      results: 'রেজাল্ট SMS (৩০ দিন)',
+      absences: 'অনুপস্থিতির খবর (৩০ দিন)',
       sms: 'গেটওয়ে SMS (৩০ দিন)',
       smsCredits: 'SMS ক্রেডিট',
       lastActive: 'শেষ কাজ',

@@ -50,6 +50,12 @@ function row(over: Partial<PlatformCenterRow> = {}): PlatformCenterRow {
     collected_30d: '41500.00',
     taps_30d: 57,
     notes_30d: 9,
+    // The two newest counts, and the fixture makes them different numbers from the
+    // two above on purpose: four CTEs that are copies of each other are exactly the
+    // shape a wrong table name survives in, and equal fixtures would let the panel
+    // read the same column four times and pass.
+    results_30d: 14,
+    absences_30d: 88,
     sms_30d: 0,
     last_active_at: '2026-08-24T11:00:00.000Z',
     paid_bdt: '1999.00',
@@ -186,6 +192,8 @@ test('missing values become the fact they stand for, not NaN', () => {
         paid_bdt: null,
         taps_30d: null,
         notes_30d: null,
+        results_30d: null,
+        absences_30d: null,
         last_active_at: null,
         last_paid_at: null,
         paid_through: null,
@@ -200,6 +208,13 @@ test('missing values become the fact they stand for, not NaN', () => {
   assert.equal(c.students, 0)
   assert.equal(c.collected30d, 0)
   assert.equal(c.paidBdt, 0)
+  // Zero and not null, for all four message counts. The panel prints these into a
+  // <dd> and a null would render as an empty cell that reads like a broken layout
+  // rather than like a centre that has sent nothing.
+  assert.equal(c.taps30d, 0)
+  assert.equal(c.notes30d, 0)
+  assert.equal(c.results30d, 0)
+  assert.equal(c.absences30d, 0)
   assert.equal(c.ownerName, null)
   // A null status is a centre the enum has not caught up with. Trial is the
   // smallest thing to assume about a customer, and never billed.
@@ -342,15 +357,23 @@ test('the totals carry the call list and one month of what is on it', () => {
   assert.ok(totals.owedBdt <= totals.mrrBdt)
 })
 
-test('the three send figures are totalled apart from each other', () => {
-  // Fee chases and week notes are both free from the owner's own handset; gateway
-  // sends cost us money per segment. All three stay separate for two different
-  // reasons, and a single "messages" figure would lose both: which kind of
-  // customer this is, and what they cost us.
+test('the five send figures are totalled apart from each other', () => {
+  // Four tap-to-send counts are free from the owner's own handset; gateway sends
+  // cost us money per segment. All five stay separate for two different reasons,
+  // and a single "messages" figure would lose both: which kind of customer this is,
+  // and what they cost us. Five distinct fixture numbers, so a totals loop that
+  // added the same column twice cannot land on the right answer by luck.
   const list = customers(
     [
-      row({ taps_30d: 57, notes_30d: 9, sms_30d: 0 }),
-      row({ center_id: 'c2', taps_30d: 12, notes_30d: 40, sms_30d: 4 }),
+      row({ taps_30d: 57, notes_30d: 9, results_30d: 14, absences_30d: 88, sms_30d: 0 }),
+      row({
+        center_id: 'c2',
+        taps_30d: 12,
+        notes_30d: 40,
+        results_30d: 3,
+        absences_30d: 21,
+        sms_30d: 4,
+      }),
     ],
     'x',
     NOW,
@@ -358,6 +381,8 @@ test('the three send figures are totalled apart from each other', () => {
   const totals = platformTotals(list)
   assert.equal(totals.taps30d, 69)
   assert.equal(totals.notes30d, 49)
+  assert.equal(totals.results30d, 17)
+  assert.equal(totals.absences30d, 109)
   assert.equal(totals.sms30d, 4)
 })
 
@@ -367,7 +392,16 @@ test('a centre whose only use of the product is the week note is not silent', ()
   // week reading as a customer who sends nothing. A founder acts on that — they
   // ring the wrong centre, or write off a live one.
   const c = customers(
-    [row({ taps_30d: 0, notes_30d: 40, sms_30d: 0, plan: 'teacher_plus' })],
+    [
+      row({
+        taps_30d: 0,
+        notes_30d: 40,
+        results_30d: 0,
+        absences_30d: 0,
+        sms_30d: 0,
+        plan: 'teacher_plus',
+      }),
+    ],
     'x',
     NOW,
   )[0]
@@ -375,6 +409,34 @@ test('a centre whose only use of the product is the week note is not silent', ()
   assert.equal(c.taps30d, 0)
   assert.equal(c.notes30d, 40)
   assert.equal(platformTotals([c]).notes30d, 40)
+})
+
+test('and neither is a centre whose only use of it is the register', () => {
+  // The same bug, in the shape it actually shipped in: absence_notices went live
+  // at 20260811000033 and platform_centers() was not told about it until 34, so a
+  // centre whose teachers told ninety guardians about an empty seat read as zero on
+  // every send column. Attendance is the daily habit, which makes this figure the
+  // closest thing the panel has to "have they adopted it" — and the easiest one to
+  // mistake for "this customer is dead".
+  const c = customers(
+    [
+      row({
+        taps_30d: 0,
+        notes_30d: 0,
+        results_30d: 0,
+        absences_30d: 90,
+        plan: 'center',
+      }),
+    ],
+    'x',
+    NOW,
+  )[0]
+
+  assert.equal(c.absences30d, 90)
+  assert.equal(c.taps30d, 0)
+  assert.equal(c.notes30d, 0)
+  assert.equal(c.results30d, 0)
+  assert.equal(platformTotals([c]).absences30d, 90)
 })
 
 test('totals of nothing are zeroes, not NaN', () => {
@@ -473,6 +535,8 @@ const HEADINGS = {
   collected: 'আদায় টাকা',
   taps: 'মেসেজ',
   notes: 'সপ্তাহের খবর',
+  results: 'রেজাল্ট SMS',
+  absences: 'অনুপস্থিতির খবর',
   sms: 'গেটওয়ে SMS',
   smsCredits: 'SMS ক্রেডিট',
   lastActive: 'শেষ কাজ',
@@ -522,9 +586,13 @@ test('money and counts leave as bare numbers a spreadsheet can total', () => {
   assert.equal(at(HEADINGS.paid), 1999)
   assert.equal(at(HEADINGS.students), 40)
   assert.equal(csvCell(at(HEADINGS.collected)), '41500')
-  // Its own column, and not folded into the chases beside it.
+  // Four columns, never a sum. Each asserted at its own fixture value, because the
+  // failure this guards against is not a wrong number — it is four cells reading
+  // the same one.
   assert.equal(at(HEADINGS.taps), 57)
   assert.equal(at(HEADINGS.notes), 9)
+  assert.equal(at(HEADINGS.results), 14)
+  assert.equal(at(HEADINGS.absences), 88)
 })
 
 test('dates leave as ISO timestamps, which sort and subtract', () => {

@@ -2163,7 +2163,7 @@ export type Database = {
       }
       platform_centers: {
         Args: Record<PropertyKey, never>
-        Returns: { center_id: string; center_name: string; center_phone: string; bd_area: string; status: CenterStatus; plan: PlanType; created_at: string; owner_name: string; owner_phone: string; students: number; teachers: number; batches: number; sms_credit_balance: number; attendance_30d: number; exams_30d: number; fee_payments_30d: number; collected_30d: number; taps_30d: number; notes_30d: number; sms_30d: number; last_active_at: string; paid_bdt: number; last_paid_at: string; paid_through: string; wants_plan: PlanType; wants_since: string; wants_note: string }[]
+        Returns: { center_id: string; center_name: string; center_phone: string; bd_area: string; status: CenterStatus; plan: PlanType; created_at: string; owner_name: string; owner_phone: string; students: number; teachers: number; batches: number; sms_credit_balance: number; attendance_30d: number; exams_30d: number; fee_payments_30d: number; collected_30d: number; taps_30d: number; notes_30d: number; results_30d: number; absences_30d: number; sms_30d: number; last_active_at: string; paid_bdt: number; last_paid_at: string; paid_through: string; wants_plan: PlanType; wants_since: string; wants_note: string }[]
       }
       reap_stranded_sms: {
         Args: Record<PropertyKey, never>

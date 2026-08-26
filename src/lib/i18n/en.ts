@@ -1709,9 +1709,11 @@ export const en: Dictionary = {
       mrr: 'Monthly billing (ours)',
       pipeline: 'Trial pipeline',
       collected: 'Centres collected',
-      /** Two tap-to-send figures, not one "Messages". See the Bangla note. */
+      /** Four tap-to-send figures, not one "Messages". See the Bangla note. */
       taps: 'Fee reminders sent',
       notes: 'Week notes sent',
+      results: 'Marks sent',
+      absences: 'Absences told',
       paid: 'We have received',
       /** The call list, and one month of what is on it. See the Bangla note. */
       owing: 'Owing now',
@@ -1732,6 +1734,8 @@ export const en: Dictionary = {
       collected: 'Collected',
       taps: 'Reminders',
       notes: 'Week notes',
+      results: 'Marks',
+      absences: 'Absences',
       sms: 'Gateway',
       credits: 'Credits',
     },
@@ -1817,6 +1821,8 @@ export const en: Dictionary = {
       collected: 'Collected (30d)',
       taps: 'Fee reminders (30d)',
       notes: 'Week notes (30d)',
+      results: 'Marks messages (30d)',
+      absences: 'Absence messages (30d)',
       sms: 'Gateway SMS (30d)',
       smsCredits: 'SMS credits',
       lastActive: 'Last used',

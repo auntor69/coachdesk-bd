@@ -67,6 +67,8 @@ export type PlatformCenterRow = {
   collected_30d: string | number | null
   taps_30d: number | null
   notes_30d: number | null
+  results_30d: number | null
+  absences_30d: number | null
   sms_30d: number | null
   last_active_at: string | null
   paid_bdt: string | number | null
@@ -139,6 +141,24 @@ export type Customer = {
    * the question is what to build next, and a sum cannot be un-summed.
    */
   notes30d: number
+  /**
+   * Marks out to a parent after an exam. The marketing hook, measured at last.
+   *
+   * Bursty by nature — nothing for three weeks, then ninety in an afternoon when a
+   * batch's test is marked — so a low number here is not the same signal a low
+   * `absences30d` is. Read it against `exams30d`: exams entered and no results
+   * sent is a centre that has not found the chips.
+   */
+  results30d: number
+  /**
+   * "Your child was not in class today", sent the same evening.
+   *
+   * Expected to be the largest of the four wherever teachers actually take the
+   * register, because it is the only one that happens every day. Which makes it
+   * the best single measure of whether a centre has adopted the product rather
+   * than merely bought it.
+   */
+  absences30d: number
   /** Metered gateway sends. Zero everywhere until a BTRC sender ID exists. */
   sms30d: number
   lastActiveAt: string | null
@@ -261,6 +281,8 @@ export function customers(
       collected30d: taka(row.collected_30d),
       taps30d: count(row.taps_30d),
       notes30d: count(row.notes_30d),
+      results30d: count(row.results_30d),
+      absences30d: count(row.absences_30d),
       sms30d: count(row.sms_30d),
       lastActiveAt,
       daysQuiet,
@@ -315,6 +337,8 @@ export type PlatformTotals = {
   collected30d: number
   taps30d: number
   notes30d: number
+  results30d: number
+  absences30d: number
   sms30d: number
   paidBdt: number
   /** Live customers past their paid-up date. The founder's call list. */
@@ -353,6 +377,8 @@ export function platformTotals(list: readonly Customer[]): PlatformTotals {
     collected30d: 0,
     taps30d: 0,
     notes30d: 0,
+    results30d: 0,
+    absences30d: 0,
     sms30d: 0,
     paidBdt: 0,
     owing: 0,
@@ -382,6 +408,8 @@ export function platformTotals(list: readonly Customer[]): PlatformTotals {
     totals.collected30d += c.collected30d
     totals.taps30d += c.taps30d
     totals.notes30d += c.notes30d
+    totals.results30d += c.results30d
+    totals.absences30d += c.absences30d
     totals.sms30d += c.sms30d
     totals.paidBdt += c.paidBdt
   }
@@ -418,6 +446,8 @@ export type CustomerCsvHeadings = {
   collected: string
   taps: string
   notes: string
+  results: string
+  absences: string
   sms: string
   smsCredits: string
   lastActive: string
@@ -480,6 +510,8 @@ export function customersSheet(
     h.collected,
     h.taps,
     h.notes,
+    h.results,
+    h.absences,
     h.sms,
     h.smsCredits,
     h.lastActive,
@@ -514,6 +546,8 @@ export function customersSheet(
     c.collected30d,
     c.taps30d,
     c.notes30d,
+    c.results30d,
+    c.absences30d,
     c.sms30d,
     c.smsCredits,
     c.lastActiveAt,

@@ -396,6 +396,117 @@ DEFINER — drop that instead and let RLS apply to it.`,
     `Security definer: ${definers.rows[0].n} function(s), all pinned to an empty search_path.`,
   )
 
+  // -------------------------------------------------------------------------
+  // Every tap-to-send receipt table must be counted by the founder panel.
+  //
+  // Unlike the four above, this one is not about the tenant boundary. It is
+  // about a mistake that has now been made three times in a row, silently, and
+  // will keep being made: 20260811000020 counted fee_reminders because it was
+  // the only message a centre could send; /progress shipped and needed
+  // 20260811000022 to be seen at all; then result_notices and absence_notices
+  // shipped and nobody remembered, so a centre whose teachers messaged forty
+  // parents last month read as a centre that sent nothing.
+  //
+  // WHY A BUILD FAILURE. platform_centers() is the only evidence the roadmap
+  // has. A zero on that screen meaning "not wired up" is indistinguishable from
+  // a zero meaning "nobody used it", and the second is a reason to delete a
+  // feature. Nothing else fails when a table is missed — the panel keeps
+  // working, the tests keep passing, and the number is simply wrong.
+  //
+  // THE SHAPE, not a list of names. These tables are all the same table with a
+  // different parent: the tenant, an outreach_channel, the number it was aimed
+  // at, the text put in front of whoever tapped, and who tapped. Five columns
+  // together are specific enough that nothing else in the schema matches, and
+  // general enough that the fifth one is caught the day it is created rather
+  // than the day somebody re-reads this script.
+  //
+  // Read out of prosrc, which is textual — and reliable here precisely because
+  // the function is pinned to an empty search_path, so it cannot name a table
+  // any way other than `public.<name>`.
+  // -------------------------------------------------------------------------
+  const RECEIPT_SHAPE = `
+    (select count(*) from pg_attribute a
+     join pg_type ty on ty.oid = a.atttypid
+     where a.attrelid = c.oid and a.attnum > 0 and not a.attisdropped
+       and (
+            a.attname = 'coaching_center_id'
+         or a.attname = 'to_phone'
+         or a.attname = 'body'
+         or a.attname = 'sent_by'
+         or (a.attname = 'channel' and ty.typname = 'outreach_channel')
+       )) = 5`
+
+  const PANEL_BODY = `
+    coalesce(
+      (select p.prosrc
+       from pg_proc p
+       join pg_namespace pn on pn.oid = p.pronamespace and pn.nspname = 'public'
+       where p.proname = 'platform_centers'),
+      ''
+    )`
+
+  const receipts = await db.query(`
+    select c.relname,
+           strpos(${PANEL_BODY}, 'public.' || c.relname) > 0 as counted
+    from pg_class c
+    join pg_namespace n on n.oid = c.relnamespace and n.nspname = 'public'
+    where c.relkind = 'r' and ${RECEIPT_SHAPE}
+    order by c.relname;
+  `)
+
+  const uncounted = receipts.rows.filter((r) => !r.counted)
+
+  if (receipts.rows.length === 0) {
+    console.error(
+      `\nOUTREACH RECEIPT SHAPE MATCHED NOTHING — this check has stopped checking.
+
+fee_reminders, progress_updates, result_notices and absence_notices all carry
+coaching_center_id, channel, to_phone, body and sent_by. If none of them match,
+one of those columns has been renamed and this script is now silently passing.
+Fix the shape above, do not delete the check.`,
+    )
+    process.exit(1)
+  }
+
+  if (uncounted.length > 0) {
+    console.error(
+      `\nMESSAGE TABLE THE FOUNDER PANEL CANNOT SEE — ${uncounted.length} tap-to-send receipt table(s) are not counted by platform_centers():\n`,
+    )
+    for (const r of uncounted) console.error(`  ${r.relname}`)
+    console.error(
+      `
+Every one of these records a message that left somebody's phone, and the founder
+panel is the only place that fact is ever read. Add a CTE to platform_centers()
+in a new migration, the way 20260811000034 added two, plus an output column and
+a name in greatest() so the send counts as a sign of life:
+
+  <name>s as (
+    select x.coaching_center_id, count(*)::int as n, max(x.created_at) as at
+    from public.<table> x
+    cross join cutoff k
+    where x.created_at >= k.ts
+    group by x.coaching_center_id
+  ),
+
+then carry it through src/lib/platform/centers.ts, the CSV headings in both
+dictionaries, and the panel-count assertions in scripts/test-rls.mjs.
+
+Do not fold it into taps_30d. The counts are kept apart because which message a
+centre actually sends is the one thing this screen is read for, and a sum cannot
+be un-summed.
+
+If a receipt table genuinely should not be counted — a draft, a queue, something
+the owner never taps — this check needs to learn about it deliberately.`,
+    )
+    process.exit(1)
+  }
+
+  console.log(
+    `Founder panel: ${receipts.rows.length} tap-to-send table(s) (${receipts.rows
+      .map((r) => r.relname)
+      .join(', ')}), all counted.`,
+  )
+
   await db.close()
 } catch (error) {
   console.error(`\nMIGRATION FAILED\n${error.message}`)

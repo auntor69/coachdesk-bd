@@ -6083,7 +6083,8 @@ const PANEL_COLUMNS = [
   'center_id', 'center_name', 'center_phone', 'bd_area', 'status', 'plan',
   'created_at', 'owner_name', 'owner_phone', 'students', 'teachers', 'batches',
   'sms_credit_balance', 'attendance_30d', 'exams_30d', 'fee_payments_30d',
-  'collected_30d', 'taps_30d', 'notes_30d', 'sms_30d', 'last_active_at', 'paid_bdt',
+  'collected_30d', 'taps_30d', 'notes_30d', 'results_30d', 'absences_30d',
+  'sms_30d', 'last_active_at', 'paid_bdt',
   'last_paid_at', 'paid_through', 'wants_plan', 'wants_since', 'wants_note',
 ]
 const panelColumns = Object.keys(rowA ?? {}).sort()
@@ -6213,13 +6214,21 @@ check(
 )
 
 /*
- * The two tap-to-send counts, and why they are two.
+ * The four tap-to-send counts, and why they are four.
  *
  * 20260811000022 added notes_30d because until it did, the most likely Pro
  * customer there is — a teacher who takes cash in the room and whose entire use of
  * the product is telling parents how the week went — read on this panel as a
  * centre that sends nothing. A founder acts on that figure: they ring the wrong
- * customer, or write off a live one.
+ * customer, or write off a live one. 20260811000034 made the same argument twice
+ * more, for the marks message and the absence message, after both shipped without
+ * anyone remembering this function: a centre that had messaged forty parents last
+ * month still read as a centre that had sent nothing.
+ *
+ * Four columns and never a sum. A chase means a centre using this to get paid, a
+ * week note a teacher keeping parents, a marks message the marketing hook, an
+ * absence message the daily habit — and a total would hide which of the four the
+ * customer actually does, which is the most useful fact on the screen.
  *
  * Read from the tables rather than hardcoded. Centre A's own chases are zero here
  * and that is not an oversight — the collection-board section further up clears
@@ -6227,24 +6236,21 @@ check(
  * figure that proves the columns are wired to different tables is a delta, taken
  * on centre B below.
  */
-const expectedTaps = Number(
-  (
-    await db.query(
-      `select count(*)::int as n from fee_reminders
-       where coaching_center_id = $1 and created_at >= now() - interval '30 days'`,
-      [centerA],
-    )
-  ).rows[0].n,
-)
-const expectedNotes = Number(
-  (
-    await db.query(
-      `select count(*)::int as n from progress_updates
-       where coaching_center_id = $1 and created_at >= now() - interval '30 days'`,
-      [centerA],
-    )
-  ).rows[0].n,
-)
+const tapCount = async (table) =>
+  Number(
+    (
+      await db.query(
+        `select count(*)::int as n from ${table}
+         where coaching_center_id = $1 and created_at >= now() - interval '30 days'`,
+        [centerA],
+      )
+    ).rows[0].n,
+  )
+
+const expectedTaps = await tapCount('fee_reminders')
+const expectedNotes = await tapCount('progress_updates')
+const expectedResults = await tapCount('result_notices')
+const expectedAbsences = await tapCount('absence_notices')
 check(
   'counts the fee chases in the window',
   Number(rowA?.taps_30d) === expectedTaps,
@@ -6260,6 +6266,16 @@ check(
   expectedNotes > 0,
   `${expectedNotes} notes`,
 )
+check(
+  'counts the marks message in a column of its own',
+  Number(rowA?.results_30d) === expectedResults,
+  `${rowA?.results_30d} vs ${expectedResults}`,
+)
+check(
+  'counts the absence message in a column of its own',
+  Number(rowA?.absences_30d) === expectedAbsences,
+  `${rowA?.absences_30d} vs ${expectedAbsences}`,
+)
 
 check('reports a last-active timestamp', rowA?.last_active_at instanceof Date)
 
@@ -6273,8 +6289,11 @@ check(
     rowB.students !== null &&
     rowB.taps_30d !== null &&
     rowB.notes_30d !== null &&
+    rowB.results_30d !== null &&
+    rowB.absences_30d !== null &&
     Number(rowB.paid_bdt) === 0,
-  `students=${rowB?.students} taps=${rowB?.taps_30d} notes=${rowB?.notes_30d} paid=${rowB?.paid_bdt}`,
+  `students=${rowB?.students} taps=${rowB?.taps_30d} notes=${rowB?.notes_30d}` +
+    ` marks=${rowB?.results_30d} absences=${rowB?.absences_30d} paid=${rowB?.paid_bdt}`,
 )
 // paid_bdt coalesces to 0 and paid_through deliberately does not. "This centre has
 // paid nothing" and "we do not know what this money bought" are different facts, and
@@ -6344,6 +6363,82 @@ check(
   Number(rowBChase?.taps_30d) === Number(rowBAfter?.taps_30d) + 1 &&
     Number(rowBChase?.notes_30d) === Number(rowBAfter?.notes_30d),
   `chases ${rowBAfter?.taps_30d}→${rowBChase?.taps_30d}, notes ${rowBAfter?.notes_30d}→${rowBChase?.notes_30d}`,
+)
+
+/*
+ * And the same two-way test for the other two columns, which is where migration
+ * 34's mistake would have shown up: four CTEs that are copies of each other are
+ * exactly the shape a wrong table name survives in.
+ *
+ * The exam and the register are created BEFORE the baseline is read, on purpose.
+ * Both stamp `created_at`, so building them in the same step as the notice would
+ * move `exams_30d` and `attendance_30d` too and a delta on those columns would
+ * prove nothing about which table the notice landed in.
+ */
+const bExam = await one(
+  `insert into exams (coaching_center_id, subject_id, batch_id, teacher_id, title, total_marks, exam_date)
+   values ($1, $2, $3, $4, 'Physics Night Test', 40, current_date) returning id`,
+  [centerB, sPhy, bPhyB, tRahim],
+)
+const bSession = await heldOn(centerB, bPhyB, 1, 20)
+
+const panelBefore4 = await asUser(db, ids.founder, (tx) =>
+  tx.query('select * from platform_centers()'),
+)
+const rowB4 = panelBefore4.rows.find((r) => r.center_id === centerB)
+
+await db.query(
+  `insert into result_notices (coaching_center_id, exam_id, student_id, channel)
+   values ($1, $2, $3, 'sms')`,
+  [centerB, bExam, stB],
+)
+const panelAfterResult = await asUser(db, ids.founder, (tx) =>
+  tx.query('select * from platform_centers()'),
+)
+const rowBResult = panelAfterResult.rows.find((r) => r.center_id === centerB)
+check(
+  'a marks message moves only the marks column',
+  Number(rowBResult?.results_30d) === Number(rowB4?.results_30d) + 1 &&
+    Number(rowBResult?.taps_30d) === Number(rowB4?.taps_30d) &&
+    Number(rowBResult?.notes_30d) === Number(rowB4?.notes_30d) &&
+    Number(rowBResult?.absences_30d) === Number(rowB4?.absences_30d),
+  `marks ${rowB4?.results_30d}→${rowBResult?.results_30d}, chases ${rowB4?.taps_30d}→${rowBResult?.taps_30d},` +
+    ` notes ${rowB4?.notes_30d}→${rowBResult?.notes_30d}, absences ${rowB4?.absences_30d}→${rowBResult?.absences_30d}`,
+)
+
+const absenceNow = (
+  await db.query(
+    `insert into absence_notices (coaching_center_id, session_id, student_id, channel)
+     values ($1, $2, $3, 'sms') returning created_at`,
+    [centerB, bSession, stB],
+  )
+).rows[0].created_at
+const panelAfterAbsence = await asUser(db, ids.founder, (tx) =>
+  tx.query('select * from platform_centers()'),
+)
+const rowBAbsence = panelAfterAbsence.rows.find((r) => r.center_id === centerB)
+check(
+  'an absence message moves only the absence column',
+  Number(rowBAbsence?.absences_30d) === Number(rowBResult?.absences_30d) + 1 &&
+    Number(rowBAbsence?.taps_30d) === Number(rowBResult?.taps_30d) &&
+    Number(rowBAbsence?.notes_30d) === Number(rowBResult?.notes_30d) &&
+    Number(rowBAbsence?.results_30d) === Number(rowBResult?.results_30d),
+  `absences ${rowBResult?.absences_30d}→${rowBAbsence?.absences_30d}, chases ${rowBResult?.taps_30d}→${rowBAbsence?.taps_30d},` +
+    ` notes ${rowBResult?.notes_30d}→${rowBAbsence?.notes_30d}, marks ${rowBResult?.results_30d}→${rowBAbsence?.results_30d}`,
+)
+/*
+ * And it counts as the centre having come back, which is the whole reason both
+ * names went into greatest(). A teacher who opens Tuesday's register on Friday and
+ * taps the guardians of the children who missed it has left a notice dated Friday
+ * against a session dated Tuesday — count only the session and the panel ages that
+ * centre toward the quiet threshold on a day somebody was working in it. The
+ * fixture is exactly that shape: bSession is dated inside last month.
+ */
+check(
+  'and an absence message counts as the centre having come back',
+  rowBAbsence?.last_active_at instanceof Date &&
+    rowBAbsence.last_active_at.getTime() === absenceNow.getTime(),
+  `${rowBAbsence?.last_active_at} vs ${absenceNow}`,
 )
 
 /*
