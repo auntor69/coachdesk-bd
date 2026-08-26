@@ -1,6 +1,6 @@
 /**
  * Applies every migration to a throwaway Postgres and reports what was created,
- * then checks the three structural invariants that the whole tenant boundary
+ * then checks the four structural invariants that the whole tenant boundary
  * rests on. Run: node scripts/check-migrations.mjs
  */
 import { bootDatabase } from './lib/pg-harness.mjs'
@@ -252,18 +252,28 @@ not belong in the public schema where PostgREST will expose it.`,
       `
 PostgREST publishes these at /rest/v1/rpc/<name>, reachable with the anon key
 that ships in the browser bundle. Add the revoke to the migration that creates
-the function, in the same statement block:
+the function, in the same statement block, and name BOTH roles:
 
+  revoke all on function <name>(<args>) from public;
   revoke all on function <name>(<args>) from anon;
 
-A "revoke ... from public" is NOT enough. Supabase's own
-"alter default privileges ... grant all on functions to anon" is a separate
-grant, and it survives that revoke — which is the whole reason this check
-exists rather than a code review.
+Either one alone leaves this check failing, and it is worth knowing why before
+you write only one of them:
 
-Name anon explicitly even when also revoking from authenticated: the argument
-list has to match the signature exactly, so an overloaded function needs one
-revoke per signature.
+  * Postgres grants EXECUTE on every new function to PUBLIC. Revoking from anon
+    does not touch that grant, and has_function_privilege('anon', ...) is
+    satisfied *through* PUBLIC — so anon still has it.
+  * Supabase then ships its own separate
+    "alter default privileges in schema public grant all on functions to anon",
+    which is a direct grant to anon that survives a revoke from PUBLIC.
+
+Two independent grants, so two revokes. The four SMS worker functions in
+20260811000016 write it as one statement per function,
+"from anon, authenticated, public", which is the form to copy.
+
+Name anon explicitly rather than relying on PUBLIC: the argument list has to
+match the signature exactly, so an overloaded function needs one revoke per
+signature.
 
 If a function genuinely must serve signed-out callers, it needs a comment in the
 migration saying why, and this check needs to learn about it deliberately.`,
@@ -273,6 +283,117 @@ migration saying why, and this check needs to learn about it deliberately.`,
 
   console.log(
     `Functions: ${ourFunctions.rows[0].n} of ours in public, none callable by anon.`,
+  )
+
+  // -------------------------------------------------------------------------
+  // Every SECURITY DEFINER function must pin an empty search_path.
+  //
+  // These nineteen functions are the most privileged code in the database. They
+  // run as their owner — the migration role, which bypasses RLS — and that is
+  // the entire point of them: app.member_center_ids() has to read
+  // center_members past the policies that are asking it who you are.
+  //
+  // An unqualified name inside the body resolves through the *caller's*
+  // search_path. So without a pin, the caller chooses which table the
+  // owner-privileged body reads. Measured on this schema, not reasoned about:
+  // a security definer `select count(*) from students` pinned to `public`
+  // returned 0, and after `create temp table students (id uuid)` with two rows
+  // in it, the same function returned 2. It read the caller's table as the
+  // owner. Creating a temp table needs no grant — every signed-in role can.
+  //
+  // WHY THE EMPTY STRING AND NOT MERELY SOME PIN. `set search_path = public`
+  // is what the check above would accept if it only looked for the setting's
+  // presence, and it is exactly the case that was hijacked: the temp schema is
+  // searched ahead of the listed schemas unless `pg_temp` is written last. With
+  // `= ''` nothing unqualified resolves at all — the probe failed at call time
+  // with `relation "students" does not exist` — so the body has to name
+  // `public.students`, and a qualified name never consults the path. The empty
+  // pin is fail-closed; a schema pin is fail-quiet, and quiet is what a
+  // migration author would ship.
+  //
+  // ALL OUR SCHEMAS, NOT JUST PUBLIC — 17 of the 19 are app.* RLS helpers, and
+  // they are the higher-stakes half. They are not exposed through PostgREST, so
+  // nobody can POST to them; they do not need to. Every authenticated request
+  // that touches a tenant table calls them implicitly from inside a policy.
+  // Hijacking one does not leak a single function's rows — it changes the answer
+  // to "which centre is this caller in" underneath all 63 policies at once.
+  //
+  // Written as a deny-list so the default is checked: a schema a future
+  // migration creates is covered without anyone remembering to edit this.
+  // -------------------------------------------------------------------------
+  const OUR_SCHEMAS = `n.nspname !~ '^pg_' and n.nspname not in ('information_schema', 'auth')`
+
+  // proconfig is a text[] of `name=value`. Postgres stores the empty pin as the
+  // five characters `search_path=""`, so the value we require is `""` — read by
+  // stripping the prefix rather than splitting on '=', which would truncate any
+  // value containing one.
+  const SEARCH_PATH = `
+    coalesce(
+      (select substr(c, length('search_path=') + 1)
+       from unnest(p.proconfig) c
+       where c like 'search_path=%'),
+      '(not set)'
+    )`
+
+  const unpinned = await db.query(`
+    select n.nspname as schema, p.proname,
+           pg_get_function_identity_arguments(p.oid) as args,
+           ${SEARCH_PATH} as path
+    from pg_proc p
+    join pg_namespace n on n.oid = p.pronamespace
+    where p.prosecdef
+      and ${OUR_SCHEMAS}
+      and ${NOT_FROM_EXTENSION}
+      and ${SEARCH_PATH} <> '""'
+    order by n.nspname, p.proname;
+  `)
+
+  const definers = await db.query(`
+    select count(*)::int as n
+    from pg_proc p
+    join pg_namespace n on n.oid = p.pronamespace
+    where p.prosecdef and ${OUR_SCHEMAS} and ${NOT_FROM_EXTENSION};
+  `)
+
+  if (unpinned.rows.length > 0) {
+    console.error(
+      `\nSECURITY DEFINER WITHOUT AN EMPTY search_path — ${unpinned.rows.length} function(s) let the caller decide what they read:\n`,
+    )
+    for (const f of unpinned.rows) {
+      console.error(
+        `  ${f.schema}.${f.proname}(${f.args})   search_path = ${f.path}`,
+      )
+    }
+    console.error(
+      `
+Each of these runs as its owner, which bypasses RLS, and resolves unqualified
+names through the caller's search_path. A caller who can create a temp table —
+which is every signed-in role — can hand it a different table to read. Add the
+clause to the function, between the language and the body:
+
+  language plpgsql
+  security definer
+  set search_path = ''
+  as $$ ... $$;
+
+and qualify every reference in the body: public.students, not students. That
+part is not optional and not a style choice — with an empty path an unqualified
+name raises "relation ... does not exist" the first time the function is called,
+which is the check doing its job at runtime.
+
+"(not set)" means no clause at all. Any other value means the clause is there
+and pinned to a schema, which is NOT sufficient: the temporary schema is
+searched ahead of the listed ones unless pg_temp is written last, so a schema
+pin is the case this check was written after measuring.
+
+If a function genuinely cannot be fully qualified, it does not need SECURITY
+DEFINER — drop that instead and let RLS apply to it.`,
+    )
+    process.exit(1)
+  }
+
+  console.log(
+    `Security definer: ${definers.rows[0].n} function(s), all pinned to an empty search_path.`,
   )
 
   await db.close()
