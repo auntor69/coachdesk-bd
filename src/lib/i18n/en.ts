@@ -217,6 +217,7 @@ export const en: Dictionary = {
     yoursOnly: 'Your own batches only',
 
     registerLink: 'This month’s collection register',
+    closeLink: 'This month’s full picture',
 
     today: 'today',
     yesterday: 'yesterday',
@@ -330,6 +331,33 @@ export const en: Dictionary = {
     paperTitle: 'The collection register comes with a paid plan',
     paperBody: (plan: string, pro: string) =>
       `On ${plan} the fee board still shows who paid what. The month on one page — every payment in order, a running total, and how much came through each wallet — comes with ${pro}.`,
+  },
+
+  close: {
+    title: 'The month',
+    subtitle: 'What was owed when it started, what came in, what is left',
+    month: 'Month',
+    show: 'Show',
+    backToFees: 'Back to fees',
+
+    collected: 'Collected this month',
+    advance: 'of that, paid ahead for a later month',
+    rate: 'Collection rate',
+    rateNone: 'There was nothing to collect this month',
+
+    opening: 'Owed when the month started',
+    billed: 'Billed this month',
+    closing: 'Still owed at the end',
+    credit: 'Held in credit',
+    creditNote:
+      'One family’s overpayment is never set against another family’s debt, so it is shown on its own.',
+
+    remindersSent: (n: number) => `${n} ${n === 1 ? 'reminder' : 'reminders'} sent`,
+    remindersNone: 'No reminders were sent this month',
+
+    registerLink: 'See what came in, and when',
+    planLink: 'See the plans and prices',
+    empty: 'Nothing was billed this month, and nothing came in.',
   },
 
   /** See the Bangla for why the headings are translated and the values are not. */

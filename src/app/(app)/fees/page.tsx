@@ -274,13 +274,25 @@ export default async function FeesPage() {
             month. The month is named in the URL so the link is bookmarkable and
             still means this month when it is followed next week. */}
         {canWrite && (
-          <p className="mt-3">
+          <p className="mt-3 flex flex-col gap-1">
             <Link
               href={`/fees/register?month=${thisMonth}`}
               className="inline-flex min-h-tap items-center font-medium
                 text-brand-800 underline"
             >
               {t.registerLink} →
+            </Link>
+            {/* And the month as a whole, which is the other question this card
+                provokes. The register says where the money came from; this says
+                whether it was enough — what was owed when the month started, what
+                is left, and what share of the book came in. Not plan-gated, unlike
+                the register: see the note at the head of that page. */}
+            <Link
+              href={`/fees/close?month=${thisMonth}`}
+              className="inline-flex min-h-tap items-center font-medium
+                text-brand-800 underline"
+            >
+              {t.closeLink} →
             </Link>
           </p>
         )}

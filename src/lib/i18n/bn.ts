@@ -419,6 +419,13 @@ export const bn = {
      */
     registerLink: 'এই মাসের আদায় খাতা',
 
+    /**
+     * The way onto the month-close screen. Named for the question rather than the
+     * accounting — an owner wanting to know how their month went does not look for a
+     * word like "জের".
+     */
+    closeLink: 'এই মাসের পুরো হিসাব',
+
     /** When a reminder went out, as a person would say it. Anything older is a date. */
     today: 'আজ',
     yesterday: 'গতকাল',
@@ -628,6 +635,72 @@ export const bn = {
     paperTitle: 'আদায় খাতা এই প্ল্যানে নেই',
     paperBody: (plan: string, pro: string) =>
       `${plan} প্ল্যানে কে কত দিয়েছে তা ফি-এর তালিকাতেই দেখা যায়। মাসের পুরো হিসাব এক পাতায় — কোন তারিখে কত, ক্রমিক মোট, বিকাশে কত আর নগদ কত — ${pro}-তে।`,
+  },
+
+  /**
+   * The month's closing figures.
+   *
+   * MASTERPLAN §4: around day 28 of a trial the owner is shown what was outstanding
+   * when the month started, what came in, and how many reminders went out — and then
+   * the price, which is meant to look small next to what they have just watched
+   * arrive. These words are that conversation, so they are the owner's own words for
+   * their own month and not accounting vocabulary: "মাস শুরুতে বাকি ছিল", not
+   * "প্রারম্ভিক জের". Somebody who has never kept a ledger has to read this off a
+   * phone in one pass, with the founder sitting across the table.
+   */
+  close: {
+    title: 'মাসের হিসাব',
+    subtitle: 'মাস শুরুতে কত বাকি ছিল, কত এল, কত রয়ে গেল',
+    month: 'মাস',
+    show: 'দেখুন',
+    backToFees: 'ফি-এর তালিকায় ফিরুন',
+
+    /** The figure the sale is made on, which is why it is the one set four times larger. */
+    collected: 'এই মাসে জমা হয়েছে',
+    /**
+     * Sits directly under the collected figure, and it is what keeps the rate honest.
+     * Money handed over in July against August's bill is collection and it is not
+     * July's collection; both halves of that subtraction are on the screen, so an
+     * owner who checks the division gets the number the screen printed.
+     */
+    advance: 'এর মধ্যে পরের মাসের অগ্রিম',
+    rate: 'আদায়ের হার',
+    /**
+     * Not "০%". A month with nothing billed and nothing owed collected none of
+     * nothing, and a zero there would be the screen calling that a failure.
+     */
+    rateNone: 'এই মাসে আদায়ের কিছু ছিল না',
+
+    opening: 'মাস শুরুতে বাকি ছিল',
+    billed: 'এই মাসে বিল হয়েছে',
+    closing: 'মাস শেষে বাকি রইল',
+    credit: 'বেশি জমা আছে',
+    /**
+     * Drawn only when somebody is in credit, because that is the only time these four
+     * figures do not close and an owner adding them up finds a gap. Netting them is
+     * refused everywhere in this product — see tallyOutstanding — so the gap is
+     * explained instead of removed.
+     */
+    creditNote:
+      'একজনের বেশি জমা অন্যজনের বাকির সাথে মেলানো হয় না, তাই আলাদা দেখানো হলো।',
+
+    /**
+     * How many reminders went out, and not one word more. Every reminder in this
+     * product leaves the owner's own phone when they tap it — there is no gateway yet
+     * — so "নিজে নিজে" or anything like it would be a claim we cannot keep, said on
+     * the screen we are asking to be trusted with money.
+     */
+    remindersSent: (n: number) => `${n}টি রিমাইন্ডার পাঠানো হয়েছে`,
+    remindersNone: 'এই মাসে কোনো রিমাইন্ডার পাঠানো হয়নি',
+
+    registerLink: 'কোন তারিখে কত এল, দেখুন',
+    /**
+     * The next step in the conversation this screen exists for. An owner who has just
+     * read their own month is the one person for whom the price page is worth
+     * opening.
+     */
+    planLink: 'প্ল্যান আর দাম দেখুন',
+    empty: 'এই মাসে কোনো বিল হয়নি, কোনো টাকাও জমা হয়নি।',
   },
 
   /**
