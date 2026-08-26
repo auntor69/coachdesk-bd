@@ -57,8 +57,10 @@
  *
  * Run: node scripts/check-scoping.mjs
  */
-import { readFileSync, readdirSync } from 'node:fs'
+import { readFileSync } from 'node:fs'
 import { join, relative, sep } from 'node:path'
+
+import { balancedEnd, queriesIn, sourceFiles } from './lib/query-chains.mjs'
 
 const ROOT = process.cwd()
 
@@ -95,86 +97,10 @@ function scopedRelations() {
 /* Finding the queries                                                        */
 /* -------------------------------------------------------------------------- */
 
-function sourceFiles(dir) {
-  const out = []
-  for (const entry of readdirSync(dir, { withFileTypes: true })) {
-    const path = join(dir, entry.name)
-    if (entry.isDirectory()) out.push(...sourceFiles(path))
-    else if (/\.tsx?$/.test(entry.name)) out.push(path)
-  }
-  return out
-}
-
-/**
- * Index just past the `)` matching the `(` at `open`, honouring strings.
- *
- * A `.eq('a', foo(bar))` must not end the chain early, and a `'` inside a
- * template literal must not swallow the rest of the file.
- */
-function balancedEnd(src, open) {
-  let depth = 0
-  let quote = null
-  for (let i = open; i < src.length; i++) {
-    const c = src[i]
-    if (quote) {
-      if (c === '\\') i++
-      else if (c === quote) quote = null
-      continue
-    }
-    if (c === "'" || c === '"' || c === '`') {
-      quote = c
-      continue
-    }
-    if (c === '(' || c === '[' || c === '{') depth++
-    else if (c === ')' || c === ']' || c === '}') {
-      depth--
-      if (depth === 0) return i + 1
-    }
-  }
-  return -1
-}
-
-/**
- * The whole builder chain starting at a `.from(...)` call.
- *
- * Walks method calls one at a time, tracking depth so a `.eq('a', foo(bar))`
- * does not end the chain early, and stops as soon as what follows a balanced
- * call is not another `.method(`. That is what makes the answer exact rather
- * than a fixed window of characters — two queries in one `Promise.all` sit a
- * few lines apart, and a window would let the second one's filter vouch for the
- * first.
- */
-function chainFrom(src, start) {
-  let i = start
-  const end = src.length
-
-  while (i < end) {
-    // Expect `.name(`, possibly after whitespace and comments.
-    while (i < end && /\s/.test(src[i])) i++
-    if (src.startsWith('//', i)) {
-      i = src.indexOf('\n', i)
-      if (i === -1) return src.slice(start, end)
-      continue
-    }
-    if (src.startsWith('/*', i)) {
-      const close = src.indexOf('*/', i)
-      if (close === -1) return src.slice(start, end)
-      i = close + 2
-      continue
-    }
-    if (src[i] !== '.') break
-
-    const open = src.indexOf('(', i)
-    if (open === -1) break
-    if (!/^\.\s*\w+\s*$/.test(src.slice(i, open))) break
-
-    const close = balancedEnd(src, open)
-    if (close === -1) break
-    i = close
-  }
-
-  return src.slice(start, i)
-}
+/* `sourceFiles`, `queriesIn` and `balancedEnd` live in
+   scripts/lib/query-chains.mjs — check-embeds.mjs reads the same chains for a
+   different reason, and two parsers that disagree about where a query ends would
+   have the two gates checking two different programs. */
 
 /**
  * The chain with every `.select()` argument blanked out.
@@ -255,15 +181,13 @@ for (const file of [
   if (!src.includes('.from(')) continue
   const where = relative(ROOT, file).split(sep).join('/')
 
-  for (const match of src.matchAll(/\.from\(\s*'([\w]+)'\s*\)/g)) {
-    const relation = match[1]
-
+  for (const { relation, offset, line, chain } of queriesIn(src)) {
     // A name the generated types do not know is a typo or a stale migration,
     // and PostgREST answers it with a 404 the screen renders as "empty".
     if (!all.has(relation)) {
       problems.push({
         where,
-        line: lineOf(src, match.index),
+        line,
         relation,
         why: 'no such relation in the generated types — run npm run gen:types',
       })
@@ -272,11 +196,10 @@ for (const file of [
     if (!scoped.has(relation)) continue
 
     checked++
-    const chain = chainFrom(src, match.index)
     if (filtersOnly(chain).includes('coaching_center_id')) continue
 
-    const hatch = [...commentsAbove(src, match.index), ...chain.split('\n')]
-      .map((line) => /\/\/\s*scoped-by:\s*(.+)$/.exec(line.trim()))
+    const hatch = [...commentsAbove(src, offset), ...chain.split('\n')]
+      .map((text) => /\/\/\s*scoped-by:\s*(.+)$/.exec(text.trim()))
       .find(Boolean)
 
     if (hatch) {
@@ -284,27 +207,23 @@ for (const file of [
       if (reason.length < 8) {
         problems.push({
           where,
-          line: lineOf(src, match.index),
+          line,
           relation,
           why: `scoped-by needs a reason a person can check, got "${reason}"`,
         })
       } else {
-        hatches.push({ where, line: lineOf(src, match.index), relation, reason })
+        hatches.push({ where, line, relation, reason })
       }
       continue
     }
 
     problems.push({
       where,
-      line: lineOf(src, match.index),
+      line,
       relation,
       why: 'no coaching_center_id filter and no scoped-by note',
     })
   }
-}
-
-function lineOf(src, offset) {
-  return src.slice(0, offset).split('\n').length
 }
 
 if (problems.length > 0) {
