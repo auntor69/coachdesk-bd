@@ -29,6 +29,7 @@ import { formatTaka as taka } from '@/lib/money'
 import type { OutreachChannel, PaymentMethod } from '@/lib/supabase/types'
 import { recordPayment, type FeeState } from './actions'
 import { CancelBill } from './cancel-bill'
+import { DiscountBill } from './discount'
 import { MethodPicker } from './method-picker'
 import { RefundBill } from './refund'
 import {
@@ -52,6 +53,7 @@ type RowWords = {
   channels: T<'channels'>
   cancel: T<'cancel'>
   refund: T<'refund'>
+  discount: T<'discount'>
   common: T<'common'>
 }
 
@@ -65,6 +67,13 @@ export type FeeRow = ChaseTarget & {
   studentCode: string | null
   billed: number
   discount: number
+  /**
+   * Why the centre waived it, in the owner's own words, or null. Carried onto the row
+   * rather than fetched when the panel opens: a cancelled bill leaves the board and a
+   * discounted one stays on it, so this is the question the owner asks months later —
+   * looking at the row, not at a form.
+   */
+  discountReason: string | null
   net: number
   paid: number
   /** "today" / "yesterday" / a date, written server-side. Null if never chased. */
@@ -95,7 +104,7 @@ export function PaymentRow({
    */
   readOnly?: boolean
 }) {
-  const { t, chase, channels, cancel, refund, common } = words
+  const { t, chase, channels, cancel, refund, discount, common } = words
   const [state, formAction, pending] = useActionState<FeeState, FormData>(
     recordPayment,
     null,
@@ -223,8 +232,6 @@ export function PaymentRow({
             <>
               <p className="num mt-2 text-sm text-ink-soft">
                 {fill(t.settled, { paid: taka(row.paid), net: taka(row.net) })}
-                {row.discount > 0
-                  && ` ${fill(t.discount, { amount: taka(row.discount) })}`}
               </p>
               {/* Stated at the child's name, not just in the total at the top,
                   because this is where the owner looks when the parent asks
@@ -297,6 +304,29 @@ export function PaymentRow({
             </>
           )}
 
+          {/* What the centre waived, and why, on one line under both branches rather
+              than appended to the settled sentence it used to hang off. Two reasons it
+              moved: an unpaid bill with a waiver on it said nothing at all before, which
+              is the more common case now that waivers can be granted from this panel;
+              and the owner's own words needed somewhere to go. A discounted bill stays
+              on the board for as long as the centre exists, so "কেন এই পরিবারের বিল কম"
+              is asked here, looking at the row. */}
+          {row.discount > 0 && (
+            <div className="mt-2">
+              <p className="num text-sm text-ink-soft">
+                {fill(t.discount, { amount: taka(row.discount) })}
+              </p>
+              {/* Only when they left any: a blank line under a figure reads as a
+                  rendering fault rather than as "they wrote nothing". */}
+              {row.discountReason && (
+                <p className="mt-0.5 text-sm text-ink-soft">
+                  <span className="text-ink-faint">{discount.reasonLabel}:</span>{' '}
+                  {row.discountReason}
+                </p>
+              )}
+            </div>
+          )}
+
           {/* Money out, and only when there is any on the bill: a control whose only
               possible answer is "this family has paid nothing" is a control that
               teaches an owner to distrust the panel. `row.paid` is the netted figure,
@@ -317,6 +347,27 @@ export function PaymentRow({
               common={common}
             />
           )}
+
+          {/* A fee the centre decided not to charge. Unconditional, unlike the refund
+              control: every live bill can carry a waiver, including one already paid in
+              full — that leaves the family in credit, which is true, and the refund
+              control directly above is how the money goes home.
+
+              Between the two money forms and the cancel step because that is what it is
+              between in kind: it changes what a family owes, like a payment, but it is a
+              decision about the bill, like a cancellation. */}
+          <DiscountBill
+            invoiceId={row.id}
+            billed={row.billed}
+            discount={row.discount}
+            // Always live here: both board queries filter `voided_at is null`, so a
+            // cancelled bill is not on this list at all. Passed rather than hard-coded
+            // so the panel's own refusal is the shared rule's, not this file's
+            // assumption about which query it was rendered from.
+            voidedAt={null}
+            t={discount}
+            common={common}
+          />
 
           {/* Last thing in the panel, under every branch, because it belongs to
               none of them: a bill raised against the wrong child is as likely to have

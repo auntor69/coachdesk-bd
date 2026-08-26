@@ -35,7 +35,7 @@ export async function generateMetadata() {
  * literal — split this across two lines with a `+` and TypeScript widens it to
  * `string`, the parse fails, and every column comes back as GenericStringError.
  */
-const COLUMNS = 'id, student_name, student_code, amount_bdt, discount_bdt, net_bdt, paid_bdt, remaining_bdt, due_date, period_month, guardian_phone, sms_opt_out, preferred_channel'
+const COLUMNS = 'id, student_name, student_code, amount_bdt, discount_bdt, discount_reason, net_bdt, paid_bdt, remaining_bdt, due_date, period_month, guardian_phone, sms_opt_out, preferred_channel'
 
 /**
  * The cancelled list needs a name, a month, what is no longer owed, and the owner's
@@ -382,7 +382,7 @@ export default async function FeesPage() {
               center={centerPay}
               locale={locale}
               readOnly={!canWrite}
-              // One object built once for the whole board. Six groups of words
+              // One object built once for the whole board. Seven groups of words
               // reach every row, and React sends each distinct value down once
               // however many rows share it.
               words={{
@@ -391,6 +391,7 @@ export default async function FeesPage() {
                 channels: d.channels,
                 cancel: d.cancel,
                 refund: d.refund,
+                discount: d.discount,
                 common: d.common,
               }}
             />
@@ -433,6 +434,7 @@ type ViewRow = {
   student_code: string | null
   amount_bdt: number | null
   discount_bdt: number | null
+  discount_reason: string | null
   net_bdt: number | null
   paid_bdt: number | null
   remaining_bdt: number | null
@@ -465,6 +467,10 @@ function toRow(
       studentCode: v.student_code,
       billed: Number(v.amount_bdt ?? 0),
       discount: Number(v.discount_bdt ?? 0),
+      // Passed through untouched, including the null. The row renders it only when the
+      // owner left words, so an empty string and a null would draw differently for no
+      // reason an owner could explain.
+      discountReason: v.discount_reason,
       net: Number(v.net_bdt ?? 0),
       paid: Number(v.paid_bdt ?? 0),
       remaining: Number(v.remaining_bdt ?? 0),

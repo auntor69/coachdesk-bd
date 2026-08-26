@@ -479,6 +479,27 @@ export const bn = {
     refunded: (name: string, amount: string) => `${name} — ${amount} ফেরত দেওয়া হয়েছে।`,
 
     /**
+     * What waiving part of a fee says back, and what taking the waiver away says.
+     *
+     * "ছাড়" is the word, not a word for a discount. It is what a centre writes in the
+     * margin of its own outstanding book, and it carries the meaning an owner means:
+     * money the centre decided not to ask for, not a lower price.
+     *
+     * "দেওয়া হলো" and not "লেখা হলো", for the reason `refunded` says "ফেরত দেওয়া হয়েছে":
+     * the sentence records the decision the owner took about a family, and the row is
+     * only how the hisab keeps up with it.
+     *
+     * `discountCleared` is the undo, and it says the bill is back at its full figure
+     * rather than that a field was emptied. An owner who mistyped ৳২০০ as ৳২,০০০ and
+     * put it back to zero needs to know what the family now owes, which is all of it.
+     * Both sentences answer a replayed request unchanged — see the action — so they say
+     * what is now true and not what just happened.
+     */
+    discounted: (name: string, amount: string) => `${name} — ${amount} ছাড় দেওয়া হলো।`,
+    discountCleared: (name: string) =>
+      `${name} — ছাড় তুলে নেওয়া হলো, বিলটি আবার পুরো টাকার।`,
+
+    /**
      * The section under the board that holds them.
      *
      * The heading is the count, because it is a fold: an owner who cancelled one bill
@@ -540,6 +561,34 @@ export const bn = {
       refundTooMuch: (max: string) =>
         `এই বিলে জমা আছে ${max}, এর বেশি ফেরত দেওয়া যাবে না।`,
       refundFailed: 'টাকা ফেরতের হিসাব লেখা হয়নি। আবার চেষ্টা করুন।',
+
+      /**
+       * The three ways a waiver is refused. None of them repeats "টাকার পরিমাণ", which
+       * the box already says: an owner told only that would retype the same figure.
+       *
+       * `discountVoided` names the step that unblocks it. A cancelled bill is off every
+       * total, so a waiver on it changes nothing anybody can see — the owner meant to do
+       * something, and the thing to do is put the bill back first. Said in terms of the
+       * board rather than the database, because "বাতিল করা বিল" is what they are looking
+       * at.
+       *
+       * `discountNegative` exists because the field is a number box and a minus sign is
+       * one keystroke. There is no such thing as billing extra through a waiver, and the
+       * sentence says what to do instead — raise the bill for more — so an owner who
+       * genuinely wanted to charge more is not left thinking the app forbids it.
+       *
+       * `discountTooMuch` names the ceiling instead of only refusing it, exactly as
+       * `refundTooMuch` does, and the ceiling is the whole fee: a centre may waive all of
+       * it, and often does for a topper it wants on the roll. Pre-formatted, because it
+       * is money.
+       */
+      discountVoided:
+        'এই বিলটি বাতিল করা আছে, তাই এতে ছাড় দিলে কোনো হিসাব বদলাবে না। আগে বিলটি আবার চালু করুন।',
+      discountNegative:
+        'ছাড় শূন্যের কম হতে পারে না। বেশি টাকা নিতে হলে বিলটি বেশি টাকার করে দিন।',
+      discountTooMuch: (max: string) =>
+        `এই বিলের ফি ${max}, ছাড় এর বেশি হতে পারে না।`,
+      discountFailed: 'ছাড়ের হিসাব লেখা হয়নি। আবার চেষ্টা করুন।',
     },
   },
 
@@ -743,6 +792,95 @@ export const bn = {
   },
 
   /**
+   * A fee the centre decided not to charge.
+   *
+   * WHY IT IS ITS OWN GROUP, like `refund` beside it: the panel is a separate client
+   * component, and folding these into the row's words would put a waiver form's whole
+   * wording on the wire for every one of forty rows on a collection day.
+   *
+   * THE WORD IS "ছাড়" throughout — see `fees.discounted` for why. Never "ডিসকাউন্ট",
+   * which is a shop's word for a sale and not a centre's word for carrying a family.
+   *
+   * THE TONE IS THE OPPOSITE OF THE REFUND FORM'S. Handing cash back is irreversible and
+   * says so once; a waiver is a number that can be retyped or removed at any time, and it
+   * is something an owner is *proud* of — the second child of a family already paying,
+   * the student carried through a bad year. So nothing here warns, and the one thing the
+   * panel insists on is showing what the family will be left owing before the figure is
+   * stored.
+   *
+   * Strings only, `{}` templates where a figure goes — the reader is a client component.
+   * See ./fill.ts.
+   */
+  discount: {
+    /**
+     * The way in, quiet like `cancel.open` and `refund.open` and for the same reason:
+     * it shares a panel with "জমা নিন", tapped fifty times a day. Says "ছাড় দিন" on a
+     * bill with no waiver on it; the panel swaps in `edit` once there is one, because
+     * "ছাড় দিন" over an existing ৳২০০ invites an owner to think they are adding to it.
+     */
+    open: 'ছাড় দিন',
+    edit: 'ছাড় বদলান',
+    heading: 'কত টাকা ছাড় দিচ্ছেন?',
+    /**
+     * The fee, above the box — the full figure the centre charges, not what is left
+     * after anything already waived. That is the number the ceiling is measured
+     * against, and the one the owner is deciding a fraction of.
+     */
+    billed: 'এই বিলের ফি {amount}',
+    /**
+     * Shown only when there is already a waiver, because the box arrives with that
+     * figure in it and an owner who does not know why would delete it.
+     *
+     * IT SAYS THE FIGURE REPLACES, NOT ADDS. This is the one thing about the form that
+     * could cost a centre money: an owner who thinks they are adding ৳১০০ to an existing
+     * ৳২০০ and types 100 has just given ৳১০০ less than they meant to.
+     */
+    current: 'এখন ছাড় আছে {amount} — নতুন যা লিখবেন, সেটিই বসবে',
+    /**
+     * What the family is left owing, under the box, updated as the figure is typed. The
+     * whole point of the panel: the owner sees the consequence of the number before it
+     * is stored, so no waiver is ever a surprise on the board afterwards.
+     *
+     * Before anything already paid, and it says so — the row above shows what came in,
+     * and restating it here would be the second answer docs §4 forbids.
+     */
+    leaves: 'ছাড়ের পর ফি দাঁড়াবে {amount}',
+    /** When the whole fee is waived, which is a real case and not an error. */
+    leavesNothing: 'পুরো ফি ছাড় — এই বিলে আর কিছু দিতে হবে না',
+    amount: 'কত টাকা ছাড় দিচ্ছেন',
+    /**
+     * Optional, and it says so for the reason `cancel.reason` does. But it is the field
+     * that matters most here, because a cancelled bill leaves the board and a discounted
+     * one stays on it: months later "এই পরিবারের বিল কম কেন" is a question the owner will
+     * ask themselves, and this is the only place the answer can come from.
+     */
+    reason: 'কেন ছাড় দিচ্ছেন',
+    reasonHint: 'যেমন: দুই ভাইবোন একসাথে পড়ে',
+    confirm: 'ছাড় বসান',
+    saving: 'বসানো হচ্ছে…',
+    /** The way out, and the wider tap target of the two. */
+    keep: 'না, থাকুক',
+    /**
+     * Taking a waiver back, which is typing zero — but nobody types zero to undo
+     * something, so the panel offers it as its own step. Says what the bill becomes, not
+     * what the field does.
+     */
+    clear: 'ছাড় তুলে নিন',
+    clearing: 'তোলা হচ্ছে…',
+    /**
+     * On a cancelled bill, shown at the panel instead of the form rather than by hiding
+     * the control — the argument `cancel.paidNote` makes: an owner who cannot find a
+     * button assumes the app is broken, and one who is told why learns the rule where it
+     * matters. Shorter than `fees.errors.discountVoided`, which is read alone on a red
+     * line and has to carry the whole rule.
+     */
+    voidedTitle: 'বাতিল করা বিলে ছাড় দেওয়া যায় না',
+    voidedNote: 'বিলটি আবার চালু করলে ছাড় দেওয়া যাবে।',
+    /** Above the owner's own words, on the board, when they left any. */
+    reasonLabel: 'ছাড়ের কারণ',
+  },
+
+  /**
    * The fee receipt, printed two to a sheet.
    *
    * Reads like the slip books already sold in every stationery shop in the
@@ -781,6 +919,21 @@ export const bn = {
       'এটি কম্পিউটারে তৈরি টাকা ফেরতের রসিদ। এই টাকা অভিভাবকের হাতে ফেরত দেওয়া হয়েছে — প্রমাণ হিসেবে যত্ন করে রাখুন।',
     /** The invoice's own total, so the two figures below it can be checked. */
     billed: 'মাসের মোট ফি',
+    /**
+     * The waiver, and what the fee came down to — printed only when the centre granted
+     * one, so a normal slip is not two lines longer for nothing.
+     *
+     * THE PAPER IS THE PROOF, and that is the whole reason these are here. Until a waiver
+     * could be granted from the board there was nothing to print; now a family paying
+     * ৳১,৫০০ against a ৳২,০০০ fee has a slip that says why, in the centre's own hand, and
+     * an owner who leaves next term cannot take the arrangement with them. Without it the
+     * parent's copy shows ৳২,০০০ billed and ৳১,৫০০ received and reads as a part payment.
+     *
+     * `discountGiven` is written with a minus in front of the figure on the slip, the way
+     * the line above and below it are read: a bill, a deduction, a total.
+     */
+    discountGiven: 'ছাড়',
+    netAfterDiscount: 'ছাড়ের পর দিতে হবে',
     /**
      * "এই রসিদ পর্যন্ত" — up to this receipt — and not "এখন". The figure is
      * calculated as of this payment and never moves again, which is the only way a

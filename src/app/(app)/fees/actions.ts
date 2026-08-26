@@ -24,6 +24,7 @@ import { parseTaka, formatTaka, sumTaka } from '@/lib/money'
 import { billableEnrollments } from '@/lib/fees/billable'
 import { cancelVerdict } from '@/lib/fees/void'
 import { refundVerdict, refundable } from '@/lib/fees/refund'
+import { discountVerdict, maxDiscount } from '@/lib/fees/discount'
 import { currentPeriodMonth } from '@/lib/bd/time'
 import { normalizeBdMobile } from '@/lib/bd/phone'
 import { readIdempotencyKey, UNIQUE_VIOLATION } from '@/lib/idempotency'
@@ -504,9 +505,9 @@ const VOID_COLUMNS = 'id, student_name, paid_bdt, voided_at'
  * accounting, they are undoing a mistake. The column keeps the schema's name.
  *
  * WHAT IT REFUSES is a bill with money on it, and the reasoning is in
- * lib/fees/void.ts. Refunding first is the way through, which is a negative payment —
- * and there is no button for that yet, so the refusal says what is true rather than
- * pointing at a screen that does not exist.
+ * lib/fees/void.ts. Refunding first is the way through — a negative payment, which the
+ * control above this one on the same row now writes — so the refusal names the step
+ * rather than describing a dead end.
  *
  * Safe to arrive twice, like every write in this app: a bill already cancelled is
  * answered with the same confirmation as the first time. `useOffline` replays Server
@@ -812,4 +813,145 @@ export async function refundPayment(
   }
 
   return { ok: t.refunded(name, back), receipt }
+}
+
+/* -------------------------------------------------------------------------- */
+/* A fee the centre decided not to charge                                     */
+/* -------------------------------------------------------------------------- */
+
+const DISCOUNT_COLUMNS =
+  'id, student_name, amount_bdt, discount_bdt, remaining_bdt, voided_at'
+
+/**
+ * Waives part of a fee, or takes a waiver back.
+ *
+ * WHY IT EXISTS. `discount_bdt` has been in the schema since migration 1 with both its
+ * bounds as table checks, the board renders it, the export has a column for it and
+ * month-close nets it out — and until 20260811000030 no screen could set it. A centre
+ * that waives a fee constantly, which every coaching centre does, had two places to put
+ * it and both were wrong: bill the discounted figure, and `amount_bdt` stops being the
+ * fee so next month's generator bills full price again with nobody remembering why; or
+ * record a payment the family never made, which is permanent, lands in the day's takings
+ * and stops the drawer reconciling. The full argument is in lib/fees/discount.ts.
+ *
+ * A REPLACEMENT, NOT AN INCREMENT. The figure sent is the whole waiver on this bill, and
+ * it overwrites whatever was there. Adding to a running total would make each edit
+ * depend on the last one, so an owner correcting ৳500 to ৳800 would land at ৳1,300 — and
+ * the same request arriving twice would waive twice. This shape is idempotent by
+ * construction, which is why there is no key anywhere near it: `useOffline` replays
+ * Server Actions, and a SET to an absolute figure is the same answer however many times
+ * it is asked.
+ *
+ * ZERO IS A LEGITIMATE FIGURE and the only way to undo a waiver. The trigger clears the
+ * reason, who granted it and when, alongside — a bill back at full price that still
+ * reads "second child, half fee" is worse than one that says nothing.
+ *
+ * A CANCELLED BILL IS REFUSED, because it is out of every total on every screen, so a
+ * waiver on one can do nothing except confuse whoever reads it later. Restore it first.
+ *
+ * NOT REFUSED: a waiver on a bill the family has already paid. That leaves them in
+ * credit, which is true, is what the board should say, and is what the refund control on
+ * the same row hands back. It is also the most sympathetic case there is.
+ */
+export async function discountInvoice(
+  _prev: FeeState,
+  formData: FormData,
+): Promise<FeeState> {
+  const session = await feeAdmin()
+  if (!isSession(session)) return session
+
+  const t = dict(session.locale).fees
+
+  const invoiceId = String(formData.get('invoiceId') ?? '')
+  if (!invoiceId) return { error: t.errors.noInvoice }
+
+  const amount = parseTaka(String(formData.get('amount') ?? ''))
+  if (amount === null) return { error: t.errors.amountUnreadable }
+
+  // Optional and clamped, exactly as the cancellation reason is: a required field here
+  // would be answered with a full stop. The screen asks for it anyway, because this is
+  // the one column that survives the owner forgetting.
+  const reason = clamp(String(formData.get('reason') ?? '').trim(), MAX_TEXT)
+
+  const supabase = await createClient()
+
+  // Read through the view, never from the form. It decides what the client cannot be
+  // trusted for: that the bill exists and is in this centre (RLS), what it was billed —
+  // which is the ceiling — and whether it is cancelled.
+  const { data: invoice } = await supabase
+    .from('fee_invoice_balances')
+    .select(DISCOUNT_COLUMNS)
+    .eq('coaching_center_id', session.active.centerId)
+    .eq('id', invoiceId)
+    .maybeSingle()
+
+  if (!invoice?.id) return { error: t.errors.invoiceMissing }
+
+  const billed = Number(invoice.amount_bdt ?? 0)
+
+  switch (discountVerdict({ billed, discount: amount, voidedAt: invoice.voided_at })) {
+    case 'cancelled':
+      return { error: t.errors.discountVoided }
+    case 'unreadable':
+      return { error: t.errors.amountUnreadable }
+    case 'negative':
+      return { error: t.errors.discountNegative }
+    case 'tooMuch':
+      return { error: t.errors.discountTooMuch(formatTaka(maxDiscount(billed))) }
+  }
+
+  // `is('voided_at', null)` in the filter as well as in the verdict, for the reason
+  // voidInvoice gives: two requests a moment apart both pass the read, and this is what
+  // stops the second one landing on a bill cancelled in between. The trigger refuses it
+  // too; this makes the answer a sentence rather than a Postgres error.
+  //
+  // discounted_by and discounted_at are not sent and could not be — they are outside the
+  // column grant. The trigger stamps them.
+  const { error } = await supabase
+    .from('fee_invoices')
+    .update({ discount_bdt: amount, discount_reason: reason || null })
+    .eq('coaching_center_id', session.active.centerId)
+    .eq('id', invoice.id)
+    .is('voided_at', null)
+
+  if (error) return { error: t.errors.discountFailed }
+
+  revalidatePath('/fees')
+  revalidatePath('/dashboard')
+  revalidatePath('/me')
+
+  const name = invoice.student_name ?? dict(session.locale).common.unknown
+
+  // Taking one back is its own sentence. "৳0 waived" is arithmetically what happened and
+  // not what the owner did, and an owner who has just undone something needs to read
+  // that it is undone.
+  if (amount <= 0) return { ok: t.discountCleared(name) }
+
+  // What the family owes now, as a change to the figure Postgres already computed
+  // rather than as the formula restated here. `remaining_bdt` is net-less-paid decided
+  // in the view (20260811000030), and it is stale by exactly the waiver that just
+  // changed — so putting the old waiver back and taking the new one off is the whole
+  // adjustment. Recomputing `billed - waiver - paid` in TypeScript would be a second
+  // answer to a question the database already answers, which docs §4 forbids for a
+  // reason: the day net_bdt's definition moves, that line disagrees silently.
+  //
+  // Same three shapes as recordPayment, because it is the same question — where does
+  // this bill now stand — and the credit case is real here: a fee waived after the
+  // family paid in full leaves money to hand back.
+  const owedNow = sumTaka([
+    Number(invoice.remaining_bdt ?? 0),
+    Number(invoice.discount_bdt ?? 0),
+    -amount,
+  ])
+  const waived = formatTaka(amount)
+
+  if (owedNow > 0) {
+    return { ok: t.discounted(name, waived), warn: t.stillOwed(formatTaka(owedNow)) }
+  }
+
+  if (owedNow < 0) {
+    return { ok: t.discounted(name, waived), warn: t.overpaid(formatTaka(-owedNow)) }
+  }
+
+  return { ok: t.discounted(name, waived) }
 }

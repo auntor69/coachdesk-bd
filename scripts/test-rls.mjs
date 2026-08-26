@@ -1724,6 +1724,216 @@ await db.query('delete from fee_payments where invoice_id = any($1)', [
 await db.query('delete from fee_invoices where id = any($1)', [[refundInv, dryInv]])
 
 // ---------------------------------------------------------------------------
+// A fee the centre decided not to charge (20260811000030).
+//
+// WHY THIS NEEDS ITS OWN SECTION rather than trusting the two table checks. Migration 1
+// has carried `check (discount_bdt >= 0)` and `fee_invoices_discount_bound check
+// (discount_bdt <= amount_bdt)` since the beginning, and those are the arithmetic — but
+// until 20260811000030 nothing could write the column at all, so neither check had ever
+// been reached from a browser session. What is asserted here is the part that is not
+// arithmetic: which columns a session may name, which ones only the trigger may write,
+// that a cancelled bill refuses a waiver, and that taking a waiver back takes the reason
+// and the signature with it.
+//
+// THE STAMP IS THE POINT OF HALF OF IT. `discounted_by` and `discounted_at` are outside
+// the column grant on purpose, so a session cannot claim who granted a waiver even to
+// name itself, and cannot date one into a month the owner has already closed and shown
+// somebody. A BEFORE trigger may still assign to them — column privileges are checked
+// against the statement's SET list, not against what a trigger does afterwards — and
+// that distinction is exactly what is checked below, in both directions.
+//
+// The cancelled-bill refusal exempts the server role, unlike the refund floor above it.
+// That guard refuses arithmetic that is never right; this one refuses a screen letting an
+// owner do something pointless, and a support session straightening out a centre's books
+// may legitimately need to correct the waiver on a bill that was cancelled afterwards.
+// Both halves of that are asserted, because an exemption nobody checks is an exemption
+// that quietly stops existing.
+// ---------------------------------------------------------------------------
+
+console.log('\nWaiving a fee (20260811000030):')
+
+const waiveInv = await one(
+  `insert into fee_invoices (coaching_center_id, student_id, period_month, amount_bdt, due_date)
+   values ($1, $2, '2026-08-01', 2000, '2026-08-10') returning id`,
+  [centerA, stAli],
+)
+
+/** The four columns the migration is about, read as the superuser so RLS is not the subject. */
+const waiverOn = async (id) =>
+  (
+    await db.query(
+      `select discount_bdt::text as amount, discount_reason as reason,
+              discounted_by, discounted_at
+         from fee_invoices where id = $1`,
+      [id],
+    )
+  ).rows[0]
+
+/** What a staff admin's own UPDATE does, as the browser would send it. */
+const setWaiver = async (id, amount, reason = null, userId = ids.ownerA) => {
+  try {
+    await asUser(db, userId, (tx) =>
+      tx.query(
+        `update fee_invoices set discount_bdt = $2, discount_reason = $3
+          where coaching_center_id = $1 and id = $4`,
+        [centerA, amount, reason, id],
+      ),
+    )
+    return ''
+  } catch (error) {
+    return String(error.message)
+  }
+}
+
+check(
+  'an owner may waive part of a fee, which nothing in the product could do before',
+  (await setWaiver(waiveInv, 500, 'দুই ভাইবোন')) === '',
+)
+
+let waived = await waiverOn(waiveInv)
+check('and the figure is what they typed', waived.amount === '500.00', waived.amount)
+check('with their own words kept beside it', waived.reason === 'দুই ভাইবোন', waived.reason)
+// The half of the migration a column grant cannot express. The browser never names
+// these; the trigger writes them, which is why they are a record and not a claim.
+check(
+  'the trigger stamps who granted it, though the session never named them',
+  waived.discounted_by === ids.ownerA,
+  String(waived.discounted_by),
+)
+check('and when, from the server clock', waived.discounted_at !== null)
+
+// The whole fee, which is the scholarship case and has to pass: a topper kept on the
+// roll at no charge because the board results are the centre's advertising.
+check(
+  'waiving the whole fee is allowed, because a centre does that on purpose',
+  (await setWaiver(waiveInv, 2000, 'বোর্ড স্ট্যান্ড')) === '',
+)
+check('and net_bdt reaches nought rather than going under', await (async () => {
+  const { rows } = await db.query(
+    `select net_bdt::text as net from fee_invoice_balances where id = $1`,
+    [waiveInv],
+  )
+  return rows[0].net === '0.00'
+})())
+
+// Migration 1's own bound, reached from a session for the first time. Past this the
+// centre would owe the family money for attending.
+const pastFee = await setWaiver(waiveInv, 2001)
+check(
+  'a taka past the fee is refused by the table check itself',
+  /fee_invoices_discount_bound/.test(pastFee),
+  pastFee.split('\n')[0] || 'accepted',
+)
+check(
+  'and the stored waiver is untouched by the attempt',
+  (await waiverOn(waiveInv)).amount === '2000.00',
+)
+
+const negative = await setWaiver(waiveInv, -100)
+check(
+  'a negative waiver is refused rather than read as a surcharge',
+  /discount_bdt/.test(negative),
+  negative.split('\n')[0] || 'accepted',
+)
+
+// Zero is the undo, so it must succeed — and it must take the three columns beside it
+// with it. A bill at full price that still reads "second child, half fee" is worse than
+// one that says nothing at all.
+check('taking a waiver back is allowed', (await setWaiver(waiveInv, 0, 'ভুল হয়েছিল')) === '')
+waived = await waiverOn(waiveInv)
+check('and the reason goes with it', waived.reason === null, String(waived.reason))
+check('and so does the signature', waived.discounted_by === null, String(waived.discounted_by))
+check('and the date', waived.discounted_at === null, String(waived.discounted_at))
+
+// Outside the grant, both of them. This fails at executor startup before a row is
+// scanned, which is why it can be asserted as an error at all — an RLS refusal on
+// UPDATE is silent.
+check(
+  'a session cannot name discounted_by, even to name itself',
+  await deniedAsUser(
+    db,
+    ids.ownerA,
+    `update fee_invoices set discount_bdt = 100, discounted_by = $2
+      where coaching_center_id = $1 and id = $3`,
+    [centerA, ids.ownerA, waiveInv],
+  ),
+)
+check(
+  'nor discounted_at, which would let a waiver be dated into a closed month',
+  await deniedAsUser(
+    db,
+    ids.ownerA,
+    `update fee_invoices set discount_bdt = 100, discounted_at = '2020-01-01'
+      where coaching_center_id = $1 and id = $2`,
+    [centerA, waiveInv],
+  ),
+)
+
+// A waiver after the family has already paid, which is deliberately not bounded — the
+// most sympathetic case there is, and the one an over-careful rule would break.
+await asUser(db, ids.ownerA, (tx) =>
+  tx.query(
+    `insert into fee_payments (coaching_center_id, invoice_id, student_id, amount_bdt)
+     values ($1, $2, $3, 2000)`,
+    [centerA, waiveInv, stAli],
+  ),
+)
+check(
+  'a fee may be waived after it was paid, which leaves the family in credit',
+  (await setWaiver(waiveInv, 500, 'বছরটা খারাপ গেছে')) === '',
+)
+check('and the board says so, as a negative remainder', await (async () => {
+  const { rows } = await db.query(
+    `select remaining_bdt::text as left from fee_invoice_balances where id = $1`,
+    [waiveInv],
+  )
+  return rows[0].left === '-500.00'
+})())
+
+// A cancelled bill. Refused for a session, because a waiver on a bill that is in no
+// total on any screen can only confuse whoever reads it later — and the owner meant to
+// do something, so doing nothing quietly would leave them believing they had.
+const voidWaiveInv = await one(
+  `insert into fee_invoices (coaching_center_id, student_id, period_month, amount_bdt, due_date, voided_at)
+   values ($1, $2, '2026-08-01', 1000, '2026-08-10', now()) returning id`,
+  [centerA, stMim],
+)
+const onCancelled = await setWaiver(voidWaiveInv, 200)
+check(
+  'a waiver on a cancelled bill is refused, and told to restore it first',
+  /restore it first/.test(onCancelled),
+  onCancelled.split('\n')[0] || 'accepted',
+)
+check(
+  'and nothing was written',
+  (await waiverOn(voidWaiveInv)).amount === '0.00',
+)
+// The exemption, asserted rather than assumed. A support session correcting a centre's
+// books may need exactly this, which is the distinction 20260811000029's header draws.
+await db.query('update fee_invoices set discount_bdt = 200 where id = $1', [voidWaiveInv])
+check(
+  'while the server role may, for a support case straightening the books',
+  (await waiverOn(voidWaiveInv)).amount === '200.00',
+)
+
+// Everything else about a raised bill is still what the month's reports are made of.
+check(
+  'widening the fence by two columns widened it by two: the fee itself still cannot move',
+  await deniedAsUser(
+    db,
+    ids.ownerA,
+    `update fee_invoices set amount_bdt = 1 where coaching_center_id = $1 and id = $2`,
+    [centerA, waiveInv],
+  ),
+)
+
+// Put the seed back: the sections below count invoices and payments.
+await db.query('delete from fee_payments where invoice_id = any($1)', [
+  [waiveInv, voidWaiveInv],
+])
+await db.query('delete from fee_invoices where id = any($1)', [[waiveInv, voidWaiveInv]])
+
+// ---------------------------------------------------------------------------
 // The record of having chased a fee.
 //
 // Three things here are not obvious from reading the migration.
@@ -2799,31 +3009,34 @@ check(
   ),
 )
 
-// UPDATE used to be the one that could not be asserted with deniedAsUser, and the
-// original probe here set discount_bdt to the full 800 and then read the column back:
-// a reader who can SELECT a row and has no write policy gets no error from `update`,
-// because the row is filtered out and Postgres reports nought rows changed, which
-// deniedAsUser reads as allowed.
+// UPDATE is the one that cannot be asserted with deniedAsUser, and this check has now
+// been through both shapes of that problem.
 //
-// 20260811000028 narrowed the grant on this table to (voided_at, void_reason), so a
-// write to discount_bdt is now a column-privilege failure — raised at executor startup,
-// before any row is scanned, and therefore raised whether or not the policy would have
-// matched anything. Which means the strong form of the assertion is available, and this
-// is it. Writing off the owner's fees is the thing that would cost the most: 800 clears
-// fee_invoices_discount_bound, so it is a legal value, and if either fence ever opened a
-// teacher would be cancelling debts for free.
+// A reader who can SELECT a row and has no write policy gets no error from `update`: the
+// row is filtered out, Postgres reports nought rows changed, and deniedAsUser reads a
+// silent no-op as allowed. So the original probe here wrote discount_bdt and read the
+// column back.
 //
-// What this no longer proves is the policy — it stops at the grant. That half moved to
-// the invoice-cancellation section, which has an unpaid invoice to aim a teacher at and
-// so can tell a policy refusal apart from the trigger's.
+// 20260811000028 narrowed the grant on this table to (voided_at, void_reason), which made
+// a write to discount_bdt a column-privilege failure — raised at executor startup, before
+// any row is scanned — and the strong form became available, so this became a
+// deniedAsUser.
+//
+// 20260811000030 put discount_bdt back inside the grant, because a discount screen needs
+// it, and with that the column privilege stops answering: an owner may write this column,
+// so a teacher's write is refused by the policy again and refused silently. Which is why
+// the assertion is on the count of rows the statement changed. Nought is the refusal.
+// Writing off the owner's fees is the thing that would cost the most — 800 clears
+// fee_invoices_discount_bound, so it is a legal value, and if the policy ever opened a
+// teacher would be cancelling debts for free — and the read-back below says the figure is
+// still nought whichever fence stopped it.
+const teacherWaiver = await asUser(db, ids.karim, (tx) =>
+  tx.query('update fee_invoices set discount_bdt = 800 where id = $1', [invoiceAli]),
+)
 check(
   'a teacher cannot write the fee off, not even on an invoice they can read',
-  await deniedAsUser(
-    db,
-    ids.karim,
-    'update fee_invoices set discount_bdt = 800 where id = $1',
-    [invoiceAli],
-  ),
+  teacherWaiver.affectedRows === 0,
+  `${teacherWaiver.affectedRows} row(s) changed`,
 )
 
 // Deleting the payment used to belong in that transaction, silently changing

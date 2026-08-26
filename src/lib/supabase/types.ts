@@ -727,6 +727,9 @@ export type Database = {
           updated_at: string
           voided_by: string | null
           void_reason: string | null
+          discount_reason: string | null
+          discounted_by: string | null
+          discounted_at: string | null
         }
         Insert: {
           id?: string
@@ -743,6 +746,9 @@ export type Database = {
           updated_at?: string
           voided_by?: string | null
           void_reason?: string | null
+          discount_reason?: string | null
+          discounted_by?: string | null
+          discounted_at?: string | null
         }
         Update: {
           id?: string
@@ -759,6 +765,9 @@ export type Database = {
           updated_at?: string
           voided_by?: string | null
           void_reason?: string | null
+          discount_reason?: string | null
+          discounted_by?: string | null
+          discounted_at?: string | null
         }
         Relationships: [
           {
@@ -766,6 +775,13 @@ export type Database = {
             columns: ['coaching_center_id']
             isOneToOne: false
             referencedRelation: 'coaching_centers'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'fee_invoices_discounted_by_fkey'
+            columns: ['discounted_by']
+            isOneToOne: false
+            referencedRelation: 'users'
             referencedColumns: ['id']
           },
           {
@@ -1913,6 +1929,7 @@ export type Database = {
           sms_opt_out: boolean | null
           preferred_channel: OutreachChannel | null
           void_reason: string | null
+          discount_reason: string | null
         }
         Relationships: []
       }

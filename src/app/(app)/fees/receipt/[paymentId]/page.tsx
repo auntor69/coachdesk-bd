@@ -227,8 +227,13 @@ export default async function ReceiptPage({
     isRefund,
     method: payment.method,
     reference: payment.reference,
-    billed: net,
+    // The fee, then what was waived, then what that left. `billed` used to be handed
+    // `net` — which was true of the arithmetic below it and wrong on the label: a slip
+    // reading "মাসের মোট ফি ৳১,৫০০" over "৳১,৫০০ জমা" hides the ৳৫০০ the centre gave
+    // away, and the parent's copy is the only place that record ever reaches the family.
+    billed: Number(invoice.amount_bdt ?? 0),
     discount: Number(invoice.discount_bdt ?? 0),
+    net,
     balance,
   }
 
@@ -281,8 +286,12 @@ type CopyProps = {
   isRefund: boolean
   method: PaymentMethod
   reference: string | null
+  /** `amount_bdt` — the fee the centre charges, before any waiver. */
   billed: number
+  /** `discount_bdt`. Zero on almost every slip, which is why both lines are conditional. */
   discount: number
+  /** `net_bdt` — the fee less the waiver, and what the balance below is measured from. */
+  net: number
   balance: number
 }
 
@@ -377,6 +386,17 @@ function Copy({ label, ...p }: CopyProps & { label: string }) {
 
       <dl className="mt-3 flex flex-col gap-1.5 border-t border-line pt-3">
         <Line label={t.billed} value={formatTaka(p.billed)} num />
+        {/* Only when the centre waived something, which is a minority of slips — two
+            extra lines on every other receipt would be two lines of nothing. Read as a
+            column of arithmetic the parent can follow: the fee, the deduction, the total.
+            The deduction is signed, because that is the only thing that makes the three
+            figures add up on paper. */}
+        {p.discount > 0 && (
+          <>
+            <Line label={t.discountGiven} value={`-${formatTaka(p.discount)}`} num />
+            <Line label={t.netAfterDiscount} value={formatTaka(p.net)} num strong />
+          </>
+        )}
         {/* Three outcomes, and the paper has to be unambiguous about which. A ✓
             rather than "৳0 বাকি", because zero owed is the thing the family came to
             hear and a figure of zero does not read as good news. */}

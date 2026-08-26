@@ -238,6 +238,10 @@ export const en: Dictionary = {
 
     refunded: (name: string, amount: string) => `${name} — ${amount} handed back.`,
 
+    discounted: (name: string, amount: string) => `${name} — ${amount} waived.`,
+    discountCleared: (name: string) =>
+      `${name} — the waiver is off, and the bill is back at its full fee.`,
+
     cancelledCount: (n: number) => `${n} cancelled ${n === 1 ? 'bill' : 'bills'}`,
     cancelledBody:
       'These bills are nobody’s arrears any more. They are out of the outstanding total, and no guardian will be reminded about them. Put one back if it was cancelled by mistake.',
@@ -265,6 +269,14 @@ export const en: Dictionary = {
       refundTooMuch: (max: string) =>
         `This bill holds ${max}. No more than that can be handed back.`,
       refundFailed: 'The refund was not recorded. Please try again.',
+
+      discountVoided:
+        'This bill is cancelled, so waiving a fee on it changes no total anybody sees. Put the bill back first.',
+      discountNegative:
+        'A waiver cannot be less than zero. To charge more, raise the bill for more.',
+      discountTooMuch: (max: string) =>
+        `The fee on this bill is ${max}. A waiver cannot be more than that.`,
+      discountFailed: 'The waiver was not recorded. Please try again.',
     },
   },
 
@@ -333,6 +345,27 @@ export const en: Dictionary = {
     receiptLink: 'View refund receipt',
   },
 
+  discount: {
+    open: 'Waive part of the fee',
+    edit: 'Change the waiver',
+    heading: 'How much are you waiving?',
+    billed: 'The fee on this bill is {amount}',
+    current: 'A waiver of {amount} is on it — what you write here replaces it',
+    leaves: 'After the waiver the fee is {amount}',
+    leavesNothing: 'The whole fee is waived — nothing more is owed on this bill',
+    amount: 'How much you are waiving',
+    reason: 'Why you are waiving it',
+    reasonHint: 'e.g. two siblings study here',
+    confirm: 'Apply the waiver',
+    saving: 'Applying…',
+    keep: 'No, leave it',
+    clear: 'Take the waiver off',
+    clearing: 'Removing…',
+    voidedTitle: 'A cancelled bill cannot be discounted',
+    voidedNote: 'Put the bill back, and then it can be discounted.',
+    reasonLabel: 'Reason for the waiver',
+  },
+
   receipt: {
     title: 'Fee receipt',
     receiptNo: 'Receipt no.',
@@ -349,6 +382,8 @@ export const en: Dictionary = {
     refundFootNote:
       'This is a computer-generated refund receipt. This money was handed back to the guardian — please keep it as proof.',
     billed: 'Total fee for the month',
+    discountGiven: 'Waived',
+    netAfterDiscount: 'Payable after the waiver',
     /** "Up to this receipt", not "now" — see the Bangla for why that matters. */
     balanceAfter: 'Balance after this receipt',
     paidInFull: 'Paid in full ✓',
