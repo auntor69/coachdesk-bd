@@ -5,6 +5,7 @@ import { Card } from '@/components/ui'
 import { RiskLevelChip, RiskReasons } from '@/components/risk-list'
 import { pageRole, isStaffAdmin, canReadFees, getSession } from '@/lib/auth/session'
 import { createClient } from '@/lib/supabase/server'
+import { has } from '@/lib/plans'
 import { formatBdMobile } from '@/lib/bd/phone'
 import { addDays, formatDate, formatMonth, todayInDhaka } from '@/lib/bd/time'
 import { formatTaka } from '@/lib/money'
@@ -92,6 +93,20 @@ export default async function StudentProfilePage({
   const mayEdit = staffAdmin
   const mayReadFlags = staffAdmin
   const mayReadFees = await canReadFees()
+
+  /*
+   * Whether a slip in the fee panel is a link, and whether the thing at the other
+   * end of it is paper.
+   *
+   * The receipt page is staff-admin-only — issuing a receipt is the act of the person
+   * who took the money — so a permitted teacher gets the slip's number, date and
+   * amount as text and no tap that would land them on a 403. The plan check is only
+   * about the sentence under the list: on a free tier the same link reaches the
+   * receipt number and an upgrade rather than a printable sheet, which is worth
+   * reaching and is not worth promising a print for.
+   */
+  const mayOpenReceipts = staffAdmin
+  const receiptsPrint = staffAdmin && has(session.plan, 'printedReceipts')
 
   const { data: student } = await supabase
     .from('students')
@@ -213,22 +228,50 @@ export default async function StudentProfilePage({
     ])
 
   const sessionIds = (sessions ?? []).map((s) => s.id)
+  // The bills the panel will actually draw, which is what bounds the receipts query
+  // below. Taken from the rows that came back rather than from the limit, so a
+  // student with three invoices does not ask about twelve.
+  const invoiceIds = (invoices ?? []).map((i) => i.id).filter((id): id is string => !!id)
 
-  // scoped-by: session ids and enrolment ids, both already filtered to this centre
-  // by the queries above — a record can only be reached through one of them.
-  const { data: marks } =
+  const [{ data: marks }, { data: paymentRows }] = await Promise.all([
+    // scoped-by: session ids and enrolment ids, both already filtered to this centre
+    // by the queries above — a record can only be reached through one of them.
     sessionIds.length > 0 && enrollmentIds.length > 0
-      ? await supabase
+      ? supabase
           .from('attendance_records')
           .select('session_id, status')
           .eq('coaching_center_id', centerId)
           .in('session_id', sessionIds)
           .in('enrollment_id', enrollmentIds)
-      : { data: [] }
+      : { data: [] },
+    /*
+     * Every slip raised against the bills above, so each one can be tapped and
+     * printed again.
+     *
+     * THIS IS WHY THE PANEL EXISTS IN THIS SHAPE. A receipt is reachable from the fee
+     * board only while its bill is this month's, and from the collection register only
+     * for the month it fell in and only on a paid plan by a staff admin. So a parent
+     * asking in October for the slip they were handed in July was asking for something
+     * the app still held and could not show. The payment was never lost — nothing here
+     * deletes money — it had no route to it.
+     *
+     * Bounded by `in(invoice_id, …)` and deliberately not limited. The figures on each
+     * row must add up to the view's `paid_bdt`, which is `sum(amount_bdt)` over exactly
+     * these payments, and a truncated list beside that total would read as money gone
+     * missing. Twelve bills' worth of instalments is a couple of dozen rows.
+     */
+    mayReadFees && invoiceIds.length > 0
+      ? supabase
+          .from('fee_payments')
+          .select('id, receipt_no, amount_bdt, paid_at, invoice_id')
+          .eq('coaching_center_id', centerId)
+          .in('invoice_id', invoiceIds)
+      : { data: null },
+  ])
 
   const attendance = attendanceByBatch(activeBatches, sessions, marks)
   const exams = examMarks(results, batchLabels)
-  const fees = mayReadFees ? feeHistory(invoices, today) : null
+  const fees = mayReadFees ? feeHistory(invoices, today, paymentRows) : null
   const risk = studentsAtRisk(riskRows, d.risk.noName)[0] ?? null
 
   const guardianPhone = student.guardian_phone
@@ -506,70 +549,136 @@ export default async function StudentProfilePage({
               {fees.lines.map((line) => (
                 <li
                   key={line.invoiceId}
-                  className="flex items-start justify-between gap-3 border-t border-line
-                    pt-2 first:border-0 first:pt-0"
+                  className="border-t border-line pt-2 first:border-0 first:pt-0"
                 >
-                  <div className="min-w-0">
-                    <p className="truncate font-medium text-ink">
-                      {line.periodMonth ? formatMonth(line.periodMonth, locale) : ''}
-                    </p>
-                    <p className="truncate text-sm text-ink-faint">
-                      {line.dueDate && (
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="truncate font-medium text-ink">
+                        {line.periodMonth ? formatMonth(line.periodMonth, locale) : ''}
+                      </p>
+                      <p className="truncate text-sm text-ink-faint">
+                        {line.dueDate && (
+                          <>
+                            {t.fees.due} {formatDate(line.dueDate, locale)}
+                          </>
+                        )}
+                        {line.late && (
+                          <span className="font-medium text-absent">
+                            {' · '}
+                            <span className="num">{line.daysLate}</span>{' '}
+                            {t.fees.lateDays(line.daysLate)}
+                          </span>
+                        )}
+                      </p>
+                      {/* The waiver, under the month it was granted on and only when
+                          there is one. The figure on the right of this row is what the
+                          family owes today; these two lines are why it is not the
+                          batch's fee, which is the question this screen gets opened to
+                          answer. Not truncated, unlike the lines above it: an owner
+                          reading the arrangement back to a parent needs the whole of
+                          it, and the reason is at most MAX_TEXT characters. */}
+                      {line.discount > 0 && (
+                        <div className="mt-1">
+                          <p className="num text-sm text-ink-soft">
+                            {t.fees.waived(formatTaka(line.billed), formatTaka(line.discount))}
+                          </p>
+                          {line.discountReason && (
+                            <p className="mt-0.5 text-sm text-ink-soft">
+                              <span className="text-ink-faint">
+                                {d.discount.reasonLabel}:
+                              </span>{' '}
+                              {line.discountReason}
+                            </p>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                    <p className="shrink-0 text-right text-sm">
+                      {line.remaining > 0 ? (
                         <>
-                          {t.fees.due} {formatDate(line.dueDate, locale)}
+                          <span className="num font-semibold text-absent">
+                            {formatTaka(line.remaining)}
+                          </span>
+                          <span className="block text-xs text-ink-faint">
+                            {t.fees.remaining}
+                          </span>
+                        </>
+                      ) : (
+                        <>
+                          <span className="num font-medium text-ink">
+                            {formatTaka(line.paid)}
+                          </span>
+                          <span className="block text-xs text-ink-faint">
+                            {t.fees.settled}
+                          </span>
                         </>
                       )}
-                      {line.late && (
-                        <span className="font-medium text-absent">
-                          {' · '}
-                          <span className="num">{line.daysLate}</span>{' '}
-                          {t.fees.lateDays(line.daysLate)}
-                        </span>
-                      )}
                     </p>
-                    {/* The waiver, under the month it was granted on and only when
-                        there is one. The figure on the right of this row is what the
-                        family owes today; these two lines are why it is not the batch's
-                        fee, which is the question this screen gets opened to answer.
-                        Not truncated, unlike the lines above it: an owner reading the
-                        arrangement back to a parent needs the whole of it, and the
-                        reason is at most MAX_TEXT characters. */}
-                    {line.discount > 0 && (
-                      <div className="mt-1">
-                        <p className="num text-sm text-ink-soft">
-                          {t.fees.waived(formatTaka(line.billed), formatTaka(line.discount))}
-                        </p>
-                        {line.discountReason && (
-                          <p className="mt-0.5 text-sm text-ink-soft">
-                            <span className="text-ink-faint">{d.discount.reasonLabel}:</span>{' '}
-                            {line.discountReason}
-                          </p>
-                        )}
-                      </div>
-                    )}
                   </div>
-                  <p className="shrink-0 text-right text-sm">
-                    {line.remaining > 0 ? (
-                      <>
-                        <span className="num font-semibold text-absent">
-                          {formatTaka(line.remaining)}
-                        </span>
-                        <span className="block text-xs text-ink-faint">
-                          {t.fees.remaining}
-                        </span>
-                      </>
-                    ) : (
-                      <>
-                        <span className="num font-medium text-ink">
-                          {formatTaka(line.paid)}
-                        </span>
-                        <span className="block text-xs text-ink-faint">{t.fees.settled}</span>
-                      </>
-                    )}
-                  </p>
+
+                  {/* Every slip raised against this bill, under it, oldest first.
+                      This is the route to a receipt for a month that has left the
+                      fee board — which until now was no route at all, so a parent
+                      asking in October about July's payment was asking for
+                      something the app held and could not show.
+
+                      The figure keeps its sign, like the register's and unlike the
+                      slip's own: these rows sit in a column somebody reads down
+                      against a total, and a refund printed as a positive would make
+                      the arithmetic wrong on the one screen it can be checked on.
+
+                      A tap target rather than a line of text, because it is one:
+                      min-h-tap on every row, the same floor as every other tappable
+                      thing in the app. A teacher gets the same facts without the
+                      link — see mayOpenReceipts. */}
+                  {line.receipts.length > 0 && (
+                    <ul className="mt-1 flex flex-col">
+                      {line.receipts.map((receipt) => {
+                        const label = (
+                          <>
+                            <span>
+                              {receipt.refund ? t.fees.refundReceipt : t.fees.receipt}
+                            </span>{' '}
+                            <span className="num font-semibold">{receipt.receiptNo}</span>
+                            <span aria-hidden> · </span>
+                            <span className="num">{formatDate(receipt.on, locale)}</span>
+                            <span aria-hidden> · </span>
+                            <span className="num">{formatTaka(receipt.amount)}</span>
+                          </>
+                        )
+
+                        return (
+                          <li key={receipt.paymentId} className="text-sm">
+                            {mayOpenReceipts ? (
+                              <Link
+                                href={`/fees/receipt/${receipt.paymentId}`}
+                                className="inline-flex min-h-tap items-center font-medium
+                                  text-brand-700 underline"
+                              >
+                                {label}
+                              </Link>
+                            ) : (
+                              <span className="inline-flex items-center py-1 text-ink-soft">
+                                {label}
+                              </span>
+                            )}
+                          </li>
+                        )
+                      })}
+                    </ul>
+                  )}
                 </li>
               ))}
             </ul>
+
+            {/* Said once, under the whole list, and only where the tap really does
+                reach paper. An owner who watched a receipt seem to disappear after
+                the second printing needs telling that there is no limit — which is
+                the truth, because a slip is rendered from a payment row that nothing
+                in this product ever deletes. */}
+            {receiptsPrint && fees.lines.some((l) => l.receipts.length > 0) && (
+              <p className="mt-2 text-xs text-ink-faint">{t.fees.receiptHint}</p>
+            )}
 
             {fees.lines.length >= PROFILE_INVOICE_LIMIT && (
               <p className="mt-2 text-xs text-ink-faint">

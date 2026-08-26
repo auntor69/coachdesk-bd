@@ -33,7 +33,7 @@
  * these tests run under `node --test`, which resolves neither tsconfig paths nor
  * extensionless specifiers.
  */
-import { daysBetween } from '../bd/time.ts'
+import { daysBetween, todayInDhaka } from '../bd/time.ts'
 import { tallyOutstanding } from '../money.ts'
 import type { AttendanceStatus } from '../supabase/types.ts'
 
@@ -352,6 +352,44 @@ export type ProfileInvoiceRow = {
   remaining_bdt: string | number | null
 }
 
+/**
+ * One payment against one of those invoices, as the receipts query returns it.
+ *
+ * `paid_at` is a timestamptz and arrives in UTC. It is converted below rather than
+ * sliced, because ten characters off the ISO string dates a payment taken at 1am
+ * Dhaka to the day before — and the date on a receipt is what a dispute turns on.
+ */
+export type ProfilePaymentRow = {
+  id: string
+  receipt_no: number
+  amount_bdt: string | number | null
+  paid_at: string
+  invoice_id: string
+}
+
+/**
+ * One slip that exists, and can therefore be printed again.
+ *
+ * This is the answer to "the parent wants the receipt for July and July is not on
+ * the fee board any more". The board only carries the current month's settled
+ * bills, and the collection register is scoped to a month and locked behind a paid
+ * plan, so a slip handed over in July used to be reachable from nowhere. It always
+ * existed — `fee_payments` never loses a row and the receipt page renders from the
+ * payment id alone — it simply could not be found.
+ */
+export type FeeReceipt = {
+  paymentId: string
+  receiptNo: number
+  /** YYYY-MM-DD in Dhaka, converted from the timestamptz rather than sliced off it. */
+  on: string
+  /**
+   * Signed, and the sign is the whole of it: a refund is a `fee_payments` row with a
+   * negative amount and nothing else distinguishes one. See lib/fees/refund.ts.
+   */
+  amount: number
+  refund: boolean
+}
+
 /** One bill, ready to render. */
 export type FeeLine = {
   invoiceId: string
@@ -387,6 +425,16 @@ export type FeeLine = {
   daysLate: number
   /** Only a row still owing money can be late. A credited one is settled. */
   late: boolean
+  /**
+   * Every slip raised against this bill, oldest first — the order the money arrived.
+   *
+   * Empty when nothing has been paid, and empty for a reader who was not given the
+   * payments to fold in. These sum to `paid` exactly, because `paid_bdt` on the view
+   * is `sum(amount_bdt)` over the same rows and a refund is negative in both. That
+   * equality is why the list must not be truncated: a panel showing two slips
+   * totalling ৳1,500 beside a paid figure of ৳2,000 reads as money the app has lost.
+   */
+  receipts: FeeReceipt[]
 }
 
 export type FeeHistory = {
@@ -418,13 +466,55 @@ export type FeeHistory = {
  * invoice owing 2e-13. What happens here is only ever addition of figures the view
  * already settled. The fee, the waiver and the net are three of those figures and are
  * carried side by side rather than one being subtracted from another.
+ *
+ * PAYMENTS ARE FOLDED IN RATHER THAN SUMMED. Each bill carries the slips raised
+ * against it so the panel can link them, and not one figure of them is used in any
+ * total: `paid` and `remaining` still come off the view. The list is here to be
+ * tapped, which is the only way a receipt from a month that has left the fee board
+ * is reachable at all.
  */
 export function feeHistory(
   rows: readonly ProfileInvoiceRow[] | null | undefined,
   /** Today in Dhaka, YYYY-MM-DD. A parameter so lateness is testable. */
   today: string,
+  /**
+   * Every payment against the invoices in `rows`, in any order.
+   *
+   * Optional, and absent means "no slips listed" rather than "no slips exist" — the
+   * caller skips this query for a reader it would tell nothing new. A payment whose
+   * invoice is not in `rows` is dropped rather than attached to some other bill,
+   * which is the same call `attendanceByBatch` makes about an unknown session: the
+   * combination means two queries disagree, and guessing is worse than omitting.
+   */
+  payments?: readonly ProfilePaymentRow[] | null,
 ): FeeHistory {
   const lines: FeeLine[] = []
+
+  const receiptsOf = new Map<string, FeeReceipt[]>()
+  for (const payment of payments ?? []) {
+    if (!payment.invoice_id || !payment.id) continue
+    const amount = num(payment.amount_bdt) ?? 0
+    const list = receiptsOf.get(payment.invoice_id)
+    const receipt: FeeReceipt = {
+      paymentId: payment.id,
+      receiptNo: payment.receipt_no,
+      on: todayInDhaka(new Date(payment.paid_at)),
+      amount,
+      // `amount_bdt` is `check (<> 0)`, so there is no third case to think about.
+      refund: amount < 0,
+    }
+    if (list) list.push(receipt)
+    else receiptsOf.set(payment.invoice_id, [receipt])
+  }
+
+  // Oldest first — the order the money actually arrived, which is the order a parent
+  // reconstructs from memory. `paid_at` alone cannot settle two payments taken in the
+  // same second, and the receipt number cannot be relied on alone either: an imported
+  // slip legitimately carries a number from the old paper book against a paid_at
+  // months earlier. Same pair, same order, as the receipt page's own as-of balance.
+  for (const list of receiptsOf.values()) {
+    list.sort((a, b) => (a.on === b.on ? a.receiptNo - b.receiptNo : a.on < b.on ? -1 : 1))
+  }
 
   for (const row of rows ?? []) {
     // No id means no receipt to link to and no key to render under. The view
@@ -452,6 +542,7 @@ export function feeHistory(
       remaining,
       daysLate,
       late: remaining > 0 && daysLate > 0,
+      receipts: receiptsOf.get(row.id) ?? [],
     })
   }
 

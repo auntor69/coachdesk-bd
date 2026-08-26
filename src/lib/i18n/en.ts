@@ -1110,6 +1110,9 @@ export const en: Dictionary = {
       lateDays: (n: number) => (n === 1 ? 'day late' : 'days late'),
       hidden: 'Fees are kept by the owner or a manager.',
       waived: (billed: string, discount: string) => `Fee ${billed} · waived ${discount}`,
+      receipt: 'Receipt',
+      refundReceipt: 'Refund',
+      receiptHint: 'Tap any receipt to print it again — as many times as you need.',
       limitNote: (n: number) =>
         n === 1 ? 'Showing the last month.' : `Showing the last ${n} months.`,
     },

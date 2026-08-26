@@ -22,6 +22,7 @@ import {
   type EnrolledBatch,
   type ProfileInvoiceRow,
   type ProfileMarkRow,
+  type ProfilePaymentRow,
   type ProfileResultRow,
   type ProfileSessionRow,
 } from '../src/lib/students/profile.ts'
@@ -509,4 +510,163 @@ test('fees: the whole fee waived is a bill of nothing, not a missing bill', () =
   assert.equal(lines[0].net, 0)
   assert.equal(lines[0].late, false)
   assert.equal(outstanding, 0)
+})
+
+/**
+ * A payment as the receipts query returns it. `at` is a timestamptz in UTC, written
+ * out in full here rather than as a date, because half the point of these tests is
+ * that the conversion to a Dhaka day happens and is not a slice.
+ */
+function payment(
+  id: string,
+  invoiceId: string,
+  receiptNo: number,
+  amount: string | number,
+  at: string,
+): ProfilePaymentRow {
+  return {
+    id,
+    invoice_id: invoiceId,
+    receipt_no: receiptNo,
+    amount_bdt: amount,
+    paid_at: at,
+  }
+}
+
+test('fees: every slip against a bill is carried, oldest first', () => {
+  // The order the money arrived, which is the order a parent reconstructs it in.
+  const { lines } = feeHistory(
+    [invoice('i1', '2026-08-01', '2026-08-10', 2000, 2000, 0)],
+    TODAY,
+    [
+      payment('p2', 'i1', 108, 1500, '2026-08-12T05:00:00Z'),
+      payment('p1', 'i1', 104, 500, '2026-08-05T05:00:00Z'),
+    ],
+  )
+
+  assert.deepEqual(
+    lines[0].receipts.map((r) => r.receiptNo),
+    [104, 108],
+  )
+  assert.deepEqual(
+    lines[0].receipts.map((r) => r.paymentId),
+    ['p1', 'p2'],
+  )
+})
+
+test('fees: two slips in one second are ordered by receipt number', () => {
+  // paid_at cannot settle them, and receipt_no cannot be trusted alone either — an
+  // imported slip carries a number from the old paper book. Both, in that order.
+  const { lines } = feeHistory(
+    [invoice('i1', '2026-08-01', '2026-08-10', 2000, 2000, 0)],
+    TODAY,
+    [
+      payment('p2', 'i1', 109, 1000, '2026-08-12T05:00:00Z'),
+      payment('p1', 'i1', 108, 1000, '2026-08-12T05:00:00Z'),
+    ],
+  )
+
+  assert.deepEqual(
+    lines[0].receipts.map((r) => r.receiptNo),
+    [108, 109],
+  )
+})
+
+test('fees: a slip taken after midnight Dhaka is dated the Dhaka day', () => {
+  // 2026-08-11T20:00:00Z is 2am on the 12th in Dhaka. Slicing ten characters off the
+  // ISO string would date the receipt to the 11th, and the date on a receipt is what
+  // a dispute turns on.
+  const { lines } = feeHistory(
+    [invoice('i1', '2026-08-01', '2026-08-10', 2000, 2000, 0)],
+    TODAY,
+    [payment('p1', 'i1', 104, 2000, '2026-08-11T20:00:00Z')],
+  )
+
+  assert.equal(lines[0].receipts[0].on, '2026-08-12')
+})
+
+test('fees: a refund is a slip like any other, and says which way it went', () => {
+  // A negative fee_payments row is the product's only way of handing money back, so
+  // it is the same slip and the same link — a parent given cash back has nothing in
+  // writing until it is printed.
+  const { lines } = feeHistory(
+    [invoice('i1', '2026-08-01', '2026-08-10', 2000, 1500, 500)],
+    TODAY,
+    [
+      payment('p1', 'i1', 104, 2000, '2026-08-05T05:00:00Z'),
+      payment('p2', 'i1', 111, -500, '2026-08-20T05:00:00Z'),
+    ],
+  )
+
+  assert.deepEqual(
+    lines[0].receipts.map((r) => r.refund),
+    [false, true],
+  )
+  assert.equal(lines[0].receipts[1].amount, -500)
+})
+
+test('fees: the slips against a bill add up to what the view says was paid', () => {
+  // Not asserted arithmetic — asserted equality with a figure this file never
+  // computes. `paid_bdt` on the view is sum(amount_bdt) over exactly these rows, and
+  // the panel prints both, so a truncated list would read as money the app has lost.
+  const { lines } = feeHistory(
+    [invoice('i1', '2026-08-01', '2026-08-10', 2000, 1500, 500)],
+    TODAY,
+    [
+      payment('p1', 'i1', 104, '2000.00', '2026-08-05T05:00:00Z'),
+      payment('p2', 'i1', 111, '-500.00', '2026-08-20T05:00:00Z'),
+    ],
+  )
+
+  const summed = lines[0].receipts.reduce((total, r) => total + r.amount, 0)
+  assert.equal(summed, lines[0].paid)
+})
+
+test('fees: a slip is filed under its own bill and never another', () => {
+  const { lines } = feeHistory(
+    [
+      invoice('i1', '2026-08-01', '2026-08-10', 2000, 2000, 0),
+      invoice('i2', '2026-07-01', '2026-07-10', 2000, 2000, 0),
+    ],
+    TODAY,
+    [
+      payment('p1', 'i2', 100, 2000, '2026-07-05T05:00:00Z'),
+      payment('p2', 'i1', 104, 2000, '2026-08-05T05:00:00Z'),
+    ],
+  )
+
+  assert.deepEqual(
+    lines.map((l) => l.receipts.map((r) => r.receiptNo)),
+    [[104], [100]],
+  )
+})
+
+test('fees: a slip for a bill that is not on the panel is dropped, not reattached', () => {
+  // Reachable whenever the twelve-invoice window cuts a bill whose payment is still
+  // in the list. Attaching it to some other month would put a receipt under a bill it
+  // was never raised against — worse than leaving it off a panel that says it is a
+  // window.
+  const { lines } = feeHistory(
+    [invoice('i1', '2026-08-01', '2026-08-10', 2000, 2000, 0)],
+    TODAY,
+    [payment('p1', 'i-old', 40, 2000, '2025-01-05T05:00:00Z')],
+  )
+
+  assert.equal(lines.length, 1)
+  assert.deepEqual(lines[0].receipts, [])
+})
+
+test('fees: no payments given is no slips listed, not a throw', () => {
+  // The caller skips the query for a reader it would tell nothing new, so both the
+  // omitted argument and a null from a failed query have to land somewhere safe.
+  assert.deepEqual(
+    feeHistory([invoice('i1', '2026-08-01', '2026-08-10', 2000, 0, 2000)], TODAY)
+      .lines[0].receipts,
+    [],
+  )
+  assert.deepEqual(
+    feeHistory([invoice('i1', '2026-08-01', '2026-08-10', 2000, 0, 2000)], TODAY, null)
+      .lines[0].receipts,
+    [],
+  )
 })

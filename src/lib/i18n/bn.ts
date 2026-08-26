@@ -2373,6 +2373,35 @@ export const bn = {
        * a third time here would be the second answer docs §4 forbids.
        */
       waived: (billed: string, discount: string) => `ফি ${billed} · ছাড় ${discount}`,
+      /**
+       * The word before an ASCII receipt number: 'রসিদ 104'.
+       *
+       * EVERY SLIP THE CENTRE EVER HANDED OVER IS LISTED UNDER ITS BILL, and this is
+       * the label on the row. It exists because the receipt was, in practice,
+       * unreachable: the fee board carries only this month's settled bills and the
+       * collection register is one month at a time behind a paid plan, so a parent
+       * asking in October for the slip they were given in July had nowhere to be sent.
+       * The payment row was never lost — nothing in this product deletes money — it
+       * just could not be found, which for the person at the desk is the same thing.
+       */
+      receipt: 'রসিদ',
+      /**
+       * A negative payment, which is the product's only way of handing money back.
+       * Named on the row rather than shown as a minus sign: the figure beside it is
+       * already signed, and a parent's copy of a refund is the record they keep.
+       */
+      refundReceipt: 'ফেরত',
+      /**
+       * Said once, under the list, and only where the paper is actually available —
+       * on a plan without printed slips the same tap reaches the number and the
+       * upgrade, so promising a print there would be one word short of true.
+       *
+       * 'যতবার দরকার' is doing real work. A receipt that seemed to disappear after
+       * the second printing is what put this panel here, and an owner who has been
+       * bitten once needs telling that reprinting is ordinary rather than a trick
+       * that ran out.
+       */
+      receiptHint: 'যেকোনো রসিদে চাপ দিন — যতবার দরকার, আবার ছাপানো যাবে।',
       limitNote: (n: number) => `শেষ ${digits(n, 'bn')} মাসের ইনভয়েস দেখানো হচ্ছে।`,
     },
   },
