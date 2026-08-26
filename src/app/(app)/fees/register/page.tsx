@@ -6,15 +6,14 @@ import { pageCenter, getSession, isStaffAdmin } from '@/lib/auth/session'
 import { createClient } from '@/lib/supabase/server'
 import { has, planName, PLANS } from '@/lib/plans'
 import {
-  todayInDhaka,
   currentPeriodMonth,
   addMonths,
   formatDate,
   formatMonth,
 } from '@/lib/bd/time'
-import { sumTaka, formatTaka } from '@/lib/money'
+import { formatTaka } from '@/lib/money'
+import { registerRows, tallyRegister } from '@/lib/fees/register'
 import { dict, DEFAULT_LOCALE } from '@/lib/i18n'
-import type { PaymentMethod } from '@/lib/supabase/types'
 import { PrintButton } from '../print-button'
 
 /** getSession, not pageCenter — see the note on teach/page.tsx's own. */
@@ -31,20 +30,6 @@ const COLUMNS = 'id, receipt_no, amount_bdt, method, reference, paid_at, student
 
 /** First day of a month, and nothing that merely looks like one. */
 const MONTH_RE = /^\d{4}-\d{2}-01$/
-
-/**
- * Cash first, then the wallets. The same order as the collection form, so the
- * breakdown at the foot of the register reads down in the order the owner is used
- * to choosing from.
- */
-const METHODS: PaymentMethod[] = [
-  'cash',
-  'bkash',
-  'nagad',
-  'rocket',
-  'bank_transfer',
-  'other',
-]
 
 /**
  * The month's collection register: every taka that came in, in the order it came,
@@ -65,6 +50,14 @@ const METHODS: PaymentMethod[] = [
  * not know about the cash in the drawer, so "৳48,000 collected" cannot be checked
  * against anything; "৳31,500 through bKash" can be checked against exactly one
  * thing, and what is left has to be in the box.
+ *
+ * A REFUND IS A ROW THAT SAYS SO. It reaches this page as a negative payment, which
+ * is the product's only way of handing money back, and the arithmetic needs no
+ * special case for it — but the sheet does. The row is labelled in words, and the
+ * foot of the page carries what came in and what went back out above the total, so a
+ * collection smaller than the reader was expecting has its subtraction printed next
+ * to it instead of looking like a fault in the software. The sums are in
+ * lib/fees/register.ts, where they are tested; this file draws them.
  *
  * STAFF ADMIN ONLY. A teacher with `can_view_fees` reads their own students'
  * arrears on the board; the centre's takings for the month are not that.
@@ -152,21 +145,15 @@ export default async function RegisterPage({
       .maybeSingle(),
   ])
 
-  // The running total is accumulated in toRows rather than asked of Postgres. A
+  // The running total is accumulated row by row rather than asked of Postgres. A
   // window function would be the better answer over thousands of rows; over one
   // centre's month it is at most a few hundred, they are in memory already, and
   // sumTaka is the same rounding the rest of the product uses. What must not happen
   // is two different roundings on one page — the last running total and the grand
   // total are the same number, and a reader who finds them a taka apart stops
   // believing the page.
-  const rows = toRows(payments ?? [], d.common.unknown)
-
-  const total = rows.length === 0 ? 0 : rows[rows.length - 1].running
-  const byMethod = METHODS.map((m) => ({
-    method: m,
-    label: d.feeRow.methods[m],
-    amount: sumTaka(rows.filter((r) => r.method === m).map((r) => r.amount)),
-  })).filter((m) => m.amount !== 0)
+  const rows = registerRows(payments, d.common.unknown)
+  const tally = tallyRegister(rows)
 
   // This month and the eleven before it. Backwards only: a register is a record of
   // what happened, and there is nothing to record in a month that has not started.
@@ -278,7 +265,21 @@ export default async function RegisterPage({
                     </Td>
                     <Td>{d.feeRow.methods[r.method]}</Td>
                     <Td num>{r.reference ?? '—'}</Td>
-                    <Td num right>{formatTaka(r.amount)}</Td>
+                    <Td num right>
+                      {/* The word above the figure and not beside it, so it cannot be
+                          pushed off the end of a narrow column, and above rather than
+                          below so the eye meets it on the way to the number it
+                          qualifies. Words and not a colour: these sheets are printed
+                          on the cheapest black-and-white laser in the building. The
+                          figure keeps its sign, unlike the receipt's — the column next
+                          to it is a running total somebody works down by hand. */}
+                      {r.refund && (
+                        <span className="block font-medium text-ink-soft">
+                          {t.refundLabel}
+                        </span>
+                      )}
+                      {formatTaka(r.amount)}
+                    </Td>
                     <Td num right>{formatTaka(r.running)}</Td>
                   </tr>
                 ))}
@@ -286,10 +287,10 @@ export default async function RegisterPage({
               <tfoot>
                 <tr className="bg-brand-50 font-bold text-brand-900">
                   <td className="px-2 py-2" colSpan={5}>
-                    {t.total} · {t.entries(rows.length)}
+                    {t.total} · {t.entries(tally.entries)}
                   </td>
                   <td className="num px-2 py-2 text-right" colSpan={2}>
-                    {formatTaka(total)}
+                    {formatTaka(tally.total)}
                   </td>
                 </tr>
               </tfoot>
@@ -301,18 +302,36 @@ export default async function RegisterPage({
           <section className="break-inside-avoid rounded-xl border border-line bg-white p-4">
             <h2 className="font-medium text-ink">{t.byMethod}</h2>
             <dl className="mt-2 flex flex-col gap-1.5">
-              {byMethod.map((m) => (
+              {tally.byMethod.map((m) => (
                 <div key={m.method} className="flex items-baseline justify-between gap-4">
-                  <dt className="text-ink-soft">{m.label}</dt>
+                  <dt className="text-ink-soft">{d.feeRow.methods[m.method]}</dt>
                   <dd className="num font-semibold text-ink">{formatTaka(m.amount)}</dd>
                 </div>
               ))}
+              {/* What came in and what went back, above the total and only in a month
+                  that had a refund in it. Two addends and their sum, in that order, so
+                  a total smaller than the reader expected explains itself where it is
+                  read. A month with no refunds gets neither line: "ফেরত ৳০" is a figure
+                  an owner would stop and check, and there is no month in which that is
+                  time well spent. */}
+              {tally.refunded !== 0 && (
+                <>
+                  <div className="mt-1 flex items-baseline justify-between gap-4 border-t border-line pt-2">
+                    <dt className="text-ink-soft">{t.grossIn}</dt>
+                    <dd className="num font-semibold text-ink">{formatTaka(tally.grossIn)}</dd>
+                  </div>
+                  <div className="flex items-baseline justify-between gap-4">
+                    <dt className="text-ink-soft">{t.refunded}</dt>
+                    <dd className="num font-semibold text-ink">{formatTaka(tally.refunded)}</dd>
+                  </div>
+                </>
+              )}
               <div
                 className="mt-1 flex items-baseline justify-between gap-4 border-t
                   border-line pt-2"
               >
                 <dt className="font-medium text-ink">{t.total}</dt>
-                <dd className="num font-bold text-ink">{formatTaka(total)}</dd>
+                <dd className="num font-bold text-ink">{formatTaka(tally.total)}</dd>
               </div>
             </dl>
           </section>
@@ -320,86 +339,6 @@ export default async function RegisterPage({
       )}
     </div>
   )
-}
-
-type PaymentRow = {
-  id: string
-  receipt_no: number
-  amount_bdt: number
-  method: PaymentMethod
-  reference: string | null
-  paid_at: string
-  /**
-   * An object for a forward reference, an array when PostgREST cannot prove the
-   * cardinality, null when the embed came back empty. All three are in the type
-   * because all three are handled below, for the reason the invoice generator
-   * handles both shapes: a register row that renders "undefined" where a child's
-   * name goes is worse than one that says nothing.
-   */
-  students:
-    | { name: string; student_code: string | null }
-    | { name: string; student_code: string | null }[]
-    | null
-}
-
-type RegisterRow = {
-  id: string
-  receiptNo: number
-  date: string
-  name: string
-  code: string | null
-  method: PaymentMethod
-  reference: string | null
-  amount: number
-  /** The total of this row and every row above it. */
-  running: number
-}
-
-/**
- * The month's payments as the register needs them, each carrying the total up to
- * and including itself.
- *
- * At module scope, not inlined in the page, and that is not a style preference:
- * accumulating a running total means reassigning something as the list is walked,
- * and the React compiler refuses that for any binding declared inside a component
- * — reassigning after render has completed is how a value ends up disagreeing with
- * what was drawn. Out here there is no render to complete, `running` is a local of
- * a plain function, and the page gets back a finished array it only reads.
- *
- * Every addition goes through sumTaka, so the last running total and the grand
- * total in the footer are the same number. A reader who finds them a taka apart
- * stops believing the page, and this is a page whose whole job is to be believed.
- */
-function toRows(
-  payments: PaymentRow[],
-  /** `common.unknown`, in the reader's language. See the type above for why. */
-  unknown: string,
-): RegisterRow[] {
-  const rows: RegisterRow[] = []
-  let running = 0
-
-  for (const p of payments) {
-    const student = Array.isArray(p.students) ? p.students[0] : p.students
-    const amount = Number(p.amount_bdt)
-    running = sumTaka([running, amount])
-
-    rows.push({
-      id: p.id,
-      receiptNo: p.receipt_no,
-      // The Dhaka calendar day, not a slice of the UTC timestamp — a payment taken
-      // at 1am would otherwise be dated to the day before on a page whose whole job
-      // is to be checked against something else.
-      date: todayInDhaka(new Date(p.paid_at)),
-      name: student?.name ?? unknown,
-      code: student?.student_code ?? null,
-      method: p.method,
-      reference: p.reference,
-      amount,
-      running,
-    })
-  }
-
-  return rows
 }
 
 function Th({

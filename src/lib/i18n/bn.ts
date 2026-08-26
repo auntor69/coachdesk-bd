@@ -1005,6 +1005,23 @@ export const bn = {
     colReference: 'ট্রানজেকশন আইডি',
     colAmount: 'টাকা',
     /**
+     * The word on a row where the money went the other way.
+     *
+     * A REFUND IS A NEGATIVE PAYMENT in this product, so without this word the sheet
+     * says nothing about it at all: the row carries "-৳৫০০" under a heading that reads
+     * "টাকা", one minus sign at the left of a right-aligned figure in a column of
+     * figures that all look like it, printed on the cheapest black-and-white laser in
+     * the building. The receipt beside this screen has said so in a ruled box since the
+     * refund could be taken; this is the same sentence on the sheet the owner files.
+     *
+     * The figure keeps its sign here, unlike on the receipt, where it is printed
+     * unsigned and the words carry the direction. The receipt has one figure and
+     * nothing to add it to; this page has a running total a reader works down by hand
+     * against a wallet statement, and a column that does not subtract where the money
+     * left cannot be followed.
+     */
+    refundLabel: 'ফেরত',
+    /**
      * Its own column and not a footer line. An owner ticking down a printed page
      * against a wallet statement finds the row where the two stopped agreeing, and
      * that is only possible if every row carries the total up to it.
@@ -1012,6 +1029,24 @@ export const bn = {
     colRunning: 'ক্রমিক মোট',
 
     total: 'মোট আদায়',
+    /**
+     * What came in and what went back, printed above the total so the reader can see
+     * where it came from.
+     *
+     * ONLY WHEN THERE WERE REFUNDS. A month with none of them is not a line shorter for
+     * some fussy reason — a "ফেরত দেওয়া হয়েছে ৳০" on a sheet that had no refunds is a
+     * figure an owner has to stop and check, and there is no month in which it is the
+     * useful one.
+     *
+     * `total` stays the collection and stays the only answer to it. These two are its
+     * addends, summed once in tallyRegister from the same rows, and they add to it
+     * exactly. That is the same shape as a waived bill on the fee board — the fee, the
+     * waiver, and what is payable — and it is there for the same reason: a figure that
+     * is smaller than the reader expected needs the subtraction next to it, or it reads
+     * as a mistake in the software.
+     */
+    grossIn: 'জমা হয়েছে',
+    refunded: 'ফেরত দেওয়া হয়েছে',
     byMethod: 'কীভাবে এসেছে',
     /** Payments, not students: one family can pay twice in a month. */
     entries: (n: number) => `${n}টি জমা`,

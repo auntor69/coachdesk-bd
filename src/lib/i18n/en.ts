@@ -418,9 +418,12 @@ export const en: Dictionary = {
     colMethod: 'How',
     colReference: 'Transaction ID',
     colAmount: 'Amount',
+    refundLabel: 'Refund',
     colRunning: 'Running total',
 
     total: 'Total collected',
+    grossIn: 'Came in',
+    refunded: 'Paid back',
     byMethod: 'How it came in',
     entries: (n: number) => `${n} ${n === 1 ? 'payment' : 'payments'}`,
     empty: 'No money has been recorded for this month yet.',
