@@ -313,10 +313,42 @@ tablet with a SIM can dial and reports coarse pointer). It must be read in an
 effect and defaulted to the phone shape during SSR, or the server and client
 disagree and React re-hydrates the wrong control.
 
-A later addition worth noting: once this exists, the desktop can offer **"send to
-my phone"** — a small queue of pending chases the owner picks up on the phone in
-one tap. That is a real feature the phone-only version cannot have, and it turns
-the desktop's weakness into something.
+### "Send to my phone" — considered, and not worth building
+
+An earlier draft of this section suggested that once the desktop knows it is a
+desktop, it could offer **"send to my phone"**: a queue of pending chases the
+owner picks up on the phone in one tap. It sounded like the feature that turns the
+desktop's weakness into a strength. **It should not be built, and the reason is
+worth writing down so it does not get re-proposed.**
+
+**The queue already exists and is already derived.**
+`src/lib/fees/reminder-schedule.ts` computes who needs chasing today from the
+unpaid invoices, the stage each family has reached, and a three-day cooldown;
+`/fees/reminders` is that list on a screen, with the tap-to-send chips already on
+each row. Opening that URL on the phone is "send to my phone". The capability is
+not missing — there is nothing to send, because the list is not stored anywhere
+to be sent. It is a function of the invoices.
+
+**So the only thing a queue would add is the owner's hand-picked subset — and
+that is exactly the part that does the damage.** A saved selection is a second
+answer to "who needs chasing", sitting beside a derived one, and the two diverge
+the moment anything happens: a family pays, and the fee board drops them while
+the queue still holds them; a stage advances, and the derived list adds someone
+the queue never had. Then the owner is chasing a parent who paid on Tuesday,
+holding a printout from Monday, and the product told them to. `reminders/page.tsx`
+already treats messaging the same family twice as the thing to prevent — a stale
+queue is a machine for doing it.
+
+**The real need underneath it is selection, not transport.** An owner at their
+desk genuinely does want to say "these six, not those twenty". That is judgement
+the schedule cannot make, and it is worth serving — but the shape is a **filter or
+a sort on the existing list**, computed fresh each time it is opened, never a
+stored set of rows. The list is already ordered by stage, so working down it from
+the top is most of that today.
+
+**One-line rule for whoever reads this next:** the chase list is derived from the
+invoices and must stay derived. Anything that saves a copy of it is wrong, however
+convenient the copy is.
 
 ---
 

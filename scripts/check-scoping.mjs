@@ -30,6 +30,31 @@
  * The reason is mandatory and it is read by people, not by this script. A hatch
  * with no reason is how the rule stops meaning anything.
  *
+ * WHY THIS DOES NOT CHECK `.rpc(...)`, which looks like a hole and is not. There
+ * are eight rpc call sites and six distinct functions. Four are the SMS worker's
+ * — reap_stranded_sms, cancel_opted_out_sms, claim_sms_batch, finish_sms — which
+ * are platform-wide by design and revoked from every role a browser can hold, so
+ * a centre filter would be meaningless. platform_centers is deliberately every
+ * centre, gated inside the function on app.is_platform_admin(). bootstrap_center
+ * creates the centre, so there is nothing yet to scope to. That leaves exactly
+ * one function that takes a centre id: import_students(p_center_id uuid, ...).
+ *
+ * Its p_center_id has no default, which makes it a required argument, which makes
+ * omitting it a tsc error against the generated types. A check here would restate
+ * what the compiler already refuses to build.
+ *
+ * Passing the *wrong* centre id is the more interesting case and it is not this
+ * script's either: import_students is `security invoker` on purpose — see the
+ * note at 20260811000009:27 — so every insert it makes is checked by the same
+ * policies as a hand-typed one, and an owner naming another centre's id is
+ * refused by a `with check` that raises rather than filters.
+ *
+ * So if you add an RPC that takes a centre id, the thing to look at is whether it
+ * is SECURITY DEFINER, not whether this script learned to parse it. A definer
+ * function that accepts a centre id and trusts it is the actual hazard, and no
+ * amount of grepping the call sites would catch it — the call site would look
+ * perfectly correct.
+ *
  * Run: node scripts/check-scoping.mjs
  */
 import { readFileSync, readdirSync } from 'node:fs'
