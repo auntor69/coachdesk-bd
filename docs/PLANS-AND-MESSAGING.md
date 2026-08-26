@@ -5,6 +5,15 @@ actually reaches a guardian from a centre's own number, how WhatsApp can be
 detected and charged for, and what the desktop does with a button that only a
 phone can honour.
 
+**Revised 2026-08-26.** Every table now states what the code actually does rather
+than what was proposed, because a decision document that has been half-implemented
+is worse than none — the stale version had Teacher Pro at 250 students where the
+product enforces 150, and centre bands of 1,999/3,999/7,999 where a 400-student
+centre is billed 7,300. Superseded figures are struck through rather than deleted,
+so a number you remember reading can be found and seen to be dead. Three proposals
+are marked **withdrawn** with the reasoning kept: they are decisions, not omissions,
+and an unrecorded no reads as a not-yet.
+
 This is a decision document, not a spec. Where a decision is the founder's, it
 says so and stops.
 
@@ -12,77 +21,119 @@ says so and stops.
 
 ## 1. The tiers
 
-### What the code says today
+### What the code said when this was written — all three now fixed
 
-`src/lib/plans.ts` is already the single source of truth, and it is close to what
-you described but wrong in three places:
+`src/lib/plans.ts` is the single source of truth. These were its values on
+2026-08-23. The problems are kept because the reasoning still matters, not because
+anything is outstanding:
 
 | | free | plus | center | institution |
 |---|---|---|---|---|
 | batches | 1 | 6 | ∞ | ∞ |
 | students | 60 | 300 | ∞ | ∞ |
-| SMS/month | **50** | **200** | **0** | **0** |
+| SMS/month | 50 | 200 | 0 | 0 |
 | price | 0 | 300 flat | 8/enrollment | 6/enrollment |
-| features | **all** | all | all | all + branches |
+| features | all | all | all | all + branches |
 
-Three problems, in order of how much they cost:
+1. **The paying tiers got less free SMS than the free tier** — 0 against 50.
+   **Resolved, but not the way this document expected.** Every allowance is now 0
+   on every tier, and that is a factual decision rather than a pricing one: no
+   BTRC sender ID exists, so no aggregator account exists, so there is no gateway
+   for an automated message to leave through. A non-zero number here would be a
+   counter decrementing against nothing, and a teacher shown *পাঠানো হয়েছে* while
+   the parent heard nothing is the one failure this product cannot afford.
+2. **Every tier carried `features: {...ALL_FEATURES}`**, so nothing was behind the
+   paywall except scale and a 499 tier would have sold nothing free did not.
+   **Fixed:** `FREE_FEATURES`, `PRO_FEATURES` and `CENTER_FEATURES` are now three
+   distinct objects and each tier names one.
+3. `teacher_plus` at 300 Tk / 6 batches / 300 students. **Fixed:** 499 / 5 / 150.
 
-1. **The paying tiers get less free SMS than the free tier.** 0 against 50. On
-   your new rule this is deliberate and correct — a centre buys credits — but it
-   must be *stated* to them, or it reads as a bug on the pricing page.
-2. **Every tier has `features: {...ALL_FEATURES}`.** There is nothing behind a
-   paywall except scale. So a Teacher Pro tier priced at 499 today would sell
-   nothing that free does not already do. **This is the real work of your plan.**
-3. `teacher_plus` at 300 Tk, 6 batches, 300 students — all three numbers differ
-   from the ones you just gave.
+### The tiers as shipped
 
-### The tiers as you specified them
+Every number below is live in `plans.ts` and enforced; this table and that file
+must not disagree, and if they ever do, the file is right.
 
 | | Teacher Free | Teacher Pro | Center / Institution |
 |---|---|---|---|
-| batches | **1** | **5** | custom |
-| students | **30** | **50 per batch** (250) | custom |
-| teachers | 1 | 1 | custom |
-| free SMS/month | **30** | **50** | **0** |
-| may buy credits | **no** | **yes, any amount** | yes |
-| price | 0 | **499/mo** | 1,999 – 99,999 custom |
+| batches | 1 | 5 | unlimited |
+| students | 30 | **150** | unlimited |
+| students per batch | 30 | **30** | unlimited |
+| subjects | 1 | 5 | unlimited |
+| teachers | 1 | **1, at any price** | unlimited |
+| automated SMS/month | 0 | 0 | 0 |
+| may buy credits | no | yes | yes |
+| price | 0 | 499/mo | 1,999 floor, then per student |
 | support | none | yes | highest priority |
 
-Two notes on the numbers, then the feature split, which is the part that needs
-building.
+Two notes on the numbers, then the feature split.
 
-**`maxStudents` is currently a centre-wide total, not per-batch.** Your Pro spec
-is "5 batches, up to 50 per batch". Those are different rules: a teacher with 5
-batches of 50 is 250 students, but a teacher with 1 batch of 250 would pass a
-total-only check and fail a per-batch one. Enforcing per-batch is the stricter and
-more honest reading of what you said, and it needs a new limit key
-(`maxStudentsPerBatch`) rather than a bigger `maxStudents`. Both should exist:
-per-batch stops one giant batch, the total stops 5 × 500.
+**Why Pro is 150 students and 30 per batch, not 250 and 50.** An earlier draft of
+this section said five batches of fifty. That put a teacher's ceiling above a small
+centre's floor, which made the price indefensible: 250 students on Pro would be
+৳499 while 250 students on a centre plan is several thousand, for a customer who
+could stand in either tier and pick. Five batches of thirty is the realistic
+ceiling for one person who is actually teaching all of them; past it they have
+hired somebody, and a person with staff is a centre by definition. The tiers no
+longer overlap, so the gap needs no defending.
+
+**Both student caps exist and both are enforced**, because they stop different
+things: the per-batch cap stops one lecture hall pretending to be a class, the
+total stops five batches of five hundred. Enforced server-side in
+`settings/actions.ts` — `overLimit()` for the four countable caps on every create
+*and* every reactivate path, and `fullBatches()` for the per-batch one, which names
+the batch that is full rather than saying "this plan is full" and making the owner
+guess which of three to change. The page-level guards that grey out buttons are
+courtesy; the action checks are the enforcement, because a Server Action is a
+public HTTP endpoint.
 
 **30 students on free is tight, and that is the point.** A real class in Dhaka is
 40–60. So free cannot run a teacher's actual class — it can run one section of
 it, or a trial month. That is what makes it marketing rather than a free product.
 Deliberate, and I think correct.
 
-### What free must *not* have (the paywall, at last)
+### What free must *not* have (the paywall, as built)
 
-`ALL_FEATURES` has to become a per-tier object. My proposal, ordered by how
-strongly each one pulls a teacher to Pro:
+`ALL_FEATURES` is gone; `PlanFeatures` is a per-tier object. Flag names are given
+so this table can be checked against `plans.ts` rather than trusted.
 
-| feature | free | pro | centre | why here |
+| flag | free | pro | centre | state |
 |---|---|---|---|---|
-| attendance + roll call | ✓ | ✓ | ✓ | the hook; never gate it |
-| own students & fees | ✓ | ✓ | ✓ | same |
-| exam marks entry | ✓ | ✓ | ✓ | same |
-| **printable fee receipt** | ✗ | ✓ | ✓ | your call, and a good one — see below |
-| **collection register** | ✗ | ✓ | ✓ | same family of thing |
-| **CSV / report export** | ✗ | ✓ | ✓ | already a flag: `exportReports` |
-| **weekly parent summary** | ✗ | ✓ | ✓ | the Tier-2 feature, unbuilt |
-| **4-stage fee reminders** | ✗ (1 stage) | ✓ | ✓ | see §2 |
-| **buy SMS credits** | ✗ | ✓ | ✓ | your rule |
-| staff & role management | ✗ | ✗ | ✓ | the teacher/centre line |
-| centre-wide dashboard | ✗ | ✗ | ✓ | same |
-| multiple branches | ✗ | ✗ | institution | same |
+| `attendance` | ✓ | ✓ | ✓ | the hook; never gate it |
+| `feeTracking` | ✓ | ✓ | ✓ | same |
+| `exams` | ✓ | ✓ | ✓ | same |
+| `manualMessaging` | ✓ | ✓ | ✓ | tap-to-send, unmetered, always free |
+| `printedReceipts` | ✗ | ✓ | ✓ | gated on the screens |
+| `exportReports` | ✗ | ✓ | ✓ | gated |
+| `parentSummary` | ✗ | ✓ | ✓ | gated |
+| `buySmsCredits` | ✗ | ✓ | ✓ | flag only — no top-up screen exists to gate |
+| `automatedSms` | ✗ | ✗ | ✗ | false everywhere; no gateway exists |
+| `staffManagement` | ✗ | ✗ | ✓ | gated, via `hasStaff` |
+| `centerWideReporting` | ✗ | ✗ | ✓ | flag only — see below |
+| `multipleBranches` | ✗ | ✗ | institution | flag only; no branch screen exists |
+
+**Three flags are declared and never read, and all three are correct.**
+`automatedSms` and `buySmsCredits` have nothing to gate until there is an
+aggregator account and a top-up screen. `centerWideReporting` is subtler: on a
+teacher tier `maxTeachers` is 1, so "the whole centre" and "my own students" are
+the same set of rows, and a centre-wide view would show a solo teacher exactly
+their own data. There is nothing to withhold. It earns its keep the day a teacher
+tier could have two people in it, which is never — so it may end up permanently
+inert, and that is fine. Recorded here because an unread flag looks like a missing
+check on the next read, and this saves someone rediscovering it.
+
+**~~4-stage fee reminders — free gets 1 stage.~~ Withdrawn — do not build this.**
+It was in this table and it was never implemented; `reminder-schedule.ts` has no
+plan awareness at all, and it should not gain any. The four stages (due−3, the due
+date, late, then repeating) only decide **who appears on today's chase list**.
+Gating them would not restrict sending — free already has unlimited tap-to-send by
+the decision in §2, deliberately and permanently — it would withhold the
+three-day heads-up about a family the teacher already has in their own roster. The
+teacher then does not chase, the fee arrives late or not at all, and we caused
+that. Charging for scale is fair; charging a teacher to be told a fact about their
+own students, on a channel that costs us nothing to serve, is not. The four things
+free genuinely does without are the four flags above, which are all things that
+cost us something or belong to an organisation. That list is complete; this was a
+fifth lock on a door that already has four.
 
 **Why the receipt is the right thing to gate.** It is the one feature that makes
 a teacher look institutional in front of a parent. A teacher who has handed out
@@ -101,30 +152,66 @@ the trigger, so the parent can still be told "your receipt number is 47". Free
 gets a number to quote; Pro gets the paper. That keeps free honest without giving
 away the thing that sells Pro.
 
-### Centre pricing: the calculator you described
+### Centre pricing: the calculator, and what it actually charges
 
 You want a centre to pick students/batches/teachers and be shown a price. The
-existing `monthlyBillBdt()` already does per-enrollment pricing with a floor,
-which is *better* than a slider on students, for one reason worth keeping: it
-charges for what drives our cost (SMS volume and support load track enrollments,
-not headcount), and it grows with the centre automatically instead of needing a
-renegotiation each term.
+engine exists — `monthlyBillBdt()` in `plans.ts` — and it has changed twice since
+this section was first written, in ways that matter enough to record.
 
-My recommendation: keep per-enrollment as the *engine*, and put your calculator
-on top as the *presentation*. The owner moves three sliders, we compute
-`max(floor, rate × enrollments)`, and show one monthly figure with the band name
-next to it. Suggested bands, which need your judgement on the real market:
+**It counts distinct students, not enrollments.** That was a correction, not a
+preference. A centre charges by subject, so a student taking Physics, Chemistry and
+Maths is three enrollments and was being billed three times: ৳75 a month for one
+child, which is not a number anybody was quoted. One child, one charge.
 
-| band | enrollments | monthly |
+**The bands are marginal, like income tax — not a flat rate per band.** With flat
+per-band rates a centre at 301 students would pay *less* than one at 300, which is
+a pricing page that makes the founder look like they cannot count. Each rate
+applies only to the students inside its own band, so the bill is continuous and
+always rises with size.
+
+| band | students | rate each |
 |---|---|---|
-| Small centre | up to 150 | 1,999 |
-| Growing | 151 – 400 | 3,999 |
-| Large | 401 – 900 | 7,999 |
-| Institution | 901+ | custom, from 14,999 |
+| first | 1 – 100 | ৳25 |
+| next | 101 – 300 | ৳18 |
+| next | 301 – 600 | ৳12 |
+| beyond | 601+ | ৳8 |
 
-**These numbers are a guess and I want to flag that clearly.** I have no data on
-what a Dhaka coaching centre pays for software. The structure is sound; the
-figures need one conversation with one real owner before they go on a page.
+Plus ৳1,999 floor (applied to the student charge, so seats are never swallowed by
+it), 2 teacher seats included, ৳100/month per seat after that.
+
+**~~Small 1,999 / Growing 3,999 / Large 7,999 / Institution from 14,999.~~
+Superseded — do not quote these.** They were flat per-band figures from the first
+draft and they do not match what the code charges, in both directions. What it
+actually bills:
+
+| students | monthly | effective per student |
+|---|---|---|
+| 50 | **1,999** (floor; raw ৳1,250) | 40.0 |
+| 100 | 2,500 | 25.0 |
+| 150 | 3,400 | 22.7 |
+| 300 | 6,100 | 20.3 |
+| 400 | **7,300** | 18.3 |
+| 600 | 9,700 | 16.2 |
+| 900 | **12,100** | 13.4 |
+| 1,200 | 14,500 | 12.1 |
+
+A 400-student centre bills 7,300 where the old table said 3,999 — so asking an
+owner "would you pay 3,999 for 400 students?" would have validated a price 46%
+under what we charge. At the top it goes the other way: 1,200 students bills
+14,500, *below* the old "Institution, from 14,999". Teacher seats are on top: 300
+students with 8 teachers is 6,100 + 600 = ৳6,700.
+
+The taper is deliberate. ৳25 flat is right at fifty students and wrong at nine
+hundred — a large centre facing ৳22,500 a month builds a spreadsheet instead, and
+the ninth-hundredth student does not cost us what the fiftieth did.
+
+**The rates are still uncalibrated, and this is still the thing I most want a real
+owner's answer on.** The structure is sound and the arithmetic is right; ৳25 /
+৳18 / ৳12 / ৳8 and the ৳1,999 floor are a founder's judgement with no market
+survey behind them. Note that the first twenty customers will all sit in the first
+two bands, so the ৳12 and ৳8 rates are theoretical until year two — the numbers
+worth checking in a real conversation are **the ৳1,999 floor and the ৳25 first
+band**, not the whole table.
 
 ---
 
@@ -201,15 +288,29 @@ one message, one tap, one human. Which is exactly right for the free tier.
 
 | | free | pro | centre |
 |---|---|---|---|
-| tap-to-send from own phone (Option C) | ✓ unlimited | ✓ | ✓ |
-| automated SMS via `CoachDesk` (A) | 30/mo, no top-up | 50/mo + credits | credits only |
+| tap-to-send from own phone (Option C) | ✓ unlimited | ✓ unlimited | ✓ unlimited |
+| automated SMS via `CoachDesk` (A) | ✗ never | 0 today, then credits | 0 today, credits only |
 | own sender ID (B) | — | — | ✓ |
 
-The free tier gets **unlimited manual messaging and 30 automated**. That is
-honest — they can run their class — while the thing they cannot do (walk away and
-let it send itself) is precisely what Pro sells. And "cannot buy credits on free"
-becomes a natural sentence rather than an arbitrary block: *automated sending is
-a Pro feature; you get 30 to try it.*
+**The middle row is 0 everywhere today, and that is a fact rather than a price.**
+No BTRC sender ID exists, so no aggregator account exists, so there is no gateway
+for an automated message to leave through. `monthlySmsCredits` is 0 on all four
+tiers and `automatedSms` is false on all four. The metering, the ledger, the
+refund path and the claim/finish worker are all built and tested against those
+numbers, so the day a gateway exists this is the only line in `plans.ts` that
+changes.
+
+An earlier draft of this table gave free 30 automated messages and Pro 50. Free
+should get **none**, and not for pricing reasons: an allowance implies delivery,
+and 30 messages that silently go nowhere is worse than a locked button that
+explains itself. The free tier's messaging story is Option C, which is complete,
+unmetered, and genuinely unlimited — the owner's own phone, their own number,
+their own operator's rate.
+
+So the sentence for the pricing page is not "you get 30 to try it". It is:
+*sending from your phone is free and always will be; sending without picking up
+your phone is what Pro buys.* That is the honest version, it survives the
+gateway not existing yet, and it does not need rewriting on the day it does.
 
 ---
 
@@ -354,10 +455,12 @@ convenient the copy is.
 
 ## 5. What I would build, in order
 
-1. **Per-tier features + the new limit keys** (`maxStudentsPerBatch`,
-   `canBuyCredits`, `automatedSms`). Tiers as specified above. Enforced in
-   `plans.ts`, in the RLS/billing guard, and on the screens — with the locked
-   feature *visible and explained*, never hidden. **— Built.**
+1. **Per-tier features + the new limit keys.** Shipped as `maxStudentsPerBatch`,
+   `maxSubjects`, `buySmsCredits` and `automatedSms` — note the flag is
+   `buySmsCredits`, not `canBuyCredits` as an earlier draft of this line said.
+   Enforced in `plans.ts`, in every server action that creates or reactivates a
+   capped row, and on the screens — with the locked feature *visible and
+   explained*, never hidden. **— Built.**
 2. **Receipt gating**, per §1: number on free, paper on Pro. **— Built.**
 3. **Device-aware chips**, per §4. Small, self-contained, no schema change.
    **— Built.**
@@ -369,24 +472,62 @@ convenient the copy is.
    would systematically demote the channel that works best. Nothing is left to do
    here; do not re-open it as a to-do.
 5. **Per-centre sender ID** (§2 Option B) — `sendSms()` takes a config, three
-   new encrypted columns. Only when a centre asks; not before.
-6. **Centre pricing calculator**, once the band figures are real.
+   new encrypted columns. Only when a centre asks; not before. **— Not built, and
+   blocked twice over:** it needs an aggregator account, and it needs your
+   resell-versus-bring-your-own answer before the shape of the columns is even
+   decidable.
+6. **Centre pricing calculator. — Built.** `settings/plan/calculator.tsx`: students
+   and staff in, the marginal bands applied, the floor called out when it is doing
+   the work, the seat charge shown separately, one total out. It reads
+   `STUDENT_BANDS` and `CENTER_MONTHLY_FLOOR_BDT` directly, so it cannot drift from
+   what we actually bill — change a rate in `plans.ts` and both the screen and the
+   invoice move together. What is still soft is the **rates**, which is a
+   conversation rather than a build; it has moved to §6.
 
-Items 1–4 are done. Item 5 needs the aggregator account. Item 6 needs your
-pricing decision — which makes it the next thing that needs you, not me.
+**Everything on this list is built except item 5, and item 5 is waiting on you.**
+That is the honest summary: there is no next engineering step here that I can take
+without either an aggregator account or a decision from you. The §6 list is where
+the remaining work lives.
 
 ---
 
 ## 6. What needs you
 
-- **The centre band figures.** 1,999 / 3,999 / 7,999 / 14,999 above is my guess
-  with no market data behind it. One conversation with one real owner fixes this.
+Split into things that block work and things already shipped under an assumption
+you can overturn. Nothing in the second list is waiting on you — it is listed so
+you know what was assumed on your behalf.
+
+### Blocking
+
+- **Your phone number, as one line of config.** `NEXT_PUBLIC_SALES_PHONE` is read
+  by the plan screen and is empty, so the "get in touch to upgrade" card does not
+  render. A centre owner looking at the Center tier right now has no way to reach
+  you. This is the cheapest item on the list and the only one that directly costs
+  revenue today.
+- **The ৳1,999 floor and the ৳25 first band** (§1). One conversation with one real
+  owner. Not the whole rate table — the ৳12 and ৳8 bands are theoretical until you
+  have a nine-hundred-student customer, so they can wait. The old
+  1,999/3,999/7,999/14,999 figures are superseded; do not take those to a
+  conversation.
 - **Resell vs bring-your-own** for centre sender IDs (§2). Revenue and float
-  versus simplicity and no liability.
-- **Whether Teacher Pro is 499.** Against 30 free students and 5 batches, 499/mo
-  is roughly one student's monthly fee. That is a defensible pitch — "one
-  student pays for the software" — and it is the pitch I would make.
-- **The free-receipt question** (§1). I recommend number-on-free,
-  paper-on-Pro. If you want the harder line, gate it entirely; say which.
-- Still outstanding from before: rotate the Supabase DB password, add
-  `CRON_SECRET` to Vercel, BTRC sender ID needs your NID.
+  versus simplicity and no liability. Blocks §5 item 5, which nothing else blocks.
+- **BTRC sender ID needs your NID.** Blocks every automated message, the OTP on
+  signup, and therefore the `monthlySmsCredits` line in `plans.ts` being anything
+  but zero.
+- **Rotate the Supabase DB password**, and add `CRON_SECRET` to Vercel.
+
+### Shipped on an assumption — say the word and it changes
+
+- **Teacher Pro is live at ৳499.** Against 30 free students and 5 batches that is
+  roughly half of one student's monthly fee at ৳1,000 a head. "Half a student pays
+  for the software" is the pitch I would make, and it is the one in the code.
+- **The free-receipt question is decided the way I recommended:** the receipt
+  *number* is free on every tier — a trigger assigns it to every payment, so a
+  free teacher can read "your receipt number is 47" aloud — and the printed A4
+  two-copy sheet is Pro. If you want the harder line, gating it entirely is a
+  one-word change to `FREE_FEATURES`.
+- **Free gets no automated SMS allowance at all**, where an earlier draft gave it
+  30. See §2: an allowance implies delivery, and there is no gateway. Free's
+  messaging is tap-to-send, unlimited, permanent.
+- **Reminder stages are not gated** and I recommend they never are — §1 has the
+  reasoning. This reverses a line in the original table.
