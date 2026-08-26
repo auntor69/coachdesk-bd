@@ -655,3 +655,145 @@ export function buildFeeReminderText(input: FeeReminderInput): string {
     `- ${input.centerName}`,
   ].join('\n')
 }
+
+/* -------------------------------------------------------------------------- */
+/* The missed class                                                           */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * A child did not turn up, told to the guardian the same evening.
+ *
+ * The highest-value message in this product and the last one to get written. A
+ * guardian who hears at six that their child never reached the four o'clock
+ * batch can act that evening; the same fact inside a monthly attendance
+ * percentage is a statistic about a term that is already over.
+ *
+ * NEVER AN ACCUSATION. The register says a seat was empty and nothing more — not
+ * why, and not whose fault. A child may have been ill, kept home, sent on an
+ * errand, or told the centre and not the teacher. So every wording below states
+ * the absence and asks the family to look into it; none of them says the child
+ * skipped, and none of them threatens a consequence. A message that gets a child
+ * beaten for a fever is worse than no message.
+ *
+ * THE DATE IS ALWAYS NAMED, as `আজ` when it is today and as a full date when it
+ * is not. A teacher fixing yesterday's register would otherwise send a parent
+ * "your child was absent today" about a class the child attended this afternoon,
+ * and the parent has no way to tell which day is meant.
+ */
+export type AbsenceInput = {
+  studentName: string
+  /**
+   * The batch the child missed. Named on WhatsApp, where a guardian with two
+   * children at one centre needs it; there is no room for it inside 70
+   * characters, and the name plus the date is enough to identify the class.
+   */
+  batchName?: string | null
+  /** The register's own Dhaka date, `YYYY-MM-DD`. */
+  sessionDate: string
+  /**
+   * Whether that register is today's. Decided by the caller because this module
+   * has no clock — every other date decision here works the same way, and a
+   * template that read `new Date()` could not be tested against a fixed day.
+   */
+  isToday: boolean
+  centerName: string
+}
+
+export type AbsenceSms = {
+  body: string
+  segments: number
+}
+
+/** What a student's name gets here: the same as a result, with no month competing. */
+const ABSENCE_NAME_BUDGET = 18
+
+/**
+ * When the class was, in the shape the sentence needs.
+ *
+ * `আজ` needs no postposition and a date does — "২৫ আগস্ট ২০২৬ ক্লাসে" is missing
+ * the word that makes it a date rather than a label, so `তারিখে` is part of the
+ * phrase and not part of the formatter.
+ */
+function absenceWhen(input: AbsenceInput): string {
+  return input.isToday ? 'আজ' : `${formatDate(input.sessionDate)} তারিখে`
+}
+
+/**
+ * The missed-class SMS, sized for one segment.
+ *
+ * This goes through the owner's own handset, so the segment is billed to them by
+ * their own operator — the same arithmetic the fee reminder spells out. A teacher
+ * working down twelve absent children should pay for twelve messages and not
+ * twenty-four, which makes the 70-character UCS-2 limit as real here as it will be
+ * for a gateway.
+ *
+ * Politeness degrades first and the fact never does. What goes, in order: the
+ * request that the family check on the child, then the fuller phrasing of the
+ * absence, then the word "class". The name, the day, and who is telling them
+ * survive every step — a parent who cannot tell which child or which centre a
+ * message is about cannot do anything with it.
+ *
+ * A back-dated register can genuinely not fit, because a full Bangla date with a
+ * year is sixteen characters before the sentence starts. It buys a second segment
+ * rather than dropping the date, for the reason the fee reminder buys one rather
+ * than dropping the month: an extra taka is cheaper than a message about the
+ * wrong day.
+ */
+export function buildAbsenceSms(input: AbsenceInput): AbsenceSms {
+  const brand = clamp(input.centerName, BRAND_BUDGET - 2)
+  const name = clamp(input.studentName, ABSENCE_NAME_BUDGET)
+  const when = absenceWhen(input)
+  const tail = ` -${brand}`
+
+  const ladder = [
+    `${name}, ${when} ক্লাসে উপস্থিত ছিল না। খোঁজ নেবেন।`,
+    `${name}, ${when} ক্লাসে উপস্থিত ছিল না।`,
+    `${name}, ${when} ক্লাসে আসেনি।`,
+    `${name}, ${when} অনুপস্থিত।`,
+  ]
+
+  for (const line of ladder) {
+    const body = `${line}${tail}`
+    if (measureSms(body).segments <= 1) return { body, segments: 1 }
+  }
+
+  const body = `${ladder[ladder.length - 1]}${tail}`
+  return { body, segments: measureSms(body).segments }
+}
+
+/**
+ * The same absence for WhatsApp, where nothing is metered.
+ *
+ * So it keeps what 70 characters cannot: the batch, an unclamped name, and a
+ * sentence that offers the family a reason before assuming there isn't one. The
+ * SMS has to compress "we noticed and we are not accusing you" down to two words;
+ * here it can be said properly, which matters more in this message than in any
+ * other the product sends. A parent's first reaction to "your child was not in
+ * class" is often at the child rather than at us.
+ *
+ * No consequence is named and no pattern is mentioned, even when the centre can
+ * see one. A run of absences is a conversation for the owner to have with the
+ * family, in person or on the phone, where they can hear the answer; a message
+ * that counts up a child's misses reads as a warning letter and is answered by
+ * nobody.
+ *
+ * "প্রিয় অভিভাবক" rather than a religious greeting, for the reason the fee
+ * reminder gives.
+ */
+export function buildAbsenceText(input: AbsenceInput): string {
+  const name = input.studentName.trim()
+  const batch = (input.batchName ?? '').trim()
+  const when = absenceWhen(input)
+
+  return [
+    'প্রিয় অভিভাবক,',
+    '',
+    batch
+      ? `${name} ${when} ${batch} ক্লাসে উপস্থিত ছিল না।`
+      : `${name} ${when} ক্লাসে উপস্থিত ছিল না।`,
+    '',
+    'শরীর খারাপ বা অন্য কোনো সমস্যা হয়ে থাকলে জানাবেন। পরের ক্লাসে দেখা হবে, এই আশা রাখি।',
+    '',
+    `- ${input.centerName}`,
+  ].join('\n')
+}

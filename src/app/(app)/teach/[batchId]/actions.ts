@@ -1,7 +1,7 @@
 'use server'
 
 /**
- * Saving attendance.
+ * Saving attendance, and the receipt for having told a family about it.
  *
  * One action, called once per batch with the whole roster. Not once per tap:
  * a teacher on 3G marking thirty students would fire thirty requests, and the
@@ -25,8 +25,15 @@
 import { revalidatePath } from 'next/cache'
 
 import { createClient } from '@/lib/supabase/server'
-import { requireRole, getSession, isStaffAdmin, AuthError } from '@/lib/auth/session'
+import {
+  requireRole,
+  getSession,
+  isStaffAdmin,
+  canSendSms,
+  AuthError,
+} from '@/lib/auth/session'
 import { todayInDhaka } from '@/lib/bd/time'
+import { normalizeBdMobile } from '@/lib/bd/phone'
 import {
   ATTENDANCE_MAX_REVISION,
   attendanceVerdict,
@@ -35,7 +42,7 @@ import {
 } from '@/lib/attendance/window'
 import { MAX_TEXT, clamp } from '@/lib/limits'
 import { dict, DEFAULT_LOCALE } from '@/lib/i18n'
-import type { AttendanceStatus } from '@/lib/supabase/types'
+import type { AttendanceStatus, OutreachChannel } from '@/lib/supabase/types'
 
 export type SaveState =
   | { ok: true; savedAt: string; message: string }
@@ -285,3 +292,103 @@ export async function saveAttendance(
     message: held > 0 ? t.savedExcept(held) : t.saved(accepted.length),
   }
 }
+
+/* -------------------------------------------------------------------------- */
+/* Telling one family their child was not there                               */
+/* -------------------------------------------------------------------------- */
+
+/** The three ways somebody at the centre can reach a family from their handset. */
+const NOTICE_CHANNELS = new Set<OutreachChannel>(['sms', 'whatsapp', 'call'])
+
+const MAX_NOTICE_BODY = 1000
+
+export type AbsenceNoticeLog = {
+  sessionId: string
+  studentId: string
+  channel: OutreachChannel
+  /** The guardian number the link was aimed at; null for anything unparseable. */
+  toPhone?: string | null
+  /** The exact text put in front of whoever tapped. Null for a call. */
+  body?: string | null
+}
+
+/**
+ * Record that a family was told about a missed class.
+ *
+ * Fired after the tap, never before it — the row is a receipt for a message that
+ * has already been handed to the phone's own SMS or WhatsApp app, so a failure
+ * here loses the tick and not the message. That is why it returns a flag rather
+ * than an error string: there is nothing for the teacher to retry, and a red
+ * banner over a message that did go out would send them to do it twice.
+ *
+ * A second tap on the same family writes a second row on purpose. A parent who did
+ * not read the SMS gets rung, and both of those happened. The screen shows the
+ * latest and the table keeps all of them.
+ */
+export async function logAbsenceNotice(
+  input: AbsenceNoticeLog,
+): Promise<{ logged: boolean }> {
+  // A Server Action is a public endpoint, so the caller is re-derived here even
+  // though the page that drew the chip already did.
+  let session
+  try {
+    session = await requireRole('teacher')
+  } catch (err) {
+    if (err instanceof AuthError) return { logged: false }
+    throw err
+  }
+
+  // The owner's "Send SMS" checkbox, checked here and not only by the policy —
+  // absence_notices_teacher_insert would refuse this anyway, and this way the
+  // refusal costs one memoised query instead of a round trip.
+  if (!(await canSendSms())) return { logged: false }
+
+  const sessionId = String(input?.sessionId ?? '')
+  const studentId = String(input?.studentId ?? '')
+  const channel = input?.channel
+  if (!sessionId || !studentId || !NOTICE_CHANNELS.has(channel)) {
+    return { logged: false }
+  }
+
+  const supabase = await createClient()
+
+  const [{ data: register }, { data: student }] = await Promise.all([
+    supabase
+      .from('attendance_sessions')
+      .select('id, batch_id')
+      .eq('coaching_center_id', session.active.centerId)
+      .eq('id', sessionId)
+      .maybeSingle(),
+    // No status filter. A student who left the centre last week was still absent
+    // from the register that was taken while they were on it, and their guardian
+    // is still owed the message — requiring `active` here would make the chip
+    // open the message and silently record nothing.
+    supabase
+      .from('students')
+      .select('id')
+      .eq('coaching_center_id', session.active.centerId)
+      .eq('id', studentId)
+      .maybeSingle(),
+  ])
+
+  if (!register?.id || !student?.id) return { logged: false }
+
+  const body = String(input?.body ?? '').slice(0, MAX_NOTICE_BODY)
+
+  const { error } = await supabase.from('absence_notices').insert({
+    coaching_center_id: session.active.centerId,
+    session_id: register.id,
+    student_id: student.id,
+    channel,
+    to_phone: normalizeBdMobile(input?.toPhone),
+    body: body || null,
+    sent_by: session.userId,
+  })
+
+  if (error) return { logged: false }
+
+  revalidatePath(`/teach/${register.batch_id}`)
+
+  return { logged: true }
+}
+

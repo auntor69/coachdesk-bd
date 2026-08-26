@@ -402,6 +402,19 @@ export const bn = {
     lastClass: (date: string) => `শেষ ক্লাসের হাজিরা — ${date}`,
 
     /**
+     * The three counted lines the absence list needs, on this side of the wire for
+     * the same reason as everything above them.
+     *
+     * `toldOn` is deliberately the same sentence `exams.toldOn` uses. A teacher who
+     * has learnt what the tick means on the marks sheet should not have to learn it
+     * again on the register, and one wording for one fact is what keeps the two
+     * screens from disagreeing about whether a family has been told.
+     */
+    toldOn: (date: string) => `${date} তারিখে জানানো হয়েছে ✓`,
+    noPhoneCount: (n: number) => `${n} জনের অভিভাবকের নম্বর নেই`,
+    optedOutCount: (n: number) => `${n} জনের SMS বন্ধ আছে`,
+
+    /**
      * What the save action returns when it refuses. Nested in the screen's group
      * rather than the register's: the action resolves the string on the server and
      * returns it already written, so these never cross the wire unread.
@@ -458,6 +471,33 @@ export const bn = {
     lockedRow: 'একবার বদলানো হয়েছে, আর বদলানো যাবে না',
     note: 'নোট',
     notePlaceholder: 'যেমন: ছুটির কারণে ক্লাস তাড়াতাড়ি শেষ',
+  },
+
+  /**
+   * The register's other half: telling the parents of the empty seats, today.
+   *
+   * Its own top-level group and not part of `teach`, for the same reason `roster`
+   * is: it crosses the wire to a client component, so strings only. Every counted
+   * line and every date is written by the page and handed down.
+   *
+   * The words are the most carefully chosen in this file. The teacher taps a chip,
+   * their own phone opens, and a parent reads what is there — so this section has
+   * to make three things obvious before the first tap: it is their own SMS, it
+   * costs nothing, and the tick records that they sent it and not that anybody
+   * read it. And `body` says what the message will *not* do, because an owner who
+   * expects an accusation and gets a question will write their own instead.
+   */
+  absenceNotices: {
+    title: 'অভিভাবককে জানান কে আসেনি',
+    body:
+      'যারা আজ আসেনি তাদের অভিভাবককে এখনই জানানো যায় — নাম ধরে বেছে নিন, আপনার ফোনের SMS বা হোয়াটসঅ্যাপ খুলে যাবে, লেখা বসানো থাকবে। কোনো ক্রেডিট লাগবে না, আপনার নম্বর থেকেই যাবে। বার্তায় কোনো দোষারোপ নেই — শুধু জানানো হয়, আর খোঁজ নিতে বলা হয়।',
+    /** The register is saved and nobody was absent. The good outcome, said so. */
+    nobodyAbsent: 'আজ এই ব্যাচের সবাই উপস্থিত ছিল। কাউকে জানানোর দরকার নেই।',
+    /** Absent students exist, but not one of them has a guardian number. */
+    noNumbers:
+      'যারা আসেনি তাদের কারও অভিভাবকের নম্বর সেভ করা নেই। নম্বর যোগ করলে এখান থেকেই জানানো যাবে।',
+    /** Before the register is saved. The list reads the saved marks, not the taps. */
+    saveFirst: 'হাজিরা সেভ করলে যারা আসেনি তাদের তালিকা এখানে আসবে।',
   },
 
   /**

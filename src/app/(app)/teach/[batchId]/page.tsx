@@ -6,6 +6,7 @@ import {
   pageRole,
   getSession,
   isStaffAdmin,
+  canSendSms,
   myTeacherIds,
 } from '@/lib/auth/session'
 import { createClient } from '@/lib/supabase/server'
@@ -17,9 +18,11 @@ import {
   isDateString,
   lastClassDate,
 } from '@/lib/attendance/window'
+import { planAbsenceNotices } from '@/lib/sms/absence-dispatch'
 import { dict, localName, DEFAULT_LOCALE } from '@/lib/i18n'
 import type { AttendanceStatus } from '@/lib/supabase/types'
 import { AttendanceRoster, type RosterStudent } from './attendance-roster'
+import { AbsenceNotices, type AbsenceRowView } from './absence-notices'
 
 /** See /teach: a title needs the session, and a static export cannot read one. */
 export async function generateMetadata() {
@@ -170,6 +173,99 @@ export default async function AttendancePage({
 
   const subject = Array.isArray(batch.subjects) ? batch.subjects[0] : batch.subjects
 
+  /*
+   * The register's other half: whose parent still does not know.
+   *
+   * Marking twelve children absent used to end here. The register was correct and
+   * nothing left the building — the twelve families found out weeks later from an
+   * attendance percentage, if they saw one, and a guardian who learns at six that
+   * their child never reached the four o'clock class can do something about it that
+   * evening. That is the most valuable message this product can carry, and it is
+   * the one the screen that produces the fact did not send. See absence_notices.
+   *
+   * Asked in this order on purpose. The permission first, because everything under
+   * it feeds a section a teacher without it never sees; then the plan, which needs
+   * the saved register's id and so cannot run before one exists; then who has
+   * already been told, and only if there is anybody left to tell.
+   */
+  const canSend = await canSendSms()
+
+  // The saved register's own id, or null if this day has never been marked. Lifted
+  // out because three things below want it and `existingSession?.id` inside a
+  // narrowing ternary tells the compiler nothing.
+  const savedSessionId = existingSession?.id ?? null
+
+  // Reads the stored register, never what is currently typed into the roster. A
+  // name beside an unsaved tap is how a family gets told about an absence the
+  // database never recorded — and the teacher who then closed the tab would have
+  // no way of knowing they had.
+  const plan =
+    canSend && savedSessionId
+      ? await planAbsenceNotices(supabase, {
+          centerId: session.active.centerId,
+          centerName: session.active.centerName,
+          sessionId: savedSessionId,
+          sessionDate,
+          today,
+          batchName: batch.name,
+        })
+      : null
+
+  // Who has already been told, from anybody's phone, on any visit. Newest first,
+  // which is the order absence_notices_session_idx already yields, so the sort is
+  // free — and the first row per student is therefore the latest send.
+  const { data: notices } =
+    savedSessionId && plan && plan.recipients.length > 0
+      ? await supabase
+          .from('absence_notices')
+          .select('student_id, created_at')
+          .eq('coaching_center_id', session.active.centerId)
+          .eq('session_id', savedSessionId)
+          .order('created_at', { ascending: false })
+      : { data: null }
+
+  // student_code by student id, for the notice rows. `planAbsenceNotices` answers
+  // who may be told and what to say — not what the register calls them.
+  const codes = new Map<string, string | null>()
+  for (const enrollment of enrollments ?? []) {
+    const student = Array.isArray(enrollment.students)
+      ? enrollment.students[0]
+      : enrollment.students
+    if (student) codes.set(student.id, student.student_code)
+  }
+
+  const toldAt = new Map<string, string>()
+  for (const notice of notices ?? []) {
+    if (!toldAt.has(notice.student_id)) {
+      toldAt.set(notice.student_id, notice.created_at)
+    }
+  }
+
+  const noticeRows: AbsenceRowView[] = (plan?.recipients ?? []).map((r) => {
+    const told = toldAt.get(r.studentId)
+    return {
+      studentId: r.studentId,
+      name: r.studentName,
+      // A student who left the batch last week was still absent from the register
+      // taken while they were on it, so `planAbsenceNotices` keeps them and the
+      // active-only roster query above has no row to give a code from.
+      studentCode: codes.get(r.studentId) ?? null,
+      phone: r.phone,
+      smsBody: r.body,
+      chatBody: r.chatBody,
+      preferredChannel: r.preferredChannel,
+      told: told ? t.toldOn(formatDate(todayInDhaka(new Date(told)), locale)) : null,
+    }
+  })
+
+  // Where the other empty seats went, so a teacher looking at four names on a
+  // register with seven absences does not assume the screen is broken.
+  const noticeNotes = [
+    plan && plan.skippedNoPhone > 0 ? t.noPhoneCount(plan.skippedNoPhone) : null,
+    plan && plan.skippedOptedOut > 0 ? t.optedOutCount(plan.skippedOptedOut) : null,
+  ].filter((line): line is string => line !== null)
+
+
   return (
     <div className="flex flex-col gap-4">
       <div>
@@ -265,6 +361,48 @@ export default async function AttendancePage({
             statusLabels={d.attendance}
             common={d.common}
           />
+
+          {/* Directly under the register, because it is the same errand. A teacher
+              who has just saved twelve absences wants the next thing under their
+              thumb to be the first parent — one task in their head, two writes in
+              the database. */}
+          {canSend &&
+            (!savedSessionId ? (
+              <Card>
+                <h2 className="font-semibold text-ink">{d.absenceNotices.title}</h2>
+                <p className="mt-1 text-sm text-ink-soft">
+                  {d.absenceNotices.saveFirst}
+                </p>
+              </Card>
+            ) : noticeRows.length > 0 ? (
+              <AbsenceNotices
+                sessionId={savedSessionId}
+                rows={noticeRows}
+                notes={noticeNotes}
+                words={{
+                  t: d.absenceNotices,
+                  list: d.chaseList,
+                  chase: d.chase,
+                  channels: d.channels,
+                }}
+              />
+            ) : (
+              <Card>
+                <h2 className="font-semibold text-ink">{d.absenceNotices.title}</h2>
+                <p className="mt-1 text-sm text-ink-soft">
+                  {(plan?.absentCount ?? 0) === 0
+                    ? d.absenceNotices.nobodyAbsent
+                    : d.absenceNotices.noNumbers}
+                </p>
+                {noticeNotes.length > 0 && (
+                  <ul className="num mt-2 flex flex-col gap-1 text-sm text-ink-faint">
+                    {noticeNotes.map((note) => (
+                      <li key={note}>{note}</li>
+                    ))}
+                  </ul>
+                )}
+              </Card>
+            ))}
 
           {/* The other register a teacher may still fix, from the one they are on.
               Without it the only way to reach yesterday is to know that ?date=

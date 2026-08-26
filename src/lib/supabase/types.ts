@@ -32,6 +32,71 @@ export type SubscriptionStatus = 'trialing' | 'active' | 'past_due' | 'cancelled
 export type Database = {
   public: {
     Tables: {
+      absence_notices: {
+        Row: {
+          id: string
+          coaching_center_id: string
+          session_id: string
+          student_id: string
+          channel: OutreachChannel
+          to_phone: string | null
+          body: string | null
+          sent_by: string | null
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          coaching_center_id: string
+          session_id: string
+          student_id: string
+          channel: OutreachChannel
+          to_phone?: string | null
+          body?: string | null
+          sent_by?: string | null
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          coaching_center_id?: string
+          session_id?: string
+          student_id?: string
+          channel?: OutreachChannel
+          to_phone?: string | null
+          body?: string | null
+          sent_by?: string | null
+          created_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'absence_notices_coaching_center_id_fkey'
+            columns: ['coaching_center_id']
+            isOneToOne: false
+            referencedRelation: 'coaching_centers'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'absence_notices_sent_by_fkey'
+            columns: ['sent_by']
+            isOneToOne: false
+            referencedRelation: 'users'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'absence_notices_session_id_center_fkey'
+            columns: ['session_id', 'coaching_center_id']
+            isOneToOne: false
+            referencedRelation: 'attendance_sessions'
+            referencedColumns: ['id', 'coaching_center_id']
+          },
+          {
+            foreignKeyName: 'absence_notices_student_id_center_fkey'
+            columns: ['student_id', 'coaching_center_id']
+            isOneToOne: false
+            referencedRelation: 'students'
+            referencedColumns: ['id', 'coaching_center_id']
+          },
+        ]
+      }
       attendance_records: {
         Row: {
           id: string

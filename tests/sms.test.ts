@@ -9,7 +9,10 @@ import {
   buildFeeReminderText,
   buildProgressSummarySms,
   buildProgressSummaryText,
+  buildAbsenceSms,
+  buildAbsenceText,
   type ProgressSummaryInput,
+  type AbsenceInput,
 } from '../src/lib/sms/templates.ts'
 
 test('plain ASCII is GSM-7 and fits 160 characters', () => {
@@ -692,4 +695,119 @@ test('nothing dangles in the WhatsApp summary when there is nothing to say', () 
   assert.ok(text.startsWith('প্রিয় অভিভাবক,'), text)
   assert.ok(text.includes('- আলো কোচিং'), text)
 })
+
+/* -------------------------------------------------------------------------- */
+/* The missed class                                                           */
+/* -------------------------------------------------------------------------- */
+
+const absence = (over: Partial<AbsenceInput> = {}): AbsenceInput => ({
+  studentName: 'সাদিয়া আক্তার',
+  batchName: 'সকাল ৭টা জীববিজ্ঞান',
+  sessionDate: '2026-08-25',
+  isToday: true,
+  centerName: 'আলো কোচিং',
+  ...over,
+})
+
+test('a same-day absence fits one segment and names the child and the centre', () => {
+  const sms = buildAbsenceSms(absence())
+
+  assert.equal(sms.segments, 1, sms.body)
+  assert.equal(measureSms(sms.body).segments, 1, sms.body)
+  assert.ok(sms.body.includes('সাদিয়া আক্তার'), sms.body)
+  assert.ok(sms.body.endsWith('-আলো কোচিং'), sms.body)
+  // Today is `আজ` and never a date: it is shorter, and it is what a parent reading
+  // at six in the evening actually needs to hear.
+  assert.ok(sms.body.includes('আজ'), sms.body)
+  assert.ok(!sms.body.includes('২৫ আগস্ট'), sms.body)
+})
+
+test('the absence SMS states the empty seat and never a reason for it', () => {
+  const sms = buildAbsenceSms(absence())
+
+  // No blame, no truancy, no threat. The register knows a seat was empty and
+  // nothing else, and a message that guesses gets a child punished for a fever.
+  for (const word of ['ফাঁকি', 'পালিয়ে', 'দোষ', 'শাস্তি', 'জরিমানা', 'সতর্ক']) {
+    assert.ok(!sms.body.includes(word), `${word} must never appear: ${sms.body}`)
+  }
+  // Nor a running total. A pattern is a conversation, not a chip.
+  assert.ok(!/\d+\s*(দিন|বার)/.test(sms.body), sms.body)
+})
+
+test('a back-dated register names the date and never says today', () => {
+  const sms = buildAbsenceSms(absence({ isToday: false }))
+
+  assert.ok(sms.body.includes('২৫ আগস্ট ২০২৬'), sms.body)
+  assert.ok(sms.body.includes('তারিখে'), sms.body)
+  // The one thing that must not happen: a teacher fixing yesterday's register
+  // telling a parent their child missed a class they are sitting in now.
+  assert.ok(!sms.body.includes('আজ'), sms.body)
+})
+
+test('politeness degrades before the fact does', () => {
+  const long = buildAbsenceSms(
+    absence({
+      studentName: 'মোহাম্মদ সাদিয়া রহমান',
+      centerName: 'উত্তরা আইডিয়াল কোচিং সেন্টার ও একাডেমি',
+    }),
+  )
+
+  assert.equal(long.segments, 1, long.body)
+  // The request to check on the child is the first thing to go.
+  assert.ok(!long.body.includes('খোঁজ নেবেন'), long.body)
+  // What survives every rung: which child, which day, and who is telling them.
+  assert.ok(long.body.includes('মোহাম্মদ'), long.body)
+  assert.ok(long.body.includes('আজ'), long.body)
+  assert.ok(long.body.includes('উত্তরা'), long.body)
+})
+
+test('a back-dated register buys a second segment rather than dropping the date', () => {
+  const sms = buildAbsenceSms(
+    absence({
+      isToday: false,
+      studentName: 'মোহাম্মদ সাদিয়া রহমান',
+      centerName: 'উত্তরা আইডিয়াল কোচিং সেন্টার ও একাডেমি',
+    }),
+  )
+
+  // Sixteen characters of Bangla date before the sentence starts. An extra taka is
+  // cheaper than a message about the wrong day, so the ladder runs out and the
+  // date stays — the same trade the fee reminder makes with the month.
+  assert.equal(sms.segments, measureSms(sms.body).segments)
+  assert.ok(sms.body.includes('২৫ আগস্ট ২০২৬'), sms.body)
+  assert.ok(!sms.body.includes('আজ'), sms.body)
+})
+
+test('the WhatsApp absence keeps the batch, the full name, and the benefit of the doubt', () => {
+  const text = buildAbsenceText(
+    absence({
+      studentName: 'মোহাম্মদ সাদিয়া রহমান',
+      centerName: 'উত্তরা আইডিয়াল কোচিং সেন্টার ও একাডেমি',
+    }),
+  )
+
+  assert.ok(text.startsWith('প্রিয় অভিভাবক,'), text)
+  // Nothing is metered here, so nothing is clamped and the batch survives — a
+  // guardian with two children at one centre needs to know which class.
+  assert.ok(text.includes('মোহাম্মদ সাদিয়া রহমান'), text)
+  assert.ok(text.includes('সকাল ৭টা জীববিজ্ঞান'), text)
+  assert.ok(text.includes('উত্তরা আইডিয়াল কোচিং সেন্টার ও একাডেমি'), text)
+  // The sentence the SMS has no room for: a reason is invited before one is
+  // assumed, and the next class is named as an expectation rather than a warning.
+  assert.ok(text.includes('শরীর খারাপ'), text)
+  assert.ok(text.includes('পরের ক্লাসে দেখা হবে'), text)
+})
+
+test('nothing dangles in the WhatsApp absence when the batch has no name', () => {
+  const text = buildAbsenceText(absence({ batchName: null }))
+
+  assert.ok(text.includes('সাদিয়া আক্তার আজ ক্লাসে উপস্থিত ছিল না।'), text)
+  // No stray double space where the batch would have been.
+  assert.ok(!text.includes('  '), text)
+
+  // A blank string is the same absence of a name as null — the batch column is
+  // not null, so an owner who typed spaces is the case that reaches here.
+  assert.equal(text, buildAbsenceText(absence({ batchName: '   ' })))
+})
+
 

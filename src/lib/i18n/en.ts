@@ -166,6 +166,13 @@ export const en: Dictionary = {
     saveFor: (batch: string) => `${batch} — Save attendance`,
     lastClass: (date: string) => `Attendance for the last class — ${date}`,
 
+    /** Worded exactly as `exams.toldOn` — see the note there. */
+    toldOn: (date: string) => `Told ${date} ✓`,
+    noPhoneCount: (n: number) =>
+      `${n} ${n === 1 ? 'guardian' : 'guardians'} with no number`,
+    optedOutCount: (n: number) =>
+      `${n} ${n === 1 ? 'family has' : 'families have'} SMS turned off`,
+
     errors: {
       forbidden: 'You do not have permission to do this.',
       noBatch: 'Batch not found.',
@@ -187,6 +194,23 @@ export const en: Dictionary = {
     lockedRow: 'already corrected once, cannot change again',
     note: 'Note',
     notePlaceholder: 'e.g. class ended early for a holiday',
+  },
+
+  absenceNotices: {
+    title: 'Tell guardians who was not there',
+    /**
+     * Longer than most bodies here, and each clause earns its place: whose phone
+     * sends it, that it is free, that a tick is a record and not a delivery
+     * report, and — last — what the message deliberately does not say. An owner
+     * who expects it to accuse the child will write their own message instead.
+     */
+    body:
+      'Guardians of today’s absences can be told right now — pick a name and your phone’s SMS or WhatsApp opens with the message already written. No credits, and it goes from your own number. The message does not blame anybody; it says the child was not in class and asks the family to check.',
+    nobodyAbsent:
+      'Everybody in this batch was present today. There is nobody to tell.',
+    noNumbers:
+      'None of the absent students have a guardian number saved. Add one and you can message them from here.',
+    saveFirst: 'Save the attendance and the list of absences shows up here.',
   },
 
   channels: {
