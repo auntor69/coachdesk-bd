@@ -919,6 +919,61 @@ export const en: Dictionary = {
     windows: 'Attendance covers the last 30 days, marks the last 120.',
   },
 
+  studentProfile: {
+    title: 'Student',
+    notFound: 'Student not found',
+    notFoundBody: 'Not on the roster, or not one of your batches.',
+    roster: 'Students',
+    edit: 'Fix these details',
+    inactive: 'Inactive',
+    teacherScope:
+      'Attendance and results cover only the batches you teach.',
+
+    contact: {
+      guardian: 'Guardian',
+      student: 'Student',
+      call: 'Call',
+    },
+
+    flags: {
+      title: 'Worth knowing',
+      none: 'Attendance, marks and fees — no bad sign in any of the three right now.',
+    },
+
+    attendance: {
+      title: 'Attendance',
+      window: (days: number) => `Last ${days} days`,
+      noBatches: 'Not enrolled in a batch, so there is no attendance to count.',
+      noClasses: 'No class on record for this batch in this window',
+      marked: 'classes marked',
+      unmarkedNote:
+        'Some classes have no mark against this student at all — check the register.',
+    },
+
+    marks: {
+      title: 'Results',
+      none: 'No exam marks have been entered yet.',
+      noMark: 'No mark entered',
+      limitNote: (n: number) =>
+        n === 1 ? 'Showing the last exam.' : `Showing the last ${n} exams.`,
+    },
+
+    fees: {
+      title: 'Fees',
+      allPaid: 'All fees paid ✓',
+      overdueSince: (date: string) => `Overdue since ${date}`,
+      none: 'No invoice has been raised for this student yet.',
+      due: 'Due',
+      paid: 'Paid',
+      remaining: 'Owing',
+      settled: 'Paid ✓',
+      lateDays: (n: number) => (n === 1 ? 'day late' : 'days late'),
+      hidden: 'Fees are kept by the owner or a manager.',
+      limitNote: (n: number) =>
+        n === 1 ? 'Showing the last month.' : `Showing the last ${n} months.`,
+    },
+  },
+
   progress: {
     title: 'The week',
     lead: 'Let a guardian know how their child is doing before the results come out — one message a week, with no bill in it.',
@@ -1203,7 +1258,7 @@ export const en: Dictionary = {
       added: 'Student added',
 
       editTitle: 'Fix their details',
-      editHint: 'Tap to fix a name or a number',
+      openHint: 'Tap a student to see their attendance, results and fees',
       saved: 'Details saved',
       errors: {
         nameRequired: 'Give the student’s name.',

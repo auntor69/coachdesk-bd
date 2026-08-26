@@ -1626,6 +1626,166 @@ export const bn = {
   },
 
   /**
+   * One student's own page — the screen a parent's phone call gets answered from.
+   *
+   * Nothing here is a judgement, and the omission is the design. `risk` already
+   * owns every sentence that says a student is drifting, and this page borrows
+   * those words rather than writing gentler ones of its own: an owner who reads
+   * 'হাজিরা কমে গেছে' on the at-risk list and something softer on the child's own
+   * page has been handed two opinions and no way to know which one the list acted
+   * on. There is no average mark below for the same reason — `marks_pct` on the
+   * view already answers "how is this child doing", with thresholds behind it.
+   *
+   * So what is left is labels: four panels, a word above each figure, and a
+   * sentence for each panel being empty. The empty ones carry more weight than
+   * they look like they do. A blank attendance panel does not mean the student
+   * stopped coming — it usually means nobody has been taking the register, and
+   * those two facts need different conversations with different people. Each
+   * empty string below says which of the two it is.
+   *
+   * Figures are not interpolated, for the reason `risk` sets out at length:
+   * percentages, ratios and phone numbers stay ASCII in both languages and sit in
+   * their own `.num` elements beside these words. Dates and the counts inside
+   * prose take Bangla numerals, which is why the two `limitNote`s and `window` go
+   * through `digits` instead of hard-coding a number that would then drift from
+   * the constant it describes.
+   */
+  studentProfile: {
+    /** The browser tab and the not-found heading. The page's own is the name. */
+    title: 'শিক্ষার্থীর তথ্য',
+    /**
+     * RLS hides a student a teacher does not teach in exactly the way it hides one
+     * who was never there, so this wording has to be true of both cases. 'পাওয়া
+     * যায়নি' is; 'মুছে ফেলা হয়েছে' would be a guess, and the wrong one more often
+     * than not.
+     */
+    notFound: 'শিক্ষার্থীকে পাওয়া যায়নি',
+    notFoundBody: 'তালিকায় নেই, বা এই শিক্ষার্থী আপনার ব্যাচের কেউ নন।',
+    /** Back where the reader came from, named for where it goes. */
+    roster: 'শিক্ষার্থীর তালিকা',
+    /** Only shown to an owner or manager — a permitted teacher may read, not edit. */
+    edit: 'তথ্য ঠিক করুন',
+    inactive: 'নিষ্ক্রিয়',
+
+    /**
+     * The one sentence that keeps this page honest for a teacher.
+     *
+     * A teacher's read of enrolments, sessions and results is narrowed to the
+     * batches they teach, so the attendance and marks panels below are a slice of
+     * the student and nothing on screen would say so. Worse, a student in none of
+     * their batches renders `attendance.noBatches` — "not enrolled in a batch" —
+     * which is false about the student and true only about the reader.
+     *
+     * So it names the limit once, above both panels, rather than twice as a
+     * disclaimer under each. Not shown to an owner or a manager, who see all of it:
+     * a caveat that is always on screen is a caveat nobody reads.
+     */
+    teacherScope: 'হাজিরা আর ফল — আপনি যে ব্যাচগুলো পড়ান, শুধু সেগুলোর হিসাব দেখছেন।',
+
+    /**
+     * The two numbers to ring, guardian first: a centre phones the parent about a
+     * fee and the student about a class, and the fee is why this screen is open.
+     *
+     * Both print the digits beside the label rather than hiding them in the href.
+     * `tel:` opens nothing on a laptop, and an owner reads the number back to
+     * whoever picks up — the same call `RiskStudentRow` makes, for the same reason.
+     */
+    contact: {
+      guardian: 'অভিভাবক',
+      student: 'শিক্ষার্থী',
+      call: 'ফোন করুন',
+    },
+
+    /**
+     * The at-risk sentences, on the student they are about.
+     *
+     * 'যা খেয়াল করার' and not 'ঝুঁকি': the /at-risk page's heading names a list an
+     * owner chose to open, while this panel appears unbidden on a page somebody
+     * opened for a phone number. The list's own word would read as an accusation
+     * against a child whose only problem might be an unpaid August bill.
+     */
+    flags: {
+      title: 'যা খেয়াল করার',
+      none: 'হাজিরা, নম্বর আর ফি — তিনটির কোনোটিতেই এখন খারাপ লক্ষণ নেই।',
+    },
+
+    /**
+     * Per batch, never one figure for the student.
+     *
+     * A teacher's read of this data is narrowed by RLS to the batches they teach, so
+     * a single "উপস্থিতির হার" here would silently be a per-batch number wearing a
+     * whole-student label. Per batch is also the more useful answer: "পদার্থে ঠিক
+     * আছে, রসায়নে আসা বন্ধ করেছে" is a sentence worth saying to a parent, and an
+     * average of the two is not.
+     */
+    attendance: {
+      title: 'হাজিরা',
+      /** Under the panel heading. The only place the window is stated. */
+      window: (days: number) => `শেষ ${digits(days, 'bn')} দিনের হিসাব`,
+      /** No enrolment at all, so there is nothing to lay out. */
+      noBatches: 'কোনো ব্যাচে ভর্তি নেই, তাই হাজিরার হিসাবও নেই।',
+      /**
+       * A batch with no class on record in the window. Points at the register,
+       * because that is what an eight-week gap almost always means — and a row
+       * reading '0%' would blame the student for it.
+       */
+      noClasses: 'এই সময়ে এই ব্যাচের কোনো ক্লাসের হিসাব নেই',
+      /** Follows 'marked / sessions' in its own element: '7 / 9 হাজিরা নেওয়া হয়েছে'. */
+      marked: 'হাজিরা নেওয়া হয়েছে',
+      /**
+       * When the register was opened more times than this student was marked in it.
+       * Names the khata and not the child: an unmarked class is a missing record,
+       * and treating it as an absence is how a screen invents one.
+       */
+      unmarkedNote: 'কিছু ক্লাসে এই শিক্ষার্থীর হাজিরা লেখাই হয়নি — খাতাটা দেখে নিন।',
+    },
+
+    /**
+     * Every result on its own line, newest first, absences included as rows.
+     *
+     * A child who sat none of the last three tests is the thing this panel exists to
+     * make visible. Dropping those rows — or averaging them in as zeroes — turns
+     * 'আসা বন্ধ করেছে' into 'খারাপ করছে', which sends an owner into the wrong
+     * conversation.
+     */
+    marks: {
+      title: 'পরীক্ষার ফল',
+      none: 'এখনো কোনো পরীক্ষার নম্বর তোলা হয়নি।',
+      /** Sat the exam; nobody has entered a figure yet. Not the same as absent. */
+      noMark: 'নম্বর তোলা হয়নি',
+      limitNote: (n: number) => `শেষ ${digits(n, 'bn')}টি পরীক্ষা দেখানো হচ্ছে।`,
+    },
+
+    /**
+     * Has this family paid — which is a different question from the fee board's.
+     *
+     * The board is a worklist and puts the oldest debt on top. This panel is read by
+     * somebody already looking at one family, and their question is almost always
+     * about this month, so the newest bill goes first.
+     */
+    fees: {
+      title: 'ফি',
+      allPaid: 'সব ফি পরিশোধ ✓',
+      /** Follows nothing; the date is already formatted: 'সময় পেরিয়েছে ১১ আগস্ট ২০২৬ থেকে'. */
+      overdueSince: (date: string) => `সময় পেরিয়েছে ${date} থেকে`,
+      none: 'এই শিক্ষার্থীর জন্য এখনো কোনো ইনভয়েস তৈরি হয়নি।',
+      due: 'শেষ তারিখ',
+      paid: 'জমা',
+      remaining: 'বাকি',
+      settled: 'পরিশোধ ✓',
+      /** Follows an ASCII day count in its own element: '12 দিন দেরি'. */
+      lateDays: (_n: number) => 'দিন দেরি',
+      /**
+       * A teacher without `can_view_fees`. Says who does keep the accounts rather
+       * than what the reader is not, the same as `fees.emptyBodyReadOnly` — a
+       * teacher handed this screen by their owner needs to know who to ask.
+       */
+      hidden: 'ফি-এর হিসাব রাখেন মালিক বা ম্যানেজার।',
+      limitNote: (n: number) => `শেষ ${digits(n, 'bn')} মাসের ইনভয়েস দেখানো হচ্ছে।`,
+    },
+  },
+
+  /**
    * The weekly note home — the one message this product sends that is not about
    * money.
    *
@@ -2188,11 +2348,18 @@ export const bn = {
        */
       editTitle: 'তথ্য ঠিক করুন',
       /**
-       * On the roster row, telling the owner the row is worth tapping. The number
-       * on it is the field most likely to be wrong, and until this screen existed
-       * there was nothing to be done about a wrong one.
+       * On the roster row, telling the reader the row is worth tapping — and where
+       * it goes, which changed. The row used to open the edit form, so this used to
+       * promise a correction; it now opens the student's own page, and the edit form
+       * is a button on it. The rewrite is the honest half of that move: a hint
+       * offering to fix a number, on a row that answers a question instead, is how a
+       * reader learns to stop reading the hints.
+       *
+       * Shown to everyone with rows now, not only to whoever may edit. A teacher the
+       * owner ticked can read this list and cannot change it, and until the student's
+       * page existed their rows did nothing when tapped.
        */
-      editHint: 'নম্বর বা নাম ঠিক করতে ট্যাপ করুন',
+      openHint: 'হাজিরা, ফল আর ফি দেখতে শিক্ষার্থীর নামে ট্যাপ করুন',
       saved: 'তথ্য সেভ হয়েছে',
       errors: {
         nameRequired: 'শিক্ষার্থীর নাম লিখুন।',

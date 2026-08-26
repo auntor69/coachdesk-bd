@@ -1,7 +1,7 @@
 import Link from 'next/link'
 
 import { Card } from '@/components/ui'
-import { pagePermission, isStaffAdmin, getSession } from '@/lib/auth/session'
+import { pagePermission, getSession } from '@/lib/auth/session'
 import { createClient } from '@/lib/supabase/server'
 import { formatBdMobile } from '@/lib/bd/phone'
 import { MAX_IMPORT_ROWS } from '@/lib/bd/roster'
@@ -32,12 +32,6 @@ export default async function StudentsPage() {
   const locale = session.locale
   const d = dict(locale)
   const t = d.settings.students
-
-  // Whether a row is a link. A permitted teacher may read this list and admit to it
-  // and may not edit it — see 20260811000019, which grants that box SELECT and
-  // INSERT and no UPDATE. An unclickable row is the honest rendering of that; a link
-  // to a screen that refuses them is not.
-  const mayEdit = isStaffAdmin(session)
 
   const { data: students } = await supabase
     .from('students')
@@ -87,11 +81,10 @@ export default async function StudentsPage() {
             <p className="mt-1 text-ink-soft">
               {limit === null ? t.count(activeCount) : t.used(activeCount, limit)}
             </p>
-            {/* Only where it is true. A row that does nothing when tapped is a
-                smaller disappointment than a line of copy that promised it would. */}
-            {mayEdit && rows.length > 0 && (
-              <p className="text-sm text-ink-faint">{t.editHint}</p>
-            )}
+            {/* Every reader who gets this far can open a student, so the hint is
+                unconditional now — it was gated on `mayEdit` when the row was an
+                edit link and a teacher's row did nothing when tapped. */}
+            {rows.length > 0 && <p className="text-sm text-ink-faint">{t.openHint}</p>}
           </div>
           <Link
             href="/settings/students/new"
@@ -179,22 +172,30 @@ export default async function StudentsPage() {
 
             return (
               <li key={row.id}>
-                {mayEdit ? (
-                  // The whole row, not a pencil in the corner: the thing an owner
-                  // wants to fix is usually the number they are already looking at,
-                  // and on the phone this is held in one hand.
-                  <Link
-                    href={`/settings/students/${row.id}`}
-                    className="block rounded-xl border border-line bg-white px-4 py-3
-                      hover:border-brand-300 active:bg-brand-50"
-                  >
-                    {body}
-                  </Link>
-                ) : (
-                  <div className="rounded-xl border border-line bg-white px-4 py-3">
-                    {body}
-                  </div>
-                )}
+                {/*
+                  The whole row, and it opens the student rather than the edit form.
+                  This is the only roster in the app, so it is the only way anybody
+                  reaches a student — a row that went straight to a form left the
+                  student's own page reachable from nowhere but the at-risk list,
+                  which is to say invisible to every centre whose students are fine.
+
+                  Editing is one tap further, on a button at the top of that page,
+                  and the tap is cheaper than it looks: the field most likely to be
+                  wrong is the guardian's number, which is printed on this row, so an
+                  owner checking the roster never taps in until they have found the
+                  one to fix.
+
+                  Clickable for every reader who gets this far, including a permitted
+                  teacher whose rows used to do nothing — they may not edit a student
+                  and there was never a reason they could not read one.
+                */}
+                <Link
+                  href={`/students/${row.id}`}
+                  className="block rounded-xl border border-line bg-white px-4 py-3
+                    hover:border-brand-300 active:bg-brand-50"
+                >
+                  {body}
+                </Link>
               </li>
             )
           })}

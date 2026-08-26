@@ -1,0 +1,424 @@
+/**
+ * The student profile's arithmetic.
+ *
+ * Three shapers, and what is tested is the part that inverts silently: which batches
+ * appear when nothing has been recorded against them, whether a rate matches the one
+ * SQL computes for the same rows, whether an absence survives to the screen, and
+ * whether a credit on one invoice pays off a debt on another. None of those is
+ * visible in a screenshot and every one of them is a wrong sentence said to a parent.
+ *
+ * Relative imports with extensions — `node --test` on TS, no tsconfig paths.
+ */
+import { test } from 'node:test'
+import assert from 'node:assert/strict'
+
+import {
+  attendanceByBatch,
+  examMarks,
+  feeHistory,
+  PROFILE_ATTENDANCE_DAYS,
+  PROFILE_EXAM_LIMIT,
+  PROFILE_INVOICE_LIMIT,
+  type EnrolledBatch,
+  type ProfileInvoiceRow,
+  type ProfileMarkRow,
+  type ProfileResultRow,
+  type ProfileSessionRow,
+} from '../src/lib/students/profile.ts'
+
+const PHYSICS: EnrolledBatch = { batchId: 'b-phy', label: 'HSC 26 Physics' }
+const CHEM: EnrolledBatch = { batchId: 'b-chem', label: 'HSC 26 Chemistry' }
+
+function session(id: string, batchId: string, date = '2026-08-01'): ProfileSessionRow {
+  return { id, batch_id: batchId, session_date: date }
+}
+
+function mark(sessionId: string, status: ProfileMarkRow['status']): ProfileMarkRow {
+  return { session_id: sessionId, status }
+}
+
+test('the windows are the documented ones', () => {
+  // Guarding the numbers rather than the reasoning: each is a screen decision with
+  // an argument written above it, and a silent edit to one changes what an owner is
+  // told about a child without changing anything a reader of the diff would notice.
+  assert.equal(PROFILE_ATTENDANCE_DAYS, 56)
+  assert.equal(PROFILE_EXAM_LIMIT, 12)
+  assert.equal(PROFILE_INVOICE_LIMIT, 12)
+})
+
+test('attendance: an enrolled batch with nothing recorded is still a row', () => {
+  // The most actionable row the panel can produce — the register for that batch has
+  // stopped being taken — and the one a query-driven list would silently omit.
+  const rows = attendanceByBatch([PHYSICS, CHEM], [session('s1', 'b-phy')], [mark('s1', 'present')])
+
+  assert.equal(rows.length, 2)
+  const chem = rows.find((r) => r.batchId === 'b-chem')
+  assert.ok(chem)
+  assert.equal(chem.sessions, 0)
+  assert.equal(chem.marked, 0)
+  assert.equal(chem.ratePct, null)
+})
+
+test('attendance: rate is (present + late) over (present + late + absent)', () => {
+  // The formula in 20260811000011, copied exactly. Excused leaves the denominator
+  // rather than counting against the student: 3 of 4 counted, not 3 of 5.
+  const rows = attendanceByBatch(
+    [PHYSICS],
+    ['s1', 's2', 's3', 's4', 's5'].map((id) => session(id, 'b-phy')),
+    [
+      mark('s1', 'present'),
+      mark('s2', 'present'),
+      mark('s3', 'late'),
+      mark('s4', 'absent'),
+      mark('s5', 'excused'),
+    ],
+  )
+
+  const row = rows[0]
+  assert.equal(row.sessions, 5)
+  assert.equal(row.marked, 5)
+  assert.equal(row.present, 2)
+  assert.equal(row.late, 1)
+  assert.equal(row.absent, 1)
+  assert.equal(row.excused, 1)
+  assert.equal(row.counted, 4)
+  assert.equal(row.ratePct, 75)
+})
+
+test('attendance: every absence excused leaves no rate at all', () => {
+  // Zero would say the student attended nothing. Null says nobody counted, which is
+  // what happened — the same call the rate card and the SQL view both make.
+  const rows = attendanceByBatch([PHYSICS], [session('s1', 'b-phy')], [mark('s1', 'excused')])
+
+  assert.equal(rows[0].counted, 0)
+  assert.equal(rows[0].ratePct, null)
+  assert.equal(rows[0].excused, 1)
+})
+
+test('attendance: sessions held and marks against the student are counted apart', () => {
+  // The gap between them is a register somebody stopped taking, which needs a
+  // different conversation from a child who stopped turning up. A panel that only
+  // knew "2 present" would report 100% attendance for a student marked twice in ten.
+  const rows = attendanceByBatch(
+    [PHYSICS],
+    ['s1', 's2', 's3', 's4', 's5'].map((id) => session(id, 'b-phy')),
+    [mark('s1', 'present'), mark('s2', 'present')],
+  )
+
+  assert.equal(rows[0].sessions, 5)
+  assert.equal(rows[0].marked, 2)
+  assert.equal(rows[0].ratePct, 100)
+})
+
+test('attendance: worst rate first, unmeasured batches last', () => {
+  const rows = attendanceByBatch(
+    [PHYSICS, CHEM, { batchId: 'b-math', label: 'HSC 26 Maths' }],
+    [session('s1', 'b-phy'), session('s2', 'b-chem')],
+    [mark('s1', 'present'), mark('s2', 'absent')],
+  )
+
+  // Chemistry 0%, Physics 100%, Maths nothing recorded.
+  assert.deepEqual(
+    rows.map((r) => r.batchId),
+    ['b-chem', 'b-phy', 'b-math'],
+  )
+})
+
+test('attendance: two enrolments pointing at one batch make one row', () => {
+  // A paused enrolment and its replacement. Two identical lines side by side reads
+  // as the screen having double-counted something.
+  const rows = attendanceByBatch(
+    [PHYSICS, { batchId: 'b-phy', label: 'HSC 26 Physics' }],
+    [session('s1', 'b-phy')],
+    [mark('s1', 'present')],
+  )
+
+  assert.equal(rows.length, 1)
+  assert.equal(rows[0].sessions, 1)
+  assert.equal(rows[0].marked, 1)
+})
+
+test('attendance: a mark whose session is unknown is dropped, not reattributed', () => {
+  // Means the two queries' windows disagree. Putting the class in some other batch
+  // would be a wrong figure; dropping it is a figure that is merely incomplete.
+  const rows = attendanceByBatch([PHYSICS], [session('s1', 'b-phy')], [mark('s-orphan', 'absent')])
+
+  assert.equal(rows[0].marked, 0)
+  assert.equal(rows[0].absent, 0)
+  assert.equal(rows[0].ratePct, null)
+})
+
+test('attendance: a session for a batch the student left is ignored', () => {
+  const rows = attendanceByBatch([PHYSICS], [session('s1', 'b-phy'), session('s9', 'b-old')], [])
+
+  assert.equal(rows.length, 1)
+  assert.equal(rows[0].sessions, 1)
+})
+
+test('attendance: no enrolments is an empty panel and not a zero', () => {
+  assert.deepEqual(attendanceByBatch([], [session('s1', 'b-phy')], [mark('s1', 'present')]), [])
+})
+
+test('attendance: null rows from a failed query are survivable', () => {
+  const rows = attendanceByBatch([PHYSICS], null, undefined)
+  assert.equal(rows.length, 1)
+  assert.equal(rows[0].sessions, 0)
+  assert.equal(rows[0].ratePct, null)
+})
+
+function result(
+  id: string,
+  obtained: string | number | null,
+  opts: {
+    title?: string
+    total?: string | number | null
+    on?: string
+    batch?: string | null
+    absent?: boolean
+  } = {},
+): ProfileResultRow {
+  return {
+    id,
+    obtained_marks: obtained,
+    is_absent: opts.absent ?? false,
+    exams: {
+      title: opts.title ?? `Test ${id}`,
+      total_marks: opts.total ?? 100,
+      exam_date: opts.on ?? '2026-08-01',
+      batch_id: opts.batch ?? 'b-phy',
+    },
+  }
+}
+
+const LABELS = new Map([
+  ['b-phy', 'HSC 26 Physics'],
+  ['b-chem', 'HSC 26 Chemistry'],
+])
+
+test('marks: ordered by the exam date, not the order they were entered', () => {
+  // A teacher typing last week's test in on Sunday evening has not made it this
+  // week's news. This is the screen a result gets read off to a parent.
+  const rows = examMarks(
+    [
+      result('r1', 40, { on: '2026-06-01' }),
+      result('r2', 50, { on: '2026-08-10' }),
+      result('r3', 60, { on: '2026-07-05' }),
+    ],
+    LABELS,
+  )
+
+  assert.deepEqual(
+    rows.map((r) => r.resultId),
+    ['r2', 'r3', 'r1'],
+  )
+})
+
+test('marks: two exams on one day hold their order across renders', () => {
+  const rows = examMarks(
+    [result('r1', 40, { title: 'Zoology', on: '2026-08-01' }), result('r2', 50, { title: 'Algebra', on: '2026-08-01' })],
+    LABELS,
+  )
+
+  assert.deepEqual(
+    rows.map((r) => r.title),
+    ['Algebra', 'Zoology'],
+  )
+})
+
+test('marks: an absence is a row with no figure, never a zero', () => {
+  // Averaging an absence in as zero is how a screen turns "stopped turning up" into
+  // "doing badly", and dropping it hides the thing worth a phone call.
+  const rows = examMarks([result('r1', 0, { absent: true })], LABELS)
+
+  assert.equal(rows.length, 1)
+  assert.equal(rows[0].absent, true)
+  assert.equal(rows[0].obtained, null)
+  assert.equal(rows[0].pct, null)
+})
+
+test('marks: an unentered result is not the same row as an absence', () => {
+  const rows = examMarks([result('r1', null)], LABELS)
+
+  assert.equal(rows[0].absent, false)
+  assert.equal(rows[0].obtained, null)
+  assert.equal(rows[0].pct, null)
+})
+
+test('marks: numeric over the wire is a string and still divides', () => {
+  // PostgREST serialises numeric as a string. '37.5' / '50' has to be 75, not NaN.
+  const rows = examMarks([result('r1', '37.5', { total: '50' })], LABELS)
+
+  assert.equal(rows[0].obtained, 37.5)
+  assert.equal(rows[0].total, 50)
+  assert.equal(rows[0].pct, 75)
+})
+
+test('marks: a zero total leaves no percentage rather than dividing by it', () => {
+  const rows = examMarks([result('r1', 0, { total: 0 })], LABELS)
+
+  assert.equal(rows[0].obtained, 0)
+  assert.equal(rows[0].pct, null)
+})
+
+test('marks: an embed arriving as a one-element array is read the same way', () => {
+  const row: ProfileResultRow = {
+    id: 'r1',
+    obtained_marks: 80,
+    is_absent: false,
+    exams: [{ title: 'Weekly', total_marks: 100, exam_date: '2026-08-01', batch_id: 'b-chem' }],
+  }
+
+  const rows = examMarks([row], LABELS)
+  assert.equal(rows[0].pct, 80)
+  assert.equal(rows[0].batchLabel, 'HSC 26 Chemistry')
+})
+
+test('marks: a result with no exam behind it is dropped', () => {
+  // RLS hid the exam, or it was deleted between the two reads. Either way there is
+  // no title, no total and no date to sort by.
+  const row: ProfileResultRow = { id: 'r1', obtained_marks: 80, is_absent: false, exams: null }
+  assert.deepEqual(examMarks([row], LABELS), [])
+})
+
+test('marks: a batch with no label gets none rather than a wrong one', () => {
+  // A result from a batch the student has left, which the label map does not cover.
+  const rows = examMarks([result('r1', 70, { batch: 'b-gone' })], LABELS)
+  assert.equal(rows[0].batchLabel, null)
+})
+
+function invoice(
+  id: string,
+  month: string | null,
+  due: string | null,
+  net: string | number,
+  paid: string | number,
+  remaining: string | number,
+): ProfileInvoiceRow {
+  return {
+    id,
+    period_month: month,
+    due_date: due,
+    net_bdt: net,
+    paid_bdt: paid,
+    remaining_bdt: remaining,
+  }
+}
+
+const TODAY = '2026-08-26'
+
+test('fees: newest month first — the opposite of the fee board, on purpose', () => {
+  // The board is a worklist and the oldest debt goes on top. This panel answers "has
+  // this family paid", asked by somebody looking at that family, and the answer is
+  // almost always about the current month.
+  const { lines } = feeHistory(
+    [
+      invoice('i1', '2026-06-01', '2026-06-10', 2000, 2000, 0),
+      invoice('i2', '2026-08-01', '2026-08-10', 2000, 0, 2000),
+      invoice('i3', '2026-07-01', '2026-07-10', 2000, 2000, 0),
+    ],
+    TODAY,
+  )
+
+  assert.deepEqual(
+    lines.map((l) => l.invoiceId),
+    ['i2', 'i3', 'i1'],
+  )
+})
+
+test('fees: a credit on one invoice does not pay off a debt on another', () => {
+  // A family that overpaid ৳500 in June and skipped July owes July in full. Netting
+  // the two would tell an owner they are square — see tallyOutstanding.
+  const { outstanding, credit } = feeHistory(
+    [
+      invoice('i1', '2026-06-01', '2026-06-10', 2000, 2500, -500),
+      invoice('i2', '2026-07-01', '2026-07-10', 2000, 0, 2000),
+    ],
+    TODAY,
+  )
+
+  assert.equal(outstanding, 2000)
+  assert.equal(credit, 500)
+})
+
+test('fees: overdueSince is the oldest unpaid due date', () => {
+  // The figure that turns "৳4,000 owed" into a sentence worth saying out loud.
+  const { overdueSince } = feeHistory(
+    [
+      invoice('i1', '2026-06-01', '2026-06-10', 2000, 0, 2000),
+      invoice('i2', '2026-07-01', '2026-07-10', 2000, 0, 2000),
+    ],
+    TODAY,
+  )
+
+  assert.equal(overdueSince, '2026-06-10')
+})
+
+test('fees: a settled invoice past its date is not overdue', () => {
+  const { overdueSince, outstanding } = feeHistory(
+    [invoice('i1', '2026-06-01', '2026-06-10', 2000, 2000, 0)],
+    TODAY,
+  )
+
+  assert.equal(overdueSince, null)
+  assert.equal(outstanding, 0)
+})
+
+test('fees: an invoice paid in advance of its due date is not late', () => {
+  // daysLate is negative before the date, matching the fee board's convention, so a
+  // single comparison tells the row whether to shout.
+  const { lines, overdueSince } = feeHistory(
+    [invoice('i1', '2026-09-01', '2026-09-10', 2000, 0, 2000)],
+    TODAY,
+  )
+
+  assert.equal(lines[0].daysLate, -15)
+  assert.equal(lines[0].late, false)
+  assert.equal(overdueSince, null)
+})
+
+test('fees: due today is not yet late', () => {
+  const { lines } = feeHistory([invoice('i1', '2026-08-01', TODAY, 2000, 0, 2000)], TODAY)
+
+  assert.equal(lines[0].daysLate, 0)
+  assert.equal(lines[0].late, false)
+})
+
+test('fees: a missing period month falls back to the due date, never to blank', () => {
+  // Same fallback the fee board's toRow uses. A row headed with the wrong month is
+  // worse than one headed with none, and a row headed with none is worse than this.
+  const { lines } = feeHistory([invoice('i1', null, '2026-07-10', 2000, 0, 2000)], TODAY)
+
+  assert.equal(lines[0].periodMonth, '2026-07-01')
+})
+
+test('fees: an invoice with no id at all is dropped', () => {
+  // The view types every column nullable and never returns one without an id; with
+  // no id there is no key to render under.
+  const { lines } = feeHistory(
+    [invoice('i1', '2026-08-01', '2026-08-10', 2000, 0, 2000), { ...invoice('x', null, null, 0, 0, 0), id: null }],
+    TODAY,
+  )
+
+  assert.equal(lines.length, 1)
+  assert.equal(lines[0].invoiceId, 'i1')
+})
+
+test('fees: numeric strings from the view add up as money', () => {
+  const { lines, outstanding } = feeHistory(
+    [invoice('i1', '2026-08-01', '2026-08-10', '2000.00', '500.50', '1499.50')],
+    TODAY,
+  )
+
+  assert.equal(lines[0].net, 2000)
+  assert.equal(lines[0].paid, 500.5)
+  assert.equal(outstanding, 1499.5)
+})
+
+test('fees: nothing billed is an empty panel, not a paid-up one', () => {
+  const empty = feeHistory(null, TODAY)
+
+  assert.deepEqual(empty.lines, [])
+  assert.equal(empty.outstanding, 0)
+  assert.equal(empty.credit, 0)
+  assert.equal(empty.overdueSince, null)
+})

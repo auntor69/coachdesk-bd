@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react'
+import Link from 'next/link'
 
 import { formatBdMobile } from '@/lib/bd/phone'
 import { formatTaka } from '@/lib/money'
@@ -103,11 +104,67 @@ function Reason({ reason, t }: { reason: RiskReason; t: Dictionary['risk'] }) {
 }
 
 /**
+ * How loud it is, as a word in a chip.
+ *
+ * Exported because the student's own page shows the same chip, and a second copy
+ * of `LEVEL_CHIP` is how the two screens end up disagreeing about which red means
+ * "call today".
+ */
+export function RiskLevelChip({
+  level,
+  t,
+}: {
+  level: RiskStudent['level']
+  t: Dictionary['risk']
+}) {
+  return (
+    <span
+      className={`shrink-0 rounded-full border px-2 py-0.5 text-xs font-medium ${LEVEL_CHIP[level]}`}
+    >
+      {t.levels[level]}
+    </span>
+  )
+}
+
+/**
+ * Every reason under one student, as a list.
+ *
+ * Exported for the student's own profile, which shows these sentences without the
+ * name and phone number wrapped round them — it already has both at the top of the
+ * page. Sharing the list rather than re-rendering it there is the point: the three
+ * screens that tell an owner a child is drifting have to say it in the same words,
+ * or the owner is left comparing descriptions and guessing which is current.
+ */
+export function RiskReasons({
+  reasons,
+  t,
+}: {
+  reasons: RiskReason[]
+  t: Dictionary['risk']
+}) {
+  return (
+    <ul className="flex flex-col gap-0.5 text-sm text-ink-soft">
+      {reasons.map((reason) => (
+        <li key={reason.kind}>
+          <Reason reason={reason} t={t} />
+        </li>
+      ))}
+    </ul>
+  )
+}
+
+/**
  * One student: who they are, how loud it is, and every reason spelled out.
  *
  * The reasons are a list and not a summary. "Two signals" tells an owner to open
  * something; "attendance dropped to 55%, fee unpaid 12 days" tells them what to
  * say when the guardian picks up, which is the only work this screen saves.
+ *
+ * The name is a link to the student's own page, which is where the rest of the
+ * picture is — every mark, every bill, and which batch the absences are in. Both
+ * screens that render this row are staff-admin, so the link never lands on a
+ * refusal. It is the name and not the whole row on purpose: the row also holds a
+ * `tel:` link, and a nested anchor is not a thing HTML has.
  *
  * The call link is not suppressed by an SMS opt-out, matching the reminder chips:
  * a family that asked not to be texted has not asked never to be spoken to.
@@ -125,25 +182,22 @@ export function RiskStudentRow({ student, t }: { student: RiskStudent; t: Dictio
     <li className="border-t border-line pt-3 first:border-0 first:pt-0">
       <div className="flex items-baseline justify-between gap-3">
         <p className="min-w-0 truncate font-medium text-ink">
-          {student.name}
+          <Link
+            href={`/students/${student.studentId}`}
+            className="underline decoration-line underline-offset-2 hover:decoration-brand-500"
+          >
+            {student.name}
+          </Link>
           {student.code && (
             <span className="num ml-2 text-xs text-ink-faint">{student.code}</span>
           )}
         </p>
-        <span
-          className={`shrink-0 rounded-full border px-2 py-0.5 text-xs font-medium ${LEVEL_CHIP[student.level]}`}
-        >
-          {t.levels[student.level]}
-        </span>
+        <RiskLevelChip level={student.level} t={t} />
       </div>
 
-      <ul className="mt-1 flex flex-col gap-0.5 text-sm text-ink-soft">
-        {student.reasons.map((reason) => (
-          <li key={reason.kind}>
-            <Reason reason={reason} t={t} />
-          </li>
-        ))}
-      </ul>
+      <div className="mt-1">
+        <RiskReasons reasons={student.reasons} t={t} />
+      </div>
 
       {student.guardianPhone ? (
         <a
