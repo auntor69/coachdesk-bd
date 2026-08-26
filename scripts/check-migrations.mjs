@@ -1,6 +1,6 @@
 /**
  * Applies every migration to a throwaway Postgres and reports what was created,
- * then checks the two structural invariants that the whole tenant boundary
+ * then checks the three structural invariants that the whole tenant boundary
  * rests on. Run: node scripts/check-migrations.mjs
  */
 import { bootDatabase } from './lib/pg-harness.mjs'
@@ -185,6 +185,95 @@ not belong in the public schema where PostgREST will expose it.`,
   }
 
   console.log(`Views: ${views.rows[0].n}, all security_invoker.`)
+
+  // -------------------------------------------------------------------------
+  // No function in public may be callable by a signed-out request.
+  //
+  // This one is not Postgres's doing, which is what makes it dangerous. Postgres
+  // alone grants EXECUTE on a new function to PUBLIC, and a migration writing
+  // `revoke execute on function … from public` looks like it has closed the
+  // door. On Supabase the door is a *second*, explicit grant: the project ships
+  //
+  //   alter default privileges in schema public grant all on functions to anon
+  //
+  // so every `create function` in public silently becomes callable by anon, and
+  // revoking from PUBLIC does not touch it. The harness reproduces those default
+  // privileges before applying any migration precisely so this is catchable here
+  // — see the note in lib/pg-harness.mjs.
+  //
+  // PostgREST exposes public functions at /rest/v1/rpc/<name> using the anon key,
+  // which is in the browser bundle by design. So the gap is not theoretical
+  // privilege: it is a URL anybody can POST to. Two of the nine functions here
+  // move money and messages — claim_sms_batch hands out queued SMS, and
+  // import_students writes minors' names and guardians' phone numbers — and one,
+  // platform_centers, is SECURITY DEFINER, which means an anon caller would run
+  // it with the owner's rights and read every centre on the platform.
+  //
+  // Extension functions are excluded by pg_depend rather than by name. citext and
+  // pgcrypto install ~84 functions into public and they all carry the same anon
+  // grant; they are pure helpers with no data access, they are not ours to
+  // revoke, and listing them would bury the one line that matters. Excluding
+  // them by dependency means a newly installed extension does not need this
+  // script edited, while every function *we* write is caught.
+  // -------------------------------------------------------------------------
+  const NOT_FROM_EXTENSION = `
+    not exists (
+      select 1 from pg_depend d
+      where d.classid = 'pg_proc'::regclass and d.objid = p.oid and d.deptype = 'e'
+    )`
+
+  const anonCallable = await db.query(`
+    select p.proname, pg_get_function_identity_arguments(p.oid) as args,
+           p.prosecdef as security_definer
+    from pg_proc p
+    join pg_namespace n on n.oid = p.pronamespace and n.nspname = 'public'
+    where has_function_privilege('anon', p.oid, 'EXECUTE')
+      and ${NOT_FROM_EXTENSION}
+    order by p.proname;
+  `)
+
+  const ourFunctions = await db.query(`
+    select count(*)::int as n
+    from pg_proc p
+    join pg_namespace n on n.oid = p.pronamespace and n.nspname = 'public'
+    where ${NOT_FROM_EXTENSION};
+  `)
+
+  if (anonCallable.rows.length > 0) {
+    console.error(
+      `\nFUNCTION CALLABLE BY ANON — ${anonCallable.rows.length} function(s) in public can be executed by a signed-out request:\n`,
+    )
+    for (const f of anonCallable.rows) {
+      console.error(
+        `  ${f.proname}(${f.args})${f.security_definer ? '   [SECURITY DEFINER — runs as owner]' : ''}`,
+      )
+    }
+    console.error(
+      `
+PostgREST publishes these at /rest/v1/rpc/<name>, reachable with the anon key
+that ships in the browser bundle. Add the revoke to the migration that creates
+the function, in the same statement block:
+
+  revoke all on function <name>(<args>) from anon;
+
+A "revoke ... from public" is NOT enough. Supabase's own
+"alter default privileges ... grant all on functions to anon" is a separate
+grant, and it survives that revoke — which is the whole reason this check
+exists rather than a code review.
+
+Name anon explicitly even when also revoking from authenticated: the argument
+list has to match the signature exactly, so an overloaded function needs one
+revoke per signature.
+
+If a function genuinely must serve signed-out callers, it needs a comment in the
+migration saying why, and this check needs to learn about it deliberately.`,
+    )
+    process.exit(1)
+  }
+
+  console.log(
+    `Functions: ${ourFunctions.rows[0].n} of ours in public, none callable by anon.`,
+  )
 
   await db.close()
 } catch (error) {
