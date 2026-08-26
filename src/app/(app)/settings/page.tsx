@@ -13,7 +13,7 @@ import {
 import { createClient } from '@/lib/supabase/server'
 import { formatBdMobile } from '@/lib/bd/phone'
 import { dict, DEFAULT_LOCALE } from '@/lib/i18n'
-import { planName, hasStaff, has } from '@/lib/plans'
+import { planName, hasStaff, has, overStaffSeats } from '@/lib/plans'
 
 /** getSession, not pageRole — see the note on teach/page.tsx's own. */
 export async function generateMetadata() {
@@ -194,8 +194,15 @@ export default async function SettingsPage() {
            * led to a list containing the owner and an add button the action refuses,
            * which reads as a feature withheld rather than a plan that does not have
            * colleagues in it.
+           *
+           * Unless the centre has colleagues anyway. A downgrade leaves the teacher
+           * rows behind — see overStaffSeats — and the screen this row leads to is
+           * the only one that can switch them off, so hiding it stranded an owner
+           * who was being told on the plan screen that they were over their seats.
+           * The count beside the label is the number that is wrong.
            */
-          ...(hasStaff(session.plan)
+          ...(hasStaff(session.plan) ||
+          overStaffSeats(session.plan, staffOnly.teacherCount)
             ? [
                 {
                   href: '/settings/teachers' as Route,

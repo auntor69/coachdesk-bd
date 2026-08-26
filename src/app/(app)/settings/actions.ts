@@ -1546,12 +1546,6 @@ export async function toggleTeacherActive(
   const supabase = await createClient()
   const centerId = session.active.centerId
 
-  // The only row a solo plan has is the owner's own, and switching it off would
-  // leave the centre with no teacher at all.
-  if (!hasStaff(session.plan)) {
-    return { error: t.errors.staffNeedsCenter }
-  }
-
   const { data: teacher } = await supabase
     .from('teachers')
     .select('id, user_id')
@@ -1562,6 +1556,30 @@ export async function toggleTeacherActive(
   if (!teacher) return { error: t.teachers.errors.notFound }
 
   const active = String(formData.get('active') ?? '') === 'true'
+
+  /*
+   * Switching a teacher off is allowed on every plan, including the ones with no
+   * staff features at all. This used to refuse them outright, on the reasoning
+   * that "the only row a solo plan has is the owner's own" — which is true of a
+   * centre that started on a teacher tier and false of one that was moved down to
+   * it. `setCenterPlan` writes the new plan and only warns when the centre is over
+   * its seat count, so a centre that drops from six teachers to a one-seat plan
+   * keeps five rows it is not paying for, and this refusal was the reason it could
+   * never get rid of them: /settings/plan reported 6/1 and the one screen that
+   * could fix it would not act. A centre may always shrink toward its plan.
+   *
+   * Growing past it is still refused, by the seat check below — unchanged, and the
+   * reason the two directions are not one rule.
+   *
+   * The single row this does refuse is the reader's own, and only on a plan with
+   * no staff features. That plan draws the list solely to let an over-cap owner
+   * trim it, so an owner who switched themselves off would land back on the solo
+   * card holding no teacher row, with nothing on screen offering it back. Their
+   * own seat is the one the plan actually covers.
+   */
+  if (!hasStaff(session.plan) && !active && teacher.user_id === session.userId) {
+    return { error: t.teachers.errors.keepOwnSeat }
+  }
 
   // Reactivating has to respect the plan limit, or "off then on" would be a way
   // past maxTeachers on the free plan.

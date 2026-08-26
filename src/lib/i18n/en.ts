@@ -938,6 +938,7 @@ export const en: Dictionary = {
       'Turned back on, they can take attendance and enter marks for their batches again.',
     deactivate: 'Turn this teacher off',
     reactivate: 'Turn back on',
+    yourSeat: 'Your own record — this plan’s one seat.',
   },
 
   teacherForm: {
@@ -1532,6 +1533,9 @@ export const en: Dictionary = {
       soloTitle: 'Teachers & permissions is for coaching centres',
       soloBody: (plan: string, center: string) =>
         `${plan} is built for one teacher — you. Adding staff, and controlling what each of them can see and do, comes with the ${center} plan.`,
+      trimTitle: 'More teachers switched on than this plan covers',
+      trimBody: (plan: string, active: number, limit: number) =>
+        `${plan} covers ${limit} ${limit === 1 ? 'teacher' : 'teachers'}, and ${active} are switched on here. Switch off the ones who no longer teach at your centre — the attendance and marks they entered stay. Until you do, they can still take attendance for their own batches, but they no longer see fees or send SMS.`,
       addedWithLogin: 'Teacher and their login created',
       addedNoLogin: 'Teacher added (no login)',
       linked: (name: string) =>
@@ -1549,6 +1553,8 @@ export const en: Dictionary = {
           'A login needs a mobile number — the number is their ID.',
         loginFailed: 'The login was not created. Please try again.',
         notFound: 'Teacher not found.',
+        keepOwnSeat:
+          'This is your own teacher record — the one seat this plan covers. Switch a colleague off instead.',
       },
     },
 

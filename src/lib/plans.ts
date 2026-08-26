@@ -407,6 +407,31 @@ export function hasStaff(plan: PlanLimits): boolean {
 }
 
 /**
+ * Whether this centre has more teachers switched on than its plan covers.
+ *
+ * A state a centre cannot get into by itself, and one the app has to be able to
+ * describe: `setCenterPlan` moves a customer down a tier by writing the plan and
+ * warning the founder, so a centre with six teachers can end the day on a plan
+ * that covers one. The teacher rows outlive the plan that bought them — nothing
+ * deletes staff on a downgrade, and nothing should, because the fix belongs to the
+ * owner and it takes them a minute.
+ *
+ * Distinct from `wouldExceed`, which asks whether there is room for one more. This
+ * asks whether what is already there fits, and only that answer can turn a screen
+ * on: three of them hide their staff row or their staff list on a one-seat plan —
+ * the settings hub, the plan screen and /settings/teachers itself — and this is
+ * what puts all three back, so an over-cap owner is told and has somewhere to go.
+ *
+ * `activeTeachers` and not every row: a teacher who has been switched off costs
+ * nothing and holds no seat, which is the whole shape of the way back down.
+ */
+export function overStaffSeats(plan: PlanLimits, activeTeachers: number): boolean {
+  const limit = plan.maxTeachers
+  if (limit === null) return false
+  return activeTeachers > limit
+}
+
+/**
  * How many more of `what` the plan still allows; null when unlimited.
  *
  * wouldExceed answers "may I add one more", which is the wrong question for a

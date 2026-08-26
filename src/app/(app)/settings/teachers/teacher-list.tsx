@@ -27,6 +27,8 @@ export type TeacherRow = {
   /** Already a sentence — see settings.teachers.batches for why. */
   batchLabel: string
   permissions: Record<string, boolean>
+  /** The reader's own teacher record, which `trim` refuses to switch off. */
+  isSelf: boolean
 }
 
 export function TeacherList({
@@ -34,11 +36,24 @@ export function TeacherList({
   t,
   permissions: labels,
   common,
+  trim = false,
 }: {
   teachers: TeacherRow[]
   t: T<'teacherList'>
   permissions: T<'teacherPermissions'>
   common: T<'common'>
+  /**
+   * Names and one button, for a plan with no staff features that has more
+   * teachers switched on than it covers.
+   *
+   * Everything this hides is a thing that plan does not sell: the permission
+   * checkboxes (there is nobody to delegate to), the granted-permissions summary
+   * (those grants no longer take effect — see lib/auth/session), and the button
+   * that switches a teacher back on (`toggleTeacherActive` would refuse it at the
+   * seat cap anyway, and offering growth on the screen for shrinking is a way to
+   * be told no). What is left is who is switched on and how to change that.
+   */
+  trim?: boolean
 }) {
   /**
    * Which of the two forms spoke last.
@@ -87,6 +102,38 @@ export function TeacherList({
         {teachers.map((teacher) => {
           const granted = grantedLabels(teacher.permissions)
 
+          /*
+           * Extracted because `trim` and the full list put it in different places
+           * — directly in the row, or at the bottom of the collapsed panel — and
+           * it is the one control both of them keep. The outer spacing belongs to
+           * whichever branch renders it.
+           */
+          const toggle = (
+            <form action={activeAction}>
+              <input type="hidden" name="teacherId" value={teacher.id} />
+              <input
+                type="hidden"
+                name="active"
+                value={teacher.active ? 'false' : 'true'}
+              />
+              <p className="mb-2 text-sm text-ink-soft">
+                {teacher.active ? t.deactivateBody : t.reactivateBody}
+              </p>
+              <button
+                type="submit"
+                disabled={activePending}
+                className={`min-h-tap rounded-lg border-2 px-4 text-sm font-semibold
+                  disabled:opacity-50 ${
+                    teacher.active
+                      ? 'border-absent/40 bg-absent/5 text-absent'
+                      : 'border-brand-500 bg-brand-50 text-brand-700'
+                  }`}
+              >
+                {teacher.active ? t.deactivate : t.reactivate}
+              </button>
+            </form>
+          )
+
           return (
             <li
               key={teacher.id}
@@ -107,7 +154,7 @@ export function TeacherList({
                   )}
                   <p className="text-sm text-ink-faint">
                     {teacher.batchLabel}
-                    {granted.length > 0 && ` · ${granted.join(', ')}`}
+                    {!trim && granted.length > 0 && ` · ${granted.join(', ')}`}
                   </p>
                 </div>
                 <div className="shrink-0 text-right">
@@ -120,70 +167,58 @@ export function TeacherList({
                 </div>
               </div>
 
-              <details className="mt-2 border-t border-line pt-2">
-                <summary className="min-h-tap cursor-pointer text-sm font-medium text-brand-700">
-                  {t.edit}
-                </summary>
-
-                <form action={permAction} className="mt-2 flex flex-col gap-2">
-                  <input type="hidden" name="teacherId" value={teacher.id} />
-                  {PERMISSION_KEYS.map((key) => (
-                    <label
-                      key={key}
-                      className="flex min-h-tap cursor-pointer items-start gap-3"
-                    >
-                      <input
-                        type="checkbox"
-                        name={key}
-                        defaultChecked={teacher.permissions[key] ?? false}
-                        className="mt-0.5 h-5 w-5 shrink-0 accent-brand-600"
-                      />
-                      <span className="min-w-0">
-                        <span className="block text-ink">{labels[key].label}</span>
-                        <span className="block text-sm text-ink-soft">
-                          {labels[key].hint}
-                        </span>
-                      </span>
-                    </label>
-                  ))}
-                  <button
-                    type="submit"
-                    disabled={permPending}
-                    className="min-h-tap self-start rounded-lg border-2 border-brand-500
-                      bg-brand-50 px-4 text-sm font-semibold text-brand-700
-                      disabled:opacity-50"
-                  >
-                    {permPending ? common.saving : t.save}
-                  </button>
-                </form>
-
-                <form
-                  action={activeAction}
-                  className="mt-3 border-t border-line pt-3"
-                >
-                  <input type="hidden" name="teacherId" value={teacher.id} />
-                  <input
-                    type="hidden"
-                    name="active"
-                    value={teacher.active ? 'false' : 'true'}
-                  />
-                  <p className="mb-2 text-sm text-ink-soft">
-                    {teacher.active ? t.deactivateBody : t.reactivateBody}
+              {trim ? (
+                /* Inactive rows carry nothing at all here: they are already off,
+                   and switching one back on is growth this plan does not sell. */
+                teacher.active &&
+                (teacher.isSelf ? (
+                  <p className="mt-2 border-t border-line pt-2 text-sm text-ink-faint">
+                    {t.yourSeat}
                   </p>
-                  <button
-                    type="submit"
-                    disabled={activePending}
-                    className={`min-h-tap rounded-lg border-2 px-4 text-sm font-semibold
-                      disabled:opacity-50 ${
-                        teacher.active
-                          ? 'border-absent/40 bg-absent/5 text-absent'
-                          : 'border-brand-500 bg-brand-50 text-brand-700'
-                      }`}
-                  >
-                    {teacher.active ? t.deactivate : t.reactivate}
-                  </button>
-                </form>
-              </details>
+                ) : (
+                  <div className="mt-2 border-t border-line pt-2">{toggle}</div>
+                ))
+              ) : (
+                <details className="mt-2 border-t border-line pt-2">
+                  <summary className="min-h-tap cursor-pointer text-sm font-medium text-brand-700">
+                    {t.edit}
+                  </summary>
+
+                  <form action={permAction} className="mt-2 flex flex-col gap-2">
+                    <input type="hidden" name="teacherId" value={teacher.id} />
+                    {PERMISSION_KEYS.map((key) => (
+                      <label
+                        key={key}
+                        className="flex min-h-tap cursor-pointer items-start gap-3"
+                      >
+                        <input
+                          type="checkbox"
+                          name={key}
+                          defaultChecked={teacher.permissions[key] ?? false}
+                          className="mt-0.5 h-5 w-5 shrink-0 accent-brand-600"
+                        />
+                        <span className="min-w-0">
+                          <span className="block text-ink">{labels[key].label}</span>
+                          <span className="block text-sm text-ink-soft">
+                            {labels[key].hint}
+                          </span>
+                        </span>
+                      </label>
+                    ))}
+                    <button
+                      type="submit"
+                      disabled={permPending}
+                      className="min-h-tap self-start rounded-lg border-2 border-brand-500
+                        bg-brand-50 px-4 text-sm font-semibold text-brand-700
+                        disabled:opacity-50"
+                    >
+                      {permPending ? common.saving : t.save}
+                    </button>
+                  </form>
+
+                  <div className="mt-3 border-t border-line pt-3">{toggle}</div>
+                </details>
+              )}
             </li>
           )
         })}

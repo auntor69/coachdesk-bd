@@ -1980,8 +1980,10 @@ export const bn = {
   /**
    * The staff list, and the panel behind each row where permissions change.
    *
-   * Only reachable on a plan with staff on it — a one-teacher plan gets
-   * settings.teachers.soloTitle instead of any of this.
+   * Written for a plan with staff on it. A one-teacher plan normally gets
+   * settings.teachers.soloTitle instead of any of this — except when it has more
+   * teachers switched on than it covers, where the same list is drawn trimmed to
+   * names and one button, so the permission strings go unused rather than lying.
    */
   teacherList: {
     /** A teacher who has been turned off. Their marks and hajira stay put. */
@@ -2001,6 +2003,12 @@ export const bn = {
     reactivateBody: 'চালু করলে তিনি আবার তাঁর ব্যাচের হাজিরা ও নম্বর দিতে পারবেন।',
     deactivate: 'শিক্ষককে বন্ধ করুন',
     reactivate: 'আবার চালু করুন',
+    /**
+     * On the reader's own row, where the switch-off button would otherwise be, and
+     * only on the trimmed list a one-seat plan draws. Not a refusal — the button is
+     * simply not there — so it names the row rather than explaining a rule.
+     */
+    yourSeat: 'আপনার নিজের রেকর্ড — এই প্ল্যানের একটিমাত্র জায়গা।',
   },
 
   /**
@@ -3220,6 +3228,20 @@ export const bn = {
       soloTitle: 'শিক্ষক ও অনুমতি কোচিং সেন্টারের জন্য',
       soloBody: (plan: string, center: string) =>
         `${plan} প্ল্যান একজন শিক্ষকের জন্য — আপনি নিজেই। একাধিক শিক্ষক, আর কে কী দেখতে ও করতে পারবে সেই নিয়ন্ত্রণ ${center} প্ল্যানে।`,
+      /*
+       * Shown instead of soloTitle when a one-seat plan has more than one teacher
+       * switched on — a centre that was moved down a tier, not one that started
+       * here. It is the only reason that screen draws a list at all, so the card
+       * has to say what the list is for in one read: who to switch off, that
+       * nothing gets deleted, and what the extra teachers can still do meanwhile.
+       *
+       * The last sentence is a disclosure and not a threat. Their fee board and
+       * their send button are already gone (see lib/auth/session), and an owner
+       * who is not told that will hear it from the teacher instead.
+       */
+      trimTitle: 'এই প্ল্যানের চেয়ে বেশি শিক্ষক চালু আছে',
+      trimBody: (plan: string, active: number, limit: number) =>
+        `${plan} প্ল্যানে ${digits(limit, 'bn')} জন শিক্ষক, কিন্তু এখানে ${digits(active, 'bn')} জন চালু আছেন। যাঁরা আর পড়ান না তাঁদের বন্ধ করে দিন — তাঁদের দেওয়া হাজিরা আর নম্বর মুছবে না। বন্ধ করার আগে পর্যন্ত তাঁরা নিজের ব্যাচের হাজিরা দিতে পারবেন, তবে ফি দেখা বা SMS পাঠানো আর পারবেন না।`,
       addedWithLogin: 'শিক্ষক ও তাঁর লগইন তৈরি হয়েছে',
       addedNoLogin: 'শিক্ষক যোগ হয়েছে (লগইন ছাড়া)',
       /**
@@ -3249,6 +3271,14 @@ export const bn = {
         loginNeedsPhone: 'লগইন দিতে হলে মোবাইল নম্বর লাগবে — নম্বরটাই তাঁর আইডি।',
         loginFailed: 'লগইন তৈরি করা যায়নি। আবার চেষ্টা করুন।',
         notFound: 'শিক্ষক পাওয়া যায়নি।',
+        /**
+         * The one row an over-cap owner may not switch off on a one-seat plan.
+         * Says which row it is and what to do instead, because "পারবেন না" alone
+         * on a screen whose whole purpose is switching teachers off reads like the
+         * button is broken.
+         */
+        keepOwnSeat:
+          'এটি আপনার নিজের শিক্ষক রেকর্ড — এই প্ল্যানে এই একটি জায়গাই আছে। অন্য কাউকে বন্ধ করুন।',
       },
     },
 

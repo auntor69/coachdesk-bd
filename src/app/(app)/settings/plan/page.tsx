@@ -12,6 +12,7 @@ import {
   CENTER_MONTHLY_FLOOR_BDT,
   has,
   hasStaff,
+  overStaffSeats,
   planFor,
   planName,
   type FeatureKey,
@@ -152,7 +153,12 @@ export default async function PlanPage() {
     { label: t.subjects, used: subjectCount ?? 0, limit: plan.maxSubjects },
     // Only where there are colleagues to count. On a one-teacher plan "1 / 1" is a
     // row that tells the reader nothing they did not know when they signed up.
-    ...(hasStaff(plan)
+    //
+    // Unless the number is wrong, which is the one case where it tells them
+    // everything: a centre moved down a tier keeps its teachers, and this row is
+    // where "6 / 1" gets said out loud. Switching them off is /settings/teachers,
+    // which the hub links to under the same condition.
+    ...(hasStaff(plan) || overStaffSeats(plan, teacherCount ?? 0)
       ? [{ label: t.teachers, used: teacherCount ?? 0, limit: plan.maxTeachers }]
       : []),
   ]

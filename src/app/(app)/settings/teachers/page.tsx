@@ -3,7 +3,7 @@ import Link from 'next/link'
 import { Card } from '@/components/ui'
 import { pageRole, getSession } from '@/lib/auth/session'
 import { createClient } from '@/lib/supabase/server'
-import { wouldExceed, hasStaff, planName, PLANS } from '@/lib/plans'
+import { wouldExceed, hasStaff, overStaffSeats, planName, PLANS } from '@/lib/plans'
 import { PERMISSION_DEFAULTS } from '@/lib/permissions'
 import { dict, localName, DEFAULT_LOCALE } from '@/lib/i18n'
 import { TeacherList, type TeacherRow } from './teacher-list'
@@ -30,31 +30,24 @@ export default async function TeachersPage() {
   const d = dict(locale)
   const t = d.settings.teachers
 
-  // A one-teacher plan has no staff to manage, so there is no list to show: the
-  // only row would be the reader's own, under a button the action refuses. The
-  // route stays reachable rather than 404ing, because a bookmark or a stale link
-  // should explain itself.
-  if (!hasStaff(session.plan)) {
-    return (
-      <div className="flex flex-col gap-5">
-        <Link
-          href="/settings"
-          className="inline-flex min-h-tap items-center text-ink-soft hover:text-ink"
-        >
-          ← {d.settings.hub.title}
-        </Link>
-        <Card>
-          <h2 className="font-semibold text-ink">{t.soloTitle}</h2>
-          <p className="mt-1 text-sm text-ink-soft">
-            {t.soloBody(
-              planName(session.plan, locale),
-              planName(PLANS.center, locale),
-            )}
-          </p>
-        </Card>
-      </div>
-    )
-  }
+  /*
+   * A one-teacher plan has no staff to manage and normally gets a card saying so
+   * rather than a list of one row under a button that would refuse it.
+   *
+   * "Normally", because the assumption underneath that used to be stated as fact:
+   * the only row a one-seat plan has is the reader's own. It is true of a centre
+   * that signed up on a teacher tier and false of one that was moved down to it —
+   * `setCenterPlan` writes the new plan and only warns when the centre is over its
+   * seat count, so six teachers stay switched on under a plan that covers one, and
+   * this is the only screen that can switch them off. It refused to draw. So the
+   * count is now read before the decision is made, and /settings and /settings/plan
+   * both stop hiding the fact under the same condition.
+   *
+   * Which costs one query on a screen that used to cost none for these plans. A
+   * `teachers` table holds one row per teacher at one centre — single digits, and
+   * this is a settings page reached from a hub, not a screen anybody sits on.
+   */
+  const staff = hasStaff(session.plan)
 
   const supabase = await createClient()
 
@@ -101,6 +94,10 @@ export default async function TeachersPage() {
       // No linked account means they cannot sign in yet — worth surfacing,
       // because an owner who added a teacher expects them to be able to log in.
       hasLogin: Boolean(teacher.user_id),
+      // Compared on user_id rather than on the teacher row, because that is the
+      // thing a person is: an owner can hold one teacher record here and another
+      // at a second centre. Only the trimmed list below reads it.
+      isSelf: teacher.user_id === session.userId,
       subjects,
       // A finished sentence rather than the number, because the row is a client
       // component and a plural cannot cross that boundary. See the note on
@@ -121,14 +118,42 @@ export default async function TeachersPage() {
   const activeCount = rows.filter((r) => r.active).length
   const limit = session.plan.maxTeachers
 
+  // The ordinary one-seat centre: one teacher, themselves, and nothing to manage.
+  // The route stays reachable rather than 404ing, because a bookmark or a stale
+  // link should explain itself. `overStaffSeats` is the same test the settings hub
+  // uses to decide whether to link here at all, so the two cannot disagree about
+  // whether this screen has a job.
+  if (!staff && !overStaffSeats(session.plan, activeCount)) {
+    return (
+      <div className="flex flex-col gap-5">
+        <Link
+          href="/settings"
+          className="inline-flex min-h-tap items-center text-ink-soft hover:text-ink"
+        >
+          ← {d.settings.hub.title}
+        </Link>
+        <Card>
+          <h2 className="font-semibold text-ink">{t.soloTitle}</h2>
+          <p className="mt-1 text-sm text-ink-soft">
+            {t.soloBody(
+              planName(session.plan, locale),
+              planName(PLANS.center, locale),
+            )}
+          </p>
+        </Card>
+      </div>
+    )
+  }
+
   /*
    * Only ever true for a capped multi-teacher tier, and no tier sold today is
-   * one: hasStaff let us past the return above, and every plan that passes it
-   * has maxTeachers null. So this and the x/y counter below are both unreachable
-   * right now, and kept rather than deleted because the day a mid tier caps staff
-   * at, say, twelve, the screen has to stop offering a thirteenth. plans.test.ts
-   * holds the other half of that bargain — a tier claiming staff must have room
-   * for a second teacher, or this page would refuse the first colleague.
+   * one: every plan with staff on it has maxTeachers null, and a plan without
+   * staff never reaches the add button at all. So this and the x/y counter are
+   * both unreachable on today's tiers, and kept rather than deleted because the
+   * day a mid tier caps staff at, say, twelve, the screen has to stop offering a
+   * thirteenth. plans.test.ts holds the other half of that bargain — a tier
+   * claiming staff must have room for a second teacher, or this page would refuse
+   * the first colleague.
    */
   const atLimit = wouldExceed(session.plan, 'maxTeachers', activeCount)
 
@@ -147,6 +172,25 @@ export default async function TeachersPage() {
         </p>
       </div>
 
+      {/* Why this list is here at all, above the list rather than under it: on a
+          plan with no staff features the only reason to draw one is to get back
+          down to one teacher, and an owner who reads the names first will wonder
+          which of them the app is asking about. */}
+      {!staff && (
+        <Card>
+          <h2 className="font-semibold text-ink">{t.trimTitle}</h2>
+          <p className="mt-1 text-sm text-ink-soft">
+            {t.trimBody(
+              planName(session.plan, locale),
+              activeCount,
+              // Non-null on every plan without staff: an uncapped seat count is
+              // what hasStaff means. Guarded anyway rather than asserted.
+              limit ?? activeCount,
+            )}
+          </p>
+        </Card>
+      )}
+
       {rows.length === 0 ? (
         <Card>
           <h2 className="font-semibold text-ink">{t.emptyTitle}</h2>
@@ -158,10 +202,14 @@ export default async function TeachersPage() {
           t={d.teacherList}
           permissions={d.teacherPermissions}
           common={d.common}
+          trim={!staff}
         />
       )}
 
-      {atLimit ? (
+      {/* Neither the cap card nor the add button on a plan with no staff: the
+          card above already says the centre is over its seats, and the way out of
+          that is down. */}
+      {!staff ? null : atLimit ? (
         <Card>
           {/* The same refusal the add form gives, in the same words. */}
           <p className="font-medium text-ink">{t.capTitle}</p>

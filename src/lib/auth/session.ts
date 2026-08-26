@@ -334,6 +334,34 @@ export const myTeacherIds = cache(async (): Promise<string[]> => {
   return (await myTeacherRows()).map((row) => row.id)
 })
 
+/* -------------------------------------------------------------------------- */
+/* What a teacher may do                                                      */
+/*                                                                            */
+/* The five helpers below answer for one person at one centre, and all five    */
+/* open with the same three lines: a staff-admin always may, a plan with no    */
+/* staff features always refuses, and a member whose role is not `teacher` is  */
+/* not the question being asked.                                              */
+/*                                                                            */
+/* `hasStaff` is the line worth explaining. Every power here is an owner       */
+/* delegating a job — reading the centre's money, spending its credits,        */
+/* entering marks, admitting students, opening batches — and a one-seat plan   */
+/* sells nobody to delegate to. It looks like dead code, because the one seat  */
+/* a teacher tier does sell belongs to the owner, who left two lines earlier   */
+/* as a staff-admin. The only caller that reaches it is a teacher row left     */
+/* behind by a downgrade: `setCenterPlan` writes the new plan and only *warns* */
+/* when the centre is over its seat count, so a centre that drops from six     */
+/* teachers to one keeps five rows that its plan no longer covers. Without     */
+/* this line those five would go on reading the fee board and spending SMS     */
+/* credits indefinitely. /settings/teachers is where the owner switches them   */
+/* off, and it draws a list on a one-seat plan for exactly that reason.        */
+/*                                                                            */
+/* Not in RLS, and not by omission. No policy anywhere reads                   */
+/* coaching_centers.plan: the boundary is about whose rows these are, not      */
+/* about what was paid for them, and a founder correcting a plan by hand must  */
+/* not blank a working teacher's screens as a side effect. Entitlement lives   */
+/* one layer in, here — narrower than the boundary, never wider.               */
+/* -------------------------------------------------------------------------- */
+
 /**
  * May this reader create exams and enter marks?
  *
@@ -354,6 +382,7 @@ export const canManageExams = cache(async (): Promise<boolean> => {
   const session = await getSession()
   if (!session?.active) return false
   if (isStaffAdmin(session)) return true
+  if (!hasStaff(session.plan)) return false
   if (session.active.role !== 'teacher') return false
 
   const rows = await myTeacherRows()
@@ -377,6 +406,7 @@ export const canSendSms = cache(async (): Promise<boolean> => {
   const session = await getSession()
   if (!session?.active) return false
   if (isStaffAdmin(session)) return true
+  if (!hasStaff(session.plan)) return false
   if (session.active.role !== 'teacher') return false
 
   const rows = await myTeacherRows()
@@ -411,6 +441,7 @@ export const canReadFees = cache(async (): Promise<boolean> => {
   const session = await getSession()
   if (!session?.active) return false
   if (isStaffAdmin(session)) return true
+  if (!hasStaff(session.plan)) return false
   if (session.active.role !== 'teacher') return false
 
   return (await myTeacherRows()).some((row) => row.perms?.can_view_fees === true)
@@ -433,13 +464,11 @@ export const canReadFees = cache(async (): Promise<boolean> => {
  * already on it, so a teacher who could see only their own batch would re-add half
  * the centre.
  *
- * `hasStaff` because delegating admin work is a centre capability, and the screen
- * where these boxes are ticked is itself behind that flag. Without this line a
- * centre that downgraded to a teacher tier would keep every permission it had
- * granted, on a plan that sells one seat — the leftover teacher rows do not
- * disappear at the moment the plan changes. The three older helpers above do not
- * carry the check; they were written before the tiers were settled, and adding it
- * to them would change three shipped behaviours in a commit about two others.
+ * `hasStaff` as above, and this is the helper it was written for: delegating
+ * admissions is a centre capability, and the screen where the box is ticked is
+ * itself behind that flag. The leftover teacher rows do not disappear at the
+ * moment a plan changes, so without the check a downgraded centre would keep
+ * every grant it had made on a plan that sells one seat.
  *
  * app.can_manage_students is the boundary. This decides what to render, and if the
  * two ever disagree in this direction the screen draws and comes back empty.

@@ -8,6 +8,7 @@ import {
   roomFor,
   wouldExceed,
   hasStaff,
+  overStaffSeats,
   has,
   monthlyBillBdt,
   studentChargeBdt,
@@ -284,6 +285,44 @@ test('a plan with staff can hold more than the one teacher', () => {
       wouldExceed(plan, 'maxTeachers', 1),
       false,
       `${plan.id} claims staff but has no room for a second teacher`,
+    )
+  }
+})
+
+test('overStaffSeats is about what is already there, not room for one more', () => {
+  // The pair that the settings hub and the teacher list both read, and the reason
+  // they cannot read wouldExceed instead. A teacher tier with its one teacher is
+  // full — no room for another — and it is not over anything: that centre is
+  // exactly what it paid for and gets the card explaining the plan.
+  assert.equal(wouldExceed(PLANS.teacher_plus, 'maxTeachers', 1), true)
+  assert.equal(overStaffSeats(PLANS.teacher_plus, 1), false)
+
+  // Two is the state a downgrade leaves behind, and the only one that turns the
+  // staff row and the trimmed list back on.
+  assert.equal(overStaffSeats(PLANS.teacher_plus, 2), true)
+  assert.equal(overStaffSeats(PLANS.teacher_free, 6), true)
+
+  // Zero is not a problem to solve. A centre that signed up as a centre and was
+  // moved down has no teacher rows at all until somebody adds one.
+  assert.equal(overStaffSeats(PLANS.teacher_free, 0), false)
+
+  // Uncapped is never over, at any size — the centre tiers sell seats by the head
+  // and bill for them, they do not cap them.
+  assert.equal(overStaffSeats(PLANS.center, 500), false)
+  assert.equal(overStaffSeats(PLANS.institution, 500), false)
+})
+
+test('a downgraded centre can always be told it is over its seats', () => {
+  // The invariant the way back down depends on. /settings hides the staff row on a
+  // plan without staff and /settings/teachers draws a card instead of a list, both
+  // unless this returns true — so a tier where it could not would strand an owner
+  // with colleagues they are unable to switch off.
+  for (const plan of Object.values(PLANS)) {
+    if (hasStaff(plan)) continue
+    assert.equal(
+      overStaffSeats(plan, 2),
+      true,
+      `${plan.id} has no staff but two teachers on it read as within the plan`,
     )
   }
 })
