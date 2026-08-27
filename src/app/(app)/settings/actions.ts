@@ -1625,6 +1625,159 @@ export async function toggleTeacherActive(
 }
 
 /**
+ * A login for a teacher who was added without one.
+ *
+ * The add form promises this out loud — teacherForm.loginNowBody, "a login can be
+ * given any time later" — and until now nothing in the product could. Adding a
+ * teacher without a login is the common case and the form encourages it: the
+ * part-timer who takes two batches a week and will never open the app. When that
+ * part-timer starts marking their own register in September, the only way to give
+ * them a way in was to add them a second time, which is a second teacher row, a
+ * second seat against the plan, and last term's batches still hanging off the first.
+ *
+ * The number comes from the form rather than from the row, because for most of these
+ * teachers there is no number on the row — the field is optional on the add form and
+ * the reason to fill it is exactly this. It is written back, which makes this the one
+ * place a teacher's phone can be corrected, and deliberately the only one: once an
+ * account exists that number is its login id, held on `profiles` and inside the auth
+ * email as well, so editing the copy on the teacher row would leave the list showing
+ * a number that does not sign in.
+ *
+ * The account itself is createTeacher's path, step for step: the admin client because
+ * the public signUp would try the shared free SMTP, the lookup against the unique
+ * `profiles.phone`, and the refusal to link on the first submit. See that action for
+ * why the confirm step is not a courtesy. The password typed here is used only when
+ * an account is created — a linked teacher keeps the one they already had, which is
+ * what settings.teachers.confirmLink promises them.
+ *
+ * What linking still cannot do is prove the owner has the number. Nobody has sent a
+ * code to it, so an owner who knows a stranger's number can attach that account to a
+ * teacher row here. It buys them nothing on its own, and the password box next door
+ * refuses any account with a second membership anywhere (lib/auth/reset.ts) — but an
+ * account whose only membership is the one just created is resettable, so an owner can
+ * lock out a person who is currently nobody's teacher. Closing that needs an OTP on
+ * the number, which needs a sender ID; until then it is written down rather than
+ * pretended away.
+ *
+ * No seat check, and its absence is deliberate rather than forgotten. A plan limit
+ * counts teacher rows that are switched on; this adds no row and switches nothing on,
+ * so an owner already at their cap may still give the teachers they have a way in.
+ */
+export async function giveTeacherLogin(
+  _prev: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
+  const session = await staffAdmin()
+  if (!isSession(session)) return session
+
+  const t = dict(session.locale).settings
+
+  if (!hasStaff(session.plan)) {
+    return { error: t.errors.staffNeedsCenter }
+  }
+
+  const rawPhone = String(formData.get('phone') ?? '')
+  const password = String(formData.get('password') ?? '')
+  const confirmedLink = formData.get('confirmLink') !== null
+
+  // The two failures are told apart, as they are on the add form: an empty box and
+  // a mistyped number are different mistakes and only one of them is retyping.
+  if (!rawPhone.trim()) return { error: t.teachers.errors.loginNeedsPhone }
+  const phone = normalizeBdMobile(rawPhone)
+  if (!phone) return { error: t.teachers.errors.phoneInvalid }
+
+  if (password.length < MIN_PASSWORD) {
+    return { error: passwordTooShort(session.locale) }
+  }
+
+  const supabase = await createClient()
+  const centerId = session.active.centerId
+
+  const { data: teacher } = await supabase
+    .from('teachers')
+    .select('id, name, user_id, active')
+    .eq('id', String(formData.get('teacherId') ?? ''))
+    .eq('coaching_center_id', centerId)
+    .maybeSingle()
+
+  if (!teacher) return { error: t.teachers.errors.notFound }
+
+  // Not an upgrade path for an account that exists. Changing a password is
+  // resetTeacherPassword and changing the number behind a live login is neither.
+  if (teacher.user_id) return { error: t.teachers.errors.hasLogin }
+
+  const loginEmail = phoneToLoginEmail(phone)
+  if (!loginEmail) return { error: t.teachers.errors.phoneInvalid }
+
+  const admin = createAdminClient()
+
+  const { data: existing } = await admin
+    .from('profiles')
+    .select('id, full_name')
+    .eq('phone', phone)
+    .maybeSingle()
+
+  // Never on the first submit — createTeacher's note, and the same stakes: one
+  // mistyped digit would hand a stranger a teacher account inside this centre.
+  if (existing && !confirmedLink) {
+    return { confirm: t.teachers.confirmLink(existing.full_name || t.teachers.noName) }
+  }
+
+  let userId = existing?.id ?? null
+
+  if (!userId) {
+    const { data: created, error: createError } = await admin.auth.admin.createUser({
+      email: loginEmail,
+      password,
+      email_confirm: true,
+      user_metadata: { full_name: teacher.name, phone, locale: session.locale },
+    })
+
+    if (createError || !created.user) {
+      return { error: t.teachers.errors.loginFailed }
+    }
+    userId = created.user.id
+  }
+
+  const { error } = await supabase
+    .from('teachers')
+    .update({ user_id: userId, phone })
+    .eq('id', teacher.id)
+    .eq('coaching_center_id', centerId)
+
+  // The account may exist at this point with nothing pointing at it, which is
+  // recoverable exactly as it is in createTeacher: submitting again finds it
+  // through the lookup above and links it rather than failing on the unique phone.
+  if (error) return { error: t.teachers.errors.loginFailed }
+
+  // Only for a teacher who is switched on. Switching one off deletes this row on
+  // purpose — it is what cuts them off from the batch list and their colleagues'
+  // numbers — so writing one here would quietly let somebody back in through the
+  // login screen an owner has just been given a button for.
+  if (teacher.active) {
+    await supabase.from('center_members').upsert(
+      {
+        coaching_center_id: centerId,
+        user_id: userId,
+        role: 'teacher',
+      },
+      { onConflict: 'coaching_center_id,user_id,role', ignoreDuplicates: true },
+    )
+  }
+
+  revalidatePath('/settings/teachers')
+
+  if (existing) {
+    return {
+      ok: t.teachers.linked(existing.full_name || t.teachers.noName),
+      linked: existing.full_name || t.teachers.noName,
+    }
+  }
+
+  return { ok: t.teachers.loginGiven }
+}
+
+/**
  * A new password for a teacher who cannot get in.
  *
  * The only way back into this app for somebody who has forgotten their password.

@@ -2079,6 +2079,28 @@ export const bn = {
     edit: 'অনুমতি বদলান',
     save: 'অনুমতি সেভ করুন',
     /**
+     * Only on a row with no account behind it, and it is the promise teacherForm
+     * .loginNowBody makes on the way in: a login can be given later. The summary is
+     * the errand, not a question, because unlike the password box below it the owner
+     * arrives at this one having decided.
+     */
+    loginSummary: 'লগইন দিন',
+    loginBody:
+      'লগইন দিলে তিনি নিজের ফোন থেকে হাজিরা ও নম্বর দিতে পারবেন। উপরে যেসব অনুমতি টিক দেওয়া আছে, শুধু সেগুলোই কাজ করবে।',
+    loginPhone: 'মোবাইল নম্বর',
+    /**
+     * Two jobs in one line. The number is the login id, and this is the only screen
+     * in the app where a teacher's number can be corrected — after an account exists
+     * the same number lives on the profile and inside the login itself, so it stops
+     * being a field and becomes an identity.
+     */
+    loginPhoneHint: 'এই নম্বর দিয়েই তিনি লগইন করবেন — ভুল থাকলে এখানেই ঠিক করে নিন',
+    loginPassword: 'শুরুর পাসওয়ার্ড',
+    loginPasswordHint: 'শিক্ষককে বলে দিন — লেখাটা দেখা যাচ্ছে',
+    loginSubmit: 'লগইন তৈরি করুন',
+    /** Never ticked by default — see settings.teachers.confirmLink for why. */
+    loginConfirm: 'হ্যাঁ, এটাই তিনি — অ্যাকাউন্টটি যুক্ত করুন',
+    /**
      * The only way back in for a teacher who has forgotten their password. Login is
      * a number and a password with no email and no OTP, so there is no link to send
      * — which makes this the whole of "forgot password" in this product, and the
@@ -3362,6 +3384,13 @@ export const bn = {
       activated: 'চালু করা হয়েছে',
       deactivated: 'বন্ধ করা হয়েছে',
       /**
+       * A login handed to a teacher who was added without one. Says both halves out
+       * loud — the number and the password — because the owner is about to read them
+       * back out to somebody standing next to them, and the number may be one they
+       * have just typed for the first time.
+       */
+      loginGiven: 'লগইন তৈরি হয়েছে — শিক্ষককে নম্বর আর পাসওয়ার্ডটা বলে দিন।',
+      /**
        * Handing a teacher a new password, and the four reasons an account cannot be
        * handed one.
        *
@@ -3401,6 +3430,12 @@ export const bn = {
         /** Because the number is the login id — there is nothing else to be. */
         loginNeedsPhone: 'লগইন দিতে হলে মোবাইল নম্বর লাগবে — নম্বরটাই তাঁর আইডি।',
         loginFailed: 'লগইন তৈরি করা যায়নি। আবার চেষ্টা করুন।',
+        /**
+         * Refused rather than treated as "change it": once an account exists, its
+         * password is the reset box and its number is its identity in three places
+         * at once. See giveTeacherLogin.
+         */
+        hasLogin: 'এই শিক্ষকের লগইন আগেই আছে। পাসওয়ার্ড ভুলে গেলে নিচের “পাসওয়ার্ড ভুলে গেছেন?” দেখুন।',
         notFound: 'শিক্ষক পাওয়া যায়নি।',
         /**
          * The one row an over-cap owner may not switch off on a one-seat plan.

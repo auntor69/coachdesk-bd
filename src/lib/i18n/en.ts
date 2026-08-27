@@ -976,6 +976,15 @@ export const en: Dictionary = {
     noLogin: 'No login',
     edit: 'Change permissions',
     save: 'Save permissions',
+    loginSummary: 'Give them a login',
+    loginBody:
+      'With a login they can take attendance and enter marks from their own phone. Only the permissions ticked above will work.',
+    loginPhone: 'Mobile number',
+    loginPhoneHint: 'This is the number they will sign in with — correct it here if it is wrong',
+    loginPassword: 'Starting password',
+    loginPasswordHint: 'Tell it to the teacher — it stays visible',
+    loginSubmit: 'Create the login',
+    loginConfirm: 'Yes, that is them — link the account',
     resetSummary: 'Forgotten their password?',
     resetBody:
       'Set a new password and tell it to them. This is not how you remove somebody who has left — the “Turn this teacher off” button below is.',
@@ -1593,6 +1602,7 @@ export const en: Dictionary = {
       permissionsSaved: 'Permissions saved',
       activated: 'Turned on',
       deactivated: 'Turned off',
+      loginGiven: 'The login is ready — tell the teacher the number and the password.',
       reset: {
         done: 'New password set — tell it to the teacher.',
         failed: 'The password could not be changed. Try again.',
@@ -1614,6 +1624,8 @@ export const en: Dictionary = {
         loginNeedsPhone:
           'A login needs a mobile number — the number is their ID.',
         loginFailed: 'The login was not created. Please try again.',
+        hasLogin:
+          'This teacher already has a login. If they have forgotten the password, use “Forgotten their password?” below.',
         notFound: 'Teacher not found.',
         keepOwnSeat:
           'This is your own teacher record — the one seat this plan covers. Switch a colleague off instead.',

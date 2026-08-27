@@ -20,6 +20,7 @@ import {
   saveTeacherPermissions,
   toggleTeacherActive,
   resetTeacherPassword,
+  giveTeacherLogin,
   type ActionState,
 } from '../actions'
 
@@ -62,15 +63,27 @@ export function TeacherList({
   trim?: boolean
 }) {
   /**
-   * Which of the three forms spoke last.
+   * Which of the four forms spoke last.
    *
-   * There are three actions on this screen and each keeps its own last result, so
+   * There are four actions on this screen and each keeps its own last result, so
    * "Permissions saved" was still on the page after a teacher had been turned off
    * — a confirmation naming an action the owner did not just take, sitting above a
    * list that had changed underneath it. Recording the submit is enough to show
    * one message: the newest one, and only that one.
    */
-  const [last, setLast] = useState<'permissions' | 'active' | 'password' | null>(null)
+  const [last, setLast] = useState<
+    'permissions' | 'active' | 'password' | 'login' | null
+  >(null)
+
+  /**
+   * Which row's login form is mid-conversation.
+   *
+   * Only the login action asks a question back, and the answer has to appear in the
+   * row that asked: a shared banner saying "this number already has an account" is
+   * unreadable on a list of nine teachers, and the tick box that agrees to it must
+   * sit inside the form that will carry it.
+   */
+  const [loginRow, setLoginRow] = useState<string | null>(null)
 
   const [permState, permAction, permPending] = useActionState<ActionState, FormData>(
     async (prev, formData) => {
@@ -93,6 +106,14 @@ export function TeacherList({
     },
     null,
   )
+  const [loginState, loginAction, loginPending] = useActionState<ActionState, FormData>(
+    async (prev, formData) => {
+      setLast('login')
+      setLoginRow(String(formData.get('teacherId') ?? ''))
+      return giveTeacherLogin(prev, formData)
+    },
+    null,
+  )
 
   const state
     = last === 'active'
@@ -101,7 +122,9 @@ export function TeacherList({
         ? permState
         : last === 'password'
           ? pwState
-          : null
+          : last === 'login'
+            ? loginState
+            : null
   const error = state?.error
   const ok = state?.ok
 
@@ -152,6 +175,83 @@ export function TeacherList({
                 {teacher.active ? t.deactivate : t.reactivate}
               </button>
             </form>
+          )
+
+          /*
+           * The other half of the account story, and the one the add form promised:
+           * a teacher who was entered as a name in June, taking their own register
+           * in September. Drawn only where there is no account yet — an account that
+           * exists is the password box below, not this.
+           *
+           * The number is editable here and nowhere else in the app, because here it
+           * is still just a field. A moment after this form succeeds the same number
+           * is the login id, copied onto the profile and into the account itself, and
+           * a list showing a number that does not sign in is worse than no edit at
+           * all. So the one chance to fix a mistyped digit is before it becomes one.
+           */
+          const asking = loginRow === teacher.id && loginState?.confirm
+
+          const login = !teacher.hasLogin && (
+            <details className="mt-3 border-t border-line pt-3">
+              <summary className="min-h-tap cursor-pointer text-sm font-medium text-brand-700">
+                {t.loginSummary}
+              </summary>
+              <p className="mt-1 text-sm text-ink-soft">{t.loginBody}</p>
+              <form action={loginAction} className="mt-2 flex flex-col gap-2">
+                <input type="hidden" name="teacherId" value={teacher.id} />
+                {/* Per-row ids for the same reason the password box has them: Field
+                    falls back to the field name, and nine rows would share one. */}
+                <Field
+                  label={t.loginPhone}
+                  hint={t.loginPhoneHint}
+                  id={`login-phone-${teacher.id}`}
+                  name="phone"
+                  type="tel"
+                  inputMode="numeric"
+                  placeholder="01712345678"
+                  defaultValue={teacher.phone ?? ''}
+                  required
+                />
+                <Field
+                  label={t.loginPassword}
+                  hint={t.loginPasswordHint}
+                  id={`login-password-${teacher.id}`}
+                  name="password"
+                  type="text"
+                  required
+                  minLength={MIN_PASSWORD}
+                  autoComplete="off"
+                />
+                {/* Only once the server has said this number already belongs to
+                    somebody, and never ticked ahead of time: the owner has to read
+                    the name in the banner and agree to it. See createTeacher. */}
+                {asking && (
+                  <>
+                    <Alert tone="warn">{asking}</Alert>
+                    <label
+                      className="flex min-h-tap cursor-pointer items-center gap-3
+                        rounded-xl border-2 border-late/40 bg-late/5 px-4 py-3"
+                    >
+                      <input
+                        type="checkbox"
+                        name="confirmLink"
+                        className="h-5 w-5 shrink-0 accent-brand-600"
+                      />
+                      <span className="text-ink">{t.loginConfirm}</span>
+                    </label>
+                  </>
+                )}
+                <button
+                  type="submit"
+                  disabled={loginPending}
+                  className="min-h-tap self-start rounded-lg border-2 border-brand-500
+                    bg-brand-50 px-4 text-sm font-semibold text-brand-700
+                    disabled:opacity-50"
+                >
+                  {loginPending ? common.saving : t.loginSubmit}
+                </button>
+              </form>
+            </details>
           )
 
           /*
@@ -283,6 +383,7 @@ export function TeacherList({
                     </button>
                   </form>
 
+                  {login}
                   {reset}
 
                   <div className="mt-3 border-t border-line pt-3">{toggle}</div>
