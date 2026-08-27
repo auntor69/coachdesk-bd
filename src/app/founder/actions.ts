@@ -1,8 +1,8 @@
 'use server'
 
 /**
- * The founder's own writes: money a centre paid us, what plan they are on, and
- * ticking off a customer who asked to change tier.
+ * The founder's own writes: money a centre paid us, what plan they are on, ticking off
+ * a customer who asked to change tier, and getting a locked-out owner back in.
  *
  * THE ONLY PLACE IN THE APP THAT WRITES `payments`. Until this file existed the
  * founder panel's "we have received" column read ৳0 for every customer forever,
@@ -41,6 +41,14 @@
  * instead of trusted from here. Nothing about a request is money or a tier, so there
  * is no trigger standing in the way and no reason to reach past RLS. Where a policy
  * can do the job, the policy does the job.
+ *
+ * THE FOURTH ONE TOUCHES AN ACCOUNT RATHER THAN A CENTRE, which makes it the most
+ * dangerous thing in this file and the one with a rule module of its own. Read
+ * lib/auth/founder-reset.ts for what it refuses and why the answer to "should the
+ * platform admin be able to reset any password" is that they already can, from their
+ * own environment, and what this removes is the database console rather than the
+ * limit. It goes through GoTrue's admin API, which is service-role by construction —
+ * there was never an RLS-shaped version of it to prefer.
  */
 
 import { revalidatePath } from 'next/cache'
@@ -51,10 +59,14 @@ import {
   requirePlatformAdmin,
   type Session,
 } from '@/lib/auth/session'
+import { founderResetRefusal } from '@/lib/auth/founder-reset'
+import { MIN_PASSWORD } from '@/lib/auth/password'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { createClient } from '@/lib/supabase/server'
 import { addMonths, formatMonth } from '@/lib/bd/time'
+import { formatBdMobile, normalizeBdMobile } from '@/lib/bd/phone'
 import { dict, DEFAULT_LOCALE } from '@/lib/i18n'
+import { passwordTooShort } from '@/lib/i18n/messages'
 import { readIdempotencyKey, UNIQUE_VIOLATION } from '@/lib/idempotency'
 import { MAX_LABEL, MAX_TEXT, clamp } from '@/lib/limits'
 import { formatTaka, parseTaka } from '@/lib/money'
@@ -65,7 +77,7 @@ import {
   isMonthsCovered,
   isPeriodChoice,
 } from '@/lib/platform/billing'
-import type { CenterStatus, PaymentMethod } from '@/lib/supabase/types'
+import type { CenterStatus, MemberRole, PaymentMethod } from '@/lib/supabase/types'
 
 /**
  * What both forms render back.
@@ -412,4 +424,112 @@ export async function markUpgradeHandled(
   revalidatePath('/founder')
 
   return { ok: t.asked.handled }
+}
+
+/**
+ * Gets a locked-out owner or manager back into their own centre.
+ *
+ * THE LAST PIECE OF A RECOVERY STORY WITH NO EMAIL IN IT. Login is a number and a
+ * password; /account changes a password you still know; the owner's staff screen issues
+ * one to a teacher who belongs to nobody else. Between them they cover everybody except
+ * the three groups lib/auth/founder-reset.ts names — an owner, a manager, and a teacher
+ * who works at two centres — and the copy on the owner's screen has been telling those
+ * three to ring the founder since it shipped. This is the button that call reaches.
+ *
+ * IT IS KEYED ON THE NUMBER, NOT ON A LIST. There is no roster of accounts rendered
+ * beside each centre, on purpose: the panel deliberately holds no link inward and one
+ * contact detail per customer, and a list of every staff member at every centre would
+ * be a directory of people the founder has no reason to read. The founder types the
+ * number the person is ringing from, which is also the number they sign in with, and is
+ * the thing they can actually see on their own phone screen. A mistyped digit lands on
+ * `notStaff` rather than on a stranger.
+ *
+ * WHAT COMES BACK IS A NAME, and that is the check that matters. The founder reads
+ * "new password set for Jamshed Rahman" back to whoever is on the line; if that is not
+ * who they are talking to, they have just reset the wrong person and they find out in
+ * the same second rather than a week later.
+ *
+ * Safe to arrive twice. Setting a password to the same value again is the same state,
+ * so a replayed request — see the note on useOffline in next.config.ts — changes
+ * nothing. There is no idempotency key because there is nothing to double.
+ *
+ * WHAT IT DOES NOT DO IS END THE OTHER SESSIONS. GoTrue leaves live sessions alone on a
+ * password change, here as everywhere else in this product, so this is a way back in and
+ * not a way to throw somebody out. The copy on the form says so, because an owner
+ * ringing about a phone they no longer have is asking for the second thing.
+ */
+export async function resetCenterStaffPassword(
+  _prev: FounderState,
+  formData: FormData,
+): Promise<FounderState> {
+  const gate = await founder()
+  if (!isSession(gate)) return gate
+
+  const session = gate
+  const d = dict(session.locale)
+  const t = d.founder
+  const words = t.lockout
+
+  const centerId = String(formData.get('centerId') ?? '')
+  if (!centerId) return { error: t.money.noCenter }
+
+  // Normalised before it is looked up, because `profiles.phone` holds exactly one
+  // shape — E.164 — and an owner reading their number off a signboard says 01712…
+  const phone = normalizeBdMobile(String(formData.get('phone') ?? ''))
+  if (!phone) return { error: words.errors.noAccount }
+
+  const password = String(formData.get('password') ?? '')
+  if (password.length < MIN_PASSWORD) {
+    return { error: passwordTooShort(session.locale) }
+  }
+
+  const admin = createAdminClient()
+
+  // scoped-by: profiles is not centre-scoped — phone is unique platform-wide, which
+  // is what makes one number one account. requirePlatformAdmin above is the gate.
+  const { data: profile, error: profileFailed } = await admin
+    .from('profiles')
+    .select('id, full_name, is_platform_admin')
+    .eq('phone', phone)
+    .maybeSingle()
+
+  // A failed read is not "no such number". Falling through would tell the founder to
+  // check the digits when the truth is that the database did not answer.
+  if (profileFailed) return { error: words.failed }
+
+  let rolesAtCenter: MemberRole[] = []
+
+  if (profile) {
+    // Filtered to this centre, unlike the owner's reset which reads every membership
+    // an account holds anywhere. The two rules ask different questions and this is
+    // where they part: "does this person work here", not "do they work only here".
+    // scoped-by: coaching_center_id is filtered below, to the centre whose card the
+    // form was submitted from.
+    const { data: rows, error: rowsFailed } = await admin
+      .from('center_members')
+      .select('role')
+      .eq('user_id', profile.id)
+      .eq('coaching_center_id', centerId)
+
+    if (rowsFailed) return { error: words.failed }
+    rolesAtCenter = (rows ?? []).map((row) => row.role)
+  }
+
+  const refusal = founderResetRefusal({
+    userId: profile?.id ?? null,
+    readerId: session.userId,
+    rolesAtCenter,
+    isPlatformAdmin: profile?.is_platform_admin ?? false,
+  })
+
+  // `|| !profile` only narrows the type — a missing profile already comes back as
+  // noAccount from the rule, which is where that decision is written and tested.
+  if (refusal || !profile) return { error: words.errors[refusal ?? 'noAccount'] }
+
+  const { error } = await admin.auth.admin.updateUserById(profile.id, { password })
+  if (error) return { error: words.failed }
+
+  // Nothing on the panel changes, so nothing is revalidated. The name is what the
+  // founder needs next, read back down the phone to the person waiting on it.
+  return { ok: t.resetDone(profile.full_name || formatBdMobile(phone)) }
 }

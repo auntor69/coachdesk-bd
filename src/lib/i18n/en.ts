@@ -1866,6 +1866,37 @@ export const en: Dictionary = {
       handled: 'Taken off the list.',
       failed: 'Could not do it. Try again.',
     },
+    /** Outside `lockout` because it takes an argument. See the Bangla note. */
+    resetDone: (name: string) =>
+      `${name} — new password set. Read it out to them now.`,
+    /** String leaves only — this group is handed to a client component. */
+    lockout: {
+      summary: 'Somebody cannot get in',
+      body:
+        'Type the number they sign in with and a new password, then read it out to '
+        + 'them on the phone. An owner, a manager or a teacher of this centre — any '
+        + 'of them. Another phone that is already signed in will not be signed out '
+        + 'on its own.',
+      phone: 'Login number',
+      phoneHint: 'Usually the number they are ringing you from.',
+      password: 'New password',
+      passwordHint: 'Shown on screen, because you have to read it out.',
+      submit: 'Set the password',
+      saving: 'Setting…',
+      failed: 'Could not do it. Try again.',
+      errors: {
+        noAccount: 'No account has that number. Check the digits again.',
+        self:
+          'That is your own account. This is not the screen for your own password '
+          + '— change it on your account screen.',
+        platformAdmin:
+          'That account belongs to the platform, not to a centre. Its password '
+          + 'cannot be set from here.',
+        notStaff:
+          'That account does not work at this centre. Check both the number and '
+          + 'which centre you are on.',
+      },
+    },
     csv: {
       name: 'Centre',
       area: 'Area',

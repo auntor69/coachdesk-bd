@@ -8,6 +8,7 @@ import { nameTooLong, passwordTooShort } from '../src/lib/i18n/messages.ts'
 import { MAX_NAME } from '../src/lib/limits.ts'
 import { MIN_PASSWORD } from '../src/lib/auth/password.ts'
 import { RESET_REFUSALS } from '../src/lib/auth/reset.ts'
+import { FOUNDER_RESET_REFUSALS } from '../src/lib/auth/founder-reset.ts'
 import { digits } from '../src/lib/bd/time.ts'
 import { CHASE_EMPTY_REASONS, STAGE_ORDER } from '../src/lib/fees/reminder-schedule.ts'
 import { MESSAGE_KINDS } from '../src/lib/fees/month-close.ts'
@@ -334,6 +335,33 @@ test('every reason a password reset is refused has a sentence in both languages'
   for (const locale of LOCALES) {
     const { errors } = dict(locale).settings.teachers.reset
     assert.equal(new Set(Object.values(errors)).size, RESET_REFUSALS.length)
+  }
+})
+
+test('every reason the founder is refused a reset has a sentence in both languages', () => {
+  /*
+   * The other half of the same story, and the copy matters more here rather than less.
+   * The founder's panel is the last stop for a locked-out owner — nothing else in the
+   * product can help them — so a refusal that arrives as a blank line ends a support
+   * call with "it does nothing" and a customer still shut out of their own fee book.
+   *
+   * The action picks its sentence with `lockout.errors[refusal]`, so a reason added to
+   * lib/auth/founder-reset.ts without copy for it fails here rather than on the phone.
+   */
+  for (const locale of LOCALES) {
+    const { errors } = dict(locale).founder.lockout
+    for (const refusal of FOUNDER_RESET_REFUSALS) {
+      assert.ok(errors[refusal], `${locale}.founder.lockout.errors.${refusal}`)
+    }
+    assert.equal(Object.keys(errors).length, FOUNDER_RESET_REFUSALS.length)
+  }
+
+  // Four distinct sentences. Three of them are about a number that was typed wrong and
+  // one is about a rule that will never bend, and a founder who reads the same words
+  // for "check the digits" and "not from here, ever" will keep retyping the digits.
+  for (const locale of LOCALES) {
+    const { errors } = dict(locale).founder.lockout
+    assert.equal(new Set(Object.values(errors)).size, FOUNDER_RESET_REFUSALS.length)
   }
 })
 

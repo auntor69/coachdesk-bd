@@ -18,6 +18,7 @@ import {
 } from '@/lib/platform/centers'
 import { CenterBilling } from './center-billing'
 import { AskedToUpgrade } from './asked-to-upgrade'
+import { StaffReset } from './staff-reset'
 
 /*
  * NO generateMetadata, on purpose.
@@ -359,6 +360,13 @@ export default async function FounderPage() {
                       // The fee board's own wallet names, not a second copy.
                       methods={d.feeRow.methods}
                     />
+
+                    {/* Below the money, because that is the order of the calls: most
+                        are about a bill and a few are about somebody locked out of
+                        their own centre. Nothing here is scoped by what the founder
+                        can see — the number is typed in and checked against this
+                        centre's staff on the server. See ./staff-reset.tsx. */}
+                    <StaffReset centerId={c.centerId} words={t.lockout} />
                   </Card>
                 </li>
               )

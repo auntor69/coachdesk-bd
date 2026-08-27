@@ -3900,6 +3900,59 @@ export const bn = {
       failed: 'করা যায়নি। আবার চেষ্টা করুন।',
     },
     /**
+     * Read back after a founder-issued password reset, and the reason it carries a
+     * name rather than a tick.
+     *
+     * OUTSIDE `lockout` because it takes an argument, exactly like `askedFor` sits
+     * outside `asked`. The founder typed a number off a phone call, and this name is
+     * the one chance they get to notice they typed it wrong — while the person who
+     * rang is still on the line, not a week later.
+     */
+    resetDone: (name: string) =>
+      `${name} — নতুন পাসওয়ার্ড দেওয়া হলো। এখনই ফোনে পড়ে শোনান।`,
+    /**
+     * The way back in for a locked-out owner, manager or teacher.
+     *
+     * STRING LEAVES ONLY — handed straight to a client component, like `money`.
+     *
+     * WHY THIS COPY EXISTS: login is a number and a password, so there is no "forgot
+     * password" mail to send anybody. The owner's own screen resets a teacher who
+     * belongs to no other centre and refuses everyone else — an owner, a manager, a
+     * teacher who works at two centres — and those refusals say to ring the founder.
+     * This is what the founder opens when that call comes.
+     *
+     * `passwordHint` admits the password is on screen, because the founder has to say
+     * it out loud down the phone. `body` says the other phones stay signed in: GoTrue
+     * does not end live sessions on a password change, and an owner ringing about a
+     * handset they have lost is asking for a different thing than a way back in.
+     */
+    lockout: {
+      summary: 'কেউ ঢুকতে পারছে না',
+      body:
+        'যে নম্বর দিয়ে তারা লগইন করে সেটি আর একটি নতুন পাসওয়ার্ড লিখুন, তারপর '
+        + 'ফোনেই পড়ে শোনান। এই সেন্টারের মালিক, ম্যানেজার বা শিক্ষক — যে কারও '
+        + 'চলবে। আগে থেকে লগইন করা অন্য ফোন নিজে থেকে লগআউট হবে না।',
+      phone: 'লগইন নম্বর',
+      phoneHint: 'যে নম্বর থেকে ফোন করছে, সাধারণত সেটিই।',
+      password: 'নতুন পাসওয়ার্ড',
+      passwordHint: 'স্ক্রিনে দেখা যাবে, কারণ এটি পড়ে শোনাতে হবে।',
+      submit: 'পাসওয়ার্ড দিন',
+      saving: 'দেওয়া হচ্ছে…',
+      failed: 'করা যায়নি। আবার চেষ্টা করুন।',
+      errors: {
+        noAccount: 'এই নম্বরে কোনো অ্যাকাউন্ট নেই। নম্বরটি আবার মিলিয়ে নিন।',
+        self:
+          'এটি আপনার নিজের অ্যাকাউন্ট। নিজের পাসওয়ার্ড বদলানোর জায়গা এটি নয় — '
+          + 'অ্যাকাউন্ট স্ক্রিন থেকে বদলান।',
+        platformAdmin:
+          'এই অ্যাকাউন্ট পুরো প্ল্যাটফর্মের, কোনো সেন্টারের নয়। এখান থেকে এটির '
+          + 'পাসওয়ার্ড দেওয়া যাবে না।',
+        notStaff:
+          'এই নম্বরের অ্যাকাউন্ট এই সেন্টারে কাজ করে না। নম্বর আর সেন্টার — '
+          + 'দুটোই মিলিয়ে নিন।',
+      },
+    },
+    /**
      * The download's column headings. Localised, while every value in the file
      * stays machine-readable — same split as the centre exports on /api/export, and
      * for the same reason: a heading is read by a person and a cell is read by a
