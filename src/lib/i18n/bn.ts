@@ -161,6 +161,15 @@ export const bn = {
      */
     placeholderPayments: 'নাম, রসিদ নম্বর বা ট্রানজেকশন আইডি',
     /**
+     * The same box on the exam list, which holds no student at all.
+     *
+     * Three fields, and every one of them is on the row already: the title the
+     * teacher typed, the batch, the subject. Not the date — the row shows it in
+     * Bangla numerals and the column behind it is an ISO string, so a reader typing
+     * what they can see would find nothing.
+     */
+    placeholderExams: 'পরীক্ষার নাম, ব্যাচ বা বিষয়',
+    /**
      * The submit button, which is not decoration — see the note on the register's
      * month form. A bare input with no button needs JavaScript to do what Enter
      * does on a hardware keyboard and nothing does on Android Chrome.
@@ -1824,6 +1833,14 @@ export const bn = {
     emptyBatch: 'ব্যাচে কেউ নেই',
     /** Families told from the centre own phone, counted once each. */
     toldCount: (n: number) => `${n} জনকে জানানো ✓`,
+    /**
+     * The list was cut, with the way to reach the rest. Bangla numerals: this is
+     * prose under the list, not a figure on a row.
+     */
+    limitNote: (n: number) =>
+      `নতুন ${digits(n, 'bn')}টি দেখানো হচ্ছে। পুরনো কোনোটি দরকার হলে খুঁজে নিন।`,
+    /** The floor under the search box itself. See the English note. */
+    ceilingNote: (n: number) => `শুধু নতুন ${digits(n, 'bn')}টি পরীক্ষার মধ্যে খোঁজা হয়।`,
 
     /** The marks sheet's own page title. */
     marksTitle: 'নম্বর',

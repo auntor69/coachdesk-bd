@@ -47,6 +47,7 @@ export const en: Dictionary = {
     label: 'Search',
     placeholder: 'Name, ID or phone number',
     placeholderPayments: 'Name, receipt no. or transaction ID',
+    placeholderExams: 'Exam name, batch or subject',
     go: 'Search',
     clear: 'Show all',
     showing: (shown: number, total: number) => `Showing ${shown} of ${total}`,
@@ -831,6 +832,22 @@ export const en: Dictionary = {
      * gateway reaching everybody with a mark in one go.
      */
     toldCount: (n: number) => `${n} told ✓`,
+    /**
+     * The list is not all of them, under a list that has been cut.
+     *
+     * Says what to do rather than only what happened, because the thing an owner
+     * wants at that moment is one particular exam from March and the box above the
+     * list is how they get it. Only rendered when rows were actually left out.
+     */
+    limitNote: (n: number) => `Showing the newest ${n}. Search to find an older one.`,
+    /**
+     * And the floor under the search itself, which the note above quietly assumes
+     * does not exist. A centre past this many exams cannot reach the oldest through
+     * the box either, so the box must not be the last word — see the note in the
+     * page. Realistically unreachable; here because "realistically unreachable" is
+     * how a list starts losing rows silently.
+     */
+    ceilingNote: (n: number) => `Only the newest ${n} exams are searched.`,
 
     marksTitle: 'Marks',
     noStudentsTitle: 'No students in this batch',
