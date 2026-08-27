@@ -40,6 +40,12 @@ import { PERMISSION_KEYS, type PermissionKey } from '@/lib/permissions'
 import { dict, DEFAULT_LOCALE } from '@/lib/i18n'
 import { nameTooLong, passwordTooShort } from '@/lib/i18n/messages'
 import { roomFor, wouldExceed, hasStaff, type LimitKey } from '@/lib/plans'
+import {
+  examTypeDeleteVerdict,
+  subjectDeleteVerdict,
+  subjectOffVerdict,
+} from '@/lib/settings/retire'
+import { readExamTypeUse, readSubjectUse } from '@/lib/settings/usage'
 import { asPreferredChannel } from '@/lib/students/channel'
 import { STUDENT_STATUSES } from '@/lib/students/status'
 import type {
@@ -336,6 +342,370 @@ export async function createExamType(
 
   revalidatePath('/settings/exam-types')
   return { ok: t.added }
+}
+
+/**
+ * Correcting and retiring the two lists a centre writes for itself.
+ *
+ * Both were add-only until now, which made a typo permanent: "Physcis" went onto
+ * the batch, onto every exam sat in it, onto the marks sheet, into the parent's
+ * SMS and onto the printed report, and the only repair was a second subject called
+ * "Physics" sitting beside it for ever — on a plan that holds five of them.
+ *
+ * THREE VERBS, AND WHICH ONE IS NEEDED DEPENDS ON WHAT WENT WRONG. Rename fixes
+ * the spelling everywhere at once, because every batch, enrolment and exam holds
+ * the id and not the letters. Off ends a subject the centre has stopped teaching
+ * while all of its history keeps the name it was taught under. Remove is only for
+ * the duplicate that nothing ever used, and it is the one that can be refused.
+ *
+ * Every refusal comes from `lib/settings/retire.ts`, which the list screen calls
+ * as well — so the panel cannot offer a button this will decline, and cannot
+ * explain a refusal in different words from the refusal itself.
+ */
+export async function renameSubject(
+  _prev: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
+  const session = await staffAdmin()
+  if (!isSession(session)) return session
+
+  const t = dict(session.locale).settings
+
+  const subjectId = String(formData.get('subjectId') ?? '')
+  if (!subjectId) return { error: t.subjects.errors.notFound }
+
+  const name = String(formData.get('name') ?? '').trim()
+  const nameBn = String(formData.get('nameBn') ?? '').trim()
+
+  // Validated exactly as createSubject validates the same two fields — a subject
+  // reached through this form has to end up as legal as one reached through that.
+  if (!name) return { error: t.subjects.errors.nameRequired }
+  if (name.length > MAX_NAME || nameBn.length > MAX_NAME) {
+    return { error: nameTooLong(session.locale) }
+  }
+
+  const supabase = await createClient()
+
+  // Read back first and scoped by centre as well as by RLS, for the reason
+  // updateBatch's own note gives: an owner of two centres satisfies
+  // is_staff_admin for both, so the policy alone would rename the other one's.
+  //
+  // No cap check and no use check. A rename cannot break anything pointing here,
+  // which is exactly why it is the repair every refusal below recommends.
+  const { data: before } = await supabase
+    .from('subjects')
+    .select('id')
+    .eq('coaching_center_id', session.active.centerId)
+    .eq('id', subjectId)
+    .maybeSingle()
+
+  if (!before) return { error: t.subjects.errors.notFound }
+
+  const { data: saved, error } = await supabase
+    .from('subjects')
+    .update({ name, name_bn: nameBn || null })
+    .eq('coaching_center_id', session.active.centerId)
+    .eq('id', before.id)
+    .select('id')
+
+  if (error) {
+    if (error.code === '23505') return { error: t.subjects.errors.duplicate }
+    return { error: t.errors.saveFailed }
+  }
+  // An update matching no policy changes nothing and reports no error, so the rows
+  // written are counted rather than assumed — the trap saveMarks documents.
+  if (!saved || saved.length === 0) return { error: t.errors.saveFailed }
+
+  revalidatePath('/settings/subjects')
+  revalidatePath('/settings/batches')
+  return { ok: t.saved }
+}
+
+export async function setSubjectActive(
+  _prev: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
+  const session = await staffAdmin()
+  if (!isSession(session)) return session
+
+  const t = dict(session.locale).settings
+
+  const subjectId = String(formData.get('subjectId') ?? '')
+  if (!subjectId) return { error: t.subjects.errors.notFound }
+
+  // 'on'/'off' rather than a checkbox, because this arrives from a button and not
+  // from a form somebody filled in: absence has to mean a broken request here, not
+  // "off". Anything else was forged, so it gets the sentence for a broken request.
+  const raw = String(formData.get('next') ?? '')
+  if (raw !== 'on' && raw !== 'off') return { error: t.errors.changeFailed }
+  const next = raw === 'on'
+
+  const supabase = await createClient()
+
+  const { data: before } = await supabase
+    .from('subjects')
+    .select('id, active')
+    .eq('coaching_center_id', session.active.centerId)
+    .eq('id', subjectId)
+    .maybeSingle()
+
+  if (!before) return { error: t.subjects.errors.notFound }
+
+  // Already where it is being asked to go. Reported as done rather than written
+  // again, which is what makes a replay harmless: `useOffline` re-sends whatever
+  // was queued when the connection dropped, and this is a public endpoint anyway.
+  if (before.active === next) return { ok: t.saved }
+
+  if (next) {
+    // Turning one back on is an addition as far as the plan is concerned, so it
+    // passes the same cap createSubject does — checked before anything is written,
+    // the way a reopened batch is.
+    if (await overLimit(session, 'subjects', 'maxSubjects')) {
+      return { error: t.errors.planLimit }
+    }
+  } else {
+    // Turning one off frees a plan slot without stopping a single class, so a
+    // subject a running batch still teaches may not go quiet. See subjectOffVerdict.
+    const use = await readSubjectUse(supabase, session.active.centerId, before.id)
+    if (!use) return { error: t.subjects.errors.checkFailed }
+    if (subjectOffVerdict(use) === 'liveBatches') {
+      return { error: t.subjects.errors.offLiveBatches(use.liveBatchCount) }
+    }
+  }
+
+  const { data: saved, error } = await supabase
+    .from('subjects')
+    .update({ active: next })
+    .eq('coaching_center_id', session.active.centerId)
+    .eq('id', before.id)
+    .select('id')
+
+  if (error || !saved || saved.length === 0) {
+    return { error: t.errors.changeFailed }
+  }
+
+  revalidatePath('/settings/subjects')
+  revalidatePath('/settings/batches')
+  // Both of these count the active ones and would otherwise keep showing the
+  // number this call just changed.
+  revalidatePath('/settings/plan')
+  revalidatePath('/settings')
+  return { ok: t.saved }
+}
+
+export async function deleteSubject(
+  _prev: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
+  const session = await staffAdmin()
+  if (!isSession(session)) return session
+
+  const t = dict(session.locale).settings
+
+  const subjectId = String(formData.get('subjectId') ?? '')
+  if (!subjectId) return { error: t.subjects.errors.notFound }
+
+  const supabase = await createClient()
+
+  const { data: before } = await supabase
+    .from('subjects')
+    .select('id')
+    .eq('coaching_center_id', session.active.centerId)
+    .eq('id', subjectId)
+    .maybeSingle()
+
+  if (!before) return { error: t.subjects.errors.notFound }
+
+  // Counted again here rather than trusted from the screen that offered the
+  // button: a list rendered ten minutes ago can be a batch out of date, and the
+  // foreign keys would refuse with a constraint name nobody can read.
+  const use = await readSubjectUse(supabase, session.active.centerId, before.id)
+  if (!use) return { error: t.subjects.errors.checkFailed }
+
+  // Written out rather than left to a default, so a fifth SubjectDeleteVerdict is
+  // a type error here instead of a delete that quietly starts going through.
+  switch (subjectDeleteVerdict(use)) {
+    case 'batches':
+      return { error: t.subjects.errors.deleteBatches(use.batchCount) }
+    case 'enrolments':
+      return { error: t.subjects.errors.deleteEnrolments(use.enrolmentCount) }
+    case 'exams':
+      return { error: t.subjects.errors.deleteExams(use.examCount) }
+    case 'ok':
+      break
+  }
+
+  const { data: gone, error } = await supabase
+    .from('subjects')
+    .delete()
+    .eq('coaching_center_id', session.active.centerId)
+    .eq('id', before.id)
+    .select('id')
+
+  if (error || !gone || gone.length === 0) {
+    return { error: t.subjects.errors.deleteFailed }
+  }
+
+  revalidatePath('/settings/subjects')
+  revalidatePath('/settings/batches')
+  revalidatePath('/settings/plan')
+  revalidatePath('/settings')
+  return { ok: t.removed }
+}
+
+export async function renameExamType(
+  _prev: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
+  const session = await staffAdmin()
+  if (!isSession(session)) return session
+
+  const t = dict(session.locale).settings
+
+  const examTypeId = String(formData.get('examTypeId') ?? '')
+  if (!examTypeId) return { error: t.examTypes.errors.notFound }
+
+  const name = String(formData.get('name') ?? '').trim()
+  const nameBn = String(formData.get('nameBn') ?? '').trim()
+
+  if (!name) return { error: t.examTypes.errors.nameRequired }
+  if (name.length > MAX_NAME || nameBn.length > MAX_NAME) {
+    return { error: nameTooLong(session.locale) }
+  }
+
+  const supabase = await createClient()
+
+  const { data: before } = await supabase
+    .from('exam_types')
+    .select('id')
+    .eq('coaching_center_id', session.active.centerId)
+    .eq('id', examTypeId)
+    .maybeSingle()
+
+  if (!before) return { error: t.examTypes.errors.notFound }
+
+  const { data: saved, error } = await supabase
+    .from('exam_types')
+    .update({ name, name_bn: nameBn || null })
+    .eq('coaching_center_id', session.active.centerId)
+    .eq('id', before.id)
+    .select('id')
+
+  if (error) {
+    if (error.code === '23505') return { error: t.examTypes.errors.duplicate }
+    return { error: t.errors.saveFailed }
+  }
+  if (!saved || saved.length === 0) return { error: t.errors.saveFailed }
+
+  revalidatePath('/settings/exam-types')
+  // The kind is the second line under every exam's heading, and the picker on the
+  // form that creates one.
+  revalidatePath('/exams')
+  return { ok: t.saved }
+}
+
+export async function setExamTypeActive(
+  _prev: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
+  const session = await staffAdmin()
+  if (!isSession(session)) return session
+
+  const t = dict(session.locale).settings
+
+  const examTypeId = String(formData.get('examTypeId') ?? '')
+  if (!examTypeId) return { error: t.examTypes.errors.notFound }
+
+  const raw = String(formData.get('next') ?? '')
+  if (raw !== 'on' && raw !== 'off') return { error: t.errors.changeFailed }
+  const next = raw === 'on'
+
+  const supabase = await createClient()
+
+  const { data: before } = await supabase
+    .from('exam_types')
+    .select('id, active')
+    .eq('coaching_center_id', session.active.centerId)
+    .eq('id', examTypeId)
+    .maybeSingle()
+
+  if (!before) return { error: t.examTypes.errors.notFound }
+
+  if (before.active === next) return { ok: t.saved }
+
+  // Neither half of the subject version's check applies here, and both omissions
+  // are deliberate: exam kinds have no plan cap to buy anything by turning one
+  // off, and taking a kind out of the picker is the ordinary way to stop running
+  // it — every exam already held keeps the name it was held under.
+  const { data: saved, error } = await supabase
+    .from('exam_types')
+    .update({ active: next })
+    .eq('coaching_center_id', session.active.centerId)
+    .eq('id', before.id)
+    .select('id')
+
+  if (error || !saved || saved.length === 0) {
+    return { error: t.errors.changeFailed }
+  }
+
+  revalidatePath('/settings/exam-types')
+  revalidatePath('/exams')
+  revalidatePath('/settings')
+  return { ok: t.saved }
+}
+
+export async function deleteExamType(
+  _prev: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
+  const session = await staffAdmin()
+  if (!isSession(session)) return session
+
+  const t = dict(session.locale).settings
+
+  const examTypeId = String(formData.get('examTypeId') ?? '')
+  if (!examTypeId) return { error: t.examTypes.errors.notFound }
+
+  const supabase = await createClient()
+
+  const { data: before } = await supabase
+    .from('exam_types')
+    .select('id')
+    .eq('coaching_center_id', session.active.centerId)
+    .eq('id', examTypeId)
+    .maybeSingle()
+
+  if (!before) return { error: t.examTypes.errors.notFound }
+
+  // The count matters more here than anywhere else on this screen, because the
+  // database would not stop this one: exams.exam_type_id is `on delete set null`,
+  // so a removal Postgres is happy with would quietly strip the kind off every
+  // exam ever held under it. See examTypeDeleteVerdict.
+  const use = await readExamTypeUse(supabase, session.active.centerId, before.id)
+  if (!use) return { error: t.examTypes.errors.checkFailed }
+
+  switch (examTypeDeleteVerdict(use)) {
+    case 'exams':
+      return { error: t.examTypes.errors.deleteExams(use.examCount) }
+    case 'ok':
+      break
+  }
+
+  const { data: gone, error } = await supabase
+    .from('exam_types')
+    .delete()
+    .eq('coaching_center_id', session.active.centerId)
+    .eq('id', before.id)
+    .select('id')
+
+  if (error || !gone || gone.length === 0) {
+    return { error: t.examTypes.errors.deleteFailed }
+  }
+
+  revalidatePath('/settings/exam-types')
+  revalidatePath('/exams')
+  revalidatePath('/settings')
+  return { ok: t.removed }
 }
 
 /** Turns "07:30" into a Postgres time, or null. Rejects anything else. */

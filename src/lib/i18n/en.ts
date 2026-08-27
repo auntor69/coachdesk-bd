@@ -1560,6 +1560,7 @@ export const en: Dictionary = {
   settings: {
     added: 'Added',
     saved: 'Saved',
+    removed: 'Removed',
 
     errors: {
       forbidden: 'Only an owner or a manager can do this.',
@@ -1695,6 +1696,17 @@ export const en: Dictionary = {
       errors: {
         nameRequired: 'Give the subject a name.',
         duplicate: 'You already have a subject with this name.',
+        notFound: 'That subject is not on your list.',
+        checkFailed: 'What uses this subject could not be checked. Please try again.',
+        deleteFailed: 'The subject could not be removed. Please try again.',
+        deleteBatches: (n: number) =>
+          `${n} ${n === 1 ? 'batch' : 'batches'} ${n === 1 ? 'teaches' : 'teach'} this subject. Rename it instead, or turn it off once those batches have finished.`,
+        deleteEnrolments: (n: number) =>
+          `${n} ${n === 1 ? 'student is' : 'students are'} enrolled in this subject. Rename it instead of removing it.`,
+        deleteExams: (n: number) =>
+          `${n} ${n === 1 ? 'exam has' : 'exams have'} been sat in this subject. Rename it instead, or turn it off — the marks keep the name they were sat under.`,
+        offLiveBatches: (n: number) =>
+          `${n} running ${n === 1 ? 'batch still teaches' : 'batches still teach'} this subject. Move them to another subject, or close them first.`,
       },
     },
 
@@ -1706,6 +1718,11 @@ export const en: Dictionary = {
       errors: {
         nameRequired: 'Give the exam kind a name.',
         duplicate: 'You already have a kind with this name.',
+        notFound: 'That exam kind is not on your list.',
+        checkFailed: 'What uses this kind could not be checked. Please try again.',
+        deleteFailed: 'The exam kind could not be removed. Please try again.',
+        deleteExams: (n: number) =>
+          `${n} ${n === 1 ? 'exam has' : 'exams have'} been held as this kind. Rename it instead, or turn it off — every exam already held keeps its name.`,
       },
     },
 
@@ -2020,6 +2037,23 @@ export const en: Dictionary = {
           `That list is too big (over ${rows} rows). Download it a month at a time, or get in touch.`,
       },
     },
+  },
+
+  /** See the Bangla for why this row's words are a group of their own. */
+  settingsListRow: {
+    off: 'Off',
+    turnOff: 'Turn it off',
+    turnOn: 'Turn it back on',
+    offHint:
+      'It leaves the lists you pick from. Everything already using it keeps the name.',
+    offBlockedTitle: 'This cannot be turned off yet',
+    removeOpen: 'Remove it',
+    removeHeading: 'Remove it for good?',
+    removeWarning: 'Nothing is using it, so nothing else changes. It leaves your list.',
+    removeConfirm: 'Yes, remove it',
+    removing: 'Removing…',
+    keep: 'Keep it',
+    blockedTitle: 'This cannot be removed',
   },
 
   /** See the Bangla for why the calculator's words are a group of their own. */

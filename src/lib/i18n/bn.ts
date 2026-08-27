@@ -3202,6 +3202,7 @@ export const bn = {
     /** The two success words the smaller forms share. */
     added: 'যোগ হয়েছে',
     saved: 'সেভ হয়েছে',
+    removed: 'মুছে ফেলা হয়েছে',
 
     errors: {
       /**
@@ -3466,6 +3467,24 @@ export const bn = {
         nameRequired: 'বিষয়ের নাম লিখুন।',
         /** The unique index on (centre, name). More use than a Postgres string. */
         duplicate: 'এই নামে বিষয় আগেই আছে।',
+        notFound: 'এই বিষয় আপনার তালিকায় নেই।',
+        checkFailed:
+          'এই বিষয় কোথায় কোথায় ব্যবহার হচ্ছে তা দেখা যায়নি। আবার চেষ্টা করুন।',
+        deleteFailed: 'বিষয়টি মুছে ফেলা যায়নি। আবার চেষ্টা করুন।',
+        /**
+         * Names the batch and then the way out, in that order. An owner who came
+         * here to remove a duplicate needs to know it is not a duplicate before
+         * they are told what to do instead.
+         */
+        deleteBatches: (n: number) =>
+          `${digits(n, 'bn')}টি ব্যাচে এই বিষয় পড়ানো হয়। নাম বদলে নিন, অথবা ওই ব্যাচগুলো শেষ হলে বিষয়টি বন্ধ করে দিন।`,
+        deleteEnrolments: (n: number) =>
+          `${digits(n, 'bn')}জন শিক্ষার্থী এই বিষয়ে ভর্তি আছে। মুছে ফেলার বদলে নাম বদলে নিন।`,
+        deleteExams: (n: number) =>
+          `এই বিষয়ে ${digits(n, 'bn')}টি পরীক্ষা হয়েছে। নাম বদলে নিন, অথবা বিষয়টি বন্ধ করে দিন — নম্বর যে নামে হয়েছে সেই নামই থাকবে।`,
+        /** The plan cap, in the owner's terms rather than the plan's. */
+        offLiveBatches: (n: number) =>
+          `চালু ${digits(n, 'bn')}টি ব্যাচে এখনো এই বিষয় পড়ানো হয়। আগে ওই ব্যাচগুলো অন্য বিষয়ে নিন, বা ব্যাচগুলো বন্ধ করুন।`,
       },
     },
 
@@ -3478,6 +3497,16 @@ export const bn = {
       errors: {
         nameRequired: 'পরীক্ষার ধরনের নাম লিখুন।',
         duplicate: 'এই নামে ধরন আগেই আছে।',
+        notFound: 'এই ধরন আপনার তালিকায় নেই।',
+        checkFailed: 'এই ধরন কোথায় ব্যবহার হচ্ছে তা দেখা যায়নি। আবার চেষ্টা করুন।',
+        deleteFailed: 'ধরনটি মুছে ফেলা যায়নি। আবার চেষ্টা করুন।',
+        /**
+         * The database would allow this one and null the column, which would take
+         * the kind off every exam ever held — including the ones already sent to
+         * guardians. So the refusal is ours, and it offers the off switch instead.
+         */
+        deleteExams: (n: number) =>
+          `এই ধরনে ${digits(n, 'bn')}টি পরীক্ষা হয়েছে। নাম বদলে নিন, অথবা ধরনটি বন্ধ করে দিন — আগে হওয়া পরীক্ষাগুলোর নাম ঠিকই থাকবে।`,
       },
     },
 
@@ -4026,6 +4055,42 @@ export const bn = {
           `তালিকাটি খুব বড় (${digits(rows, 'bn')}টির বেশি সারি)। মাস ধরে ধরে নামান, বা আমাদের জানান।`,
       },
     },
+  },
+
+  /**
+   * The words on one row of the subject and exam-kind lists.
+   *
+   * Top-level and not inside `settings.subjects`, for the reason `batchForm` is not
+   * inside `settings.batches`: the row is a client component, `T` only takes a
+   * top-level key, and it maps every function leaf to `never`. So the counted
+   * sentences — how many batches teach it, how many exams were sat in it — stay in
+   * `settings.subjects.errors` where they can be functions, and are handed to the
+   * row already written out by the page.
+   *
+   * Shared by both lists rather than written twice, because the two errands are the
+   * same errand: an owner has mistyped a name, or has stopped using one.
+   */
+  settingsListRow: {
+    /** The chip on a row that is off. One word — it sits next to the name. */
+    off: 'বন্ধ',
+    turnOff: 'বন্ধ করে দিন',
+    turnOn: 'আবার চালু করুন',
+    /**
+     * What off actually does, because the word alone sounds like deletion. The
+     * distinction matters most to the owner who is afraid of losing last term's
+     * marks.
+     */
+    offHint:
+      'যেখান থেকে বাছাই করেন সেই তালিকা থেকে সরে যাবে। যেখানে আগে থেকে আছে, নাম সেখানেই থাকবে।',
+    offBlockedTitle: 'এখন বন্ধ করা যাবে না',
+    removeOpen: 'মুছে ফেলুন',
+    removeHeading: 'একেবারে মুছে ফেলবেন?',
+    removeWarning:
+      'কোথাও ব্যবহার হচ্ছে না, তাই আর কিছু বদলাবে না। শুধু তালিকা থেকে সরে যাবে।',
+    removeConfirm: 'হ্যাঁ, মুছে ফেলুন',
+    removing: 'মোছা হচ্ছে…',
+    keep: 'থাকুক',
+    blockedTitle: 'এটি মুছে ফেলা যাবে না',
   },
 
   /**
