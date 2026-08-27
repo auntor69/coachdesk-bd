@@ -30,13 +30,13 @@ export async function generateMetadata() {
 }
 
 /**
- * WHICH FEATURES ARE LISTED, AND WHY IT IS SEVEN AND NOT TWELVE.
+ * WHICH FEATURES ARE LISTED, AND WHY IT IS EIGHT AND NOT TWELVE.
  *
- * `PlanFeatures` carries twelve flags. Two of them — the weekly guardian summary,
- * multiple branches — describe screens nobody has built yet, and two more
- * (`automatedSms`, `buySmsCredits`) wait on a BTRC sender ID that does not exist.
- * A tick beside any of those on a paid tier would be selling something that cannot
- * be delivered, on the one screen in the app where that is unrecoverable.
+ * `PlanFeatures` carries twelve flags. One of them — multiple branches — describes
+ * a screen nobody has built yet, and two more (`automatedSms`, `buySmsCredits`) wait
+ * on a BTRC sender ID that does not exist. A tick beside any of those on a paid tier
+ * would be selling something that cannot be delivered, on the one screen in the app
+ * where that is unrecoverable.
  *
  * So the list is the shipped set, and the note under it says so. A feature moves
  * into this array on the day it works, not on the day it is decided — and because
@@ -44,6 +44,14 @@ export async function generateMetadata() {
  * `labels` below. `exportReports` arrived by that rule: it had been priced into Pro
  * since the plan engine was written and stayed off this list until the three sheets
  * behind /api/export were built and covered by tests.
+ *
+ * `parentSummary` arrived by the same rule and was overdue by it. /progress ships a
+ * per-student weekly report built from real attendance and marks, its Server Action
+ * refuses the free tier, and the dashboard door is drawn only when the flag is on —
+ * so the feature works and is already being withheld. Leaving it off this list was
+ * the mirror image of the mistake the rule exists to prevent: not a tick for
+ * something unbuilt, but a price screen omitting the one line its own paywall calls
+ * the reason to pay ৳499.
  */
 const SHIPPED = [
   'attendance',
@@ -51,6 +59,7 @@ const SHIPPED = [
   'feeTracking',
   'manualMessaging',
   'printedReceipts',
+  'parentSummary',
   'exportReports',
   'staffManagement',
 ] as const satisfies readonly FeatureKey[]
@@ -163,15 +172,16 @@ export default async function PlanPage() {
       : []),
   ]
 
-  // Only the six. A map covering all twelve flags would need a name for export and
-  // for the guardian summary, and the only names available would describe screens
-  // that do not exist — which is exactly what this screen must not put on paper.
+  // Only the eight. A map covering all twelve flags would need a name for branches
+  // and for paid SMS, and the only names available would describe screens that do
+  // not exist — which is exactly what this screen must not put on paper.
   const labels: Record<(typeof SHIPPED)[number], string> = {
     attendance: t.attendance,
     exams: t.exams,
     feeTracking: t.fees,
     manualMessaging: t.messaging,
     printedReceipts: t.receipts,
+    parentSummary: t.summary,
     exportReports: t.export,
     staffManagement: t.staff,
   }

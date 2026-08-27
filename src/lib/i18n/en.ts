@@ -1709,6 +1709,7 @@ export const en: Dictionary = {
       fees: 'Fees and arrears',
       messaging: 'SMS, WhatsApp and calls from your own phone',
       receipts: 'Printed receipts and the collection register',
+      summary: 'The weekly parent report, written from attendance and marks',
       staff: 'Adding teachers and sharing out permissions',
       export: 'Download lists as Excel files',
       onlyBuilt:
@@ -1717,7 +1718,7 @@ export const en: Dictionary = {
       ladderTitle: 'The plans',
       addsFree: 'For trying it out — 1 batch, 30 students.',
       addsPro:
-        'One teacher’s whole coaching — 5 batches, 150 students, printed receipts and the register.',
+        'One teacher’s whole coaching — 5 batches, 150 students, printed receipts, the register and the weekly parent report.',
       addsCenter:
         'Add teachers, no cap on batches or students. Priced by how many students you have.',
       addsInstitution: 'Several branches under one account. Arranged by conversation.',

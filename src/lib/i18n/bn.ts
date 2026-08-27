@@ -2400,11 +2400,13 @@ export const bn = {
     can_manage_students: {
       /**
        * "ভর্তি" and not "সম্পাদনা". This used to read শিক্ষার্থী যোগ ও সম্পাদনা with a
-       * hint promising the teacher could change a guardian's mobile number — and
-       * nobody could, at any rank: there is no edit-a-student screen in this product
-       * for the owner either. 20260811000019 grants what the screens actually do,
-       * which is read the roster and admit a student, and the label had to come back
-       * down to meet it.
+       * hint promising the teacher could change a guardian's mobile number, which no
+       * checkbox has ever granted. There is an edit-a-student screen now —
+       * /settings/students/[studentId], where the batch checkboxes and the guardian
+       * number both live — but the page is pageRole('manager') and updateStudent is
+       * staffAdmin(), so this grant does not reach it. 20260811000019 gives what the
+       * screens behind this checkbox actually do, which is read the roster and admit
+       * a student, and the label came down to meet it.
        */
       label: 'শিক্ষার্থী ভর্তি',
       /**
@@ -2415,7 +2417,13 @@ export const bn = {
       hint: 'পুরো কোচিংয়ের শিক্ষার্থী তালিকা ও অভিভাবকের নম্বর দেখা, নতুন ভর্তি করা',
     },
     can_manage_batches: {
-      /** Same correction: opening a batch is granted, changing one is not built. */
+      /**
+       * Same correction, and the label still stops at 'open': changing an existing
+       * batch is built now — /settings/batches/[batchId] — but it is staff-admin, both
+       * on the page and in updateBatch, so this checkbox does not reach it. A label
+       * reading 'manage batches' would promise the edit form to somebody the action
+       * refuses.
+       */
       label: 'নতুন ব্যাচ খোলা',
       hint: 'বিষয়, সময়, কোন দিন ক্লাস আর মাসিক ফি ঠিক করে নতুন ব্যাচ খোলা',
     },
@@ -3450,23 +3458,28 @@ export const bn = {
       fees: 'ফি আর বাকির হিসাব',
       messaging: 'নিজের ফোন থেকে SMS, WhatsApp, কল',
       receipts: 'ছাপানো রসিদ ও আদায় খাতা',
+      summary: 'হাজিরা আর নম্বর থেকে সাপ্তাহিক অভিভাবক রিপোর্ট',
       staff: 'শিক্ষক যোগ করা আর অনুমতি ভাগ করা',
       export: 'Excel ফাইলে তালিকা ডাউনলোড',
       /**
-       * Why the list is seven rows and not twelve.
+       * Why the list is eight rows and not twelve.
        *
-       * The plan engine knows about the weekly guardian summary and branches;
-       * neither is built. Listing them with a tick beside a paid tier would be
-       * selling something that does not exist, which is the one thing a price
-       * screen cannot do and survive. Export left this list on the day the three
-       * sheets downloaded, not on the day it was priced.
+       * The plan engine knows about branches and about paid SMS; neither exists.
+       * Listing them with a tick beside a paid tier would be selling something
+       * that does not exist, which is the one thing a price screen cannot do and
+       * survive. Rows join this list on the day the screen behind them works, not
+       * on the day the tier was priced: export joined when the three sheets
+       * downloaded, and the weekly parent report joined when /progress shipped
+       * with its own paywall — which made its absence the opposite mistake, a
+       * price screen leaving out the single thing ৳499 buys.
        */
       onlyBuilt: 'যা এখন সত্যিই কাজ করছে শুধু তাই এই তালিকায়। নতুন কিছু চালু হলে যোগ হবে।',
 
       ladderTitle: 'প্ল্যানগুলো',
       /** One line each: what the tier is for, not a feature list. */
       addsFree: 'দেখে নেওয়ার জন্য — ১টি ব্যাচ, ৩০ জন শিক্ষার্থী।',
-      addsPro: 'একজন শিক্ষকের পুরো কোচিং — ৫টি ব্যাচ, ১৫০ জন, ছাপানো রসিদ আর আদায় খাতা।',
+      addsPro:
+        'একজন শিক্ষকের পুরো কোচিং — ৫টি ব্যাচ, ১৫০ জন, ছাপানো রসিদ, আদায় খাতা আর সাপ্তাহিক অভিভাবক রিপোর্ট।',
       addsCenter: 'শিক্ষক যোগ করা যায়, ব্যাচ-শিক্ষার্থীর সীমা নেই। দাম শিক্ষার্থী সংখ্যা অনুযায়ী।',
       addsInstitution: 'একাধিক শাখা এক হিসাবের নিচে। কথা বলে ঠিক করা হয়।',
       current: 'এখন এটিতেই আছেন',

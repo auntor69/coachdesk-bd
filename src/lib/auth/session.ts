@@ -495,9 +495,11 @@ export const canManageStudents = cache(async (): Promise<boolean> => {
  * same reader could already read on every existing batch.
  *
  * Deliberately does not carry enrolment. Putting an existing student into a batch
- * is a screen nobody has built, and granting it here would also be a way up:
- * a teacher assigned to a batch reads its students through app.my_taught_student_ids,
- * so "enrol anyone into my own batch" is "read anyone". Admissions is the other
+ * is the batch checkbox set on /settings/students/[studentId], which `can_manage_students`
+ * grants and this checkbox does not — and the split is not tidiness. A teacher
+ * assigned to a batch reads its students through app.my_taught_student_ids, so
+ * "enrol anyone into my own batch" is "read anyone": the grant would let its holder
+ * walk the whole centre's roster one enrolment at a time. Admissions is the other
  * checkbox, and an owner who wants both ticks both.
  */
 export const canManageBatches = cache(async (): Promise<boolean> => {

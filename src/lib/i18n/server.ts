@@ -10,10 +10,12 @@
  *
  * Session first, cookie second. That order matters: a preference on the account
  * travels to whatever phone or laptop the reader signs in on, which is what
- * somebody who set the app to English on a borrowed computer expects. The cookie
- * is the anonymous half — it remembers the choice made on the login form, and it
- * is written on every switch so that signing out does not put a Bangla form in
- * front of an English reader.
+ * somebody who set the app to English on a borrowed computer expects. The cookie is
+ * the anonymous half. Nothing signed out can set it — the only switch in the product
+ * is in the app shell, which needs a session — so what it actually carries is a
+ * choice made inside the app, forward onto the screens that come after signing out.
+ * Which is the whole point of writing it on every switch: an English reader who signs
+ * out does not get handed a Bangla login form.
  *
  * Because the session wins, this can never disagree with `dict(session.locale)`
  * on a signed-in screen. A page rendering English under `<html lang="bn">` is not
