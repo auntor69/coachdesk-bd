@@ -1,7 +1,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 
-import { riskLevel, studentsAtRisk, type RiskRow } from '../src/lib/students/risk.ts'
+import { riskLevel, studentsAtRisk, blindArms, type RiskRow } from '../src/lib/students/risk.ts'
 
 /**
  * A row with nothing flagged, to be overridden one field at a time.
@@ -235,4 +235,67 @@ test('a nameless student is named, and one with no id is dropped', () => {
   )
   assert.equal(out.length, 1)
   assert.equal(out[0].name, 'নাম নেই')
+})
+
+/*
+ * blindArms — the difference between "nobody is drifting" and "nothing was read".
+ *
+ * An empty worklist is the screen's happiest sentence and its most dangerous one:
+ * every one of the three signals is built from data the centre had to enter, so a
+ * centre that stopped taking registers gets a clean bill of health on attendance it
+ * never recorded. These tests hold the line on what that check may and may not
+ * claim.
+ */
+
+test('a signal with nothing recorded is named, and in the order the screen reads', () => {
+  assert.deepEqual(blindArms({ sessions: 0, exams: 0, invoices: 0 }), [
+    'attendance',
+    'marks',
+    'fees',
+  ])
+
+  // Attendance, then marks, then the fee — the same order as the reasons on a row,
+  // because these lines sit on the same screen and a reader should not have to
+  // re-learn the sequence halfway down it.
+  assert.deepEqual(blindArms({ sessions: 0, exams: 0, invoices: 4 }), [
+    'attendance',
+    'marks',
+  ])
+  assert.deepEqual(blindArms({ sessions: 0, exams: 9, invoices: 0 }), ['attendance', 'fees'])
+  assert.deepEqual(blindArms({ sessions: 12, exams: 0, invoices: 0 }), ['marks', 'fees'])
+})
+
+test('a centre that records all three is told nothing', () => {
+  assert.deepEqual(blindArms({ sessions: 12, exams: 3, invoices: 40 }), [])
+})
+
+test('existence is the whole test — one register is not blind, though it flags nobody', () => {
+  // The view needs four counted registers before att_low can fire, so a centre with
+  // one register genuinely cannot flag anybody on attendance and will not be told
+  // so. That is deliberate: the threshold lives in the migration, and a second copy
+  // of it here would drift the first time either was edited. Saying less than
+  // everything is the price of not keeping that copy.
+  assert.deepEqual(blindArms({ sessions: 1, exams: 1, invoices: 1 }), [])
+})
+
+test('invoices that exist and are all paid are a real all-clear, not blindness', () => {
+  // The asymmetry is the point. No registers does not mean the students were there
+  // and no exams does not mean the marks were fine — but no *overdue* invoice really
+  // does mean nobody owes the centre anything through this product. So the fee arm
+  // asks whether anything was ever billed, and forty paid invoices answer yes.
+  assert.deepEqual(blindArms({ sessions: 12, exams: 3, invoices: 40 }), [])
+  assert.deepEqual(blindArms({ sessions: 12, exams: 3, invoices: 0 }), ['fees'])
+})
+
+test('a count that did not arrive claims nothing', () => {
+  // PostgREST returns null for a count when the query failed, and treating that as
+  // zero would put "no register has been taken in the last 30 days" on the screen of
+  // a centre that takes one every morning. An arm whose count is missing is left out
+  // entirely, which leaves the screen saying exactly what it said before the check
+  // existed — the same call setupSteps makes about a failed count.
+  assert.deepEqual(blindArms({ sessions: null, exams: null, invoices: null }), [])
+
+  // And one missing count does not silence the two that arrived.
+  assert.deepEqual(blindArms({ sessions: null, exams: 0, invoices: 0 }), ['marks', 'fees'])
+  assert.deepEqual(blindArms({ sessions: 0, exams: null, invoices: 40 }), ['attendance'])
 })

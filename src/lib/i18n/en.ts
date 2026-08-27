@@ -1305,6 +1305,34 @@ export const en: Dictionary = {
     empty: 'Nobody is drifting right now',
     emptyHint:
       'Attendance, results and fees — no student is showing a bad sign in any of the three.',
+    /**
+     * The other empty list, and the reason this pair exists. Reached when the
+     * worklist is blank *and* at least one of the three signals had nothing to read,
+     * where `empty` above would have claimed an all-clear over data nobody entered.
+     *
+     * Neither an error nor a warning in its wording: a centre in its first fortnight
+     * is meant to be here, and the lines under it are ordinary work rather than
+     * something that went wrong.
+     */
+    notWatchingYet: 'Nothing to watch yet',
+    notWatchingYetHint:
+      'This list is built from what the centre records, and some of it has not been recorded yet:',
+    /**
+     * One line per signal the view could not read — listed under the hint above when
+     * the list is empty, and repeated as a footnote when it has names on it.
+     *
+     * Each carries its own consequence, "so nobody can be flagged on …", because the
+     * footnote has no hint above it to lean on and one wording for one fact is one
+     * thing to keep true. The spans match `windows` on the same screen. The fee line
+     * has no span because an unpaid bill from March is still unpaid today.
+     */
+    blind: {
+      attendance:
+        'No register has been taken in the last 30 days, so nobody can be flagged on attendance.',
+      marks:
+        'No exam has been held in the last 120 days, so nobody can be flagged on results.',
+      fees: 'No fee has been invoiced yet, so nobody can be flagged on an unpaid fee.',
+    },
     seeAll: 'See everyone',
     callGuardian: 'Call guardian',
     noPhone: 'No number',

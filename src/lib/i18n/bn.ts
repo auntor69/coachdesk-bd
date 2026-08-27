@@ -2688,6 +2688,20 @@ export const bn = {
     /** The good case, and the one an owner should see most months. */
     empty: 'এখন কেউ ঝুঁকিতে নেই',
     emptyHint: 'হাজিরা, পরীক্ষার ফল আর ফি — তিনটির কোনোটিতেই কারও খারাপ লক্ষণ নেই।',
+    /** The blank list a new centre gets, where `empty` above would be a false all-clear. */
+    notWatchingYet: 'এখনও দেখার কিছু নেই',
+    notWatchingYetHint:
+      'কোচিং যা লিখে রাখে তা থেকেই এই তালিকা তৈরি হয়, আর তার কিছু এখনও লেখা হয়নি:',
+    /**
+     * One line per signal that had nothing to read. Bangla numerals, matching
+     * `windows` on the same screen. Each line carries its own consequence, because
+     * the footnote version stands alone under a list that does have names.
+     */
+    blind: {
+      attendance: 'শেষ ৩০ দিনে কোনো হাজিরা নেওয়া হয়নি, তাই হাজিরার কারণে কারও নাম আসবে না।',
+      marks: 'শেষ ১২০ দিনে কোনো পরীক্ষা হয়নি, তাই ফলের কারণে কারও নাম আসবে না।',
+      fees: 'এখনও কোনো ফির বিল তৈরি হয়নি, তাই বাকি ফির কারণে কারও নাম আসবে না।',
+    },
     /** The dashboard card's link to the full list. */
     seeAll: 'সবাইকে দেখুন',
     /** On a row, opening the guardian's number in the phone dialler. */

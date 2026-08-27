@@ -5,7 +5,8 @@
  * 20260811000014_student_risk.sql and nowhere else, so nothing in this file may
  * compare a percentage against a number. What is left is the part that is about
  * the screen rather than about the student: which sentences to write about each
- * one, in what order the rows go, and how loudly to say it.
+ * one, in what order the rows go, how loudly to say it, and — see `blindArms` —
+ * which of the three signals the centre has given the view anything to read.
  *
  * That split is deliberate. A threshold duplicated here would drift the first
  * time one copy was edited, and both screens would keep rendering perfectly while
@@ -133,6 +134,64 @@ export function riskLevel(signals: number): RiskLevel {
   if (signals >= 3) return 'call'
   if (signals === 2) return 'talk'
   return 'watch'
+}
+
+/** Which of the three signals this screen is able to say anything about. */
+export type RiskArm = 'attendance' | 'marks' | 'fees'
+
+/**
+ * What the centre has actually recorded for each of the three, as the counts
+ * PostgREST hands back. Null is "the query failed", not zero — see below.
+ */
+export type RiskInputs = {
+  /** Registers taken inside the attendance window. */
+  sessions: number | null
+  /** Exams held inside the marks window. */
+  exams: number | null
+  /** Invoices ever raised. Not overdue ones — see below. */
+  invoices: number | null
+}
+
+/**
+ * Which of the three signals is blind, because the centre has recorded nothing
+ * for it to read.
+ *
+ * WHY THIS EXISTS. `student_risk` returns a student when one of three things looks
+ * wrong, and every one of the three is built from data the centre has to have put
+ * in. A centre that has never taken a register produces no attendance signal for
+ * anybody; one that has never held an exam produces no marks signal. So an empty
+ * worklist has two completely different meanings — nobody is drifting, or nothing
+ * was looked at — and the screen said the first one either way: "no student is
+ * showing a bad sign in any of the three". That sentence is at its most confident
+ * exactly when it knows least, on the screen whose entire job is to be the warning
+ * that arrives before a seat goes empty.
+ *
+ * EXISTENCE, NOT THRESHOLDS. This asks whether anything was recorded, and never
+ * how much or how bad. The view's thresholds — four registers, 40%, twenty points,
+ * seven days — stay in 20260811000014 where a screen cannot reach them, for the
+ * reason at the top of this file. So the claim made here is deliberately the weak
+ * one: a centre with two registers in the month still cannot flag anybody on
+ * attendance and will not be told so. Saying less than everything is the price of
+ * not keeping a second copy of a number that decides who gets a phone call.
+ *
+ * FEES ARE NOT SYMMETRICAL. No registers does not mean the students were there,
+ * and no exams does not mean the marks were fine — but no invoices really does mean
+ * nobody owes the centre anything through this product. So the fee arm is blind
+ * only when nothing was ever billed at all; invoices that exist and are all paid on
+ * time are a genuine all-clear, and reporting that as blindness would be its own
+ * kind of lie.
+ *
+ * A NULL CLAIMS NOTHING. A failed count is not a zero, and treating it as one would
+ * put "no registers have been taken" on the screen of a centre that takes one every
+ * day. An arm whose count did not arrive is left out of this list, which leaves the
+ * screen saying exactly what it said before — the same call setupSteps makes.
+ */
+export function blindArms({ sessions, exams, invoices }: RiskInputs): RiskArm[] {
+  const blind: RiskArm[] = []
+  if (sessions === 0) blind.push('attendance')
+  if (exams === 0) blind.push('marks')
+  if (invoices === 0) blind.push('fees')
+  return blind
 }
 
 /**

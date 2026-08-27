@@ -4,7 +4,8 @@ import { Card } from '@/components/ui'
 import { RiskList } from '@/components/risk-list'
 import { pageRole, getSession } from '@/lib/auth/session'
 import { createClient } from '@/lib/supabase/server'
-import { studentsAtRisk, RISK_COLUMNS } from '@/lib/students/risk'
+import { studentsAtRisk, blindArms, RISK_COLUMNS } from '@/lib/students/risk'
+import { addDays, todayInDhaka } from '@/lib/bd/time'
 import { dict, DEFAULT_LOCALE } from '@/lib/i18n'
 
 /** getSession, not pageRole — see the note on teach/page.tsx's own. */
@@ -31,6 +32,16 @@ export async function generateMetadata() {
  * while the child kept missing class. The honest way to clear a name is to fix the
  * thing under it.
  *
+ * AND AN EMPTY LIST SAYS WHICH OF THE TWO EMPTINESSES IT IS. Each of the three
+ * signals is built out of something the centre had to record, so a centre that has
+ * not taken a register in a month produces no attendance signal for anybody — and
+ * this screen used to answer that with "no student is showing a bad sign in any of
+ * the three", which is a confident sentence about three things it did not look at.
+ * The counts below say which of the three had anything in it, and the wording
+ * follows. Kept on the screen even when the list is not empty, for the same reason
+ * the invoice run reports who it skipped: a worklist of three names built from fees
+ * alone is real, and so is the fact that nobody's attendance was read.
+ *
  * Staff-admin only, as `student_risk` enforces underneath: the aggregate read by a
  * teacher would be their own batches' share of each student wearing the whole
  * picture's name. A role gate, not a plan gate — a solo teacher on the free plan
@@ -42,12 +53,48 @@ export default async function AtRiskPage() {
   const d = dict(session.locale)
   const t = d.risk
 
-  const { data } = await supabase
-    .from('student_risk')
-    .select(RISK_COLUMNS)
-    .eq('coaching_center_id', session.active.centerId)
+  /*
+   * The windows the view reads in, restated here because these counts have to look
+   * at the same span it does. Restated and not imported: they are prose in
+   * `t.windows` already, on this very screen, and a footnote promising 30 days over
+   * a count taken across 90 would be worse than either alone.
+   */
+  const today = todayInDhaka()
+  const attendanceFrom = addDays(today, -30)
+  const examsFrom = addDays(today, -120)
+
+  const [{ data }, sessions, exams, invoices] = await Promise.all([
+    supabase
+      .from('student_risk')
+      .select(RISK_COLUMNS)
+      .eq('coaching_center_id', session.active.centerId),
+    // head: true, so none of the three brings a row back — the question is only
+    // whether the centre has recorded anything for that signal to be built from.
+    supabase
+      .from('attendance_sessions')
+      .select('id', { count: 'exact', head: true })
+      .eq('coaching_center_id', session.active.centerId)
+      .gt('session_date', attendanceFrom),
+    supabase
+      .from('exams')
+      .select('id', { count: 'exact', head: true })
+      .eq('coaching_center_id', session.active.centerId)
+      .gt('exam_date', examsFrom),
+    // Ever, and not inside a window: an unpaid bill from March is still unpaid
+    // today, which is exactly what the fee signal fires on.
+    supabase
+      .from('fee_invoices')
+      .select('id', { count: 'exact', head: true })
+      .eq('coaching_center_id', session.active.centerId),
+  ])
 
   const students = studentsAtRisk(data, t.noName)
+
+  const blind = blindArms({
+    sessions: sessions.count,
+    exams: exams.count,
+    invoices: invoices.count,
+  })
 
   return (
     <div className="flex flex-col gap-4">
@@ -66,14 +113,33 @@ export default async function AtRiskPage() {
       </div>
 
       {students.length === 0 ? (
-        // The good news, and the only screen it appears on. The dashboard card is
-        // absent on a healthy month rather than showing this, because a card that
-        // is usually empty is one an owner learns to skip past — but somebody who
-        // navigated here deliberately is owed an answer rather than a blank page.
-        <Card>
-          <p className="font-medium text-ink">{t.empty}</p>
-          <p className="mt-1 text-sm text-ink-soft">{t.emptyHint}</p>
-        </Card>
+        blind.length === 0 ? (
+          // The good news, and the only screen it appears on. The dashboard card is
+          // absent on a healthy month rather than showing this, because a card that
+          // is usually empty is one an owner learns to skip past — but somebody who
+          // navigated here deliberately is owed an answer rather than a blank page.
+          //
+          // Only reachable now when all three signals had something to read, which
+          // is what makes "no bad sign in any of the three" a sentence this screen
+          // is entitled to write.
+          <Card>
+            <p className="font-medium text-ink">{t.empty}</p>
+            <p className="mt-1 text-sm text-ink-soft">{t.emptyHint}</p>
+          </Card>
+        ) : (
+          // The same blank list, told the truth about. Not an error and not amber:
+          // a centre in its first fortnight is meant to be here, and the three
+          // lines below are the ordinary work that turns this screen on.
+          <Card>
+            <p className="font-medium text-ink">{t.notWatchingYet}</p>
+            <p className="mt-1 text-sm text-ink-soft">{t.notWatchingYetHint}</p>
+            <ul className="mt-3 flex flex-col gap-1.5 text-sm text-ink-soft">
+              {blind.map((arm) => (
+                <li key={arm}>· {t.blind[arm]}</li>
+              ))}
+            </ul>
+          </Card>
+        )
       ) : (
         <>
           <p className="num text-sm text-ink-soft">
@@ -90,6 +156,17 @@ export default async function AtRiskPage() {
           a guardian, and it is the same span on every row, so it is a footnote
           rather than a repetition. */}
       <p className="text-xs text-ink-faint">{t.windows}</p>
+
+      {/* And what the list could not see, in the same footnote voice, under a list
+          that does have names on it. The empty state above says this at full volume
+          because there it is the whole message; here the names are the message and
+          this is the asterisk on them. The same sentences either way — two wordings
+          for one fact is two things to keep true. */}
+      {students.length > 0 && blind.length > 0 && (
+        <p className="text-xs text-ink-faint">
+          {blind.map((arm) => t.blind[arm]).join(' ')}
+        </p>
+      )}
     </div>
   )
 }
