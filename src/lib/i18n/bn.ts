@@ -2195,6 +2195,26 @@ export const bn = {
     whichBatch: 'সবাইকে কোন ব্যাচে ভর্তি করব',
     whichBatchBody:
       'এই তালিকার সবাই একই ব্যাচে যাবে। আলাদা ব্যাচ হলে ব্যাচ ধরে ধরে তালিকা দিন।',
+    /**
+     * The two sentences that stop the worst quiet failure on the onboarding path.
+     *
+     * A student with no enrolment is inert in this product: the invoice generator
+     * bills enrolments, the attendance sheet lists a batch, and the old-dues screen
+     * hangs each debt on an enrolment. So a register pasted with no batch ticked
+     * loads two hundred names that produce nothing — the fee board stays at ৳0 on
+     * the one afternoon it is being shown to the owner who is deciding whether to
+     * pay. Nothing on the screen used to mention it either way.
+     *
+     * Not a refusal, because loading the names first and sorting the batches
+     * afterwards is a real way to work. It just has to be a choice rather than
+     * something that happens by default and in silence.
+     */
+    noBatchPicked:
+      'কোনো ব্যাচ টিক দেওয়া হয়নি। এই নামগুলো শুধু তালিকায় উঠবে — হাজিরা হবে না, ফির বিলও হবে না — যতক্ষণ প্রত্যেককে নিজের পাতা থেকে ব্যাচে ভর্তি না করা হয়।',
+    /** The same thing said to a centre that has not opened its first batch yet. */
+    noBatchesYet:
+      'এখনো কোনো ব্যাচ নেই। নামগুলো শুধু তালিকায় উঠবে — হাজিরা হবে না, ফির বিলও হবে না — যতক্ষণ একটা ব্যাচ খুলে সবাইকে ভর্তি না করা হয়।',
+    makeBatch: 'ব্যাচ খুলুন',
     submit: '{n} জন যোগ করুন',
     /** Nothing readable in the box yet, so the button is disabled beside it. */
     submitEmpty: 'যোগ করুন',

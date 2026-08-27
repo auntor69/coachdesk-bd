@@ -58,6 +58,9 @@ export function ImportForm({
 }) {
   const [text, setText] = useState('')
 
+  /** Which batches everyone on this paste joins. See the note on the checkboxes. */
+  const [chosen, setChosen] = useState<string[]>([])
+
   const [state, formAction, pending] = useActionState<ActionState, FormData>(
     async (prev, formData) => {
       const result = await importStudents(prev, formData)
@@ -248,10 +251,25 @@ export function ImportForm({
                   rounded-xl border-2 border-line bg-white px-4
                   has-[:checked]:border-brand-600 has-[:checked]:bg-brand-50"
               >
+                {/* Controlled, and that is a fix rather than a style. React resets an
+                    uncontrolled field after a Server Action, so the batch used to
+                    clear itself on success — while the lines that need a human stay
+                    in the box on purpose, as the to-do list. Fixing three names and
+                    pressing again therefore imported those three into no batch at
+                    all. Held in state, the choice survives the submit that the
+                    remaining names belong to. */}
                 <input
                   type="checkbox"
                   name="batchIds"
                   value={batch.id}
+                  checked={chosen.includes(batch.id)}
+                  onChange={(event) =>
+                    setChosen((prev) =>
+                      event.target.checked
+                        ? [...prev, batch.id]
+                        : prev.filter((id) => id !== batch.id),
+                    )
+                  }
                   className="h-5 w-5 shrink-0 accent-brand-600"
                 />
                 <span className="min-w-0 truncate text-ink">{batch.label}</span>
@@ -260,6 +278,34 @@ export function ImportForm({
           </div>
         </fieldset>
       )}
+
+      {/* WHAT A REGISTER LOADED INTO NO BATCH ACTUALLY DOES, said before the press
+          rather than discovered a week later. A student with no enrolment is inert
+          here: the generator bills enrolments, the attendance sheet lists a batch,
+          and the old-dues screen hangs each debt on one. So a paste with no batch
+          ticked adds two hundred names that produce nothing, and the fee board stays
+          at ৳0 on the afternoon it is being shown to the owner who is deciding
+          whether to pay.
+
+          Not a refusal: names first and batches afterwards is a real way to work,
+          and the student's own page can enrol them later. It only has to be a choice
+          instead of the default, made in silence.
+
+          Held back until there is something to add. Before that the screen's one job
+          is the paste box, and a banner about batches would compete with it; once the
+          preview says forty are new, the question is live and this sits directly above
+          the button the owner is reaching for. */}
+      {newCount > 0 &&
+        (batches.length === 0 ? (
+          <Alert tone="warn">
+            {t.noBatchesYet}{' · '}
+            <Link href="/settings/batches/new" className="underline">
+              {t.makeBatch}
+            </Link>
+          </Alert>
+        ) : chosen.length === 0 ? (
+          <Alert tone="warn">{t.noBatchPicked}</Alert>
+        ) : null)}
 
       <Button
         type="submit"

@@ -1020,6 +1020,11 @@ export const en: Dictionary = {
     whichBatch: 'Which batch does everyone join',
     whichBatchBody:
       'Everyone on this list goes into the same batch. For different batches, paste one batch at a time.',
+    noBatchPicked:
+      'No batch is ticked. These names go on the roster only — no attendance and no fee bill — until each one is enrolled from their own page.',
+    noBatchesYet:
+      'There are no batches yet. Names go on the roster only — no attendance and no fee bill — until you open a batch and enrol them.',
+    makeBatch: 'Open a batch',
     submit: 'Add {n} to the roster',
     submitEmpty: 'Add',
     problem: {
