@@ -33,6 +33,13 @@ export async function generateMetadata() {
  * is that a teacher arriving at 4pm sees the 4pm batch at the top without
  * reading anything — the screen answers "what do I do now" before it answers
  * "what does this app contain".
+ *
+ * A BATCH WITH NOBODY IN IT IS NOT A CLASS TO MARK. The register refuses to draw a
+ * form for one, so it could never be marked, so it sat in the "still to mark" count
+ * for ever: an owner with three batches and one empty one marked the two real ones
+ * and was still told one was left. Every count and every button on this screen now
+ * asks whether there is anybody to mark, and the row says so where the button used
+ * to be, because the count above cannot say which batch it means.
  */
 export default async function TeachPage() {
   // Matches teach/[batchId], which has always required `teacher`. This list was
@@ -120,7 +127,27 @@ export default async function TeachPage() {
 
   const todayRows = rows.filter((r) => r.meetsToday)
   const otherRows = rows.filter((r) => !r.meetsToday)
-  const pending = todayRows.filter((r) => !r.taken)
+
+  /**
+   * Today's classes that somebody can actually mark.
+   *
+   * A batch with nobody enrolled is excluded, and that is a fix rather than a
+   * refinement: the register refuses to draw a form for an empty batch, so such a
+   * batch could never be marked, so the "still to mark" count could never reach zero.
+   * An owner with two real batches and one empty one was told three were left, marked
+   * both, and was still told one was left — for ever. A counter that cannot be cleared
+   * is a counter people stop reading, and it would have taken the other two with it.
+   */
+  const pending = todayRows.filter((r) => !r.taken && r.studentCount > 0)
+
+  /**
+   * Whether there is a register to take today at all.
+   *
+   * Separates "everything is marked" from "there is nothing markable", which used to
+   * come out as the same sentence. A centre in its first week — batches made, nobody
+   * enrolled yet — was told all of today's attendance was taken.
+   */
+  const markable = todayRows.some((r) => r.studentCount > 0)
 
   return (
     <div className="flex flex-col gap-5">
@@ -129,9 +156,11 @@ export default async function TeachPage() {
         <p className="mt-1 text-ink-soft">
           {pending.length > 0
             ? t.pending(pending.length)
-            : todayRows.length > 0
+            : markable
               ? t.allTaken
-              : t.noClassToday}
+              : todayRows.length > 0
+                ? t.emptyToday
+                : t.noClassToday}
         </p>
       </div>
 
@@ -201,6 +230,26 @@ export default async function TeachPage() {
                       font-semibold text-brand-700"
                   >
                     ✓ {t.taken}
+                  </span>
+                ) : row.studentCount === 0 ? (
+                  /* No register behind this one, so no button offering to take it.
+                     Tapping still opens the batch — the card there explains that the
+                     students have to be put in it, which is the fix and is not
+                     something this row has room to say.
+
+                     Checked after `taken`, not before: a batch marked in the morning
+                     and emptied in the afternoon really was marked, and what happened
+                     outranks what can happen next.
+
+                     Grey rather than the amber the roster uses for the same students.
+                     There it is a warning to the owner who can fix it; here it is
+                     mostly read by a teacher who cannot, and an alarm nobody can
+                     answer is just noise on their screen every day. */
+                  <span
+                    className="shrink-0 rounded-lg bg-surface-alt px-3 py-1.5 text-sm
+                      font-medium text-ink-soft"
+                  >
+                    {t.emptyBatch}
                   </span>
                 ) : (
                   <span

@@ -140,6 +140,14 @@ export const en: Dictionary = {
     pending: (n: number) =>
       `${n} ${n === 1 ? 'batch' : 'batches'} still to mark today`,
     allTaken: 'All of today’s attendance is taken',
+    /**
+     * Today's classes exist and not one of them has anybody in it.
+     *
+     * Without this the screen said "all of today's attendance is taken", which is
+     * technically defensible and reads as a lie: nothing was taken. A centre in its
+     * first week hits this exactly — batches made, nobody enrolled yet.
+     */
+    emptyToday: 'Today’s batches have nobody in them yet',
     noClassToday: 'No classes today',
     firstBatchTitle: 'Make a batch to get started',
     firstBatchBody:
@@ -168,12 +176,28 @@ export const en: Dictionary = {
      */
     taken: 'Taken',
     take: 'Mark',
+    /**
+     * Where the "Mark" button goes on a batch with nobody enrolled.
+     *
+     * A green button promises a register; that batch has none, and the tap ends on a
+     * card explaining so. Saying it on the row costs the tap and, more to the point,
+     * says which batch is the problem — the count above cannot.
+     */
+    emptyBatch: 'Nobody in it',
     otherBatches: 'Batches with no class today',
 
     rosterTitle: 'Attendance',
     pastDate: 'past date',
     noStudentsTitle: 'No students in this batch',
-    noStudentsBody: 'Add students and you can mark their attendance here.',
+    /**
+     * Almost always the wrong diagnosis before: the students exist, they are just
+     * not in this batch. A centre that pasted its register and ticked no batch has
+     * three hundred of them, and "add students" sends that owner to type in names
+     * they already have.
+     */
+    noStudentsBody:
+      'The students may already be on your roster — they have to be put in this batch before their attendance can be marked here.',
+    noStudentsAction: 'Open the roster',
 
     futureTitle: 'This class has not happened yet',
     futureBody:

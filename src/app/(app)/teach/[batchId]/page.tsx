@@ -7,6 +7,7 @@ import {
   getSession,
   isStaffAdmin,
   canSendSms,
+  canManageStudents,
   myTeacherIds,
 } from '@/lib/auth/session'
 import { createClient } from '@/lib/supabase/server'
@@ -266,6 +267,19 @@ export default async function AttendancePage({
   ].filter((line): line is string => line !== null)
 
 
+  /**
+   * Whether the reader looking at an empty batch is allowed to do anything about it.
+   *
+   * Asked only when the batch is empty, because that is the only screen that uses the
+   * answer and every other view would be paying for a query it throws away.
+   *
+   * The gate is the same trap /teach's own first-batch card fell into: the fix lives
+   * on the roster, the roster is `can_manage_students`, and most people who reach this
+   * screen are teachers who do not have it. Offering them the door would be sending
+   * them to a 403 and telling them to fix something that is not theirs to fix.
+   */
+  const mayEnrol = students.length === 0 ? await canManageStudents() : false
+
   return (
     <div className="flex flex-col gap-4">
       <div>
@@ -341,6 +355,22 @@ export default async function AttendancePage({
         <Card>
           <h2 className="font-semibold text-ink">{t.noStudentsTitle}</h2>
           <p className="mt-1 text-sm text-ink-soft">{t.noStudentsBody}</p>
+          {/* The door, for the reader who can walk through it. Without it this card
+              was a dead end on the one screen where somebody has just discovered the
+              problem — and the roster is two taps away through a menu, which is two
+              taps most people do not take. It also filters straight to the students
+              who are in no batch at all, since a batch this empty in a centre that
+              has just pasted its register is nearly always the same fact seen from
+              the other end. */}
+          {mayEnrol && (
+            <Link
+              href="/settings/students?show=no-batch"
+              className="mt-4 inline-flex min-h-tap items-center justify-center
+                rounded-xl bg-brand-600 px-5 font-semibold text-white"
+            >
+              {t.noStudentsAction}
+            </Link>
+          )}
         </Card>
       ) : (
         <>

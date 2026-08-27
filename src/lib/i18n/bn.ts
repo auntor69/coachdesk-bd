@@ -386,6 +386,12 @@ export const bn = {
      */
     pending: (n: number) => `আজ ${n}টি ব্যাচের হাজিরা বাকি`,
     allTaken: 'আজকের সব হাজিরা নেওয়া হয়েছে',
+    /**
+     * Today has batches and not one of them has a student in it. Said separately
+     * because `allTaken` here would claim attendance that was never taken — which is
+     * exactly what a centre in its first week saw.
+     */
+    emptyToday: 'আজকের ব্যাচগুলোতে এখনও কেউ নেই',
     noClassToday: 'আজ কোনো ক্লাস নেই',
     /** The empty state a centre lands on before it has any batches at all. */
     firstBatchTitle: 'শুরু করতে একটি ব্যাচ বানান',
@@ -409,6 +415,12 @@ export const bn = {
      */
     taken: 'নেওয়া হয়েছে',
     take: 'হাজিরা নিন',
+    /**
+     * The third possibility on that row: a batch with nobody enrolled. Neither a
+     * button nor a tick, because there is no register behind it to take or to have
+     * taken — and the row is the only place that can say which batch is empty.
+     */
+    emptyBatch: 'কেউ নেই',
     otherBatches: 'আজ ক্লাস নেই এমন ব্যাচ',
 
     /** The register's own page title. */
@@ -416,7 +428,13 @@ export const bn = {
     /** Appended to the date when a teacher is backfilling an earlier class. */
     pastDate: 'পুরোনো তারিখ',
     noStudentsTitle: 'এই ব্যাচে শিক্ষার্থী নেই',
-    noStudentsBody: 'শিক্ষার্থী যোগ করলে এখানে হাজিরা নেওয়া যাবে।',
+    /**
+     * The old copy said to add students, which is the wrong instruction nearly every
+     * time: the names are already on the roster, they were never put in a batch.
+     */
+    noStudentsBody:
+      'শিক্ষার্থীরা হয়তো তালিকায় আছেই — এই ব্যাচে ভর্তি করলেই এখানে তাদের হাজিরা নেওয়া যাবে।',
+    noStudentsAction: 'শিক্ষার্থী তালিকা',
 
     /**
      * The two days a register cannot be taken for, said as sentences.
