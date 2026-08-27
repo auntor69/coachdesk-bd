@@ -2520,9 +2520,51 @@ export const bn = {
 
     overdueTitle: 'সময় পেরোনো ফি',
 
-    addStudentsTitle: 'শিক্ষার্থী যোগ করুন',
-    addStudentsBody:
-      'ব্যাচ আর শিক্ষার্থী যোগ করলে হাজিরা, ফলাফল আর ফি — সব এখানে দেখাবে।',
+    /**
+     * THE CARD THAT DECIDES WHETHER A CENTRE EVER SEES THE PRODUCT WORK.
+     *
+     * Everything in here hangs off an enrolment — the generator bills enrolments, the
+     * register lists a batch, the old-dues screen hangs each debt on one, and the
+     * at-risk list and the weekly note are built out of attendance. So a centre can
+     * finish signing up, paste two hundred names, and land on a dashboard where every
+     * figure is honestly zero and nothing says which of four things has still to
+     * happen. That is the afternoon somebody decides the app does not work.
+     *
+     * One instruction at a time, in dependency order. All four are listed so an owner
+     * can see how much is left, but only the next one gets its reason and its button:
+     * four buttons is a to-do list, and one is an instruction.
+     *
+     * Each `why` is the consequence rather than the mechanic. Nobody needs to be told
+     * what a batch is; they need to be told that without one there is no attendance
+     * and no bill.
+     */
+    setup: {
+      title: 'আর একটু বাকি',
+      body: 'এই কয়টা হলেই হাজিরা, ফি আর ফলাফল — সব চলতে শুরু করবে।',
+      done: 'হয়েছে',
+      steps: {
+        students: {
+          label: 'শিক্ষার্থী যোগ করুন',
+          why: 'রেজিস্টার থেকে নাম বসিয়ে দিন, বা একজন একজন করে যোগ করুন।',
+          action: 'শিক্ষার্থী তালিকা',
+        },
+        batches: {
+          label: 'একটা ব্যাচ খুলুন',
+          why: 'ব্যাচ ছাড়া হাজিরাও নেওয়া যায় না, ফির বিলও হয় না।',
+          action: 'ব্যাচ খুলুন',
+        },
+        enrolments: {
+          label: 'শিক্ষার্থীদের ব্যাচে ভর্তি করুন',
+          why: 'যে শিক্ষার্থী কোনো ব্যাচে নেই, সে শুধু তালিকায় আছে — তার হাজিরাও হবে না, বিলও হবে না।',
+          action: 'শিক্ষার্থী তালিকা',
+        },
+        attendance: {
+          label: 'একদিনের হাজিরা নিন',
+          why: 'একবার হাজিরা নিলেই হাজিরার হিসাব আর ঝরে পড়া শিক্ষার্থীর তালিকা কাজ করতে শুরু করবে।',
+          action: 'হাজিরা নিন',
+        },
+      },
+    },
 
     ratesTitle: 'ব্যাচভিত্তিক হাজিরা',
     ratesFallback: 'এ মাসে এখনো হাজিরা নেওয়া হয়নি — গত মাসের হিসাব দেখানো হচ্ছে',

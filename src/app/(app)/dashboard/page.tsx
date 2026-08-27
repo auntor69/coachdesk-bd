@@ -11,6 +11,7 @@ import {
   formatDate,
 } from '@/lib/bd/time'
 import { has } from '@/lib/plans'
+import { setupSteps } from '@/lib/setup'
 import { countChasesDue } from '@/lib/fees/reminder-schedule'
 import { ratesForDashboard } from '@/lib/attendance/rates'
 import { studentsAtRisk, RISK_COLUMNS } from '@/lib/students/risk'
@@ -25,6 +26,7 @@ import { ReminderEntry } from '@/app/(app)/fees/reminder-entry'
 import { AttendanceRates } from './attendance-rates'
 import { AtRiskCard } from './at-risk-card'
 import { ProgressEntry } from './progress-entry'
+import { SetupCard } from './setup-card'
 
 /** getSession, not pageRole — see the note on teach/page.tsx's own. */
 export async function generateMetadata() {
@@ -114,6 +116,17 @@ export default async function DashboardPage() {
   // destructured `weekly` below is the view's rows or nothing, rather than `any`.
   const noProgress: { data: ProgressCountRow[] | null } = { data: null }
 
+  /**
+   * Stand-in for a head count that was not asked for.
+   *
+   * `null` rather than 0, and that is the whole safety of it: `setupSteps` treats an
+   * unknown count as "say nothing", so a reader who is not staff-admin gets no setup
+   * card without a second branch anywhere. Which is what we want — every step on that
+   * card is a screen a teacher cannot open, and RLS would hand them their own batches'
+   * numbers under a label claiming the centre's.
+   */
+  const noCount: { count: number | null } = { count: null }
+
   const [
     { count: studentCount },
     { count: batchCount },
@@ -124,6 +137,8 @@ export default async function DashboardPage() {
     { data: rates },
     { data: risky },
     { data: weekly },
+    { count: enrolmentCount },
+    { count: sessionCount },
   ] = await Promise.all([
     supabase
       .from('students')
@@ -220,6 +235,35 @@ export default async function DashboardPage() {
           .select(PROGRESS_COUNT_COLUMNS)
           .eq('coaching_center_id', session.active.centerId)
       : noProgress,
+    /*
+     * The two counts behind the setup card, and the reason they are counts rather than
+     * rows: both questions are "is there at least one", over tables that hold one row
+     * per student per batch and one per class per day. A centre in its second year has
+     * tens of thousands of each, and Postgres answers both off an index without
+     * sending anything back.
+     *
+     * Conditional like the progress aggregate above, and for a stronger reason than
+     * cost: `null` is what tells `setupSteps` the answer is unknown, which is how a
+     * teacher gets no card at all. See `noCount`.
+     *
+     * Active enrolments only. A student whose enrolment ended is not enrolled, and a
+     * centre whose whole first batch has finished needs the same instruction a new one
+     * does. Attendance, by contrast, is counted for all time — taking a register is
+     * something you have either done or not, and last April still counts.
+     */
+    isAdmin
+      ? supabase
+          .from('enrollments')
+          .select('id', { count: 'exact', head: true })
+          .eq('coaching_center_id', session.active.centerId)
+          .eq('status', 'active')
+      : noCount,
+    isAdmin
+      ? supabase
+          .from('attendance_sessions')
+          .select('id', { count: 'exact', head: true })
+          .eq('coaching_center_id', session.active.centerId)
+      : noCount,
   ])
 
   // Same rule as the fee board, so the two screens cannot drift: only positive
@@ -294,12 +338,31 @@ export default async function DashboardPage() {
   // rather than a reason to hide the door — see the note on ProgressEntry.
   const toTell = progressToTell(weekly)
 
+  // How far this centre is from the product doing anything at all, or null once it is
+  // doing it. Null for a teacher too, because their two counts were never asked for —
+  // see `noCount`.
+  const setup = setupSteps({
+    students: studentCount,
+    batches: batchCount,
+    enrolments: enrolmentCount,
+    sessions: sessionCount,
+  })
+
   return (
     <div className="flex flex-col gap-5">
       <div>
         <h1 className="text-xl font-bold text-ink">{greetingFor(session)}</h1>
         <p className="mt-1 text-ink-soft">{session.active.centerName}</p>
       </div>
+
+      {/* ABOVE THE MONEY, and only ever for a centre that is not running yet. Every
+          figure below this is honestly zero for such a centre — ৳0 outstanding, no
+          batches marked, nobody at risk — and a screen full of true zeros with no
+          explanation is how an owner concludes the app is broken rather than empty.
+          So while there is a step left, the instruction sits on top of the numbers it
+          explains; the moment the four are done this returns null and the outstanding
+          card is the first thing on the page again, for good. */}
+      {setup && <SetupCard steps={setup} t={t.setup} />}
 
       {seeFees && (
         <Card className="border-brand-200 bg-brand-50">
@@ -431,23 +494,11 @@ export default async function DashboardPage() {
         </div>
       )}
 
-      {/* Staff-admin only. /settings/students/new is theirs, so a teacher tapping
-          this got a 403 — and the count it triggers on is the teacher's own
-          students, not the centre's, so a teacher whose batches happen to be empty
-          was being told a centre with three hundred students had none. */}
-      {isAdmin && (studentCount ?? 0) === 0 && (
-        <Card>
-          <h2 className="font-semibold text-ink">{t.addStudentsTitle}</h2>
-          <p className="mt-1 text-sm text-ink-soft">{t.addStudentsBody}</p>
-          <Link
-            href="/settings/students/new"
-            className="mt-4 inline-flex min-h-tap items-center justify-center
-              rounded-xl bg-brand-600 px-5 font-semibold text-white"
-          >
-            {t.addStudentsTitle}
-          </Link>
-        </Card>
-      )}
+      {/* The empty-roster card that used to live here is gone: SetupCard at the top of
+          the page covers it, and covers the three states after it that nothing covered
+          — students with no batch, a batch with nobody in it, and a centre that has
+          never taken a register. One card that ends, rather than one that only ever
+          spoke to a centre with literally nothing in it. */}
     </div>
   )
 }

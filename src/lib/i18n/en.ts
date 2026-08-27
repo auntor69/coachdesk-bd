@@ -1180,9 +1180,33 @@ export const en: Dictionary = {
 
     overdueTitle: 'Past the deadline',
 
-    addStudentsTitle: 'Add your students',
-    addStudentsBody:
-      'Add a batch and some students, and attendance, results and fees all show up here.',
+    setup: {
+      title: 'Nearly there',
+      body: 'Finish these and attendance, fees and results all start working.',
+      done: 'Done',
+      steps: {
+        students: {
+          label: 'Add your students',
+          why: 'Paste them straight from your register, or add them one at a time.',
+          action: 'Open the roster',
+        },
+        batches: {
+          label: 'Open a batch',
+          why: 'With no batch there is no attendance to take and no fee to bill.',
+          action: 'Open a batch',
+        },
+        enrolments: {
+          label: 'Put your students in a batch',
+          why: 'A student in no batch is on the roster only — no attendance, no fee bill.',
+          action: 'Open the roster',
+        },
+        attendance: {
+          label: 'Take one register',
+          why: 'Mark one class and the attendance figures and the drifting-student list start working.',
+          action: 'Take attendance',
+        },
+      },
+    },
 
     ratesTitle: 'Attendance by batch',
     ratesFallback:

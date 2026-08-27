@@ -14,6 +14,7 @@ import { CHASE_EMPTY_REASONS, STAGE_ORDER } from '../src/lib/fees/reminder-sched
 import { MESSAGE_KINDS } from '../src/lib/fees/month-close.ts'
 import { PROGRESS_EMPTY_REASONS } from '../src/lib/students/progress.ts'
 import { PERMISSION_KEYS, PERMISSION_DEFAULTS } from '../src/lib/permissions.ts'
+import { SETUP_ORDER } from '../src/lib/setup.ts'
 import { WALLET_LABEL_BN } from '../src/lib/sms/templates.ts'
 import { UCS2_SEGMENT } from '../src/lib/sms/encoding.ts'
 import {
@@ -434,6 +435,41 @@ test('the SMS credit note quotes the capacity the biller actually counts', () =>
     en.settings.sms.segmentNote(UCS2_SEGMENT),
     new RegExp(digits(UCS2_SEGMENT, 'en')),
   )
+})
+
+test('every setup step has a label, a reason and a button in both languages', () => {
+  // The card renders each row from a lookup keyed by SetupStepId, so a fifth step
+  // added to lib/setup.ts without copy for it would put a nameless row on the
+  // dashboard of every centre that has not finished setting up — which is every
+  // centre on its first afternoon, the one audience that cannot afford a blank line.
+  for (const locale of LOCALES) {
+    const { steps } = dict(locale).dashboard.setup
+    for (const id of SETUP_ORDER) {
+      assert.ok(steps[id]?.label, `${locale}.dashboard.setup.steps.${id}.label`)
+      assert.ok(steps[id]?.why, `${locale}.dashboard.setup.steps.${id}.why`)
+      assert.ok(steps[id]?.action, `${locale}.dashboard.setup.steps.${id}.action`)
+    }
+    assert.equal(Object.keys(steps).length, SETUP_ORDER.length)
+  }
+
+  // Four distinct instructions, not four wordings of "add your data". Only one row at
+  // a time carries a button, so two steps whose labels read alike would leave an owner
+  // pressing the same thing twice and wondering why nothing moved.
+  for (const locale of LOCALES) {
+    const { steps } = dict(locale).dashboard.setup
+    const labels = SETUP_ORDER.map((id) => steps[id].label)
+    assert.equal(new Set(labels).size, SETUP_ORDER.length, labels.join(' / '))
+  }
+
+  // Both middle steps say what happens without them rather than what they are. Nobody
+  // needs a batch explained; they need to be told that with no batch there is no
+  // attendance and no bill, which is the sentence the roster and the import screen
+  // also carry. A copy edit that turned either into a definition would lose the only
+  // thing on the card that answers "why should I bother".
+  assert.match(en.dashboard.setup.steps.batches.why, /attendance/i)
+  assert.match(en.dashboard.setup.steps.enrolments.why, /attendance/i)
+  assert.match(bn.dashboard.setup.steps.batches.why, /হাজিরা/)
+  assert.match(bn.dashboard.setup.steps.enrolments.why, /হাজিরা/)
 })
 
 test('no string in either dictionary is empty', () => {
