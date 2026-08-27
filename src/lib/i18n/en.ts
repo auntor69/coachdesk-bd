@@ -1587,6 +1587,16 @@ export const en: Dictionary = {
         `${n} ${n === 1 ? 'student is' : 'students are'} in no batch`,
       noBatchBody:
         'With no batch there is no attendance and no fee bill. Tap a name to enrol them.',
+      /**
+       * What turns either warning from a number into an afternoon's work.
+       *
+       * "12 students are in no batch" above three hundred names is a fact an owner
+       * cannot act on: the twelve are somewhere in the scroll. This filters the list
+       * to exactly the ones counted. Deliberately not "show the 12" — the button sits
+       * directly under the count, and a second number in the label is one more thing
+       * to keep in agreement.
+       */
+      showThese: 'Show these',
       emptyTitle: 'No students yet',
       emptyBody:
         'Add students and attendance, exam marks and fees all start landing here.',

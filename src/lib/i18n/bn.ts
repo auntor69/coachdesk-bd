@@ -3425,6 +3425,12 @@ export const bn = {
        */
       noBatch: (n: number) => `${n} জন কোনো ব্যাচে নেই`,
       noBatchBody: 'ব্যাচ ছাড়া হাজিরাও হবে না, ফির বিলও হবে না। নাম ট্যাপ করে ব্যাচে ভর্তি করুন।',
+      /**
+       * What turns either warning from a number into an afternoon's work: it filters
+       * the list to exactly the students that card counted. Without it, "১২ জন কোনো
+       * ব্যাচে নেই" over three hundred names is a fact nobody can act on.
+       */
+      showThese: 'এদের দেখান',
       emptyTitle: 'এখনও কোনো শিক্ষার্থী নেই',
       emptyBody:
         'শিক্ষার্থী যোগ করলে হাজিরা, পরীক্ষার নম্বর আর ফি — সব এখানে আসবে।',

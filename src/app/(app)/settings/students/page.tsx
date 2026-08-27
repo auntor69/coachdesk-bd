@@ -41,12 +41,19 @@ export async function generateMetadata() {
  * no bill is raised, and the first symptom in both cases arrives weeks later as a
  * parent who heard nothing or a fee board that reads ৳0. Counted at the top so the
  * owner knows scrolling is worth it, and labelled on the row so they can find them.
+ *
+ * AND EACH WARNING IS A DOOR. "12 students are in no batch" over three hundred names
+ * is a fact nobody can act on — the twelve are somewhere in the scroll, and finding
+ * them is the entire cost of fixing them, which is why they stay unfixed. Tapping the
+ * card filters the list to exactly the students it counted. The count itself does not
+ * move: the card goes on reporting the centre while the list below it reports the
+ * twelve.
  */
 export default async function StudentsPage({
   searchParams,
 }: {
   // A Promise in Next 16, and awaiting it is not optional.
-  searchParams: Promise<{ q?: string }>
+  searchParams: Promise<{ q?: string; show?: string }>
 }) {
   const session = await pagePermission('can_manage_students')
   const supabase = await createClient()
@@ -54,7 +61,7 @@ export default async function StudentsPage({
   const d = dict(locale)
   const t = d.settings.students
 
-  const { q: rawQuery } = await searchParams
+  const { q: rawQuery, show: rawShow } = await searchParams
   const query = (rawQuery ?? '').slice(0, MAX_QUERY)
   const terms = searchTerms(query)
 
@@ -89,7 +96,12 @@ export default async function StudentsPage({
 
   const activeCount = rows.filter((r) => r.active).length
   const limit = session.plan.maxStudents
-  const missingPhone = rows.filter((r) => r.active && !r.guardianPhone).length
+
+  // The two problem sets, kept as lists rather than counts, because each one is now
+  // both a number on a card and the list that card opens. Two predicates written twice
+  // would eventually disagree, and the way that failure shows up is a card promising
+  // twelve students and a filtered list holding eleven.
+  const noPhoneRows = rows.filter((r) => r.active && !r.guardianPhone)
 
   // The counterpart, and the one the product depends on. A student with no active
   // enrolment is inert: the invoice generator bills enrolments, the attendance sheet
@@ -99,17 +111,43 @@ export default async function StudentsPage({
   // paste: the one-at-a-time form ticks no batch by default either, and a batch closed
   // in March leaves its whole class like this in April.
   //
-  // Active only. Somebody who has left has no batch because they left, and labelling
-  // every leaver would bury the ones that matter.
-  const noBatch = rows.filter((r) => r.active && r.batchNames.length === 0).length
+  // Active only, both of them. Somebody who has left has no batch because they left,
+  // and labelling every leaver would bury the ones that matter.
+  const noBatchRows = rows.filter((r) => r.active && r.batchNames.length === 0)
+
+  const missingPhone = noPhoneRows.length
+  const noBatch = noBatchRows.length
+
+  /**
+   * Which warning the reader tapped, if either.
+   *
+   * Only honoured while that warning is actually on screen, and the `> 0` is what
+   * does it. The card is the only door into this filter, so a `show` for a problem
+   * the centre does not have is a stale bookmark from an afternoon when it did — and
+   * the honest answer to that is the full roster with no warning above it, rather
+   * than an empty list explaining nothing. It also means an unknown value in the URL
+   * cannot empty the screen.
+   */
+  const show =
+    rawShow === 'no-phone' && missingPhone > 0
+      ? 'no-phone'
+      : rawShow === 'no-batch' && noBatch > 0
+        ? 'no-batch'
+        : null
+
+  const kept =
+    show === 'no-phone' ? noPhoneRows : show === 'no-batch' ? noBatchRows : rows
 
   // The same three fields the box promises and the fee board searches — a name, the
   // code on the slip, the number that rang them. Deliberately not the batch or the
   // class: one matcher over one set of fields is what lets an owner learn the box
   // once. See lib/search.ts.
+  //
+  // Applied on top of the warning filter rather than instead of it, so a search
+  // inside "in no batch" stays inside it.
   const shown = terms.length === 0
-    ? rows
-    : rows.filter((r) => matchesSearch([r.name, r.code, r.guardianPhone], terms))
+    ? kept
+    : kept.filter((r) => matchesSearch([r.name, r.code, r.guardianPhone], terms))
 
   return (
     <div className="flex flex-col gap-5">
@@ -168,6 +206,13 @@ export default async function StudentsPage({
         <Card className="border-late/30 bg-late/5">
           <p className="font-medium text-ink">{t.missingPhone(missingPhone)}</p>
           <p className="mt-1 text-sm text-ink-soft">{t.missingPhoneBody}</p>
+          <WarningFilter
+            value="no-phone"
+            active={show === 'no-phone'}
+            q={query}
+            showThese={t.showThese}
+            clear={d.search.clear}
+          />
         </Card>
       )}
 
@@ -178,6 +223,13 @@ export default async function StudentsPage({
         <Card className="border-late/30 bg-late/5">
           <p className="font-medium text-ink">{t.noBatch(noBatch)}</p>
           <p className="mt-1 text-sm text-ink-soft">{t.noBatchBody}</p>
+          <WarningFilter
+            value="no-batch"
+            active={show === 'no-batch'}
+            q={query}
+            showThese={t.showThese}
+            clear={d.search.clear}
+          />
         </Card>
       )}
 
@@ -194,6 +246,8 @@ export default async function StudentsPage({
           <SearchBox
             q={query}
             t={d.search}
+            keep={{ show }}
+            narrowed={show !== null}
             count={{ shown: shown.length, total: rows.length }}
           />
 
@@ -287,5 +341,59 @@ export default async function StudentsPage({
         </>
       )}
     </div>
+  )
+}
+
+/**
+ * The control that turns one of the two warnings into the list of students it counts.
+ *
+ * A GET FORM, NOT A LINK, for the reason written up in search-box.tsx: a `<Link>` here
+ * would need a href built out of two query params, and `typedRoutes` makes an
+ * assembled query string a type error rather than a convenience. A GET form submits to
+ * the current path carrying exactly the inputs it holds — which turns out to be
+ * precisely what each direction of this wants.
+ *
+ * ENTERING DROPS THE SEARCH. The card counts the whole centre, so tapping it has to
+ * produce that whole count; filtering "12 in no batch" down to the two of them called
+ * Rahman, because Rahman was still in the box from ten minutes ago, would make the
+ * number on the card a lie about what tapping it does. So the form carries only
+ * `show`.
+ *
+ * LEAVING KEEPS IT. The mirror image, and for a plainer reason: somebody who typed a
+ * name is looking for that student, and tidying a warning away should not throw the
+ * search out with it. So the form carries only `q`, and dropping `show` is what
+ * clearing means.
+ *
+ * The label is `search.clear` — the same "Show all" that empties the box — because it
+ * does the same job to the same list, and inventing a second phrasing for it would
+ * only ask an owner to learn which of two identical-looking buttons undoes what.
+ */
+function WarningFilter({
+  value,
+  active,
+  q,
+  showThese,
+  clear,
+}: {
+  value: 'no-phone' | 'no-batch'
+  /** Whether this warning is the one currently filtering the list. */
+  active: boolean
+  /** The query in the box, preserved out of the filter but never into it. */
+  q: string
+  showThese: string
+  clear: string
+}) {
+  return (
+    <form method="get" className="mt-3 print:hidden">
+      {!active && <input type="hidden" name="show" value={value} />}
+      {active && q !== '' && <input type="hidden" name="q" value={q} />}
+      <button
+        type="submit"
+        className="inline-flex min-h-tap items-center rounded-xl border-2 border-late/40
+          bg-white px-4 font-medium text-ink"
+      >
+        {active ? clear : showThese}
+      </button>
+    </form>
   )
 }

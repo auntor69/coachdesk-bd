@@ -66,9 +66,20 @@ type SearchBoxProps = {
    * list from reading as a short one, and on an unfiltered list it is noise.
    */
   count?: { shown: number; total: number }
+  /**
+   * The list was narrowed by something other than this box, so say so even with
+   * an empty query.
+   *
+   * The roster is where this happens: its two warnings are also doors, and tapping
+   * "12 students are in no batch" leaves twelve rows under a heading that says the
+   * centre has three hundred. The box did not do that, so the box would say nothing
+   * about it, and a short list with no caption is the same unexplained thing a
+   * filtered print-out is — see the note under the count itself.
+   */
+  narrowed?: boolean
 }
 
-export function SearchBox({ q, t, placeholder, keep, count }: SearchBoxProps) {
+export function SearchBox({ q, t, placeholder, keep, count, narrowed }: SearchBoxProps) {
   const hidden = Object.entries(keep ?? {}).filter(
     ([, v]) => v !== undefined && v !== null && v !== '',
   )
@@ -138,7 +149,7 @@ export function SearchBox({ q, t, placeholder, keep, count }: SearchBoxProps) {
           an accountant queries a year later and nobody can explain. The controls
           above are hidden because a printed search box is furniture; the sentence
           saying the list is a part of itself is the sheet's own caveat. */}
-      {searching && count && (
+      {(searching || narrowed) && count && (
         <p className="text-sm text-ink-soft" aria-live="polite">
           {t.showing(count.shown, count.total)}
         </p>
