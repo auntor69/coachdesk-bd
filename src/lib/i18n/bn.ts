@@ -3022,6 +3022,31 @@ export const bn = {
     addNumbers: 'নম্বর যোগ করুন',
 
     /**
+     * The heading over the students a search found that the worklist does not draw.
+     *
+     * The list above is only the families who can be messaged now, which is right for
+     * an owner working down it — and wrong for an owner who has a guardian on the
+     * phone asking about one child. Searched for by name, that child must not come
+     * back as "কিছু পাওয়া যায়নি" when the truth is that they were told on Monday. So
+     * a search reaches all four kinds of row and the three that cannot be sent are
+     * listed here, with the reason under each name instead of a dead button.
+     */
+    matchedHeld: 'এই খোঁজে পাওয়া গেছে',
+    /** Why there is no button on any of them, said once above the list. */
+    matchedHeldHint: 'এদের এখন পাঠানোর কিছু নেই — নিচে কারণ লেখা আছে।',
+    /**
+     * The reason on a row already told, when the date did not come through.
+     *
+     * `told` with the date is what a row normally shows; this is the fallback, and it
+     * says less rather than guessing a day.
+     */
+    whyTold: 'সম্প্রতি জানানো হয়েছে',
+    /** Nothing recorded this week, so there is no week to describe. */
+    whyNothing: 'এ সপ্তাহে হাজিরা বা পরীক্ষা কিছুই লেখা হয়নি',
+    /** No number on file. Same fact as the card above, said about one child. */
+    whyNoNumber: 'অভিভাবকের নম্বর নেই',
+
+    /**
      * The footnote. States the window in Bangla numerals — no ratio on this line to
      * clash with — and says once more, at the bottom of the screen, that this
      * message asks for nothing.

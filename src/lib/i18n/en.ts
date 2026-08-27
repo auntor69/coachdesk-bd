@@ -1454,6 +1454,12 @@ export const en: Dictionary = {
     unreachableBody: (names: string) => `There is no way to tell them without a number — ${names}`,
     addNumbers: 'Add numbers',
 
+    matchedHeld: 'Also found by this search',
+    matchedHeldHint: 'There is nothing to send these families right now — the reason is under each name.',
+    whyTold: 'Told recently',
+    whyNothing: 'No attendance or marks recorded this week',
+    whyNoNumber: 'No guardian number on file',
+
     windowNote:
       'The figures cover the last 7 days: attendance and exam results. Fees are not in this message — those go out with the reminders.',
 

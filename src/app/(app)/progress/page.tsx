@@ -1,16 +1,19 @@
 import Link from 'next/link'
 
 import { Card } from '@/components/ui'
+import { SearchBox, SearchEmpty } from '@/components/search-box'
 import { pageRole, getSession } from '@/lib/auth/session'
 import { has, planName, PLANS } from '@/lib/plans'
 import { createClient } from '@/lib/supabase/server'
 import { formatDate, todayInDhaka, digits } from '@/lib/bd/time'
 import { normalizeBdMobile } from '@/lib/bd/phone'
+import { searchTerms, matchesSearch, MAX_QUERY } from '@/lib/search'
 import {
   weeklyProgress,
   progressTotals,
   progressEmptyReason,
   PROGRESS_COLUMNS,
+  type ProgressStudent,
 } from '@/lib/students/progress'
 import { dict, DEFAULT_LOCALE } from '@/lib/i18n'
 import { ProgressList, type ProgressRowView } from './progress-list'
@@ -45,6 +48,24 @@ export async function generateMetadata() {
  * gets through forty of a hundred and fifty on a Thursday evening should have spent
  * those forty on the families where a message still changes something.
  *
+ * AND ONE CHILD CAN BE FOUND WITHOUT WORKING THE LIST, which is a second use of this
+ * screen and not a filter on the first. A guardian rings and asks how their son did
+ * this week; the owner has one name and a list two hundred rows long ordered by
+ * something else entirely. The box answers that in one screen.
+ *
+ * The search reaches all four kinds of row, and that is the part worth keeping. Over
+ * the worklist alone it would tell an owner searching a child who was messaged on
+ * Monday that nothing matched — a false sentence about a student who is enrolled, had
+ * a week recorded and was told two days ago. So the matches that cannot be sent are
+ * listed under the worklist with the reason under each name, which is a different
+ * thing from the hundred and fifty dead rows the paragraph above refuses to draw:
+ * a search returns one or two names, and about those the owner asked.
+ *
+ * Nothing sendable moves. The count card keeps reporting every family still to tell,
+ * because that figure is the centre's and not the query's — the same rule the fee
+ * board's search follows, and the reason `SearchBox` prints "showing 3 of 187"
+ * instead.
+ *
  * STAFF-ADMIN AND PLAN-GATED, which is two different fences. The role gate is the
  * view's own: read by a teacher the aggregate would describe their batches while
  * wearing the whole week's name, and a parent would be told that as fact. The plan
@@ -52,7 +73,12 @@ export async function generateMetadata() {
  * the chips checks it again, because a paywall on a page stops nobody who can type
  * a fetch.
  */
-export default async function ProgressPage() {
+export default async function ProgressPage({
+  searchParams,
+}: {
+  // A Promise in Next 16, and awaiting it is not optional.
+  searchParams: Promise<{ q?: string }>
+}) {
   const session = await pageRole('manager')
   const locale = session.locale
   const d = dict(locale)
@@ -95,6 +121,11 @@ export default async function ProgressPage() {
 
   const supabase = await createClient()
 
+  // Read after the gate, because a locked screen has no list to narrow. Capped like
+  // every other box here: the query arrives in a URL a person can edit.
+  const query = ((await searchParams).q ?? '').slice(0, MAX_QUERY)
+  const terms = searchTerms(query)
+
   const { data } = await supabase
     .from('student_progress_week')
     .select(PROGRESS_COLUMNS)
@@ -121,7 +152,25 @@ export default async function ProgressPage() {
    */
   const emptyReason = progressEmptyReason(totals)
 
-  const rows: ProgressRowView[] = toTell.map((s) => {
+  /*
+   * The two lists a query produces, and the same three fields the roster searches —
+   * the child's name, the code on last month's slip, and the number that rang the
+   * owner. Kept identical to `settings/students` on purpose: a box that matches one
+   * set of fields there and another set here is a box an owner stops trusting the
+   * second time it finds nothing.
+   */
+  const searching = terms.length > 0
+  const hit = (s: ProgressStudent) => matchesSearch([s.name, s.code, s.guardianPhone], terms)
+
+  // The worklist, narrowed. Order untouched: `weeklyProgress` already sorted it, and
+  // a filter that also re-sorted would hand back a worse list than the one asked for.
+  const listed = searching ? toTell.filter(hit) : toTell
+
+  // And the matches with nothing to send. Empty unless somebody typed — this is a
+  // search result, not a section of the screen.
+  const alsoMatched = searching ? students.filter((s) => s.status !== 'send' && hit(s)) : []
+
+  const rows: ProgressRowView[] = listed.map((s) => {
     const facts: string[] = []
 
     // Attendance first, because it is the figure a parent asks about. The ratio
@@ -182,6 +231,31 @@ export default async function ProgressPage() {
     }
   })
 
+  /**
+   * The one line under a matched name that has nothing to send.
+   *
+   * A `switch` and not a ternary chain, and `send` is written out rather than left to
+   * a default: that is what makes a fifth `ProgressStatus` a type error here instead
+   * of a row that renders an empty line. See the union's own note.
+   */
+  function heldReason(s: ProgressStudent): string {
+    switch (s.status) {
+      case 'sent':
+        // Converted to a Dhaka calendar day for the same reason the sendable row's
+        // own `told` line converts it. `whyTold` is the fallback and says less rather
+        // than naming a day it does not have.
+        return s.lastSentAt
+          ? t.told(formatDate(todayInDhaka(new Date(s.lastSentAt)), locale))
+          : t.whyTold
+      case 'nothing':
+        return t.whyNothing
+      case 'noNumber':
+        return t.whyNoNumber
+      case 'send':
+        return ''
+    }
+  }
+
   return (
     <div className="flex flex-col gap-5">
       <div>
@@ -195,32 +269,91 @@ export default async function ProgressPage() {
         )}
       </div>
 
-      {rows.length > 0 && (
-        <>
-          <Card className="border-brand-200 bg-brand-50">
-            <p className="text-sm font-medium text-brand-800">{t.dueTitle}</p>
-            {/* Two nodes rather than one filled sentence: the count is the largest
-                thing on the screen and the word beside it is not. Both languages
-                read number-then-word. */}
-            <p className="mt-1 text-brand-900">
-              <span className="num text-4xl font-bold">{rows.length}</span>
-              <span className="ml-2 font-semibold">{t.people(rows.length)}</span>
-            </p>
-          </Card>
+      {/* The headline figure, and it counts every family still to tell whatever is in
+          the box. A search asks which of these rows is Ali's; it does not ask for the
+          week's work to become Ali's — see the note on lib/search.ts. The box below
+          says out loud that the list under it is a part of itself. */}
+      {toTell.length > 0 && (
+        <Card className="border-brand-200 bg-brand-50">
+          <p className="text-sm font-medium text-brand-800">{t.dueTitle}</p>
+          {/* Two nodes rather than one filled sentence: the count is the largest
+              thing on the screen and the word beside it is not. Both languages
+              read number-then-word. */}
+          <p className="mt-1 text-brand-900">
+            <span className="num text-4xl font-bold">{toTell.length}</span>
+            <span className="ml-2 font-semibold">{t.people(toTell.length)}</span>
+          </p>
+        </Card>
+      )}
 
-          <ProgressList
-            rows={rows}
-            centerName={session.active.centerName}
-            words={{ t: d.chaseList, chase: d.chase, channels: d.channels }}
-          />
-        </>
+      {/* Only once there is a week to search. A box over a centre with no students is
+          a control that can only ever fail, and its count would read "0 of 0".
+
+          The default placeholder, because this screen's three fields are the usual
+          three: the child's name, their code, the guardian's number. `total` is every
+          student the view returned rather than the rows drawn, since the search reads
+          all four kinds — so "3 of 187" is the honest denominator even though the
+          list above it is forty long. */}
+      {students.length > 0 && (
+        <SearchBox
+          q={query}
+          t={d.search}
+          count={{ shown: rows.length + alsoMatched.length, total: students.length }}
+        />
+      )}
+
+      {rows.length > 0 && (
+        <ProgressList
+          rows={rows}
+          centerName={session.active.centerName}
+          words={{ t: d.chaseList, chase: d.chase, channels: d.channels }}
+        />
+      )}
+
+      {/* Nothing matched at all — not one sendable row and not one held one. Said in
+          the search's own words, never in this screen's: "নতুন করে কাউকে জানানোর নেই"
+          under a mistyped name would have an owner close the page believing the week
+          was done. */}
+      {searching && rows.length === 0 && alsoMatched.length === 0 && (
+        <SearchEmpty t={d.search} />
+      )}
+
+      {/* The matches that cannot be messaged, with the reason under each name.
+          Search-only, and that is the whole design: as a permanent section it would be
+          the hundred and fifty dead rows the doc above refuses to draw, and as a
+          search result it is the answer to the name the owner typed.
+
+          No chips on these rows, deliberately. A family told on Monday is held by the
+          six-day cooldown in `progressDecision`, and a way around it drawn here would
+          be a second, quieter answer to a question this product has already decided. */}
+      {alsoMatched.length > 0 && (
+        <Card>
+          <p className="font-medium text-ink">{t.matchedHeld}</p>
+          <p className="mt-1 text-sm text-ink-soft">{t.matchedHeldHint}</p>
+          <ul className="mt-3 flex flex-col divide-y divide-line">
+            {alsoMatched.map((s) => (
+              <li key={s.studentId} className="py-2 first:pt-0 last:pb-0">
+                <p className="font-medium text-ink">
+                  {s.name}
+                  {s.code && <span className="num ml-2 text-sm text-ink-faint">{s.code}</span>}
+                </p>
+                <p className="text-sm text-ink-soft">{heldReason(s)}</p>
+              </li>
+            ))}
+          </ul>
+        </Card>
       )}
 
       {/* Two separate blocks rather than one ternary, like the fee worklist: the
           list is drawn from the rows and the card from the reason, and neither
           decides for the other. `emptyReason` is null exactly when there are rows,
-          so they cannot both appear. */}
-      {emptyReason && (
+          so they cannot both appear.
+
+          Held while a search is open, along with the two blocks below it. All three
+          describe the centre's whole week, and under a query they read as answers to
+          it — "nobody new to tell" beside one found name is a sentence about the wrong
+          thing. Clearing the box brings them back. */}
+      {!searching && emptyReason && (
         <Card>
           <p className="font-medium text-ink">{t.noneTitle}</p>
           <p className="mt-1 text-sm text-ink-soft">{t.noneBecause[emptyReason]}</p>
@@ -230,7 +363,7 @@ export default async function ProgressPage() {
       {/* Counted, not listed. Rows the owner has already dealt with, and rows whose
           fix is a register rather than a message — the names would be a hundred and
           fifty lines each saying the same thing. */}
-      {(totals.sent > 0 || totals.nothing > 0) && (
+      {!searching && (totals.sent > 0 || totals.nothing > 0) && (
         <div className="flex flex-col gap-1 text-sm text-ink-faint">
           {totals.sent > 0 && <p className="num">{t.heldSent(totals.sent)}</p>}
           {totals.nothing > 0 && (
@@ -244,7 +377,7 @@ export default async function ProgressPage() {
         </div>
       )}
 
-      {unreachable.length > 0 && (
+      {!searching && unreachable.length > 0 && (
         <Card>
           <p className="num font-medium text-ink">
             {t.unreachableTitle(unreachable.length)}
