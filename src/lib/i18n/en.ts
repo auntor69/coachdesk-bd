@@ -1784,6 +1784,8 @@ export const en: Dictionary = {
       owed: 'Owed (one month)',
       /** A job, not a measurement, and the one tile you want reading zero. */
       asking: 'Asking to upgrade',
+      /** Trials in their last week, and trials already over. See the Bangla note. */
+      ending: 'Trials ending',
     },
     bill: 'A month',
     size: {
@@ -1807,6 +1809,16 @@ export const en: Dictionary = {
     lastActive: (date: string) => `Last used ${date}`,
     neverActive: 'Never used it',
     quiet: (days: number) => `Quiet for ${days} ${days === 1 ? 'day' : 'days'}`,
+    /**
+     * The trial clock. Three sentences, because a countdown, a deadline today and an
+     * overrun are three different phone calls. See the Bangla note.
+     */
+    trialLeft: (days: number) =>
+      `Trial ends in ${days} ${days === 1 ? 'day' : 'days'}`,
+    trialToday: 'Trial ends today',
+    trialOver: (days: number) =>
+      `Trial ended ${days} ${days === 1 ? 'day' : 'days'} ago`,
+    trialEnds: (date: string) => `Trial ends ${date}`,
     paidNothing: 'Has not paid yet',
     paidTotal: (amount: string) => `Paid ${amount}`,
     paidThrough: (date: string) => `Paid up to ${date}`,
@@ -1910,6 +1922,8 @@ export const en: Dictionary = {
       teachers: 'Teachers',
       batches: 'Batches',
       signedUp: 'Signed up',
+      /** Blank unless the centre is on trial. See the Bangla note. */
+      trialEnds: 'Trial ends',
       attendance: 'Attendance (30d)',
       exams: 'Exams (30d)',
       payments: 'Payments (30d)',

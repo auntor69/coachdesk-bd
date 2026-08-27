@@ -165,6 +165,11 @@ export default async function FounderPage() {
                 only one whose useful reading is zero. First row on purpose: a
                 customer waiting to be sold to outranks every figure below it. */}
             <Stat label={t.totals.asking} value={String(totals.asking)} />
+            {/* The other to-do, kept beside it: both tiles mean "ring somebody",
+                and this is the one with a date on it. Trials in their last week
+                and trials already over are counted together on purpose — see the
+                note on TRIAL_ENDING_SOON_DAYS. */}
+            <Stat label={t.totals.ending} value={String(totals.ending)} />
             <Stat label={t.totals.mrr} value={formatTaka(totals.mrrBdt)} />
             <Stat label={t.totals.pipeline} value={formatTaka(totals.pipelineBdt)} />
             <Stat label={t.totals.paid} value={formatTaka(totals.paidBdt)} />
@@ -234,6 +239,37 @@ export default async function FounderPage() {
                       >
                         {t.status[c.status]}
                       </span>
+                      {/*
+                       * The trial clock, right beside the word "trial" because it
+                       * qualifies it. Null on everything that is not a trial, so
+                       * there is no status check here — see `trialDaysLeft`.
+                       *
+                       * TWO TREATMENTS, BOTH ALREADY IN USE HERE. A running trial
+                       * gets the same amber tint as the status chip it follows, so
+                       * the pair reads as one fact. An overrun gets the filled red
+                       * of the money chip, which is free on a trial card: `owes` is
+                       * deliberately narrow to `active` centres, so the two filled
+                       * chips can never appear together. It is also why an overrun
+                       * is NOT tinted red — `quiet` owns that, a dead trial is
+                       * usually quiet too, and the two side by side would read as
+                       * one vague alarm rather than a deadline and a silence.
+                       */}
+                      {c.trialDaysLeft !== null && (
+                        <span
+                          className={`rounded-lg border px-2 py-0.5 text-xs
+                            ${
+                              c.trialDaysLeft < 0
+                                ? 'border-red-600 bg-red-600 font-semibold text-white'
+                                : 'border-amber-200 bg-amber-50 font-medium text-amber-800'
+                            }`}
+                        >
+                          {c.trialDaysLeft < 0
+                            ? t.trialOver(-c.trialDaysLeft)
+                            : c.trialDaysLeft === 0
+                              ? t.trialToday
+                              : t.trialLeft(c.trialDaysLeft)}
+                        </span>
+                      )}
                       {/* The one chip on this screen that is filled rather than
                           tinted, because it is the only one about money. Two
                           red-on-pink chips side by side — this and "gone quiet" —
@@ -342,6 +378,13 @@ export default async function FounderPage() {
                         // of June" instead of only "you owe".
                         c.paidThrough &&
                           t.paidThrough(formatDate(c.paidThrough, locale)),
+                        // And the same fact for somebody who has not paid at all:
+                        // the chip above is the nudge, this is the date to say out
+                        // loud. Last, so a trial card reads as a sentence — joined
+                        // then, last seen then, no money yet, and this is when the
+                        // conversation has to happen.
+                        c.trialEndsOn &&
+                          t.trialEnds(formatDate(c.trialEndsOn, locale)),
                       ]
                         .filter(Boolean)
                         .join(' · ')}

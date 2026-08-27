@@ -8,6 +8,8 @@ import {
   platformTotals,
   sizeLine,
   QUIET_AFTER_DAYS,
+  TRIAL_DAYS,
+  TRIAL_ENDING_SOON_DAYS,
   type PlatformCenterRow,
 } from '../src/lib/platform/centers.ts'
 import { CENTER_MONTHLY_FLOOR_BDT, PLANS } from '../src/lib/plans.ts'
@@ -513,6 +515,102 @@ test('the asking total counts requests whatever the centre’s status', () => {
 })
 
 /* -------------------------------------------------------------------------- */
+/* The trial clock                                                            */
+/* -------------------------------------------------------------------------- */
+
+/*
+ * Thirty days from the day they signed up, and no column anywhere holds it. These
+ * tests are the whole specification of that date, which is why they check the
+ * arithmetic rather than a stored value: get this wrong and a founder rings a
+ * customer a week late, or worse, a week after telling them the trial was still on.
+ */
+
+test('a trial counts down thirty days from the day it signed up', () => {
+  // Twenty-five days before NOW in Dhaka, so five days are left.
+  const list = customers(
+    [row({ status: 'trial', created_at: '2026-07-31T06:00:00.000Z' })],
+    'x',
+    NOW,
+  )
+
+  assert.equal(list[0].trialEndsOn, '2026-08-30')
+  assert.equal(list[0].trialDaysLeft, 5)
+  // A plain calendar date and not a timestamp: it is a deadline, not an instant, and
+  // the CSV column beside it is sorted by a person.
+  assert.equal(TRIAL_DAYS, 30)
+})
+
+test('a trial that has run over reads as a negative, not as an error', () => {
+  const list = customers(
+    [row({ status: 'trial', created_at: '2026-07-16T06:00:00.000Z' })],
+    'x',
+    NOW,
+  )
+
+  // Nothing expires on day 31 — no lockout and no downgrade — so this is a nag and
+  // not a state. Clamping it to zero would hide the customer who needs the call most.
+  assert.equal(list[0].trialEndsOn, '2026-08-15')
+  assert.equal(list[0].trialDaysLeft, -10)
+})
+
+test('the trial clock is Dhaka’s day, not UTC’s', () => {
+  // 2am Dhaka on 1 August, which is 31 July in UTC. A centre that signed up after
+  // midnight local must not be dated to the day before, or every deadline this panel
+  // shows is a day early for the small hours.
+  const list = customers(
+    [row({ status: 'trial', created_at: '2026-07-31T20:00:00.000Z' })],
+    'x',
+    NOW,
+  )
+
+  assert.equal(list[0].trialEndsOn, '2026-08-31')
+  assert.equal(list[0].trialDaysLeft, 6)
+})
+
+test('only a trial has a trial to end', () => {
+  const list = customers(
+    [
+      row({ center_id: 'a', status: 'active' }),
+      row({ center_id: 's', status: 'suspended' }),
+      row({ center_id: 'x', status: 'cancelled' }),
+      // A trial whose signup date the database does not have. There is nothing to
+      // count from, so there is no deadline — not day zero, which would read as
+      // "ends today" on a card and send the founder to the phone for nothing.
+      row({ center_id: 'n', status: 'trial', created_at: null }),
+    ],
+    'x',
+    NOW,
+  )
+
+  for (const c of list) {
+    assert.equal(c.trialEndsOn, null, c.centerId)
+    assert.equal(c.trialDaysLeft, null, c.centerId)
+  }
+})
+
+test('the ending total is the last week of a trial and everything past it', () => {
+  const list = customers(
+    [
+      // Exactly on the threshold, and inside it.
+      row({ center_id: 'edge', status: 'trial', created_at: '2026-08-02T06:00:00.000Z' }),
+      // One day the other side of it. Not yet a call.
+      row({ center_id: 'later', status: 'trial', created_at: '2026-08-03T06:00:00.000Z' }),
+      // Already over, and still counted: an overdue trial is more urgent, not less.
+      row({ center_id: 'over', status: 'trial', created_at: '2026-06-01T06:00:00.000Z' }),
+      // Paying, so it has no trial to end however long ago it signed up.
+      row({ center_id: 'paying', status: 'active', created_at: '2026-06-01T06:00:00.000Z' }),
+    ],
+    'x',
+    NOW,
+  )
+
+  assert.equal(list[0].trialDaysLeft, TRIAL_ENDING_SOON_DAYS)
+  assert.equal(list[1].trialDaysLeft, TRIAL_ENDING_SOON_DAYS + 1)
+  assert.equal(platformTotals(list).ending, 2)
+  assert.equal(platformTotals([]).ending, 0)
+})
+
+/* -------------------------------------------------------------------------- */
 /* The download                                                               */
 /* -------------------------------------------------------------------------- */
 
@@ -529,6 +627,7 @@ const HEADINGS = {
   teachers: 'শিক্ষক',
   batches: 'ব্যাচ',
   signedUp: 'যোগ দিয়েছে',
+  trialEnds: 'ট্রায়াল শেষ',
   attendance: 'হাজিরা',
   exams: 'পরীক্ষা',
   payments: 'আদায় সংখ্যা',
@@ -606,6 +705,23 @@ test('dates leave as ISO timestamps, which sort and subtract', () => {
   // A `date` column, so no time and no Z — already sortable and already the shape
   // the founder's spreadsheet will subtract from.
   assert.equal(at(HEADINGS.paidThrough), '2026-08-31')
+})
+
+test('the trial deadline is a date in the sheet, and blank for everyone else', () => {
+  const trial = customers(
+    [row({ center_id: 't', status: 'trial', created_at: '2026-07-31T06:00:00.000Z' })],
+    'x',
+    NOW,
+  )
+  const paying = customers([row({ center_id: 'p' })], 'x', NOW)
+  const { header, rows } = customersSheet([...trial, ...paying], WORDS)
+  const at = (i: number) => rows[i][header.indexOf(HEADINGS.trialEnds)]
+
+  // YYYY-MM-DD and not "5 days": a downloaded sheet outlives the day it was made,
+  // and a countdown in a file read next week is a wrong number rather than a stale one.
+  assert.equal(at(0), '2026-08-30')
+  // Blank, so sorting the column gathers every live deadline at one end.
+  assert.equal(at(1), null)
 })
 
 test('the owes column is a word, so it can be filtered on', () => {

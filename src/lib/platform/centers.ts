@@ -13,11 +13,11 @@
  * panel have to quote the same figure. A centre told ৳2,400 on their screen and
  * invoiced ৳2,700 from this one is a refund and an apology.
  *
- * WHAT THIS FILE IS ALLOWED TO DECIDE is `QUIET_AFTER_DAYS`, and that is the
- * mirror of the argument student_risk makes: a threshold with two readers belongs
- * in the database where neither can drift, and a threshold with exactly one reader
- * belongs next to its reader. Nothing but this panel asks whether a centre has
- * gone quiet.
+ * WHAT THIS FILE IS ALLOWED TO DECIDE is `QUIET_AFTER_DAYS` and `TRIAL_DAYS`, and
+ * that is the mirror of the argument student_risk makes: a threshold with two readers
+ * belongs in the database where neither can drift, and a threshold with exactly one
+ * reader belongs next to its reader. Nothing but this panel asks whether a centre has
+ * gone quiet or when its trial runs out.
  *
  * Relative imports with the extension, like every other unit-tested module here:
  * these tests run under `node --test`, which resolves neither tsconfig paths nor
@@ -28,7 +28,7 @@ import type { CsvCell } from '../csv.ts'
 import type { Locale } from '../i18n/locale.ts'
 import { monthlyBillBdt, planFor, planName, type PlanId } from '../plans.ts'
 import { formatTaka } from '../money.ts'
-import { digits, todayInDhaka } from '../bd/time.ts'
+import { addDays, daysBetween, digits, todayInDhaka } from '../bd/time.ts'
 
 /** Matches `center_status` in 20260811000001_init_schema.sql. */
 export type CenterStatus = 'trial' | 'active' | 'suspended' | 'cancelled'
@@ -105,6 +105,41 @@ export type PlatformCenterRow = {
  */
 export const QUIET_AFTER_DAYS = 14
 
+/**
+ * How long a trial runs, and why nothing enforces it.
+ *
+ * Thirty days, from MASTERPLAN §4 "Correction 1", and the argument there is that this
+ * product's value is only visible across a fee cycle: in three days an owner sees an
+ * empty app and some data entry. In thirty they watch the board collect money, and the
+ * number on it is the close.
+ *
+ * DERIVED FROM SIGNUP RATHER THAN STORED, deliberately. `subscriptions.trial_ends_at`
+ * exists in the schema and is dead on purpose — see the note on recordCenterPayment for
+ * why that whole table stays unwritten — and adding a second column for this would give
+ * a trial two end dates that can disagree. Signup day plus thirty is a fact the database
+ * already holds, cannot drift from itself, and is what the founder actually said to the
+ * owner in the room.
+ *
+ * NOTHING EXPIRES ON DAY 31. No lockout, no downgrade, no email — the masterplan's
+ * trial-to-paid mechanics are a phone call on about day 28 and a bKash transfer, "no
+ * card on file, no auto-charge", and a customer whose app went read-only on the morning
+ * the founder meant to ring them is a lost sale rather than a collected one. So this
+ * clock is a to-do list, and a trial that has run over is not an error state: it reads
+ * as a negative number of days left, which is precisely the nag it should be.
+ */
+export const TRIAL_DAYS = 30
+
+/**
+ * How near the end a trial has to be before the totals strip counts it.
+ *
+ * A week, because the conversation happens on about day 28 and a founder who sees the
+ * tile on the day it turns 1 has no time left to arrange anything. Trials already past
+ * their date are counted here too — they are the most urgent thing in the list, and a
+ * tile that dropped them the moment they became overdue would be a queue that empties
+ * itself by forgetting.
+ */
+export const TRIAL_ENDING_SOON_DAYS = 7
+
 const MS_PER_DAY = 86_400_000
 
 /** A customer, as the founder panel and its CSV both read them. */
@@ -166,6 +201,22 @@ export type Customer = {
   daysQuiet: number | null
   /** Past QUIET_AFTER_DAYS, or never active at all. */
   quiet: boolean
+  /**
+   * The last day of the trial as a Dhaka calendar date, or null when there isn't one.
+   *
+   * Null on every centre that is not on trial, so the screen never has to ask twice —
+   * an active customer's thirtieth day is a fact about history, not a date to act on,
+   * and a chip counting down on a centre that already pays would be nonsense.
+   */
+  trialEndsOn: string | null
+  /**
+   * Whole days from today to `trialEndsOn`; negative once it has passed, null when
+   * `trialEndsOn` is.
+   *
+   * Signed rather than clamped at zero, because "ended 6 days ago" and "ends today" are
+   * different phone calls and the second one is not the urgent one.
+   */
+  trialDaysLeft: number | null
   /** All-time taka received from this centre. Zero until a payment is recorded. */
   paidBdt: number
   lastPaidAt: string | null
@@ -260,6 +311,21 @@ export function customers(
     const billBdt = monthlyBillBdt(planFor(plan), students, teachers)
     const paidThrough = row.paid_through ?? null
 
+    /*
+     * The trial clock, in Dhaka calendar days rather than elapsed hours.
+     *
+     * The signup timestamp is converted to the day it was in Dhaka first: a centre
+     * created at 1am local is stamped the previous day in UTC, and a founder who told
+     * an owner "thirty days from Tuesday" should not be shown Monday. From there it is
+     * date arithmetic, which is what daysBetween is for.
+     *
+     * Only for trials. A centre that has already been switched on has nothing to count
+     * down, and one that was suspended or cancelled has had its answer.
+     */
+    const signedUpOn = row.created_at ? todayInDhaka(new Date(row.created_at)) : null
+    const trialEndsOn
+      = status === 'trial' && signedUpOn ? addDays(signedUpOn, TRIAL_DAYS) : null
+
     list.push({
       centerId: row.center_id,
       name: row.center_name || unnamed,
@@ -291,6 +357,8 @@ export function customers(
       // founder can tell the difference between a customer who never started and
       // one who stopped.
       quiet: daysQuiet === null || daysQuiet >= QUIET_AFTER_DAYS,
+      trialEndsOn,
+      trialDaysLeft: trialEndsOn === null ? null : daysBetween(today, trialEndsOn),
       paidBdt: taka(row.paid_bdt),
       lastPaidAt: row.last_paid_at ?? null,
       paidThrough,
@@ -362,6 +430,16 @@ export type PlatformTotals = {
    * call. Zero is the normal reading and the useful one — a non-zero is work.
    */
   asking: number
+  /**
+   * Trials inside their last week, plus every trial already past its date.
+   *
+   * The second to-do on this row rather than a measurement, and the one with a deadline
+   * on it: `asking` is a customer waiting for a call they asked for, this is a customer
+   * who does not know a call is due. Per MASTERPLAN §4 the whole sale happens in this
+   * window — day 28, their own numbers on the screen, then the price — and a trial that
+   * runs past it quietly becomes a free account nobody ever closed.
+   */
+  ending: number
 }
 
 export function platformTotals(list: readonly Customer[]): PlatformTotals {
@@ -384,6 +462,7 @@ export function platformTotals(list: readonly Customer[]): PlatformTotals {
     owing: 0,
     owedBdt: 0,
     asking: 0,
+    ending: 0,
   }
 
   for (const c of list) {
@@ -399,6 +478,12 @@ export function platformTotals(list: readonly Customer[]): PlatformTotals {
     // Counted whatever the status. A trial asking to be put on Centre is the single
     // most valuable row this panel can hold, and a status filter here would drop it.
     if (c.wantsPlan) totals.asking += 1
+    // `trialDaysLeft` is null on everything that is not a trial, so no status check is
+    // needed here. No lower bound either: a trial that ended three weeks ago still
+    // counts, because nothing took it off this list except somebody making the call.
+    if (c.trialDaysLeft !== null && c.trialDaysLeft <= TRIAL_ENDING_SOON_DAYS) {
+      totals.ending += 1
+    }
     if (c.owes) {
       totals.owing += 1
       totals.owedBdt += c.billBdt
@@ -440,6 +525,7 @@ export type CustomerCsvHeadings = {
   teachers: string
   batches: string
   signedUp: string
+  trialEnds: string
   attendance: string
   exams: string
   payments: string
@@ -504,6 +590,7 @@ export function customersSheet(
     h.teachers,
     h.batches,
     h.signedUp,
+    h.trialEnds,
     h.attendance,
     h.exams,
     h.payments,
@@ -540,6 +627,11 @@ export function customersSheet(
     c.teachers,
     c.batches,
     c.createdAt,
+    // Blank on everybody who is not on trial, so sorting this column gathers the
+    // customers with a deadline at one end. A plain YYYY-MM-DD, which a spreadsheet
+    // can sort and subtract from today — the day count on the screen cannot be
+    // recomputed tomorrow, and a downloaded sheet outlives the day it was made.
+    c.trialEndsOn,
     c.attendance30d,
     c.exams30d,
     c.feePayments30d,

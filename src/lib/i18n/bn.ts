@@ -3770,6 +3770,14 @@ export const bn = {
        * down among the money.
        */
       asking: 'প্ল্যান চাইছে',
+      /**
+       * The other job on this strip, and the only one with a date attached.
+       *
+       * Counts trials in their last week AND trials already past thirty days, because
+       * both are the same phone call and an overdue one is more urgent rather than
+       * less. See TRIAL_ENDING_SOON_DAYS in lib/platform/centers.
+       */
+      ending: 'ট্রায়াল শেষ হচ্ছে',
     },
     /** One row's labels. Terse — they sit in a line under the centre's name. */
     bill: 'মাসে',
@@ -3795,6 +3803,25 @@ export const bn = {
     /** A centre that signed up and never came back. Not a day count. */
     neverActive: 'একবারও ব্যবহার করেনি',
     quiet: (days: number) => `${digits(days, 'bn')} দিন চুপচাপ`,
+    /**
+     * The trial clock, on the chip row of a trial card.
+     *
+     * THREE SENTENCES AND NOT ONE, because a countdown, a deadline today and an
+     * overrun are three different phone calls. One sentence with a signed number in
+     * it would be none of them, and "-৬ দিন বাকি" is not something a person says.
+     *
+     * Thirty days from the day they signed up, never a date somebody typed in — see
+     * TRIAL_DAYS in lib/platform/centers for why that is derived and not stored.
+     */
+    trialLeft: (days: number) => `ট্রায়াল শেষ ${digits(days, 'bn')} দিনে`,
+    trialToday: 'ট্রায়াল আজই শেষ',
+    trialOver: (days: number) => `ট্রায়াল ${digits(days, 'bn')} দিন আগে শেষ`,
+    /**
+     * The date itself, down in the small print beside `paidThrough` and for the same
+     * reason: the chip is the nudge, this is what gets said out loud — "আপনার ট্রায়াল
+     * ২৬ তারিখ পর্যন্ত" — while the founder has them on the line.
+     */
+    trialEnds: (date: string) => `ট্রায়াল শেষ ${date}`,
     paidNothing: 'এখনও টাকা দেয়নি',
     paidTotal: (amount: string) => `দিয়েছে ${amount}`,
     /** How far the money they have given us reaches. The renewal date, in effect. */
@@ -3971,6 +3998,8 @@ export const bn = {
       teachers: 'শিক্ষক',
       batches: 'ব্যাচ',
       signedUp: 'যোগ দিয়েছে',
+      /** Blank unless the centre is on trial. See the note in lib/platform/centers. */
+      trialEnds: 'ট্রায়াল শেষ',
       attendance: 'হাজিরা (৩০ দিন)',
       exams: 'পরীক্ষা (৩০ দিন)',
       payments: 'আদায় সংখ্যা (৩০ দিন)',
