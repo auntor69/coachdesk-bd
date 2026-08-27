@@ -4,9 +4,9 @@ import { forbidden } from 'next/navigation'
 import { Card } from '@/components/ui'
 import { pageCenter, getSession, isStaffAdmin } from '@/lib/auth/session'
 import { createClient } from '@/lib/supabase/server'
-import { addMonths, currentPeriodMonth, formatMonth } from '@/lib/bd/time'
+import { addMonths, currentPeriodMonth, digits, formatMonth } from '@/lib/bd/time'
 import { formatTaka } from '@/lib/money'
-import { closeMonths, monthClose } from '@/lib/fees/month-close'
+import { closeMonths, monthClose, monthMessages } from '@/lib/fees/month-close'
 import { dict, DEFAULT_LOCALE } from '@/lib/i18n'
 
 /** getSession, not pageCenter — see the note on teach/page.tsx's own. */
@@ -69,13 +69,21 @@ const MONTH_RE = /^\d{4}-\d{2}-01$/
  * what belongs to this month's book. An owner who adds the four columns and finds a gap
  * must find the reason for it on the same screen.
  *
- * ONE CLAIM THIS SCREEN DOES NOT MAKE. The masterplan's own wording for the reminder
+ * ONE CLAIM THIS SCREEN DOES NOT MAKE. The masterplan's own wording for the message
  * count is "how many reminders went out without them lifting a finger", and that is
- * not true yet — every reminder in this product leaves the owner's own phone when they
- * tap it, because there is no BTRC-registered sender ID to send from. So the line says
+ * not true yet — every message in this product leaves the owner's own phone when they
+ * tap it, because there is no BTRC-registered sender ID to send from. So the card says
  * how many were sent and stops there. The day a gateway is live it can say more; until
  * then the count is impressive enough on its own, and a promise we cannot keep is a
  * bad thing to make on the screen where we ask for money.
+ *
+ * ALL FOUR KINDS OF MESSAGE, and it used to count one. The card counted fee reminders
+ * only, so a centre that chased thirty-four fees and also sent ninety absence messages
+ * and twenty-six sets of marks read as "34 reminders sent" — on the one screen whose
+ * whole job is to say what the product did, in the one conversation where that is
+ * quoted back against a price. The tally is monthMessages in lib/fees/month-close.ts,
+ * and its four keys are required rather than optional so a fifth kind of message
+ * cannot ship reading zero here.
  */
 export default async function MonthClosePage({
   searchParams,
@@ -100,63 +108,100 @@ export default async function MonthClosePage({
 
   const supabase = await createClient()
 
-  const [{ data: balances }, { data: payments }, { count: reminders }, { data: center }]
-    = await Promise.all([
-      // Exactly the invoices this month's book is made of, and no more. Every bill
-      // raised for the month — needed in full, settled or not, because that is what
-      // `billed` counts — plus every earlier bill that still carries a balance either
-      // way. An earlier bill that reads zero today either was zero on the 1st as well,
-      // or was settled by a payment the query below picks up, so leaving it out costs
-      // nothing and keeps the read to a few hundred rows on a phone.
-      supabase
-        .from('fee_invoice_balances')
-        .select(BALANCE_COLUMNS)
-        .eq('coaching_center_id', session.active.centerId)
-        .is('voided_at', null)
-        .lte('period_month', month)
-        .or(`period_month.eq.${month},remaining_bdt.neq.0`),
-      // Every payment from the first instant of the month onwards, with NO upper
-      // bound — and the missing bound is the feature. The ones taken after the month
-      // ended are what walk each invoice's balance back to where it stood on the last
-      // day; without them a bill settled in September reads as settled in July.
-      //
-      // The +06:00 offset is load-bearing, exactly as on the register and the board.
-      // paid_at is a timestamptz and this is a Dhaka calendar boundary; compared
-      // against a bare date the cutoff lands at 6am Dhaka and every payment taken
-      // before breakfast on the 1st is counted into a month the owner has already been
-      // shown and has already agreed with.
-      supabase
-        .from('fee_payments')
-        .select(PAYMENT_COLUMNS)
-        .eq('coaching_center_id', session.active.centerId)
-        .gte('paid_at', `${month}T00:00:00+06:00`),
-      // How many reminders went out inside the month. head:true — the count is the
-      // whole answer, and pulling the bodies of a few hundred messages to length an
-      // array would be a slow query for a number.
-      //
-      // Half-open on the same offsets, and bounded at the top where the payments are
-      // not: a reminder sent in September is September's work and belongs to
-      // September's conversation.
-      supabase
-        .from('fee_reminders')
-        .select('id', { count: 'exact', head: true })
-        .eq('coaching_center_id', session.active.centerId)
-        .gte('created_at', `${month}T00:00:00+06:00`)
-        .lt('created_at', `${nextMonth}T00:00:00+06:00`),
-      // The letterhead. This page gets screenshotted and sent to a business partner
-      // more than any other, and one that does not say whose month it is is a
-      // screenshot of nothing.
-      supabase
-        .from('coaching_centers')
-        .select('name')
-        .eq('id', session.active.centerId)
-        .maybeSingle(),
-    ])
+  const [
+    { data: balances },
+    { data: payments },
+    { count: reminders },
+    { count: notes },
+    { count: results },
+    { count: absences },
+    { data: center },
+  ] = await Promise.all([
+    // Exactly the invoices this month's book is made of, and no more. Every bill
+    // raised for the month — needed in full, settled or not, because that is what
+    // `billed` counts — plus every earlier bill that still carries a balance either
+    // way. An earlier bill that reads zero today either was zero on the 1st as well,
+    // or was settled by a payment the query below picks up, so leaving it out costs
+    // nothing and keeps the read to a few hundred rows on a phone.
+    supabase
+      .from('fee_invoice_balances')
+      .select(BALANCE_COLUMNS)
+      .eq('coaching_center_id', session.active.centerId)
+      .is('voided_at', null)
+      .lte('period_month', month)
+      .or(`period_month.eq.${month},remaining_bdt.neq.0`),
+    // Every payment from the first instant of the month onwards, with NO upper
+    // bound — and the missing bound is the feature. The ones taken after the month
+    // ended are what walk each invoice's balance back to where it stood on the last
+    // day; without them a bill settled in September reads as settled in July.
+    //
+    // The +06:00 offset is load-bearing, exactly as on the register and the board.
+    // paid_at is a timestamptz and this is a Dhaka calendar boundary; compared
+    // against a bare date the cutoff lands at 6am Dhaka and every payment taken
+    // before breakfast on the 1st is counted into a month the owner has already been
+    // shown and has already agreed with.
+    supabase
+      .from('fee_payments')
+      .select(PAYMENT_COLUMNS)
+      .eq('coaching_center_id', session.active.centerId)
+      .gte('paid_at', `${month}T00:00:00+06:00`),
+    // The four kinds of message this product puts in front of a guardian, counted
+    // one table at a time. Written out four times rather than looped over a list of
+    // table names, and that is not laziness: check-scoping.mjs reads `.from('...')`
+    // as a literal to prove every query in the app is centre-scoped, and a
+    // `.from(table)` with a variable in it would be the first query in the codebase
+    // that the check silently cannot see.
+    //
+    // head:true on all four — the count is the whole answer, and pulling the bodies
+    // of a few hundred messages to length an array would be a slow query for a
+    // number.
+    //
+    // Half-open on the same Dhaka offsets, and bounded at the top where the payments
+    // deliberately are not: a message sent in September is September's work and
+    // belongs to September's conversation.
+    supabase
+      .from('fee_reminders')
+      .select('id', { count: 'exact', head: true })
+      .eq('coaching_center_id', session.active.centerId)
+      .gte('created_at', `${month}T00:00:00+06:00`)
+      .lt('created_at', `${nextMonth}T00:00:00+06:00`),
+    supabase
+      .from('progress_updates')
+      .select('id', { count: 'exact', head: true })
+      .eq('coaching_center_id', session.active.centerId)
+      .gte('created_at', `${month}T00:00:00+06:00`)
+      .lt('created_at', `${nextMonth}T00:00:00+06:00`),
+    supabase
+      .from('result_notices')
+      .select('id', { count: 'exact', head: true })
+      .eq('coaching_center_id', session.active.centerId)
+      .gte('created_at', `${month}T00:00:00+06:00`)
+      .lt('created_at', `${nextMonth}T00:00:00+06:00`),
+    supabase
+      .from('absence_notices')
+      .select('id', { count: 'exact', head: true })
+      .eq('coaching_center_id', session.active.centerId)
+      .gte('created_at', `${month}T00:00:00+06:00`)
+      .lt('created_at', `${nextMonth}T00:00:00+06:00`),
+    // The letterhead. This page gets screenshotted and sent to a business partner
+    // more than any other, and one that does not say whose month it is is a
+    // screenshot of nothing.
+    supabase
+      .from('coaching_centers')
+      .select('name')
+      .eq('id', session.active.centerId)
+      .maybeSingle(),
+  ])
 
   // Every figure on the page, from one tested function. Nothing below this line does
   // arithmetic — the point of the module is that these six numbers cannot be derived
   // two ways, here and in a test that agrees with a different version of them.
   const m = monthClose({ month, balances, payments })
+
+  // The same rule for the message tally, which is why four head counts turn into a
+  // total somewhere other than here. All four keys are required by the type, so a
+  // fifth kind of message added to the product cannot reach this screen reading zero.
+  const sent = monthMessages({ reminders, notes, results, absences })
 
   const months = closeMonths(currentPeriodMonth()).map((value) => ({
     value,
@@ -166,9 +211,47 @@ export default async function MonthClosePage({
   // A month in which nothing was billed, nothing came in and nothing was owed at
   // either end. Drawing six zeroes would look like a broken screen; saying so does
   // not — and on a trial that started mid-month, the month before is exactly this.
+  //
+  // The messages are deliberately not part of this test. A centre can have a month
+  // with no money in it at all and still have told ninety parents their child was not
+  // in class, which is the most common shape of a trial that has not yet put its fees
+  // in — and that is the one centre this screen most needs to have something to say
+  // to. So the card below is drawn either way and this only hides the ledger.
   const nothingHappened
     = m.opening === 0 && m.billed === 0 && m.collected === 0 && m.closing === 0
       && m.credit === 0
+
+  /*
+   * The work the product did, counted and not characterised. See the note at the head
+   * of this file for why it says no more than this.
+   *
+   * Four kinds and a total, because the total on its own is the number that gets
+   * doubted: "ninety-one messages" invites "ninety-one of what", and the four answers
+   * are four different reasons this product is worth paying for. The breakdown is
+   * drawn only when more than one kind happened — with one kind it is the total
+   * written twice.
+   *
+   * Held in a variable because it belongs on both sides of the branch below, and
+   * copying twenty lines of markup is how the two copies end up saying different
+   * things.
+   */
+  const messagesCard = (
+    <Card>
+      <p className="text-ink">
+        {sent.total > 0 ? t.messagesSent(sent.total) : t.messagesNone}
+      </p>
+      {sent.lines.length > 1 && (
+        <dl className="mt-2 flex flex-col gap-1 border-t border-line pt-2 text-sm">
+          {sent.lines.map((line) => (
+            <div key={line.kind} className="flex items-baseline justify-between gap-4">
+              <dt className="text-ink-soft">{t.messageKinds[line.kind]}</dt>
+              <dd className="num font-semibold text-ink">{digits(line.n, locale)}</dd>
+            </div>
+          ))}
+        </dl>
+      )}
+    </Card>
+  )
 
   return (
     <div className="flex flex-col gap-4">
@@ -218,9 +301,15 @@ export default async function MonthClosePage({
       </header>
 
       {nothingHappened ? (
-        <Card>
-          <p className="text-ink-soft">{t.empty}</p>
-        </Card>
+        <>
+          <Card>
+            <p className="text-ink-soft">{t.empty}</p>
+          </Card>
+          {/* Only when there is something to report. "Nothing was billed" followed by
+              "no messages were sent" is the same sentence twice, and a centre that has
+              done neither does not need to be told so in two cards. */}
+          {sent.total > 0 && messagesCard}
+        </>
       ) : (
         <>
           {/* The figure the conversation turns on, in the largest type on the screen.
@@ -270,13 +359,7 @@ export default async function MonthClosePage({
             )}
           </Card>
 
-          {/* The work the product did, counted and not characterised. See the note at
-              the head of this file for why it says no more than this. */}
-          <Card>
-            <p className="num text-ink">
-              {reminders && reminders > 0 ? t.remindersSent(reminders) : t.remindersNone}
-            </p>
-          </Card>
+          {messagesCard}
 
           {/* Where the two obvious next questions go. "Where did that come from" is
               the register, which is the same month by the same +06:00 boundary, so the

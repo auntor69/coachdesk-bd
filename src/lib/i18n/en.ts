@@ -506,8 +506,15 @@ export const en: Dictionary = {
     creditNote:
       'One family’s overpayment is never set against another family’s debt, so it is shown on its own.',
 
-    remindersSent: (n: number) => `${n} ${n === 1 ? 'reminder' : 'reminders'} sent`,
-    remindersNone: 'No reminders were sent this month',
+    messagesSent: (n: number) =>
+      `${n} ${n === 1 ? 'message' : 'messages'} sent to parents`,
+    messagesNone: 'No messages went out to parents this month',
+    messageKinds: {
+      reminders: 'Fee reminders',
+      notes: 'Weekly notes',
+      results: 'Exam results',
+      absences: 'Absence alerts',
+    },
 
     registerLink: 'See what came in, and when',
     planLink: 'See the plans and prices',

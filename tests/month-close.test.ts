@@ -2,10 +2,11 @@
  * The month-close arithmetic — the numbers a trial gets closed on.
  *
  * MASTERPLAN §4 step 4: on about day 28 the owner is shown what was outstanding when
- * the month started, what came in, and how many reminders went out, and then the price.
- * Every figure on that screen is one they can check against their own cash box, so the
- * failure that matters here is not a crash. It is a number that is quietly two thousand
- * taka out, said out loud, to somebody who knows what their month looked like.
+ * the month started, what came in, and how many messages went out to parents, and then
+ * the price. Every figure on that screen is one they can check against their own cash
+ * box, so the failure that matters here is not a crash. It is a number that is quietly
+ * two thousand taka out, said out loud, to somebody who knows what their month looked
+ * like.
  *
  * What is guarded, in order of how badly it lies:
  *
@@ -26,6 +27,12 @@
  *   showing three collection figures for one month is the "one derived answer" rule
  *   broken in the most expensive place.
  *
+ *   The message tally counting all four kinds, apart from each other. This is the
+ *   under-sell, not the over-sell: the card counted fee chases only, so a centre that
+ *   also sent ninety absence messages read as having sent thirty-four things. Every
+ *   count below is a different number on purpose — four copy-pasted lookups reading one
+ *   key four times is exactly the bug a fixture of equal counts lets through.
+ *
  * Relative imports with extensions — `node --test` on TS, no tsconfig paths.
  */
 import { test } from 'node:test'
@@ -34,7 +41,9 @@ import assert from 'node:assert/strict'
 import {
   closeMonths,
   CLOSE_MONTHS_BACK,
+  MESSAGE_KINDS,
   monthClose,
+  monthMessages,
   type CloseBalanceRow,
   type ClosePaymentRow,
 } from '../src/lib/fees/month-close.ts'
@@ -415,4 +424,91 @@ test('the selector offers this month and the eleven before it', () => {
   assert.equal(months[11], '2025-09-01')
   // Descending, and never into a month that has not happened yet.
   assert.deepEqual([...months].sort().reverse(), months)
+})
+
+test('every kind of message is counted, and counted apart from the others', () => {
+  // Four different numbers, none of them a multiple of another. A card that reads one
+  // count four times, or adds one of them twice, cannot come out right by luck.
+  const sent = monthMessages({ reminders: 34, notes: 9, results: 26, absences: 90 })
+
+  assert.equal(sent.total, 159)
+  assert.deepEqual(sent.lines, [
+    { kind: 'reminders', n: 34 },
+    { kind: 'notes', n: 9 },
+    { kind: 'results', n: 26 },
+    { kind: 'absences', n: 90 },
+  ])
+})
+
+test('the kinds are listed in a fixed order, not biggest first', () => {
+  // This screen is read out loud across a table, often for two months in a row. A list
+  // that reorders itself between June and July is one the owner has to find their place
+  // in again every time — so the order is the constant's, whatever the sizes are.
+  const sent = monthMessages({ reminders: 1, notes: 2, results: 3, absences: 400 })
+
+  assert.deepEqual(
+    sent.lines.map((line) => line.kind),
+    [...MESSAGE_KINDS],
+  )
+  // And the constant itself is the four kinds, once each. A duplicate would double a
+  // count into the total; a missing one would drop a whole feature off the screen.
+  assert.equal(MESSAGE_KINDS.length, 4)
+  assert.equal(new Set(MESSAGE_KINDS).size, MESSAGE_KINDS.length)
+})
+
+test('a kind nobody used is left off rather than drawn as a nought', () => {
+  // Four rows of zero on the screen that is meant to show an owner what their month was
+  // worth reads as a broken product. The total still says what happened.
+  const sent = monthMessages({ reminders: 0, notes: 0, results: 0, absences: 90 })
+
+  assert.equal(sent.total, 90)
+  assert.deepEqual(sent.lines, [{ kind: 'absences', n: 90 }])
+})
+
+test('a month of nothing but absence messages still has something to show', () => {
+  // The commonest shape of a trial that has not put its fees in yet: a teacher taking
+  // the register every day and telling the parents the same evening, with no money in
+  // the app at all. This is the centre the close screen most needs to have a number for,
+  // and counting fee chases only gave it a zero.
+  const sent = monthMessages({ reminders: null, notes: 0, results: undefined, absences: 62 })
+
+  assert.equal(sent.total, 62)
+  assert.equal(sent.lines.length, 1)
+})
+
+test('a head count that came back null is nothing sent, not a NaN', () => {
+  // `count: 'exact', head: true` yields null when the query failed or the reader may not
+  // see the table. There is no reading of that null except "none that we can see", and
+  // the alternative is the string "NaN messages sent" read out to a paying customer.
+  const nothing = monthMessages({
+    reminders: null,
+    notes: undefined,
+    results: null,
+    absences: undefined,
+  })
+
+  assert.deepEqual(nothing, { total: 0, lines: [] })
+
+  // And a null beside a real count neither poisons the total nor takes a row.
+  const some = monthMessages({ reminders: null, notes: 4, results: null, absences: 7 })
+  assert.equal(some.total, 11)
+  assert.deepEqual(some.lines, [
+    { kind: 'notes', n: 4 },
+    { kind: 'absences', n: 7 },
+  ])
+})
+
+test('a count that could not be a count is treated as none', () => {
+  // Not defensive for its own sake: this number is read out loud in a sales conversation,
+  // and "-1 messages" or "3.5 messages" on that screen is worse than a zero. A row count
+  // cannot be either, so neither is trusted.
+  const sent = monthMessages({
+    reminders: -5,
+    notes: Number.NaN,
+    results: 2.7,
+    absences: Number.POSITIVE_INFINITY,
+  })
+
+  assert.equal(sent.total, 2)
+  assert.deepEqual(sent.lines, [{ kind: 'results', n: 2 }])
 })

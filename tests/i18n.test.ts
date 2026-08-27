@@ -9,6 +9,7 @@ import { MAX_NAME } from '../src/lib/limits.ts'
 import { MIN_PASSWORD } from '../src/lib/auth/password.ts'
 import { digits } from '../src/lib/bd/time.ts'
 import { CHASE_EMPTY_REASONS, STAGE_ORDER } from '../src/lib/fees/reminder-schedule.ts'
+import { MESSAGE_KINDS } from '../src/lib/fees/month-close.ts'
 import { PROGRESS_EMPTY_REASONS } from '../src/lib/students/progress.ts'
 import { PERMISSION_KEYS, PERMISSION_DEFAULTS } from '../src/lib/permissions.ts'
 import { WALLET_LABEL_BN } from '../src/lib/sms/templates.ts'
@@ -288,6 +289,29 @@ test('the desktop chips read as a different action, not as the dead one', () => 
     assert.notEqual(copied, copyFailed, `${locale}.chase.copyFailed`)
     assert.ok(copied.includes('✓'), `${locale}.chase.copied is missing its tick`)
     assert.ok(!copyFailed.includes('✓'), `${locale}.chase.copyFailed has a tick`)
+  }
+})
+
+test('every kind of message has a word in both languages', () => {
+  // The month-close card draws its breakdown from a lookup keyed by MessageKind, so a
+  // fifth kind of message added to the product without copy for it would put a nameless
+  // row in the middle of the numbers an owner is shown when we ask them to pay. The
+  // compiler catches it too — the labels are keyed by the type — but `npm test` runs
+  // without a type check in front of it.
+  for (const locale of LOCALES) {
+    const { messageKinds } = dict(locale).close
+    for (const kind of MESSAGE_KINDS) {
+      assert.ok(messageKinds[kind], `${locale}.close.messageKinds.${kind}`)
+    }
+    assert.equal(Object.keys(messageKinds).length, MESSAGE_KINDS.length)
+  }
+
+  // Four different words, and not four ways of saying "message". The whole reason the
+  // card breaks the total down is that a fee chase, a week note, a set of marks and an
+  // absence alert are four different reasons to keep paying for this.
+  for (const locale of LOCALES) {
+    const { messageKinds } = dict(locale).close
+    assert.equal(new Set(Object.values(messageKinds)).size, MESSAGE_KINDS.length)
   }
 })
 

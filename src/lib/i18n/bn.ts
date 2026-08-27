@@ -1287,13 +1287,28 @@ export const bn = {
       'একজনের বেশি জমা অন্যজনের বাকির সাথে মেলানো হয় না, তাই আলাদা দেখানো হলো।',
 
     /**
-     * How many reminders went out, and not one word more. Every reminder in this
-     * product leaves the owner's own phone when they tap it — there is no gateway yet
-     * — so "নিজে নিজে" or anything like it would be a claim we cannot keep, said on
-     * the screen we are asking to be trusted with money.
+     * How many messages went out, and not one word more. Every one of them leaves the
+     * owner's own phone when they tap it — there is no gateway yet — so "নিজে নিজে" or
+     * anything like it would be a claim we cannot keep, said on the screen we are
+     * asking to be trusted with money.
+     *
+     * "খবর" and not "SMS": one of these four may have gone by WhatsApp, and the owner
+     * who tapped it knows which. Naming the pipe would make three of the four lines
+     * wrong to somebody who does.
      */
-    remindersSent: (n: number) => `${n}টি রিমাইন্ডার পাঠানো হয়েছে`,
-    remindersNone: 'এই মাসে কোনো রিমাইন্ডার পাঠানো হয়নি',
+    messagesSent: (n: number) => `অভিভাবকদের কাছে ${digits(n, 'bn')}টি খবর গেছে`,
+    messagesNone: 'এই মাসে অভিভাবকদের কাছে কোনো খবর পাঠানো হয়নি',
+    /**
+     * The four kinds, drawn under the total only when more than one of them happened —
+     * a breakdown with one row in it is the total written twice. Keyed by MessageKind,
+     * so a fifth kind cannot reach this screen without a word for it.
+     */
+    messageKinds: {
+      reminders: 'ফি-এর তাগাদা',
+      notes: 'সপ্তাহের খবর',
+      results: 'পরীক্ষার রেজাল্ট',
+      absences: 'অনুপস্থিতির খবর',
+    },
 
     registerLink: 'কোন তারিখে কত এল, দেখুন',
     /**

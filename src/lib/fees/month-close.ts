@@ -4,10 +4,14 @@
  *
  * WHY THIS EXISTS. MASTERPLAN §4, "the trial-to-paid mechanics", step 4: on about
  * day 28 you sit with the owner and show them their own numbers — what was
- * outstanding when the month started, what came in, how many reminders went out —
- * and then say the price. The argument that closes the sale is arithmetic the owner
- * did not have before, so every figure on that screen has to be one they could
- * check by hand and one that agrees with the rest of the app.
+ * outstanding when the month started, what came in, how many messages went out to
+ * parents — and then say the price. The argument that closes the sale is arithmetic
+ * the owner did not have before, so every figure on that screen has to be one they
+ * could check by hand and one that agrees with the rest of the app.
+ *
+ * The tally of messages is at the foot of this file rather than in the page, for the
+ * same reason the ledger is: the page's rule is that it does no arithmetic, so that
+ * no number on it can be derived twice.
  *
  * THE HARD PART IS "AT THE START OF THE MONTH", and it is not a filter.
  * fee_invoice_balances answers what an invoice has on it *now*. An invoice raised in
@@ -288,4 +292,96 @@ function push(into: Map<string, number[]>, key: string, amount: number): void {
  */
 export function closeMonths(currentMonth: string): string[] {
   return Array.from({ length: CLOSE_MONTHS_BACK }, (_, i) => addMonths(currentMonth, -i))
+}
+
+/**
+ * The four kinds of message this product puts in front of a guardian, in the order
+ * the close screen lists them.
+ *
+ * FIXED, AND NOT SORTED BY SIZE. This screen is read out loud across a table, often
+ * for two months in a row, with somebody pointing at lines. A list that reorders
+ * itself between June and July is one the owner has to find their place in again
+ * every time, and the largest figure is not automatically the interesting one. It is
+ * also the order the founder panel and its spreadsheet use, so the two screens that
+ * describe these same four things describe them the same way round.
+ *
+ * The money one first because this is the fee screen, then the three that are about
+ * the teaching.
+ */
+export const MESSAGE_KINDS = ['reminders', 'notes', 'results', 'absences'] as const
+
+export type MessageKind = (typeof MESSAGE_KINDS)[number]
+
+/**
+ * One head count per kind, as PostgREST hands them over.
+ *
+ * All four keys are required and every value is nullable, which is the wrong way
+ * round from most types here and is deliberate. A fifth kind added to MESSAGE_KINDS
+ * then stops the page compiling until somebody queries for it — and reading zero
+ * forever because nobody remembered to count a new table is the exact bug the
+ * founder panel shipped three times before a test was written to catch it. The
+ * nullability is the ordinary one: a head count comes back null when the query
+ * failed.
+ */
+export type MonthMessageCounts = {
+  [K in MessageKind]: number | null | undefined
+}
+
+export type MonthMessages = {
+  /** Every message of every kind, added together. */
+  total: number
+  /**
+   * The kinds that actually happened, in MESSAGE_KINDS order, never a zero row.
+   *
+   * Zeroes are dropped rather than listed for the same reason the credit line only
+   * appears when somebody is in credit: four rows of nought on the screen that is
+   * meant to show an owner what their month was worth reads as a broken product, and
+   * "you have never sent a marks message" is a sales argument that belongs on the
+   * plan page, not in the middle of their own numbers.
+   */
+  lines: { kind: MessageKind; n: number }[]
+}
+
+/**
+ * How much of the talking to parents the product did during the month.
+ *
+ * FOUR COUNTS AND A TOTAL, because the total alone is the number that gets doubted.
+ * "Ninety-one messages" said across a table invites "ninety-one of what?", and the
+ * answer is four different businesses: a fee chase is the centre getting paid, a week
+ * note is a teacher keeping a family, a marks message is what the parents show each
+ * other, and an absence message is the one that happens every single day. An owner
+ * who recognises one of the four believes the other three.
+ *
+ * It is also the honest fix for a screen that used to count fee chases only. A centre
+ * that chased thirty-four fees and sent ninety absence messages read as "34 reminders
+ * sent" on the one screen where its own work is quoted back to it against a price.
+ *
+ * Nothing here characterises the sending. Every one of these messages left the
+ * owner's own handset when they tapped it, so the count is the whole claim — see the
+ * note at the head of the close page.
+ */
+export function monthMessages(counts: MonthMessageCounts): MonthMessages {
+  const lines = MESSAGE_KINDS
+    .map((kind) => ({ kind, n: whole(counts[kind]) }))
+    .filter((line) => line.n > 0)
+
+  return {
+    // Plain addition and not sumTaka: these are counts of rows, not money, so there
+    // are no paisa to round and no negatives to net.
+    total: lines.reduce((sum, line) => sum + line.n, 0),
+    lines,
+  }
+}
+
+/**
+ * A head count, as a number this screen can print.
+ *
+ * `count: 'exact', head: true` returns null when the query failed, and there is no
+ * reading of that null except "none that we can see" — the alternative is NaN in the
+ * middle of a sentence being read to a customer. A count cannot be negative or
+ * fractional, and both are folded into the same answer rather than trusted, because
+ * this is the screen where a wrong number ends a sale.
+ */
+function whole(n: number | null | undefined): number {
+  return typeof n === 'number' && Number.isFinite(n) && n > 0 ? Math.floor(n) : 0
 }
