@@ -30,6 +30,10 @@ import {
   rosterKey,
 } from '@/lib/bd/roster'
 import { MIN_PASSWORD } from '@/lib/auth/password'
+import {
+  passwordResetRefusal,
+  type Membership,
+} from '@/lib/auth/reset'
 import { SLOT_ORDER } from '@/lib/bd/schedule'
 import { MAX_NAME, MAX_LABEL, clamp } from '@/lib/limits'
 import { PERMISSION_KEYS, type PermissionKey } from '@/lib/permissions'
@@ -1619,6 +1623,105 @@ export async function toggleTeacherActive(
   revalidatePath('/teach')
   return { ok: active ? t.teachers.activated : t.teachers.deactivated }
 }
+
+/**
+ * A new password for a teacher who cannot get in.
+ *
+ * The only way back into this app for somebody who has forgotten their password.
+ * Login is a phone number and a password — no email, no OTP — so there is no link to
+ * send and nowhere to send it; see (auth)/login-form.tsx. The owner told this teacher
+ * their first password out loud, so telling them a second one is the same act.
+ *
+ * WHO MAY BE RESET IS NOT "MY TEACHERS". It is lib/auth/reset.ts, and the reasoning
+ * there is worth reading before touching this: because adding a teacher deliberately
+ * links to an account that already exists, "a teacher of my centre" includes accounts
+ * that own other centres, and resetting one of those is a full takeover of somebody
+ * else's fee book and somebody else's students' guardians' phone numbers. Both reads
+ * below run past RLS because the deciding fact — every centre this account belongs to
+ * — is one an owner is not allowed to see.
+ *
+ * IT IS NOT HOW YOU REMOVE SOMEBODY WHO HAS LEFT, and the copy on the screen says so.
+ * GoTrue keeps existing sessions alive across a password change, so a teacher already
+ * signed in on their own phone stays signed in. `toggleTeacherActive` is the control
+ * that actually cuts access: it drops the centre membership and the teacher-scoped
+ * policies with it.
+ */
+export async function resetTeacherPassword(
+  _prev: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
+  const session = await staffAdmin()
+  if (!isSession(session)) return session
+
+  const t = dict(session.locale).settings
+
+  // Staff is a coaching-centre feature and this is a public endpoint —
+  // createTeacher's note on the same line applies here word for word.
+  if (!hasStaff(session.plan)) {
+    return { error: t.errors.staffNeedsCenter }
+  }
+
+  const password = String(formData.get('password') ?? '')
+  if (password.length < MIN_PASSWORD) {
+    return { error: passwordTooShort(session.locale) }
+  }
+
+  const supabase = await createClient()
+  const centerId = session.active.centerId
+
+  // The account is read off our own teacher row and never taken from the form. A
+  // `user_id` in a POST body is a request to change a stranger's password.
+  const { data: teacher } = await supabase
+    .from('teachers')
+    .select('id, user_id')
+    .eq('id', String(formData.get('teacherId') ?? ''))
+    .eq('coaching_center_id', centerId)
+    .maybeSingle()
+
+  if (!teacher) return { error: t.teachers.errors.notFound }
+
+  const userId = teacher.user_id
+  const admin = createAdminClient()
+
+  let memberships: Membership[] = []
+  let isPlatformAdmin = false
+
+  if (userId) {
+    const [{ data: rows, error: readFailed }, { data: profile }] = await Promise.all([
+      // scoped-by: deliberately platform-wide — the rule is "does this account
+      // belong to any centre other than ours", and a centre filter would answer
+      // yes to exactly the accounts that must be refused.
+      admin.from('center_members').select('coaching_center_id, role').eq('user_id', userId),
+      admin.from('profiles').select('is_platform_admin').eq('id', userId).maybeSingle(),
+    ])
+
+    // A failed read is not an empty one. Falling through with no memberships would
+    // refuse with "switch them on first", which is a wrong answer that sounds like
+    // a right one.
+    if (readFailed) return { error: t.errors.changeFailed }
+
+    memberships = rows ?? []
+    isPlatformAdmin = profile?.is_platform_admin ?? false
+  }
+
+  // `|| !userId` only narrows the type: a null id already comes back as noAccount
+  // from the function, which is where that rule is written and tested.
+  const refusal = passwordResetRefusal(
+    { userId, readerId: session.userId, memberships, isPlatformAdmin },
+    centerId,
+  )
+  if (refusal || !userId) {
+    return { error: t.teachers.reset.errors[refusal ?? 'noAccount'] }
+  }
+
+  const { error } = await admin.auth.admin.updateUserById(userId, { password })
+  if (error) return { error: t.teachers.reset.failed }
+
+  // Nothing on the page changes, so nothing is revalidated. What the owner needs
+  // next is to read the password back out to the teacher standing there.
+  return { ok: t.teachers.reset.done }
+}
+
 
 /* -------------------------------------------------------------------------- */
 /* Centre details                                                             */

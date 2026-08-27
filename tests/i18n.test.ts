@@ -7,6 +7,7 @@ import { fill } from '../src/lib/i18n/fill.ts'
 import { nameTooLong, passwordTooShort } from '../src/lib/i18n/messages.ts'
 import { MAX_NAME } from '../src/lib/limits.ts'
 import { MIN_PASSWORD } from '../src/lib/auth/password.ts'
+import { RESET_REFUSALS } from '../src/lib/auth/reset.ts'
 import { digits } from '../src/lib/bd/time.ts'
 import { CHASE_EMPTY_REASONS, STAGE_ORDER } from '../src/lib/fees/reminder-schedule.ts'
 import { MESSAGE_KINDS } from '../src/lib/fees/month-close.ts'
@@ -312,6 +313,27 @@ test('every kind of message has a word in both languages', () => {
   for (const locale of LOCALES) {
     const { messageKinds } = dict(locale).close
     assert.equal(new Set(Object.values(messageKinds)).size, MESSAGE_KINDS.length)
+  }
+})
+
+test('every reason a password reset is refused has a sentence in both languages', () => {
+  // The action picks its sentence with `reset.errors[refusal]`, so a reason added to
+  // lib/auth/reset.ts without copy for it is a button that appears to do nothing —
+  // on the one screen that exists to get a locked-out teacher back into the app.
+  for (const locale of LOCALES) {
+    const { errors } = dict(locale).settings.teachers.reset
+    for (const refusal of RESET_REFUSALS) {
+      assert.ok(errors[refusal], `${locale}.settings.teachers.reset.errors.${refusal}`)
+    }
+    assert.equal(Object.keys(errors).length, RESET_REFUSALS.length)
+  }
+
+  // Four different refusals, not four wordings of "no". Two of them tell the owner
+  // what to do instead, and an owner who reads the same sentence for "turn them back
+  // on first" and "this account is not yours to reset" has been told nothing.
+  for (const locale of LOCALES) {
+    const { errors } = dict(locale).settings.teachers.reset
+    assert.equal(new Set(Object.values(errors)).size, RESET_REFUSALS.length)
   }
 })
 

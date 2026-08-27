@@ -976,6 +976,12 @@ export const en: Dictionary = {
     noLogin: 'No login',
     edit: 'Change permissions',
     save: 'Save permissions',
+    resetSummary: 'Forgotten their password?',
+    resetBody:
+      'Set a new password and tell it to them. This is not how you remove somebody who has left — the “Turn this teacher off” button below is.',
+    resetLabel: 'New password',
+    resetHint: 'Type it with the teacher there — it stays visible',
+    resetSubmit: 'Set the password',
     deactivateBody:
       'Turned off, they can no longer see their batches, the students in them, or any guardian’s number. Attendance and marks already entered are not deleted.',
     reactivateBody:
@@ -1587,6 +1593,18 @@ export const en: Dictionary = {
       permissionsSaved: 'Permissions saved',
       activated: 'Turned on',
       deactivated: 'Turned off',
+      reset: {
+        done: 'New password set — tell it to the teacher.',
+        failed: 'The password could not be changed. Try again.',
+        errors: {
+          noAccount: 'This teacher has no login, so there is no password to change.',
+          self: 'This is your own account — you cannot change your own password here.',
+          inactive:
+            'They are turned off at the moment. Turn them back on first, then you can set a new password.',
+          notOurs:
+            'This account is not only this centre’s — it is used somewhere else too, so its password cannot be changed from here.',
+        },
+      },
       noName: 'no name given',
       confirmLink: (name: string) =>
         `This number already has an account — ${name}. If that is your teacher, tick the box below and save again. They will sign in with their old password.`,

@@ -11,11 +11,17 @@
  */
 import { useActionState, useState } from 'react'
 
-import { Alert } from '@/components/ui'
+import { Alert, Field } from '@/components/ui'
 import { formatBdMobile } from '@/lib/bd/phone'
+import { MIN_PASSWORD } from '@/lib/auth/password'
 import { PERMISSION_KEYS } from '@/lib/permissions'
 import type { T } from '@/lib/i18n'
-import { saveTeacherPermissions, toggleTeacherActive, type ActionState } from '../actions'
+import {
+  saveTeacherPermissions,
+  toggleTeacherActive,
+  resetTeacherPassword,
+  type ActionState,
+} from '../actions'
 
 export type TeacherRow = {
   id: string
@@ -56,15 +62,15 @@ export function TeacherList({
   trim?: boolean
 }) {
   /**
-   * Which of the two forms spoke last.
+   * Which of the three forms spoke last.
    *
-   * There are two actions on this screen and each keeps its own last result, so
+   * There are three actions on this screen and each keeps its own last result, so
    * "Permissions saved" was still on the page after a teacher had been turned off
    * — a confirmation naming an action the owner did not just take, sitting above a
    * list that had changed underneath it. Recording the submit is enough to show
    * one message: the newest one, and only that one.
    */
-  const [last, setLast] = useState<'permissions' | 'active' | null>(null)
+  const [last, setLast] = useState<'permissions' | 'active' | 'password' | null>(null)
 
   const [permState, permAction, permPending] = useActionState<ActionState, FormData>(
     async (prev, formData) => {
@@ -80,8 +86,22 @@ export function TeacherList({
     setLast('active')
     return toggleTeacherActive(prev, formData)
   }, null)
+  const [pwState, pwAction, pwPending] = useActionState<ActionState, FormData>(
+    async (prev, formData) => {
+      setLast('password')
+      return resetTeacherPassword(prev, formData)
+    },
+    null,
+  )
 
-  const state = last === 'active' ? activeState : last === 'permissions' ? permState : null
+  const state
+    = last === 'active'
+      ? activeState
+      : last === 'permissions'
+        ? permState
+        : last === 'password'
+          ? pwState
+          : null
   const error = state?.error
   const ok = state?.ok
 
@@ -132,6 +152,53 @@ export function TeacherList({
                 {teacher.active ? t.deactivate : t.reactivate}
               </button>
             </form>
+          )
+
+          /*
+           * The only "forgot password" this product has, and it is here rather than
+           * on a screen of its own because there is nowhere to send a reset link:
+           * login is a number and a password, no email and no OTP. Behind its own
+           * summary so a password box is not sitting open on twelve rows at once.
+           *
+           * Drawn only where it would work — an account that exists, switched on,
+           * and not the reader's own. All three are refused by the action too, since
+           * a Server Action is a public endpoint, but a control that can only say no
+           * is worse than no control. The fourth refusal is the one that cannot be
+           * predicted from this list: an account that belongs to another centre as
+           * well, which an owner is not allowed to be shown.
+           */
+          const reset = teacher.hasLogin && teacher.active && !teacher.isSelf && (
+            <details className="mt-3 border-t border-line pt-3">
+              <summary className="min-h-tap cursor-pointer text-sm font-medium text-brand-700">
+                {t.resetSummary}
+              </summary>
+              <p className="mt-1 text-sm text-ink-soft">{t.resetBody}</p>
+              <form action={pwAction} className="mt-2 flex flex-col gap-2">
+                <input type="hidden" name="teacherId" value={teacher.id} />
+                {/* id spelled out per row: Field falls back to the name for it, and
+                    twelve inputs called "password" would give twelve rows the same
+                    id and point every label at the first one. */}
+                <Field
+                  label={t.resetLabel}
+                  hint={t.resetHint}
+                  id={`reset-password-${teacher.id}`}
+                  name="password"
+                  type="text"
+                  required
+                  minLength={MIN_PASSWORD}
+                  autoComplete="off"
+                />
+                <button
+                  type="submit"
+                  disabled={pwPending}
+                  className="min-h-tap self-start rounded-lg border-2 border-brand-500
+                    bg-brand-50 px-4 text-sm font-semibold text-brand-700
+                    disabled:opacity-50"
+                >
+                  {pwPending ? common.saving : t.resetSubmit}
+                </button>
+              </form>
+            </details>
           )
 
           return (
@@ -215,6 +282,8 @@ export function TeacherList({
                       {permPending ? common.saving : t.save}
                     </button>
                   </form>
+
+                  {reset}
 
                   <div className="mt-3 border-t border-line pt-3">{toggle}</div>
                 </details>

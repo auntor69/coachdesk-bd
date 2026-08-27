@@ -2079,6 +2079,28 @@ export const bn = {
     edit: 'অনুমতি বদলান',
     save: 'অনুমতি সেভ করুন',
     /**
+     * The only way back in for a teacher who has forgotten their password. Login is
+     * a number and a password with no email and no OTP, so there is no link to send
+     * — which makes this the whole of "forgot password" in this product, and the
+     * summary is worded as the question the owner arrives with rather than as the
+     * action they are about to take.
+     */
+    resetSummary: 'পাসওয়ার্ড ভুলে গেছেন?',
+    /**
+     * Two sentences, and the second is the load-bearing one. An owner whose teacher
+     * has left reaches for the password box, because changing the password is what
+     * locking somebody out looks like everywhere else. Here it is not: an already
+     * signed-in phone stays signed in, and the control that actually cuts access is
+     * the button directly below this one. Saying so here is cheaper than a support
+     * message a week later asking why the ex-teacher can still see the batch.
+     */
+    resetBody:
+      'নতুন পাসওয়ার্ড দিয়ে শিক্ষককে বলে দিন। যিনি আর পড়ান না তাঁকে সরানোর জন্য এটি নয় — তার জন্য নিচের “শিক্ষককে বন্ধ করুন” বোতামটি।',
+    resetLabel: 'নতুন পাসওয়ার্ড',
+    /** Shown in the clear, and that is the point — see teacherForm.passwordHint. */
+    resetHint: 'শিক্ষকের সামনে বসেই দিন — লেখাটা দেখা যাচ্ছে',
+    resetSubmit: 'পাসওয়ার্ড সেট করুন',
+    /**
      * Says what turning a teacher off does and, just as importantly, what it does
      * not. An owner hesitates over this button because they are afraid of
      * deleting a term's attendance along with the person.
@@ -3339,6 +3361,30 @@ export const bn = {
       permissionsSaved: 'অনুমতি সেভ হয়েছে',
       activated: 'চালু করা হয়েছে',
       deactivated: 'বন্ধ করা হয়েছে',
+      /**
+       * Handing a teacher a new password, and the four reasons an account cannot be
+       * handed one.
+       *
+       * The refusals are keyed by ResetRefusal, so a fifth reason invented in
+       * lib/auth/reset.ts stops both dictionaries compiling until it has a sentence
+       * — the alternative being an owner who taps the button and reads nothing.
+       *
+       * Two of them are answerable and say what the answer is. `notOurs` is not, and
+       * does not pretend: it is the teacher who also works down the road, and until
+       * an OTP route exists nobody at either centre can reset them. Better that in
+       * one sentence than a button that fails every time it is pressed.
+       */
+      reset: {
+        done: 'নতুন পাসওয়ার্ড সেট হয়েছে — শিক্ষককে বলে দিন।',
+        failed: 'পাসওয়ার্ড বদলানো যায়নি। আবার চেষ্টা করুন।',
+        errors: {
+          noAccount: 'এই শিক্ষকের লগইন নেই, তাই পাসওয়ার্ডও নেই।',
+          self: 'এটি আপনার নিজের অ্যাকাউন্ট — এখান থেকে নিজের পাসওয়ার্ড বদলানো যাবে না।',
+          inactive: 'তিনি এখন বন্ধ আছেন। আগে চালু করুন, তারপর নতুন পাসওয়ার্ড দিতে পারবেন।',
+          notOurs:
+            'এই অ্যাকাউন্টটি শুধু এই কোচিংয়ের নয় — অন্য জায়গাতেও ব্যবহার হয়, তাই এখান থেকে পাসওয়ার্ড বদলানো যাবে না।',
+        },
+      },
       /** Stands in for a profile with no name on it, in both sentences below. */
       noName: 'নাম দেওয়া নেই',
       /**

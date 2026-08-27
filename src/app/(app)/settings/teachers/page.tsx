@@ -96,7 +96,8 @@ export default async function TeachersPage() {
       hasLogin: Boolean(teacher.user_id),
       // Compared on user_id rather than on the teacher row, because that is the
       // thing a person is: an owner can hold one teacher record here and another
-      // at a second centre. Only the trimmed list below reads it.
+      // at a second centre. Read by the trimmed list, which will not switch it
+      // off, and by the password box, which is not where you change your own.
       isSelf: teacher.user_id === session.userId,
       subjects,
       // A finished sentence rather than the number, because the row is a client
