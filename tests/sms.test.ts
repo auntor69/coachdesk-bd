@@ -11,6 +11,7 @@ import {
   buildProgressSummaryText,
   buildAbsenceSms,
   buildAbsenceText,
+  buildNoticeSms,
   type ProgressSummaryInput,
   type AbsenceInput,
 } from '../src/lib/sms/templates.ts'
@@ -811,3 +812,47 @@ test('nothing dangles in the WhatsApp absence when the batch has no name', () =>
 })
 
 
+
+test('a notice keeps the words it was given and signs them', () => {
+  const notice = buildNoticeSms({
+    body: 'বৃহস্পতিবার ক্লাস বন্ধ থাকবে।',
+    centerName: 'উত্তরা আইডিয়াল',
+  })
+
+  // The owner's sentence, untouched. Nothing above this in the file can say that —
+  // every other builder rewrites what it is handed.
+  assert.ok(notice.body.startsWith('বৃহস্পতিবার ক্লাস বন্ধ থাকবে।'), notice.body)
+  assert.ok(notice.body.endsWith('\n-উত্তরা আইডিয়াল'), notice.body)
+  assert.equal(notice.segments, 1)
+})
+
+test('a long notice is signed and counted, never shortened', () => {
+  const body = 'ক'.repeat(300)
+  const notice = buildNoticeSms({ body, centerName: 'কোচিং' })
+
+  assert.ok(notice.body.startsWith(body), 'the owner decides how long their own notice is')
+  assert.ok(notice.segments > 4, `300 Bangla characters is several SMS, got ${notice.segments}`)
+})
+
+test('the centre name is clamped in a notice as it is everywhere else', () => {
+  const long = 'উত্তরা আইডিয়াল কোচিং সেন্টার ও একাডেমি'
+  const notice = buildNoticeSms({ body: 'ছুটি', centerName: long })
+
+  assert.ok(notice.body.length < `ছুটি\n-${long}`.length, notice.body)
+})
+
+test('a notice with nothing in it is nothing, not a lone signature', () => {
+  // The action refuses an empty body long before this, but a builder that returned
+  // "-কোচিং" would be a message a family could receive saying only the centre's name.
+  assert.deepEqual(buildNoticeSms({ body: '   ', centerName: 'কোচিং' }), {
+    body: '',
+    segments: 0,
+  })
+})
+
+test('a notice laid out over three lines stays three lines', () => {
+  const body = 'ঈদ মোবারক।\n\nশনিবার থেকে ক্লাস শুরু।'
+  const notice = buildNoticeSms({ body, centerName: 'কোচিং' })
+
+  assert.ok(notice.body.startsWith(body), notice.body)
+})

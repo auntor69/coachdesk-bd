@@ -3177,6 +3177,64 @@ export const bn = {
   },
 
   /**
+   * The one screen where the centre writes the message itself.
+   *
+   * So the words here are careful never to say "send". Nothing is sent: the owner's
+   * thumb does that from their own handset, and every sentence in this group either
+   * says so or is silent about it. A "সবাইকে পাঠান" button that only wrote a row in a
+   * table would be the worst lie this product could tell — forty families who were
+   * never told, and a screen insisting they were. `জানিয়ে রাখুন` and `সেভ করুন`
+   * throughout, never `পাঠান`.
+   */
+  notices: {
+    title: 'নোটিশ',
+    lead: 'এক ব্যাচের সব অভিভাবককে একই কথা জানান — বৃহস্পতিবার ক্লাস বন্ধ, পরীক্ষার তারিখ বদলেছে, নতুন বই আনতে হবে।',
+    back: 'ড্যাশবোর্ডে ফিরুন',
+
+    titleLabel: 'কী বিষয়ে',
+    titlePlaceholder: 'ঈদের ছুটি',
+
+    audienceLabel: 'কাদের জন্য',
+    everyone: 'কোচিংয়ের সব পরিবার',
+    /** A batch that has since been switched off, so its name is no longer to hand. */
+    oneBatch: 'একটি ব্যাচ',
+
+    reachLine: '{n}টি নম্বর',
+    reachSkipped: '· {n}টি পরিবারকে জানানো যাবে না',
+
+    bodyLabel: 'যা লিখবেন',
+    bodyPlaceholder:
+      'ঈদের জন্য বৃহস্পতি ও শুক্রবার কোচিং বন্ধ থাকবে। শনিবার থেকে আগের সময়েই ক্লাস শুরু হবে।',
+    bodyHint: 'শেষে আপনার কোচিংয়ের নাম নিজে থেকেই যোগ হয়ে যাবে।',
+    submit: 'নোটিশ সেভ করুন',
+    saved: 'সেভ হয়েছে। নিচ থেকে কপি করে নিজের ফোন থেকে পাঠিয়ে দিন।',
+
+    logTitle: 'যা যা জানিয়েছেন',
+    noneTitle: 'এখনো কিছু জানানো হয়নি',
+    noneBody:
+      'উপরে প্রথম নোটিশটি লিখুন। সেভ হলেই মেসেজ আর নম্বরগুলো কপি করার বাটন পাবেন — ফোনে পেস্ট করে পাঠিয়ে দেবেন।',
+
+    rosterFailed:
+      'পরিবারের তালিকা আসেনি, তাই নম্বরগুলো এখানে নেই। মেসেজটি কপি করা যাবে — নম্বরের জন্য একটু পরে আবার দেখুন।',
+
+    segments: '{n}টি এসএমএস হিসেবে যাবে',
+    copyMessageHint: 'ফোনে পেস্ট করে পাঠিয়ে দিন।',
+    copyNumbers: 'নম্বরগুলো কপি করুন',
+    copyNumbersRange: '{from}–{to} নম্বর',
+    copyNumbersHint:
+      'ফোনের To ঘরে পেস্ট করুন, তারপর নিচে মেসেজটি পেস্ট করুন। একবারে ২০টি, কারণ ফোন এর বেশি সাধারণত নেয় না।',
+    noNumbers: 'তাদের কোনো অভিভাবকের নম্বর এখনো যোগ করা হয়নি।',
+
+    errors: {
+      titleRequired: 'নোটিশটি কী বিষয়ে, সেটি লিখুন।',
+      bodyRequired: 'মেসেজটি লিখুন।',
+      bodyTooLong: 'নোটিশটি পাঠানোর জন্য অনেক বড় হয়ে গেছে। ছোট করে আবার চেষ্টা করুন।',
+      noBatch: 'ব্যাচটি আর তালিকায় নেই। অন্য একটি বেছে নিন।',
+      failed: 'নোটিশটি সেভ করা যায়নি।',
+    },
+  },
+
+  /**
    * A student's or guardian's own screen — the counterpart to `dashboard`.
    *
    * Deliberately small, because this reader cannot act on any of it: they cannot

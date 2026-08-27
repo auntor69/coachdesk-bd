@@ -1558,6 +1558,63 @@ export const en: Dictionary = {
     seePlans: 'See the plans',
   },
 
+  /**
+   * The one screen where the centre writes the message itself.
+   *
+   * So the words here are careful never to say "send". Nothing is sent: the owner's
+   * thumb does that from their own handset, and every sentence in this group either
+   * says so or is silent about it. A "Send to everyone" button that put a row in a
+   * table would be the worst lie this product could tell — forty families who were
+   * never told, and a screen insisting they were.
+   */
+  notices: {
+    title: 'Notices',
+    lead: 'Tell every family in a batch the same thing — the room is shut on Thursday, the exam moved, bring the new book.',
+    back: 'Back to the dashboard',
+
+    titleLabel: 'What it is about',
+    titlePlaceholder: 'Closed for Eid',
+
+    audienceLabel: 'Who it is for',
+    everyone: 'Every family at the centre',
+    /** A batch that has since been switched off, so its name is no longer to hand. */
+    oneBatch: 'One batch',
+
+    reachLine: '{n} numbers',
+    reachSkipped: '· {n} not messaged',
+
+    bodyLabel: 'The message',
+    bodyPlaceholder:
+      'The centre is closed Thursday and Friday for Eid. Classes start again on Saturday at the usual time.',
+    bodyHint: 'The name of your centre is added at the end for you.',
+    submit: 'Save this notice',
+    saved: 'Saved. Copy it below and send it from your phone.',
+
+    logTitle: 'What you have told them',
+    noneTitle: 'Nothing has been sent out yet',
+    noneBody:
+      'Write the first one above. Once it is saved you get the message and the numbers on your clipboard, ready to paste into your phone.',
+
+    rosterFailed:
+      'The list of families could not be loaded, so the numbers are not here. The message is still yours to copy — try again in a moment for the numbers.',
+
+    segments: 'Sends as {n} SMS',
+    copyMessageHint: 'Paste it on your phone to send it.',
+    copyNumbers: 'Copy the numbers',
+    copyNumbersRange: 'Numbers {from}–{to}',
+    copyNumbersHint:
+      'Paste them into the To box on your phone, then paste the message under it. Twenty at a time, because that is about as many as a phone accepts.',
+    noNumbers: 'No guardian numbers on file for them yet.',
+
+    errors: {
+      titleRequired: 'Say what the notice is about.',
+      bodyRequired: 'Write the message.',
+      bodyTooLong: 'This notice is too long to send. Shorten it and try again.',
+      noBatch: 'That batch is no longer on the list. Pick another one.',
+      failed: 'The notice could not be saved.',
+    },
+  },
+
   me: {
     title: 'Mine',
     due: 'Due',

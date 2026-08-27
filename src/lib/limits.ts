@@ -58,6 +58,17 @@ export const MAX_NOTE = 60
 export const MAX_TEXT = 200
 
 /**
+ * A notice the whole batch is told: closed for Eid, the exam moved, bring the book.
+ *
+ * Larger than MAX_TEXT because this one does leave the screen — it goes on the
+ * owner's clipboard and into forty families' phones — and the three sentences that
+ * actually stop forty parents ringing to ask do not fit in two hundred characters of
+ * Bangla. Smaller than the column, because every character past the first seventy is
+ * another whole SMS the owner pays for, and 400 is already five of them.
+ */
+export const MAX_NOTICE = 400
+
+/**
  * Cuts an optional field down to its cap instead of refusing the whole write.
  *
  * For the fields a browser already capped, which is all of them: `maxLength`

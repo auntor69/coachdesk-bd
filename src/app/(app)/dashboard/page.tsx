@@ -26,6 +26,7 @@ import { ReminderEntry } from '@/app/(app)/fees/reminder-entry'
 import { AttendanceRates } from './attendance-rates'
 import { AtRiskCard } from './at-risk-card'
 import { ProgressEntry } from './progress-entry'
+import { NoticeEntry } from './notice-entry'
 import { SetupCard } from './setup-card'
 
 /** getSession, not pageRole — see the note on teach/page.tsx's own. */
@@ -519,6 +520,17 @@ export default async function DashboardPage() {
           fee worklist rather than beside it — the money is what keeps the centre
           open, and one screen cannot have two most-important errands. */}
       {seeProgress && <ProgressEntry toTell={toTell} t={d.progress} />}
+
+      {/* Directly under the weekly note, because they are the same errand seen from two
+          sides: that one is the message the product writes about one child, this one is
+          the message the centre writes to everybody. An owner who has just told forty
+          families how their week went is the one who remembers that Thursday is a
+          holiday.
+
+          `isAdmin` and no plan gate. `manualMessaging` is true on every tier — the
+          centre's own thumb on the centre's own phone is not ours to sell — so unlike
+          the door above it, this one is there on the free plan too. */}
+      {isAdmin && <NoticeEntry t={d.notices} />}
 
       {overdue.length > 0 && (
         <div>

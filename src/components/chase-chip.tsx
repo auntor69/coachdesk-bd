@@ -77,10 +77,14 @@ const CONFIRM_MS = 2500
  * A chip that puts `text` on the clipboard and tells the owner it did.
  *
  * `onCopied` fires only on a real copy, and that is the whole point of the boolean
- * coming back from `copyText`. Both callers use it to write a row saying this family
- * was chased, and a row written when nothing reached the clipboard is precisely the
- * false record the dead `sms:` link used to leave — the family would then drop off
+ * coming back from `copyText`. The per-family callers use it to write a row saying that
+ * family was chased, and a row written when nothing reached the clipboard is precisely
+ * the false record the dead `sms:` link used to leave — the family would then drop off
  * the worklist for its cooldown on the strength of a message that never existed.
+ *
+ * Optional, because the notice log has nothing to write: its row is saved when the
+ * notice is composed, before anything is copied, so the record does not depend on the
+ * clipboard succeeding. A chip with no callback is a chip that only copies.
  *
  * `hint` is a `title`, which is a mouse-only tooltip and therefore exactly right: it
  * is the sentence explaining that the sending still happens on the phone, and this
@@ -102,7 +106,7 @@ export function CopyChip({
   failed: string
   /** True on the channel the owner marked — see LEAD_CHIP. */
   lead?: boolean
-  onCopied: () => void
+  onCopied?: () => void
 }) {
   const [state, setState] = useState<'idle' | 'copied' | 'failed'>('idle')
 
@@ -111,7 +115,7 @@ export function CopyChip({
     // Set from the click, not from an effect — `react-hooks/set-state-in-effect`
     // aside, this is a state change caused by an event, which is where it belongs.
     setState(ok ? 'copied' : 'failed')
-    if (ok) onCopied()
+    if (ok) onCopied?.()
     // Back to the offer, so a second row copied a minute later still reads as a
     // fresh action rather than as a tick left over from the first.
     window.setTimeout(() => setState('idle'), CONFIRM_MS)

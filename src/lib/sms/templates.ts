@@ -797,3 +797,40 @@ export function buildAbsenceText(input: AbsenceInput): string {
     `- ${input.centerName}`,
   ].join('\n')
 }
+
+/**
+ * A notice, which is the one outbound message this product does not write.
+ *
+ * Every builder above composes a sentence out of facts the centre recorded — a
+ * balance, a date, a mark. A notice is the owner's own words about something the
+ * database does not know: the centre is shut on Thursday, bring the new book, the
+ * exam moved. So there is no ladder here and nothing is clamped except the brand,
+ * because shortening what an owner chose to say would be this product editing a
+ * person's message to their own customers.
+ *
+ * WHAT IT ADDS IS THE NAME AT THE BOTTOM, in the same `-{centre}` form as the other
+ * four, and that is the whole reason this is a function rather than the textarea's
+ * value. An unknown number saying "no class tomorrow" is a message a parent ignores
+ * or, worse, acts on without knowing who sent it. The owner should not have to type
+ * their own centre's name to prevent that, and if they do type it the suffix simply
+ * repeats it — cheaper than a rule that tries to detect the case and gets it wrong on
+ * a centre whose name is an ordinary word.
+ *
+ * `segments` comes back so a screen can say what the message will cost before it is
+ * sent forty times. Nothing is refused for being long: this is the owner's own handset
+ * and their own money, and 70 characters is a budget the metered queue must respect
+ * but a person typing on their own phone does not.
+ */
+export function buildNoticeSms(input: {
+  /** The owner's own words, as typed. */
+  body: string
+  centerName: string
+}): { body: string; segments: number } {
+  const brand = clamp(input.centerName, BRAND_BUDGET - 2)
+  // Trimmed at the ends and left exactly alone in the middle — an owner who laid a
+  // notice out over three lines meant the three lines.
+  const written = input.body.trim()
+  const body = written ? `${written}\n-${brand}` : ''
+
+  return { body, segments: body ? measureSms(body).segments : 0 }
+}
