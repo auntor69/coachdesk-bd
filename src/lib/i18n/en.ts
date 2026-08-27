@@ -736,6 +736,9 @@ export const en: Dictionary = {
     colStudent: 'Student',
     colAmount: 'Owed (৳)',
     amountFor: 'Owed by {name}',
+    /** What stands where the box would be. See the Bangla note. */
+    billed: '{amount} — billed',
+    billedCancelled: '{amount} — cancelled',
     filledCount: '{n} filled in',
     total: 'Total',
     submit: 'Add the old dues',
@@ -744,6 +747,9 @@ export const en: Dictionary = {
       'Enrol the students in their batches first. Old dues attach to an active enrolment, which is how they reach the board.',
     safeToRepeat:
       'Anyone who already has a bill in that month is left alone — so pressing this twice is safe.',
+    /** The correction, which needs saying. See the Bangla note. */
+    howToFix:
+      'Typed a wrong amount? Cancel that bill on the fee board, then record the right amount against a different finished month — a cancelled bill keeps its month’s place.',
   },
 
   exams: {

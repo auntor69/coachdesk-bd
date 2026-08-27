@@ -1715,6 +1715,17 @@ export const bn = {
     colAmount: 'বাকি (৳)',
     /** The box's own label, read out by a screen reader. See the page. */
     amountFor: '{name}-এর বাকি',
+    /**
+     * What stands where the box would be when that month's slot is already filled.
+     *
+     * The amount is shown rather than just the fact, because checking the figure is
+     * the reason an owner comes back to this screen at all. Two sentences rather than
+     * one, because the way out of each is different: a live bill is already on the
+     * board and needs nothing, a cancelled one is somebody having undone it and the
+     * amount now has to go against a different month.
+     */
+    billed: '{amount} — বিল আছে',
+    billedCancelled: '{amount} — বাতিল',
     filledCount: '{n} জনের বাকি লেখা হয়েছে',
     total: 'মোট',
     submit: 'পুরনো বাকি যোগ করুন',
@@ -1723,6 +1734,17 @@ export const bn = {
       'আগে শিক্ষার্থীদের ব্যাচে ভর্তি করুন। পুরনো বাকি একটি চালু ভর্তির সাথে যুক্ত হয়েই বোর্ডে ওঠে।',
     safeToRepeat:
       'ওই মাসে যার বিল আগেই আছে, তার হিসাব বদলাবে না — তাই দুইবার চাপলেও সমস্যা নেই।',
+    /**
+     * The correction, which needs saying because the obvious guess does not work.
+     *
+     * A bill keeps its month's slot even after it is cancelled — that is deliberate, so
+     * the monthly generator cannot re-bill a student who left — which means cancelling
+     * a wrong amount does not free the box to type the right one. Another finished
+     * month does, and for an opening balance the month it is filed under carries no
+     * meaning of its own.
+     */
+    howToFix:
+      'ভুল টাকা লিখে ফেললে ফি বোর্ড থেকে ওই বিলটি বাতিল করুন, তারপর সঠিক টাকা অন্য কোনো শেষ হয়ে যাওয়া মাসের হিসাবে লিখুন — বাতিল করা বিল ওই মাসের জায়গা ছাড়ে না।',
   },
 
   /**

@@ -7,7 +7,7 @@ import { createClient } from '@/lib/supabase/server'
 import { currentPeriodMonth, addMonths, formatMonth } from '@/lib/bd/time'
 import { oldestEnrollments } from '@/lib/fees/arrears'
 import { dict, DEFAULT_LOCALE } from '@/lib/i18n'
-import { ArrearsForm } from './arrears-form'
+import { ArrearsForm, type ArrearsTaken } from './arrears-form'
 
 /** getSession, not pageCenter — see the note on teach/page.tsx's own. */
 export async function generateMetadata() {
@@ -97,6 +97,46 @@ export default async function ArrearsPage() {
     return { value, label: formatMonth(value, locale) }
   })
 
+  // WHICH BOXES ARE ALREADY SPOKEN FOR, and this is not a nicety. `fee_invoices` is
+  // unique on (enrollment_id, period_month), and the write below ignores a row whose
+  // slot is taken — which is what makes it safe to replay, and also what would let an
+  // owner type ৳3,000 against a family, press submit, and be told only that nothing
+  // was added. Naming the taken boxes before they are typed into is the difference
+  // between a screen that refuses work and a screen that explains itself.
+  //
+  // A CANCELLED BILL STILL HOLDS ITS SLOT, deliberately — see migration 28. So this
+  // query does not filter `voided_at`: both kinds block, and the row says which,
+  // because the way out of each is different. A live bill means this family is already
+  // on the board for that month. A cancelled one means somebody undid it, and the
+  // amount has to go against a different month.
+  const { data: billed } = await supabase
+    .from('fee_invoices')
+    .select('enrollment_id, period_month, amount_bdt, voided_at')
+    .eq('coaching_center_id', session.active.centerId)
+    .in('period_month', months.map((m) => m.value))
+
+  // Keyed by the enrolment this screen would actually use, not by the student. A
+  // monthly invoice sitting on the second batch a child attends does not block an
+  // arrears row on their oldest enrolment, and telling the owner it did would be a
+  // refusal they could do nothing about and did not need.
+  const chosenEnrollments = new Map(
+    rows.map((r) => [enrollmentByStudent.get(r.id) as string, r.id]),
+  )
+
+  const taken: Record<string, Record<string, ArrearsTaken>> = {}
+  for (const invoice of billed ?? []) {
+    const studentId = invoice.enrollment_id
+      ? chosenEnrollments.get(invoice.enrollment_id)
+      : undefined
+    if (!studentId) continue
+    const month = invoice.period_month
+    taken[month] ??= {}
+    taken[month][studentId] = {
+      amount: Number(invoice.amount_bdt),
+      cancelled: invoice.voided_at !== null,
+    }
+  }
+
   return (
     <div className="flex flex-col gap-4">
       <Link
@@ -121,6 +161,7 @@ export default async function ArrearsPage() {
           rows={rows}
           months={months}
           defaultMonth={months[0].value}
+          taken={taken}
           locale={locale}
           t={t}
           common={d.common}

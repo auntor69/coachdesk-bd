@@ -27,7 +27,7 @@
  * reasons, and because `Field` derives its id from `name` — fine for one form, wrong
  * for a repeated row.
  */
-import { memo, useActionState, useState } from 'react'
+import { memo, useActionState, useEffect, useRef, useState } from 'react'
 
 import { Alert, Button, Card } from '@/components/ui'
 import { digits } from '@/lib/bd/time'
@@ -44,6 +44,20 @@ export type ArrearsRow = {
   code: string | null
 }
 
+/** A slot that already holds a bill, so this screen cannot write into it. */
+export type ArrearsTaken = {
+  amount: number
+  cancelled: boolean
+}
+
+/**
+ * Stable empty object for a month with nothing recorded in it.
+ *
+ * A fresh `{}` per render would give the memoised column a new prop on every keystroke
+ * and undo the whole reason it is memoised.
+ */
+const NOTHING_TAKEN: Record<string, ArrearsTaken> = {}
+
 const INPUT_CLASS =
   'min-h-tap w-28 shrink-0 rounded-xl border-2 border-line bg-white px-3 ' +
   'text-right text-base outline-none transition-colors ' +
@@ -57,6 +71,7 @@ export function ArrearsForm({
   rows,
   months,
   defaultMonth,
+  taken,
   locale,
   t,
   common,
@@ -64,6 +79,8 @@ export function ArrearsForm({
   rows: ArrearsRow[]
   months: { value: string; label: string }[]
   defaultMonth: string
+  /** Month → student → the bill already in that slot. Only what exists is sent. */
+  taken: Record<string, Record<string, ArrearsTaken>>
   locale: Locale
   t: T<'arrears'>
   common: T<'common'>
@@ -74,6 +91,21 @@ export function ArrearsForm({
   )
 
   const [tally, setTally] = useState({ filled: 0, total: 0 })
+
+  // The month is state as well as a form field, because which boxes are writable
+  // depends on it: a family already billed in July has no July box, and switching the
+  // select to June has to give them one back.
+  const [month, setMonth] = useState(defaultMonth)
+
+  const form = useRef<HTMLFormElement>(null)
+
+  // Changing the month takes some boxes away and hands others back, so the figure has
+  // to be re-added afterwards. In an effect rather than in the select's own handler
+  // because at that point React has not re-rendered yet and the DOM still holds the
+  // boxes belonging to the month being left.
+  useEffect(() => {
+    if (form.current) recount(form.current)
+  }, [month])
 
   /**
    * Re-adds every box on each keystroke, read straight out of the DOM.
@@ -94,6 +126,7 @@ export function ArrearsForm({
 
   return (
     <form
+      ref={form}
       action={formAction}
       onChange={(e) => recount(e.currentTarget)}
       className="flex flex-col gap-4"
@@ -118,7 +151,8 @@ export function ArrearsForm({
             <select
               id="periodMonth"
               name="periodMonth"
-              defaultValue={defaultMonth}
+              value={month}
+              onChange={(e) => setMonth(e.target.value)}
               className={SELECT_CLASS}
             >
               {months.map((m) => (
@@ -156,7 +190,13 @@ export function ArrearsForm({
             {t.colAmount}
           </span>
         </div>
-        <ArrearsRows rows={rows} amountFor={t.amountFor} />
+        <ArrearsRows
+          rows={rows}
+          taken={taken[month] ?? NOTHING_TAKEN}
+          amountFor={t.amountFor}
+          billed={t.billed}
+          billedCancelled={t.billedCancelled}
+        />
       </div>
 
       <Card>
@@ -179,6 +219,7 @@ export function ArrearsForm({
         </div>
 
         <p className="mt-3 text-sm text-ink-faint">{t.safeToRepeat}</p>
+        <p className="mt-2 text-sm text-ink-faint">{t.howToFix}</p>
       </Card>
     </form>
   )
@@ -187,45 +228,68 @@ export function ArrearsForm({
 /**
  * The column itself, memoised away from the total that ticks above it.
  *
- * Both props are stable for the life of the screen — the rows come from the server and
- * the label template is a string — so this bails out of every re-render the running
- * total causes, and the three hundred inputs are never touched again after mount.
+ * Every prop is stable between keystrokes — the rows and the label templates come from
+ * the server, and `taken` is one of the server's month maps rather than a fresh object
+ * — so this bails out of every re-render the running total causes. It does re-render
+ * when the month changes, which is once per press of the select and the whole point of
+ * that prop.
  */
 const ArrearsRows = memo(function ArrearsRows({
   rows,
+  taken,
   amountFor,
+  billed,
+  billedCancelled,
 }: {
   rows: ArrearsRow[]
+  taken: Record<string, ArrearsTaken>
   amountFor: string
+  billed: string
+  billedCancelled: string
 }) {
   return (
     <ul>
-      {rows.map((row) => (
-        <li
-          key={row.id}
-          className="flex items-center gap-3 border-t border-line px-4 py-2
-            first:border-t-0"
-        >
-          <span className="min-w-0 flex-1">
-            <span className="block truncate font-medium text-ink">{row.name}</span>
-            {row.code && (
-              <span className="block truncate text-xs text-ink-faint">{row.code}</span>
+      {rows.map((row) => {
+        const held = taken[row.id]
+        return (
+          <li
+            key={row.id}
+            className="flex items-center gap-3 border-t border-line px-4 py-2
+              first:border-t-0"
+          >
+            <span className="min-w-0 flex-1">
+              <span className="block truncate font-medium text-ink">{row.name}</span>
+              {row.code && (
+                <span className="block truncate text-xs text-ink-faint">{row.code}</span>
+              )}
+            </span>
+            {held ? (
+              /* No box at all, rather than a disabled one. The slot is unique on
+                 (enrolment, month) and the write ignores a row whose slot is taken, so
+                 a box here would take an amount and then quietly drop it. The figure
+                 is shown because it is the thing the owner came to check. */
+              <span className="w-28 shrink-0 text-right text-sm text-ink-soft">
+                {fill(held.cancelled ? billedCancelled : billed, {
+                  amount: formatTaka(held.amount),
+                })}
+              </span>
+            ) : (
+              /* An explicit id per row because the name repeats, and text rather than
+                 number so a Bangla keypad's ৩০০০ and a typed ৳ both survive to the
+                 action's reader instead of being swallowed by the browser. */
+              <input
+                id={`${ARREARS_FIELD_PREFIX}${row.id}`}
+                name={`${ARREARS_FIELD_PREFIX}${row.id}`}
+                type="text"
+                inputMode="numeric"
+                autoComplete="off"
+                aria-label={fill(amountFor, { name: row.name })}
+                className={INPUT_CLASS}
+              />
             )}
-          </span>
-          {/* An explicit id per row because the name repeats, and text rather than
-              number so a Bangla keypad's ৩০০০ and a typed ৳ both survive to the
-              action's reader instead of being swallowed by the browser. */}
-          <input
-            id={`${ARREARS_FIELD_PREFIX}${row.id}`}
-            name={`${ARREARS_FIELD_PREFIX}${row.id}`}
-            type="text"
-            inputMode="numeric"
-            autoComplete="off"
-            aria-label={fill(amountFor, { name: row.name })}
-            className={INPUT_CLASS}
-          />
-        </li>
-      ))}
+          </li>
+        )
+      })}
     </ul>
   )
 })
