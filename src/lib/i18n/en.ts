@@ -1214,7 +1214,11 @@ export const en: Dictionary = {
   teacherList: {
     inactive: 'Off',
     noLogin: 'No login',
-    edit: 'Change permissions',
+    edit: 'Change this teacher',
+    detailsTitle: 'Name and subjects',
+    nameLabel: 'Name',
+    whichSubjects: 'Which subjects do they teach?',
+    permissionsTitle: 'What they can do',
     save: 'Save permissions',
     loginSummary: 'Give them a login',
     loginBody:
@@ -1928,6 +1932,8 @@ export const en: Dictionary = {
       /** Zero gets its own sentence; see the Bangla for why. */
       batches: (n: number) =>
         n === 0 ? 'no batches yet' : `${n} ${n === 1 ? 'batch' : 'batches'}`,
+      /** See the Bangla. */
+      subjectOff: (name: string) => `${name} (turned off)`,
       capTitle: 'This plan has no room for another teacher',
       cap: (name: string, limit: number, center: string) =>
         `The ${name} plan covers ${limit} ${limit === 1 ? 'teacher' : 'teachers'}. The ${center} plan takes as many as you need — every feature stays the same.`,
@@ -1941,6 +1947,7 @@ export const en: Dictionary = {
       addedNoLogin: 'Teacher added (no login)',
       linked: (name: string) =>
         `Teacher added — joined to an existing account (${name})`,
+      detailsSaved: 'Name and subjects saved',
       permissionsSaved: 'Permissions saved',
       activated: 'Turned on',
       deactivated: 'Turned off',

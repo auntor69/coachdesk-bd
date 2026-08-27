@@ -51,23 +51,43 @@ export default async function TeachersPage() {
 
   const supabase = await createClient()
 
-  const { data: teachers } = await supabase
-    .from('teachers')
-    .select(
-      `id, name, phone, active, user_id,
-       teacher_permissions (
-         can_manage_students, can_manage_exams, can_send_sms,
-         can_view_fees, can_manage_batches
-       ),
-       teacher_subjects (subjects (name, name_bn)),
-       batches (id, active)`,
-    )
-    // Scoped as well as governed by RLS, for the reason the roster gives: an
-    // owner of two centres passes is_staff_admin for both, so the policy alone
-    // would list the other centre's teachers here — and their permissions, under
-    // a switcher that says this centre.
-    .eq('coaching_center_id', session.active.centerId)
-    .order('name', { ascending: true })
+  const [{ data: teachers }, { data: allSubjects }] = await Promise.all([
+    supabase
+      .from('teachers')
+      .select(
+        `id, name, phone, active, user_id,
+         teacher_permissions (
+           can_manage_students, can_manage_exams, can_send_sms,
+           can_view_fees, can_manage_batches
+         ),
+         teacher_subjects (subjects (id, name, name_bn)),
+         batches (id, active)`,
+      )
+      // Scoped as well as governed by RLS, for the reason the roster gives: an
+      // owner of two centres passes is_staff_admin for both, so the policy alone
+      // would list the other centre's teachers here — and their permissions, under
+      // a switcher that says this centre.
+      .eq('coaching_center_id', session.active.centerId)
+      .order('name', { ascending: true }),
+    // The tick list of what each of them teaches. Switched-off subjects are read
+    // too, and not because they are on offer: a link made before a subject was
+    // turned off is still real, and a form that left it out would cut it the next
+    // time the owner saved a name. Each row draws the live ones plus its own.
+    supabase
+      .from('subjects')
+      .select('id, name, name_bn, active')
+      .eq('coaching_center_id', session.active.centerId)
+      .order('name', { ascending: true }),
+  ])
+
+  const subjectOptions = (allSubjects ?? []).map((subject) => {
+    const label = localName(subject, locale)
+    return {
+      id: subject.id,
+      label: subject.active ? label : t.subjectOff(label),
+      off: !subject.active,
+    }
+  })
 
   const rows: TeacherRow[] = (teachers ?? []).map((teacher) => {
     // PostgREST returns a to-one embed as an object and a to-many as an array,
@@ -77,12 +97,14 @@ export default async function TeachersPage() {
       ? teacher.teacher_permissions[0]
       : teacher.teacher_permissions
 
-    const subjects = (teacher.teacher_subjects ?? [])
-      .map((ts) => {
-        const subject = Array.isArray(ts.subjects) ? ts.subjects[0] : ts.subjects
-        return localName(subject, locale)
-      })
-      .filter(Boolean)
+    const linked = (teacher.teacher_subjects ?? []).map((ts) =>
+      Array.isArray(ts.subjects) ? ts.subjects[0] : ts.subjects,
+    )
+
+    // The scan line keeps every name unmarked, switched off or not: it answers
+    // "who teaches what" at a glance. The marking belongs in the form below,
+    // where the owner is deciding rather than reading.
+    const subjects = linked.map((subject) => localName(subject, locale)).filter(Boolean)
 
     const batchCount = (teacher.batches ?? []).filter((b) => b.active).length
 
@@ -100,6 +122,7 @@ export default async function TeachersPage() {
       // off, and by the password box, which is not where you change your own.
       isSelf: teacher.user_id === session.userId,
       subjects,
+      subjectIds: linked.map((subject) => subject?.id).filter(Boolean) as string[],
       // A finished sentence rather than the number, because the row is a client
       // component and a plural cannot cross that boundary. See the note on
       // settings.teachers.batches.
@@ -200,6 +223,7 @@ export default async function TeachersPage() {
       ) : (
         <TeacherList
           teachers={rows}
+          subjects={subjectOptions}
           t={d.teacherList}
           permissions={d.teacherPermissions}
           common={d.common}

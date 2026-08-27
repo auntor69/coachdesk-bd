@@ -2432,7 +2432,20 @@ export const bn = {
     /** A record with no account behind it — see teacherForm.loginNow. */
     noLogin: 'লগইন নেই',
     /** Collapsed: reading the list is the common case, editing is the rare one. */
-    edit: 'অনুমতি বদলান',
+    edit: 'শিক্ষকের তথ্য বদলান',
+    /**
+     * The panel holds three errands now, so the summary above it stopped naming one
+     * of them: it said "অনুমতি বদলান" while the first form inside it was the name.
+     *
+     * This form is first for the reason the subject row's rename is first — it is
+     * the repair nearly every owner needs and the only one that can never be
+     * refused. A misspelt teacher is on this list and on every batch they run.
+     */
+    detailsTitle: 'নাম ও বিষয়',
+    nameLabel: 'নাম',
+    whichSubjects: 'তিনি কোন কোন বিষয় পড়ান?',
+    /** The same words the add form uses over the same five boxes. */
+    permissionsTitle: 'তিনি কী কী করতে পারবেন',
     save: 'অনুমতি সেভ করুন',
     /**
      * Only on a row with no account behind it, and it is the promise teacherForm
@@ -3835,6 +3848,16 @@ export const bn = {
        */
       batches: (n: number) => (n === 0 ? 'কোনো ব্যাচ নেই' : `${n} ব্যাচ`),
       /**
+       * A subject that is switched off, in the tick list of what a teacher teaches.
+       *
+       * Only drawn where this teacher is already linked to it. The picker offers the
+       * live subjects, and one that has been turned off is not on offer — but a link
+       * made before it was turned off is still real, and leaving it out of the form
+       * would mean an owner saving a name silently cut a link they were never shown.
+       * So it is shown, marked, and theirs to untick.
+       */
+      subjectOff: (name: string) => `${name} (বন্ধ)`,
+      /**
        * Unreachable on every tier sold today — see the note on the page. Kept
        * because the day a mid tier caps staff, the list and the add form both
        * have to refuse, and they have to refuse in the same words.
@@ -3873,6 +3896,8 @@ export const bn = {
        */
       linked: (name: string) =>
         `শিক্ষক যোগ হয়েছে — পুরনো অ্যাকাউন্ট যুক্ত করা হয়েছে (${name})`,
+      /** Both halves of the row's own form, in one line — see teacherList.detailsTitle. */
+      detailsSaved: 'নাম ও বিষয় সেভ হয়েছে',
       permissionsSaved: 'অনুমতি সেভ হয়েছে',
       activated: 'চালু করা হয়েছে',
       deactivated: 'বন্ধ করা হয়েছে',

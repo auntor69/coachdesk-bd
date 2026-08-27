@@ -1851,6 +1851,137 @@ export async function createTeacher(
   return { ok: userId ? t.teachers.addedWithLogin : t.teachers.addedNoLogin }
 }
 
+/**
+ * Correcting a teacher's name, and what they teach.
+ *
+ * The same add-only hole the subject list had, on the record of a person: the name
+ * typed into the add form was the name for ever. It is on this list, on every batch
+ * they run, and it is what an owner reads back when a guardian asks who takes their
+ * child's class — so "Rafiqul Islan" was permanent, and the only repair was a
+ * second teacher record beside the first, which would have cost a seat and split
+ * their batches in two.
+ *
+ * Subjects move for an ordinary reason rather than a mistaken one: a centre that
+ * hires a physics teacher in June has them taking chemistry by September. There was
+ * no way to say so.
+ *
+ * The phone number is deliberately not here. Before an account exists it is edited
+ * on the login form below; after one exists it is the login id, copied onto the
+ * profile and into the account itself, and giveTeacherLogin's own note explains why
+ * a list showing a number that does not sign in would be worse than no edit at all.
+ *
+ * Neither is `profiles.full_name`. This is the centre's label for a colleague, and
+ * the profile is the person's own — they may teach at two centres and see their own
+ * name in both. An owner fixing their spelling of it does not get to rewrite what
+ * somebody else's app calls them.
+ */
+export async function updateTeacher(
+  _prev: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
+  const session = await staffAdmin()
+  if (!isSession(session)) return session
+
+  const t = dict(session.locale).settings
+
+  // Nobody to edit on a one-teacher plan — see createTeacher's own note on why the
+  // screen not offering the form is not the same as the endpoint refusing it.
+  if (!hasStaff(session.plan)) {
+    return { error: t.errors.staffNeedsCenter }
+  }
+
+  const teacherId = await ownTeacherId(
+    session,
+    String(formData.get('teacherId') ?? ''),
+  )
+  if (!teacherId) return { error: t.teachers.errors.notFound }
+
+  const name = String(formData.get('name') ?? '').trim()
+  if (!name) return { error: t.teachers.errors.nameRequired }
+  if (name.length > MAX_NAME) return { error: nameTooLong(session.locale) }
+
+  const subjectIds = formData.getAll('subjectIds').map(String).filter(Boolean)
+
+  const supabase = await createClient()
+  const centerId = session.active.centerId
+
+  // Re-read rather than trusted from the form, exactly as createTeacher does:
+  // nothing stops a POST from carrying another centre's subject id, and
+  // teacher_subjects only checks that its own coaching_center_id is ours.
+  let wanted: string[] = []
+  if (subjectIds.length > 0) {
+    const { data: subjects } = await supabase
+      .from('subjects')
+      .select('id')
+      .eq('coaching_center_id', centerId)
+      .in('id', subjectIds)
+    wanted = (subjects ?? []).map((s) => s.id)
+  }
+
+  const { data: saved, error } = await supabase
+    .from('teachers')
+    .update({ name })
+    .eq('coaching_center_id', centerId)
+    .eq('id', teacherId)
+    .select('id')
+
+  if (error || !saved || saved.length === 0) {
+    return { error: t.errors.saveFailed }
+  }
+
+  /*
+   * The subject links are moved by difference rather than cleared and rewritten.
+   *
+   * Two reasons, and the second is the one that matters. A delete-then-insert has a
+   * moment where the teacher teaches nothing, and if the insert half fails the links
+   * are simply gone — the owner asked to add chemistry and lost physics. And because
+   * `useOffline` replays whatever was queued when the connection dropped, this
+   * action has to survive arriving twice: a difference computed against what is
+   * already there is empty the second time, so a replay writes nothing at all.
+   *
+   * A failed read is not an empty set. `null` here would compute "remove every
+   * subject they teach", so it stops instead and says the name was saved, which is
+   * true — the name is already written above.
+   */
+  const { data: linked } = await supabase
+    .from('teacher_subjects')
+    .select('subject_id')
+    .eq('coaching_center_id', centerId)
+    .eq('teacher_id', teacherId)
+
+  if (!linked) return { error: t.errors.saveFailed }
+
+  const had = linked.map((row) => row.subject_id)
+  const gone = had.filter((id) => !wanted.includes(id))
+  const added = wanted.filter((id) => !had.includes(id))
+
+  if (gone.length > 0) {
+    await supabase
+      .from('teacher_subjects')
+      .delete()
+      .eq('coaching_center_id', centerId)
+      .eq('teacher_id', teacherId)
+      .in('subject_id', gone)
+  }
+
+  if (added.length > 0) {
+    await supabase.from('teacher_subjects').insert(
+      added.map((subjectId) => ({
+        teacher_id: teacherId,
+        subject_id: subjectId,
+        coaching_center_id: centerId,
+      })),
+    )
+  }
+
+  revalidatePath('/settings/teachers')
+  // The name is what the batch list calls whoever runs each batch, and the
+  // dashboard names them too.
+  revalidatePath('/settings/batches')
+  revalidatePath('/dashboard')
+  return { ok: t.teachers.detailsSaved }
+}
+
 /** The permission checkboxes on the teacher list. */
 export async function saveTeacherPermissions(
   _prev: ActionState,

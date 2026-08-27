@@ -1,7 +1,11 @@
 'use client'
 
 /**
- * The teacher list, with each teacher's permissions editable in place.
+ * The teacher list, with each teacher's record editable in place.
+ *
+ * Three errands behind one summary, in the order an owner needs them: their name
+ * and subjects, which is the repair almost everybody eventually wants and the one
+ * that can never be refused; their permissions; and their account.
  *
  * Permissions are per-teacher rather than per-role because real centres are not
  * tidy: one senior teacher collects fees and edits the roster, another only marks
@@ -14,15 +18,26 @@ import { useActionState, useState } from 'react'
 import { Alert, Field } from '@/components/ui'
 import { formatBdMobile } from '@/lib/bd/phone'
 import { MIN_PASSWORD } from '@/lib/auth/password'
+import { MAX_NAME } from '@/lib/limits'
 import { PERMISSION_KEYS } from '@/lib/permissions'
 import type { T } from '@/lib/i18n'
 import {
+  updateTeacher,
   saveTeacherPermissions,
   toggleTeacherActive,
   resetTeacherPassword,
   giveTeacherLogin,
   type ActionState,
 } from '../actions'
+
+/**
+ * One subject the centre has, for the tick list.
+ *
+ * `off` is not decoration: a switched-off subject is drawn only on the rows already
+ * linked to it, because it is not on offer any more but the link is still real. The
+ * label arrives already marked — see settings.teachers.subjectOff.
+ */
+export type SubjectOption = { id: string; label: string; off: boolean }
 
 export type TeacherRow = {
   id: string
@@ -31,6 +46,8 @@ export type TeacherRow = {
   active: boolean
   hasLogin: boolean
   subjects: string[]
+  /** Which subject ids they are linked to, for the tick list. */
+  subjectIds: string[]
   /** Already a sentence — see settings.teachers.batches for why. */
   batchLabel: string
   permissions: Record<string, boolean>
@@ -40,12 +57,14 @@ export type TeacherRow = {
 
 export function TeacherList({
   teachers,
+  subjects,
   t,
   permissions: labels,
   common,
   trim = false,
 }: {
   teachers: TeacherRow[]
+  subjects: SubjectOption[]
   t: T<'teacherList'>
   permissions: T<'teacherPermissions'>
   common: T<'common'>
@@ -53,26 +72,27 @@ export function TeacherList({
    * Names and one button, for a plan with no staff features that has more
    * teachers switched on than it covers.
    *
-   * Everything this hides is a thing that plan does not sell: the permission
-   * checkboxes (there is nobody to delegate to), the granted-permissions summary
-   * (those grants no longer take effect — see lib/auth/session), and the button
-   * that switches a teacher back on (`toggleTeacherActive` would refuse it at the
-   * seat cap anyway, and offering growth on the screen for shrinking is a way to
-   * be told no). What is left is who is switched on and how to change that.
+   * Everything this hides is a thing that plan does not sell: the name and subject
+   * form (there is one teacher and it is the reader), the permission checkboxes
+   * (there is nobody to delegate to), the granted-permissions summary (those grants
+   * no longer take effect — see lib/auth/session), and the button that switches a
+   * teacher back on (`toggleTeacherActive` would refuse it at the seat cap anyway,
+   * and offering growth on the screen for shrinking is a way to be told no). What is
+   * left is who is switched on and how to change that.
    */
   trim?: boolean
 }) {
   /**
-   * Which of the four forms spoke last.
+   * Which of the five forms spoke last.
    *
-   * There are four actions on this screen and each keeps its own last result, so
+   * There are five actions on this screen and each keeps its own last result, so
    * "Permissions saved" was still on the page after a teacher had been turned off
    * — a confirmation naming an action the owner did not just take, sitting above a
    * list that had changed underneath it. Recording the submit is enough to show
    * one message: the newest one, and only that one.
    */
   const [last, setLast] = useState<
-    'permissions' | 'active' | 'password' | 'login' | null
+    'details' | 'permissions' | 'active' | 'password' | 'login' | null
   >(null)
 
   /**
@@ -85,6 +105,13 @@ export function TeacherList({
    */
   const [loginRow, setLoginRow] = useState<string | null>(null)
 
+  const [detailsState, detailsAction, detailsPending] = useActionState<
+    ActionState,
+    FormData
+  >(async (prev, formData) => {
+    setLast('details')
+    return updateTeacher(prev, formData)
+  }, null)
   const [permState, permAction, permPending] = useActionState<ActionState, FormData>(
     async (prev, formData) => {
       setLast('permissions')
@@ -118,13 +145,15 @@ export function TeacherList({
   const state
     = last === 'active'
       ? activeState
-      : last === 'permissions'
-        ? permState
-        : last === 'password'
-          ? pwState
-          : last === 'login'
-            ? loginState
-            : null
+      : last === 'details'
+        ? detailsState
+        : last === 'permissions'
+          ? permState
+          : last === 'password'
+            ? pwState
+            : last === 'login'
+              ? loginState
+              : null
   const error = state?.error
   const ok = state?.ok
 
@@ -173,6 +202,73 @@ export function TeacherList({
                   }`}
               >
                 {teacher.active ? t.deactivate : t.reactivate}
+              </button>
+            </form>
+          )
+
+          /*
+           * Their name, and what they teach. First in the panel because it is the
+           * repair that can never be refused — a misspelt teacher is on this list
+           * and on every batch they run — and because everything under it is either
+           * rarer or riskier.
+           *
+           * The tick list is the live subjects plus any switched-off one this
+           * teacher is already linked to. A form that showed only the live ones
+           * would quietly cut the other link the next time a name was saved, since
+           * the action moves the set to exactly what was ticked.
+           */
+          const offered = subjects.filter(
+            (subject) => !subject.off || teacher.subjectIds.includes(subject.id),
+          )
+
+          const details = (
+            <form action={detailsAction} className="mt-2 flex flex-col gap-3">
+              <input type="hidden" name="teacherId" value={teacher.id} />
+              <p className="font-medium text-ink">{t.detailsTitle}</p>
+
+              {/* Per-row id: Field falls back to the field name, and nine rows
+                  would otherwise share one and point every label at the first. */}
+              <Field
+                label={t.nameLabel}
+                id={`teacher-name-${teacher.id}`}
+                name="name"
+                defaultValue={teacher.name}
+                required
+                maxLength={MAX_NAME}
+                autoComplete="off"
+              />
+
+              {offered.length > 0 && (
+                <fieldset className="flex flex-col gap-2">
+                  <legend className="mb-1 text-sm font-medium text-ink">
+                    {t.whichSubjects}
+                  </legend>
+                  {offered.map((subject) => (
+                    <label
+                      key={subject.id}
+                      className="flex min-h-tap cursor-pointer items-center gap-3"
+                    >
+                      <input
+                        type="checkbox"
+                        name="subjectIds"
+                        value={subject.id}
+                        defaultChecked={teacher.subjectIds.includes(subject.id)}
+                        className="h-5 w-5 shrink-0 accent-brand-600"
+                      />
+                      <span className="min-w-0 truncate text-ink">{subject.label}</span>
+                    </label>
+                  ))}
+                </fieldset>
+              )}
+
+              <button
+                type="submit"
+                disabled={detailsPending}
+                className="min-h-tap self-start rounded-lg border-2 border-brand-500
+                  bg-brand-50 px-4 text-sm font-semibold text-brand-700
+                  disabled:opacity-50"
+              >
+                {detailsPending ? common.saving : common.save}
               </button>
             </form>
           )
@@ -351,8 +447,14 @@ export function TeacherList({
                     {t.edit}
                   </summary>
 
-                  <form action={permAction} className="mt-2 flex flex-col gap-2">
+                  {details}
+
+                  <form
+                    action={permAction}
+                    className="mt-3 flex flex-col gap-2 border-t border-line pt-3"
+                  >
                     <input type="hidden" name="teacherId" value={teacher.id} />
+                    <p className="font-medium text-ink">{t.permissionsTitle}</p>
                     {PERMISSION_KEYS.map((key) => (
                       <label
                         key={key}
