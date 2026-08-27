@@ -1559,11 +1559,16 @@ export const en: Dictionary = {
       missingPhone: (n: number) =>
         `${n} ${n === 1 ? 'student has' : 'students have'} no guardian’s number`,
       missingPhoneBody: 'Without a number, no result or fee SMS can reach them.',
+      noBatch: (n: number) =>
+        `${n} ${n === 1 ? 'student is' : 'students are'} in no batch`,
+      noBatchBody:
+        'With no batch there is no attendance and no fee bill. Tap a name to enrol them.',
       emptyTitle: 'No students yet',
       emptyBody:
         'Add students and attendance, exam marks and fees all start landing here.',
       inactive: 'Left',
       noPhone: 'No number',
+      noBatchRow: 'In no batch',
       smsOff: 'SMS off',
 
       newTitle: 'New student',

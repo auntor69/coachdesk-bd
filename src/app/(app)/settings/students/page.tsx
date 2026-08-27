@@ -31,9 +31,16 @@ export async function generateMetadata() {
  * AND IT IS SEARCHABLE, which matters more here than anywhere else in the product:
  * this is the only roster, so it is the only way anybody reaches a student's page,
  * and at three hundred names "the only way" was a scroll. The box filters the list
- * and leaves the headcount, the plan limit and the missing-number warning alone —
+ * and leaves the headcount, the plan limit and the two warnings above it alone —
  * those are facts about the centre, and a roster filtered to one family must not
  * report that the centre has one student in it or that one number is missing.
+ *
+ * THE TWO WARNINGS ARE THE POINT OF THE SCREEN as much as the list is. A missing
+ * guardian's number and a missing batch are the only two ways a student can look
+ * admitted and produce nothing, and neither shows up anywhere else: no SMS is sent,
+ * no bill is raised, and the first symptom in both cases arrives weeks later as a
+ * parent who heard nothing or a fee board that reads ৳0. Counted at the top so the
+ * owner knows scrolling is worth it, and labelled on the row so they can find them.
  */
 export default async function StudentsPage({
   searchParams,
@@ -83,6 +90,18 @@ export default async function StudentsPage({
   const activeCount = rows.filter((r) => r.active).length
   const limit = session.plan.maxStudents
   const missingPhone = rows.filter((r) => r.active && !r.guardianPhone).length
+
+  // The counterpart, and the one the product depends on. A student with no active
+  // enrolment is inert: the invoice generator bills enrolments, the attendance sheet
+  // lists a batch, the old-dues screen hangs each debt on one. So a name here with no
+  // batch is on the roster and in nothing else, and nothing anywhere said so — the
+  // symptom was a fee board that stayed at ৳0. Every path produces them, not just the
+  // paste: the one-at-a-time form ticks no batch by default either, and a batch closed
+  // in March leaves its whole class like this in April.
+  //
+  // Active only. Somebody who has left has no batch because they left, and labelling
+  // every leaver would bury the ones that matter.
+  const noBatch = rows.filter((r) => r.active && r.batchNames.length === 0).length
 
   // The same three fields the box promises and the fee board searches — a name, the
   // code on the slip, the number that rang them. Deliberately not the batch or the
@@ -152,6 +171,16 @@ export default async function StudentsPage({
         </Card>
       )}
 
+      {/* Amber, like the missing number, and for the same reason: neither is an error
+          — a name can legitimately sit on the roster for a day before it is sorted —
+          but both stop the product working for that student until somebody acts. */}
+      {noBatch > 0 && (
+        <Card className="border-late/30 bg-late/5">
+          <p className="font-medium text-ink">{t.noBatch(noBatch)}</p>
+          <p className="mt-1 text-sm text-ink-soft">{t.noBatchBody}</p>
+        </Card>
+      )}
+
       {rows.length === 0 ? (
         <Card>
           <h2 className="font-semibold text-ink">{t.emptyTitle}</h2>
@@ -184,10 +213,23 @@ export default async function StudentsPage({
                           <span className="ml-2 text-sm text-ink-faint">{t.inactive}</span>
                         )}
                       </p>
-                      {row.batchNames.length > 0 && (
+                      {row.batchNames.length > 0 ? (
                         <p className="truncate text-sm text-ink-soft">
                           {row.batchNames.join(' · ')}
                         </p>
+                      ) : (
+                        // The count above says how many; this says which. Without it
+                        // the owner reads "12 in no batch" and then scrolls three
+                        // hundred names looking for a line that is not there, because
+                        // a student in no batch used to render nothing at all here.
+                        //
+                        // Amber rather than the red the missing number gets, so a row
+                        // carrying both problems still reads as two.
+                        row.active && (
+                          <p className="truncate text-sm font-medium text-late">
+                            {t.noBatchRow}
+                          </p>
+                        )
                       )}
                       <p className="truncate text-sm text-ink-faint">
                         {[row.classLevel, row.institution].filter(Boolean).join(' · ')}

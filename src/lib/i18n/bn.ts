@@ -3371,12 +3371,26 @@ export const bn = {
        */
       missingPhone: (n: number) => `${n} জনের অভিভাবকের নম্বর নেই`,
       missingPhoneBody: 'নম্বর ছাড়া ফলাফল বা ফির SMS যাবে না।',
+      /**
+       * The other field that breaks the product silently, and the harder one to
+       * notice: a student in no batch has nothing to be present at and no bill to
+       * raise, so they sit on the roster looking admitted while producing nothing.
+       * Counted above the list for the same reason the missing number is — a
+       * register pasted with no batch ticked leaves two hundred of them, and the
+       * only symptom is a fee board that stays at ৳0.
+       *
+       * Active students only. Somebody who has left has no batch because they left.
+       */
+      noBatch: (n: number) => `${n} জন কোনো ব্যাচে নেই`,
+      noBatchBody: 'ব্যাচ ছাড়া হাজিরাও হবে না, ফির বিলও হবে না। নাম ট্যাপ করে ব্যাচে ভর্তি করুন।',
       emptyTitle: 'এখনও কোনো শিক্ষার্থী নেই',
       emptyBody:
         'শিক্ষার্থী যোগ করলে হাজিরা, পরীক্ষার নম্বর আর ফি — সব এখানে আসবে।',
       /** A student who has left. Their marks, attendance and bills stay put. */
       inactive: 'বন্ধ',
       noPhone: 'নম্বর নেই',
+      /** The row's own version of the count above. Sits where the batch names would. */
+      noBatchRow: 'কোনো ব্যাচে নেই',
       /** The guardian asked not to be texted. See channels for where that is set. */
       smsOff: 'SMS বন্ধ',
 
