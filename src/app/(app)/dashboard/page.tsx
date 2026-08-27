@@ -88,16 +88,36 @@ export default async function DashboardPage() {
   // different centres.
   const mine = isAdmin ? null : await myTeacherIds()
 
-  // Built out here rather than inline below because the filter is conditional and
-  // `.select(..., { head: true })` has nowhere to hang an `if`. Nothing runs until
-  // the Promise.all awaits it.
-  let batchCountQuery = supabase
+  /*
+   * The ids, not a count — and that is the fix for a fraction that could exceed its
+   * own denominator.
+   *
+   * This was a head count, and the register line below counted today's sessions
+   * separately with no batch filter on them at all. Two queries describing two
+   * populations: a batch marked this morning and then deactivated at lunchtime left
+   * "1/0 batches marked today" on the owner's home screen. The same shape as every
+   * other honesty bug in this product — a numerator and a denominator that were never
+   * made to agree.
+   *
+   * So the set is fetched once and both numbers come out of it. A count cannot filter
+   * anything, an id can, and there are at most a few hundred of these against a page
+   * that already reads every outstanding invoice and every flagged student unbounded.
+   *
+   * It also collapses the teacher dimension into the same set. Today `.in('teacher_id',
+   * mine)` and the policy behind today's registers pick the same batches, because
+   * `app.my_batch_ids()` is that same predicate — but they are two definitions of one
+   * population, and this makes RLS the backstop rather than the second opinion.
+   *
+   * Built out here rather than inline below because the filter is conditional and a
+   * builder has nowhere to hang an `if`. Nothing runs until the Promise.all awaits it.
+   */
+  let batchQuery = supabase
     .from('batches')
-    .select('id', { count: 'exact', head: true })
+    .select('id')
     .eq('coaching_center_id', session.active.centerId)
     .eq('active', true)
 
-  if (mine) batchCountQuery = batchCountQuery.in('teacher_id', mine)
+  if (mine) batchQuery = batchQuery.in('teacher_id', mine)
 
   /**
    * Whether to ask for the week's progress aggregate at all.
@@ -129,7 +149,7 @@ export default async function DashboardPage() {
 
   const [
     { count: studentCount },
-    { count: batchCount },
+    { data: batchRows },
     { data: owing },
     { data: payments },
     { data: todaySessions },
@@ -145,7 +165,7 @@ export default async function DashboardPage() {
       .select('id', { count: 'exact', head: true })
       .eq('coaching_center_id', session.active.centerId)
       .eq('status', 'active'),
-    batchCountQuery,
+    batchQuery,
     // Unvoided and still owed. A voided invoice is a correction and counting it
     // would show the owner money they are not owed; a settled one is not owed at
     // all. Every balance here was subtracted by Postgres in numeric(10, 2).
@@ -168,6 +188,13 @@ export default async function DashboardPage() {
       .select('amount_bdt')
       .eq('coaching_center_id', session.active.centerId)
       .gte('paid_at', `${period}T00:00:00+06:00`),
+    // Today's registers, one row per batch that has one — `unique (batch_id,
+    // session_date)` is what makes a row count a batch count.
+    //
+    // Not narrowed to active batches here, and not by an embed either: an `!inner`
+    // join filter degrades every column on the query to unknown, for the reason
+    // written out at fees/actions.ts. The narrowing happens against `activeBatchIds`
+    // below, which is the same set the denominator is counted from.
     supabase
       .from('attendance_sessions')
       .select('batch_id')
@@ -265,6 +292,30 @@ export default async function DashboardPage() {
           .eq('coaching_center_id', session.active.centerId)
       : noCount,
   ])
+
+  /*
+   * The batches this reader's home screen is about, and the two numbers drawn from
+   * them.
+   *
+   * `null`, not an empty set, when the read did not come back — because `setupSteps`
+   * reads the count and treats an unknown as "say nothing", which is the whole reason
+   * a teacher gets no setup card. An empty set here would put "create your first
+   * batch" on the screen of a centre that has nine, the first time the query failed.
+   */
+  const activeBatchIds = batchRows ? new Set(batchRows.map((b) => b.id)) : null
+  const batchCount = activeBatchIds ? activeBatchIds.size : null
+
+  // Registers taken today, counted only over batches that still exist to be marked.
+  // A session on a batch retired this afternoon was real work and is still in the
+  // register; it is not part of "how much of today is done", because today's list
+  // does not offer that batch.
+  //
+  // `null` travels with the set for the same reason the count does: a numerator with
+  // no denominator to sit over is not a fraction, and 0 would be the claim that no
+  // register was taken.
+  const markedToday = activeBatchIds
+    ? (todaySessions ?? []).filter((s) => activeBatchIds.has(s.batch_id)).length
+    : null
 
   // Same rule as the fee board, so the two screens cannot drift: only positive
   // remainders, never netted against a family in credit. The credit itself is
@@ -421,9 +472,14 @@ export default async function DashboardPage() {
         <div className="flex items-center justify-between gap-3">
           <div>
             <p className="font-semibold text-ink">{t.todayAttendance}</p>
-            <p className="num mt-0.5 text-sm text-ink-soft">
-              {t.batchesTaken(todaySessions?.length ?? 0, batchCount ?? 0)}
-            </p>
+            {/* Left off rather than guessed when the batch list did not arrive. The
+                heading and the door below still work, and a card that says one true
+                thing beats one that adds a fraction it cannot stand behind. */}
+            {batchCount !== null && markedToday !== null && (
+              <p className="num mt-0.5 text-sm text-ink-soft">
+                {t.batchesTaken(markedToday, batchCount)}
+              </p>
+            )}
           </div>
           <Link
             href="/teach"
