@@ -236,61 +236,26 @@ export async function createCenter(
 }
 
 /**
- * Owner-issued password reset for staff.
+ * `resetStaffPassword` was removed here.
  *
- * There is no email to send a reset link to and no SMS sender ID yet, so
- * recovery flows through the person who already has authority over the account:
- * the centre owner, who in practice is standing next to the teacher.
+ * It was an owner-issued reset written before there was a screen to put one on, and
+ * it never got one — no component in the tree referenced it. That did not make it
+ * harmless. `signOut` in this module is imported by the app shell, so the module is
+ * in the build graph, so every exported action in it has an id and is a live HTTP
+ * endpoint whether or not any button posts to it.
+ *
+ * And it was weaker than the reset that eventually shipped. It took `userId`
+ * straight from the form body, and asked only whether that account held a
+ * `center_members` row at the caller's centre — which is true of a teacher who also
+ * owns a rival centre, of a manager, and of the founder's own account if it happened
+ * to hold any membership there. So an owner could have reset the password of an
+ * account with authority elsewhere and signed in as it.
+ *
+ * The real one is `resetTeacherPassword` in (app)/settings/actions.ts: it reads the
+ * account off this centre's own teacher row rather than the body, and refuses
+ * anything holding a second membership anywhere, itself, or a platform admin. The
+ * rule is `lib/auth/reset.ts` and its ten tests. Nothing was lost by deleting this.
  */
-export async function resetStaffPassword(
-  _prev: FormState,
-  formData: FormData,
-): Promise<FormState> {
-  const session = await getSession()
-  if (!session?.active) {
-    redirect('/login')
-  }
-
-  // Only owners and managers, checked here rather than at the page.
-  if (session.active.role !== 'owner' && session.active.role !== 'manager') {
-    return { error: 'এই কাজটি শুধু মালিক করতে পারেন।' }
-  }
-
-  const targetUserId = String(formData.get('userId') ?? '')
-  const newPassword = String(formData.get('password') ?? '')
-
-  if (newPassword.length < MIN_PASSWORD) {
-    return { error: passwordTooShort(DEFAULT_LOCALE), field: 'password' }
-  }
-
-  const supabase = await createClient()
-
-  // The target must be a member of *this* owner's center. Without this check,
-  // an owner could reset the password of any user ID they guessed, anywhere on
-  // the platform — the admin client below has no RLS to stop them.
-  const { data: membership } = await supabase
-    .from('center_members')
-    .select('user_id')
-    .eq('coaching_center_id', session.active.centerId)
-    .eq('user_id', targetUserId)
-    .maybeSingle()
-
-  if (!membership) {
-    return { error: 'এই ব্যবহারকারী আপনার সেন্টারের নয়।' }
-  }
-
-  const admin = createAdminClient()
-  const { error } = await admin.auth.admin.updateUserById(targetUserId, {
-    password: newPassword,
-  })
-
-  if (error) {
-    return { error: 'পাসওয়ার্ড বদলানো যায়নি। আবার চেষ্টা করুন।' }
-  }
-
-  revalidatePath('/settings/teachers')
-  return null
-}
 
 /** Used by the login page to echo a normalised number back at the user. */
 export async function previewPhone(input: string): Promise<string> {
