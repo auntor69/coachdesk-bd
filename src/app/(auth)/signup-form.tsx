@@ -5,8 +5,18 @@ import Link from 'next/link'
 
 import { signUp, type FormState } from './actions'
 import { Alert, Button, Field } from '@/components/ui'
+import { MIN_PASSWORD } from '@/lib/auth/password'
 
-export function SignupForm() {
+/**
+ * `passwordHint` arrives already written, from the page.
+ *
+ * The number in it is `MIN_PASSWORD` and the number this form refuses below is
+ * `MIN_PASSWORD`, so they cannot drift apart — but the digit in the sentence has to
+ * be Bangla, and turning 6 into ৬ means `digits`, which means the time module, which
+ * a signup form should not be shipping to a phone for one character. So the sentence
+ * is built where that is free and the constraint is read where it is enforced.
+ */
+export function SignupForm({ passwordHint }: { passwordHint: string }) {
   const [state, formAction, pending] = useActionState<FormState, FormData>(
     signUp,
     null,
@@ -40,11 +50,11 @@ export function SignupForm() {
 
       <Field
         label="পাসওয়ার্ড"
-        hint="কমপক্ষে ৬ অক্ষর"
+        hint={passwordHint}
         name="password"
         type="password"
         autoComplete="new-password"
-        minLength={6}
+        minLength={MIN_PASSWORD}
         required
         error={state?.field === 'password' ? state.error : undefined}
       />

@@ -94,8 +94,19 @@ export function OnboardingForm() {
         {pending ? 'তৈরি হচ্ছে…' : 'শুরু করুন'}
       </Button>
 
+      {/*
+       * This used to end 'শিক্ষক যোগ করলে এটি সেন্টার হয়ে যাবে' — adding a teacher turns
+       * this into a centre. It does not, and could not: `maxTeachers` is 1 on the free
+       * tier and 1 on Pro too, at any price, because one colleague is the whole line
+       * between a teacher plan and a centre plan. So the sentence described a self-serve
+       * promotion that no screen performs, to the exact reader most likely to need it —
+       * somebody choosing 'I teach alone' partly because they were told staff was one
+       * tap away later. What actually happens is a plan request from /settings/plan and
+       * a phone call, so that is what it says now.
+       */}
       <p className="text-center text-sm text-ink-faint">
-        পরে নাম বদলাতে পারবেন। শিক্ষক যোগ করলে এটি সেন্টার হয়ে যাবে।
+        পরে নাম বদলাতে পারবেন। একাধিক শিক্ষক লাগলে সেন্টার প্ল্যান নিতে হবে — অ্যাপ থেকেই
+        আমাদের বলতে পারবেন।
       </p>
     </form>
   )
