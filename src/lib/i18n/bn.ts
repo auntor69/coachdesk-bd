@@ -200,6 +200,13 @@ export const bn = {
    */
   shell: {
     logout: 'লগআউট',
+    /**
+     * The header link to the account screen, and the only place in the app that says
+     * whose phone this is. Icon-only on purpose — a third worded button would push
+     * the centre's name off a 320px screen — so this string is the whole of its
+     * accessible name and has to work read aloud on its own.
+     */
+    account: 'আমার অ্যাকাউন্ট',
     mainMenu: 'প্রধান মেনু',
     /** Greets a reader whose name and phone are both missing. */
     welcome: 'স্বাগতম',
@@ -224,6 +231,70 @@ export const bn = {
       exams: 'পরীক্ষা',
       mine: 'আমার',
       myChild: 'সন্তান',
+    },
+  },
+
+  /**
+   * The one screen every role can reach, and the only place anybody can change
+   * their own password.
+   *
+   * It exists because two sentences elsewhere in this file promised it. teacherForm
+   * .passwordHint tells an owner the teacher can change the password themselves
+   * later, and settings.teachers.reset.errors.self tells the owner that their own
+   * password is not changed from the staff list. Both were true about intent and
+   * false about the product until this screen.
+   *
+   * Deliberately not called "settings": /settings is the centre's setup and half the
+   * roles here never see it. This is the person, not the coaching centre.
+   */
+  account: {
+    title: 'আমার অ্যাকাউন্ট',
+    /**
+     * A student or guardian has no bottom bar — their nav is a single tab, which the
+     * shell does not draw — so without this link the only way off this screen is the
+     * browser's back arrow. Points at whatever their role's home is.
+     */
+    back: 'নিজের স্ক্রিনে ফিরুন',
+    nameLabel: 'নাম',
+    /** A linked account that never had a name typed into it. */
+    noName: 'নাম দেওয়া নেই',
+    phoneLabel: 'লগইন নম্বর',
+    /**
+     * Said plainly because a number is an unusual thing to log in with, and because
+     * this screen cannot change it: the number is the account's identity in three
+     * places at once, and moving it is not a form, it is a migration.
+     */
+    phoneHint: 'এই নম্বর দিয়েই আপনি লগইন করেন। নম্বর বদলাতে হলে কোচিংয়ের মালিককে বলুন।',
+    passwordTitle: 'পাসওয়ার্ড বদলান',
+    /**
+     * The second sentence is the honest one. A password change does not throw other
+     * phones out — GoTrue leaves live sessions alone — and a shared centre phone is
+     * exactly where somebody would assume it does.
+     */
+    passwordBody:
+      'নতুন পাসওয়ার্ড সাথে সাথেই কাজ করবে। অন্য কোনো ফোনে আগে থেকে লগইন থাকলে সেটি নিজে নিজে বন্ধ হবে না — ওই ফোনে গিয়ে লগআউট করতে হবে।',
+    current: 'এখনকার পাসওয়ার্ড',
+    /**
+     * Asked even though the reader is already signed in, and that is the point: a
+     * coaching centre's phone is passed around, so an open session proves somebody
+     * is signed in and not that it is you.
+     */
+    currentHint: 'এটি সত্যিই আপনি কি না নিশ্চিত হতে',
+    next: 'নতুন পাসওয়ার্ড',
+    nextHint: 'অন্তত {n} অক্ষর',
+    confirm: 'নতুন পাসওয়ার্ডটি আবার লিখুন',
+    submit: 'পাসওয়ার্ড বদলান',
+    done: 'পাসওয়ার্ড বদলে গেছে। পরের বার নতুনটি দিয়ে লগইন করুন।',
+    errors: {
+      /**
+       * Never says which of the two was wrong in a way that helps a stranger — but
+       * this one is safe to name, because reaching it means already holding the
+       * session.
+       */
+      wrongCurrent: 'এখনকার পাসওয়ার্ডটি ঠিক নেই।',
+      mismatch: 'দুবার লেখা নতুন পাসওয়ার্ড এক হয়নি।',
+      same: 'নতুন পাসওয়ার্ড আগেরটার মতোই। অন্য কিছু দিন।',
+      failed: 'পাসওয়ার্ড বদলানো যায়নি। আবার চেষ্টা করুন।',
     },
   },
 

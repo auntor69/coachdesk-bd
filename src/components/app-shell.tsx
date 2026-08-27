@@ -236,6 +236,29 @@ export async function AppShell({
           </div>
 
           <div className="flex shrink-0 items-center gap-1">
+            {/*
+              One letter in a circle, not a third labelled button. The right-hand
+              cluster already holds two words, and a 320px screen has no room for a
+              third before the centre's name starts losing characters — so the entry
+              point to /account is the smallest control that can still be tapped,
+              with its name given to the screen reader instead of to the layout.
+
+              It also answers a question the header never used to: whose account is
+              signed in on this shared phone. The letter is the first character of
+              the greeting, which is the name if there is one and the number if
+              there is not.
+            */}
+            <Link
+              href="/account"
+              aria-label={t.account}
+              title={t.account}
+              className="grid h-9 w-9 shrink-0 place-items-center rounded-full
+                bg-brand-50 text-sm font-semibold text-brand-700
+                hover:bg-brand-100"
+            >
+              <span aria-hidden>{initialFor(session)}</span>
+            </Link>
+
             <LanguageSwitch locale={session.locale} />
 
             <form action={signOut}>
@@ -303,4 +326,17 @@ export function greetingFor(session: Session): string {
     formatBdMobile(session.phone) ||
     dict(session.locale).shell.welcome
   )
+}
+
+/**
+ * The single letter in the header's account link.
+ *
+ * Taken off the greeting rather than the name alone, so an account with no name on it
+ * still gets a letter — the first digit of its number — instead of an empty circle.
+ * `Array.from` rather than `[0]`: a Bangla name is inside the BMP and would index
+ * fine, but an emoji in a name would come apart into half a surrogate pair, and a
+ * broken glyph in the header on every screen is a poor trade for one character.
+ */
+function initialFor(session: Session): string {
+  return Array.from(greetingFor(session))[0] ?? '•'
 }

@@ -56,6 +56,7 @@ export const en: Dictionary = {
 
   shell: {
     logout: 'Log out',
+    account: 'My account',
     mainMenu: 'Main menu',
     welcome: 'Welcome',
     otherCenter: 'Other centre',
@@ -74,6 +75,32 @@ export const en: Dictionary = {
       exams: 'Exams',
       mine: 'Mine',
       myChild: 'Child',
+    },
+  },
+
+  account: {
+    title: 'My account',
+    back: 'Back to my screen',
+    nameLabel: 'Name',
+    noName: 'No name set',
+    phoneLabel: 'Login number',
+    phoneHint:
+      'This is the number you sign in with. To change the number, ask the centre owner.',
+    passwordTitle: 'Change your password',
+    passwordBody:
+      'The new password works straight away. Another phone that is already signed in will not be signed out on its own — you have to log out on that phone.',
+    current: 'Current password',
+    currentHint: 'To be sure this is really you',
+    next: 'New password',
+    nextHint: 'At least {n} characters',
+    confirm: 'Type the new password again',
+    submit: 'Change the password',
+    done: 'Your password has been changed. Use the new one next time you sign in.',
+    errors: {
+      wrongCurrent: 'That is not your current password.',
+      mismatch: 'The two new passwords do not match.',
+      same: 'The new password is the same as the old one. Please pick another.',
+      failed: 'The password could not be changed. Please try again.',
     },
   },
 
