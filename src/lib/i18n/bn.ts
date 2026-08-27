@@ -1818,6 +1818,12 @@ export const bn = {
     marked: 'নম্বর দেওয়া',
     smsSent: 'SMS পাঠানো ✓',
     smsNotSent: 'SMS পাঠানো হয়নি',
+    /** The rest of the batch, under the fraction. An absence counts as marked. */
+    marksLeft: (n: number) => `${n} জনের নম্বর বাকি`,
+    /** An exam on a batch with nobody enrolled — nothing here to mark. */
+    emptyBatch: 'ব্যাচে কেউ নেই',
+    /** Families told from the centre own phone, counted once each. */
+    toldCount: (n: number) => `${n} জনকে জানানো ✓`,
 
     /** The marks sheet's own page title. */
     marksTitle: 'নম্বর',

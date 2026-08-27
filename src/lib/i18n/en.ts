@@ -816,6 +816,21 @@ export const en: Dictionary = {
     marked: 'marked',
     smsSent: 'SMS sent ✓',
     smsNotSent: 'SMS not sent',
+    /**
+     * The rest of the batch, under the fraction on a list row. "Not marked" is the
+     * register's own word for the same hole (see attendance.colUnmarked), and an
+     * absence counts as marked — recording that a student did not sit the exam is
+     * an answer, which is why the sheet has a button for it.
+     */
+    marksLeft: (n: number) => `${n} not marked`,
+    /** An exam set on a batch nobody is enrolled in, so there is nothing to mark. */
+    emptyBatch: 'Nobody in the batch',
+    /**
+     * Families the centre has told from its own phone, counted once each however
+     * many times they were messaged. Not the same claim as `smsSent`, which is the
+     * gateway reaching everybody with a mark in one go.
+     */
+    toldCount: (n: number) => `${n} told ✓`,
 
     marksTitle: 'Marks',
     noStudentsTitle: 'No students in this batch',
