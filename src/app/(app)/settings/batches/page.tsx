@@ -67,6 +67,11 @@ export default async function BatchesPage() {
       startTime: batch.start_time,
       endTime: batch.end_time,
       fee: batch.monthly_fee_bdt,
+      // Whether this batch charges anything at all. `numeric` arrives as a string, so
+      // the comparison goes through Number, and anything that is not a positive
+      // amount — 0, null, a value that did not survive the wire — bills nobody. Same
+      // test as lib/fees/billable.ts makes when it decides what to invoice.
+      unpriced: !(Number(batch.monthly_fee_bdt ?? 0) > 0),
       active: batch.active,
       subjectName: localName(subject, locale),
       teacherName: teacher?.name ?? '',
@@ -152,10 +157,23 @@ export default async function BatchesPage() {
                     </p>
                   </div>
                   <div className="shrink-0 text-right">
-                    <p className="num text-sm font-semibold text-ink">
-                      {formatTaka(row.fee)}
-                    </p>
-                    <p className="text-xs text-ink-faint">{t.monthly}</p>
+                    {/* A price, or the fact that there is none. "৳0 / per month" is
+                        arithmetic nobody performs while scrolling — it takes reading
+                        the figure, remembering that the invoice run skips zeros, and
+                        connecting the two. The words do it for them, and an owner who
+                        priced a batch at nothing on purpose loses nothing by seeing
+                        their own decision written down. Amber, not red: a free batch
+                        is a normal thing to run. */}
+                    {row.unpriced ? (
+                      <p className="text-sm font-semibold text-late">{t.noFee}</p>
+                    ) : (
+                      <>
+                        <p className="num text-sm font-semibold text-ink">
+                          {formatTaka(row.fee)}
+                        </p>
+                        <p className="text-xs text-ink-faint">{t.monthly}</p>
+                      </>
+                    )}
                     {showCounts && (
                       <p className="mt-1 text-sm text-ink-soft">
                         <span className="num">{row.studentCount}</span>{' '}

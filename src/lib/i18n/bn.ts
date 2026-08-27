@@ -2091,10 +2091,11 @@ export const bn = {
     daysHint: 'কিছু না বাছলে প্রতিদিনের ক্লাস ধরা হবে',
     feeLabel: 'মাসিক ফি (৳)',
     /**
-     * The one thing about the fee that is not obvious and costs money to learn
-     * late: changing it does not rewrite invoices already issued.
+     * The two things about the fee that are not obvious and cost money to learn late:
+     * a zero bills nobody, and changing the number does not rewrite invoices already
+     * issued. The field starts at zero, so the first one has to be said here.
      */
-    feeHint: 'এই ব্যাচের প্রতি মাসের ফি। পরে বদলালে পুরোনো বিল বদলাবে না।',
+    feeHint: '০ থাকলে এই ব্যাচের কারও বিল হবে না। পরে বদলালে পুরোনো বিল বদলাবে না।',
     submit: 'ব্যাচ তৈরি করুন',
 
     /**
@@ -3358,6 +3359,13 @@ export const bn = {
       everyDay: 'প্রতিদিন',
       /** Under the fee, so it is not read as the price of the whole course. */
       monthly: 'মাসিক',
+      /**
+       * What stands where the price would, on a batch that has none. ৳০ read as a
+       * figure rather than as a consequence, and the consequence is that nobody in
+       * that batch is ever billed — which is either exactly what the owner meant or
+       * why September came out short.
+       */
+      noFee: 'বিল হবে না',
       /** How many are enrolled. Follows a number set in its own element. */
       people: (_n: number) => 'জন',
       /** A batch switched off. Its rows and its history stay exactly where they are. */

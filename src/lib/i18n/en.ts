@@ -984,8 +984,13 @@ export const en: Dictionary = {
     whichDays: 'Which days',
     daysHint: 'Leave these untouched and the batch counts as meeting every day',
     feeLabel: 'Monthly fee (৳)',
+    /**
+     * Both facts about this field that cost money to learn late. What the number is
+     * for is already on the label; what a zero does is not written anywhere else, and
+     * the field arrives holding one.
+     */
     feeHint:
-      "This batch's fee each month. Changing it later does not change bills already issued.",
+      'Left at 0, nobody in this batch is ever billed. Changing it later does not change bills already issued.',
     submit: 'Create batch',
 
     subjectHint:
@@ -1576,6 +1581,18 @@ export const en: Dictionary = {
         'A batch is a class at a fixed time. Once one exists you can enrol students into it and take attendance.',
       everyDay: 'Every day',
       monthly: 'per month',
+      /**
+       * Where the price goes on a batch that has none.
+       *
+       * "৳0" is what this row showed, and it reads as a fact rather than as a
+       * consequence: an owner scanning five batches does not stop at it. The
+       * consequence is that generating the month's invoices skips everybody in that
+       * batch, which is either exactly what they meant — a trial week, a scholarship
+       * class — or the reason the fee board comes out short in the first week of
+       * September. Saying it in words lets the first owner nod and the second one
+       * notice.
+       */
+      noFee: 'Not billed',
       people: (n: number) => (n === 1 ? 'student' : 'students'),
       inactive: 'Switched off',
 
