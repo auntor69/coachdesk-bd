@@ -82,8 +82,14 @@ export const en: Dictionary = {
   account: {
     title: 'My account',
     back: 'Back to my screen',
+    nameTitle: 'Your name',
+    nameBody:
+      'This is the name the app greets you with, at the top of every screen. The '
+      + 'centre keeps its own spelling of your name on its list of teachers, and only '
+      + 'the owner can change that one.',
     nameLabel: 'Name',
-    noName: 'No name set',
+    nameSubmit: 'Save my name',
+    nameDone: 'Your name has been saved.',
     phoneLabel: 'Login number',
     phoneHint:
       'This is the number you sign in with. To change the number, ask the centre owner.',
@@ -98,6 +104,8 @@ export const en: Dictionary = {
     submit: 'Change the password',
     done: 'Your password has been changed. Use the new one next time you sign in.',
     errors: {
+      nameRequired: 'Please type your name.',
+      nameFailed: 'Your name could not be saved. Please try again.',
       wrongCurrent: 'That is not your current password.',
       mismatch: 'The two new passwords do not match.',
       same: 'The new password is the same as the old one. Please pick another.',

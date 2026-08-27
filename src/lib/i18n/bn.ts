@@ -264,9 +264,19 @@ export const bn = {
      * browser's back arrow. Points at whatever their role's home is.
      */
     back: 'নিজের স্ক্রিনে ফিরুন',
+    nameTitle: 'আপনার নাম',
+    /**
+     * The second sentence is the one that stops a teacher writing to the owner twice.
+     * `profiles.full_name` is the person and `teachers.name` is the centre's label for
+     * a colleague; they are edited on different screens by different people on
+     * purpose, and a teacher who fixes their own spelling here would otherwise wonder
+     * why the staff list still has it wrong.
+     */
+    nameBody:
+      'অ্যাপ প্রতিটি স্ক্রিনের উপরে এই নামেই আপনাকে সম্বোধন করে। কোচিং সেন্টারের শিক্ষক তালিকায় আপনার নামের বানান আলাদাভাবে রাখা থাকে, আর সেটি কেবল মালিক বদলাতে পারেন।',
     nameLabel: 'নাম',
-    /** A linked account that never had a name typed into it. */
-    noName: 'নাম দেওয়া নেই',
+    nameSubmit: 'নাম সেভ করুন',
+    nameDone: 'আপনার নাম সেভ হয়েছে।',
     phoneLabel: 'লগইন নম্বর',
     /**
      * Said plainly because a number is an unusual thing to log in with, and because
@@ -295,6 +305,8 @@ export const bn = {
     submit: 'পাসওয়ার্ড বদলান',
     done: 'পাসওয়ার্ড বদলে গেছে। পরের বার নতুনটি দিয়ে লগইন করুন।',
     errors: {
+      nameRequired: 'আপনার নাম লিখুন।',
+      nameFailed: 'নাম সেভ করা যায়নি। আবার চেষ্টা করুন।',
       /**
        * Never says which of the two was wrong in a way that helps a stranger — but
        * this one is safe to name, because reaching it means already holding the

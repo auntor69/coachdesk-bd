@@ -7,6 +7,7 @@ import { formatBdMobile } from '@/lib/bd/phone'
 import { digits } from '@/lib/bd/time'
 import { dict, DEFAULT_LOCALE } from '@/lib/i18n'
 import { fill } from '@/lib/i18n/fill'
+import { NameForm } from './name-form'
 import { PasswordForm } from './password-form'
 
 /** getSession, not pageCenter — see the note on teach/page.tsx's own. */
@@ -18,17 +19,20 @@ export async function generateMetadata() {
 
 /**
  * The reader's own account: who the app thinks they are, and the only screen where
- * anybody changes their own password.
+ * anybody changes their own name or their own password.
  *
  * `pageCenter`, so all five roles reach it — a student and a guardian included. It is
  * the only screen in `(app)` with no narrower guard than the layout's own, and that is
  * the point: an account nobody can re-secure is not a feature to gate by role or by
  * plan. Nothing here reads a centre's data, so there is nothing to scope.
  *
- * Two facts and a form. The number is shown because it is the login id and people
- * forget that — login is a phone and a password, with no email anywhere — and it is
- * shown read-only because changing it is not a form: the same number sits on the
- * profile, inside the auth account, and on a teacher row, so moving it is a migration.
+ * Two forms and a fact, in that order, and the fact is deliberately stranded between
+ * them: a reader who has just corrected their own name is exactly the reader about to
+ * try the number below it. Saying it cannot be moved right there saves the attempt.
+ * It is shown at all because it is the login id and people forget that — login is a
+ * phone and a password, with no email anywhere — and it is read-only because changing
+ * it is not a form: the same number sits on the profile, inside the auth account, and
+ * on a teacher row, so moving it is a migration.
  */
 export default async function AccountPage() {
   const session = await pageCenter()
@@ -52,10 +56,16 @@ export default async function AccountPage() {
       </div>
 
       <Card>
-        <p className="text-sm text-ink-faint">{t.nameLabel}</p>
-        <p className="font-medium text-ink">{session.fullName || t.noName}</p>
+        <h2 className="font-semibold text-ink">{t.nameTitle}</h2>
+        <p className="mb-3 mt-1 text-sm text-ink-soft">{t.nameBody}</p>
+        {/* `?? ''` and not the old "No name set" line: the box itself is where the
+            name is read now, and an empty box under the label "Name" says the same
+            thing without a second sentence to translate. */}
+        <NameForm fullName={session.fullName ?? ''} t={t} common={d.common} />
+      </Card>
 
-        <p className="mt-3 text-sm text-ink-faint">{t.phoneLabel}</p>
+      <Card>
+        <p className="text-sm text-ink-faint">{t.phoneLabel}</p>
         <p className="num font-medium text-ink">{formatBdMobile(session.phone)}</p>
         <p className="mt-1 text-sm text-ink-soft">{t.phoneHint}</p>
       </Card>

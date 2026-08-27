@@ -1,32 +1,65 @@
 'use server'
 
 /**
- * Changing your own password.
+ * The two things a person may change about themselves: their password and their name.
  *
- * The last piece of a recovery story with no email in it. An owner can hand a teacher
- * a new password (settings/actions.ts, resetTeacherPassword) and can give a login to a
- * teacher who never had one — but until this action, nobody could change their own,
- * and two sentences already shipped promising otherwise: teacherForm.passwordHint
- * tells the teacher they can change it later, and the staff list refuses an owner
- * their own row with "you cannot change your own password here", which is only fair if
- * somewhere else can.
+ * The password came first, as the last piece of a recovery story with no email in it.
+ * An owner can hand a teacher a new password (settings/actions.ts,
+ * resetTeacherPassword) and can give a login to a teacher who never had one — but
+ * until that action, nobody could change their own, and two sentences already shipped
+ * promising otherwise: teacherForm.passwordHint tells the teacher they can change it
+ * later, and the staff list refuses an owner their own row with "you cannot change
+ * your own password here", which is only fair if somewhere else can.
  *
- * Every signed-in role reaches it — owner, manager, teacher, student, guardian. There
- * is no plan gate and there never should be: an account nobody can re-secure is not a
- * feature to sell in tiers.
+ * The name is the same shape of hole, found the same way. `profiles.full_name` was
+ * written at signup and when an owner issues a teacher their first login, and read on
+ * this screen, on the onboarding greeting, and in the app header on every single
+ * screen — and no code path anywhere ever updated it. A founder who mistyped their own
+ * name into the signup form was greeted by the mistake for ever.
+ *
+ * Every signed-in role reaches both — owner, manager, teacher, student, guardian.
+ * There is no plan gate and there never should be: an account nobody can re-secure is
+ * not a feature to sell in tiers, and neither is one's own name.
  */
+import { revalidatePath } from 'next/cache'
 import { createClient as createStatelessClient } from '@supabase/supabase-js'
 
 import { createClient } from '@/lib/supabase/server'
 import { requireCenter, getSession, AuthError } from '@/lib/auth/session'
 import { MIN_PASSWORD } from '@/lib/auth/password'
 import { phoneToLoginEmail } from '@/lib/bd/phone'
+import { MAX_NAME } from '@/lib/limits'
 import { dict, DEFAULT_LOCALE } from '@/lib/i18n'
-import { passwordTooShort } from '@/lib/i18n/messages'
+import { nameTooLong, passwordTooShort } from '@/lib/i18n/messages'
 import type { CenterSession } from '@/lib/auth/session'
 import type { Database } from '@/lib/supabase/types'
 
 export type AccountState = { error?: string; ok?: string } | null
+
+/**
+ * The caller, or the sentence to show somebody who has stopped being one.
+ *
+ * The same conversion (app)/settings/actions.ts does at its own `guard`: the require*
+ * helpers throw, and a form wants a sentence. There is only one way to fail it here —
+ * nobody is signed in — because every role that reaches this screen is allowed to
+ * change their own password and their own name, so there is one message and no table
+ * of them. A caller with no session has no language either, hence the default.
+ */
+async function caller(): Promise<CenterSession | AccountState> {
+  try {
+    return await requireCenter()
+  } catch (err) {
+    if (err instanceof AuthError) {
+      const who = await getSession()
+      return { error: dict(who?.locale ?? DEFAULT_LOCALE).denied.title }
+    }
+    throw err
+  }
+}
+
+function isSession(value: CenterSession | AccountState): value is CenterSession {
+  return value !== null && 'userId' in value
+}
 
 /**
  * Proof that the person holding this session is the person who owns it.
@@ -59,23 +92,8 @@ export async function changeOwnPassword(
   _prev: AccountState,
   formData: FormData,
 ): Promise<AccountState> {
-  /*
-   * The same conversion (app)/settings/actions.ts does at its own `guard`: the
-   * require* helpers throw, and a form wants a sentence. There is only one way to
-   * fail it here — nobody is signed in — because every role that reaches this screen
-   * is allowed to change their own password, so there is one message and no table of
-   * them. A caller with no session has no language either, hence the default.
-   */
-  let session: CenterSession
-  try {
-    session = await requireCenter()
-  } catch (err) {
-    if (err instanceof AuthError) {
-      const caller = await getSession()
-      return { error: dict(caller?.locale ?? DEFAULT_LOCALE).denied.title }
-    }
-    throw err
-  }
+  const session = await caller()
+  if (!isSession(session)) return session
 
   const t = dict(session.locale).account
 
@@ -97,8 +115,8 @@ export async function changeOwnPassword(
   if (next === current) return { error: t.errors.same }
 
   /*
-   * Read into a local before the await below, because `session` is a mutable binding
-   * and the narrowing has to survive being passed through a promise.
+   * Read into a local so the refusal below narrows it for `passwordIsCurrent`, which
+   * wants a number and not the possibility of one.
    *
    * A session without a number is a type-level possibility rather than a reachable
    * state: login is a phone and a password, and the phone is what the login address is
@@ -121,4 +139,62 @@ export async function changeOwnPassword(
   if (error) return { error: t.errors.failed }
 
   return { ok: t.done }
+}
+
+/**
+ * Fixing your own name.
+ *
+ * No current password asked for, unlike the form directly below it on the same screen,
+ * and a reader will notice the difference. The password box asks because a password
+ * change can lock the real owner of the account out of it; a name cannot. Nothing here
+ * grants access to anything, so the cost of the extra box would be a founder who gives
+ * up on fixing "Jamsehd" rather than go and remember their password.
+ *
+ * Only `profiles.full_name`. The same name also sits in the auth account's
+ * `user_metadata`, put there at signup — but the only thing that has ever read it is
+ * the database trigger that creates the profile row in the first place, so writing it
+ * again would be a second copy to keep in step with no reader to serve.
+ *
+ * And only this person's own row. The centre's spelling of a teacher lives on
+ * `teachers.name`, which the owner fixes on /settings/teachers, and the two are
+ * deliberately separate: a teacher may work at two centres, and neither owner gets to
+ * rewrite what the other's app — or the person's own — calls them.
+ */
+export async function changeOwnName(
+  _prev: AccountState,
+  formData: FormData,
+): Promise<AccountState> {
+  const session = await caller()
+  if (!isSession(session)) return session
+
+  const t = dict(session.locale).account
+
+  const name = String(formData.get('name') ?? '').trim()
+  if (!name) return { error: t.errors.nameRequired }
+  if (name.length > MAX_NAME) return { error: nameTooLong(session.locale) }
+
+  // Through the caller's own client and keyed on the session's own id, so
+  // `profiles_self_update` is what decides — the same shape as setLocale, and for the
+  // same reason: an id off a form is a suggestion, an id off a verified session is not.
+  //
+  // No unchanged-value early return, unlike the subject and exam-kind toggles. Those
+  // needed one because a replayed write would have flipped a switch back; setting a
+  // name to what it already is has no second meaning, so the replay `useOffline` may
+  // queue is harmless on its own.
+  const supabase = await createClient()
+  const { data: saved, error } = await supabase
+    .from('profiles')
+    .update({ full_name: name })
+    .eq('id', session.userId)
+    .select('id')
+
+  // Zero rows and no error is what a policy refusal looks like from here, which is why
+  // the row count is checked rather than just `error`.
+  if (error || !saved || saved.length === 0) return { error: t.errors.nameFailed }
+
+  // The whole layout, not one page: the header greets by this name and draws its first
+  // letter in the account button, on every screen in the app.
+  revalidatePath('/', 'layout')
+
+  return { ok: t.nameDone }
 }
