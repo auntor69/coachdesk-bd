@@ -710,6 +710,14 @@ export const bn = {
     invoicesAllExisted:
       'এই মাসের সব ইনভয়েস আগেই তৈরি করা হয়েছে। নতুন কিছু যোগ হয়নি।',
     /**
+     * Who was left off, said next to the confirmation that it worked. A batch with no
+     * monthly fee bills nobody and says nothing, so a month can come out a third
+     * short under a message that reads like success. The fix is named because it is
+     * one field on one screen.
+     */
+    invoicesSkipped: (n: number) =>
+      `${n} জনের বিল হয়নি — তাদের ব্যাচে মাসিক ফি বসানো নেই।`,
+    /**
      * The student's name comes first because that is the fear being answered: an
      * owner taking cash across a desk needs to see the money landed on the right
      * child before the next parent starts talking.

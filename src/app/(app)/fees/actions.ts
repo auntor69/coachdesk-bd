@@ -21,7 +21,7 @@ import {
   type CenterSession,
 } from '@/lib/auth/session'
 import { parseTaka, formatTaka, sumTaka, MAX_TAKA } from '@/lib/money'
-import { billableEnrollments } from '@/lib/fees/billable'
+import { billableEnrollments, unpricedStudents } from '@/lib/fees/billable'
 import { arrearsPlan, oldestEnrollments, ARREARS_FIELD_PREFIX } from '@/lib/fees/arrears'
 import { cancelVerdict } from '@/lib/fees/void'
 import { refundVerdict, refundable } from '@/lib/fees/refund'
@@ -100,7 +100,9 @@ function isSession(value: CenterSession | FeeState): value is CenterSession {
  *
  * Which enrolments are actually billed is billableEnrollments' decision, and the
  * reasoning for each exclusion is written there — a free batch, a closed one, and a
- * fee that did not survive the wire.
+ * fee that did not survive the wire. One of those exclusions is reported back: a
+ * batch left with no monthly fee is how a month's billing comes out short with a
+ * confirmation on screen saying it worked.
  */
 export async function generateInvoices(
   _prev: FeeState,
@@ -148,6 +150,16 @@ export async function generateInvoices(
 
   const billable = billableEnrollments(enrollments ?? [])
 
+  /**
+   * Students the run could not bill because their batch has no monthly fee.
+   *
+   * The one exclusion an owner has to hear about, and the only way this screen can
+   * report a success that is a third short. Read from the same rows and the same
+   * decision as the billing above, so it cannot describe a different set.
+   */
+  const unpriced = unpricedStudents(enrollments ?? [])
+  const warn = unpriced > 0 ? t.invoicesSkipped(unpriced) : undefined
+
   if (billable.length === 0) {
     return { error: t.errors.nothingToBill }
   }
@@ -181,10 +193,10 @@ export async function generateInvoices(
   revalidatePath('/dashboard')
 
   if (count === 0) {
-    return { ok: t.invoicesAllExisted }
+    return { ok: t.invoicesAllExisted, warn }
   }
 
-  return { ok: t.invoicesCreated(count, formatTaka(total)) }
+  return { ok: t.invoicesCreated(count, formatTaka(total)), warn }
 }
 
 /**

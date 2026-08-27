@@ -56,6 +56,12 @@ export function InvoiceGenerator({
             {state.ok}
           </p>
         )}
+        {/* Under the confirmation, not instead of it: the invoices really were
+            created, and this is who was left off. An owner who reads "42 created"
+            and nothing else has no way to find out that the thirty students in an
+            unpriced batch are missing from the board — the run looked like a
+            success, because as far as it went it was one. */}
+        {state?.warn && <Alert tone="warn">{state.warn}</Alert>}
 
         <div className="flex flex-col gap-1.5">
           <label htmlFor="periodMonth" className="font-medium text-ink">

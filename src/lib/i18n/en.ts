@@ -334,6 +334,20 @@ export const en: Dictionary = {
       `${count} ${count === 1 ? 'invoice' : 'invoices'} created — ${total} in total.`,
     invoicesAllExisted:
       'This month’s invoices were all created already. Nothing new was added.',
+    /**
+     * Who the run left off, said beside the confirmation that it worked.
+     *
+     * The one exclusion worth a sentence. A batch nobody put a price on bills
+     * nobody, silently, and the owner reads "42 invoices created" over a board that
+     * is thirty students short — until one of those parents says in March that they
+     * were never asked for anything.
+     *
+     * Students rather than batches, because the number an owner checks against is
+     * the one they can count on the board. The fix is named because it is one field
+     * on one screen and nothing else on this page hints at it.
+     */
+    invoicesSkipped: (n: number) =>
+      `${n} ${n === 1 ? 'student was' : 'students were'} not billed — their batch has no monthly fee set.`,
     received: (name: string, amount: string) => `${name} — ${amount} received.`,
     receivedInFull: (name: string, amount: string) =>
       `${name} — ${amount} received. Fee paid in full ✓`,
