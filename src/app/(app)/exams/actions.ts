@@ -26,6 +26,11 @@ import {
 } from '@/lib/auth/session'
 import { todayInDhaka } from '@/lib/bd/time'
 import { normalizeBdMobile } from '@/lib/bd/phone'
+import {
+  deleteVerdict,
+  figuresVerdict,
+} from '@/lib/exams/edit'
+import { readExamFacts } from '@/lib/exams/facts'
 import { planResultSms } from '@/lib/sms/result-dispatch'
 import type { OutreachChannel } from '@/lib/supabase/types'
 import { MAX_NAME, MAX_NOTE, clamp } from '@/lib/limits'
@@ -740,4 +745,248 @@ export async function logResultNotice(
   revalidatePath(`/exams/${exam.id}`)
 
   return { logged: true }
+}
+
+/**
+ * Correcting an exam created wrong, and removing one that should not exist.
+ *
+ * The insert used to be the only write path an exam had. A teacher creates one
+ * standing between two batches, from four fields, on a phone — so the total is 50
+ * for a paper out of 100, the title says "Model Test 1" when it was the second,
+ * and the tap that did not look like it worked created the whole exam twice. None
+ * of that could be undone: the wrong row sat on the list for ever showing
+ * "0/28 marked", putting an amber line on a teacher's own to-do list every day
+ * for a test that never happened, and a wrong total quietly turned every
+ * percentage built from it — the marks sheet, the weekly note to a parent, the
+ * at-risk signal, the printed report — into a different number.
+ *
+ * The rules are in lib/exams/edit.ts and not here, because the form has to say no
+ * before a round trip and the delete panel must not offer a button that will be
+ * refused. What is left for this file is counting the facts honestly.
+ */
+export type ExamEditState = { ok: true } | { ok: false; error: string } | null
+
+/**
+ * Changes the four things about an exam that can honestly be changed.
+
+ *
+ * Not the batch, and so not the subject. Marks are keyed by enrolment and an
+ * enrolment belongs to a batch, so moving the exam would leave every mark on it
+ * describing a child who was never in the room. The form does not draw the field
+ * and this action does not read it — the way to fix a wrong batch is to create the
+ * exam again on the right one.
+ */
+export async function updateExam(
+  _prev: ExamEditState,
+  formData: FormData,
+): Promise<ExamEditState> {
+  const caller = await teacherOrAbove()
+  if (!caller.ok) return { ok: false, error: caller.error }
+  const { session } = caller
+  const t = dict(session.locale).exams
+
+  // Re-checked here as in createExam, because this is a public HTTP endpoint and
+  // the policy's own refusal arrives as `editFailed`: "try again" at a thing that
+  // will never work.
+  if (!(await canManageExams())) {
+    return { ok: false, error: t.errors.noExamPermission }
+  }
+
+  const examId = String(formData.get('examId') ?? '')
+  const title = String(formData.get('title') ?? '').trim()
+  const examTypeId = String(formData.get('examTypeId') ?? '')
+  const totalMarks = Number(formData.get('totalMarks') ?? 0)
+  const rawPassMarks = String(formData.get('passMarks') ?? '').trim()
+  const rawDate = String(formData.get('examDate') ?? '')
+
+  // The same order and the same words as createExam, so a figure refused on the
+  // way in is refused identically on the way back.
+  if (!examId) return { ok: false, error: t.errors.noExam }
+  if (!title) return { ok: false, error: t.errors.nameRequired }
+  if (title.length > MAX_NAME) {
+    return { ok: false, error: nameTooLong(session.locale) }
+  }
+  if (!Number.isFinite(totalMarks) || totalMarks <= 0) {
+    return { ok: false, error: t.errors.totalUnreadable }
+  }
+  if (totalMarks > 1000) return { ok: false, error: t.errors.totalTooBig }
+
+  const passMarks = rawPassMarks === '' ? null : Number(rawPassMarks)
+  if (passMarks !== null && (!Number.isFinite(passMarks) || passMarks < 0)) {
+    return { ok: false, error: t.errors.passUnreadable }
+  }
+  if (passMarks !== null && passMarks > totalMarks) {
+    return { ok: false, error: t.errors.passOverTotal }
+  }
+
+  // Refused rather than defaulted to today, which is where this parts company with
+  // createExam. There the exam is new and today is a reasonable guess; here the row
+  // already holds a date somebody may have got right, and a teacher fixing a
+  // spelling would have the paper silently re-dated to the day they fixed it.
+  if (!DATE_RE.test(rawDate)) return { ok: false, error: t.errors.dateRequired }
+  const examDate = rawDate
+
+  const supabase = await createClient()
+
+  const { data: exam } = await supabase
+    .from('exams')
+    .select('id, total_marks, pass_marks, sms_sent_at')
+    .eq('coaching_center_id', session.active.centerId)
+    .eq('id', examId)
+    .maybeSingle()
+
+  if (!exam) return { ok: false, error: t.errors.noExam }
+
+  const facts = await readExamFacts(
+    supabase,
+    session.active.centerId,
+    exam.id,
+    Boolean(exam.sms_sent_at),
+  )
+  if (!facts) return { ok: false, error: t.errors.checkFailed }
+
+  // numeric arrives as a string from PostgREST, so both sides of the comparison go
+  // through Number() — otherwise an unchanged total reads as changed ('100' !== 100)
+  // and every edit to a sent exam's title would be refused.
+  const verdict = figuresVerdict(
+    facts,
+    {
+      total: Number(exam.total_marks),
+      pass: exam.pass_marks === null ? null : Number(exam.pass_marks),
+    },
+    { total: totalMarks, pass: passMarks },
+  )
+
+  if (verdict === 'sent') return { ok: false, error: t.errors.figuresSent }
+  if (verdict === 'belowMark') {
+    // The mark that produced the verdict, named: "cannot be lower than that" is
+    // useless without the number the teacher has to look for on the sheet. It is
+    // never null in this branch, and the fallback keeps that provable rather than
+    // inventing a second refusal.
+    return {
+      ok: false,
+      error: t.errors.totalBelowMark(facts.highestMark ?? totalMarks),
+    }
+  }
+
+  // The kind is optional and "—" is a legal answer, so an id that is not one of this
+  // centre's own becomes null instead of a message. The only way to submit one is by
+  // hand, and left alone the composite foreign key would refuse the update as a
+  // constraint name no reader can act on.
+  let typeId: string | null = null
+  if (examTypeId) {
+    const { data: kind } = await supabase
+      .from('exam_types')
+      .select('id')
+      .eq('coaching_center_id', session.active.centerId)
+      .eq('id', examTypeId)
+      .maybeSingle()
+    typeId = kind?.id ?? null
+  }
+
+  const { data: saved, error } = await supabase
+    .from('exams')
+    .update({
+      title,
+      exam_type_id: typeId,
+      total_marks: totalMarks,
+      pass_marks: passMarks,
+      exam_date: examDate,
+    })
+    .eq('coaching_center_id', session.active.centerId)
+    .eq('id', exam.id)
+    .select('id')
+
+  // Read back, for the reason saveMarks gives about its DELETE: an UPDATE that
+  // matches no policy changes zero rows and hands back `error: null`. Without this a
+  // teacher whose permission was withdrawn while the form was open would be told
+  // "Saved" and walk away from a total that never moved.
+  if (error || !saved || saved.length === 0) {
+    return { ok: false, error: t.errors.editFailed }
+  }
+
+  revalidatePath('/exams')
+  revalidatePath(`/exams/${exam.id}`)
+  return { ok: true }
+}
+
+/**
+ * Removes an exam nothing depends on yet, and refuses one anything does.
+ *
+ * The exam that needs this is the duplicate: one tap that did not look like it
+ * worked, two rows on the list, and an amber "0/28 marked" line on a teacher's own
+ * to-do list every day for a paper that was never sat. Nothing in the product could
+ * clear it — marking it would be a lie and there was no other way out.
+ *
+ * What this never does is take a marks sheet with it. The verdict refuses while any
+ * mark, any notice or a metered send exists, so no cascade can happen; the refusal
+ * names the strongest reason and, for the common one, the way through — clear the
+ * marks on the sheet, which the sheet already does.
+ */
+export async function deleteExam(
+  _prev: ExamEditState,
+  formData: FormData,
+): Promise<ExamEditState> {
+  const caller = await teacherOrAbove()
+  if (!caller.ok) return { ok: false, error: caller.error }
+  const { session } = caller
+  const t = dict(session.locale).exams
+
+  if (!(await canManageExams())) {
+    return { ok: false, error: t.errors.noExamPermission }
+  }
+
+  const examId = String(formData.get('examId') ?? '')
+  if (!examId) return { ok: false, error: t.errors.noExam }
+
+  const supabase = await createClient()
+
+  const { data: exam } = await supabase
+    .from('exams')
+    .select('id, sms_sent_at')
+    .eq('coaching_center_id', session.active.centerId)
+    .eq('id', examId)
+    .maybeSingle()
+
+  if (!exam) return { ok: false, error: t.errors.noExam }
+
+  const facts = await readExamFacts(
+    supabase,
+    session.active.centerId,
+    exam.id,
+    Boolean(exam.sms_sent_at),
+  )
+  if (!facts) return { ok: false, error: t.errors.checkFailed }
+
+  // A switch and not an if-chain, so a fifth DeleteVerdict is a type error here
+  // rather than an exam that silently deletes on a reason nobody wrote a sentence
+  // for. 'ok' is written out for the same reason.
+  switch (deleteVerdict(facts)) {
+    case 'sent':
+      return { ok: false, error: t.errors.deleteSent }
+    case 'told':
+      return { ok: false, error: t.errors.deleteTold(facts.noticeCount) }
+    case 'marked':
+      return { ok: false, error: t.errors.deleteMarked(facts.markCount) }
+    case 'ok':
+      break
+  }
+
+  const { data: gone, error } = await supabase
+    .from('exams')
+    .delete()
+    .eq('coaching_center_id', session.active.centerId)
+    .eq('id', exam.id)
+    .select('id')
+
+  // Read back, because a DELETE matching no policy removes nothing and reports
+  // nothing — the exact silence saveMarks documents. The caller navigates away on
+  // ok, so a false ok would leave the exam sitting on the list it just claimed to
+  // have cleared.
+  if (error || !gone || gone.length === 0) {
+    return { ok: false, error: t.errors.deleteFailed }
+  }
+
+  revalidatePath('/exams')
+  return { ok: true }
 }

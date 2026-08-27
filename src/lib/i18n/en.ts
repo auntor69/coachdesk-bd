@@ -911,6 +911,36 @@ export const en: Dictionary = {
       passOverTotal: 'The pass mark cannot be higher than the full marks.',
       createFailed: 'The exam could not be created. Please try again.',
 
+      /**
+       * Only the edit refuses a missing date — creating one falls back to today.
+       * See updateExam: the row already holds a date somebody may have got right.
+       */
+      dateRequired: 'Choose the date the exam was held.',
+      editFailed: 'The exam could not be changed. Please try again.',
+      deleteFailed: 'The exam could not be removed. Please try again.',
+      /**
+       * What was already on the exam could not be counted, so neither verdict can be
+       * trusted. Deliberately not phrased as a refusal of the change itself: nothing
+       * is wrong with what the teacher typed, and trying again usually works.
+       */
+      checkFailed:
+        'What is already on this exam could not be checked. Please try again.',
+      /**
+       * Names the mark, because "cannot be lower" is unusable without the number the
+       * teacher has to go and find on the sheet.
+       */
+      totalBelowMark: (highest: number) =>
+        `A mark of ${highest} is already entered, so the full marks cannot be lower than that.`,
+      /** Says what is still editable, so the reader does not abandon the whole fix. */
+      figuresSent:
+        'The results have already gone by SMS, so the full marks and the pass mark are fixed. The name and the date can still be corrected.',
+      deleteSent: 'This exam’s results have gone to guardians by SMS. It cannot be removed.',
+      deleteTold: (n: number) =>
+        `${n} ${n === 1 ? 'family has' : 'families have'} already been told this result. Correct the exam instead of removing it.`,
+      /** The common one, and the only refusal with a way through — so it says it. */
+      deleteMarked: (n: number) =>
+        `${n} ${n === 1 ? 'mark is' : 'marks are'} entered on this exam. Clear them on the marks sheet first, or correct the exam instead of removing it.`,
+
       noExam: 'That exam could not be found.',
       rosterUnreadable: 'The student list could not be read.',
       noStudents: 'No students were found.',
@@ -1000,6 +1030,49 @@ export const en: Dictionary = {
     passMarks: 'Pass mark',
     date: 'Exam date',
     submit: 'Create and enter marks',
+  },
+
+  /** The same fields again, on an exam that already exists. See the Bangla note. */
+  examEdit: {
+    back: 'Back to the exam',
+    title: 'Correct this exam',
+    lead:
+      'The name, the kind, the full marks and the date. Marks already on the sheet are left exactly where they are.',
+    /** Shown as a plain line, not a field: this is the one thing that cannot move. */
+    onBatch: (batch: string) => `Batch: ${batch}`,
+    cannotMove:
+      'An exam cannot be moved to another batch — its marks belong to this batch’s students. Create it on the right batch instead.',
+    dependsTitle: 'What is already on this exam',
+    marked: (n: number) => `${n} ${n === 1 ? 'mark' : 'marks'} entered`,
+    highest: (highest: number) =>
+      `The highest is ${highest}, so the full marks cannot go below it.`,
+    told: (n: number) =>
+      `${n} ${n === 1 ? 'family has' : 'families have'} been told this result from your own phone. Changing it here does not reach them.`,
+    frozen:
+      'The results have gone by SMS, so the full marks and the pass mark are fixed. The name and the date can still be corrected.',
+  },
+
+  /**
+   * The two controls on that screen, which are a client component — so strings only.
+   * Top-level for the reason batchForm gives: `T` only takes a top-level key, and
+   * every counted sentence above is a function the browser cannot call.
+   */
+  examEditForm: {
+    submit: 'Save changes',
+
+    removeOpen: 'Remove this exam',
+    removeHeading: 'Remove this exam?',
+    /**
+     * Says what is lost, which is nothing — the panel only opens when no mark and no
+     * message exists. An owner who created the same exam twice needs to be told that
+     * out loud before they will tap it.
+     */
+    removeWarning:
+      'It leaves the exam list for good. Nothing else changes: no mark is entered on it and nobody has been told about it.',
+    removeConfirm: 'Remove it',
+    removing: 'Removing…',
+    keep: 'Keep it',
+    blockedTitle: 'This exam cannot be removed',
   },
 
   batchForm: {

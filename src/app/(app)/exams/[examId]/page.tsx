@@ -236,6 +236,20 @@ export default async function ExamPage({
             </>
           )}
         </p>
+
+        {/* The way out of a mistyped exam, and deliberately quiet — the errand on this
+            screen is entering marks, not correcting the heading. Gated on the same
+            permission the edit screen and both its actions check, so a teacher without
+            it is never offered a door that answers 403. */}
+        {canMark && (
+          <Link
+            href={`/exams/${exam.id}/edit`}
+            className="mt-1 inline-flex min-h-tap items-center text-sm font-medium
+              text-brand-700"
+          >
+            {d.examEdit.title} →
+          </Link>
+        )}
       </div>
 
       {rows.length === 0 ? (
