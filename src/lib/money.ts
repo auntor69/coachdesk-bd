@@ -24,6 +24,22 @@
 const SUBUNIT = 100
 
 /**
+ * The largest amount the column can hold: numeric(10, 2) stops at 99999999.99.
+ *
+ * Here rather than beside each caller because it is a fact about the column, and a
+ * second copy of it would be a second answer to "how much is too much" — one of
+ * which would be wrong the day the column changes.
+ *
+ * It is a ceiling, not a plausibility check. No coaching fee is near it, and any
+ * tighter number would be this file inventing a policy: a student who owes ৳60,000
+ * after a year of arrears is unusual and real, and a cap that refused them would be
+ * a bug an owner cannot work around. Catching a fat-fingered ৳30,000,000 is the job
+ * of the running total on the screen, which the owner reads before they submit —
+ * and no cap catches ৳30,000 typed for ৳3,000 anyway.
+ */
+export const MAX_TAKA = 99_999_999
+
+/**
  * Taka to integer poisha.
  *
  * Rounds, because the input is already a float and may be a hair under the value

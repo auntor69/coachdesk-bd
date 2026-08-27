@@ -20,8 +20,9 @@ import {
   AuthError,
   type CenterSession,
 } from '@/lib/auth/session'
-import { parseTaka, formatTaka, sumTaka } from '@/lib/money'
+import { parseTaka, formatTaka, sumTaka, MAX_TAKA } from '@/lib/money'
 import { billableEnrollments } from '@/lib/fees/billable'
+import { arrearsPlan, oldestEnrollments, ARREARS_FIELD_PREFIX } from '@/lib/fees/arrears'
 import { cancelVerdict } from '@/lib/fees/void'
 import { refundVerdict, refundable } from '@/lib/fees/refund'
 import { discountVerdict, maxDiscount } from '@/lib/fees/discount'
@@ -379,9 +380,6 @@ const CHANNELS = new Set<OutreachChannel>(['sms', 'whatsapp', 'call'])
  */
 const MAX_BODY = 1000
 
-/** numeric(10, 2) stops at 99999999.99, and no coaching fee is near it. */
-const MAX_AMOUNT = 99_999_999
-
 export type FeeReminderLog = {
   invoiceId: string
   channel: OutreachChannel
@@ -423,7 +421,7 @@ export async function logFeeReminder(
   if (!invoiceId || !CHANNELS.has(channel)) return { logged: false }
 
   const amount = Number(input?.amount)
-  if (!Number.isFinite(amount) || amount <= 0 || amount > MAX_AMOUNT) {
+  if (!Number.isFinite(amount) || amount <= 0 || amount > MAX_TAKA) {
     return { logged: false }
   }
 
@@ -954,4 +952,172 @@ export async function discountInvoice(
   }
 
   return { ok: t.discounted(name, waived) }
+}
+
+/* -------------------------------------------------------------------------- */
+/* What the centre was already owed before any of this existed                 */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * How many names the refusal message lists before it stops.
+ *
+ * The count in the sentence is always the true one; this only bounds the list. Eight
+ * is about what fits on a phone before the message stops being read, and an owner
+ * with more wrong boxes than that has mis-typed a column rather than a cell.
+ */
+const ARREARS_NAMES_SHOWN = 8
+
+/**
+ * Records what families already owed before the centre started using this product.
+ *
+ * WHY THIS IS THE MOST IMPORTANT WRITE IN THE FEE BOARD. A centre is signed up by
+ * loading their register, opening this board on a phone in front of the owner, and
+ * showing them their own outstanding total — most owners do not know that figure
+ * precisely, and seeing it is the moment they buy. Until this existed the figure was
+ * ৳0 on day one, because the importer loads students and the generator only bills the
+ * month it is pressed in.
+ *
+ * Running the generator over past months is not the same thing and is not a
+ * substitute: it would bill every active student the full batch fee for months most
+ * families have already settled in cash, and netting that off would take two hundred
+ * payment entries. What is wanted is one figure per family, typed off the register.
+ *
+ * THE MONTH MUST HAVE ENDED, and this is the only rule the screen cannot enforce
+ * alone. `fee_invoices` is unique on `(enrollment_id, period_month)`, so a row written
+ * here into the current month takes the slot the generator was going to use — and
+ * because the generator's upsert ignores duplicates, that family's real monthly fee
+ * would never be billed and nobody would be told. A finished month is also what makes
+ * the board read correctly: a past due date is overdue, so the chase list picks the
+ * family up immediately and the month-close screen carries the debt as opening
+ * arrears, which is exactly what it is.
+ *
+ * SAFE TO PRESS TWICE, through the same unique key rather than in spite of it. Which
+ * enrolment each debt hangs off is decided in lib/fees/arrears.ts — the oldest active
+ * one, tie-broken by id — precisely so a replayed request lands on the same slot and
+ * writes nothing. `useOffline` replays server actions, and a family billed twice for
+ * their arrears is the one failure this screen must not have.
+ *
+ * ONE BAD BOX REFUSES THE WHOLE SUBMISSION, unlike the roster importer, which loads
+ * what it can. See arrearsPlan for the argument: a student missing from a list is
+ * visibly missing, and an outstanding total that is short by one family looks exactly
+ * like a total that is right.
+ */
+export async function recordArrears(
+  _prev: FeeState,
+  formData: FormData,
+): Promise<FeeState> {
+  const session = await feeAdmin()
+  if (!isSession(session)) return session
+
+  const t = dict(session.locale).fees
+
+  // Strictly before the month it is being loaded in. Not merely a valid month: see
+  // the note above for what the current month would cost the generator.
+  const rawMonth = String(formData.get('periodMonth') ?? '')
+  if (!MONTH_RE.test(rawMonth) || rawMonth >= currentPeriodMonth()) {
+    return { error: t.errors.arrearsMonthNotPast }
+  }
+  const periodMonth = rawMonth
+
+  // Refused outside 1–28 rather than clamped, exactly as the generator does it and
+  // for the same reason — a deadline that quietly moved is a phone call from a parent.
+  const rawDueDay = Number(formData.get('dueDay') ?? 10)
+  if (!Number.isInteger(rawDueDay) || rawDueDay < 1 || rawDueDay > 28) {
+    return { error: t.errors.dueDayRange }
+  }
+  const dueDate = `${periodMonth.slice(0, 7)}-${String(rawDueDay).padStart(2, '0')}`
+
+  const entries: { studentId: string; raw: string }[] = []
+  for (const [key, value] of formData.entries()) {
+    if (!key.startsWith(ARREARS_FIELD_PREFIX) || typeof value !== 'string') continue
+    entries.push({ studentId: key.slice(ARREARS_FIELD_PREFIX.length), raw: value })
+  }
+
+  const supabase = await createClient()
+
+  // No batch filter and no fee, unlike the generator's read. An old debt exists
+  // whether or not the class it was owed for is still running, and its amount is
+  // typed rather than derived — the batch price is what a family owes each month, not
+  // what they failed to pay over the three before this app arrived.
+  const { data: enrollments, error: rosterError } = await supabase
+    .from('enrollments')
+    .select('id, student_id, enrolled_at')
+    .eq('coaching_center_id', session.active.centerId)
+    .eq('status', 'active')
+
+  if (rosterError) return { error: t.errors.rosterUnreadable }
+
+  const plan = arrearsPlan(entries, oldestEnrollments(enrollments ?? []))
+
+  // Named boxes before anything else, so an owner reading the message knows which
+  // cells to go back to. The extra query is on the failure path only.
+  if (plan.rejects.length > 0) {
+    const { data: named } = await supabase
+      .from('students')
+      .select('id, name')
+      .eq('coaching_center_id', session.active.centerId)
+      .in(
+        'id',
+        plan.rejects.slice(0, ARREARS_NAMES_SHOWN).map((r) => r.studentId),
+      )
+
+    const nameById = new Map((named ?? []).map((s) => [s.id, s.name]))
+    const unknown = dict(session.locale).common.unknown
+    const reasons = t.errors.arrearsReasons
+
+    const details = plan.rejects
+      .slice(0, ARREARS_NAMES_SHOWN)
+      .map((r) => `${nameById.get(r.studentId) ?? unknown} (${reasons[r.problem]})`)
+      .join(', ')
+
+    return {
+      error: t.errors.arrearsRejected(
+        plan.rejects.length,
+        plan.rejects.length > ARREARS_NAMES_SHOWN ? `${details}…` : details,
+      ),
+    }
+  }
+
+  if (plan.invoices.length === 0) return { error: t.errors.arrearsNothingTyped }
+
+  // ignoreDuplicates, like the generator's, and for a stronger reason: this is the
+  // request `useOffline` may replay. A family who already has a bill in that month is
+  // left exactly as they are — the count below is what actually landed, so the
+  // difference between the two is reportable rather than invisible.
+  const { data: inserted, error: insertError } = await supabase
+    .from('fee_invoices')
+    .upsert(
+      plan.invoices.map((i) => ({
+        coaching_center_id: session.active.centerId,
+        student_id: i.studentId,
+        enrollment_id: i.enrollmentId,
+        period_month: periodMonth,
+        amount_bdt: i.amount,
+        due_date: dueDate,
+        // The only durable mark of why a bill exists in a month that predates the
+        // centre's first invoice. Nothing renders it, the same way nothing renders
+        // the note on a payment — it is a record on the row, not a screen. In the
+        // owner's own language, because they are who would read it.
+        note: dict(session.locale).arrears.title,
+      })),
+      { onConflict: 'enrollment_id,period_month', ignoreDuplicates: true },
+    )
+    .select('id, amount_bdt')
+
+  if (insertError) return { error: t.errors.arrearsFailed }
+
+  const count = inserted?.length ?? 0
+  const total = sumTaka((inserted ?? []).map((i) => Number(i.amount_bdt)))
+
+  revalidatePath('/fees')
+  revalidatePath('/dashboard')
+
+  if (count === 0) return { ok: t.arrearsAllExisted }
+
+  const skipped = plan.invoices.length - count
+
+  return {
+    ok: t.arrearsCreated(count, formatTaka(total)),
+    ...(skipped > 0 ? { warn: t.arrearsSomeExisted(skipped) } : {}),
+  }
 }

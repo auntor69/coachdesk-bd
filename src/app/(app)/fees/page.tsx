@@ -400,6 +400,26 @@ export default async function FeesPage({
         />
       )}
 
+      {/* The other way a bill gets onto this board: what was already owed before
+          any of this existed. Here rather than in the outstanding card above,
+          because it is a setup job done once and not a reading of the month — but
+          directly under the generator, which is where an owner whose outstanding
+          total says ৳0 on their first afternoon is already looking. It stays after
+          that first afternoon rather than hiding once the board has rows, because a
+          centre that loads three batches this week and two more next month needs it
+          the second time as well. */}
+      {canWrite && (
+        <p className="flex">
+          <Link
+            href="/fees/arrears"
+            className="inline-flex min-h-tap items-center font-medium
+              text-brand-800 underline"
+          >
+            {t.arrearsLink} →
+          </Link>
+        </p>
+      )}
+
       {/* Only once something is owed. On an all-paid board it would be a link to
           a screen that can only say "nothing to do", which the empty board
           already says. */}

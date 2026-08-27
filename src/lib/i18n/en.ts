@@ -300,6 +300,9 @@ export const en: Dictionary = {
     registerLink: 'This month’s collection register',
     closeLink: 'This month’s full picture',
 
+    /** The way onto the old-dues screen. See the Bangla note. */
+    arrearsLink: 'Load the old dues',
+
     today: 'today',
     yesterday: 'yesterday',
 
@@ -326,6 +329,14 @@ export const en: Dictionary = {
     cancelledCount: (n: number) => `${n} cancelled ${n === 1 ? 'bill' : 'bills'}`,
     cancelledBody:
       'These bills are nobody’s arrears any more. They are out of the outstanding total, and no guardian will be reminded about them. Put one back if it was cancelled by mistake.',
+
+    /** What loading a centre's old dues says back. See the Bangla notes. */
+    arrearsCreated: (count: number, total: string) =>
+      `Old dues recorded for ${count} ${count === 1 ? 'student' : 'students'} — ${total} in total.`,
+    arrearsSomeExisted: (n: number) =>
+      `${n} already had a bill in that month and ${n === 1 ? 'was' : 'were'} left alone.`,
+    arrearsAllExisted:
+      'They all already have a bill in that month. Nothing new was added.',
 
     errors: {
       forbidden: 'Only an owner or a manager can keep the fee records.',
@@ -358,6 +369,23 @@ export const en: Dictionary = {
       discountTooMuch: (max: string) =>
         `The fee on this bill is ${max}. A waiver cannot be more than that.`,
       discountFailed: 'The waiver was not recorded. Please try again.',
+
+      /** The four ways loading old dues is refused. See the Bangla notes. */
+      arrearsMonthNotPast:
+        'Old dues have to be recorded against a month that has already ended — this month’s invoices are raised with the button above.',
+      arrearsNothingTyped:
+        'No amounts were filled in. Write what is owed in the boxes of the families who are behind.',
+      arrearsRejected: (n: number, details: string) =>
+        `${n} ${n === 1 ? 'box needs' : 'boxes need'} fixing, and nothing was saved — ${details}`,
+      arrearsFailed: 'The old dues were not recorded. Please try again.',
+
+      /** Two or three words each, read inside a list of names. See the Bangla note. */
+      arrearsReasons: {
+        unreadable: 'cannot read',
+        negative: 'below zero',
+        tooLarge: 'far too large',
+        notEnrolled: 'not in a batch',
+      },
     },
   },
 
@@ -690,6 +718,32 @@ export const en: Dictionary = {
     submit: 'Create invoices',
     safeToRepeat:
       'One invoice per active enrolment. Anything already created is left alone — so pressing this twice is safe.',
+  },
+
+  /** The old-dues screen. A client component, so strings only. See the Bangla notes. */
+  arrears: {
+    title: 'Old dues',
+    subtitle: 'Load what was already owed before this app',
+    backToFees: 'Back to fees',
+    howTo:
+      'Work down your register and write what each family owes in their box. Leave a box empty for anyone who is square. Once saved, these amounts show on the fee board as outstanding and the families appear on the chase list.',
+    month: 'Recorded against',
+    monthHint:
+      'A month that has already ended — this month’s fees are raised with the button above',
+    dueDay: 'The deadline was',
+    dueDayHint: 'The day of that month it was meant to be paid by',
+    dayOption: 'day {d}',
+    colStudent: 'Student',
+    colAmount: 'Owed (৳)',
+    amountFor: 'Owed by {name}',
+    filledCount: '{n} filled in',
+    total: 'Total',
+    submit: 'Add the old dues',
+    emptyTitle: 'Nobody is enrolled in a batch yet',
+    emptyBody:
+      'Enrol the students in their batches first. Old dues attach to an active enrolment, which is how they reach the board.',
+    safeToRepeat:
+      'Anyone who already has a bill in that month is left alone — so pressing this twice is safe.',
   },
 
   exams: {

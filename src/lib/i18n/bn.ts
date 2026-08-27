@@ -668,6 +668,14 @@ export const bn = {
      */
     closeLink: 'এই মাসের পুরো হিসাব',
 
+    /**
+     * The way onto the old-dues screen, under the invoice generator rather than in
+     * the total card. It is a setup job done once, not a reading of the month — but
+     * it sits directly above the empty board, which is exactly where an owner whose
+     * outstanding total says ৳০ will be looking.
+     */
+    arrearsLink: 'আগের বাকি তুলে দিন',
+
     /** When a reminder went out, as a person would say it. Anything older is a date. */
     today: 'আজ',
     yesterday: 'গতকাল',
@@ -757,6 +765,28 @@ export const bn = {
     cancelledBody:
       'এই বিলগুলো আর কারো বাকিতে নেই, মোট বকেয়ায় নেই, এবং কাউকে এগুলোর জন্য মনে করিয়ে দেওয়া হবে না। ভুলে বাতিল হলে আবার চালু করে নিন।',
 
+    /**
+     * What loading a centre's old dues says back.
+     *
+     * The count and the total together, like `invoicesCreated`, because this is the
+     * one press in the product that puts a figure on the board the owner has never
+     * seen before — they are about to check it against their own register, and the
+     * two numbers they need are how many families and how much.
+     *
+     * `arrearsSomeExisted` is a warning and not an error: the write went through for
+     * everybody else, and the families it skipped already had a bill in that month,
+     * which is the upsert doing its job. An owner who pressed twice must be able to
+     * tell that from a failure. `arrearsAllExisted` is the whole submission skipped,
+     * which is what a replayed request looks like, so it says nothing was added
+     * rather than that something went wrong.
+     */
+    arrearsCreated: (count: number, total: string) =>
+      `${count} জনের পুরনো বাকি যোগ হয়েছে — মোট ${total}।`,
+    arrearsSomeExisted: (n: number) =>
+      `${n} জনের ওই মাসে আগেই বিল ছিল, তাদের হিসাব বদলানো হয়নি।`,
+    arrearsAllExisted:
+      'এই সবার ওই মাসের বিল আগেই আছে। নতুন কিছু যোগ হয়নি।',
+
     errors: {
       forbidden: 'ফি-এর হিসাব শুধু মালিক বা ম্যানেজার রাখতে পারেন।',
       dueDayRange: 'তারিখ ১ থেকে ২৮-এর মধ্যে দিন।',
@@ -831,6 +861,43 @@ export const bn = {
       discountTooMuch: (max: string) =>
         `এই বিলের ফি ${max}, ছাড় এর বেশি হতে পারে না।`,
       discountFailed: 'ছাড়ের হিসাব লেখা হয়নি। আবার চেষ্টা করুন।',
+
+      /**
+       * The four ways loading old dues is refused.
+       *
+       * `arrearsMonthNotPast` is the one rule the screen cannot enforce for itself. Old
+       * dues have to land in a month that has finished, because the invoice generator
+       * owns the current month — a slot filled here would make it skip that family, and
+       * their actual monthly fee would never be billed. Said in terms of what the owner
+       * is choosing, not in terms of the unique key underneath it.
+       *
+       * `arrearsRejected` names the boxes. It is the only message on this screen that
+       * has to, because the owner is looking at three hundred of them and a count on its
+       * own would send them scrolling. Each name carries its own reason, since a typo and
+       * a minus sign need different corrections. Nothing was saved, and the sentence says
+       * so first — an owner who read "3 boxes could not be read" and nothing else would
+       * assume the other 297 went in.
+       */
+      arrearsMonthNotPast:
+        'পুরনো বাকি শেষ হয়ে যাওয়া কোনো মাসের হিসাবে লিখতে হবে — চলতি মাসের ইনভয়েস উপরের বোতাম দিয়ে তৈরি হয়।',
+      arrearsNothingTyped:
+        'কোনো ঘরে টাকার পরিমাণ লেখা হয়নি। যাদের বাকি আছে তাদের ঘরে টাকা লিখুন।',
+      arrearsRejected: (n: number, details: string) =>
+        `${n}টি ঘর ঠিক করতে হবে, কিছুই সেভ হয়নি — ${details}`,
+      arrearsFailed: 'পুরনো বাকি যোগ হয়নি। আবার চেষ্টা করুন।',
+
+      /**
+       * Two or three words each, because they are read inside a list of names. What is
+       * wrong with the box, not what the owner should do about it — the correction is
+       * obvious from the reason, and a sentence per name would make the line unreadable
+       * at three names, let alone eight.
+       */
+      arrearsReasons: {
+        unreadable: 'পড়া যায়নি',
+        negative: 'শূন্যের কম',
+        tooLarge: 'অনেক বড়',
+        notEnrolled: 'ব্যাচে নেই',
+      },
     },
   },
 
@@ -1610,6 +1677,52 @@ export const bn = {
     submit: 'ইনভয়েস তৈরি করুন',
     safeToRepeat:
       'প্রতিটি চালু ভর্তির জন্য একটি ইনভয়েস। আগে তৈরি হয়ে থাকলে আবার তৈরি হবে না — তাই দুইবার চাপলেও সমস্যা নেই।',
+  },
+
+  /**
+   * The screen that loads what a centre was already owed before this app existed.
+   *
+   * A client component — one box per student and a total that adds up as they are
+   * typed — so: strings only, and the ones with a figure in them are `{}` templates
+   * filled in the browser. See ./fill.ts.
+   *
+   * Every sentence here is written for the owner sitting beside their paper register
+   * with the founder's phone in front of them. That is the only time this screen is
+   * ever opened, and if it needs explaining twice the centre does not get signed up.
+   */
+  arrears: {
+    title: 'পুরনো বাকি',
+    subtitle: 'অ্যাপ চালু করার আগে যা বাকি ছিল, একবারে তুলে দিন',
+    backToFees: 'ফি বোর্ডে ফিরুন',
+    /**
+     * The one paragraph that has to land. An owner does not think of this as
+     * "creating invoices" — they think of it as copying their খাতা in, and the
+     * sentence has to say that before it says anything about months or dates.
+     */
+    howTo:
+      'খাতা দেখে যার যত টাকা বাকি, তার ঘরে সেটা লিখুন। যাদের কিছু বাকি নেই তাদের ঘর খালি রাখুন। সেভ করলে এই টাকাগুলো ফি বোর্ডে বকেয়া হিসেবে উঠবে, আর বাকির তালিকায় পরিবারগুলো চলে আসবে।',
+    month: 'কোন মাসের হিসাবে',
+    /**
+     * Not a hint about the input, a hint about the rule. The generator owns the
+     * current month, and a bill written here into that month would make it skip the
+     * family — so the list only offers finished months and this line says why.
+     */
+    monthHint: 'শেষ হয়ে যাওয়া একটি মাস — চলতি মাসের ফি উপরের বোতাম দিয়ে তৈরি হবে',
+    dueDay: 'শেষ তারিখ ছিল',
+    dueDayHint: 'ওই মাসের কত তারিখের মধ্যে দেওয়ার কথা ছিল',
+    dayOption: '{d} তারিখ',
+    colStudent: 'শিক্ষার্থী',
+    colAmount: 'বাকি (৳)',
+    /** The box's own label, read out by a screen reader. See the page. */
+    amountFor: '{name}-এর বাকি',
+    filledCount: '{n} জনের বাকি লেখা হয়েছে',
+    total: 'মোট',
+    submit: 'পুরনো বাকি যোগ করুন',
+    emptyTitle: 'ব্যাচে ভর্তি করা শিক্ষার্থী নেই',
+    emptyBody:
+      'আগে শিক্ষার্থীদের ব্যাচে ভর্তি করুন। পুরনো বাকি একটি চালু ভর্তির সাথে যুক্ত হয়েই বোর্ডে ওঠে।',
+    safeToRepeat:
+      'ওই মাসে যার বিল আগেই আছে, তার হিসাব বদলাবে না — তাই দুইবার চাপলেও সমস্যা নেই।',
   },
 
   /**
