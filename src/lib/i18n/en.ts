@@ -1005,6 +1005,18 @@ export const en: Dictionary = {
     noStudentsBody:
       'Add students to the batch and their names will arrive here to be marked.',
 
+    /**
+     * The sheet is not drawn, because one of the two reads it is built from did not
+     * arrive — see the note on the page for what saving a blank sheet would have done.
+     *
+     * It names the marks rather than "this screen", and it says they are safe. That is
+     * the sentence a teacher needs: the fear on this screen is not a slow page, it is
+     * that a week of marks has gone, and the reader who is not told that plainly starts
+     * typing them again from the answer scripts.
+     */
+    sheetUnreadable:
+      'The marks for this exam could not be read just now, so the sheet is not shown — no marks have been lost. Please try again in a moment.',
+
     newTitle: 'New exam',
     needBatchTitle: 'You need a batch first',
     needBatchBody:

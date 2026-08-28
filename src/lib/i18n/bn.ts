@@ -1949,6 +1949,10 @@ export const bn = {
     noStudentsBody:
       'ব্যাচে শিক্ষার্থী যোগ করলে তাদের নাম এখানে নম্বর দেওয়ার জন্য চলে আসবে।',
 
+    /** See en.exams.sheetUnreadable for why this says the marks are safe. */
+    sheetUnreadable:
+      'এই পরীক্ষার নম্বর এখন পড়া গেল না, তাই নম্বর বসানোর তালিকা দেখানো হয়নি — কোনো নম্বর হারায়নি। একটু পরে আবার চেষ্টা করুন।',
+
     newTitle: 'নতুন পরীক্ষা',
     needBatchTitle: 'আগে একটি ব্যাচ দরকার',
     needBatchBody:

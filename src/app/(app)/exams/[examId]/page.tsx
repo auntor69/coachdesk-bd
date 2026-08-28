@@ -82,8 +82,46 @@ export default async function ExamPage({
         .order('created_at', { ascending: false }),
     ])
 
+  /*
+   * NEITHER OF THE TWO READS THE SHEET IS BUILT FROM MAY BE TAKEN AS EMPTY, AND THE
+   * MARKS ONE IS THE WORST INSTANCE OF THAT MISTAKE IN THIS PRODUCT.
+   *
+   * `exam_results` read as an empty list draws every box on the sheet blank — and a
+   * blank box is not "no mark yet" to the action behind the save button. `saveMarks`
+   * says so in its own words: "A blanked field is a deliberate erase, not leave it as it
+   * was", and it is right to, because a stale mark left behind after a correction is a
+   * wrong number sent to a parent. So a teacher who opens a sheet that was marked last
+   * week, finds it empty, types the three they have in hand and saves has just deleted
+   * the other thirty-seven — silently, with a green "marks saved", and the action cannot
+   * tell that from a deliberate clearing because its own read succeeded.
+   *
+   * The roster, for the reason the attendance screen gives: an empty one has a sentence
+   * of its own here, and "no students in this batch" is a statement about the batch when
+   * the truth was about the read.
+   *
+   * Not the notices read. Unread it says nobody has been told, so a family may hear the
+   * result twice; withheld, the ones who have not heard at all would not be listed. The
+   * cheaper mistake is the one that sends a message.
+   */
+  if (enrollments === null || results === null) {
+    return (
+      <div className="flex flex-col gap-4">
+        <Link
+          href="/exams"
+          className="inline-flex min-h-tap items-center text-ink-soft hover:text-ink"
+        >
+          ← {t.title}
+        </Link>
+        <h1 className="text-xl font-bold text-ink">{exam.title}</h1>
+        <Card className="border-late/30 bg-late/5">
+          <p className="font-medium text-ink">{t.sheetUnreadable}</p>
+        </Card>
+      </div>
+    )
+  }
+
   const saved = new Map(
-    (results ?? []).map((r) => [
+    results.map((r) => [
       r.enrollment_id,
       {
         // Number() drops the trailing .00 that Postgres numerics arrive with,
@@ -98,7 +136,7 @@ export default async function ExamPage({
     ]),
   )
 
-  const rows: MarksRow[] = (enrollments ?? [])
+  const rows: MarksRow[] = enrollments
     .map((enrollment) => {
       const student = Array.isArray(enrollment.students)
         ? enrollment.students[0]
@@ -121,7 +159,7 @@ export default async function ExamPage({
   // student_code by student id, for the notice list below. `planResultSms` answers
   // who may be told and what to say — not what the register calls them.
   const codes = new Map<string, string | null>()
-  for (const enrollment of enrollments ?? []) {
+  for (const enrollment of enrollments) {
     const student = Array.isArray(enrollment.students)
       ? enrollment.students[0]
       : enrollment.students
