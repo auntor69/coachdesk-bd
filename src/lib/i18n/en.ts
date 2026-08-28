@@ -1153,6 +1153,27 @@ export const en: Dictionary = {
         `${n} ${n === 1 ? 'mark is' : 'marks are'} entered on this exam. Clear them on the marks sheet first, or correct the exam instead of removing it.`,
 
       noExam: 'That exam could not be found.',
+      /**
+       * The exam row, when the read for it did not arrive — which `noExam` above
+       * answered for as well, on all five of the actions that open with it.
+       *
+       * “That exam could not be found” is a sentence about a row that is gone, and
+       * every one of the five reads it a different, wrong way. On the delete button it
+       * is the friendliest reading of all: the exam has already been removed, so stop.
+       * The exam is still there and its results are still going out. On the marks sheet
+       * it is forty marks refused with no reason to try again, so the teacher goes back
+       * to /exams, does not find what they were told to expect, and makes the exam
+       * afresh — two exams, marks on one, the SMS keyed to the other. On the send and
+       * decline buttons it is a teacher deciding the question of whether parents hear
+       * about this test has been settled for them.
+       *
+       * So it says what did not happen instead of what does not exist. All three
+       * clauses are load-bearing across the five callers: nothing saved for the sheet
+       * and the edit form, nothing sent for the two SMS buttons, not deleted for the
+       * one that would otherwise be believed.
+       */
+      examUnreadable:
+        'That exam could not be read just now, so nothing was saved and no SMS was sent. It has not been deleted — please try again in a moment.',
       rosterUnreadable: 'The student list could not be read.',
       noStudents: 'No students were found.',
       marksNegative: 'A mark cannot be negative.',

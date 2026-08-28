@@ -245,13 +245,16 @@ export async function saveMarks(
   // RLS decides whether this teacher may touch this exam at all; the centre
   // filter decides which of their centres this sheet belongs to. Both are
   // needed — a teacher at two centres passes the policy for either one's exams.
-  const { data: exam } = await supabase
+  const { data: exam, error: examError } = await supabase
     .from('exams')
     .select('id, batch_id, total_marks')
     .eq('coaching_center_id', session.active.centerId)
     .eq('id', examId)
     .maybeSingle()
 
+  // A sheet of marks refused with "that exam could not be found" is a teacher
+  // typing them all again into a second exam — see examUnreadable.
+  if (examError) return { ok: false, error: t.errors.examUnreadable }
   if (!exam) return { ok: false, error: t.errors.noExam }
 
   const total = Number(exam.total_marks)
@@ -403,13 +406,16 @@ export async function declineResultSms(
   // write: a teacher at two centres passes RLS for both, so without it this button
   // can silence the result SMS for an exam at the centre they are not looking at,
   // and the only symptom is parents who never hear about a test.
-  const { data: exam } = await supabase
+  const { data: exam, error: examError } = await supabase
     .from('exams')
     .select('id')
     .eq('coaching_center_id', session.active.centerId)
     .eq('id', examId)
     .maybeSingle()
 
+  // The one button here silences the result SMS, so "could not be found" reads as
+  // the question having been settled. It has not; the messages still go.
+  if (examError) return { ok: false, error: t.errors.examUnreadable }
   if (!exam) return { ok: false, error: t.errors.noExam }
 
   // The admin client, and this is the change that makes the button work at all.
@@ -472,13 +478,16 @@ export async function sendResultSms(
   // whole money path hangs off: everything below charges `centerId`, so if the
   // exam came from the other centre a teacher belongs to, one centre's credits
   // would pay for the other centre's messages.
-  const { data: exam } = await supabase
+  const { data: exam, error: examError } = await supabase
     .from('exams')
     .select('id, title, batch_id, sms_sent_at')
     .eq('coaching_center_id', centerId)
     .eq('id', examId)
     .maybeSingle()
 
+  // Nothing has been charged and nothing has been sent, which is what the reader of
+  // this one needs told — see examUnreadable.
+  if (examError) return { ok: false, error: t.errors.examUnreadable }
   if (!exam) return { ok: false, error: t.errors.noExam }
 
   if (exam.sms_sent_at) {
@@ -847,13 +856,16 @@ export async function updateExam(
 
   const supabase = await createClient()
 
-  const { data: exam } = await supabase
+  const { data: exam, error: examError } = await supabase
     .from('exams')
     .select('id, total_marks, pass_marks, sms_sent_at')
     .eq('coaching_center_id', session.active.centerId)
     .eq('id', examId)
     .maybeSingle()
 
+  // The edit form's own read. "Could not be found" over an exam the reader has open
+  // in front of them is a bug report waiting to be written.
+  if (examError) return { ok: false, error: t.errors.examUnreadable }
   if (!exam) return { ok: false, error: t.errors.noExam }
 
   const facts = await readExamFacts(
@@ -968,13 +980,16 @@ export async function deleteExam(
 
   const supabase = await createClient()
 
-  const { data: exam } = await supabase
+  const { data: exam, error: examError } = await supabase
     .from('exams')
     .select('id, sms_sent_at')
     .eq('coaching_center_id', session.active.centerId)
     .eq('id', examId)
     .maybeSingle()
 
+  // And the delete button, where "could not be found" is read as "already gone" and
+  // believed. The exam is still there, and so is the SMS it will send.
+  if (examError) return { ok: false, error: t.errors.examUnreadable }
   if (!exam) return { ok: false, error: t.errors.noExam }
 
   const facts = await readExamFacts(
