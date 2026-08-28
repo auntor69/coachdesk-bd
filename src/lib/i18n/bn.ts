@@ -900,6 +900,9 @@ export const bn = {
       amountZero: 'টাকার পরিমাণ শূন্য হতে পারে না।',
       amountNegative: 'টাকার পরিমাণ শূন্যের বেশি হতে হবে।',
       invoiceMissing: 'ইনভয়েসটি পাওয়া যায়নি।',
+      /** See en.fees.errors.invoiceUnreadable — one sentence for all five actions. */
+      invoiceUnreadable:
+        'বিলটি এখন পড়া গেল না, তাই কিছু জমা হয়নি, বিলের কোনো কিছুও বদলায়নি। বিলটি ঠিকই আছে — একটু পরে আবার চেষ্টা করুন।',
       invoiceVoided: 'এই ইনভয়েসটি বাতিল করা হয়েছে।',
       paymentFailed: 'টাকা জমা হয়নি। আবার চেষ্টা করুন।',
       /**

@@ -466,6 +466,28 @@ export const en: Dictionary = {
       amountZero: 'The amount cannot be zero.',
       amountNegative: 'The amount has to be more than zero.',
       invoiceMissing: 'Invoice not found.',
+      /**
+       * The bill, when the read for it did not arrive — which `invoiceMissing` above
+       * answered for on all five of the money actions that open with it.
+       *
+       * Three words, and every one of the five turns them into something false. On the
+       * payment form it is the worst: an owner has the cash in their hand, the app says
+       * the bill is not there, and the money goes in the drawer unrecorded — which is
+       * the failure mode this whole product exists to remove, arriving from the app
+       * itself. On the refund form the same three words are read while money is being
+       * handed back. On the waiver and the cancel button they send an owner looking for
+       * a bill that is on the screen behind them, and on the restore button they say the
+       * cancelled bill has been thrown away for good.
+       *
+       * So it says what did not happen instead of what does not exist. "Nothing has been
+       * recorded and nothing about it has changed" is written to cover all five —
+       * a payment, a refund, a waiver, a cancellation and a restore are all "nothing
+       * changed" from the reader's side. It deliberately says nothing about whether the
+       * bill is cancelled: the restore button is reached from a bill that is, and the
+       * only inference worth denying here is that it has gone.
+       */
+      invoiceUnreadable:
+        'This bill could not be read just now, so nothing has been recorded and nothing about it has changed. The bill is still there — please try again in a moment.',
       invoiceVoided: 'This invoice has been cancelled.',
       paymentFailed: 'The payment was not recorded. Please try again.',
       cancelPaid:

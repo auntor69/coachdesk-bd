@@ -282,12 +282,17 @@ export async function recordPayment(
   // Three things come from this and none of them can come from the client: that
   // the invoice is real and in this centre (RLS decides), which student the
   // payment belongs to, and what was still owed a moment ago.
-  const { data: invoice } = await supabase
+  const { data: invoice, error: invoiceError } = await supabase
     .from('fee_invoice_balances')
     .select('id, student_id, student_name, remaining_bdt, voided_at')
     .eq('coaching_center_id', session.active.centerId)
     .eq('id', invoiceId)
     .maybeSingle()
+
+  // An owner with the cash already in their hand, told the bill is not there — see
+  // invoiceUnreadable. This is the one site on the money surface where the wrong
+  // sentence ends with the notes going into a drawer unrecorded.
+  if (invoiceError) return { error: t.errors.invoiceUnreadable }
 
   // A view's columns are all nullable as far as Postgres can prove, so the id
   // and the student have to be narrowed here rather than asserted. They cannot
@@ -574,13 +579,16 @@ export async function voidInvoice(
   // Read through the view, never from the form. It decides three things the client
   // cannot be trusted for: that the invoice exists and is in this centre (RLS), what
   // has been paid against it, and whether it is already cancelled.
-  const { data: invoice } = await supabase
+  const { data: invoice, error: invoiceError } = await supabase
     .from('fee_invoice_balances')
     .select(VOID_COLUMNS)
     .eq('coaching_center_id', session.active.centerId)
     .eq('id', invoiceId)
     .maybeSingle()
 
+  // "Invoice not found" about the bill the reader is looking at, on the button that
+  // would have cancelled it. Nothing was cancelled, which is what to say instead.
+  if (invoiceError) return { error: t.errors.invoiceUnreadable }
   if (!invoice?.id) return { error: t.errors.invoiceMissing }
 
   const name = invoice.student_name ?? dict(session.locale).common.unknown
@@ -653,13 +661,16 @@ export async function restoreInvoice(
 
   const supabase = await createClient()
 
-  const { data: invoice } = await supabase
+  const { data: invoice, error: invoiceError } = await supabase
     .from('fee_invoice_balances')
     .select(VOID_COLUMNS)
     .eq('coaching_center_id', session.active.centerId)
     .eq('id', invoiceId)
     .maybeSingle()
 
+  // And the way back. "Not found" here says the cancelled bill has been thrown out
+  // for good, which is the one thing this button exists to prove wrong.
+  if (invoiceError) return { error: t.errors.invoiceUnreadable }
   if (!invoice?.id) return { error: t.errors.invoiceMissing }
 
   const name = invoice.student_name ?? dict(session.locale).common.unknown
@@ -744,13 +755,16 @@ export async function refundPayment(
 
   const supabase = await createClient()
 
-  const { data: invoice } = await supabase
+  const { data: invoice, error: invoiceError } = await supabase
     .from('fee_invoice_balances')
     .select(REFUND_COLUMNS)
     .eq('coaching_center_id', session.active.centerId)
     .eq('id', invoiceId)
     .maybeSingle()
 
+  // Money going the other way, and the same reading as the payment form: cash out of
+  // the drawer with nothing recorded against it.
+  if (invoiceError) return { error: t.errors.invoiceUnreadable }
   if (!invoice?.id || !invoice.student_id) return { error: t.errors.invoiceMissing }
   if (invoice.voided_at) return { error: t.errors.invoiceVoided }
 
@@ -911,13 +925,15 @@ export async function discountInvoice(
   // Read through the view, never from the form. It decides what the client cannot be
   // trusted for: that the bill exists and is in this centre (RLS), what it was billed —
   // which is the ceiling — and whether it is cancelled.
-  const { data: invoice } = await supabase
+  const { data: invoice, error: invoiceError } = await supabase
     .from('fee_invoice_balances')
     .select(DISCOUNT_COLUMNS)
     .eq('coaching_center_id', session.active.centerId)
     .eq('id', invoiceId)
     .maybeSingle()
 
+  // The waiver. Nothing was waived, and the family is still billed what they were.
+  if (invoiceError) return { error: t.errors.invoiceUnreadable }
   if (!invoice?.id) return { error: t.errors.invoiceMissing }
 
   const billed = Number(invoice.amount_bdt ?? 0)
