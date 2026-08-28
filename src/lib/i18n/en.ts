@@ -857,6 +857,21 @@ export const en: Dictionary = {
     emptyTitle: 'Nobody is enrolled in a batch yet',
     emptyBody:
       'Enrol the students in their batches first. Old dues attach to an active enrolment, which is how they reach the board.',
+    /**
+     * The screen with no boxes on it, because one of the three reads behind them did
+     * not arrive.
+     *
+     * Its own sentence rather than `emptyTitle`, which is a fact about the centre and
+     * would be read as one by an owner who has just loaded three hundred names in. And
+     * a whole screen rather than a card over the form: this is the one list in the
+     * product where every row holds an afternoon's typing, and a form built on a read
+     * that failed accepts all of it and saves some.
+     */
+    unreadable:
+      'The list could not be put together just now, so it is not shown — nothing has been lost. Please try again in a moment.',
+    /** See fees.close.tooLarge for why this does not point anywhere. */
+    tooLarge:
+      'There are more bills on file than this screen can check through at once. Nothing is wrong with your records — please get in touch and we will load the old dues with you.',
     safeToRepeat:
       'Anyone who already has a bill in that month is left alone — so pressing this twice is safe.',
     /** The correction, which needs saying. See the Bangla note. */

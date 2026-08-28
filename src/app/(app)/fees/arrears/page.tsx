@@ -4,7 +4,7 @@ import { forbidden } from 'next/navigation'
 import { Card } from '@/components/ui'
 import { pageCenter, getSession, isStaffAdmin } from '@/lib/auth/session'
 import { createClient } from '@/lib/supabase/server'
-import { pageOrNull } from '@/lib/supabase/page'
+import { pageAll, type PageFailure, worstFailure } from '@/lib/supabase/page'
 import { currentPeriodMonth, addMonths, formatMonth } from '@/lib/bd/time'
 import { oldestEnrollments } from '@/lib/fees/arrears'
 import { dict, DEFAULT_LOCALE } from '@/lib/i18n'
@@ -59,6 +59,39 @@ export default async function ArrearsPage() {
 
   const supabase = await createClient()
 
+  // Backwards only, and this month is not among them: the current month's slot
+  // belongs to the invoice generator, and a row written into it would make the
+  // generator skip that family so their real monthly fee would never be billed. Last
+  // month is the default because a centre signing up in the last week of August is
+  // being handed a board that has not billed August yet, and July is the month their
+  // register's arrears column was closed against.
+  //
+  // Above the reads rather than between them, because the invoice query needs the list
+  // and nothing else does — which is what lets all three run at once instead of two
+  // and then the largest.
+  const months = Array.from({ length: 12 }, (_, i) => {
+    const value = addMonths(currentPeriodMonth(), -(i + 1))
+    return { value, label: formatMonth(value, locale) }
+  })
+
+  /** The screen with no form on it. See the guard below for why all three refuse. */
+  const refusal = (problem: PageFailure) => (
+    <div className="flex flex-col gap-4">
+      <Link
+        href="/fees"
+        className="inline-flex min-h-tap items-center font-medium text-brand-700"
+      >
+        ← {t.backToFees}
+      </Link>
+      <h1 className="text-xl font-semibold text-ink">{t.title}</h1>
+      <Card className="border-late/30 bg-late/5">
+        <p className="font-medium text-ink">
+          {problem === 'tooLarge' ? t.tooLarge : t.unreadable}
+        </p>
+      </Card>
+    </div>
+  )
+
   // Read in parallel, then intersect. Which students get a box is decided by the
   // enrolments, not by this list — a student with no active enrolment has nowhere to
   // hang a debt, because `unique (enrollment_id, period_month)` is what makes the
@@ -73,8 +106,8 @@ export default async function ArrearsPage() {
   // product existed — so a short read here is a student who cannot be given their
   // opening balance at all, silently missing from a list of the whole centre. Four
   // hundred students taking three subjects have 1200 enrolments, well past it.
-  const [enrollments, students] = await Promise.all([
-    pageOrNull((from, to) =>
+  const [enrollments, students, billed] = await Promise.all([
+    pageAll((from, to) =>
       supabase
         .from('enrollments')
         .select('id, student_id, enrolled_at')
@@ -83,7 +116,7 @@ export default async function ArrearsPage() {
         .order('id')
         .range(from, to),
     ),
-    pageOrNull((from, to) =>
+    pageAll((from, to) =>
       supabase
         .from('students')
         .select('id, name, student_code')
@@ -93,53 +126,67 @@ export default async function ArrearsPage() {
         .order('id')
         .range(from, to),
     ),
+    // WHICH BOXES ARE ALREADY SPOKEN FOR, and this is not a nicety. `fee_invoices` is
+    // unique on (enrollment_id, period_month), and the write below ignores a row whose
+    // slot is taken — which is what makes it safe to replay, and also what would let an
+    // owner type ৳3,000 against a family, press submit, and be told only that nothing
+    // was added. Naming the taken boxes before they are typed into is the difference
+    // between a screen that refuses work and a screen that explains itself.
+    //
+    // A CANCELLED BILL STILL HOLDS ITS SLOT, deliberately — see migration 28. So this
+    // query does not filter `voided_at`: both kinds block, and the row says which,
+    // because the way out of each is different. A live bill means this family is already
+    // on the board for that month. A cancelled one means somebody undid it, and the
+    // amount has to go against a different month.
+    //
+    // Twelve months of a whole centre's invoices is the largest read in the app, and the
+    // only one where a thousand-row cut is close to certain: a 250-student centre taking
+    // four subjects raises twelve thousand of these a year. Cut short, the screen would
+    // offer a box that is already spoken for, the owner would type a figure into it, and
+    // the write would ignore the row and report that nothing was added — which is the
+    // exact refusal the paragraph above exists to prevent — and the guard below is
+    // there because a dropped read arrives at the same place.
+    pageAll((from, to) =>
+      supabase
+        .from('fee_invoices')
+        .select('enrollment_id, period_month, amount_bdt, voided_at')
+        .eq('coaching_center_id', session.active.centerId)
+        .in('period_month', months.map((m) => m.value))
+        .order('id')
+        .range(from, to),
+    ),
   ])
 
-  const enrollmentByStudent = oldestEnrollments(enrollments ?? [])
+  /*
+   * All three or none of them, because of the two sentences this screen prints when a
+   * read comes back empty-handed.
+   *
+   * Without the enrolments or the students there are no rows, and no rows draws
+   * `emptyTitle` — “nobody is enrolled in a batch yet” — to an owner who is looking at
+   * the register three hundred of those names were just loaded from.
+   *
+   * Without the invoices it is worse, because the screen still works. `taken` would be
+   * empty, every box would be offered, and the write leaves a row alone whose slot is
+   * filled: the owner types ৳3,000 against a family already billed for July, presses
+   * submit, and is told only that nothing was added. That is the refusal the note above
+   * says this query exists to prevent, reached by the other road.
+   *
+   * One question of three reads rather than three questions, so an unreadable first
+   * read cannot answer for a third that is past the ceiling — no retry brings that one
+   * back. The `in` checks are what let `.rows` be read below without an assertion; TS
+   * cannot see the answer through a helper, and inside them `problem` is never null.
+   */
+  const problem = worstFailure(enrollments, students, billed)
 
-  const rows = (students ?? [])
+  if (!('rows' in enrollments) || !('rows' in students) || !('rows' in billed)) {
+    return refusal(problem ?? 'unreadable')
+  }
+
+  const enrollmentByStudent = oldestEnrollments(enrollments.rows)
+
+  const rows = students.rows
     .filter((s) => enrollmentByStudent.has(s.id))
     .map((s) => ({ id: s.id, name: s.name, code: s.student_code }))
-
-  // Backwards only, and this month is not among them: the current month's slot
-  // belongs to the invoice generator, and a row written into it would make the
-  // generator skip that family so their real monthly fee would never be billed. Last
-  // month is the default because a centre signing up in the last week of August is
-  // being handed a board that has not billed August yet, and July is the month their
-  // register's arrears column was closed against.
-  const months = Array.from({ length: 12 }, (_, i) => {
-    const value = addMonths(currentPeriodMonth(), -(i + 1))
-    return { value, label: formatMonth(value, locale) }
-  })
-
-  // WHICH BOXES ARE ALREADY SPOKEN FOR, and this is not a nicety. `fee_invoices` is
-  // unique on (enrollment_id, period_month), and the write below ignores a row whose
-  // slot is taken — which is what makes it safe to replay, and also what would let an
-  // owner type ৳3,000 against a family, press submit, and be told only that nothing
-  // was added. Naming the taken boxes before they are typed into is the difference
-  // between a screen that refuses work and a screen that explains itself.
-  //
-  // A CANCELLED BILL STILL HOLDS ITS SLOT, deliberately — see migration 28. So this
-  // query does not filter `voided_at`: both kinds block, and the row says which,
-  // because the way out of each is different. A live bill means this family is already
-  // on the board for that month. A cancelled one means somebody undid it, and the
-  // amount has to go against a different month.
-  //
-  // Twelve months of a whole centre's invoices is the largest read in the app, and the
-  // only one where a thousand-row cut is close to certain: a 250-student centre taking
-  // four subjects raises twelve thousand of these a year. Cut short, the screen would
-  // offer a box that is already spoken for, the owner would type a figure into it, and
-  // the write would ignore the row and report that nothing was added — which is the
-  // exact refusal the paragraph above exists to prevent.
-  const billed = await pageOrNull((from, to) =>
-    supabase
-      .from('fee_invoices')
-      .select('enrollment_id, period_month, amount_bdt, voided_at')
-      .eq('coaching_center_id', session.active.centerId)
-      .in('period_month', months.map((m) => m.value))
-      .order('id')
-      .range(from, to),
-  )
 
   // Keyed by the enrolment this screen would actually use, not by the student. A
   // monthly invoice sitting on the second batch a child attends does not block an
@@ -150,7 +197,7 @@ export default async function ArrearsPage() {
   )
 
   const taken: Record<string, Record<string, ArrearsTaken>> = {}
-  for (const invoice of billed ?? []) {
+  for (const invoice of billed.rows) {
     const studentId = invoice.enrollment_id
       ? chosenEnrollments.get(invoice.enrollment_id)
       : undefined
