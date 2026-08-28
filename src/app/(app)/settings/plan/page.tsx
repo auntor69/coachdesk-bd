@@ -156,10 +156,21 @@ export default async function PlanPage() {
       : Promise.resolve({ data: null }),
   ])
 
-  const usage: { label: string; used: number; limit: number | null }[] = [
-    { label: t.batches, used: batchCount ?? 0, limit: plan.maxBatches },
-    { label: t.students, used: studentCount ?? 0, limit: plan.maxStudents },
-    { label: t.subjects, used: subjectCount ?? 0, limit: plan.maxSubjects },
+  /*
+   * What is being used now, and `null` where the count did not arrive rather than the
+   * nought it used to be.
+   *
+   * A zero here is the worst kind on this screen. "0 / 30 students" to a centre with
+   * thirty is the paywall telling them they have all the room in the world, on the one
+   * page whose job is to show them they have run out — and on the centre tiers the note
+   * below says the student count is the figure their bill is worked out from, so a
+   * nought is a bill basis nobody would query. `—` instead, like every other figure in
+   * the product that is not known.
+   */
+  const usage: { label: string; used: number | null; limit: number | null }[] = [
+    { label: t.batches, used: batchCount, limit: plan.maxBatches },
+    { label: t.students, used: studentCount, limit: plan.maxStudents },
+    { label: t.subjects, used: subjectCount, limit: plan.maxSubjects },
     // Only where there are colleagues to count. On a one-teacher plan "1 / 1" is a
     // row that tells the reader nothing they did not know when they signed up.
     //
@@ -167,8 +178,14 @@ export default async function PlanPage() {
     // everything: a centre moved down a tier keeps its teachers, and this row is
     // where "6 / 1" gets said out loud. Switching them off is /settings/teachers,
     // which the hub links to under the same condition.
-    ...(hasStaff(plan) || overStaffSeats(plan, teacherCount ?? 0)
-      ? [{ label: t.teachers, used: teacherCount ?? 0, limit: plan.maxTeachers }]
+    //
+    // And drawn when the count did not arrive at all, which used to be the same as a
+    // nought and so took the row away. Over their seats is precisely the state that
+    // cannot be ruled out by a read that failed, and this row is the only place the
+    // product says it — so it stays, reading "— / 1", and the owner taps through to a
+    // list that counts them again.
+    ...(hasStaff(plan) || teacherCount === null || overStaffSeats(plan, teacherCount)
+      ? [{ label: t.teachers, used: teacherCount, limit: plan.maxTeachers }]
       : []),
   ]
 
@@ -268,7 +285,7 @@ export default async function PlanPage() {
                 bill is worked out from, so it is the one number they came for.
               */}
               <dd className="num font-semibold text-ink">
-                {row.used}
+                {row.used === null ? '—' : row.used}
                 {row.limit === null ? (
                   <span className="ml-1 font-medium text-ink-soft">
                     · {t.noCap}

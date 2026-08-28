@@ -67,12 +67,15 @@ async function staffCounts(
       .maybeSingle(),
   ])
 
-  return {
-    teacherCount: teacherCount ?? 0,
-    subjectCount: subjectCount ?? 0,
-    examTypeCount: examTypeCount ?? 0,
-    center,
-  }
+  /*
+   * Passed on as they came, `null` and all. A head count answers `null` when the query
+   * failed, not when it found nothing — and the caller's `count` field already means
+   * "no chip", so an unknown number draws nothing instead of the "0" it used to.
+   *
+   * Which matters most on the row this page decides whether to draw at all: see the
+   * teachers row below, where a nought used to take the row away.
+   */
+  return { teacherCount, subjectCount, examTypeCount, center }
 }
 
 /**
@@ -167,7 +170,11 @@ export default async function SettingsPage() {
             href: '/settings/students' as Route,
             label: t.students,
             hint: t.studentsHint,
-            count: studentCount ?? 0,
+            // Not `?? 0`. A chip reading "0" beside "Students" on the hub of a centre
+            // with three hundred of them is the one figure on this page an owner in
+            // their first week is actually checking, and a dropped count is not an
+            // empty roster. No chip says as much as the truth allows.
+            count: studentCount,
           },
         ]
       : []),
@@ -177,7 +184,8 @@ export default async function SettingsPage() {
             href: '/settings/batches' as Route,
             label: t.batches,
             hint: t.batchesHint,
-            count: batchCount ?? 0,
+            /** See the students row. */
+            count: batchCount,
           },
         ]
       : []),
@@ -200,8 +208,14 @@ export default async function SettingsPage() {
            * the only one that can switch them off, so hiding it stranded an owner
            * who was being told on the plan screen that they were over their seats.
            * The count beside the label is the number that is wrong.
+           *
+           * Or did not arrive, which is the same stranding by a quieter road: a failed
+           * count used to read as nought, nought is not over the seats, and the only
+           * door to the list disappeared. An unread count cannot rule out the state
+           * this row exists for, so the row is drawn and the chip is left off.
            */
           ...(hasStaff(session.plan) ||
+          staffOnly.teacherCount === null ||
           overStaffSeats(session.plan, staffOnly.teacherCount)
             ? [
                 {
