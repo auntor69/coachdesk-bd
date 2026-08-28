@@ -58,6 +58,16 @@ export type Session = {
    */
   memberships: Membership[]
   /**
+   * Whether the list above is a list, or a read that did not arrive.
+   *
+   * `memberships` is empty in two situations that could not be further apart: an
+   * account that has not made or joined a centre yet, and a `center_members` read
+   * that failed. The first is the entire reason /onboarding exists. The second must
+   * never be allowed to reach it — see requireCenter, which is where the two used to
+   * become the same answer.
+   */
+  membershipsUnreadable: boolean
+  /**
    * The center being acted on: the one they chose in the header, or the highest
    * authority they hold if they have not chosen. Most users have exactly one and
    * never see the choice. See lib/auth/active-center.
@@ -101,7 +111,7 @@ export const getSession = cache(async (): Promise<Session | null> => {
 
   if (!user) return null
 
-  const [{ data: profile }, { data: rows }] = await Promise.all([
+  const [{ data: profile }, { data: rows, error: rowsError }] = await Promise.all([
     supabase
       .from('profiles')
       .select('full_name, phone, locale, is_platform_admin')
@@ -119,6 +129,9 @@ export const getSession = cache(async (): Promise<Session | null> => {
       .eq('active', true),
   ])
 
+  // `?? []` stays, and it is safe here only because of the flag returned beside it: a
+  // failed read still produces an empty list, but the list is no longer the only thing
+  // that says so. Every caller that acts on emptiness asks the flag first.
   const memberships = strongestPerCenter(
     (rows ?? [])
       .map((row) => {
@@ -158,6 +171,7 @@ export const getSession = cache(async (): Promise<Session | null> => {
     locale: asLocale(profile?.locale),
     isPlatformAdmin: profile?.is_platform_admin ?? false,
     memberships,
+    membershipsUnreadable: Boolean(rowsError),
     active,
     plan: planFor(active?.plan),
   }
@@ -167,10 +181,16 @@ export const getSession = cache(async (): Promise<Session | null> => {
  * Thrown by the require* helpers. Carries an HTTP-ish code so a Route Handler
  * can answer 401/403 while a page redirects, without either one parsing a
  * message string.
+ *
+ * `unreadable` is the odd one out and is not an authorization answer at all: it
+ * means the question could not be put. It exists because the other three are all
+ * statements about the caller — you are not signed in, you have no centre, you may
+ * not do this — and a dropped read is a statement about us. Every one of those three
+ * sends the reader somewhere to fix it, and there is nothing for them to fix.
  */
 export class AuthError extends Error {
   constructor(
-    readonly code: 'unauthenticated' | 'no_center' | 'forbidden',
+    readonly code: 'unauthenticated' | 'no_center' | 'forbidden' | 'unreadable',
     message: string,
   ) {
     super(message)
@@ -191,10 +211,32 @@ export type CenterSession = Session & { active: Membership }
  * A signed-in user who belongs to a center. This is the normal case for every
  * screen in the app, and the narrowed type means callers never null-check
  * `active` again.
+ *
+ * WHY THE EMPTY CENTRE LIST IS ASKED ABOUT TWICE. `no_center` is answered by
+ * pageGuard with a redirect to /onboarding, which is right: an account with no centre
+ * is an account that has not made one, and the form there makes it. But a
+ * `center_members` read that did not arrive produced exactly the same empty list, so
+ * it produced exactly the same redirect — and the owner of a centre with four hundred
+ * students on it was handed the form that creates their second.
+ *
+ * That is the one failure in this family that cannot be undone by waiting. The others
+ * mislead a reader for as long as the screen is up; this one takes a tap and leaves a
+ * live account holding two centres, one of them empty, with `bootstrap_center` having
+ * written a fresh owner row and the switcher in the header now offering a choice that
+ * did not exist that morning. Their students, batches, fees and registers are all in
+ * the first one, and nothing on the second says so.
+ *
+ * So the two are separated here, at the one place both used to pass through.
  */
 export async function requireCenter(): Promise<CenterSession> {
   const session = await requireUser()
   if (!session.active) {
+    if (session.membershipsUnreadable) {
+      throw new AuthError(
+        'unreadable',
+        'The centres for this account could not be read just now.',
+      )
+    }
     throw new AuthError('no_center', 'This account is not attached to a center yet.')
   }
   return session as CenterSession
@@ -578,6 +620,15 @@ export async function requirePermission(
  *   forbidden       -> a 403 screen naming the reader's own home (forbidden.tsx)
  *   no_center       -> /onboarding, because they have an account and no centre yet
  *   unauthenticated -> /login, which the proxy usually catches first
+ *   unreadable      -> app/error.tsx, by rethrowing
+ *
+ * The last one is a rethrow and not a fourth screen, because the screen already
+ * exists and is the right one. error.tsx says "something went wrong, try again" in
+ * both languages over a retry button, which is the whole of what there is to say: no
+ * session to read a language from, nothing the reader did, and nothing for them to go
+ * and fix. Every other answer this function can give is a door — a login form, a
+ * create-your-centre form, a 403 naming somewhere else to be — and pointing a reader
+ * at a door is the one thing a dropped read must not do.
  *
  * Both interrupts work by throwing, so neither may be wrapped in a try/catch that
  * swallows: `forbidden()` caught is a page that renders nothing, and `redirect()`
@@ -597,6 +648,8 @@ async function pageGuard<T>(check: () => Promise<T>): Promise<T> {
         redirect('/onboarding')
       case 'unauthenticated':
         redirect('/login')
+      case 'unreadable':
+        throw err
     }
   }
 }
