@@ -208,6 +208,22 @@ export const en: Dictionary = {
       'The students may already be on your roster — they have to be put in this batch before their attendance can be marked here.',
     noStudentsAction: 'Open the roster',
 
+    /**
+     * The register is not drawn at all, because two of the reads behind it came back
+     * saying nothing when they meant nothing-yet — see the note on the page.
+     *
+     * Not `noStudentsTitle`, which is the sentence the roster read used to produce on
+     * failing: "no students in this batch", to a teacher with forty of them in the
+     * room. And not a blank register either, which is what a dropped read of today's
+     * marks produced — every name unmarked, one tap from being saved over twelve
+     * absences already recorded.
+     *
+     * “Nothing has been lost” rather than “nothing has changed”: the question in this
+     * reader’s head is whether the register they took this morning is still there.
+     */
+    unreadable:
+      'This register could not be read just now, so it is not shown — nothing has been lost. Please try again in a moment.',
+
     futureTitle: 'This class has not happened yet',
     futureBody:
       'Attendance cannot be taken for a class that has not happened — nobody is in it yet. Mark it once the class is over.',

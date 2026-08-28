@@ -93,8 +93,12 @@ export default async function AttendancePage({
   const mine = isStaffAdmin(session) ? null : await myTeacherIds()
   if (mine && (!batch.teacher_id || !mine.includes(batch.teacher_id))) forbidden()
 
-  const [{ data: enrollments }, { data: existingSession }, { data: schedules }, { data: recent }] =
-    await Promise.all([
+  const [
+    { data: enrollments },
+    { data: existingSession, error: existingError },
+    { data: schedules },
+    { data: recent },
+  ] = await Promise.all([
       supabase
         .from('enrollments')
         .select('id, students (id, name, student_code)')
@@ -126,6 +130,58 @@ export default async function AttendancePage({
         .maybeSingle(),
     ])
 
+  /*
+   * TWO OF THESE FOUR READS DECIDE WHAT A TEACHER IS TOLD, AND BOTH USED TO FAIL IN
+   * THE FLATTERING DIRECTION.
+   *
+   * The roster, because an empty one has a sentence of its own on this screen: "no
+   * students in this batch", with a door to the roster for whoever may use it. Read as
+   * empty when it had not arrived, that was said to a teacher with forty children in
+   * front of them, on the screen they open every single afternoon — and the door sent
+   * an owner to a list filtered to students in no batch, which is a list of nobody in a
+   * centre whose batches are all fine. Two false answers and an errand, where the true
+   * one is "try again".
+   *
+   * Today's marks, because `maybeSingle` answers `null` both for a day nobody has
+   * marked yet and for a read that failed, and only `error` tells them apart. Taken as
+   * an unmarked day, every name in the register is drawn unmarked and present, and the
+   * banner that says this day is already taken is not drawn either. A teacher who has
+   * marked twelve absent this morning would be shown a clean sheet, save it, and
+   * `saveAttendance` would do exactly as asked: twelve corrections to present, each
+   * spending the one revision the trigger allows, and the twelve families who would
+   * have been told never appear on the notice list. The action's own guard cannot help
+   * here — it refuses when *its* read of the register fails, and this one succeeds.
+   *
+   * Not the timetable and not the last register. Both only decide which earlier day is
+   * still open, an absent timetable already means "yesterday" by documented design, and
+   * neither can close today: `attendanceVerdict` answers 'open' for today on its own
+   * account. A teacher can always take today's register, which is the point of the
+   * screen.
+   *
+   * And not the sent-notices read further down, deliberately. Unread, it says nobody
+   * has been told yet, so a family already messaged may be messaged twice — annoying,
+   * free, and recoverable in a sentence. Withholding the section instead would stop the
+   * first message, which is the thing this half of the screen exists to send.
+   */
+  if (enrollments === null || existingError) {
+    return (
+      <div className="flex flex-col gap-4">
+        <Link
+          href="/teach"
+          className="inline-flex min-h-tap items-center text-ink-soft hover:text-ink"
+        >
+          ← {t.title}
+        </Link>
+        {/* Named, because the batch read did arrive and a teacher who tapped one of
+            four batches needs to know this is about that one. */}
+        <h1 className="text-xl font-bold text-ink">{batch.name}</h1>
+        <Card className="border-late/30 bg-late/5">
+          <p className="font-medium text-ink">{t.unreadable}</p>
+        </Card>
+      </div>
+    )
+  }
+
   const lastClass = lastClassDate(
     today,
     (schedules ?? []).map((s) => s.day_of_week),
@@ -144,7 +200,7 @@ export default async function AttendancePage({
     })
   }
 
-  const students: RosterStudent[] = (enrollments ?? [])
+  const students: RosterStudent[] = enrollments
     .map((enrollment) => {
       const student = Array.isArray(enrollment.students)
         ? enrollment.students[0]
@@ -228,7 +284,7 @@ export default async function AttendancePage({
   // student_code by student id, for the notice rows. `planAbsenceNotices` answers
   // who may be told and what to say — not what the register calls them.
   const codes = new Map<string, string | null>()
-  for (const enrollment of enrollments ?? []) {
+  for (const enrollment of enrollments) {
     const student = Array.isArray(enrollment.students)
       ? enrollment.students[0]
       : enrollment.students

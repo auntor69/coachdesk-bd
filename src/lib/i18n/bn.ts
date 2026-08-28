@@ -457,6 +457,10 @@ export const bn = {
       'শিক্ষার্থীরা হয়তো তালিকায় আছেই — এই ব্যাচে ভর্তি করলেই এখানে তাদের হাজিরা নেওয়া যাবে।',
     noStudentsAction: 'শিক্ষার্থী তালিকা',
 
+    /** See en.teach.unreadable for what each of the two reads used to say instead. */
+    unreadable:
+      'হাজিরার খাতা এখন পড়া গেল না, তাই দেখানো হয়নি — কিছুই হারায়নি। একটু পরে আবার চেষ্টা করুন।',
+
     /**
      * The two days a register cannot be taken for, said as sentences.
      *
