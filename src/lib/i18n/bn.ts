@@ -1905,6 +1905,12 @@ export const bn = {
     marksLeft: (n: number) => `${n} জনের নম্বর বাকি`,
     /** An exam on a batch with nobody enrolled — nothing here to mark. */
     emptyBatch: 'ব্যাচে কেউ নেই',
+    /** The row's progress figures when the reads behind them did not arrive. */
+    countsUnknown: 'হিসাব হয়নি',
+    countsUnreadable:
+      'কোন পরীক্ষা কতদূর এগিয়েছে তা এখন বের করা গেল না, তাই সেই সংখ্যাগুলো দেখানো হচ্ছে না। কোনো পরীক্ষায় ঢুকে তার নিজের নম্বর দেখুন। একটু পরে আবার চেষ্টা করুন।',
+    countsTooLarge:
+      'ফলাফলের সংখ্যা এত বেশি যে এই পর্দা একবারে হিসাব করতে পারছে না, তাই অগ্রগতির সংখ্যাগুলো দেখানো হচ্ছে না। কোনো পরীক্ষায় ঢুকে তার নিজের নম্বর দেখুন, বা আমাদের সাথে যোগাযোগ করুন।',
     /** Families told from the centre own phone, counted once each. */
     toldCount: (n: number) => `${n} জনকে জানানো ✓`,
     /**

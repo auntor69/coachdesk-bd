@@ -4,7 +4,7 @@ import { Card } from '@/components/ui'
 import { SearchBox, SearchEmpty } from '@/components/search-box'
 import { pageRole, getSession, canManageExams } from '@/lib/auth/session'
 import { createClient } from '@/lib/supabase/server'
-import { pageOrNull } from '@/lib/supabase/page'
+import { pageAll, type PageFailure, worstFailure } from '@/lib/supabase/page'
 import { formatDate } from '@/lib/bd/time'
 import { searchTerms, matchesSearch, MAX_QUERY } from '@/lib/search'
 import { dict, localName, DEFAULT_LOCALE } from '@/lib/i18n'
@@ -161,6 +161,15 @@ export default async function ExamsPage({
   const markedBy = new Map<string, Set<string>>()
   const toldBy = new Map<string, Set<string>>()
 
+  /**
+   * Whether the three counts can be trusted, out here with the maps they describe.
+   *
+   * Null when there was nothing to count, which is the honest answer for an empty
+   * centre and for a search that matched nothing: no read was attempted, so no read
+   * failed.
+   */
+  let countsProblem: PageFailure | null = null
+
   if (page.length > 0) {
     const examIds = page.map((e) => e.id)
     const batchIds = [...new Set(page.map((e) => e.batchId))]
@@ -176,7 +185,7 @@ export default async function ExamsPage({
      * sending, so the quiet cut would cost the centre a second SMS per family.
      */
     const [enrolled, results, notices] = await Promise.all([
-      pageOrNull((from, to) =>
+      pageAll((from, to) =>
         supabase
           .from('enrollments')
           .select('id, batch_id')
@@ -186,7 +195,7 @@ export default async function ExamsPage({
           .order('id')
           .range(from, to),
       ),
-      pageOrNull((from, to) =>
+      pageAll((from, to) =>
         supabase
           .from('exam_results')
           .select('exam_id, enrollment_id')
@@ -195,7 +204,7 @@ export default async function ExamsPage({
           .order('id')
           .range(from, to),
       ),
-      pageOrNull((from, to) =>
+      pageAll((from, to) =>
         supabase
           .from('result_notices')
           .select('exam_id, student_id')
@@ -205,6 +214,23 @@ export default async function ExamsPage({
           .range(from, to),
       ),
     ])
+
+    /*
+     * And whether they arrived, which is the difference between a fraction and a
+     * fiction. All three fed the maps below through `?? []`, so a failed read did not
+     * blank the figures — it moved them to the flattering-looking end and left them
+     * looking like figures: every exam reading "0/40 marked" with an amber "40 not
+     * marked" under it, or every exam reading "nobody in the batch", or the told-count
+     * gone from a row where forty families were messaged last night.
+     *
+     * The first sends a teacher to enter marks that are already in. The last sends a
+     * second message to every one of those families, off the exact number the comment
+     * above says a teacher checks before sending. So the figures come off the rows and
+     * the list stays: the titles, dates and SMS state come from the index read and are
+     * still true, each row still opens the exam, and the exam's own screen counts for
+     * itself.
+     */
+    countsProblem = worstFailure(enrolled, results, notices)
 
     /*
      * Who the marks sheet would put in front of a teacher today, per batch.
@@ -220,13 +246,13 @@ export default async function ExamsPage({
      * real register typed in, so every enrolment dates from the afternoon of the
      * import and every exam held before it would come out with an empty roster.
      */
-    for (const row of enrolled ?? []) {
+    for (const row of 'rows' in enrolled ? enrolled.rows : []) {
       let set = rosters.get(row.batch_id)
       if (!set) rosters.set(row.batch_id, (set = new Set()))
       set.add(row.id)
     }
 
-    for (const row of results ?? []) {
+    for (const row of 'rows' in results ? results.rows : []) {
       let set = markedBy.get(row.exam_id)
       if (!set) markedBy.set(row.exam_id, (set = new Set()))
       set.add(row.enrollment_id)
@@ -235,7 +261,7 @@ export default async function ExamsPage({
     // Families, not messages. A row per send means a guardian who was texted and
     // then called again is in here twice, and "2 told" for one student would send a
     // teacher looking for a second family that does not exist.
-    for (const row of notices ?? []) {
+    for (const row of 'rows' in notices ? notices.rows : []) {
       let set = toldBy.get(row.exam_id)
       if (!set) toldBy.set(row.exam_id, (set = new Set()))
       set.add(row.student_id)
@@ -310,6 +336,19 @@ export default async function ExamsPage({
             count={{ shown: matched.length, total: indexed.length }}
           />
 
+          {/* Once, above the list, with what to do about it — the rows themselves only
+              have room to say the figure is missing, not why or what to try. Grey like
+              the rest of this screen's asides rather than amber: nothing here is wrong
+              with the centre's data, the exams are all still openable, and the one
+              thing a teacher needs from the fractions is on the exam's own screen. */}
+          {countsProblem !== null && (
+            <Card>
+              <p className="text-sm text-ink-soft">
+                {countsProblem === 'tooLarge' ? t.countsTooLarge : t.countsUnreadable}
+              </p>
+            </Card>
+          )}
+
           {rows.length === 0 ? (
             /* The search found nothing, which is not the same sentence as "no exams
                yet" above — that one would tell a teacher the centre has never held an
@@ -336,7 +375,13 @@ export default async function ExamsPage({
                     </div>
 
                     <div className="shrink-0 text-right">
-                      {row.rosterSize === 0 ? (
+                      {countsProblem !== null ? (
+                        // Not a zero and not a blank. The card above carries the
+                        // instruction; this only has to stop the slot claiming a
+                        // number, on every row, where a blank would read as forty
+                        // exams with nothing to report.
+                        <p className="text-sm text-ink-soft">{t.countsUnknown}</p>
+                      ) : row.rosterSize === 0 ? (
                         /* No roster, so no fraction. "0/0 marked" is a riddle, and
                            the honest reading of an exam set on a batch nobody is
                            enrolled in is that there is nothing here to mark — which
@@ -377,6 +422,14 @@ export default async function ExamsPage({
                         <p className="mt-1 text-xs font-medium text-brand-700">
                           {t.smsSent}
                         </p>
+                      ) : countsProblem !== null ? (
+                        /* Nothing, because the two arms below both rest on the
+                           told-count, and that is one of the figures that did not
+                           arrive. `smsSent` above is off the index read and still
+                           true; "not sent" would be a claim about a number nobody
+                           has, on an exam whose families may all have been messaged
+                           last night. The slot above already says so. */
+                        null
                       ) : row.told > 0 ? (
                         <p className="num mt-1 text-xs font-medium text-brand-700">
                           {t.toldCount(row.told)}

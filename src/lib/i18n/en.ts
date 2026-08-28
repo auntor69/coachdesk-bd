@@ -894,6 +894,22 @@ export const en: Dictionary = {
     /** An exam set on a batch nobody is enrolled in, so there is nothing to mark. */
     emptyBatch: 'Nobody in the batch',
     /**
+     * The three progress figures on a row when the reads behind them did not arrive.
+     *
+     * A label rather than a blank, because the slot it sits in normally holds a
+     * fraction and an empty slot on forty rows reads as forty exams with nothing to
+     * say. It does not say "0", which is the whole point: "0/40 marked" on a fully
+     * marked exam sends a teacher to enter marks that are already in, and a missing
+     * told-count sends a second message to every family.
+     */
+    countsUnknown: 'Not counted',
+    /** The card above the list, once, with what to do about it. */
+    countsUnreadable:
+      'How far each exam has got could not be worked out just now, so those figures are not shown. Open an exam to see its own marks. Please try again in a moment.',
+    /** See close.tooLarge for why this does not point anywhere. */
+    countsTooLarge:
+      'There are more results on file than this screen can count in one go, so the progress figures are not shown. Open an exam to see its own marks, or get in touch and we will help.',
+    /**
      * Families the centre has told from its own phone, counted once each however
      * many times they were messaged. Not the same claim as `smsSent`, which is the
      * gateway reaching everybody with a mark in one go.
