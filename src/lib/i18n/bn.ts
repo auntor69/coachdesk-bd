@@ -3894,6 +3894,9 @@ export const bn = {
       /** See en.settings.batches.subjectsUnreadable — it denies the wrong guess. */
       subjectsUnreadable:
         'আপনার বিষয়গুলো এখন পড়া গেল না, তাই ফর্মটি দেখানো হয়নি। এর মানে কোচিংয়ে কোনো বিষয় নেই, তা নয় — একটু পরে আবার চেষ্টা করুন।',
+      /** See en.settings.batches.batchUnreadable — it denies the batch having gone. */
+      batchUnreadable:
+        'এই ব্যাচের তথ্য এখন পড়া গেল না, তাই ফর্মটি দেখানো হয়নি। ব্যাচটি মুছে ফেলা হয়েছে, তা নয় — কোনো কিছু বদলায়নি। একটু পরে আবার চেষ্টা করুন।',
 
       created: 'ব্যাচ তৈরি হয়েছে',
       editTitle: 'ব্যাচ ঠিক করুন',
@@ -3997,6 +4000,9 @@ export const bn = {
       /** See en.settings.students.batchesUnreadable — it says nothing changed. */
       batchesUnreadable:
         'কোচিংয়ের ব্যাচগুলো এখন পড়া গেল না, তাই ফর্মটি দেখানো হয়নি — এই শিক্ষার্থীর কোনো কিছু বদলায়নি। একটু পরে আবার চেষ্টা করুন।',
+      /** See en.settings.students.studentUnreadable — nobody has been removed. */
+      studentUnreadable:
+        'এই শিক্ষার্থীর তথ্য এখন পড়া গেল না, তাই ফর্মটি দেখানো হয়নি। তালিকা থেকে বাদ দেওয়া হয়েছে, তা নয় — কোনো কিছু বদলায়নি। একটু পরে আবার চেষ্টা করুন।',
       /**
        * On the roster row, telling the reader the row is worth tapping — and where
        * it goes, which changed. The row used to open the edit form, so this used to

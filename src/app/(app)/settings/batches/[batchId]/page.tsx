@@ -1,5 +1,6 @@
 import Link from 'next/link'
 
+import { Card } from '@/components/ui'
 import { pageRole, getSession } from '@/lib/auth/session'
 import { createClient } from '@/lib/supabase/server'
 import { hasStaff } from '@/lib/plans'
@@ -42,7 +43,7 @@ export default async function BatchPage({
   const d = dict(locale)
   const t = d.settings.batches
 
-  const [{ data: batch }, { data: subjects }, { data: teachers }] = await Promise.all([
+  const [batchRow, { data: subjects }, { data: teachers }] = await Promise.all([
     supabase
       .from('batches')
       .select(
@@ -71,6 +72,10 @@ export default async function BatchPage({
       .order('name'),
   ])
 
+  // Destructured on its own line, because `error` decides one of the two answers
+  // below and the array above has no room left for it.
+  const { data: batch, error: batchError } = batchRow
+
   const back = (
     <Link
       href="/settings/batches"
@@ -79,6 +84,27 @@ export default async function BatchPage({
       ← {t.title}
     </Link>
   )
+
+  /*
+   * The read that failed, ahead of the row that is not there — see the same pair on
+   * the student edit screen, which this follows exactly.
+   *
+   * `errors.notFound` is the sentence for a stale tab, and it was answering a dropped
+   * read as well: "that batch could not be found", about a batch with forty students
+   * enrolled on it. An owner who believes that makes the batch again, and then has two
+   * — one with the enrolments, the register and the fee history on it, and one with
+   * the timetable they just typed.
+   */
+  if (batchError) {
+    return (
+      <div className="flex flex-col gap-5">
+        {back}
+        <Card className="border-late/30 bg-late/5">
+          <p className="font-medium text-ink">{t.batchUnreadable}</p>
+        </Card>
+      </div>
+    )
+  }
 
   // notFound() would be the reflex, but a missing batch here is far more often a
   // stale tab than a wrong url. See the same note on the student screen.

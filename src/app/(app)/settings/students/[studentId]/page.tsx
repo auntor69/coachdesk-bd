@@ -40,7 +40,7 @@ export default async function StudentPage({
   const d = dict(locale)
   const t = d.settings.students
 
-  const [{ data: student }, { data: batches }] = await Promise.all([
+  const [{ data: student, error: studentError }, { data: batches }] = await Promise.all([
     supabase
       .from('students')
       .select(
@@ -70,6 +70,33 @@ export default async function StudentPage({
       ← {t.title}
     </Link>
   )
+
+  /*
+   * The read that failed, ahead of the row that is not there — because `notFound`
+   * below was answering for both, and it is a sentence about a record.
+   *
+   * "That student could not be found" is what an owner sees after somebody else
+   * deleted the row they had open, which is what the note below is about and is a fair
+   * reading of it. Said instead about a dropped read, it is the roster having lost a
+   * child: the owner searches for a name that is on the list, finds it, opens it again,
+   * and if it fails twice they start typing the details back in — and a second record
+   * for the same student is the expensive kind of duplicate, because the enrolments,
+   * the register and the bills stay with the first one.
+   *
+   * So it says nothing about the student and everything about the read. Same shape and
+   * the same promise as the batch failure below, which is the other way this form
+   * refuses to draw itself.
+   */
+  if (studentError) {
+    return (
+      <div className="flex flex-col gap-5">
+        {back}
+        <Card className="border-late/30 bg-late/5">
+          <p className="font-medium text-ink">{t.studentUnreadable}</p>
+        </Card>
+      </div>
+    )
+  }
 
   // notFound() would be the reflex, but a missing student here is far more often
   // a stale tab than a wrong url — the row was open when somebody else changed it.

@@ -2235,6 +2235,19 @@ export const en: Dictionary = {
        */
       subjectsUnreadable:
         'Your subjects could not be read just now, so this form is not shown. It does not mean the centre has none — please try again in a moment.',
+      /**
+       * The batch row itself, when it did not arrive — as against the subject list
+       * above, which this one form can survive without.
+       *
+       * `errors.notFound` used to answer both, and it is the right sentence for the
+       * stale tab it was written for: somebody else deleted the batch while this one
+       * was open. Said about a dropped read it is a batch that has gone, and what an
+       * owner does about a batch that has gone is make it again — with the students
+       * enrolled on the first one, the register kept on the first one, and next
+       * month's bills raised against it.
+       */
+      batchUnreadable:
+        'This batch’s details could not be read just now, so this form is not shown — nothing about it has changed. Please try again in a moment.',
 
       created: 'Batch created',
       editTitle: 'Fix this batch',
@@ -2310,6 +2323,17 @@ export const en: Dictionary = {
        */
       batchesUnreadable:
         'The centre’s batches could not be read just now, so this form is not shown — nothing about this student has changed. Please try again in a moment.',
+      /**
+       * The student's own row, when it did not arrive. Sibling of the line above:
+       * that one is the batch ticks gone from the form, this one is the name.
+       *
+       * `errors.notFound` answered both, and “that student could not be found” over a
+       * child who is on the roster is the reading that ends in a second record for
+       * them — typed in by hand, with the enrolments, the register and the bills all
+       * left behind on the first.
+       */
+      studentUnreadable:
+        'This student’s details could not be read just now, so this form is not shown — they are still on the roster and nothing about them has changed. Please try again in a moment.',
       openHint: 'Tap a student to see their attendance, results and fees',
       /**
        * The roster read is the headcount, the plan usage and both warning cards, so a
