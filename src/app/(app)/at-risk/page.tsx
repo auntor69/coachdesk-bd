@@ -4,7 +4,7 @@ import { Card } from '@/components/ui'
 import { RiskList } from '@/components/risk-list'
 import { pageRole, getSession } from '@/lib/auth/session'
 import { createClient } from '@/lib/supabase/server'
-import { pageAll } from '@/lib/supabase/page'
+import { pageAll, worstFailure } from '@/lib/supabase/page'
 import { studentsAtRisk, blindArms, RISK_COLUMNS } from '@/lib/students/risk'
 import { addDays, todayInDhaka } from '@/lib/bd/time'
 import { dict, DEFAULT_LOCALE } from '@/lib/i18n'
@@ -107,7 +107,7 @@ export default async function AtRiskPage() {
    * is showing a bad sign in any of the three" — the most confident sentence this
    * product makes about children — printed off a query that came back empty-handed.
    */
-  const listProblem = 'failed' in data ? data.failed : null
+  const listProblem = worstFailure(data)
 
   const students = studentsAtRisk('rows' in data ? data.rows : null, t.noName)
 

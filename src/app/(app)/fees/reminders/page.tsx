@@ -3,7 +3,7 @@ import Link from 'next/link'
 import { Card } from '@/components/ui'
 import { pageRole, getSession } from '@/lib/auth/session'
 import { createClient } from '@/lib/supabase/server'
-import { pageOrNull } from '@/lib/supabase/page'
+import { pageAll, type PageFailure } from '@/lib/supabase/page'
 import { todayInDhaka, addDays, formatMonth } from '@/lib/bd/time'
 import { normalizeBdMobile } from '@/lib/bd/phone'
 import { sumTaka, formatTaka } from '@/lib/money'
@@ -63,7 +63,7 @@ export default async function RemindersPage() {
     // centre has billed, and a family past the cut is simply never chased — no gap on
     // the screen, no smaller count, nothing to notice. The board that leads here has
     // the same fix for the same query.
-    pageOrNull((from, to) =>
+    pageAll((from, to) =>
       supabase
         .from('fee_invoice_balances')
         .select(COLUMNS)
@@ -84,7 +84,51 @@ export default async function RemindersPage() {
       .maybeSingle(),
   ])
 
-  const invoices = owing ?? []
+  /**
+   * The screen when it could not work out today's list.
+   *
+   * A function because there are two ways to get here and one card to show, and
+   * because both of them have to come *before* the arithmetic below rather than be
+   * folded into it. Every figure on this page is a claim about who to message, and
+   * there is no honest version of that claim built on a read that did not arrive.
+   *
+   * The back link stays: the fee board says who owes money without needing either of
+   * these reads, so it is a real place to be sent rather than a dead end.
+   */
+  const refusal = (problem: PageFailure) => (
+    <div className="flex flex-col gap-5">
+      <div>
+        <h1 className="text-xl font-bold text-ink">{t.title}</h1>
+        <p className="mt-1 text-ink-soft">{t.subtitle}</p>
+      </div>
+      <Card className="border-late/30 bg-late/5">
+        <p className="font-medium text-ink">
+          {problem === 'tooLarge' ? t.tooLarge : t.unreadable}
+        </p>
+      </Card>
+      <Link
+        href="/fees"
+        className="inline-flex min-h-tap items-center font-medium text-brand-700"
+      >
+        ← {t.backToBoard}
+      </Link>
+    </div>
+  )
+
+  /*
+   * No invoices read, no worklist — and the reason to stop here rather than carry a
+   * null down the page is `chaseEmptyReason`, which answers `nothingOwed` for an
+   * empty list. That is the reassuring one of its four: "no unpaid invoice on the
+   * board at all", printed on the screen a centre opens to chase its money, in a
+   * month where forty families are late. The `?? []` this replaces produced exactly
+   * that sentence.
+   *
+   * Returning before the reminders read below is deliberate too: its window is
+   * derived from the oldest invoice, so with no invoices there is nothing to derive
+   * it from and no list for its answer to serve.
+   */
+  if (!('rows' in owing)) return refusal(owing.failed)
+  const invoices = owing.rows
 
   // The window worth reading reminders from: three days before the oldest unpaid
   // invoice's due date, which is the earliest day any stage on this page could
@@ -97,7 +141,7 @@ export default async function RemindersPage() {
   // reads as a family never contacted, and this screen's whole job is to decide who
   // may be messaged again today — so the missing row would not hide a reminder, it
   // would send a second one.
-  const chases = await pageOrNull((from, to) =>
+  const chases = await pageAll((from, to) =>
     supabase
       .from('fee_reminders')
       .select('invoice_id, created_at')
@@ -108,6 +152,22 @@ export default async function RemindersPage() {
       .range(from, to),
   )
 
+  /*
+   * And this one is the reason the comment above it was written, now that it acts on
+   * it. Every row on this screen is a decision not to leave a family alone, and this
+   * read is the only thing that knows which families were already contacted. Handed
+   * over as an empty list, it does not shorten the worklist — it says nobody has ever
+   * been chased, so every family who is inside a stage gets a message today,
+   * including the ones messaged this morning.
+   *
+   * That is the failure this whole feature exists to prevent. reminder-schedule.ts
+   * opens by naming it: families who paid attention the first time get chased twice,
+   * learn the messages are noise, and stop reading them. A screen that cannot tell
+   * who has been contacted has to say so, because the alternative is not a shorter
+   * list but a list that costs the centre the trust its messages run on.
+   */
+  if (!('rows' in chases)) return refusal(chases.failed)
+
   // Newest per invoice, which the descending order gives for free: the first row
   // seen for an invoice is its latest chase, so every later one is skipped.
   //
@@ -116,7 +176,7 @@ export default async function RemindersPage() {
   // otherwise read as yesterday — and yesterday is on the other side of the
   // cooldown, which would let the same family be messaged twice before breakfast.
   const lastChase = new Map<string, string>()
-  for (const row of chases ?? []) {
+  for (const row of chases.rows) {
     if (!row.invoice_id || lastChase.has(row.invoice_id)) continue
     lastChase.set(row.invoice_id, todayInDhaka(new Date(row.created_at)))
   }

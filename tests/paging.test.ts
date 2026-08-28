@@ -18,6 +18,7 @@ import assert from 'node:assert/strict'
 import {
   pageAll,
   pageOrNull,
+  worstFailure,
   PAGE_SIZE,
   MAX_PAGED_ROWS,
   type PageResponse,
@@ -169,4 +170,33 @@ test('pageOrNull is null past the ceiling, never the first twenty thousand rows'
   // an empty fee board is obviously wrong. A board holding twenty thousand of a
   // centre's rows and missing the rest is not, and it would be believed.
   assert.equal(await pageOrNull(fakeTable(MAX_PAGED_ROWS + 1).fetchPage), null)
+})
+
+test('worstFailure is null when every read arrived', () => {
+  assert.equal(worstFailure({ rows: [1] }, { rows: [] }), null)
+  // No reads at all is not a failure either, so a caller can spread a list.
+  assert.equal(worstFailure(), null)
+})
+
+test('worstFailure reports the one failure there is', () => {
+  assert.equal(worstFailure({ rows: [] }, { failed: 'unreadable' }), 'unreadable')
+  assert.equal(worstFailure({ failed: 'tooLarge' }, { rows: [] }), 'tooLarge')
+})
+
+test('tooLarge wins over unreadable, whichever read hit it', () => {
+  // The precedence is the reason this function exists rather than a ternary chain at
+  // each call site. `unreadable` tells the reader to try again; `tooLarge` tells them
+  // to get in touch, because no retry brings a month back under the ceiling. Answer
+  // with the retryable one and they tap their way to the same wall.
+  assert.equal(worstFailure({ failed: 'unreadable' }, { failed: 'tooLarge' }), 'tooLarge')
+  assert.equal(worstFailure({ failed: 'tooLarge' }, { failed: 'unreadable' }), 'tooLarge')
+})
+
+test('worstFailure mixes reads of different row types', () => {
+  // Two reads on one screen are rarely the same shape — a fee board reads invoices
+  // and payments — so a signature that made them agree would push callers back to
+  // writing the chain by hand.
+  const invoices = { rows: [{ id: 'i1' }] }
+  const payments: { failed: 'unreadable' } = { failed: 'unreadable' }
+  assert.equal(worstFailure(invoices, payments), 'unreadable')
 })

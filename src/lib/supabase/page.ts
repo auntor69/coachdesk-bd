@@ -47,13 +47,43 @@ export const MAX_PAGED_ROWS = 20_000
 export type PageResponse<T> = { data: T[] | null; error: { message: string } | null }
 
 /**
- * Rows, or the reason there are none.
+ * Why a read produced no rows.
  *
  * Two failures and not one, because they need different words: `unreadable` is the
  * database not answering, which is worth a "try again"; `tooLarge` is the ceiling
  * above, which is not the reader's fault and is not fixed by trying again.
  */
-export type Paged<T> = { rows: T[] } | { failed: 'unreadable' | 'tooLarge' }
+export type PageFailure = 'unreadable' | 'tooLarge'
+
+/** Rows, or the reason there are none. */
+export type Paged<T> = { rows: T[] } | { failed: PageFailure }
+
+/**
+ * The failure to tell the reader about, across every read a screen needed.
+ *
+ * Screens draw one card, not one per query — an owner does not care which of two
+ * reads came back empty-handed, only whether trying again could help. So this asks
+ * the question the card asks, and `tooLarge` wins over `unreadable` because that is
+ * the answer that stays true: with one read past the ceiling, no amount of retrying
+ * produces a complete screen, and "try again in a moment" would be a promise this
+ * screen cannot keep. Reverse the precedence and a reader retries their way to the
+ * same wall with an extra tap in between.
+ *
+ * Null when every read arrived, which is the ordinary case and the only one where a
+ * figure may be drawn.
+ *
+ * `Paged<unknown>` so one call can mix reads of different row types; nothing here
+ * looks at a row.
+ */
+export function worstFailure(...results: Paged<unknown>[]): PageFailure | null {
+  let seen: PageFailure | null = null
+  for (const result of results) {
+    if (!('failed' in result)) continue
+    if (result.failed === 'tooLarge') return 'tooLarge'
+    seen = result.failed
+  }
+  return seen
+}
 
 /**
  * Every row a query can return, one page at a time.

@@ -1748,6 +1748,11 @@ export const bn = {
     addNumbers: 'নম্বর যোগ করুন',
     backToBoard: 'ফি বোর্ডে ফিরুন',
 
+    unreadable:
+      'আজকের তালিকা এখন তৈরি করা গেল না, তাই দেখানো হচ্ছে না — এর মানে মনে করানোর কেউ নেই তা নয়। একটু পরে আবার চেষ্টা করুন।',
+    tooLarge:
+      'বাকি থাকা ফির সংখ্যা এত বেশি যে এই পর্দা একবারে হিসাব করতে পারছে না। আপনার হিসাবে কোনো সমস্যা নেই — আমাদের সাথে যোগাযোগ করুন, আমরা আজকের তালিকা পৌঁছে দেব।',
+
     /**
      * The door onto this screen, on the fee board and on the dashboard. It borrows
      * `title` and `noneTitle` rather than restating them, because it is a door to

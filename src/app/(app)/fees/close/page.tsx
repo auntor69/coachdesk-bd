@@ -4,7 +4,7 @@ import { forbidden } from 'next/navigation'
 import { Card } from '@/components/ui'
 import { pageCenter, getSession, isStaffAdmin } from '@/lib/auth/session'
 import { createClient } from '@/lib/supabase/server'
-import { pageAll } from '@/lib/supabase/page'
+import { pageAll, worstFailure } from '@/lib/supabase/page'
 import { addMonths, currentPeriodMonth, digits, formatMonth } from '@/lib/bd/time'
 import { formatTaka } from '@/lib/money'
 import { closeMonths, monthClose, monthMessages } from '@/lib/fees/month-close'
@@ -228,14 +228,10 @@ export default async function MonthClosePage({
    * The two failures are kept apart because only one of them is worth trying again.
    * `unreadable` is a dropped connection on a phone in a stairwell. `tooLarge` is a
    * centre whose month genuinely exceeds MAX_PAGED_ROWS, and no amount of tapping
-   * changes that — they are sent to the export, which does not run in a browser.
+   * changes that — nor does the export, which refuses at the same ceiling, which is
+   * why `t.tooLarge` asks them to get in touch and points at nothing.
    */
-  const ledgerProblem =
-    'failed' in balances
-      ? balances.failed
-      : 'failed' in payments
-        ? payments.failed
-        : null
+  const ledgerProblem = worstFailure(balances, payments)
 
   // Every figure on the page, from one tested function. Nothing below this line does
   // arithmetic — the point of the module is that these six numbers cannot be derived

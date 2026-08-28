@@ -784,6 +784,17 @@ export const en: Dictionary = {
     addNumbers: 'Add numbers',
     backToBoard: 'Back to the fee board',
 
+    /**
+     * Deliberately not a shorter list. This screen's answer is built from two reads —
+     * who owes, and who has already been told — and with either one missing the
+     * honest output is no worklist at all. See the notes in the page.
+     */
+    unreadable:
+      'Today’s list could not be worked out just now, so it is not shown — it does not mean there is nobody to remind. Please try again in a moment.',
+    /** See close.tooLarge for why this does not point anywhere. */
+    tooLarge:
+      'There are more unpaid fees on file than this screen can work through at once. Nothing is wrong with your records — please get in touch and we will get you today’s list.',
+
     entryDueSuffix: 'to remind today',
 
     stages: {

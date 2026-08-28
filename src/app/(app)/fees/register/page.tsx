@@ -5,7 +5,7 @@ import { Card } from '@/components/ui'
 import { SearchBox, SearchEmpty } from '@/components/search-box'
 import { pageCenter, getSession, isStaffAdmin } from '@/lib/auth/session'
 import { createClient } from '@/lib/supabase/server'
-import { pageAll } from '@/lib/supabase/page'
+import { pageAll, worstFailure } from '@/lib/supabase/page'
 import { has, planName, PLANS } from '@/lib/plans'
 import {
   currentPeriodMonth,
@@ -173,7 +173,7 @@ export default async function RegisterPage({
       .maybeSingle(),
   ])
 
-  const registerProblem = 'failed' in payments ? payments.failed : null
+  const registerProblem = worstFailure(payments)
 
   // The running total is accumulated row by row rather than asked of Postgres. A
   // window function would be the better answer over thousands of rows; over one

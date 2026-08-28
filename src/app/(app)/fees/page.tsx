@@ -5,7 +5,7 @@ import { Card } from '@/components/ui'
 import { SearchBox, SearchEmpty } from '@/components/search-box'
 import { pageCenter, getSession, isStaffAdmin, canReadFees } from '@/lib/auth/session'
 import { createClient } from '@/lib/supabase/server'
-import { pageAll, pageOrNull } from '@/lib/supabase/page'
+import { pageAll, pageOrNull, worstFailure } from '@/lib/supabase/page'
 import {
   todayInDhaka,
   currentPeriodMonth,
@@ -375,8 +375,7 @@ export default async function FeesPage({
    * vanishes from the board it was just taken on reads as a payment that did not
    * save — which is the one thing an owner will act on twice.
    */
-  const boardProblem =
-    'failed' in owing ? owing.failed : 'failed' in settled ? settled.failed : null
+  const boardProblem = worstFailure(owing, settled)
 
   if (boardProblem !== null) {
     return (
