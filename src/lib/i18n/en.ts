@@ -343,6 +343,24 @@ export const en: Dictionary = {
     /** See close.tooLarge for why this does not point anywhere. */
     tooLarge:
       'There are more bills here than this board can add up in one go. Nothing is wrong with your records — please get in touch and we will get you the figures.',
+    /**
+     * Under the chase-list link, when the record of who has already been contacted did
+     * not arrive.
+     *
+     * Once, not on every row. What each row loses is its “last chased” line, and a row
+     * without one is indistinguishable from a family nobody has spoken to — so the
+     * thirty an owner saw to this morning are the thirty they cannot see. Points at the
+     * chase list because that screen holds the same record and will have it on the next
+     * read, or will refuse in its own words.
+     */
+    chaseHistoryUnreadable:
+      'Who has already been contacted could not be read just now, so the rows do not say when a family was last chased. Open the chase list before you send, so nobody is asked twice.',
+    /**
+     * Past the ceiling, and pointed at us rather than at the chase list — that screen
+     * reads the same rows and would meet the same wall one tap later. See close.tooLarge.
+     */
+    chaseHistoryTooLarge:
+      'There are more reminders on file than this board can read in one go, so the rows do not say when a family was last chased. Nothing is wrong with your records — please get in touch.',
 
     registerLink: 'This month’s collection register',
     closeLink: 'This month’s full picture',

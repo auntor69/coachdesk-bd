@@ -706,6 +706,12 @@ export const bn = {
     /** See close.tooLarge for why this does not point anywhere. */
     tooLarge:
       'এখানে এত বিল জমেছে যে এক দফায় এই বোর্ডে যোগ করা যাচ্ছে না। আপনার হিসাবে কোনো সমস্যা নেই — আমাদের সাথে যোগাযোগ করুন, আমরা হিসাব পৌঁছে দেব।',
+    /** See en.fees.chaseHistoryUnreadable for why this is said once and not per row. */
+    chaseHistoryUnreadable:
+      'কাকে আগে জানানো হয়েছে তা এখন পড়া গেল না, তাই সারিগুলোতে শেষ কবে তাগাদা দেওয়া হয়েছে তা লেখা নেই। পাঠানোর আগে তাগাদার তালিকা খুলে নিন, যাতে কাউকে দুইবার বলা না হয়।',
+    /** See close.tooLarge for why this does not point at the chase list either. */
+    chaseHistoryTooLarge:
+      'ফাইলে তাগাদার সংখ্যা এত বেশি যে এই বোর্ড এক দফায় পড়তে পারছে না, তাই সারিগুলোতে শেষ কবে তাগাদা দেওয়া হয়েছে তা লেখা নেই। আপনার হিসাবে কোনো সমস্যা নেই — আমাদের সাথে যোগাযোগ করুন।',
 
     /**
      * The link to the month's collection register. Named for what it is on paper —

@@ -5,7 +5,7 @@ import { Card } from '@/components/ui'
 import { SearchBox, SearchEmpty } from '@/components/search-box'
 import { pageCenter, getSession, isStaffAdmin, canReadFees } from '@/lib/auth/session'
 import { createClient } from '@/lib/supabase/server'
-import { pageAll, pageOrNull, worstFailure } from '@/lib/supabase/page'
+import { pageAll, pageOrNull, type Paged, worstFailure } from '@/lib/supabase/page'
 import {
   todayInDhaka,
   currentPeriodMonth,
@@ -142,7 +142,14 @@ export default async function FeesPage({
   // hand back the same row twice and skip another, and a duplicated invoice here
   // would be double-counted in what the centre is owed. The display orders in front
   // of it are untouched.
-  const [owing, settled, { data: collectedRow }, chased, cancelled, { data: center }] =
+  const [
+    owing,
+    settled,
+    { data: collectedRow, error: collectedError },
+    chased,
+    cancelled,
+    { data: center },
+  ] =
     await Promise.all([
       pageAll((from, to) =>
         supabase
@@ -179,7 +186,10 @@ export default async function FeesPage({
       // line now lives in the view, where a third screen cannot forget it.
       //
       // No row at all is a month with no payments in it, which is why this is
-      // maybeSingle and not single.
+      // maybeSingle and not single — and why `error` and not `data` decides below
+      // whether the figure is known. maybeSingle answers `data: null` for both of the
+      // two things that can happen here, a month nobody has paid in and a read that
+      // did not arrive, and only one of them is worth printing as a number.
       supabase
         .from('fee_collections_month')
         .select('collected_bdt')
@@ -205,8 +215,13 @@ export default async function FeesPage({
       // their own dunning — so the query would spend a round trip to be handed an
       // empty list, and every row would then draw its family as never-contacted.
       // Skipping it makes the absence deliberate instead of a silent zero.
+      //
+      // `{ rows: [] }` for that skip and not a failure, because nothing was asked for
+      // and nothing went wrong — the stand-in the dashboard uses for a door it is not
+      // drawing. `Paged<never>` because there is no row type to name and an empty list
+      // of nothing narrows to the real rows wherever the two meet.
       canWrite
-        ? pageOrNull((from, to) =>
+        ? pageAll((from, to) =>
             supabase
               .from('fee_reminders')
               .select('invoice_id, channel, created_at')
@@ -216,7 +231,7 @@ export default async function FeesPage({
               .order('id')
               .range(from, to),
           )
-        : Promise.resolve(null),
+        : Promise.resolve<Paged<never>>({ rows: [] }),
       // The bills cancelled recently, so a mistaken tap has a way back and a
       // deliberate one has visible evidence. Everything else on this board reads
       // `voided_at is null`; this is the one query that asks for the other side of it.
@@ -231,6 +246,14 @@ export default async function FeesPage({
       // can_view_fees reads what their own students owe; who cancelled what is the
       // owner's record of correcting their own books, and there is no restore button on
       // a read-only board for the list to lead to.
+      //
+      // Still pageOrNull, unlike the two reads at the head of this wave and the one
+      // above. This block is drawn only when something is in it, so a read that did not
+      // arrive takes a fold-out off the page rather than putting a wrong figure on it,
+      // and an absent fold-out is the ordinary state of a centre that has cancelled
+      // nothing this month. What it costs is the way back to one mistaken tap, on a
+      // board where the bill is already out of every total — which is what the tap
+      // asked for. Nothing here claims that nothing was cancelled.
       canWrite
         ? pageOrNull((from, to) =>
             supabase
@@ -269,7 +292,7 @@ export default async function FeesPage({
     string,
     { on: string; day: string; via: OutreachChannel }
   >()
-  for (const r of chased ?? []) {
+  for (const r of 'rows' in chased ? chased.rows : []) {
     if (!r.invoice_id || lastChase.has(r.invoice_id)) continue
     const on = todayInDhaka(new Date(r.created_at))
     lastChase.set(r.invoice_id, {
@@ -295,14 +318,31 @@ export default async function FeesPage({
   const unpaid = rows.filter((r) => r.remaining > 0)
   const overdue = unpaid.filter((r) => r.daysLate > 0)
   // Number(), not sumTaka: there is one row and Postgres has already added it up.
-  // numeric arrives as a string, and a missing row is a month nobody has paid in.
-  const collected = Number(collectedRow?.collected_bdt ?? 0)
+  // numeric arrives as a string, and a missing row is a month nobody has paid in —
+  // unless the read failed, in which case the missing row means nothing at all, so the
+  // error decides and the line below shows a dash rather than the ৳0 it used to.
+  const collected = collectedError ? null : Number(collectedRow?.collected_bdt ?? 0)
+
+  /*
+   * Whether the chase history arrived, which is a question about the rows as much as
+   * about this figure. `lastChase` is what puts "chased today" under a family's name
+   * and what `countChasesDue` reads to decide who is owed a message — the same point
+   * the note on that query makes about a short read, reached by the other road. Empty,
+   * every family on the board reads as never contacted, the count on the chase-list
+   * link comes out inflated, and an owner works down a list re-messaging the thirty
+   * they messaged this morning.
+   *
+   * Null on the read-only board, where nothing was asked and no chase list is drawn.
+   */
+  const chaseProblem = worstFailure(chased)
 
   // How many of those are due a message today. Counted through the shared
   // function rather than filtered here, so the number on this link cannot drift
   // from the list it opens — and computed on this page rather than fetched from
-  // that one, so the board stays a single round trip.
-  const dueToday = countChasesDue(
+  // that one, so the board stays a single round trip. Withheld, not guessed, when
+  // the cooldowns behind it did not arrive: `ReminderEntry` keeps its link and drops
+  // its number.
+  const dueToday = chaseProblem !== null ? null : countChasesDue(
     unpaid.map((r) => ({
       dueDate: r.dueDate,
       lastRemindedOn: lastChase.get(r.id)?.on ?? null,
@@ -421,10 +461,17 @@ export default async function FeesPage({
         <p className="num mt-2 text-sm text-brand-800">
           {t.unpaidCount(unpaid.length)} · {t.overdueCount(overdue.length)}
         </p>
-        {collected > 0 && (
+        {/* A dash, not a nought, when that one-row sum did not arrive — and the line
+            still drawn, because an owner who took ৳40,000 this month and finds the line
+            gone will read the absence as the figure. A month genuinely without takings
+            keeps no line at all: nought collected on the first of the month is the
+            ordinary state, and a ৳0 beside it says nothing the empty space does not. */}
+        {(collected === null || collected > 0) && (
           <p className="mt-1 text-sm text-brand-800">
             {t.collectedThisMonth}{' '}
-            <span className="num font-semibold">{formatTaka(collected)}</span>
+            <span className="num font-semibold">
+              {collected === null ? '—' : formatTaka(collected)}
+            </span>
           </p>
         )}
         {credit > 0 && (
@@ -504,6 +551,17 @@ export default async function FeesPage({
           already says. */}
       {canWrite && unpaid.length > 0 && (
         <ReminderEntry dueToday={dueToday} t={d.reminders} />
+      )}
+
+      {/* Said once here rather than on two hundred rows. What is missing from each of
+          them is the "last chased" line, and a row with no such line is exactly a row
+          for a family nobody has contacted — so the one thing an owner cannot see is
+          the thirty they saw to this morning. Grey and not amber: the board above it is
+          right, every figure on it is real, and this is the one part that is absent. */}
+      {canWrite && chaseProblem !== null && (
+        <p className="text-sm text-ink-soft">
+          {chaseProblem === 'tooLarge' ? t.chaseHistoryTooLarge : t.chaseHistoryUnreadable}
+        </p>
       )}
 
       {rows.length === 0 ? (
