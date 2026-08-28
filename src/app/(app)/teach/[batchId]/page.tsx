@@ -69,12 +69,42 @@ export default async function AttendancePage({
   // Which centre this batch is in is RLS's question, and a miss is a 404 rather
   // than a 403 so the URL cannot be used to probe which batch IDs exist in other
   // centres.
-  const { data: batch } = await supabase
+  const { data: batch, error: batchError } = await supabase
     .from('batches')
     .select('id, name, slot, start_time, end_time, teacher_id, subjects (name, name_bn)')
     .eq('coaching_center_id', session.active.centerId)
     .eq('id', batchId)
     .maybeSingle()
+
+  /*
+   * The read that failed, ahead of the 404 — because `notFound()` was answering for
+   * both, and the reader of this screen is standing in front of the class.
+   *
+   * The line above is right that a miss must be a 404. But a teacher who tapped their
+   * own batch on /teach and landed on "we could not find that page" has been told the
+   * class is not in the app, at the moment they were about to take the register — so
+   * they take it on paper, and the day is missing from the product for good, because
+   * nothing later goes back and asks for it.
+   *
+   * `t.unreadable` is the register's own sentence and already says the true thing:
+   * nothing has been lost. No name above it, unlike the scope refusal below, because
+   * the name is what did not arrive.
+   */
+  if (batchError) {
+    return (
+      <div className="flex flex-col gap-4">
+        <Link
+          href="/teach"
+          className="inline-flex min-h-tap items-center text-ink-soft hover:text-ink"
+        >
+          ← {t.title}
+        </Link>
+        <Card className="border-late/30 bg-late/5">
+          <p className="font-medium text-ink">{t.unreadable}</p>
+        </Card>
+      </div>
+    )
+  }
 
   if (!batch) notFound()
 
