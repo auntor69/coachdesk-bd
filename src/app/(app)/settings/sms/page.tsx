@@ -3,7 +3,7 @@ import Link from 'next/link'
 import { Card } from '@/components/ui'
 import { pageRole, getSession } from '@/lib/auth/session'
 import { createClient } from '@/lib/supabase/server'
-import { pageOrNull } from '@/lib/supabase/page'
+import { pageAll, worstFailure } from '@/lib/supabase/page'
 import { formatDate } from '@/lib/bd/time'
 import { planName } from '@/lib/plans'
 import { smsProviderConfigured } from '@/lib/sms/provider'
@@ -41,28 +41,35 @@ export default async function SmsSettingsPage() {
    * the two — and the opt-out list would hand the other centre's students, with
    * their guardians' mobile numbers, to a switch that writes to them.
    */
-  const [{ data: dispatches }, { data: logs }, students] = await Promise.all([
+  const [{ data: dispatches }, logs, students] = await Promise.all([
     supabase
       .from('sms_dispatches')
       .select('id, kind, recipient_count, credit_cost, created_at')
       .eq('coaching_center_id', session.active.centerId)
       .order('created_at', { ascending: false })
       .limit(10),
-    // Status counts come from the rows themselves; there are at most a few
-    // hundred on a free plan, and a wrong count here is worse than a slow one.
-    supabase
-      .from('sms_logs')
-      .select('status')
-      .eq('coaching_center_id', session.active.centerId)
-      .limit(1000),
-    // Paged, unlike the two above, and for a reason neither of them has: this list
-    // is a consent control. Every row is a switch recording whether a guardian
-    // asked not to be messaged, and PostgREST's silent thousand would drop the tail
-    // of a large centre's roster off a screen with no pager and no note — so a
-    // family who asked to be left alone could not be marked, and one already marked
-    // would be invisible to the owner checking. `.order('id')` last so two students
-    // with the same name cannot make the offset walk repeat one and skip the other.
-    pageOrNull((from, to) =>
+    // Status counts come from the rows themselves rather than six `count` queries,
+    // and paged rather than capped at a thousand, because of what that cap quietly did
+    // the day a centre passed its thousandth message: the three tallies became the
+    // tallies of a thousand rows in no particular order, under a heading that reads as
+    // the whole of it. The one an owner acts on is "not sent". A wrong count here is
+    // worse than a slow one, and this read is one enum column wide.
+    pageAll((from, to) =>
+      supabase
+        .from('sms_logs')
+        .select('status')
+        .eq('coaching_center_id', session.active.centerId)
+        .order('id')
+        .range(from, to),
+    ),
+    // Paged for a reason the one above does not have: this list is a consent control.
+    // Every row is a switch recording whether a guardian asked not to be messaged, and
+    // PostgREST's silent thousand would drop the tail of a large centre's roster off a
+    // screen with no pager and no note — so a family who asked to be left alone could
+    // not be marked, and one already marked would be invisible to the owner checking.
+    // `.order('id')` last so two students with the same name cannot make the offset
+    // walk repeat one and skip the other.
+    pageAll((from, to) =>
       supabase
         .from('students')
         .select('id, name, guardian_phone, sms_opt_out, preferred_channel')
@@ -91,7 +98,21 @@ export default async function SmsSettingsPage() {
     failed: 0,
     cancelled: 0,
   }
-  for (const log of logs ?? []) counts[log.status]++
+  for (const log of 'rows' in logs ? logs.rows : []) counts[log.status]++
+
+  /*
+   * And nought of each is what an unread tally used to look like: nothing waiting,
+   * nothing gone, nothing failed. On the one screen in the product that spends the
+   * owner's money, and always in the flattering direction — the count they came here
+   * to check is "not sent", and a zero under it is the answer they were hoping for.
+   *
+   * So the three figures are withheld instead, as a dash, exactly as the dashboard's
+   * own tiles do it. The `counts` Record is still filled and still exhaustive: that is
+   * what makes a new `sms_status` a build error rather than a missing row, and it is
+   * not the part that was lying.
+   */
+  const statusProblem = worstFailure(logs)
+  const tally = (n: number) => (statusProblem === null ? String(n) : '—')
 
   /**
    * 'sending' belongs with 'queued', not with 'sent'.
@@ -103,13 +124,26 @@ export default async function SmsSettingsPage() {
    */
   const waiting = counts.queued + counts.sending
 
-  const optOutStudents: OptOutStudent[] = (students ?? []).map((student) => ({
-    id: student.id,
-    name: student.name,
-    guardianPhone: student.guardian_phone,
-    optOut: student.sms_opt_out,
-    preferredChannel: student.preferred_channel,
-  }))
+  /*
+   * The roster, and a failed read takes the whole switch panel off the screen — which
+   * on a consent control is not the harmless absence it is on the at-risk card. A
+   * guardian who has asked not to be messaged cannot be marked, and one already marked
+   * cannot be seen by the owner checking; `optOutStudents.length > 0` is true of every
+   * centre with a single active student, so an empty list here is not a state a real
+   * centre reaches. The panel still goes, because there is nothing honest to draw in
+   * it, and the sentence below says which of the two happened.
+   */
+  const rosterProblem = worstFailure(students)
+
+  const optOutStudents: OptOutStudent[] = ('rows' in students ? students.rows : []).map(
+    (student) => ({
+      id: student.id,
+      name: student.name,
+      guardianPhone: student.guardian_phone,
+      optOut: student.sms_opt_out,
+      preferredChannel: student.preferred_channel,
+    }),
+  )
 
   const off = optOutStudents.filter((s) => s.optOut).length
 
@@ -155,39 +189,56 @@ export default async function SmsSettingsPage() {
         <dl className="grid grid-cols-3 gap-2">
           <div className="rounded-xl border border-line bg-white px-3 py-2">
             <dt className="text-xs text-ink-soft">{t.queued}</dt>
-            <dd className="num text-xl font-bold text-ink">{waiting}</dd>
+            <dd className="num text-xl font-bold text-ink">{tally(waiting)}</dd>
           </div>
           <div className="rounded-xl border border-line bg-white px-3 py-2">
             <dt className="text-xs text-ink-soft">{t.sent}</dt>
             <dd className="num text-xl font-bold text-ink">
-              {counts.sent + counts.delivered}
+              {tally(counts.sent + counts.delivered)}
             </dd>
           </div>
           <div className="rounded-xl border border-line bg-white px-3 py-2">
             <dt className="text-xs text-ink-soft">{t.failed}</dt>
             <dd
               className={`num text-xl font-bold ${
-                counts.failed > 0 ? 'text-absent' : 'text-ink'
+                statusProblem === null && counts.failed > 0 ? 'text-absent' : 'text-ink'
               }`}
             >
-              {counts.failed}
+              {tally(counts.failed)}
             </dd>
           </div>
         </dl>
         {counts.cancelled > 0 && (
           <p className="num text-sm text-ink-faint">{t.cancelledNote(counts.cancelled)}</p>
         )}
+        {/* Under the dashes, saying which of the two happened. Not a warning card:
+            nothing is wrong with the centre, and the credit balance above this — which
+            is the figure they came for — is off the session and was never in doubt. */}
+        {statusProblem !== null && (
+          <p className="text-sm text-ink-soft">
+            {statusProblem === 'tooLarge' ? t.statusTooLarge : t.statusUnknown}
+          </p>
+        )}
       </section>
 
       <section className="flex flex-col gap-3">
         <h2 className="font-semibold text-ink">{t.recentTitle}</h2>
-        {(dispatches ?? []).length === 0 ? (
+        {/* `null` is the failed read and `[]` is the honest empty one — a non-head
+            select answers `[]` when it found nothing and `null` only on error, which is
+            the whole reason these are two arms and not `?? []`. `noneYet` does not just
+            report nothing: it tells the owner where the chance to send one comes up,
+            which is a wrong errand to send them on after a dropped read. */}
+        {dispatches === null ? (
+          <p className="rounded-xl bg-surface-alt px-4 py-3 text-sm text-ink-soft">
+            {t.recentUnreadable}
+          </p>
+        ) : dispatches.length === 0 ? (
           <p className="rounded-xl bg-surface-alt px-4 py-3 text-sm text-ink-soft">
             {t.noneYet}
           </p>
         ) : (
           <ul className="flex flex-col gap-2">
-            {(dispatches ?? []).map((dispatch) => (
+            {dispatches.map((dispatch) => (
               <li
                 key={dispatch.id}
                 className="flex items-center gap-3 rounded-xl border border-line
@@ -212,6 +263,14 @@ export default async function SmsSettingsPage() {
           </ul>
         )}
       </section>
+
+      {rosterProblem !== null && (
+        <Card>
+          <p className="text-sm text-ink-soft">
+            {rosterProblem === 'tooLarge' ? t.rosterTooLarge : t.rosterUnreadable}
+          </p>
+        </Card>
+      )}
 
       {optOutStudents.length > 0 && (
         <OptOutList

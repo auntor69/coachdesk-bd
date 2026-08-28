@@ -4010,11 +4010,20 @@ export const bn = {
        * question. Not why it was cancelled — whether they paid for it.
        */
       cancelledNote: (n: number) => `${n}টি বাতিল হয়েছে — ক্রেডিট ফেরত পেয়েছেন।`,
+      /** See en.settings.sms.statusUnknown for why it names both halves. */
+      statusUnknown:
+        'আপনার বার্তাগুলোর অবস্থা এখন পড়া গেল না, তাই কোনো সংখ্যা দেখানো হয়নি — এর মানে লাইনে কিছু নেই বা কিছু ব্যর্থ হয়নি, তা নয়। একটু পরে আবার চেষ্টা করুন।',
+      /** See fees.close.tooLarge for why this does not point anywhere. */
+      statusTooLarge:
+        'ফাইলে বার্তার সংখ্যা এত বেশি যে এই পর্দা একবারে গুনতে পারছে না। আপনার হিসাবে কোনো সমস্যা নেই — আমাদের সাথে যোগাযোগ করুন, আমরা সংখ্যাগুলো পৌঁছে দেব।',
 
       recentTitle: 'সাম্প্রতিক পাঠানো',
       /** Says where the first one will come from, not just that there are none. */
       noneYet:
         'এখনও কোনো SMS পাঠানো হয়নি। পরীক্ষার নম্বর সেভ করার পর অভিভাবকদের জানানোর সুযোগ আসবে।',
+      /** See en.settings.sms.recentUnreadable for why this is not `noneYet`. */
+      recentUnreadable:
+        'সাম্প্রতিক কী কী পাঠানো হয়েছে তা এখন পড়া গেল না — এর মানে কিছুই পাঠানো হয়নি, তা নয়। একটু পরে আবার চেষ্টা করুন।',
       /** How many guardians one dispatch reached. A tally, so ASCII. */
       people: (n: number) => `${n} জন`,
 
@@ -4026,6 +4035,12 @@ export const bn = {
        */
       optOutNone: 'এখন সবাই SMS পাচ্ছে।',
       optOutSome: (n: number) => `${n} জনের SMS বন্ধ আছে।`,
+      /** See en.settings.sms.rosterUnreadable for why it says nothing changed. */
+      rosterUnreadable:
+        'শিক্ষার্থীর তালিকা এখন পড়া গেল না, তাই SMS বন্ধ-চালুর সুইচগুলো দেখানো হয়নি। কারও সেটিং বদলায়নি — একটু পরে আবার চেষ্টা করুন।',
+      /** See fees.close.tooLarge for why this does not point anywhere. */
+      rosterTooLarge:
+        'শিক্ষার্থীর সংখ্যা এত বেশি যে এই পর্দা একবারে তালিকা করতে পারছে না। আপনার হিসাবে কোনো সমস্যা নেই — আমাদের সাথে যোগাযোগ করুন, যাঁরা বলেছেন তাঁদের SMS আমরা বন্ধ করে দেব।',
     },
 
     teachers: {

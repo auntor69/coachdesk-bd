@@ -2138,15 +2138,51 @@ export const en: Dictionary = {
       failed: 'Not sent',
       cancelledNote: (n: number) =>
         `${n} cancelled — ${n === 1 ? 'that credit is' : 'those credits are'} back.`,
+      /**
+       * Under three dashes where the tallies were.
+       *
+       * Names both halves of what a nought would have claimed, because the count an
+       * owner comes to this screen for is “not sent” and zero is the answer they were
+       * hoping for. A grey line and not a warning: nothing is wrong with the centre,
+       * and the credit balance above it never depended on this read.
+       */
+      statusUnknown:
+        'How your messages are doing could not be read just now, so no counts are shown — it does not mean nothing is waiting and nothing failed. Please try again in a moment.',
+      /** See fees.close.tooLarge for why this does not point anywhere. */
+      statusTooLarge:
+        'There are more messages on file than this screen can count at once. Nothing is wrong with your records — please get in touch and we will get you the figures.',
 
       recentTitle: 'Recently sent',
       noneYet:
         'No SMS sent yet. The chance to tell guardians comes right after you save marks for an exam.',
+      /**
+       * Not `noneYet`, which does two things: it reports nothing sent and then sends the
+       * owner to the exam screen to send the first one. After a dropped read the first
+       * half is a guess and the second is a wrong errand.
+       */
+      recentUnreadable:
+        'What went out recently could not be read just now — it does not mean nothing has been sent. Please try again in a moment.',
       people: (n: number) => `${n} ${n === 1 ? 'guardian' : 'guardians'}`,
 
       optOutNone: 'Everybody is getting SMS right now.',
       optOutSome: (n: number) =>
         `SMS is off for ${n} ${n === 1 ? 'student' : 'students'}.`,
+      /**
+       * The switch panel is gone, and this is why.
+       *
+       * Says nobody’s setting changed, because that is the fear a consent control
+       * disappearing creates: an owner who marked a family last week and cannot find
+       * the switch this week will assume the marking went with it.
+       */
+      rosterUnreadable:
+        'The student list could not be read just now, so the SMS switches are not shown. Nobody’s setting has changed — please try again in a moment.',
+      /**
+       * Points at us and not at a retry, like every other one. The offer is the real
+       * one: a guardian who asked to be left alone has to be able to be left alone, and
+       * if this screen cannot do it then somebody here does it for them.
+       */
+      rosterTooLarge:
+        'There are more students on file than this screen can list at once. Nothing is wrong with your records — please get in touch and we will turn SMS off for the families who asked.',
     },
 
     teachers: {
