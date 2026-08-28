@@ -1788,6 +1788,20 @@ export const en: Dictionary = {
   },
 
   settings: {
+    /**
+     * The four list screens under here — subjects, batches, exam kinds, teachers —
+     * when the read behind the list did not arrive.
+     *
+     * One sentence for all four, because the reader's question is the same in each
+     * case and it is not “which table”. What every one of them drew before this was
+     * an empty list over its own “none yet” card and, on two of them, a counter
+     * reading “0 of 5 used” — a centre told its own timetable is gone.
+     *
+     * “Nothing has changed” rather than “nothing has been lost”: on these screens the
+     * worry is not an afternoon's typing, it is whether the batches are still there.
+     */
+    listUnreadable:
+      'This list could not be read just now, so it is not shown — nothing has changed. Please try again in a moment.',
     added: 'Added',
     saved: 'Saved',
     removed: 'Removed',

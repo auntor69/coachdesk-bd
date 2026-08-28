@@ -56,7 +56,35 @@ export default async function SubjectsPage() {
     readSubjectUses(supabase, session.active.centerId),
   ])
 
-  const rows = subjects ?? []
+  /*
+   * A read that did not arrive, and this screen had two ways of lying about it. The
+   * list drew its own “no subjects yet” card, and the line under the title read “0 of
+   * 5 used” — to a centre whose five subjects are the whole of its timetable. Which is
+   * also the line the add form is gated on: with `atCap` false, a sixth would be
+   * offered on a plan that holds five.
+   *
+   * `uses` is not part of this. A missing use-count claims nothing already — every row
+   * refuses its own repair in the action's words — and the names are still worth
+   * drawing without it.
+   */
+  if (subjects === null) {
+    return (
+      <div className="flex flex-col gap-5">
+        <Link
+          href="/settings"
+          className="inline-flex min-h-tap items-center text-ink-soft hover:text-ink"
+        >
+          ← {d.settings.hub.title}
+        </Link>
+        <h1 className="text-xl font-bold text-ink">{t.title}</h1>
+        <Card className="border-late/30 bg-late/5">
+          <p className="font-medium text-ink">{d.settings.listUnreadable}</p>
+        </Card>
+      </div>
+    )
+  }
+
+  const rows = subjects
   const activeCount = rows.filter((s) => s.active).length
   const limit = session.plan.maxSubjects
   const atCap = limit !== null && activeCount >= limit

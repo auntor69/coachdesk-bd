@@ -1,5 +1,6 @@
 import Link from 'next/link'
 
+import { Card } from '@/components/ui'
 import { pageRole, getSession } from '@/lib/auth/session'
 import { createClient } from '@/lib/supabase/server'
 import { dict, localName, DEFAULT_LOCALE } from '@/lib/i18n'
@@ -54,7 +55,33 @@ export default async function ExamTypesPage() {
     readExamTypeUses(supabase, session.active.centerId),
   ])
 
-  const rows = examTypes ?? []
+  /*
+   * No cap on exam kinds, so nothing here was claiming a number. What an unread list
+   * drew was worse in one specific way: nothing at all above the add box, on a screen
+   * whose whole content is names an owner typed. সাপ্তাহিক পরীক্ষা gets typed a
+   * second time, and now there are two kinds with one name across the exam history.
+   *
+   * The add box goes with it. A form over a list that failed to load is how the
+   * duplicate gets made.
+   */
+  if (examTypes === null) {
+    return (
+      <div className="flex flex-col gap-5">
+        <Link
+          href="/settings"
+          className="inline-flex min-h-tap items-center text-ink-soft hover:text-ink"
+        >
+          ← {d.settings.hub.title}
+        </Link>
+        <h1 className="text-xl font-bold text-ink">{t.title}</h1>
+        <Card className="border-late/30 bg-late/5">
+          <p className="font-medium text-ink">{d.settings.listUnreadable}</p>
+        </Card>
+      </div>
+    )
+  }
+
+  const rows = examTypes
 
   /**
    * Why a kind cannot be removed, or null when no exam was held as it.

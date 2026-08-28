@@ -54,7 +54,31 @@ export default async function BatchesPage() {
     .eq('coaching_center_id', session.active.centerId)
     .order('start_time', { ascending: true, nullsFirst: false })
 
-  const rows = (batches ?? []).map((batch) => {
+  /*
+   * The timetable, and an unread one used to draw the centre as a new one: “you have no
+   * batches yet” under a line reading “0 of 5 used”. Every screen in the product hangs
+   * off these rows — the register, the invoice run, the old-dues form — so an owner who
+   * believes that sentence is an owner about to build their timetable again on top of
+   * the one that is still there.
+   */
+  if (batches === null) {
+    return (
+      <div className="flex flex-col gap-5">
+        <Link
+          href="/settings"
+          className="inline-flex min-h-tap items-center text-ink-soft hover:text-ink"
+        >
+          ← {d.settings.hub.title}
+        </Link>
+        <h1 className="text-xl font-bold text-ink">{t.title}</h1>
+        <Card className="border-late/30 bg-late/5">
+          <p className="font-medium text-ink">{d.settings.listUnreadable}</p>
+        </Card>
+      </div>
+    )
+  }
+
+  const rows = batches.map((batch) => {
     const subject = Array.isArray(batch.subjects) ? batch.subjects[0] : batch.subjects
     const teacher = Array.isArray(batch.teachers) ? batch.teachers[0] : batch.teachers
     const days = (batch.batch_schedules ?? [])

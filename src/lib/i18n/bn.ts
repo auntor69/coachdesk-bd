@@ -3404,6 +3404,9 @@ export const bn = {
    * separate groups below, one per form, because those do cross the wire.
    */
   settings: {
+    /** See en.settings.listUnreadable for why one sentence covers all four screens. */
+    listUnreadable:
+      'এই তালিকাটি এখন পড়া গেল না, তাই দেখানো হয়নি — কিছু বদলায়নি। একটু পরে আবার চেষ্টা করুন।',
     /** The two success words the smaller forms share. */
     added: 'যোগ হয়েছে',
     saved: 'সেভ হয়েছে',

@@ -80,7 +80,41 @@ export default async function TeachersPage() {
       .order('name', { ascending: true }),
   ])
 
-  const subjectOptions = (allSubjects ?? []).map((subject) => {
+  /*
+   * BOTH READS, AND THIS SCREEN IS THE ONE WHERE THAT IS NOT A JUDGMENT CALL.
+   *
+   * The subject list, because of what an empty tick list means when it is saved. Every
+   * box on a teacher's row is drawn from `subjectOptions`; with none drawn, the row
+   * still submits, `saveTeacherDetails` reads no `subjectIds`, and the difference it
+   * writes is “remove every subject they teach”. An owner correcting a spelling in a
+   * name would unlink the three subjects that name teaches, and the action would be
+   * right to do it — the form asked. So the form is not drawn.
+   *
+   * The teacher list, because of the card below. `activeCount` off an empty list is
+   * nought, nought is never over the seats, and the reader is handed “you are the only
+   * teacher on this plan, there is nothing to manage” — on the one screen that can
+   * switch a colleague off, to the owner the settings hub sent here for exactly that
+   * reason. The plan screen says “— / 1” beside their teachers for the same failure;
+   * this is where they arrive next.
+   */
+  if (teachers === null || allSubjects === null) {
+    return (
+      <div className="flex flex-col gap-5">
+        <Link
+          href="/settings"
+          className="inline-flex min-h-tap items-center text-ink-soft hover:text-ink"
+        >
+          ← {d.settings.hub.title}
+        </Link>
+        <h1 className="text-xl font-bold text-ink">{t.title}</h1>
+        <Card className="border-late/30 bg-late/5">
+          <p className="font-medium text-ink">{d.settings.listUnreadable}</p>
+        </Card>
+      </div>
+    )
+  }
+
+  const subjectOptions = allSubjects.map((subject) => {
     const label = localName(subject, locale)
     return {
       id: subject.id,
@@ -89,7 +123,7 @@ export default async function TeachersPage() {
     }
   })
 
-  const rows: TeacherRow[] = (teachers ?? []).map((teacher) => {
+  const rows: TeacherRow[] = teachers.map((teacher) => {
     // PostgREST returns a to-one embed as an object and a to-many as an array,
     // and which one you get depends on whether it can see the unique constraint.
     // Handling both is cheaper than depending on that.
