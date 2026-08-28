@@ -16,6 +16,11 @@ import type { Dictionary } from '@/lib/i18n'
  * Shown at zero on purpose. "Nobody needs chasing today" is the answer the owner
  * came for, not an empty state to be hidden.
  *
+ * Which is why `dueToday` can arrive as null and not as a number: the sentence that
+ * makes zero worth drawing is a claim, and a screen that could not count says
+ * `entryUnknown` instead. The door still opens — the worklist counts for itself, and
+ * refuses in its own words if it cannot.
+ *
  * A link rather than the list itself, on both screens. The board is ordered by
  * who owes most for longest and the dashboard by biggest debt; the worklist is
  * ordered by who has not been told yet, which is a different set in a different
@@ -31,7 +36,7 @@ export function ReminderEntry({
   dueToday,
   t,
 }: {
-  dueToday: number
+  dueToday: number | null
   t: Dictionary['reminders']
 }) {
   return (
@@ -43,7 +48,9 @@ export function ReminderEntry({
       <span>
         <span className="font-medium text-ink">{t.title}</span>
         <span className="block text-sm text-ink-faint">
-          {dueToday > 0 ? (
+          {dueToday === null ? (
+            t.entryUnknown
+          ) : dueToday > 0 ? (
             <>
               {/* Still two nodes rather than one filled sentence: the number is
                   red and bold and the words are not, and a count that reads as

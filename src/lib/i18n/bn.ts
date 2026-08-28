@@ -1761,6 +1761,8 @@ export const bn = {
      * filled string.
      */
     entryDueSuffix: 'জনকে আজ মনে করিয়ে দেওয়ার কথা',
+    /** See en.reminders.entryUnknown. */
+    entryUnknown: 'আজকের তালিকা দেখতে খুলুন',
 
     stages: {
       soon: 'শেষ তারিখের আগে',
@@ -2139,7 +2141,7 @@ export const bn = {
      * two of those the owner can shorten are named here.
      */
     longNote:
-      'কিছু SMS ২টি হিসেব হচ্ছে — পরীক্ষার নাম বা কোচিংয়ের নাম ছোট করলে খরচ অর্ধেক হবে।',
+      'কিছু SMS ২টি হিসেব হচ্ছে — পরীক্ষার নাম বা কোচিংয়ের নাম ছোট করলে খরচ অর্ধেক হবে।',
     declined: 'এই পরীক্ষার SMS পাঠানো হয়নি। চাইলে পরে পাঠাতে পারবেন।',
     send: 'অভিভাবককে পাঠান',
     sending: 'পাঠানো হচ্ছে…',
@@ -2741,6 +2743,12 @@ export const bn = {
     title: 'ড্যাশবোর্ড',
     outstanding: 'বকেয়া ফি',
     nobodyOverdue: 'কারও সময় পেরোয়নি',
+    /** See en.dashboard.outstandingUnreadable. In place of the figure, not under it. */
+    outstandingUnreadable:
+      'বকেয়া কত তা এখন বের করা গেল না, তাই কোনো হিসাব দেখানো হয়নি — এর মানে কিছু বাকি নেই তা নয়। একটু পরে আবার চেষ্টা করুন।',
+    /** See fees.close.tooLarge for why this does not point anywhere. */
+    outstandingTooLarge:
+      'বাকি থাকা ফির সংখ্যা এত বেশি যে এই পর্দা একবারে যোগ করতে পারছে না। আপনার হিসাবে কোনো সমস্যা নেই — আমাদের সাথে যোগাযোগ করুন, আমরা হিসাব পৌঁছে দেব।',
     /** Three tiles across a 375px screen, so these wrap rather than truncate. */
     collected: 'এ মাসে আদায়',
     students: 'শিক্ষার্থী',
@@ -3251,13 +3259,15 @@ export const bn = {
 
     /** The door onto this screen, from the dashboard. Borrows `title` for the label. */
     entryDueSuffix: 'জনের অভিভাবককে সপ্তাহের খবর জানানো যায়',
+    /** See en.reminders.entryUnknown. */
+    entryUnknown: 'এই সপ্তাহ দেখতে খুলুন',
     seeAll: 'সবাইকে দেখুন',
     /** Unreachable through the view — students.name is not null. */
     noName: 'নাম দেওয়া নেই',
 
     /** See en.progress.unreadable for why this is not `noneTitle`. */
     unreadable:
-      'এই সপ্তাহের হিসাব এখন বের করা গেল না, তাই কিছু দেখানো হয়নি — এর মানে জানানোর কেউ নেই তা নয়। একটু পরে আবার চেষ্টা করুন।',
+      'এই সপ্তাহের হিসাব এখন বের করা গেল না, তাই কিছু দেখানো হয়নি — এর মানে জানানোর কেউ নেই তা নয়। একটু পরে আবার চেষ্টা করুন।',
     /** See close.tooLarge for why this does not point anywhere. */
     tooLarge:
       'শিক্ষার্থীর সংখ্যা এত বেশি যে এই পর্দা একবারে হিসাব করতে পারছে না। আপনার হিসাবে কোনো সমস্যা নেই — আমাদের সাথে যোগাযোগ করুন, আমরা এই সপ্তাহের তালিকা পৌঁছে দেব।',

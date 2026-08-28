@@ -4,7 +4,7 @@ import { Card } from '@/components/ui'
 import { greetingFor } from '@/components/app-shell'
 import { pageRole, getSession, isStaffAdmin, canReadFees, myTeacherIds } from '@/lib/auth/session'
 import { createClient } from '@/lib/supabase/server'
-import { pageOrNull } from '@/lib/supabase/page'
+import { pageAll, pageOrNull, type Paged, worstFailure } from '@/lib/supabase/page'
 import {
   todayInDhaka,
   currentPeriodMonth,
@@ -134,9 +134,12 @@ export default async function DashboardPage() {
    */
   const seeProgress = isAdmin && has(session.plan, 'parentSummary')
 
-  // Resolved, not queried, when the door is not being drawn. Typed so the
-  // destructured `weekly` below is the view's rows or nothing, rather than `any`.
-  const noProgress: ProgressCountRow[] | null = null
+  // Resolved, not queried, when the door is not being drawn. `{ rows: [] }` rather
+  // than a failure, because nothing was asked for and nothing went wrong — and the
+  // door this counts for is not drawn either way, since `seeProgress` gates both.
+  // Typed so the destructured `weekly` below is the view's rows or the reason there
+  // are none, rather than `any`.
+  const noProgress: Paged<ProgressCountRow> = { rows: [] }
 
   /**
    * Stand-in for a head count that was not asked for.
@@ -153,7 +156,7 @@ export default async function DashboardPage() {
     { count: studentCount },
     { data: batchRows },
     owing,
-    { data: collectedRow },
+    { data: collectedRow, error: collectedError },
     { data: todaySessions },
     chased,
     { data: rates },
@@ -179,7 +182,7 @@ export default async function DashboardPage() {
     // that it had. `.order('id')` is for the paging, not the reader — an offset walk
     // over an unordered query can repeat a row, and a repeated invoice would be
     // counted twice into what is outstanding.
-    pageOrNull((from, to) =>
+    pageAll((from, to) =>
       supabase
         .from('fee_invoice_balances')
         .select(COLUMNS)
@@ -233,7 +236,7 @@ export default async function DashboardPage() {
     // what turns this into "three need a message today", and a reminder lost past
     // the row ceiling reads as a family never contacted. The number on the door
     // would then send an owner to re-chase somebody they chased this morning.
-    pageOrNull((from, to) =>
+    pageAll((from, to) =>
       supabase
         .from('fee_reminders')
         .select('invoice_id, created_at')
@@ -280,6 +283,12 @@ export default async function DashboardPage() {
     // Which is also why it is paged. The ceiling would cap that count at a thousand
     // on a large enough roll, and a count that has been quietly capped is the same
     // lie this comment already refuses.
+    //
+    // Still pageOrNull, unlike the three reads around it. This card is drawn only
+    // when somebody is flagged, so a read that did not arrive takes it off the page
+    // instead of putting a wrong number on it — and an absent card is the ordinary
+    // state of a centre where nobody is drifting. The claim itself is made on
+    // /at-risk, in a sentence, and that screen refuses rather than making it.
     pageOrNull((from, to) =>
       supabase
         .from('student_risk')
@@ -293,7 +302,7 @@ export default async function DashboardPage() {
     // and counted by the same function that screen lists with, so the two cannot
     // disagree. Conditional; see `seeProgress` above for why this one query is.
     seeProgress
-      ? pageOrNull((from, to) =>
+      ? pageAll((from, to) =>
           supabase
             .from('student_progress_week')
             .select(PROGRESS_COUNT_COLUMNS)
@@ -353,22 +362,47 @@ export default async function DashboardPage() {
   // `null` travels with the set for the same reason the count does: a numerator with
   // no denominator to sit over is not a fraction, and 0 would be the claim that no
   // register was taken.
-  const markedToday = activeBatchIds
-    ? (todaySessions ?? []).filter((s) => activeBatchIds.has(s.batch_id)).length
-    : null
+  //
+  // Which the `?? []` this replaces made anyway, from the other side. A day with no
+  // registers comes back as an empty array and a read that failed comes back as null,
+  // so telling them apart costs nothing — and not telling them apart put “0 of 9
+  // batches marked today” on the screen at four in the afternoon.
+  const markedToday =
+    activeBatchIds && todaySessions
+      ? todaySessions.filter((s) => activeBatchIds.has(s.batch_id)).length
+      : null
+
+  /*
+   * The invoices, or the fact that there are none to be had — and that difference is
+   * the first number on this screen.
+   *
+   * `owing ?? []` erased it. An empty list has nothing to add up, `tallyOutstanding`
+   * of nothing is nothing owed, and the card below drew that in 4xl bold with “nobody
+   * is overdue” underneath: the most reassuring pair of sentences on the owner's home
+   * screen, off a read that never arrived. The note further down this file says a
+   * number that is missing is not a number that is zero. It was written about a
+   * teacher reading a page RLS had emptied, and it is just as true of a dropped query.
+   */
+  const invoices = 'rows' in owing ? owing.rows : null
+  const moneyProblem = worstFailure(owing)
 
   // Same rule as the fee board, so the two screens cannot drift: only positive
   // remainders, never netted against a family in credit. The credit itself is
   // not shown here — it is a detail to act on, and it belongs on the board next
   // to the child's name rather than diluting the one number this card is for.
-  const remainders = (owing ?? []).map((r) => Number(r.remaining_bdt ?? 0))
+  const remainders = (invoices ?? []).map((r) => Number(r.remaining_bdt ?? 0))
   const { outstanding } = tallyOutstanding(remainders)
+
   // Number(), not sumTaka: one row, already added up in SQL, arriving as a string
-  // because numeric always does. No row means no payments this month.
-  const collected = Number(collectedRow?.collected_bdt ?? 0)
+  // because numeric always does.
+  //
+  // `error` and not `data` decides whether it is known, because maybeSingle answers
+  // null both for a month nobody has paid in and for a read that failed — and ৳0
+  // collected is a sentence about how the month is going. Unknown is drawn as a dash.
+  const collected = collectedError ? null : Number(collectedRow?.collected_bdt ?? 0)
 
   // Biggest debt first: the call an owner makes before the others.
-  const overdue = (owing ?? [])
+  const overdue = (invoices ?? [])
     .filter((r) => (r.due_date ?? today) < today)
     .map((r) => ({
       name: r.student_name ?? d.common.unknown,
@@ -384,21 +418,34 @@ export default async function DashboardPage() {
   // read as yesterday — and yesterday is on the other side of the cooldown, which
   // is the difference between this number and the one on the worklist.
   const lastChase = new Map<string, string>()
-  for (const r of chased ?? []) {
+  for (const r of 'rows' in chased ? chased.rows : []) {
     if (!r.invoice_id || lastChase.has(r.invoice_id)) continue
     lastChase.set(r.invoice_id, todayInDhaka(new Date(r.created_at)))
   }
 
-  // The same figure the fee board shows, from the same function, so the owner's
-  // home screen and the board never advertise two different amounts of work.
-  const dueToday = countChasesDue(
-    (owing ?? []).map((r) => ({
-      dueDate: r.due_date ?? today,
-      lastRemindedOn: (r.id && lastChase.get(r.id)) || null,
-      reachable: Boolean(r.guardian_phone),
-    })),
-    today,
-  )
+  /*
+   * The same figure the fee board shows, from the same function, so the owner's home
+   * screen and the board never advertise two different amounts of work — or null, when
+   * either read behind it did not arrive.
+   *
+   * Both are load-bearing, and they fail in opposite directions. With no invoices
+   * there is nothing to count and the door reads “nobody needs chasing today”. With no
+   * reminders every family inside a stage looks like one who has never been contacted,
+   * so the count comes out too high and sends an owner to chase somebody they chased
+   * this morning — which is the harm the reminder query's own note names, and counting
+   * anyway is what would cause it.
+   */
+  const dueToday =
+    invoices !== null && 'rows' in chased
+      ? countChasesDue(
+          invoices.map((r) => ({
+            dueDate: r.due_date ?? today,
+            lastRemindedOn: (r.id && lastChase.get(r.id)) || null,
+            reachable: Boolean(r.guardian_phone),
+          })),
+          today,
+        )
+      : null
 
   // Whether the fee figures on this page mean anything to whoever is reading it.
   //
@@ -428,8 +475,10 @@ export default async function DashboardPage() {
   const atRisk = studentsAtRisk(risky, d.risk.noName)
 
   // And the families who can be told how that week went. Zero is a real answer here
-  // rather than a reason to hide the door — see the note on ProgressEntry.
-  const toTell = progressToTell(weekly)
+  // rather than a reason to hide the door — see the note on ProgressEntry — which is
+  // exactly why a failed read must not arrive as one: the door would say “nobody new
+  // to tell today” about a week nobody has been told anything about.
+  const toTell = 'rows' in weekly ? progressToTell(weekly.rows) : null
 
   // How far this centre is from the product doing anything at all, or null once it is
   // doing it. Null for a teacher too, because their two counts were never asked for —
@@ -457,7 +506,24 @@ export default async function DashboardPage() {
           card is the first thing on the page again, for good. */}
       {setup && <SetupCard steps={setup} t={t.setup} />}
 
-      {seeFees && (
+      {/* The money could not be read, so the money is not drawn. Two blocks rather
+          than one ternary, like the fee worklist's own pair: the figure comes off the
+          rows and the card off the reason, and neither decides for the other.
+
+          Amber and not the brand card, because the brand card is where good news
+          lives on this screen. An owner glancing at a green panel takes the number in
+          it as the state of their centre, and this one is not a number. */}
+      {seeFees && moneyProblem !== null && (
+        <Card className="border-late/30 bg-late/5">
+          <p className="font-medium text-ink">
+            {moneyProblem === 'tooLarge'
+              ? t.outstandingTooLarge
+              : t.outstandingUnreadable}
+          </p>
+        </Card>
+      )}
+
+      {seeFees && moneyProblem === null && (
         <Card className="border-brand-200 bg-brand-50">
           <p className="text-sm font-medium text-brand-800">{t.outstanding}</p>
           <p className="num mt-1 text-4xl font-bold text-brand-900">
@@ -488,10 +554,16 @@ export default async function DashboardPage() {
           else on the page. This is the one action on the owner's home screen that
           brings money in rather than reporting on it, and on a 375px phone that
           means it has to be reachable without a scroll. */}
-      {isAdmin && remainders.length > 0 && (
+      {isAdmin && (invoices === null || remainders.length > 0) && (
         // The worklist's own words, borrowed rather than restated — a door and the
         // room behind it disagreeing about what is in there is how an owner stops
         // believing the number.
+        //
+        // Drawn when the invoices did not arrive as well as when money is owed. The
+        // count is what usually decides, and a day's chasing that loses its door
+        // because a query dropped loses the one errand on this screen that brings
+        // money in — so the door stays and carries no number, which is what
+        // `dueToday` being null means to it.
         <ReminderEntry dueToday={dueToday} t={d.reminders} />
       )}
 
@@ -505,9 +577,25 @@ export default async function DashboardPage() {
             own batches under a label that says the centre's, and unlike arrears it
             is not a number they can do anything with. Their share of the money is
             on the fee board, next to the names. */}
-        {isAdmin && <Stat label={t.collected} value={taka(collected)} />}
-        <Stat label={t.students} value={String(studentCount ?? 0)} />
-        <Stat label={t.batches} value={String(batchCount ?? 0)} />
+        {/* A dash, not a nought, for whichever of the three could not be counted.
+            `?? 0` put “0” under Students on a centre of three hundred and ৳0 under
+            Collected over a month that took eighty thousand — small type, but the
+            same false claim as the card above, and these are the three figures an
+            owner takes in at a glance rather than reads. */}
+        {isAdmin && (
+          <Stat
+            label={t.collected}
+            value={collected === null ? '—' : taka(collected)}
+          />
+        )}
+        <Stat
+          label={t.students}
+          value={studentCount === null ? '—' : String(studentCount)}
+        />
+        <Stat
+          label={t.batches}
+          value={batchCount === null ? '—' : String(batchCount)}
+        />
       </div>
 
       <Card>

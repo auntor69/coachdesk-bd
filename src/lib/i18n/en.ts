@@ -796,6 +796,12 @@ export const en: Dictionary = {
       'There are more unpaid fees on file than this screen can work through at once. Nothing is wrong with your records — please get in touch and we will get you today’s list.',
 
     entryDueSuffix: 'to remind today',
+    /**
+     * The door with no number on it, because one of the two reads behind the count
+     * did not arrive. Never “nobody needs chasing today” in that case: that is the
+     * sentence an owner acts on by not opening the screen.
+     */
+    entryUnknown: 'Open to see today’s list',
 
     stages: {
       soon: 'Before the deadline',
@@ -1399,6 +1405,19 @@ export const en: Dictionary = {
     title: 'Dashboard',
     outstanding: 'Fees outstanding',
     nobodyOverdue: 'Nobody has missed a deadline',
+    /**
+     * In place of the figure, and never under it.
+     *
+     * The card this replaces is the one the whole product is sold on, and at ৳0 with
+     * “nobody has missed a deadline” beneath it, it is also the most reassuring thing
+     * on the screen. Neither sentence is available to a page that could not read the
+     * invoices, so the card says which of the two things happened instead.
+     */
+    outstandingUnreadable:
+      'The fees owed could not be worked out just now, so no figure is shown — it does not mean nothing is owed. Please try again in a moment.',
+    /** See fees.close.tooLarge for why this does not point anywhere. */
+    outstandingTooLarge:
+      'There are more unpaid fees on file than this screen can add up at once. Nothing is wrong with your records — please get in touch and we will get you the figure.',
     collected: 'Collected this month',
     students: 'Students',
     batches: 'Batches',
@@ -1639,6 +1658,8 @@ export const en: Dictionary = {
       'The figures cover the last 7 days: attendance and exam results. Fees are not in this message — those go out with the reminders.',
 
     entryDueSuffix: 'guardians can be told how the week went',
+    /** See reminders.entryUnknown. */
+    entryUnknown: 'Open to see this week',
     seeAll: 'See everyone',
     noName: 'No name given',
 

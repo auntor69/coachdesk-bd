@@ -15,6 +15,9 @@ import type { Dictionary } from '@/lib/i18n'
  * Shown at zero on purpose, unlike the at-risk card. "Everyone has been told" is the
  * answer an owner came for; an absent card would read as a feature that broke.
  *
+ * And null when the week could not be counted, which is a third thing from both: see
+ * ReminderEntry's own note, since the two doors answer this the same way.
+ *
  * `Dictionary['progress']` and not `T<'progress'>`: a server component, so it can
  * take the group as it is, functions and all.
  */
@@ -22,7 +25,7 @@ export function ProgressEntry({
   toTell,
   t,
 }: {
-  toTell: number
+  toTell: number | null
   t: Dictionary['progress']
 }) {
   return (
@@ -34,7 +37,9 @@ export function ProgressEntry({
       <span>
         <span className="font-medium text-ink">{t.title}</span>
         <span className="block text-sm text-ink-faint">
-          {toTell > 0 ? (
+          {toTell === null ? (
+            t.entryUnknown
+          ) : toTell > 0 ? (
             <>
               {/* Two nodes rather than one filled sentence: the number is bold and
                   the words are not, and a count that reads as ordinary text is one
