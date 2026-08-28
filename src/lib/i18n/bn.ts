@@ -1929,6 +1929,13 @@ export const bn = {
     emptyBodyReadOnly:
       'আপনার ব্যাচের জন্য এখনও কোনো পরীক্ষা তৈরি হয়নি। কে পরীক্ষা তৈরি করতে পারবে তা মালিক ঠিক করেন।',
     create: 'পরীক্ষা তৈরি করুন',
+    /**
+     * The list, and with it the button that creates one — see en.ts for why the button
+     * goes too, and why the sentence mentions it. “The same exam could be made twice”
+     * rather than a word for a duplicate: the only ordinary one is the English.
+     */
+    listUnreadable:
+      'আপনার পরীক্ষাগুলো এখন পড়া গেল না, তাই সেগুলো দেখানো হয়নি। নতুন পরীক্ষা তৈরির বোতামটিও রাখা হয়নি, কারণ তালিকা না দেখে তৈরি করলে একই পরীক্ষা দুবার হয়ে যেতে পারে। কিছু হারায়নি — একটু পরে আবার চেষ্টা করুন।',
 
     /**
      * What a Bangladeshi question paper prints at the top of itself, which is

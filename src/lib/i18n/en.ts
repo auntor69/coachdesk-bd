@@ -960,6 +960,24 @@ export const en: Dictionary = {
     emptyBodyReadOnly:
       'No exams have been created for your batches yet. The centre’s owner decides who can create them.',
     create: 'Create an exam',
+    /**
+     * The list is not drawn, because the read behind every row of it did not arrive.
+     *
+     * A third thing that can stand where the two sentences above stand, and the reason
+     * they may not be it: read as an empty history, a dropped index draws “no exams
+     * yet” at a centre with two hundred, over a button offering to create its first.
+     * What the reader does next is create the exam they came to look for, and a
+     * duplicate exam is not a duplicate row — it is this week’s marks entered against
+     * the copy and last week’s left on the original, both reading half-marked down the
+     * list for ever, and two runs of result messages to the same families.
+     *
+     * So the New button goes with the list, and the sentence says so — a control that
+     * disappears without explanation is read as a permission being taken away. Creating
+     * an exam is only safe for a reader who can see the ones that already exist, and
+     * that is exactly the read that failed; the cost of withholding it is one retry.
+     */
+    listUnreadable:
+      'Your exams could not be read just now, so they are not shown, and nor is the button that creates one — an exam made without seeing the list can end up a second copy of one that is already there. Nothing has been lost. Please try again in a moment.',
 
     /**
      * The words a Bangladeshi question paper prints on itself, which is where the

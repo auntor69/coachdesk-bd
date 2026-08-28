@@ -138,13 +138,18 @@ export async function createExam(
   // batch on the screen this form was submitted from". Without it the insert
   // below pairs this centre's exam with the other centre's batch, which the
   // composite foreign key rejects as a constraint error nobody can read.
-  const { data: batch } = await supabase
+  const { data: batch, error: batchError } = await supabase
     .from('batches')
     .select('id, subject_id')
     .eq('coaching_center_id', session.active.centerId)
     .eq('id', batchId)
     .maybeSingle()
 
+  // A read that did not arrive is not a batch that has gone. `maybeSingle` answers null
+  // to both, and `noBatch` sends the reader back to a picker their batch is still on, to
+  // choose it again and be told the same thing — so a dropped read says the exam was not
+  // created, which is what happened and is worth another tap.
+  if (batchError) return { ok: false, error: t.errors.createFailed }
   if (!batch) return { ok: false, error: t.errors.noBatch }
 
   const { data: exam, error } = await supabase

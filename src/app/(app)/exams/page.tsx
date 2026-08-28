@@ -110,24 +110,65 @@ export default async function ExamsPage({
     .order('exam_date', { ascending: false })
     .limit(SEARCH_CEILING)
 
-  const indexed = (history ?? []).map((exam) => {
-    const batch = Array.isArray(exam.batches) ? exam.batches[0] : exam.batches
-    const subject = Array.isArray(exam.subjects) ? exam.subjects[0] : exam.subjects
+  /*
+   * NULL, NOT AN EMPTY HISTORY.
+   *
+   * `(history ?? [])` put a dropped read into `indexed.length === 0`, and what stands
+   * there is not a blank list: it is "no exams yet", and for a reader who may create
+   * them, a button offering to make the centre's first. At a centre with two hundred
+   * exams on file the next move is to create the one they came here to find — and a
+   * duplicate exam is not a duplicate row. It is this week's marks entered against the
+   * copy and last week's still on the original, both rows reading half-marked down the
+   * list for ever, and two runs of result messages to the same families.
+   *
+   * The failed read also takes the search box away, which is how the reader would have
+   * checked: the box is only drawn once `indexed` has something in it. That is right for
+   * a centre with no exams and exactly wrong here.
+   */
+  const indexed =
+    history &&
+    history.map((exam) => {
+      const batch = Array.isArray(exam.batches) ? exam.batches[0] : exam.batches
+      const subject = Array.isArray(exam.subjects) ? exam.subjects[0] : exam.subjects
 
-    return {
-      id: exam.id,
-      title: exam.title,
-      // Number(), like the marks sheet: total_marks is numeric, so it arrives as
-      // "100.00" and rendering it raw showed a full mark nobody typed.
-      totalMarks: Number(exam.total_marks),
-      examDate: exam.exam_date,
-      batchId: exam.batch_id,
-      batchName: batch?.name ?? '',
-      subjectName: localName(subject, locale),
-      smsSent: Boolean(exam.sms_sent_at),
-      smsDeclined: Boolean(exam.sms_declined_at),
-    }
-  })
+      return {
+        id: exam.id,
+        title: exam.title,
+        // Number(), like the marks sheet: total_marks is numeric, so it arrives as
+        // "100.00" and rendering it raw showed a full mark nobody typed.
+        totalMarks: Number(exam.total_marks),
+        examDate: exam.exam_date,
+        batchId: exam.batch_id,
+        batchName: batch?.name ?? '',
+        subjectName: localName(subject, locale),
+        smsSent: Boolean(exam.sms_sent_at),
+        smsDeclined: Boolean(exam.sms_declined_at),
+      }
+    })
+
+  /*
+   * The sentence instead, before anything below is counted or searched over nothing.
+   *
+   * The heading stays, because it names the screen rather than claiming anything about
+   * it. The New button does not, and that is the one active thing this refusal does:
+   * creating an exam is only safe for a reader who can see the ones that already exist,
+   * and seeing them is precisely what failed. So the door is shut while the sentence is
+   * on the screen, the sentence says the door is shut and why, and the wait is one tap
+   * of the browser's own refresh.
+   */
+  if (indexed === null) {
+    return (
+      <div className="flex flex-col gap-5">
+        <div>
+          <h1 className="text-xl font-bold text-ink">{t.title}</h1>
+          <p className="mt-1 text-ink-soft">{t.subtitle}</p>
+        </div>
+        <Card className="border-late/30 bg-late/5">
+          <p className="font-medium text-ink">{t.listUnreadable}</p>
+        </Card>
+      </div>
+    )
+  }
 
   /*
    * Three fields, all of them visible on the row that will be returned.
