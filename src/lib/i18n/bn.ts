@@ -694,6 +694,20 @@ export const bn = {
     yoursOnly: 'শুধু আপনার নিজের ব্যাচের হিসাব',
 
     /**
+     * The board could not be read, so no total and no rows are drawn.
+     *
+     * The sibling of `emptyBodyReadOnly`'s reasoning, which already says an empty
+     * board must not look like "a screen that failed to load". This is the other
+     * direction of the same rule: a screen that failed to load must not look like an
+     * empty board. Both end with an owner believing their centre is settled up.
+     */
+    unreadable:
+      'ফি বোর্ড এখন পড়া গেল না, তাই কিছু দেখানো হচ্ছে না — আধা হিসাবের চেয়ে হিসাব না দেখানোই ভালো। আবার চেষ্টা করুন।',
+    /** See close.tooLarge for why this does not point anywhere. */
+    tooLarge:
+      'এখানে এত বিল জমেছে যে এক দফায় এই বোর্ডে যোগ করা যাচ্ছে না। আপনার হিসাবে কোনো সমস্যা নেই — আমাদের সাথে যোগাযোগ করুন, আমরা হিসাব পৌঁছে দেব।',
+
+    /**
      * The link to the month's collection register. Named for what it is on paper —
      * every centre already keeps an "আদায় খাতা", and an owner looking for the thing
      * they reconcile against a bKash statement is looking for that word.
@@ -1418,6 +1432,20 @@ export const bn = {
     /** Payments, not students: one family can pay twice in a month. */
     entries: (n: number) => `${n}টি জমা`,
     empty: 'এই মাসে এখনো কোনো টাকা জমা হয়নি।',
+
+    /**
+     * The register could not be read, so no lines and no total are drawn.
+     *
+     * Its own sentence rather than `empty`, which says something about the centre. A
+     * register is printed and filed, and a sheet that reads "no money has been
+     * recorded" over a total of zero is a document somebody finds next year and
+     * believes.
+     */
+    unreadable:
+      'এই মাসের খাতা এখন পড়া গেল না, তাই কোনো লাইন দেখানো হচ্ছে না — আধা খাতার চেয়ে খাতা না দেখানোই ভালো। আবার চেষ্টা করুন।',
+    /** See close.tooLarge for why this does not point anywhere. */
+    tooLarge:
+      'এই মাসে এত জমা হয়েছে যে এক দফায় এই পাতায় যোগ করা যাচ্ছে না। আপনার হিসাবে কোনো সমস্যা নেই — আমাদের সাথে যোগাযোগ করুন, আমরা খাতা পৌঁছে দেব।',
     /**
      * Same boundary note as the fee board's. This screen is staff-admin only, so
      * the total is always the whole centre's — but the month is not, and a reader
@@ -1526,10 +1554,12 @@ export const bn = {
       'এই মাসের হিসাব এখন পড়া গেল না, তাই কোনো অঙ্ক দেখানো হচ্ছে না — ভুল হিসাবের চেয়ে হিসাব না দেখানোই ভালো। আবার চেষ্টা করুন।',
     /**
      * More rows than a browser will add up. Not something the owner can retry into
-     * success, so it points at the export instead of asking them to.
+     * success, and deliberately not pointed at the export either: that refuses at the
+     * same MAX_PAGED_ROWS ceiling, so sending them there would be sending them to the
+     * same wall with an extra tap in between. A month this size needs us.
      */
     tooLarge:
-      'এই মাসে এত বিল আর জমা হয়েছে যে এই পর্দায় যোগ করা যাচ্ছে না। সেটিংসের এক্সপোর্টে পুরো হিসাব পাবেন।',
+      'এই মাসে এত বিল আর জমা হয়েছে যে এক দফায় এই পর্দায় যোগ করা যাচ্ছে না। আপনার হিসাবে কোনো সমস্যা নেই — আমাদের সাথে যোগাযোগ করুন, আমরা হিসাব পৌঁছে দেব।',
   },
 
   /**

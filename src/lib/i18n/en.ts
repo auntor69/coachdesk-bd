@@ -330,6 +330,20 @@ export const en: Dictionary = {
      */
     yoursOnly: 'Your own batches only',
 
+    /**
+     * The board could not be read, so no total and no rows are drawn.
+     *
+     * The sibling of `emptyBodyReadOnly`'s reasoning, which already says an empty
+     * board must not look like "a screen that failed to load". This is the other
+     * direction of the same rule: a screen that failed to load must not look like an
+     * empty board. Both end with an owner believing their centre is settled up.
+     */
+    unreadable:
+      'The fee board could not be read just now, so nothing is shown — an incomplete board is worse than none. Please try again.',
+    /** See close.tooLarge for why this does not point anywhere. */
+    tooLarge:
+      'There are more bills here than this board can add up in one go. Nothing is wrong with your records — please get in touch and we will get you the figures.',
+
     registerLink: 'This month’s collection register',
     closeLink: 'This month’s full picture',
 
@@ -585,6 +599,20 @@ export const en: Dictionary = {
     byMethod: 'How it came in',
     entries: (n: number) => `${n} ${n === 1 ? 'payment' : 'payments'}`,
     empty: 'No money has been recorded for this month yet.',
+
+    /**
+     * The register could not be read, so no lines and no total are drawn.
+     *
+     * Its own sentence rather than `empty`, which says something about the centre. A
+     * register is printed and filed, and a sheet that reads "no money has been
+     * recorded" over a total of zero is a document somebody finds next year and
+     * believes.
+     */
+    unreadable:
+      'This month’s register could not be read just now, so no lines are shown — an incomplete register is worse than none. Please try again.',
+    /** See close.tooLarge for why this does not point anywhere. */
+    tooLarge:
+      'This month has more payments than this sheet can add up in one go. Nothing is wrong with your records — please get in touch and we will get you the register.',
     forMonth: (month: string) => `${month}`,
     paperTitle: 'The collection register comes with a paid plan',
     paperBody: (plan: string, pro: string) =>
@@ -635,10 +663,12 @@ export const en: Dictionary = {
       'This month’s figures could not be read just now, so none are shown — a wrong total is worse than no total. Please try again.',
     /**
      * More rows than a browser will add up. Not something the owner can retry into
-     * success, so it points at the export instead of asking them to.
+     * success, and deliberately not pointed at the export either: that refuses at the
+     * same MAX_PAGED_ROWS ceiling, so sending them there would be sending them to the
+     * same wall with an extra tap in between. A month this size needs us.
      */
     tooLarge:
-      'This month has more bills and payments than this screen can add up. The export in Settings has the full figures.',
+      'This month has more bills and payments than this screen can add up in one go. Nothing is wrong with your records — please get in touch and we will get you the figures.',
   },
 
   /** See the Bangla for why the headings are translated and the values are not. */

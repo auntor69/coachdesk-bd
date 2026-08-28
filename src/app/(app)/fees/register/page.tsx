@@ -5,7 +5,7 @@ import { Card } from '@/components/ui'
 import { SearchBox, SearchEmpty } from '@/components/search-box'
 import { pageCenter, getSession, isStaffAdmin } from '@/lib/auth/session'
 import { createClient } from '@/lib/supabase/server'
-import { pageOrNull } from '@/lib/supabase/page'
+import { pageAll } from '@/lib/supabase/page'
 import { has, planName, PLANS } from '@/lib/plans'
 import {
   currentPeriodMonth,
@@ -147,7 +147,11 @@ export default async function RegisterPage({
     // by however many payments came after — and the owner's conclusion is that money
     // is missing from the wallet rather than from the page. `.order('id')` last, so
     // the offset walk is deterministic without disturbing the printed order.
-    pageOrNull((from, to) =>
+    //
+    // pageAll rather than pageOrNull for the same reason stated one step further: a
+    // null read as an empty month is a register that foots to zero, which is not a
+    // short sheet but a blank one, printed and filed under this month's name.
+    pageAll((from, to) =>
       supabase
         .from('fee_payments')
         .select(COLUMNS)
@@ -169,6 +173,8 @@ export default async function RegisterPage({
       .maybeSingle(),
   ])
 
+  const registerProblem = 'failed' in payments ? payments.failed : null
+
   // The running total is accumulated row by row rather than asked of Postgres. A
   // window function would be the better answer over thousands of rows; over one
   // centre's month it is at most a few hundred, they are in memory already, and
@@ -176,7 +182,7 @@ export default async function RegisterPage({
   // is two different roundings on one page — the last running total and the grand
   // total are the same number, and a reader who finds them a taka apart stops
   // believing the page.
-  const rows = registerRows(payments, d.common.unknown)
+  const rows = registerRows('rows' in payments ? payments.rows : null, d.common.unknown)
   const tally = tallyRegister(rows)
 
   // Which rows the sheet draws, and the only thing the query touches. `tally` is
@@ -253,7 +259,18 @@ export default async function RegisterPage({
         </p>
       </header>
 
-      {rows.length === 0 ? (
+      {registerProblem !== null ? (
+        /* No lines and no breakdown, unlike the search-miss case below which keeps
+           both. There the month's total is still true and only the visible lines were
+           narrowed; here nothing was read, so every figure on the sheet would be a
+           statement about the centre that we have no basis for. This one is worth
+           printing badly rather than printing wrong. */
+        <Card className="border-late/30 bg-late/5">
+          <p className="font-medium text-ink">
+            {registerProblem === 'tooLarge' ? t.tooLarge : t.unreadable}
+          </p>
+        </Card>
+      ) : rows.length === 0 ? (
         <Card>
           <p className="text-ink-soft">{t.empty}</p>
         </Card>

@@ -5,7 +5,7 @@ import { Card } from '@/components/ui'
 import { SearchBox, SearchEmpty } from '@/components/search-box'
 import { pageCenter, getSession, isStaffAdmin, canReadFees } from '@/lib/auth/session'
 import { createClient } from '@/lib/supabase/server'
-import { pageOrNull } from '@/lib/supabase/page'
+import { pageAll, pageOrNull } from '@/lib/supabase/page'
 import {
   todayInDhaka,
   currentPeriodMonth,
@@ -144,7 +144,7 @@ export default async function FeesPage({
   // of it are untouched.
   const [owing, settled, { data: collectedRow }, chased, cancelled, { data: center }] =
     await Promise.all([
-      pageOrNull((from, to) =>
+      pageAll((from, to) =>
         supabase
           .from('fee_invoice_balances')
           .select(COLUMNS)
@@ -155,7 +155,7 @@ export default async function FeesPage({
           .order('id')
           .range(from, to),
       ),
-      pageOrNull((from, to) =>
+      pageAll((from, to) =>
         supabase
           .from('fee_invoice_balances')
           .select(COLUMNS)
@@ -283,7 +283,7 @@ export default async function FeesPage({
   // a list in. Settled rows sink to the bottom rather than into a separate list,
   // so a row that has just been paid keeps its React state and its confirmation
   // message instead of being unmounted by the revalidation that follows.
-  const rows = [...(owing ?? []), ...(settled ?? [])]
+  const rows = [...('rows' in owing ? owing.rows : []), ...('rows' in settled ? settled.rows : [])]
     .map(toRow(today, lastChase, d.common.unknown))
     .sort(
       (a, b) =>
@@ -352,6 +352,47 @@ export default async function FeesPage({
   const shownCancelled = terms.length === 0
     ? cancelledList
     : cancelledList.filter((b) => matchesSearch([b.name, b.studentCode], terms))
+
+  /*
+   * A board that could not be read is not a board with nothing on it.
+   *
+   * These two queries were paged for the reason at the head of the wave above — a
+   * silently short read is a shorter list and a smaller number, both of which look
+   * exactly like a centre doing well. Their failure had the same shape: the null came
+   * back, `?? []` turned it into no invoices, and the screen drew ৳0 outstanding over
+   * "No invoices yet". The dictionary note on `emptyBodyReadOnly` already says an
+   * empty board must not look like a screen that failed to load; this is that rule
+   * pointing the other way.
+   *
+   * Everything goes, rather than the total being blanked over a list that stays. The
+   * generator goes with it, deliberately: inviting somebody to raise this month's
+   * invoices on a screen that cannot say which ones already exist is asking them to
+   * bill blind. It is idempotent and would come to no harm, and asking anyway is
+   * still wrong.
+   *
+   * The settled half counts as much as the owing half, which is less obvious. It
+   * carries the credit line and the bills paid minutes ago, and a payment that
+   * vanishes from the board it was just taken on reads as a payment that did not
+   * save — which is the one thing an owner will act on twice.
+   */
+  const boardProblem =
+    'failed' in owing ? owing.failed : 'failed' in settled ? settled.failed : null
+
+  if (boardProblem !== null) {
+    return (
+      <div className="flex flex-col gap-5">
+        <div>
+          <h1 className="text-xl font-bold text-ink">{t.title}</h1>
+          <p className="mt-1 text-ink-soft">{t.subtitle}</p>
+        </div>
+        <Card className="border-late/30 bg-late/5">
+          <p className="font-medium text-ink">
+            {boardProblem === 'tooLarge' ? t.tooLarge : t.unreadable}
+          </p>
+        </Card>
+      </div>
+    )
+  }
 
   return (
     <div className="flex flex-col gap-5">
