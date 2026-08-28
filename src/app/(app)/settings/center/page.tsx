@@ -36,40 +36,48 @@ export default async function CenterSettingsPage() {
   const supabase = await createClient()
   const periodMonth = currentPeriodMonth()
 
-  const [{ data: center }, { data: student }, { data: batch }] = await Promise.all([
-    supabase
-      .from('coaching_centers')
-      .select('name, payment_wallet, payment_number')
-      .eq('id', session.active.centerId)
-      .maybeSingle(),
-    // One real name for the preview, so what the owner reads is a message their
-    // own centre would send rather than a mock-up of one.
-    //
-    // Scoped, and not only by RLS: an owner of two centres passes the policy for
-    // both, and this would otherwise put a child from the other centre into the
-    // sample message — a minor's name on a screen that is not theirs, over a
-    // switcher that says this one.
-    supabase
-      .from('students')
-      .select('name')
-      .eq('coaching_center_id', session.active.centerId)
-      .eq('status', 'active')
-      .order('name')
-      .limit(1)
-      .maybeSingle(),
-    // A representative amount. Not the worst case — a family three months behind
-    // owes more than one month's fee — but the figure their reminders will
-    // usually carry, and it is their own number rather than a guess. Scoped for
-    // the same reason as the name above.
-    supabase
-      .from('batches')
-      .select('monthly_fee_bdt')
-      .eq('coaching_center_id', session.active.centerId)
-      .eq('active', true)
-      .order('monthly_fee_bdt', { ascending: false })
-      .limit(1)
-      .maybeSingle(),
-  ])
+  const [{ data: center, error: centerError }, { data: student }, { data: batch }]
+    = await Promise.all([
+      supabase
+        .from('coaching_centers')
+        .select('name, payment_wallet, payment_number')
+        .eq('id', session.active.centerId)
+        .maybeSingle(),
+      // One real name for the preview, so what the owner reads is a message their
+      // own centre would send rather than a mock-up of one.
+      //
+      // Scoped, and not only by RLS: an owner of two centres passes the policy for
+      // both, and this would otherwise put a child from the other centre into the
+      // sample message — a minor's name on a screen that is not theirs, over a
+      // switcher that says this one.
+      //
+      // `error` is not read on this one or the next, and that is not the same
+      // oversight the row above had. Both are `.limit(1)` off a list, so null is
+      // the honest answer for a centre with no active students and no priced batch
+      // — and both feed the preview, whose stand-ins below are designed to be seen.
+      // A sample message with a stand-in name in it is still a true rendering of
+      // what the centre sends.
+      supabase
+        .from('students')
+        .select('name')
+        .eq('coaching_center_id', session.active.centerId)
+        .eq('status', 'active')
+        .order('name')
+        .limit(1)
+        .maybeSingle(),
+      // A representative amount. Not the worst case — a family three months behind
+      // owes more than one month's fee — but the figure their reminders will
+      // usually carry, and it is their own number rather than a guess. Scoped for
+      // the same reason as the name above.
+      supabase
+        .from('batches')
+        .select('monthly_fee_bdt')
+        .eq('coaching_center_id', session.active.centerId)
+        .eq('active', true)
+        .order('monthly_fee_bdt', { ascending: false })
+        .limit(1)
+        .maybeSingle(),
+    ])
 
   const canEdit = session.active.role === 'owner'
   const wallet = center?.payment_wallet ?? null
@@ -85,7 +93,30 @@ export default async function CenterSettingsPage() {
         <p className="mt-1 text-ink-soft">{t.subtitle}</p>
       </div>
 
-      {canEdit ? (
+      {centerError ? (
+        /*
+         * THE FORM THAT CLEARS A CENTRE'S PAYMENT NUMBER WITHOUT BEING TOLD TO.
+         *
+         * `center?.payment_wallet ?? null` read a dropped row as a centre that has
+         * no wallet, and CenterForm seeds itself from exactly that: the wallet lands
+         * on "none", the number box is not rendered at all, and there is no move on
+         * the screen that puts either back. The owner came to fix a typo in the
+         * name, taps save, and `saveCenterDetails` writes both columns to null over
+         * a centre that had them — successfully, so it says saved.
+         *
+         * Nothing on this screen shows what that costs. `walletText` blanks for an
+         * unconfigured centre, so from the next reminder onwards the messages simply
+         * stop saying where to send the money, and keep sending. Same row, same
+         * silence, one screen along — see chase.payUnreadable.
+         *
+         * So the screen goes rather than a note beside it, and the manager's
+         * read-only card goes with it: what it draws off the same null is "no
+         * payment number yet", told to the person a guardian rings to ask.
+         */
+        <Card className="border-late/30 bg-late/5">
+          <p className="font-medium text-ink">{t.unreadable}</p>
+        </Card>
+      ) : canEdit ? (
         <CenterForm
           name={center?.name ?? session.active.centerName}
           paymentWallet={wallet}

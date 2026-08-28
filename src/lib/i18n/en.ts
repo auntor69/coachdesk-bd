@@ -2206,6 +2206,15 @@ export const en: Dictionary = {
       details: 'Details',
       feesGoTo: (number: string) => `Fees go to ${number}`,
       noPaymentNumber: 'No payment number yet',
+      /**
+       * A hint on a row, so it is one clause and stops. The two above it are both
+       * claims about the centre; this one is a claim about the read, and the whole
+       * reason it exists is that `noPaymentNumber` was making the first kind out of
+       * the second — telling an owner to go and set a number on the strength of a
+       * query that never came back. See settings.center.unreadable, which is the
+       * screen this row opens and where the same row failing costs something.
+       */
+      payUnreadable: 'Payment number could not be read',
       center: 'Name & payment',
       students: 'Students',
       studentsHint: 'Names, guardian numbers, batches',
@@ -2282,6 +2291,23 @@ export const en: Dictionary = {
       /** See the Bangla for why this sentence is not inside `upgrade`. */
       pendingRequest: (plan: string, date: string) =>
         `You asked for ${plan} on ${date}. We will ring you.`,
+      /**
+       * Outside `upgrade` for the same reason `pendingRequest` is — the server draws
+       * it, and nothing about it needs to cross to the client.
+       *
+       * Grey, above a form that stays up. `pendingRequest` being absent is what
+       * switches the card into its request state, and a dropped read used to be
+       * indistinguishable from having nothing pending: an owner who asked us for
+       * Centre last Tuesday sees the ask-us form again, with no withdraw button and
+       * nothing anywhere saying their request is still sitting with us.
+       *
+       * The form is deliberately left usable. Its write upserts on the centre, so
+       * filing again replaces the open request rather than adding a second one —
+       * which makes “ask again” a safe thing for a confused owner to do, and this
+       * sentence the only part that was missing.
+       */
+      pendingUnreadable:
+        'Whether you already have a request with us could not be read just now. Asking again is safe — it replaces the earlier one rather than adding another.',
       upgrade: {
         pick: 'Which plan?',
         note: 'Anything we should know?',
@@ -2725,6 +2751,30 @@ export const en: Dictionary = {
       subtitle: 'This name and this number are what reaches guardians in every message',
       readOnly: 'Only the centre’s owner can change these.',
       noNumber: 'No payment number yet.',
+      /**
+       * The whole screen, and the reason is the form rather than the figures.
+       *
+       * `CenterForm` seeds itself from this one row and submits every field on it,
+       * so a form drawn off a read that did not arrive has the wallet reading
+       * “none” and no number box on it at all — and the first save an owner makes,
+       * to fix a typo in the name, writes both to null over a centre that had them.
+       * Reported as saved, because it was. Clearing the pair is a real thing an
+       * owner can mean (see errors.walletNeedsNumber), which is exactly what makes
+       * the silent version indistinguishable from it.
+       *
+       * The cost lands one screen along rather than here: `walletText` blanks, and
+       * every reminder the centre sends afterwards stops saying where to pay. See
+       * chase.payUnreadable for the same row failing on the screen that sends them.
+       *
+       * A manager's copy is read-only and safe to draw, but the sentence it draws
+       * is `noNumber` — “no payment number yet”, to the one person a guardian rings
+       * to ask where to send the money. So both halves of the screen go.
+       *
+       * Says “as you left them” and not “your number is safe”, because whether
+       * there is a number at all is precisely what the failed read was going to say.
+       */
+      unreadable:
+        'Your centre’s details could not be read just now, so they are not shown — the name and the payment number are both still exactly as you left them. Please try again in a moment.',
       errors: {
         ownerOnly:
           'Only the centre’s owner can change the name and the payment number.',

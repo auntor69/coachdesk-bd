@@ -3635,6 +3635,8 @@ export const bn = {
        */
       feesGoTo: (number: string) => `ফি যাবে ${number} নম্বরে`,
       noPaymentNumber: 'পেমেন্ট নম্বর এখনো দেওয়া হয়নি',
+      /** See en.settings.hub.payUnreadable — a claim about the read, not the centre. */
+      payUnreadable: 'পেমেন্ট নম্বর পড়া গেল না',
       center: 'নাম ও পেমেন্ট',
       students: 'শিক্ষার্থী',
       studentsHint: 'নাম, অভিভাবকের নম্বর, ব্যাচ',
@@ -3774,6 +3776,12 @@ export const bn = {
        */
       pendingRequest: (plan: string, date: string) =>
         `${date} তারিখে ${plan} চেয়েছেন। আমরা ফোন করব।`,
+      /**
+       * See en.settings.plan.pendingUnreadable, and `pendingRequest` above for why
+       * this sits outside `upgrade` rather than in it.
+       */
+      pendingUnreadable:
+        'আপনার কোনো অনুরোধ আমাদের কাছে আছে কি না এখন পড়া গেল না। আবার চাইলে কোনো সমস্যা নেই — আগেরটার জায়গায় নতুন অনুরোধ বসবে, দুটি হবে না।',
       /**
        * The request form. STRING LEAVES ONLY — see `pendingRequest` above.
        *
@@ -4360,6 +4368,9 @@ export const bn = {
        */
       readOnly: 'এগুলো শুধু কোচিংয়ের মালিক বদলাতে পারেন।',
       noNumber: 'পেমেন্ট নম্বর এখনো দেওয়া হয়নি।',
+      /** See en.settings.center.unreadable — the form is why the screen goes. */
+      unreadable:
+        'কোচিংয়ের নাম আর পেমেন্ট নম্বর এখন পড়া গেল না, তাই দেখানো হয়নি — দুটোই আগের মতোই আছে, কিছু বদলায়নি। একটু পরে আবার চেষ্টা করুন।',
       errors: {
         /**
          * Owner, not manager — the one place in settings where the line moves,

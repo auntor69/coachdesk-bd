@@ -121,7 +121,7 @@ export default async function PlanPage() {
     { count: studentCount },
     { count: subjectCount },
     { count: teacherCount },
-    { data: asked },
+    { data: asked, error: askedError },
   ] = await Promise.all([
     supabase
       .from('batches')
@@ -153,7 +153,9 @@ export default async function PlanPage() {
           .eq('coaching_center_id', session.active.centerId)
           .is('handled_at', null)
           .maybeSingle()
-      : Promise.resolve({ data: null }),
+      : // `error: null` so the note below reads off one shape. A manager is not an
+        // owner whose pending request failed to load; they have no request to see.
+        Promise.resolve({ data: null, error: null }),
   ])
 
   /*
@@ -378,13 +380,25 @@ export default async function PlanPage() {
         <p className="mt-1 text-sm text-ink-soft">{t.contactBody}</p>
 
         {isOwner ? (
-          <UpgradeRequest
-            choices={choices}
-            suggested={suggested}
-            pendingLine={pendingLine}
-            pendingNote={asked?.note ?? null}
-            words={t.upgrade}
-          />
+          <>
+            {/* Grey, above the form, and the form stays. `asked` being null used to
+                mean both "nothing pending" and "the pending read fell over", and
+                the component switches on exactly that — so a dropped read hid an
+                open request and its withdraw button, leaving an owner sure we never
+                got it. The form is safe to leave up: the write upserts on
+                coaching_center_id, so filing again replaces the request rather than
+                adding a second one. What is not safe is the silence. */}
+            {askedError && (
+              <p className="mt-3 text-sm text-ink-soft">{t.pendingUnreadable}</p>
+            )}
+            <UpgradeRequest
+              choices={choices}
+              suggested={suggested}
+              pendingLine={pendingLine}
+              pendingNote={asked?.note ?? null}
+              words={t.upgrade}
+            />
+          </>
         ) : (
           /* A manager gets the sentence rather than a form that would be refused.
              Whoever pays for this decides what it costs — the same line

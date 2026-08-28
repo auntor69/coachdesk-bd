@@ -43,7 +43,7 @@ async function staffCounts(
     { count: teacherCount },
     { count: subjectCount },
     { count: examTypeCount },
-    { data: center },
+    { data: center, error: centerError },
   ] = await Promise.all([
     supabase
       .from('teachers')
@@ -74,8 +74,13 @@ async function staffCounts(
    *
    * Which matters most on the row this page decides whether to draw at all: see the
    * teachers row below, where a nought used to take the row away.
+   *
+   * `centerError` rides along for the same reason and one the counts do not have. A
+   * missing count draws no chip; a missing payment row used to draw a sentence — the
+   * hint below said there is no number to pay into, which is a nudge to go and set
+   * one, on a screen an owner may have set it on months ago.
    */
-  return { teacherCount, subjectCount, examTypeCount, center }
+  return { teacherCount, subjectCount, examTypeCount, center, centerError }
 }
 
 /**
@@ -130,9 +135,16 @@ export default async function SettingsPage() {
   // A count would say nothing here, so the hint carries the answer: either the
   // number a parent will be told to pay, or the fact that there isn't one. An
   // owner who has not set this is losing fees to a question they answer by hand.
-  const payHint = staffOnly?.center?.payment_number
-    ? t.feesGoTo(formatBdMobile(staffOnly.center.payment_number))
-    : t.noPaymentNumber
+  //
+  // Three answers rather than two, because "there isn't one" was also what a
+  // dropped read said — a nudge to go and set a number, on the one row of this
+  // hub whose screen may have had it set months ago. See center.unreadable for
+  // what that same read does to the screen this row opens.
+  const payHint = staffOnly?.centerError
+    ? t.payUnreadable
+    : staffOnly?.center?.payment_number
+      ? t.feesGoTo(formatBdMobile(staffOnly.center.payment_number))
+      : t.noPaymentNumber
 
   // The centre's own plan, not the free one. Every tier below `center` has caps,
   // so this line is read by paying owners too.
