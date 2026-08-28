@@ -28,7 +28,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 
 import type { Database } from '../supabase/types.ts'
-import { pageOrNull } from '../supabase/page.ts'
+import { pageAll, type Paged } from '../supabase/page.ts'
 
 /** A guardian as the query below asks for them. */
 type GuardianRow = {
@@ -206,16 +206,17 @@ export function chunkPhones(
 
 /**
  * The active enrolments `noticeReach` counts, and nothing else.
-
  *
  * A reader rather than a read-and-count, so the page can put this in the same
  * `Promise.all` as its batch list and its notice log — the arithmetic needs the batch
  * ids, and a helper that did both would have to wait for the batches before it started
  * on the roster.
  *
- * Null on a failed query, and the caller must not read that as an empty roster: a
- * centre with two hundred families would then be told its notice reaches nobody
- * because a request timed out. The screen says it could not read the roster instead.
+ * `Paged` rather than a list, so the caller cannot read a failure as an empty roster:
+ * a centre with two hundred families would otherwise be told its notice reaches
+ * nobody because a request timed out. Two failures rather than one for the same reason
+ * the pager keeps them apart — a dropped connection is worth another tap and a roster
+ * past MAX_PAGED_ROWS is not, and the screen has to say which it was.
  *
  * Student status is deliberately not a condition here, the same call the arrears
  * worklist makes about its own list. Somebody marked inactive who still holds an
@@ -225,14 +226,14 @@ export function chunkPhones(
 export async function readAudienceRows(
   supabase: SupabaseClient<Database>,
   centerId: string,
-): Promise<AudienceRow[] | null> {
+): Promise<Paged<AudienceRow>> {
   // Paged, and of every read in the app this is the one the ceiling was written for.
   // One row per active enrolment, so the 250-student centre taking four subjects that
   // sits in the middle of the ৳1,999 tier has exactly a thousand of them. Cut short,
   // the screen would report a smaller reach and hand over a shorter list of numbers —
   // and the families past the cut are simply never told, with no gap on the screen to
   // notice. `.order('id')` because the offset walk needs one column that cannot tie.
-  const rows = await pageOrNull((from, to) =>
+  const paged = await pageAll((from, to) =>
     supabase
       .from('enrollments')
       .select(
@@ -246,6 +247,9 @@ export async function readAudienceRows(
       .range(from, to),
   )
 
-  return (rows as AudienceRow[] | null) ?? null
+  // The cast the generated types need on the way out, not on the way in: PostgREST
+  // types a two-level embed loosely enough that AudienceRow has to be asserted, and
+  // asserting it here keeps that to one line rather than one per branch.
+  return 'rows' in paged ? { rows: paged.rows as AudienceRow[] } : paged
 }
 

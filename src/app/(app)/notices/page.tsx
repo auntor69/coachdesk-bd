@@ -6,6 +6,7 @@ import { createClient } from '@/lib/supabase/server'
 import { formatDate } from '@/lib/bd/time'
 import { buildNoticeSms } from '@/lib/sms/templates'
 import { noticeReach, readAudienceRows, chunkPhones } from '@/lib/notices/audience'
+import { worstFailure } from '@/lib/supabase/page'
 import { dict, localName, DEFAULT_LOCALE } from '@/lib/i18n'
 import { NoticeForm, type BatchOption } from './notice-form'
 import { NoticeLog, type NoticeRowView } from './notice-log'
@@ -89,7 +90,12 @@ export default async function NoticesPage() {
   // Null means the roster query failed, which is not the same as a centre with nobody
   // in it — see readAudienceRows. The form is told so it can offer the message chip
   // and withhold the numbers chip, rather than offering a chip that copies nothing.
-  const reach = audience === null ? null : noticeReach(audience, batchIds)
+  //
+  // Two failures, one missing chip, two sentences: a dropped read is worth another tap
+  // and a roster past the row ceiling is not, and `rosterFailed` used to end with "try
+  // again in a moment for the numbers" either way.
+  const rosterProblem = worstFailure(audience)
+  const reach = 'rows' in audience ? noticeReach(audience.rows, batchIds) : null
 
   const options: BatchOption[] = batchRows.map((batch) => ({
     id: batch.id,
@@ -151,9 +157,11 @@ export default async function NoticesPage() {
           only one of them is the owner's to fix. The form above still works: a notice
           with no numbers beside it is still a record, and the message chip still hands
           them the words. */}
-      {reach === null && (
+      {rosterProblem !== null && (
         <Card>
-          <p className="text-sm text-ink-soft">{t.rosterFailed}</p>
+          <p className="text-sm text-ink-soft">
+            {rosterProblem === 'tooLarge' ? t.rosterTooLarge : t.rosterFailed}
+          </p>
         </Card>
       )}
 

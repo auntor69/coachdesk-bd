@@ -4,7 +4,7 @@ import { Card } from '@/components/ui'
 import { SearchBox, SearchEmpty } from '@/components/search-box'
 import { pagePermission, getSession } from '@/lib/auth/session'
 import { createClient } from '@/lib/supabase/server'
-import { pageOrNull } from '@/lib/supabase/page'
+import { pageAll } from '@/lib/supabase/page'
 import { formatBdMobile } from '@/lib/bd/phone'
 import { MAX_IMPORT_ROWS } from '@/lib/bd/roster'
 import { searchTerms, matchesSearch, MAX_QUERY } from '@/lib/search'
@@ -77,7 +77,7 @@ export default async function StudentsPage({
   // for each student in the page. `.order('id')` last, after the name, because two
   // students named the same have no order otherwise and the offset walk would be
   // free to hand back one of them twice and never the other.
-  const students = await pageOrNull((from, to) =>
+  const students = await pageAll((from, to) =>
     supabase
       .from('students')
       .select(
@@ -92,7 +92,41 @@ export default async function StudentsPage({
       .range(from, to),
   )
 
-  const rows = (students ?? []).map((student) => ({
+  /*
+   * And a read that did not arrive is not a centre with nobody in it, which is the
+   * only other thing an empty roster could mean here. The `?? []` this replaces made
+   * them the same screen: a headcount of nought, the plan reading 0 of 150, both
+   * warning cards gone because each is gated on a count, and "no students yet — add
+   * your first one" printed over a centre of three hundred whose names are all still
+   * in the table.
+   *
+   * Every claim on this screen is built from these rows, so there is nothing to draw
+   * around the gap and no partial version worth showing. The way back to the rest of
+   * settings stays, and the two doors that do not need the roster — add a student, the
+   * paste screen — are one tap away through it.
+   */
+  if (!('rows' in students)) {
+    return (
+      <div className="flex flex-col gap-5">
+        <div>
+          <Link
+            href="/settings"
+            className="inline-flex min-h-tap items-center text-ink-soft hover:text-ink"
+          >
+            ← {d.settings.hub.title}
+          </Link>
+          <h1 className="mt-1 text-xl font-bold text-ink">{t.title}</h1>
+        </div>
+        <Card className="border-late/30 bg-late/5">
+          <p className="font-medium text-ink">
+            {students.failed === 'tooLarge' ? t.tooLarge : t.unreadable}
+          </p>
+        </Card>
+      </div>
+    )
+  }
+
+  const rows = students.rows.map((student) => ({
     id: student.id,
     name: student.name,
     code: student.student_code,

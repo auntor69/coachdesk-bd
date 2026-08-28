@@ -1671,6 +1671,9 @@ export const en: Dictionary = {
 
     rosterFailed:
       'The list of families could not be loaded, so the numbers are not here. The message is still yours to copy — try again in a moment for the numbers.',
+    /** No retry brings a roster back under the ceiling — see close.tooLarge. */
+    rosterTooLarge:
+      'There are more families here than this screen can put on a clipboard at once, so the numbers are not here. The message is still yours to copy — please get in touch about the numbers.',
 
     segments: 'Sends as {n} SMS',
     copyMessageHint: 'Paste it on your phone to send it.',
@@ -1979,6 +1982,17 @@ export const en: Dictionary = {
 
       editTitle: 'Fix their details',
       openHint: 'Tap a student to see their attendance, results and fees',
+      /**
+       * The roster read is the headcount, the plan usage and both warning cards, so a
+       * failed one hides the two problems this screen exists to surface. Said plainly
+       * instead: "no students yet" over a centre of three hundred is the version this
+       * replaces.
+       */
+      unreadable:
+        'The roster could not be read just now, so it is not shown — your students are still there. Please try again in a moment.',
+      /** See close.tooLarge for why this does not point anywhere. */
+      tooLarge:
+        'There are more students on this roster than this screen can list at once. Please get in touch and we will sort it out with you.',
       saved: 'Details saved',
       errors: {
         nameRequired: 'Give the student’s name.',
