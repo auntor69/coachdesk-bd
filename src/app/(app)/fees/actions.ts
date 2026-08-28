@@ -341,12 +341,39 @@ export async function recordPayment(
       return { error: t.errors.paymentFailed }
     }
 
-    const { data: existing } = await supabase
+    const { data: existing, error: existingError } = await supabase
       .from('fee_payments')
       .select('id, receipt_no, invoice_id, amount_bdt')
       .eq('coaching_center_id', session.active.centerId)
       .eq('idempotency_key', key)
       .maybeSingle()
+
+    /*
+     * THE READ THAT FAILED, AND THE ONE PLACE WHERE "IT DID NOT SAVE" WRITES A
+     * DUPLICATE PAYMENT INTO A TABLE NOTHING CAN DELETE FROM.
+     *
+     * Getting here means the index already refused the insert, which is proof that a
+     * row carrying this key is in the table. The money is recorded. Only the receipt
+     * number is unknown, because the query that would have read it back did not
+     * arrive — and `paymentFailed` below said the payment had not gone through.
+     *
+     * An owner who believes that submits again. The same form carries the same key, so
+     * the index refuses it again and they read the same sentence again; what they do
+     * then is reload and type the payment in fresh, which mints a new key and writes a
+     * second row for the same notes. This product will not delete a payment from a
+     * browser session — deliberately, and that is the right rule — so the duplicate is
+     * permanent, the family reads as having paid twice what they handed over, and the
+     * month's collection is over by the amount for good.
+     *
+     * So it says "probably yes, go and look" instead. The fee list is revalidated on
+     * the way out, because the row it is being sent to look at was written by a request
+     * this one knows nothing about and the cached page predates it.
+     */
+    if (existingError) {
+      revalidatePath('/fees')
+      revalidatePath('/dashboard')
+      return { error: t.errors.paymentMaybeRecorded }
+    }
 
     // Checked against what this request asked for, not trusted for being findable.
     // A key that turns up on a different invoice or a different amount is a key
@@ -810,12 +837,22 @@ export async function refundPayment(
       return { error: t.errors.refundFailed }
     }
 
-    const { data: existing } = await supabase
+    const { data: existing, error: existingError } = await supabase
       .from('fee_payments')
       .select('id, receipt_no, invoice_id, amount_bdt')
       .eq('coaching_center_id', session.active.centerId)
       .eq('idempotency_key', key)
       .maybeSingle()
+
+    // The same read and the same argument as recordPayment's — see the long note there.
+    // A refund recorded twice is worse in one respect: it makes the centre look as
+    // though it handed back money it kept, and the correction is another cash movement
+    // rather than an edit.
+    if (existingError) {
+      revalidatePath('/fees')
+      revalidatePath('/dashboard')
+      return { error: t.errors.refundMaybeRecorded }
+    }
 
     if (
       !existing

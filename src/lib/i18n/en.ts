@@ -490,6 +490,29 @@ export const en: Dictionary = {
         'This bill could not be read just now, so nothing has been recorded and nothing about it has changed. The bill is still there — please try again in a moment.',
       invoiceVoided: 'This invoice has been cancelled.',
       paymentFailed: 'The payment was not recorded. Please try again.',
+      /**
+       * The one place in this product where the honest answer is "probably yes".
+       *
+       * It is reached only after the insert has been refused by the idempotency index,
+       * which is proof that a row carrying this submit's key is already in the table —
+       * and then the read that would have fetched that row back did not arrive. So the
+       * money is recorded and the receipt number exists; the app simply cannot say what
+       * it is.
+       *
+       * `paymentFailed` above was the answer, and it is the one sentence here that
+       * cannot be allowed to be wrong. An owner told the payment did not go through
+       * enters it again — and a second attempt from the same form carries the same key
+       * and is refused the same way, so what they do next is reload and type it in
+       * fresh, which mints a new key and writes a genuine duplicate. A payment cannot
+       * be deleted from a browser in this product, by design, so that duplicate is
+       * permanent: the family shows as having paid twice what they handed over, and the
+       * month's collection figure is over by the amount for good.
+       *
+       * Hence the instruction rather than the reassurance. "Look before you re-enter"
+       * is the only thing that helps, and the last clause is why it is worth the look.
+       */
+      paymentMaybeRecorded:
+        'This payment has most likely gone in already, but the receipt could not be read back just now. Please look for it on the fee list before entering it again — a payment recorded twice cannot be undone.',
       cancelPaid:
         'This bill has money against it, so it cannot be cancelled. Use “Refund money” above to record the refund, then it can be cancelled.',
       cancelFailed: 'The bill was not cancelled. Please try again.',
@@ -499,6 +522,9 @@ export const en: Dictionary = {
       refundTooMuch: (max: string) =>
         `This bill holds ${max}. No more than that can be handed back.`,
       refundFailed: 'The refund was not recorded. Please try again.',
+      /** See paymentMaybeRecorded. Same proof, same instruction, money the other way. */
+      refundMaybeRecorded:
+        'This refund has most likely gone in already, but the receipt could not be read back just now. Please look for it on the fee list before entering it again — a refund recorded twice cannot be undone.',
 
       discountVoided:
         'This bill is cancelled, so waiving a fee on it changes no total anybody sees. Put the bill back first.',

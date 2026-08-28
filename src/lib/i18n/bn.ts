@@ -905,6 +905,9 @@ export const bn = {
         'বিলটি এখন পড়া গেল না, তাই কিছু জমা হয়নি, বিলের কোনো কিছুও বদলায়নি। বিলটি ঠিকই আছে — একটু পরে আবার চেষ্টা করুন।',
       invoiceVoided: 'এই ইনভয়েসটি বাতিল করা হয়েছে।',
       paymentFailed: 'টাকা জমা হয়নি। আবার চেষ্টা করুন।',
+      /** See en.fees.errors.paymentMaybeRecorded — an instruction, not a comfort. */
+      paymentMaybeRecorded:
+        'টাকা সম্ভবত জমা হয়ে গেছে, তবে রসিদটি এখন পড়া গেল না। আবার জমা লেখার আগে ফি-এর তালিকায় দেখে নিন — একই টাকা দুইবার জমা লেখা হলে তা আর বদলানো যায় না।',
       /**
        * The one rule cancelling has, said in terms of the money rather than the
        * database: a bill that has been paid cannot simply stop existing, because a
@@ -937,6 +940,9 @@ export const bn = {
       refundTooMuch: (max: string) =>
         `এই বিলে জমা আছে ${max}, এর বেশি ফেরত দেওয়া যাবে না।`,
       refundFailed: 'টাকা ফেরতের হিসাব লেখা হয়নি। আবার চেষ্টা করুন।',
+      /** See en.fees.errors.refundMaybeRecorded. */
+      refundMaybeRecorded:
+        'টাকা ফেরতের হিসাব সম্ভবত লেখা হয়ে গেছে, তবে রসিদটি এখন পড়া গেল না। আবার লেখার আগে ফি-এর তালিকায় দেখে নিন — একই ফেরত দুইবার লেখা হলে তা আর বদলানো যায় না।',
 
       /**
        * The three ways a waiver is refused. None of them repeats "টাকার পরিমাণ", which
