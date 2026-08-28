@@ -5,7 +5,7 @@ import { SearchBox, SearchEmpty } from '@/components/search-box'
 import { pageRole, getSession } from '@/lib/auth/session'
 import { has, planName, PLANS } from '@/lib/plans'
 import { createClient } from '@/lib/supabase/server'
-import { pageOrNull } from '@/lib/supabase/page'
+import { pageAll } from '@/lib/supabase/page'
 import { formatDate, todayInDhaka, digits } from '@/lib/bd/time'
 import { normalizeBdMobile } from '@/lib/bd/phone'
 import { searchTerms, matchesSearch, MAX_QUERY } from '@/lib/search'
@@ -133,7 +133,7 @@ export default async function ProgressPage({
   // family the week's summary never reaches, with nothing on the screen to show
   // they were dropped. `.order('student_id')` because the view has no id of its own
   // and that column is its key.
-  const data = await pageOrNull((from, to) =>
+  const data = await pageAll((from, to) =>
     supabase
       .from('student_progress_week')
       .select(PROGRESS_COLUMNS)
@@ -142,7 +142,31 @@ export default async function ProgressPage({
       .range(from, to),
   )
 
-  const students = weeklyProgress(data, t.noName)
+  /*
+   * And a read that did not arrive is not a centre with nobody in it, which is what
+   * the null this replaces became. `weeklyProgress(null)` is an empty list,
+   * `progressTotals` of that is every figure at nought, and `progressEmptyReason`
+   * answers `noStudents` — "nobody is enrolled yet" — on the one screen ৳499 buys, to
+   * a centre whose three hundred families are all still in the table.
+   *
+   * The gate above returns early for the same shape of reason: a screen with no
+   * worklist to draw draws none of it, rather than drawing a hollow version. The way
+   * back to the dashboard stays, because none of this is on the reader.
+   */
+  if (!('rows' in data)) {
+    return (
+      <div className="flex flex-col gap-4">
+        {back}
+        <Card className="border-late/30 bg-late/5">
+          <p className="font-medium text-ink">
+            {data.failed === 'tooLarge' ? t.tooLarge : t.unreadable}
+          </p>
+        </Card>
+      </div>
+    )
+  }
+
+  const students = weeklyProgress(data.rows, t.noName)
   const totals = progressTotals(students)
 
   // The window every figure on this screen was counted over, taken off the first

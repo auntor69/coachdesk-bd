@@ -1642,6 +1642,20 @@ export const en: Dictionary = {
     seeAll: 'See everyone',
     noName: 'No name given',
 
+    /**
+     * The week could not be worked out, so none of it is drawn.
+     *
+     * Its own sentence rather than falling through to `noneTitle`, whose words are
+     * “nobody new to tell today” — a sentence an owner reads once and then closes the
+     * page believing Thursday’s work is done. Each of the four reasons under it is a
+     * fact about the centre, and a read that did not arrive is not one of them.
+     */
+    unreadable:
+      'This week’s figures could not be worked out just now, so none are shown — it does not mean there is nobody to tell. Please try again in a moment.',
+    /** See close.tooLarge for why this does not point anywhere. */
+    tooLarge:
+      'There are more students on file than this screen can work through at once. Nothing is wrong with your records — please get in touch and we will get you this week’s list.',
+
     lockedTitle: 'This plan does not include the weekly note',
     lockedBody: (plan: string, pro: string) =>
       `On ${plan} you can read attendance and marks in the app, but the week's message to a guardian is not written for you. Telling every family in one tap comes with ${pro}.`,

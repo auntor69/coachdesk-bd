@@ -3255,6 +3255,13 @@ export const bn = {
     /** Unreachable through the view — students.name is not null. */
     noName: 'নাম দেওয়া নেই',
 
+    /** See en.progress.unreadable for why this is not `noneTitle`. */
+    unreadable:
+      'এই সপ্তাহের হিসাব এখন বের করা গেল না, তাই কিছু দেখানো হয়নি — এর মানে জানানোর কেউ নেই তা নয়। একটু পরে আবার চেষ্টা করুন।',
+    /** See close.tooLarge for why this does not point anywhere. */
+    tooLarge:
+      'শিক্ষার্থীর সংখ্যা এত বেশি যে এই পর্দা একবারে হিসাব করতে পারছে না। আপনার হিসাবে কোনো সমস্যা নেই — আমাদের সাথে যোগাযোগ করুন, আমরা এই সপ্তাহের তালিকা পৌঁছে দেব।',
+
     /**
      * The paywall, named for what is missing rather than "locked", exactly as the
      * export screen's is. The body says what a free teacher can still do, because
