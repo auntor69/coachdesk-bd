@@ -1713,6 +1713,21 @@ export const en: Dictionary = {
     inactive: 'Inactive',
     teacherScope:
       'Attendance and results cover only the batches you teach.',
+    /**
+     * The page itself, when the student's own row did not arrive.
+     *
+     * A student who is not there and a student RLS will not show this reader are the
+     * same event, and both are the 404 above — the note at the top of the page says
+     * why. A read that failed is a third thing, and it was reaching that same 404:
+     * “Student not found” over a record that exists, on the screen an owner has open
+     * while that child’s parent is on the phone. The next thing they do is search the
+     * roster for a name that is on it.
+     *
+     * So it denies the removal out loud. A 404 on a name somebody is looking at is not
+     * read as a screen that could not load; it is read as a record that has been wiped.
+     */
+    unreadable:
+      'This student’s record could not be read just now, so nothing is shown. It does not mean they have been removed from the roster — please try again in a moment.',
 
     contact: {
       guardian: 'Guardian',
@@ -1723,6 +1738,13 @@ export const en: Dictionary = {
     flags: {
       title: 'Worth knowing',
       none: 'Attendance, marks and fees — no bad sign in any of the three right now.',
+      /**
+       * The line above is a verdict, and a dropped read used to reach it. “No bad sign
+       * in any of the three” over a student whose attendance and fees nobody could
+       * count is the exact claim this panel is hidden from teachers to avoid making.
+       */
+      unreadable:
+        'Whether anything needs attention could not be worked out just now. That is not the same as nothing being wrong — please try again in a moment.',
     },
 
     attendance: {
@@ -1733,6 +1755,18 @@ export const en: Dictionary = {
       marked: 'classes marked',
       unmarkedNote:
         'Some classes have no mark against this student at all — check the register.',
+      /**
+       * Both reads behind this panel, when either one did not arrive.
+       *
+       * It denies two false readings rather than one, because `?? []` produced both. A
+       * dropped sessions read put every batch on `noClasses`, which points at the
+       * register and is the most actionable row this panel can draw. A dropped marks
+       * read left them reading “0 of 20 classes marked” with `unmarkedNote` under it,
+       * which points at the register harder. Either way an owner rings a teacher to ask
+       * why they have stopped keeping one they are keeping.
+       */
+      unreadable:
+        'The register could not be read just now, so the attendance figures are not shown. It does not mean no class was held, or that nobody was marked — please try again in a moment.',
     },
 
     marks: {
@@ -1741,6 +1775,12 @@ export const en: Dictionary = {
       noMark: 'No mark entered',
       limitNote: (n: number) =>
         n === 1 ? 'Showing the last exam.' : `Showing the last ${n} exams.`,
+      /**
+       * `none` above is what a dropped read used to draw: “no marks entered yet” over a
+       * term of them, on the screen a result is read off to a parent.
+       */
+      unreadable:
+        'The marks could not be read just now, so they are not shown. It does not mean none have been entered — please try again in a moment.',
     },
 
     fees: {
@@ -1748,6 +1788,20 @@ export const en: Dictionary = {
       allPaid: 'All fees paid ✓',
       overdueSince: (date: string) => `Overdue since ${date}`,
       none: 'No invoice has been raised for this student yet.',
+      /**
+       * The bills, when the read for them failed.
+       *
+       * `none` above is what stood here, so a family four months behind read as a family
+       * that has never been billed. The total beside the panel heading comes off the same
+       * rows, so it went absent rather than wrong — which on a fee panel looks precisely
+       * like nothing being owed.
+       *
+       * It names the sentence not to say, because this screen is usually open for a
+       * reason: somebody rang. “You are all paid up” is not a thing a centre can take
+       * back the next morning.
+       */
+      unreadable:
+        'The bills could not be read just now, so they are not shown. Nothing here says this family owes nothing — please try again in a moment before telling them they are paid up.',
       due: 'Due',
       paid: 'Paid',
       remaining: 'Owing',
@@ -1758,6 +1812,16 @@ export const en: Dictionary = {
       receipt: 'Receipt',
       refundReceipt: 'Refund',
       receiptHint: 'Tap any receipt to print it again — as many times as you need.',
+      /**
+       * The slips, when only their own read failed. A note added rather than a panel
+       * withheld, and the difference is that every figure above is still exact: `paid`
+       * and `remaining` are the view's arithmetic, not these rows'. What is missing is
+       * the tap that reprints one — and an empty list under a settled bill reads as a
+       * receipt never having been issued, which is the one thing this panel exists to
+       * disprove.
+       */
+      receiptsUnreadable:
+        'The receipts against these bills could not be read, so they are not listed — the figures above are unaffected. Please try again in a moment.',
       limitNote: (n: number) =>
         n === 1 ? 'Showing the last month.' : `Showing the last ${n} months.`,
     },

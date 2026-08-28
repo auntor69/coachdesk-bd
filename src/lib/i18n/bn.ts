@@ -3054,6 +3054,14 @@ export const bn = {
      * a caveat that is always on screen is a caveat nobody reads.
      */
     teacherScope: 'হাজিরা আর ফল — আপনি যে ব্যাচগুলো পড়ান, শুধু সেগুলোর হিসাব দেখছেন।',
+    /**
+     * The page itself, when the student's own row did not arrive — a third case beside
+     * the 404 above, which is both “not there” and “not one of yours”. It denies the
+     * removal out loud: a 404 on a name somebody is looking at is read as a record
+     * wiped, not as a screen that failed to load.
+     */
+    unreadable:
+      'এই শিক্ষার্থীর তথ্য এখন পড়া গেল না, তাই কিছু দেখানো হয়নি। শিক্ষার্থীকে তালিকা থেকে বাদ দেওয়া হয়েছে, তা নয় — একটু পরে আবার চেষ্টা করুন।',
 
     /**
      * The two numbers to ring, guardian first: a centre phones the parent about a
@@ -3080,6 +3088,12 @@ export const bn = {
     flags: {
       title: 'যা খেয়াল করার',
       none: 'হাজিরা, নম্বর আর ফি — তিনটির কোনোটিতেই এখন খারাপ লক্ষণ নেই।',
+      /**
+       * A verdict a dropped read used to reach. The line above is the exact claim this
+       * panel is hidden from teachers to avoid making.
+       */
+      unreadable:
+        'কিছু খেয়াল করার আছে কি না, তা এখন বের করা গেল না। এর মানে সব ঠিক আছে, তা নয় — একটু পরে আবার চেষ্টা করুন।',
     },
 
     /**
@@ -3111,6 +3125,12 @@ export const bn = {
        * and treating it as an absence is how a screen invents one.
        */
       unmarkedNote: 'কিছু ক্লাসে এই শিক্ষার্থীর হাজিরা লেখাই হয়নি — খাতাটা দেখে নিন।',
+      /**
+       * Either read behind the panel. It denies two things, because `?? []` claimed
+       * both: that no class was held, and that nobody was marked in the ones that were.
+       */
+      unreadable:
+        'হাজিরার খাতা এখন পড়া গেল না, তাই হিসাব দেখানো হয়নি। কোনো ক্লাস হয়নি বা কারও হাজিরা নেওয়া হয়নি, তা নয় — একটু পরে আবার চেষ্টা করুন।',
     },
 
     /**
@@ -3127,6 +3147,9 @@ export const bn = {
       /** Sat the exam; nobody has entered a figure yet. Not the same as absent. */
       noMark: 'নম্বর তোলা হয়নি',
       limitNote: (n: number) => `শেষ ${digits(n, 'bn')}টি পরীক্ষা দেখানো হচ্ছে।`,
+      /** `none` above, over a term of marks, on the screen a result is read out from. */
+      unreadable:
+        'নম্বর এখন পড়া গেল না, তাই দেখানো হয়নি। কোনো নম্বর তোলা হয়নি, তা নয় — একটু পরে আবার চেষ্টা করুন।',
     },
 
     /**
@@ -3142,6 +3165,12 @@ export const bn = {
       /** Follows nothing; the date is already formatted: 'সময় পেরিয়েছে ১১ আগস্ট ২০২৬ থেকে'. */
       overdueSince: (date: string) => `সময় পেরিয়েছে ${date} থেকে`,
       none: 'এই শিক্ষার্থীর জন্য এখনো কোনো ইনভয়েস তৈরি হয়নি।',
+      /**
+       * The bills, unread. It names the sentence not to say: this screen is open because
+       * a parent rang, and “you are all paid up” cannot be taken back in the morning.
+       */
+      unreadable:
+        'ফি-এর হিসাব এখন পড়া গেল না, তাই দেখানো হয়নি। এই পরিবারের কিছু বাকি নেই, এখানে তা বলা হচ্ছে না — পরিবারকে জানানোর আগে একটু পরে আবার চেষ্টা করুন।',
       due: 'শেষ তারিখ',
       paid: 'জমা',
       remaining: 'বাকি',
@@ -3197,6 +3226,12 @@ export const bn = {
        * that ran out.
        */
       receiptHint: 'যেকোনো রসিদে চাপ দিন — যতবার দরকার, আবার ছাপানো যাবে।',
+      /**
+       * Only the slips. A note added, not a panel withheld — every figure above is the
+       * view's own arithmetic and still exact; what is missing is the tap that reprints.
+       */
+      receiptsUnreadable:
+        'এই বিলগুলোর রসিদ পড়া গেল না, তাই তালিকায় দেখানো হয়নি — উপরের টাকার হিসাব ঠিকই আছে। একটু পরে আবার চেষ্টা করুন।',
       limitNote: (n: number) => `শেষ ${digits(n, 'bn')} মাসের ইনভয়েস দেখানো হচ্ছে।`,
     },
   },

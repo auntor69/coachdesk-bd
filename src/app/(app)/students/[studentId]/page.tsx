@@ -49,10 +49,20 @@ export async function generateMetadata() {
  * if their owner ticked can_manage_students (20260811000019). A student or guardian
  * clears none of it and gets /me, which is the same facts written for them.
  *
- * So an unreadable student is a 404 and not a 403, because those two are the same
- * event here: `maybeSingle` returns nothing whether the row does not exist or the
- * policy hid it, and a page that said "you may not see this student" would confirm
+ * So a student this reader may not see is a 404 and not a 403, because those two are
+ * the same event here: `maybeSingle` returns nothing whether the row does not exist or
+ * the policy hid it, and a page that said "you may not see this student" would confirm
  * the student exists to somebody who cannot see them.
+ *
+ * A READ THAT FAILED IS A THIRD THING, and it used to come out as that same 404. Every
+ * panel below had the same fault in its own words — `?? []` on each of six reads, each
+ * one landing on the sentence written for an honest empty answer. "No class on record
+ * for this batch" on every batch at once, "no marks entered yet" over a term of them,
+ * and on the panel this screen is most often opened for, "no invoice has been raised",
+ * to an owner with the parent of a four-month debtor on the phone. Each is now the
+ * failure said out loud, panel by panel: the name, the code and the two numbers to ring
+ * are true whatever else did not arrive, and ringing the guardian is half of why
+ * anybody opens this page.
  *
  * THE PARTIAL-VISIBILITY TRAP, which is why the attendance panel is per batch. A
  * teacher's read of enrollments, attendance and exams is narrowed to their own
@@ -108,7 +118,7 @@ export default async function StudentProfilePage({
   const mayOpenReceipts = staffAdmin
   const receiptsPrint = staffAdmin && has(session.plan, 'printedReceipts')
 
-  const { data: student } = await supabase
+  const { data: student, error: studentError } = await supabase
     .from('students')
     .select(
       `id, name, student_code, phone, guardian_name, guardian_phone,
@@ -122,6 +132,35 @@ export default async function StudentProfilePage({
     .eq('coaching_center_id', centerId)
     .eq('id', studentId)
     .maybeSingle()
+
+  /*
+   * The failed read, ahead of the 404 — because `notFound()` was answering it as well.
+   *
+   * "Student not found / not on the roster, or not one of your batches" is a sentence
+   * about a record that is not there, or is not this reader's. Put over a record that
+   * is both, it reads as the child having been taken off the roll: what happens next is
+   * a search of the roster for a name that is on it, and then a question to whoever was
+   * last in the edit screen. So the failure says so, and denies the removal out loud,
+   * which is the inference to head off rather than a politeness.
+   *
+   * The whole page rather than a panel, because the name at the top of it is exactly
+   * what did not arrive. The back link stays, so the reader is not stranded on it.
+   */
+  if (studentError) {
+    return (
+      <div className="flex flex-col gap-4">
+        <Link
+          href="/settings/students"
+          className="inline-flex min-h-tap items-center text-ink-soft hover:text-ink"
+        >
+          ← {t.roster}
+        </Link>
+        <Card className="border-late/30 bg-late/5">
+          <p className="font-medium text-ink">{t.unreadable}</p>
+        </Card>
+      </div>
+    )
+  }
 
   if (!student) notFound()
 
@@ -227,10 +266,15 @@ export default async function StudentProfilePage({
         : { data: null },
     ])
 
+  // `?? []` on purpose here, and it is not the fault the rest of this file is about: a
+  // sessions read that failed leaves no ids, so the marks query below is skipped rather
+  // than asked about nothing — and the panel is withheld either way.
   const sessionIds = (sessions ?? []).map((s) => s.id)
   // The bills the panel will actually draw, which is what bounds the receipts query
   // below. Taken from the rows that came back rather than from the limit, so a
-  // student with three invoices does not ask about twelve.
+  // student with three invoices does not ask about twelve. `?? []` for the same reason
+  // as above: no invoices means nothing to ask for receipts against, and a fee panel
+  // whose bills did not arrive is refused whole.
   const invoiceIds = (invoices ?? []).map((i) => i.id).filter((id): id is string => !!id)
 
   const [{ data: marks }, { data: paymentRows }] = await Promise.all([
@@ -269,9 +313,42 @@ export default async function StudentProfilePage({
       : { data: null },
   ])
 
+  /*
+   * WHICH PANELS MAY SPEAK — one flag each, and the permission tested beside the null.
+   *
+   * `null` off any of these reads means the read failed. `[]` means the question was
+   * asked and the answer is nothing. The four conditional queries above are careful to
+   * return whichever of the two is true of a skip — `[]` where nothing could match, and
+   * `null` where the reader is not allowed to ask — so the permission that owns each
+   * null is checked alongside it. A teacher's fee panel says who keeps the fees, and
+   * that is an answer rather than a failure.
+   *
+   * Five flags and not one, because each denies a different sentence. A single "some of
+   * this could not be read" across the lot would be true and would lose the only part
+   * that matters: which claim on the screen is not being made.
+   */
+  const attendanceUnreadable = sessions === null || marks === null
+  const marksUnreadable = results === null
+  const feesUnreadable = mayReadFees && invoices === null
+  const flagsUnreadable = mayReadFlags && riskRows === null
+  /*
+   * The slips on their own, which is the one case that withholds nothing. `paid` and
+   * `remaining` under each bill are the view's own arithmetic and arrive with the
+   * invoices, so every figure in the panel stays exact and only the list of receipts
+   * beneath them is missing. A note added, not a panel taken away.
+   *
+   * Never raised when the invoices themselves failed: `invoiceIds` is empty then, the
+   * payments query is skipped, and the panel is already refused whole above.
+   */
+  const receiptsUnreadable = mayReadFees && invoiceIds.length > 0 && paymentRows === null
+
   const attendance = attendanceByBatch(activeBatches, sessions, marks)
   const exams = examMarks(results, batchLabels)
-  const fees = mayReadFees ? feeHistory(invoices, today, paymentRows) : null
+  // Null for a reader who may not see fees, and null again when the read for them did
+  // not arrive: `feeHistory(null, …)` answers a dropped read with `outstanding: 0`, and
+  // that zero would have gone into the total beside the panel heading as a figure.
+  const fees =
+    mayReadFees && !feesUnreadable ? feeHistory(invoices, today, paymentRows) : null
   const risk = studentsAtRisk(riskRows, d.risk.noName)[0] ?? null
 
   const guardianPhone = student.guardian_phone
@@ -375,6 +452,15 @@ export default async function StudentProfilePage({
         /at-risk — imported rather than rewritten, so the three cannot drift. Hidden
         entirely from a teacher, because student_risk returns them nothing and an
         empty panel would read as "nothing is wrong".
+
+        Which is what a dropped read used to make it say to the one reader it is drawn
+        for. `t.flags.none` is a verdict on three things at once, and a failure to reach
+        any of them is not a clean bill of health.
+
+        Grey, here and in the three panels below. Amber on this page is a warning about
+        the centre's own data — an overdue bill, a register with gaps in it — and a read
+        that did not arrive is not one of those. The sentence stands inside the panel
+        whose claim it replaces, which is where the reader is already looking.
       */}
       {mayReadFlags && (
         <Card>
@@ -382,7 +468,9 @@ export default async function StudentProfilePage({
             <h2 className="font-semibold text-ink">{t.flags.title}</h2>
             {risk && <RiskLevelChip level={risk.level} t={d.risk} />}
           </div>
-          {risk ? (
+          {flagsUnreadable ? (
+            <p className="mt-1 text-sm text-ink-soft">{t.flags.unreadable}</p>
+          ) : risk ? (
             <div className="mt-2">
               <RiskReasons reasons={risk.reasons} t={d.risk} />
               <p className="mt-2 text-xs text-ink-faint">{d.risk.windows}</p>
@@ -401,7 +489,14 @@ export default async function StudentProfilePage({
           </p>
         </div>
 
-        {attendance.length === 0 ? (
+        {/* Both reads behind this panel, ahead of the honest empty. A dropped sessions
+            read put every batch on `noClasses`; a dropped marks read left them reading
+            "0 / 20 classes marked" with the amber note under each one. Both say the
+            register has stopped being kept, which is the most actionable thing this
+            panel can say and so the worst thing for it to invent. */}
+        {attendanceUnreadable ? (
+          <p className="mt-1 text-sm text-ink-soft">{t.attendance.unreadable}</p>
+        ) : attendance.length === 0 ? (
           <p className="mt-1 text-sm text-ink-soft">{t.attendance.noBatches}</p>
         ) : (
           <ul className="mt-3 flex flex-col gap-3">
@@ -460,7 +555,12 @@ export default async function StudentProfilePage({
       <Card>
         <h2 className="font-semibold text-ink">{t.marks.title}</h2>
 
-        {exams.length === 0 ? (
+        {/* `none` below is "no exam marks have been entered yet", which is what a
+            dropped read used to draw over a term of them — on the screen a result is
+            read down the phone from. */}
+        {marksUnreadable ? (
+          <p className="mt-1 text-sm text-ink-soft">{t.marks.unreadable}</p>
+        ) : exams.length === 0 ? (
           <p className="mt-1 text-sm text-ink-soft">{t.marks.none}</p>
         ) : (
           <>
@@ -521,7 +621,16 @@ export default async function StudentProfilePage({
           )}
         </div>
 
-        {!fees ? (
+        {/* First, ahead of both the permission line and the honest empty. `hidden` is
+            "the owner or a manager keeps these", which is the wrong sentence for a
+            staff-admin whose read failed; `none` is "no invoice has been raised", which
+            is the wrong sentence about a family four months behind. The total above
+            comes off the same rows, so it went absent rather than wrong — and an absent
+            total on a fee panel reads as nothing owed, which is why this says the
+            opposite out loud. */}
+        {feesUnreadable ? (
+          <p className="mt-1 text-sm text-ink-soft">{t.fees.unreadable}</p>
+        ) : !fees ? (
           <p className="mt-1 text-sm text-ink-soft">{t.fees.hidden}</p>
         ) : fees.lines.length === 0 ? (
           <p className="mt-1 text-sm text-ink-soft">{t.fees.none}</p>
@@ -670,6 +779,15 @@ export default async function StudentProfilePage({
                 </li>
               ))}
             </ul>
+
+            {/* The slips did not arrive, but the money above them did. Said under the
+                list rather than in place of it, because every figure in this panel is
+                still exact — and a bill marked paid with nothing under it reads as a
+                receipt never having been issued, which is the one thing this panel was
+                added to disprove. */}
+            {receiptsUnreadable && (
+              <p className="mt-2 text-sm text-ink-soft">{t.fees.receiptsUnreadable}</p>
+            )}
 
             {/* Said once, under the whole list, and only where the tap really does
                 reach paper. An owner who watched a receipt seem to disappear after
