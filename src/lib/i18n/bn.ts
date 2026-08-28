@@ -2901,6 +2901,21 @@ export const bn = {
      * numerals because this line has no percentage in it to clash with.
      */
     windows: 'হাজিরা শেষ ৩০ দিনের হিসাব, নম্বর শেষ ১২০ দিনের।',
+
+    /**
+     * The worklist could not be read, so no names and no all-clear are drawn.
+     *
+     * Its own card rather than `empty`, whose sentence — no student is showing a bad
+     * sign in any of the three — is the most confident thing this product says about
+     * children. It is earned only when all three signals were read, which is the
+     * whole argument of blindArms; a list that did not arrive at all has not earned
+     * it either.
+     */
+    unreadable:
+      'এই তালিকা এখন পড়া গেল না, তাই দেখানো হচ্ছে না — এর মানে সব ঠিক আছে নয়। আবার চেষ্টা করুন।',
+    /** See close.tooLarge for why this does not point anywhere. */
+    tooLarge:
+      'সতর্ক হওয়ার মতো শিক্ষার্থীর সংখ্যা এত বেশি যে এক পর্দায় দেখানো যাচ্ছে না। আমাদের সাথে যোগাযোগ করুন, আমরা তালিকা পৌঁছে দেব।',
   },
 
   /**

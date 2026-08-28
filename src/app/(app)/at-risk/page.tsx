@@ -4,7 +4,7 @@ import { Card } from '@/components/ui'
 import { RiskList } from '@/components/risk-list'
 import { pageRole, getSession } from '@/lib/auth/session'
 import { createClient } from '@/lib/supabase/server'
-import { pageOrNull } from '@/lib/supabase/page'
+import { pageAll } from '@/lib/supabase/page'
 import { studentsAtRisk, blindArms, RISK_COLUMNS } from '@/lib/students/risk'
 import { addDays, todayInDhaka } from '@/lib/bd/time'
 import { dict, DEFAULT_LOCALE } from '@/lib/i18n'
@@ -69,7 +69,7 @@ export default async function AtRiskPage() {
     // ceiling for a single centre and does not for a chain — and the students it would
     // drop are the ones this screen exists to name. `.order('student_id')` because the
     // view has no id of its own and that column is its key.
-    pageOrNull((from, to) =>
+    pageAll((from, to) =>
       supabase
         .from('student_risk')
         .select(RISK_COLUMNS)
@@ -97,7 +97,19 @@ export default async function AtRiskPage() {
       .eq('coaching_center_id', session.active.centerId),
   ])
 
-  const students = studentsAtRisk(data, t.noName)
+  /*
+   * Whether the list arrived at all, which is not the same question as whether it is
+   * empty — and on this screen the difference is the whole point of the file.
+   *
+   * `blindArms` exists because an empty worklist has two meanings and the screen used
+   * to say the flattering one either way. A read that failed is a third, and it was
+   * the flattering one too: no rows, all three signals reporting data, so "no student
+   * is showing a bad sign in any of the three" — the most confident sentence this
+   * product makes about children — printed off a query that came back empty-handed.
+   */
+  const listProblem = 'failed' in data ? data.failed : null
+
+  const students = studentsAtRisk('rows' in data ? data.rows : null, t.noName)
 
   const blind = blindArms({
     sessions: sessions.count,
@@ -121,7 +133,18 @@ export default async function AtRiskPage() {
         <p className="mt-1 text-ink-soft">{t.lead}</p>
       </div>
 
-      {students.length === 0 ? (
+      {listProblem !== null ? (
+        // Amber, unlike the two cards below it. A centre in its first fortnight is
+        // meant to see an empty worklist and neither of those cards is a fault; this
+        // one is, and the reader has to be able to tell that they have not been given
+        // an answer. The footnotes below still print: the windows are prose about how
+        // the screen works, true whether or not it managed to look.
+        <Card className="border-late/30 bg-late/5">
+          <p className="font-medium text-ink">
+            {listProblem === 'tooLarge' ? t.tooLarge : t.unreadable}
+          </p>
+        </Card>
+      ) : students.length === 0 ? (
         blind.length === 0 ? (
           // The good news, and the only screen it appears on. The dashboard card is
           // absent on a healthy month rather than showing this, because a card that

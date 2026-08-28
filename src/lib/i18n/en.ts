@@ -1488,6 +1488,21 @@ export const en: Dictionary = {
     noPhone: 'No number',
     noName: 'No name given',
     windows: 'Attendance covers the last 30 days, marks the last 120.',
+
+    /**
+     * The worklist could not be read, so no names and no all-clear are drawn.
+     *
+     * Its own card rather than `empty`, whose sentence — no student is showing a bad
+     * sign in any of the three — is the most confident thing this product says about
+     * children. It is earned only when all three signals were read, which is the
+     * whole argument of blindArms; a list that did not arrive at all has not earned
+     * it either.
+     */
+    unreadable:
+      'This list could not be read just now, so it is not shown — it is not an all-clear. Please try again.',
+    /** See close.tooLarge for why this does not point anywhere. */
+    tooLarge:
+      'There are more students with a warning sign than this screen can show at once. Please get in touch and we will get you the list.',
   },
 
   studentProfile: {
