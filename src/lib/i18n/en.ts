@@ -1054,6 +1054,27 @@ export const en: Dictionary = {
     sheetUnreadable:
       'The marks for this exam could not be read just now, so the sheet is not shown — no marks have been lost. Please try again in a moment.',
 
+    /**
+     * The exam row itself, when the read for it did not arrive — which the two screens
+     * built on it answered with `notFound()`, a 404 shell reading “this page could not
+     * be found”.
+     *
+     * A 404 is the right answer to an exam id from another centre and a deliberate one:
+     * it is what stops the URL being used to learn which ids exist. Said instead about
+     * a dropped read it is the harshest sentence in this family, because it is not even
+     * a sentence about the exam — the teacher who tapped a row on their own list is
+     * told the page is not there, and the only reading left is that the exam went with
+     * it. What follows is a new exam and a second sheet.
+     *
+     * So it names the exam, denies the deletion, and says the marks are safe. Both
+     * screens use it: on the marks sheet the fear is a week of marks, on the edit form
+     * it is the exam, and neither reader is left to guess which happened. Shorter than
+     * `sheetUnreadable` above by one clause on purpose — that one is drawn when the
+     * exam did arrive and its title is on the screen, so it has a name to point at.
+     */
+    examUnreadable:
+      'This exam could not be read just now, so it is not shown — it has not been deleted, and no marks have been lost. Please try again in a moment.',
+
     newTitle: 'New exam',
     needBatchTitle: 'You need a batch first',
     needBatchBody:

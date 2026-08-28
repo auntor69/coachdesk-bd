@@ -1979,6 +1979,10 @@ export const bn = {
     sheetUnreadable:
       'এই পরীক্ষার নম্বর এখন পড়া গেল না, তাই নম্বর বসানোর তালিকা দেখানো হয়নি — কোনো নম্বর হারায়নি। একটু পরে আবার চেষ্টা করুন।',
 
+    /** See en.exams.examUnreadable — it denies the exam having gone, on both screens. */
+    examUnreadable:
+      'পরীক্ষাটি এখন পড়া গেল না, তাই কিছু দেখানো হয়নি। পরীক্ষাটি মুছে যায়নি, কোনো নম্বরও হারায়নি — একটু পরে আবার চেষ্টা করুন।',
+
     newTitle: 'নতুন পরীক্ষা',
     needBatchTitle: 'আগে একটি ব্যাচ দরকার',
     needBatchBody:

@@ -45,7 +45,7 @@ export default async function ExamPage({
 
   // RLS decides visibility. A miss is a 404, not a 403, so the URL cannot be
   // used to find out which exam ids exist in other centres.
-  const { data: exam } = await supabase
+  const { data: exam, error: examError } = await supabase
     .from('exams')
     .select(
       `id, title, total_marks, pass_marks, exam_date, batch_id,
@@ -55,6 +55,37 @@ export default async function ExamPage({
     .eq('coaching_center_id', session.active.centerId)
     .eq('id', examId)
     .maybeSingle()
+
+  /*
+   * The read that failed, ahead of the 404 — because `notFound()` was answering for
+   * both, and a 404 is the one refusal on this screen that is not even about the exam.
+   *
+   * The line above is right about why a miss is a 404: an exam id from another centre
+   * must not be distinguishable from one that does not exist. But `maybeSingle()` hands
+   * the same null to a dropped read, and then a teacher who tapped a row on their own
+   * exam list lands on "this page could not be found" — no title, no back link out of
+   * the shell, nothing about marks. The only reading left is that the exam is gone, and
+   * a teacher with a week of scripts in front of them makes it again.
+   *
+   * So the 404 is kept for the miss and this says what actually happened. No `<h1>`
+   * above the card, because the title is precisely what did not arrive; the back link
+   * is, because the list it returns to still has the exam on it.
+   */
+  if (examError) {
+    return (
+      <div className="flex flex-col gap-4">
+        <Link
+          href="/exams"
+          className="inline-flex min-h-tap items-center text-ink-soft hover:text-ink"
+        >
+          ← {t.title}
+        </Link>
+        <Card className="border-late/30 bg-late/5">
+          <p className="font-medium text-ink">{t.examUnreadable}</p>
+        </Card>
+      </div>
+    )
+  }
 
   if (!exam) notFound()
 

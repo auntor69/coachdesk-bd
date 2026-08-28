@@ -62,7 +62,7 @@ export default async function EditExamPage({
   // RLS decides visibility, and a miss is a 404 rather than a 403 — so the URL cannot
   // be used to find out which exam ids exist in other centres. Same call as the exam
   // page's own.
-  const { data: exam } = await supabase
+  const { data: exam, error: examError } = await supabase
     .from('exams')
     .select(
       `id, title, exam_type_id, total_marks, pass_marks, exam_date, sms_sent_at,
@@ -71,6 +71,39 @@ export default async function EditExamPage({
     .eq('coaching_center_id', session.active.centerId)
     .eq('id', examId)
     .maybeSingle()
+
+  /*
+   * The read that failed, ahead of the 404 — the same pair the exam page carries, and
+   * for the reason spelled out there.
+   *
+   * Sharper here by one step: this screen is reached from a "Fix this" link on the exam
+   * the reader is looking at, so a 404 arrives about a row they can see the title of on
+   * the tab behind. The kind picker below spends a long comment on how badly this form
+   * misleads when a *list* fails to load; the row itself failing is the same argument
+   * about the record instead of a field.
+   *
+   * Back to the list rather than to `/exams/${examId}`, which reads the same row and
+   * would refuse again. The heading stays because it is a fixed string — it says which
+   * screen declined, and nothing about the exam.
+   */
+  if (examError) {
+    return (
+      <div className="flex flex-col gap-5">
+        <div>
+          <Link
+            href="/exams"
+            className="inline-flex min-h-tap items-center text-ink-soft hover:text-ink"
+          >
+            ← {d.exams.title}
+          </Link>
+          <h1 className="mt-1 text-xl font-bold text-ink">{t.title}</h1>
+        </div>
+        <Card className="border-late/30 bg-late/5">
+          <p className="font-medium text-ink">{d.exams.examUnreadable}</p>
+        </Card>
+      </div>
+    )
+  }
 
   if (!exam) notFound()
 
