@@ -195,6 +195,25 @@ export const en: Dictionary = {
     emptyBatch: 'Nobody in it',
     otherBatches: 'Batches with no class today',
 
+    /**
+     * The two reads behind this screen, when they did not arrive.
+     *
+     * `batchesUnreadable` is drawn instead of the whole list, because both of the
+     * empty cards above it are sentences about whose batches these are — “make a
+     * batch to get started” to an owner who has nine, under a button that makes a
+     * tenth, and “none of the batches are yours yet” to a teacher standing in front
+     * of one. The line over them both said “no classes today”.
+     *
+     * `markedUnknown` replaces the count. Today's marked registers are a separate
+     * read, and an empty answer from it puts every class back in the “still to
+     * mark” tally with a green button beside it — the same counter that cannot be
+     * trusted as the one `emptyToday` was written for, only pointing the other way.
+     */
+    batchesUnreadable:
+      'Today’s classes could not be read just now, so they are not shown. It does not mean you have none — please try again in a moment.',
+    markedUnknown:
+      'Which of today’s classes are already marked could not be read. Open one to see its register.',
+
     rosterTitle: 'Attendance',
     pastDate: 'past date',
     noStudentsTitle: 'No students in this batch',

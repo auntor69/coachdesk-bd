@@ -444,6 +444,25 @@ export const bn = {
     emptyBatch: 'কেউ নেই',
     otherBatches: 'আজ ক্লাস নেই এমন ব্যাচ',
 
+    /**
+     * The two reads behind this screen, when they did not arrive.
+     *
+     * `batchesUnreadable` is drawn instead of the whole list, because both of the
+     * empty cards above it are sentences about whose batches these are — “make a
+     * batch to get started” to an owner who has nine, under a button that makes a
+     * tenth, and “none of the batches are yours yet” to a teacher standing in front
+     * of one. The line over them both said “no classes today”.
+     *
+     * `markedUnknown` replaces the count. Today's marked registers are a separate
+     * read, and an empty answer from it puts every class back in the “still to
+     * mark” tally with a green button beside it — the same counter that cannot be
+     * trusted as the one `emptyToday` was written for, only pointing the other way.
+     */
+    batchesUnreadable:
+      'আজকের ক্লাস এখন পড়া গেল না, তাই দেখানো হয়নি। আপনার কোনো ক্লাস নেই, তা নয় — একটু পরে আবার চেষ্টা করুন।',
+    markedUnknown:
+      'আজ কোন কোন ক্লাসের হাজিরা নেওয়া হয়েছে, তা পড়া গেল না। ক্লাসে ঢুকে খাতাটি দেখে নিন।',
+
     /** The register's own page title. */
     rosterTitle: 'হাজিরা',
     /** Appended to the date when a teacher is backfilling an earlier class. */

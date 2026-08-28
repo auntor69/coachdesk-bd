@@ -88,10 +88,15 @@ export default async function TeachPage() {
   // A member whose role reads teacher but who holds no active row in the staff
   // list teaches nothing — an unfinished invitation, or a row switched off. `in.()`
   // would be a round trip to be told what is already known here.
-  const { data: batches } =
-    mine?.length === 0
-      ? { data: null }
-      : await batchQuery.order('start_time', { ascending: true, nullsFirst: false })
+  //
+  // Kept as its own flag as well as a skipped read, because the two nulls have to be
+  // told apart below: nothing to teach is an answer, and a read that never arrived is
+  // not. Both used to come out of this line as the same `data: null`.
+  const noBatchesOfMine = mine?.length === 0
+
+  const { data: batches } = noBatchesOfMine
+    ? { data: null }
+    : await batchQuery.order('start_time', { ascending: true, nullsFirst: false })
 
   const { data: sessions } = await supabase
     .from('attendance_sessions')
@@ -99,9 +104,57 @@ export default async function TeachPage() {
     .eq('coaching_center_id', session.active.centerId)
     .eq('session_date', today)
 
-  const takenBatchIds = new Set((sessions ?? []).map((s) => s.batch_id))
+  /*
+   * Null, not an empty set, when today's marked registers could not be read.
+   *
+   * `(sessions ?? [])` made a dropped read say that nothing has been marked today,
+   * which on this screen is not a blank space — it is a count at the top and a green
+   * button on every row. A teacher who marked four batches this morning came back at
+   * four o'clock and was told four were still to mark, so they would mark them again;
+   * an owner reading the same line would go and ask why.
+   *
+   * It is the exact disease the tally below was rewritten for, pointing the other way.
+   * A counter that cannot reach zero gets ignored; a counter that walks back up to four
+   * gets ignored faster.
+   *
+   * So both things that would claim it are withheld: the count at the top says which
+   * read failed, and the badge on each row is left off rather than falling through to
+   * "Mark", which would be the same claim again in the louder place. Tapping the row
+   * still opens the register, and the register is the authority on what is in it.
+   */
+  const takenBatchIds =
+    sessions === null ? null : new Set(sessions.map((s) => s.batch_id))
+  const markingUnknown = takenBatchIds === null
 
-  const rows = (batches ?? []).map((batch) => {
+  /*
+   * BOTH EMPTY CARDS ON THIS SCREEN ARE SENTENCES ABOUT WHOSE BATCHES THESE ARE, SO A
+   * DROPPED READ MAY NOT BE ALLOWED TO REACH EITHER OF THEM.
+   *
+   * `(batches ?? [])` put a failed read straight into `rows.length === 0`, and what is
+   * drawn there is not a blank list. An owner got "make a batch to get started" with a
+   * button under it that makes their tenth — students then split across two batches and
+   * a register kept in each. A teacher got "none of the batches are yours yet", which
+   * reads as having been taken off the timetable, on a morning they are standing in
+   * front of the class. And the line above both of them said "no classes today", which
+   * is the one sentence on this screen a teacher acts on without reading twice.
+   *
+   * `noBatchesOfMine` is the empty list that *is* an answer and still reaches the
+   * teacher's card, exactly as before. Everything else null is now the sentence.
+   */
+  const batchRows: NonNullable<typeof batches> | null = noBatchesOfMine ? [] : batches
+
+  if (batchRows === null) {
+    return (
+      <div className="flex flex-col gap-5">
+        <h1 className="text-xl font-bold text-ink">{greetingFor(session)}</h1>
+        <Card className="border-late/30 bg-late/5">
+          <p className="font-medium text-ink">{t.batchesUnreadable}</p>
+        </Card>
+      </div>
+    )
+  }
+
+  const rows = batchRows.map((batch) => {
     const schedules = batch.batch_schedules ?? []
     // A batch with no schedule rows is treated as meeting every day. Centres
     // set schedules up late, and hiding their batches until they do would look
@@ -120,7 +173,7 @@ export default async function TeachPage() {
       endTime: todaySchedule?.end_time ?? batch.end_time,
       studentCount: (batch.enrollments ?? []).filter((e) => e.status === 'active')
         .length,
-      taken: takenBatchIds.has(batch.id),
+      taken: takenBatchIds?.has(batch.id) ?? false,
       meetsToday,
     }
   })
@@ -153,14 +206,19 @@ export default async function TeachPage() {
     <div className="flex flex-col gap-5">
       <div>
         <h1 className="text-xl font-bold text-ink">{greetingFor(session)}</h1>
+        {/* Ordered so the honest answer wins over the arithmetic. No classes today is
+            true whatever the register read did; after that, a tally nobody can stand
+            behind is not printed as a number. */}
         <p className="mt-1 text-ink-soft">
-          {pending.length > 0
-            ? t.pending(pending.length)
-            : markable
-              ? t.allTaken
-              : todayRows.length > 0
-                ? t.emptyToday
-                : t.noClassToday}
+          {todayRows.length === 0
+            ? t.noClassToday
+            : markingUnknown
+              ? t.markedUnknown
+              : pending.length > 0
+                ? t.pending(pending.length)
+                : markable
+                  ? t.allTaken
+                  : t.emptyToday}
         </p>
       </div>
 
@@ -251,7 +309,7 @@ export default async function TeachPage() {
                   >
                     {t.emptyBatch}
                   </span>
-                ) : (
+                ) : markingUnknown ? null : (
                   <span
                     className="shrink-0 rounded-lg bg-brand-600 px-4 py-2.5 text-sm
                       font-semibold text-white"
