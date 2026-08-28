@@ -987,12 +987,18 @@ export async function updateBatch(
   // reason createBatch's own note gives about batchId: this is a public endpoint, and
   // an id from the other centre would be refused by the composite foreign key as an
   // error nobody can read.
-  const { data: subjectRow } = await supabase
+  const { data: subjectRow, error: subjectError } = await supabase
     .from('subjects')
     .select('id')
     .eq('coaching_center_id', session.active.centerId)
     .eq('id', subjectId)
     .maybeSingle()
+
+  // "Pick a subject" over a form with a subject picked in it. There is no move that
+  // clears it: re-picking the same one submits the same id and gets the same answer
+  // back, so the owner is looking at a form that cannot be saved for a reason that
+  // is not true of anything on the screen.
+  if (subjectError) return { error: t.errors.readFailed }
 
   if (!subjectRow) return { error: t.batches.errors.pickSubject }
 
@@ -1001,12 +1007,31 @@ export async function updateBatch(
   // hand somebody else's teacher this batch's attendance and marks.
   let teacher: string | null = null
   if (teacherId) {
-    const { data: teacherRow } = await supabase
+    const { data: teacherRow, error: teacherError } = await supabase
       .from('teachers')
       .select('id')
       .eq('coaching_center_id', session.active.centerId)
       .eq('id', teacherId)
       .maybeSingle()
+
+    /*
+     * THE READ THAT UNASSIGNS A TEACHER FROM A CLASS WITHOUT SAYING SO.
+     *
+     * `teacherRow?.id ?? null` is right about a miss: an id this centre does not own
+     * has to become no teacher rather than be written through. But it treated a read
+     * that never came back as the same thing, and then the save below carried
+     * `teacher_id: null` into a batch that had a teacher on it — reported as saved,
+     * because it was.
+     *
+     * What that costs is not a sentence. teacher_id is what `app.my_batch_ids` reads,
+     * so the teacher opens /teach the next morning and the batch is gone from their
+     * list: no register to take, no marks to enter, and nothing anywhere saying the
+     * app dropped it. The owner saved a batch name and unstaffed a class. This is the
+     * same defect the exam edit screen had with its kind, and the same answer —
+     * refuse the save and leave the batch alone.
+     */
+    if (teacherError) return { error: t.errors.readFailed }
+
     teacher = teacherRow?.id ?? null
   }
 
@@ -1721,25 +1746,37 @@ function readPermissions(formData: FormData): Record<PermissionKey, boolean> {
 }
 
 /**
+ * What `ownTeacher` found: the teacher, or which of the two ways it did not.
+ *
+ * Three arms rather than `string | null`, because `null` was answering for both a
+ * teacher this centre does not own and a query that fell over, and the two callers
+ * below turned that single null into "Teacher not found" — see settings.errors
+ * .readFailed for what an owner does next. A union keeps the second one from being
+ * absorbed silently: there is no shape here that `if (!x)` can swallow.
+ */
+type OwnTeacher = { id: string } | { missing: true } | { unreadable: true }
+
+/**
  * Confirms a teacher belongs to the caller's center, and returns their id.
  *
  * RLS already stops another center's teacher, but an owner who runs two centers
  * passes `is_staff_admin` for both — so the policy would admit a teacher of the
  * other one. Every write below is scoped by center id for that reason.
  */
-async function ownTeacherId(
+async function ownTeacher(
   session: CenterSession,
   teacherId: string,
-): Promise<string | null> {
-  if (!teacherId) return null
+): Promise<OwnTeacher> {
+  if (!teacherId) return { missing: true }
   const supabase = await createClient()
-  const { data } = await supabase
+  const { data, error } = await supabase
     .from('teachers')
     .select('id')
     .eq('id', teacherId)
     .eq('coaching_center_id', session.active.centerId)
     .maybeSingle()
-  return data?.id ?? null
+  if (error) return { unreadable: true }
+  return data?.id ? { id: data.id } : { missing: true }
 }
 
 /**
@@ -1980,11 +2017,12 @@ export async function updateTeacher(
     return { error: t.errors.staffNeedsCenter }
   }
 
-  const teacherId = await ownTeacherId(
-    session,
-    String(formData.get('teacherId') ?? ''),
-  )
-  if (!teacherId) return { error: t.teachers.errors.notFound }
+  // The name and the subject list are both about to be rewritten, so a read that
+  // did not arrive must not reach the writes below wearing "not found".
+  const found = await ownTeacher(session, String(formData.get('teacherId') ?? ''))
+  if ('unreadable' in found) return { error: t.errors.readFailed }
+  if ('missing' in found) return { error: t.teachers.errors.notFound }
+  const teacherId = found.id
 
   const name = String(formData.get('name') ?? '').trim()
   if (!name) return { error: t.teachers.errors.nameRequired }
@@ -2087,11 +2125,13 @@ export async function saveTeacherPermissions(
     return { error: t.errors.staffNeedsCenter }
   }
 
-  const teacherId = await ownTeacherId(
-    session,
-    String(formData.get('teacherId') ?? ''),
-  )
-  if (!teacherId) return { error: t.teachers.errors.notFound }
+  // And the checkboxes, where "Teacher not found" is read as the teacher having
+  // been removed by somebody else — the one explanation an owner tends to accept
+  // for a permission screen that will not save.
+  const found = await ownTeacher(session, String(formData.get('teacherId') ?? ''))
+  if ('unreadable' in found) return { error: t.errors.readFailed }
+  if ('missing' in found) return { error: t.teachers.errors.notFound }
+  const teacherId = found.id
 
   const supabase = await createClient()
 
