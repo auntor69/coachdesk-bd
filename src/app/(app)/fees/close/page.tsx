@@ -4,7 +4,7 @@ import { forbidden } from 'next/navigation'
 import { Card } from '@/components/ui'
 import { pageCenter, getSession, isStaffAdmin } from '@/lib/auth/session'
 import { createClient } from '@/lib/supabase/server'
-import { pageOrNull } from '@/lib/supabase/page'
+import { pageAll } from '@/lib/supabase/page'
 import { addMonths, currentPeriodMonth, digits, formatMonth } from '@/lib/bd/time'
 import { formatTaka } from '@/lib/money'
 import { closeMonths, monthClose, monthMessages } from '@/lib/fees/month-close'
@@ -130,7 +130,7 @@ export default async function MonthClosePage({
     // them without mentioning the rest — so this month's book would balance
     // perfectly and be short by two hundred invoices. Paged, therefore, with
     // `.order('id')` to make the offset walk deterministic.
-    pageOrNull((from, to) =>
+    pageAll((from, to) =>
       supabase
         .from('fee_invoice_balances')
         .select(BALANCE_COLUMNS)
@@ -157,7 +157,7 @@ export default async function MonthClosePage({
     // against a bare date the cutoff lands at 6am Dhaka and every payment taken
     // before breakfast on the 1st is counted into a month the owner has already been
     // shown and has already agreed with.
-    pageOrNull((from, to) =>
+    pageAll((from, to) =>
       supabase
         .from('fee_payments')
         .select(PAYMENT_COLUMNS)
@@ -214,10 +214,37 @@ export default async function MonthClosePage({
       .maybeSingle(),
   ])
 
+  /*
+   * Whether the month can be added up at all, before anything is added up.
+   *
+   * These two reads used to come back through `pageOrNull`, whose null both callers
+   * read as an empty month — and an empty month on this screen draws six zeroes and
+   * the sentence "nothing was billed this month, and nothing came in", which is a
+   * perfectly ordinary thing for a screen to say. That is the whole problem: a failed
+   * read and a quiet July are the same picture, and the note above about a month
+   * reported wrong to a business partner in a screenshot with a total that adds up
+   * describes a total of zero just as well as a short one.
+   *
+   * The two failures are kept apart because only one of them is worth trying again.
+   * `unreadable` is a dropped connection on a phone in a stairwell. `tooLarge` is a
+   * centre whose month genuinely exceeds MAX_PAGED_ROWS, and no amount of tapping
+   * changes that — they are sent to the export, which does not run in a browser.
+   */
+  const ledgerProblem =
+    'failed' in balances
+      ? balances.failed
+      : 'failed' in payments
+        ? payments.failed
+        : null
+
   // Every figure on the page, from one tested function. Nothing below this line does
   // arithmetic — the point of the module is that these six numbers cannot be derived
   // two ways, here and in a test that agrees with a different version of them.
-  const m = monthClose({ month, balances, payments })
+  const m = monthClose({
+    month,
+    balances: 'rows' in balances ? balances.rows : null,
+    payments: 'rows' in payments ? payments.rows : null,
+  })
 
   // The same rule for the message tally, which is why four head counts turn into a
   // total somewhere other than here. All four keys are required by the type, so a
@@ -321,7 +348,24 @@ export default async function MonthClosePage({
         </p>
       </header>
 
-      {nothingHappened ? (
+      {ledgerProblem !== null ? (
+        /* No figures at all rather than the ones that happen to have arrived. Half a
+           ledger is not a cautious version of a ledger — it is a wrong one, and this
+           is the screen whose numbers get quoted back at us across a table.
+
+           The message tally is still drawn. Those four counts are their own reads and
+           did not fail, and on the screen whose job is to say what the product did,
+           ninety messages sent is still true on a day when the money cannot be added
+           up. */
+        <>
+          <Card className="border-late/30 bg-late/5">
+            <p className="font-medium text-ink">
+              {ledgerProblem === 'tooLarge' ? t.tooLarge : t.unreadable}
+            </p>
+          </Card>
+          {sent.total > 0 && messagesCard}
+        </>
+      ) : nothingHappened ? (
         <>
           <Card>
             <p className="text-ink-soft">{t.empty}</p>

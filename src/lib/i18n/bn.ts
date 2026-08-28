@@ -1514,6 +1514,22 @@ export const bn = {
      */
     planLink: 'প্ল্যান আর দাম দেখুন',
     empty: 'এই মাসে কোনো বিল হয়নি, কোনো টাকাও জমা হয়নি।',
+
+    /**
+     * The ledger could not be read, so it is not drawn at all.
+     *
+     * Its own sentence rather than falling through to `empty`, because six zeroes and
+     * a quiet month are the same picture, and this is the screen that gets read out
+     * loud across a table. No total is better than a total that is two thousand out.
+     */
+    unreadable:
+      'এই মাসের হিসাব এখন পড়া গেল না, তাই কোনো অঙ্ক দেখানো হচ্ছে না — ভুল হিসাবের চেয়ে হিসাব না দেখানোই ভালো। আবার চেষ্টা করুন।',
+    /**
+     * More rows than a browser will add up. Not something the owner can retry into
+     * success, so it points at the export instead of asking them to.
+     */
+    tooLarge:
+      'এই মাসে এত বিল আর জমা হয়েছে যে এই পর্দায় যোগ করা যাচ্ছে না। সেটিংসের এক্সপোর্টে পুরো হিসাব পাবেন।',
   },
 
   /**

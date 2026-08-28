@@ -121,7 +121,7 @@ export async function saveAttendance(
     { data: teacher },
     { data: schedules },
     { data: recent },
-    { data: existing },
+    { data: existing, error: existingError },
   ] = await Promise.all([
     // RLS already limits the read to this centre, and this narrows it to this
     // batch — so a forged enrollment ID from another batch is dropped rather
@@ -172,6 +172,19 @@ export async function saveAttendance(
 
   if (rosterError) {
     return { ok: false, error: t.errors.rosterUnreadable }
+  }
+
+  // What today's register already says has to have been read, for the reason it is
+  // read at all. An answer that did not come back is not an empty register: every
+  // mark would look new, so a student whose mark has already spent its one
+  // correction would be sent again, the trigger would refuse that row, and one
+  // refused row takes the other twenty-nine down with it — which is the failure
+  // this query exists to prevent.
+  //
+  // Refused here rather than at the upsert below, so a save that stores nothing
+  // does not leave an edited note behind as the only sign it happened.
+  if (existingError) {
+    return { ok: false, error: t.errors.saveFailed }
   }
 
   // An unreadable timetable is treated as an absent one, which is what /teach

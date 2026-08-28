@@ -623,6 +623,22 @@ export const en: Dictionary = {
     registerLink: 'See what came in, and when',
     planLink: 'See the plans and prices',
     empty: 'Nothing was billed this month, and nothing came in.',
+
+    /**
+     * The ledger could not be read, so it is not drawn at all.
+     *
+     * Its own sentence rather than falling through to `empty`, because six zeroes and
+     * a quiet month are the same picture, and this is the screen that gets read out
+     * loud across a table. No total is better than a total that is two thousand out.
+     */
+    unreadable:
+      'This month’s figures could not be read just now, so none are shown — a wrong total is worse than no total. Please try again.',
+    /**
+     * More rows than a browser will add up. Not something the owner can retry into
+     * success, so it points at the export instead of asking them to.
+     */
+    tooLarge:
+      'This month has more bills and payments than this screen can add up. The export in Settings has the full figures.',
   },
 
   /** See the Bangla for why the headings are translated and the values are not. */
