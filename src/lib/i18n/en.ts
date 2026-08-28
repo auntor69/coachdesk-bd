@@ -389,6 +389,8 @@ export const en: Dictionary = {
       forbidden: 'Only an owner or a manager can keep the fee records.',
       dueDayRange: 'Pick a day between 1 and 28.',
       rosterUnreadable: 'Could not read the student list. Please try again.',
+      rosterTooLarge:
+        'This centre has more enrolments than one run can read. Nothing has been billed — please get in touch.',
       nothingToBill:
         'There is nothing to invoice. Check whether the batches have a monthly fee set.',
       invoicesFailed: 'The invoices were not created. Please try again.',

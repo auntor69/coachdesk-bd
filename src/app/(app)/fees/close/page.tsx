@@ -4,6 +4,7 @@ import { forbidden } from 'next/navigation'
 import { Card } from '@/components/ui'
 import { pageCenter, getSession, isStaffAdmin } from '@/lib/auth/session'
 import { createClient } from '@/lib/supabase/server'
+import { pageOrNull } from '@/lib/supabase/page'
 import { addMonths, currentPeriodMonth, digits, formatMonth } from '@/lib/bd/time'
 import { formatTaka } from '@/lib/money'
 import { closeMonths, monthClose, monthMessages } from '@/lib/fees/month-close'
@@ -109,8 +110,8 @@ export default async function MonthClosePage({
   const supabase = await createClient()
 
   const [
-    { data: balances },
-    { data: payments },
+    balances,
+    payments,
     { count: reminders },
     { count: notes },
     { count: results },
@@ -123,28 +124,48 @@ export default async function MonthClosePage({
     // way. An earlier bill that reads zero today either was zero on the 1st as well,
     // or was settled by a payment the query below picks up, so leaving it out costs
     // nothing and keeps the read to a few hundred rows on a phone.
-    supabase
-      .from('fee_invoice_balances')
-      .select(BALANCE_COLUMNS)
-      .eq('coaching_center_id', session.active.centerId)
-      .is('voided_at', null)
-      .lte('period_month', month)
-      .or(`period_month.eq.${month},remaining_bdt.neq.0`),
+    //
+    // "A few hundred" is a 60-student centre. Four hundred students taking three
+    // subjects raise 1200 bills in a month, and PostgREST hands over a thousand of
+    // them without mentioning the rest — so this month's book would balance
+    // perfectly and be short by two hundred invoices. Paged, therefore, with
+    // `.order('id')` to make the offset walk deterministic.
+    pageOrNull((from, to) =>
+      supabase
+        .from('fee_invoice_balances')
+        .select(BALANCE_COLUMNS)
+        .eq('coaching_center_id', session.active.centerId)
+        .is('voided_at', null)
+        .lte('period_month', month)
+        .or(`period_month.eq.${month},remaining_bdt.neq.0`)
+        .order('id')
+        .range(from, to),
+    ),
     // Every payment from the first instant of the month onwards, with NO upper
     // bound — and the missing bound is the feature. The ones taken after the month
     // ended are what walk each invoice's balance back to where it stood on the last
     // day; without them a bill settled in September reads as settled in July.
+    //
+    // Which is also what makes the row ceiling dangerous here rather than merely
+    // wrong: an unbounded window keeps growing, so this is the query on the page
+    // most likely to cross a thousand, and the rows it would lose are the ones that
+    // undo balances. A month closed off a short read is a month reported wrong to a
+    // business partner, in a screenshot, with a total that adds up.
     //
     // The +06:00 offset is load-bearing, exactly as on the register and the board.
     // paid_at is a timestamptz and this is a Dhaka calendar boundary; compared
     // against a bare date the cutoff lands at 6am Dhaka and every payment taken
     // before breakfast on the 1st is counted into a month the owner has already been
     // shown and has already agreed with.
-    supabase
-      .from('fee_payments')
-      .select(PAYMENT_COLUMNS)
-      .eq('coaching_center_id', session.active.centerId)
-      .gte('paid_at', `${month}T00:00:00+06:00`),
+    pageOrNull((from, to) =>
+      supabase
+        .from('fee_payments')
+        .select(PAYMENT_COLUMNS)
+        .eq('coaching_center_id', session.active.centerId)
+        .gte('paid_at', `${month}T00:00:00+06:00`)
+        .order('id')
+        .range(from, to),
+    ),
     // The four kinds of message this product puts in front of a guardian, counted
     // one table at a time. Written out four times rather than looped over a list of
     // table names, and that is not laziness: check-scoping.mjs reads `.from('...')`

@@ -4,6 +4,7 @@ import { Card } from '@/components/ui'
 import { RiskList } from '@/components/risk-list'
 import { pageRole, getSession } from '@/lib/auth/session'
 import { createClient } from '@/lib/supabase/server'
+import { pageOrNull } from '@/lib/supabase/page'
 import { studentsAtRisk, blindArms, RISK_COLUMNS } from '@/lib/students/risk'
 import { addDays, todayInDhaka } from '@/lib/bd/time'
 import { dict, DEFAULT_LOCALE } from '@/lib/i18n'
@@ -63,11 +64,19 @@ export default async function AtRiskPage() {
   const attendanceFrom = addDays(today, -30)
   const examsFrom = addDays(today, -120)
 
-  const [{ data }, sessions, exams, invoices] = await Promise.all([
-    supabase
-      .from('student_risk')
-      .select(RISK_COLUMNS)
-      .eq('coaching_center_id', session.active.centerId),
+  const [data, sessions, exams, invoices] = await Promise.all([
+    // Paged. One row per student with at least one signal, which stays under the
+    // ceiling for a single centre and does not for a chain — and the students it would
+    // drop are the ones this screen exists to name. `.order('student_id')` because the
+    // view has no id of its own and that column is its key.
+    pageOrNull((from, to) =>
+      supabase
+        .from('student_risk')
+        .select(RISK_COLUMNS)
+        .eq('coaching_center_id', session.active.centerId)
+        .order('student_id')
+        .range(from, to),
+    ),
     // head: true, so none of the three brings a row back — the question is only
     // whether the centre has recorded anything for that signal to be built from.
     supabase

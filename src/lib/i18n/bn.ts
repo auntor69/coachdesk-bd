@@ -838,6 +838,17 @@ export const bn = {
       forbidden: 'ফি-এর হিসাব শুধু মালিক বা ম্যানেজার রাখতে পারেন।',
       dueDayRange: 'তারিখ ১ থেকে ২৮-এর মধ্যে দিন।',
       rosterUnreadable: 'শিক্ষার্থীর তালিকা পড়া যায়নি। আবার চেষ্টা করুন।',
+      /**
+       * The ceiling in lib/supabase/page.ts, said to the person pressing the button.
+       *
+       * Not a translation of "unreadable", because the two need different answers: a
+       * read that failed is worth pressing again, and a roster past the ceiling never
+       * will be. What matters most in the sentence is the middle clause — nothing was
+       * billed — because the failure this replaces was a month quietly billed short
+       * with a confirmation on screen saying it worked.
+       */
+      rosterTooLarge:
+        'এই সেন্টারে এক বারে পড়া যায় না এত ভর্তি আছে। কোনো বিল তৈরি হয়নি — আমাদের জানান।',
       nothingToBill:
         'ইনভয়েস তৈরি করার মতো কিছু নেই। ব্যাচে মাসিক ফি বসানো আছে কি না দেখুন।',
       invoicesFailed: 'ইনভয়েস তৈরি হয়নি। আবার চেষ্টা করুন।',

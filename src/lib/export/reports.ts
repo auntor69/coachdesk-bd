@@ -41,6 +41,7 @@ import { dict, localName, type Locale } from '../i18n/index.ts'
 import { addMonths, todayInDhaka } from '../bd/time.ts'
 import { formatBdMobile } from '../bd/phone.ts'
 import type { createClient } from '../supabase/server.ts'
+import { MAX_PAGED_ROWS, pageAll } from '../supabase/page.ts'
 import type {
   AttendanceStatus,
   OutreachChannel,
@@ -109,53 +110,18 @@ export type BuildResult =
 /* Paging                                                                     */
 /* -------------------------------------------------------------------------- */
 
-/** PostgREST's own default ceiling per request. Asking for more gets 1000. */
-const PAGE = 1000
-
 /**
- * The point at which we stop and say so.
+ * The pager now lives in lib/supabase/page.ts, because a spreadsheet is not the only
+ * thing PostgREST's 1000-row ceiling can quietly cut in half. The fee board, the
+ * month close and the invoice run all read per-enrolment rows, and a 250-student
+ * centre taking four subjects each is already at the ceiling — so what was written
+ * here for the export is the correctness rule for every one of them.
  *
- * Twenty thousand rows is far past any coaching centre in the country — the largest
- * chains run a few thousand students across all branches — so reaching it means
- * either a runaway query or a customer we should be talking to rather than quietly
- * handing a broken file. Either way the honest answer is an error.
+ * The name stays. `MAX_EXPORT_ROWS` is what the route's 413 message is written
+ * around and what the export tests assert against, and an export refusing at the
+ * shared ceiling is the same fact under a name that reads properly at the call site.
  */
-export const MAX_EXPORT_ROWS = 20_000
-
-/** The shape of an awaited PostgREST response, narrowed to what paging needs. */
-type PageResponse<T> = { data: T[] | null; error: { message: string } | null }
-
-type Paged<T> = { rows: T[] } | { failed: 'unreadable' | 'tooLarge' }
-
-/**
- * Every row a query can return, one page at a time.
- *
- * `.range(from, to)` rather than `.limit()` plus a cursor, because these queries are
- * ordered by a non-unique column (a student's name, a payment's timestamp) and a
- * cursor needs a unique one. An offset can in principle skip or repeat a row if
- * something is written between pages; over a read that takes a few hundred
- * milliseconds and rows nobody is editing at that moment, that is the smaller risk
- * than a keyset paginator that gets the tie-breaking wrong.
- */
-async function pageAll<T>(
-  fetchPage: (from: number, to: number) => PromiseLike<PageResponse<T>>,
-): Promise<Paged<T>> {
-  const rows: T[] = []
-
-  for (;;) {
-    const { data, error } = await fetchPage(rows.length, rows.length + PAGE - 1)
-    if (error) return { failed: 'unreadable' }
-
-    const page = data ?? []
-    rows.push(...page)
-
-    // A short page is the last page. Asking again would cost a round trip to be
-    // handed nothing, and on an exact multiple of PAGE the next call returns empty
-    // and ends the loop there instead.
-    if (page.length < PAGE) return { rows }
-    if (rows.length >= MAX_EXPORT_ROWS) return { failed: 'tooLarge' }
-  }
-}
+export { MAX_PAGED_ROWS as MAX_EXPORT_ROWS } from '../supabase/page.ts'
 
 /* -------------------------------------------------------------------------- */
 /* Column strings                                                             */
@@ -892,7 +858,7 @@ async function buildMarks(ctx: ReportContext): Promise<BuildResult> {
   // the exams as embedded arrays, so thirty exams of two hundred students is six
   // thousand rows off thirty paged ones. Checked here for the reason pageAll checks
   // it — a file cut short looks exactly like a complete one.
-  if (rows.length > MAX_EXPORT_ROWS) return { ok: false, reason: 'tooLarge' }
+  if (rows.length > MAX_PAGED_ROWS) return { ok: false, reason: 'tooLarge' }
 
   return {
     ok: true,

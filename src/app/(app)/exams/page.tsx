@@ -4,6 +4,7 @@ import { Card } from '@/components/ui'
 import { SearchBox, SearchEmpty } from '@/components/search-box'
 import { pageRole, getSession, canManageExams } from '@/lib/auth/session'
 import { createClient } from '@/lib/supabase/server'
+import { pageOrNull } from '@/lib/supabase/page'
 import { formatDate } from '@/lib/bd/time'
 import { searchTerms, matchesSearch, MAX_QUERY } from '@/lib/search'
 import { dict, localName, DEFAULT_LOCALE } from '@/lib/i18n'
@@ -164,23 +165,45 @@ export default async function ExamsPage({
     const examIds = page.map((e) => e.id)
     const batchIds = [...new Set(page.map((e) => e.batchId))]
 
-    const [{ data: enrolled }, { data: results }, { data: notices }] = await Promise.all([
-      supabase
-        .from('enrollments')
-        .select('id, batch_id')
-        .eq('coaching_center_id', session.active.centerId)
-        .eq('status', 'active')
-        .in('batch_id', batchIds),
-      supabase
-        .from('exam_results')
-        .select('exam_id, enrollment_id')
-        .eq('coaching_center_id', session.active.centerId)
-        .in('exam_id', examIds),
-      supabase
-        .from('result_notices')
-        .select('exam_id, student_id')
-        .eq('coaching_center_id', session.active.centerId)
-        .in('exam_id', examIds),
+    /*
+     * All three paged, even though only forty rows get drawn. Forty rows is the
+     * output; the input is one row per student per exam, so forty weekly tests
+     * across batches of forty is sixteen hundred result rows — past the thousand
+     * PostgREST answers with and says nothing about. A short read here does not
+     * blank a row, it moves the number on it: "12 / 40 marked" under an exam that
+     * was fully marked, and a lower "told" count under one where every family was
+     * already messaged. That last one is the number a teacher checks before
+     * sending, so the quiet cut would cost the centre a second SMS per family.
+     */
+    const [enrolled, results, notices] = await Promise.all([
+      pageOrNull((from, to) =>
+        supabase
+          .from('enrollments')
+          .select('id, batch_id')
+          .eq('coaching_center_id', session.active.centerId)
+          .eq('status', 'active')
+          .in('batch_id', batchIds)
+          .order('id')
+          .range(from, to),
+      ),
+      pageOrNull((from, to) =>
+        supabase
+          .from('exam_results')
+          .select('exam_id, enrollment_id')
+          .eq('coaching_center_id', session.active.centerId)
+          .in('exam_id', examIds)
+          .order('id')
+          .range(from, to),
+      ),
+      pageOrNull((from, to) =>
+        supabase
+          .from('result_notices')
+          .select('exam_id, student_id')
+          .eq('coaching_center_id', session.active.centerId)
+          .in('exam_id', examIds)
+          .order('id')
+          .range(from, to),
+      ),
     ])
 
     /*

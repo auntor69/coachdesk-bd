@@ -5,6 +5,7 @@ import { SearchBox, SearchEmpty } from '@/components/search-box'
 import { pageRole, getSession } from '@/lib/auth/session'
 import { has, planName, PLANS } from '@/lib/plans'
 import { createClient } from '@/lib/supabase/server'
+import { pageOrNull } from '@/lib/supabase/page'
 import { formatDate, todayInDhaka, digits } from '@/lib/bd/time'
 import { normalizeBdMobile } from '@/lib/bd/phone'
 import { searchTerms, matchesSearch, MAX_QUERY } from '@/lib/search'
@@ -126,10 +127,20 @@ export default async function ProgressPage({
   const query = ((await searchParams).q ?? '').slice(0, MAX_QUERY)
   const terms = searchTerms(query)
 
-  const { data } = await supabase
-    .from('student_progress_week')
-    .select(PROGRESS_COLUMNS)
-    .eq('coaching_center_id', session.active.centerId)
+  // Paged. One row per student in the centre, so a 1,200-enrolment centre on the
+  // tier that unlocks this screen is exactly who crosses PostgREST's silent
+  // thousand — and this is a worklist, not a report: a student cut off the end is a
+  // family the week's summary never reaches, with nothing on the screen to show
+  // they were dropped. `.order('student_id')` because the view has no id of its own
+  // and that column is its key.
+  const data = await pageOrNull((from, to) =>
+    supabase
+      .from('student_progress_week')
+      .select(PROGRESS_COLUMNS)
+      .eq('coaching_center_id', session.active.centerId)
+      .order('student_id')
+      .range(from, to),
+  )
 
   const students = weeklyProgress(data, t.noName)
   const totals = progressTotals(students)

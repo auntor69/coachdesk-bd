@@ -3,6 +3,7 @@ import Link from 'next/link'
 import { Card } from '@/components/ui'
 import { pageRole, getSession } from '@/lib/auth/session'
 import { createClient } from '@/lib/supabase/server'
+import { pageOrNull } from '@/lib/supabase/page'
 import { formatDate } from '@/lib/bd/time'
 import { planName } from '@/lib/plans'
 import { smsProviderConfigured } from '@/lib/sms/provider'
@@ -40,7 +41,7 @@ export default async function SmsSettingsPage() {
    * the two — and the opt-out list would hand the other centre's students, with
    * their guardians' mobile numbers, to a switch that writes to them.
    */
-  const [{ data: dispatches }, { data: logs }, { data: students }] = await Promise.all([
+  const [{ data: dispatches }, { data: logs }, students] = await Promise.all([
     supabase
       .from('sms_dispatches')
       .select('id, kind, recipient_count, credit_cost, created_at')
@@ -54,12 +55,23 @@ export default async function SmsSettingsPage() {
       .select('status')
       .eq('coaching_center_id', session.active.centerId)
       .limit(1000),
-    supabase
-      .from('students')
-      .select('id, name, guardian_phone, sms_opt_out, preferred_channel')
-      .eq('coaching_center_id', session.active.centerId)
-      .eq('status', 'active')
-      .order('name', { ascending: true }),
+    // Paged, unlike the two above, and for a reason neither of them has: this list
+    // is a consent control. Every row is a switch recording whether a guardian
+    // asked not to be messaged, and PostgREST's silent thousand would drop the tail
+    // of a large centre's roster off a screen with no pager and no note — so a
+    // family who asked to be left alone could not be marked, and one already marked
+    // would be invisible to the owner checking. `.order('id')` last so two students
+    // with the same name cannot make the offset walk repeat one and skip the other.
+    pageOrNull((from, to) =>
+      supabase
+        .from('students')
+        .select('id, name, guardian_phone, sms_opt_out, preferred_channel')
+        .eq('coaching_center_id', session.active.centerId)
+        .eq('status', 'active')
+        .order('name', { ascending: true })
+        .order('id')
+        .range(from, to),
+    ),
   ])
 
   /**

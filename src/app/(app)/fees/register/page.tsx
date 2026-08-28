@@ -5,6 +5,7 @@ import { Card } from '@/components/ui'
 import { SearchBox, SearchEmpty } from '@/components/search-box'
 import { pageCenter, getSession, isStaffAdmin } from '@/lib/auth/session'
 import { createClient } from '@/lib/supabase/server'
+import { pageOrNull } from '@/lib/supabase/page'
 import { has, planName, PLANS } from '@/lib/plans'
 import {
   currentPeriodMonth,
@@ -139,15 +140,25 @@ export default async function RegisterPage({
   // Half-open on purpose: >= the first instant of this month, < the first instant of
   // the next. A `lte` on the last day would drop or double whatever was taken in
   // the final second of the month depending on how the boundary was written.
-  const [{ data: payments }, { data: center }] = await Promise.all([
-    supabase
-      .from('fee_payments')
-      .select(COLUMNS)
-      .eq('coaching_center_id', session.active.centerId)
-      .gte('paid_at', `${month}T00:00:00+06:00`)
-      .lt('paid_at', `${nextMonth}T00:00:00+06:00`)
-      .order('paid_at', { ascending: true })
-      .order('receipt_no', { ascending: true }),
+  const [payments, { data: center }] = await Promise.all([
+    // Paged, and on this page the ceiling is not a rounding error but a false
+    // reconciliation. A register is read line by line against a bKash statement; one
+    // that stops at a thousand receipts looks complete, foots correctly, and is short
+    // by however many payments came after — and the owner's conclusion is that money
+    // is missing from the wallet rather than from the page. `.order('id')` last, so
+    // the offset walk is deterministic without disturbing the printed order.
+    pageOrNull((from, to) =>
+      supabase
+        .from('fee_payments')
+        .select(COLUMNS)
+        .eq('coaching_center_id', session.active.centerId)
+        .gte('paid_at', `${month}T00:00:00+06:00`)
+        .lt('paid_at', `${nextMonth}T00:00:00+06:00`)
+        .order('paid_at', { ascending: true })
+        .order('receipt_no', { ascending: true })
+        .order('id')
+        .range(from, to),
+    ),
     // The letterhead, for the same reason the receipt needs one: the shell's header
     // is print:hidden, and a filed register that does not say whose it is will be
     // found in a drawer next year by somebody who has to guess.

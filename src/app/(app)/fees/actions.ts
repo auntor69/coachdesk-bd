@@ -14,6 +14,7 @@
 import { revalidatePath } from 'next/cache'
 
 import { createClient } from '@/lib/supabase/server'
+import { pageAll } from '@/lib/supabase/page'
 import {
   requireRole,
   getSession,
@@ -138,17 +139,39 @@ export async function generateInvoices(
   // `active` rides on the embed rather than an `!inner` join filter: supabase-js
   // infers the row type from the literal select string, and a filtered join degrades
   // every column on this query to unknown. The filtering happens in JS instead.
-  const { data: enrollments, error: rosterError } = await supabase
-    .from('enrollments')
-    .select('id, student_id, batches (monthly_fee_bdt, active)')
-    .eq('coaching_center_id', session.active.centerId)
-    .eq('status', 'active')
+  //
+  // PAGED, AND THAT IS THE DIFFERENCE BETWEEN A BILL AND A WRONG BILL. PostgREST
+  // answers at most 1000 rows and does not say when it stopped, and this product
+  // charges per enrolment: 250 students taking four subjects each is a thousand
+  // active enrolments, which is the middle of the tier we ask ৳1,999 a month for.
+  // Read in one shot, a centre that size gets a month billed for the first thousand
+  // enrolments, no invoice for the rest, and a green confirmation naming the count —
+  // the exact failure the note above `unpriced` calls out, arriving by a route
+  // nothing on the screen could reveal.
+  //
+  // Ordered by id, which is unique. Offset paging over an unordered query may repeat
+  // or skip a row between pages, and a repeated enrolment here would be a second
+  // invoice for one subject.
+  const enrollments = await pageAll((from, to) =>
+    supabase
+      .from('enrollments')
+      .select('id, student_id, batches (monthly_fee_bdt, active)')
+      .eq('coaching_center_id', session.active.centerId)
+      .eq('status', 'active')
+      .order('id')
+      .range(from, to),
+  )
 
-  if (rosterError) {
-    return { error: t.errors.rosterUnreadable }
+  if ('failed' in enrollments) {
+    return {
+      error:
+        enrollments.failed === 'tooLarge'
+          ? t.errors.rosterTooLarge
+          : t.errors.rosterUnreadable,
+    }
   }
 
-  const billable = billableEnrollments(enrollments ?? [])
+  const billable = billableEnrollments(enrollments.rows)
 
   /**
    * Students the run could not bill because their batch has no monthly fee.
@@ -157,7 +180,7 @@ export async function generateInvoices(
    * report a success that is a third short. Read from the same rows and the same
    * decision as the billing above, so it cannot describe a different set.
    */
-  const unpriced = unpricedStudents(enrollments ?? [])
+  const unpriced = unpricedStudents(enrollments.rows)
   const warn = unpriced > 0 ? t.invoicesSkipped(unpriced) : undefined
 
   if (billable.length === 0) {
@@ -1051,15 +1074,32 @@ export async function recordArrears(
   // whether or not the class it was owed for is still running, and its amount is
   // typed rather than derived — the batch price is what a family owes each month, not
   // what they failed to pay over the three before this app arrived.
-  const { data: enrollments, error: rosterError } = await supabase
-    .from('enrollments')
-    .select('id, student_id, enrolled_at')
-    .eq('coaching_center_id', session.active.centerId)
-    .eq('status', 'active')
+  //
+  // Paged for the generator's reason, with a different symptom: every enrolment in
+  // the centre is read here to find each student's oldest one, so a roster cut off at
+  // a thousand rows leaves the students past the cut with no enrolment found. They
+  // would come back as rejects, named on screen, with a reason that is not what went
+  // wrong — an owner told a real student is not enrolled has no way to act on that.
+  const enrollments = await pageAll((from, to) =>
+    supabase
+      .from('enrollments')
+      .select('id, student_id, enrolled_at')
+      .eq('coaching_center_id', session.active.centerId)
+      .eq('status', 'active')
+      .order('id')
+      .range(from, to),
+  )
 
-  if (rosterError) return { error: t.errors.rosterUnreadable }
+  if ('failed' in enrollments) {
+    return {
+      error:
+        enrollments.failed === 'tooLarge'
+          ? t.errors.rosterTooLarge
+          : t.errors.rosterUnreadable,
+    }
+  }
 
-  const plan = arrearsPlan(entries, oldestEnrollments(enrollments ?? []))
+  const plan = arrearsPlan(entries, oldestEnrollments(enrollments.rows))
 
   // Named boxes before anything else, so an owner reading the message knows which
   // cells to go back to. The extra query is on the failure path only.

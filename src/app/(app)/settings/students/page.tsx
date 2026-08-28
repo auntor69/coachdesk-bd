@@ -4,6 +4,7 @@ import { Card } from '@/components/ui'
 import { SearchBox, SearchEmpty } from '@/components/search-box'
 import { pagePermission, getSession } from '@/lib/auth/session'
 import { createClient } from '@/lib/supabase/server'
+import { pageOrNull } from '@/lib/supabase/page'
 import { formatBdMobile } from '@/lib/bd/phone'
 import { MAX_IMPORT_ROWS } from '@/lib/bd/roster'
 import { searchTerms, matchesSearch, MAX_QUERY } from '@/lib/search'
@@ -65,16 +66,31 @@ export default async function StudentsPage({
   const query = (rawQuery ?? '').slice(0, MAX_QUERY)
   const terms = searchTerms(query)
 
-  const { data: students } = await supabase
-    .from('students')
-    .select(
-      `id, name, student_code, guardian_phone, class_level, institution,
-       status, sms_opt_out, enrollments (id, status, batches (name))`,
-    )
-    // Scoped as well as governed by RLS: an owner of two centres passes
-    // is_staff_admin for both, so the policy alone would mix two rosters.
-    .eq('coaching_center_id', session.active.centerId)
-    .order('name', { ascending: true })
+  // Paged, and this is the read where a silent cut does the most damage. The two
+  // warning cards below are built out of these rows and so is the list they open, so
+  // a roster that stopped at a thousand names would report a centre of 1,240 as a
+  // centre of 1,000 — with the students past the cut absent from the count, absent
+  // from the list, absent from the "in no batch" door that exists to find them, and
+  // no way at all to reach their row. Nothing on the screen would look wrong.
+  //
+  // `.range()` counts the top-level rows, so the embedded enrolments come back whole
+  // for each student in the page. `.order('id')` last, after the name, because two
+  // students named the same have no order otherwise and the offset walk would be
+  // free to hand back one of them twice and never the other.
+  const students = await pageOrNull((from, to) =>
+    supabase
+      .from('students')
+      .select(
+        `id, name, student_code, guardian_phone, class_level, institution,
+         status, sms_opt_out, enrollments (id, status, batches (name))`,
+      )
+      // Scoped as well as governed by RLS: an owner of two centres passes
+      // is_staff_admin for both, so the policy alone would mix two rosters.
+      .eq('coaching_center_id', session.active.centerId)
+      .order('name', { ascending: true })
+      .order('id')
+      .range(from, to),
+  )
 
   const rows = (students ?? []).map((student) => ({
     id: student.id,

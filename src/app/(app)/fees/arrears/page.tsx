@@ -4,6 +4,7 @@ import { forbidden } from 'next/navigation'
 import { Card } from '@/components/ui'
 import { pageCenter, getSession, isStaffAdmin } from '@/lib/auth/session'
 import { createClient } from '@/lib/supabase/server'
+import { pageOrNull } from '@/lib/supabase/page'
 import { currentPeriodMonth, addMonths, formatMonth } from '@/lib/bd/time'
 import { oldestEnrollments } from '@/lib/fees/arrears'
 import { dict, DEFAULT_LOCALE } from '@/lib/i18n'
@@ -66,18 +67,32 @@ export default async function ArrearsPage() {
   // Students are not filtered by status. Somebody marked inactive who still holds an
   // active enrolment is a family the owner is still chasing, and the enrolment is
   // already the narrower of the two conditions.
-  const [{ data: enrollments }, { data: students }] = await Promise.all([
-    supabase
-      .from('enrollments')
-      .select('id, student_id, enrolled_at')
-      .eq('coaching_center_id', session.active.centerId)
-      .eq('status', 'active'),
-    supabase
-      .from('students')
-      .select('id, name, student_code')
-      .eq('coaching_center_id', session.active.centerId)
-      .order('student_code', { ascending: true, nullsFirst: false })
-      .order('name', { ascending: true }),
+  //
+  // Both paged. PostgREST answers 1000 rows and does not mention the rest, and this
+  // screen is the one place an owner types in what a family already owed before the
+  // product existed — so a short read here is a student who cannot be given their
+  // opening balance at all, silently missing from a list of the whole centre. Four
+  // hundred students taking three subjects have 1200 enrolments, well past it.
+  const [enrollments, students] = await Promise.all([
+    pageOrNull((from, to) =>
+      supabase
+        .from('enrollments')
+        .select('id, student_id, enrolled_at')
+        .eq('coaching_center_id', session.active.centerId)
+        .eq('status', 'active')
+        .order('id')
+        .range(from, to),
+    ),
+    pageOrNull((from, to) =>
+      supabase
+        .from('students')
+        .select('id, name, student_code')
+        .eq('coaching_center_id', session.active.centerId)
+        .order('student_code', { ascending: true, nullsFirst: false })
+        .order('name', { ascending: true })
+        .order('id')
+        .range(from, to),
+    ),
   ])
 
   const enrollmentByStudent = oldestEnrollments(enrollments ?? [])
@@ -109,11 +124,22 @@ export default async function ArrearsPage() {
   // because the way out of each is different. A live bill means this family is already
   // on the board for that month. A cancelled one means somebody undid it, and the
   // amount has to go against a different month.
-  const { data: billed } = await supabase
-    .from('fee_invoices')
-    .select('enrollment_id, period_month, amount_bdt, voided_at')
-    .eq('coaching_center_id', session.active.centerId)
-    .in('period_month', months.map((m) => m.value))
+  //
+  // Twelve months of a whole centre's invoices is the largest read in the app, and the
+  // only one where a thousand-row cut is close to certain: a 250-student centre taking
+  // four subjects raises twelve thousand of these a year. Cut short, the screen would
+  // offer a box that is already spoken for, the owner would type a figure into it, and
+  // the write would ignore the row and report that nothing was added — which is the
+  // exact refusal the paragraph above exists to prevent.
+  const billed = await pageOrNull((from, to) =>
+    supabase
+      .from('fee_invoices')
+      .select('enrollment_id, period_month, amount_bdt, voided_at')
+      .eq('coaching_center_id', session.active.centerId)
+      .in('period_month', months.map((m) => m.value))
+      .order('id')
+      .range(from, to),
+  )
 
   // Keyed by the enrolment this screen would actually use, not by the student. A
   // monthly invoice sitting on the second batch a child attends does not block an

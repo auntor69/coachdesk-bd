@@ -5,6 +5,7 @@ import { Card } from '@/components/ui'
 import { SearchBox, SearchEmpty } from '@/components/search-box'
 import { pageCenter, getSession, isStaffAdmin, canReadFees } from '@/lib/auth/session'
 import { createClient } from '@/lib/supabase/server'
+import { pageOrNull } from '@/lib/supabase/page'
 import {
   todayInDhaka,
   currentPeriodMonth,
@@ -126,29 +127,44 @@ export default async function FeesPage({
   const query = (rawQuery ?? '').slice(0, MAX_QUERY)
   const terms = searchTerms(query)
 
-  const [
-    { data: owing },
-    { data: settled },
-    { data: monthPayments },
-    { data: chased },
-    { data: cancelled },
-    { data: center },
-  ] = await Promise.all([
-      supabase
-        .from('fee_invoice_balances')
-        .select(COLUMNS)
-        .eq('coaching_center_id', session.active.centerId)
-        .is('voided_at', null)
-        .gt('remaining_bdt', 0)
-        .order('due_date', { ascending: true }),
-      supabase
-        .from('fee_invoice_balances')
-        .select(COLUMNS)
-        .eq('coaching_center_id', session.active.centerId)
-        .is('voided_at', null)
-        .lte('remaining_bdt', 0)
-        .eq('period_month', thisMonth)
-        .order('due_date', { ascending: true }),
+  // READ IN FULL, NOT IN THE FIRST THOUSAND ROWS. PostgREST answers at most 1000
+  // rows per request and says nothing about having stopped, and every list here is
+  // counted per invoice: 250 students taking four subjects is a thousand invoices a
+  // month, which is the middle of the tier this product charges ৳1,999 for. Left
+  // unpaged, the board silently drops the families past the cut off the list and out
+  // of the outstanding total — a shorter list and a smaller number, both of which
+  // look exactly like a centre doing well.
+  //
+  // Each paged query carries `.order('id')` as its last sort key, and it is there for
+  // the paging rather than for the reader: offset paging over a non-unique order can
+  // hand back the same row twice and skip another, and a duplicated invoice here
+  // would be double-counted in what the centre is owed. The display orders in front
+  // of it are untouched.
+  const [owing, settled, monthPayments, chased, cancelled, { data: center }] =
+    await Promise.all([
+      pageOrNull((from, to) =>
+        supabase
+          .from('fee_invoice_balances')
+          .select(COLUMNS)
+          .eq('coaching_center_id', session.active.centerId)
+          .is('voided_at', null)
+          .gt('remaining_bdt', 0)
+          .order('due_date', { ascending: true })
+          .order('id')
+          .range(from, to),
+      ),
+      pageOrNull((from, to) =>
+        supabase
+          .from('fee_invoice_balances')
+          .select(COLUMNS)
+          .eq('coaching_center_id', session.active.centerId)
+          .is('voided_at', null)
+          .lte('remaining_bdt', 0)
+          .eq('period_month', thisMonth)
+          .order('due_date', { ascending: true })
+          .order('id')
+          .range(from, to),
+      ),
       // What actually came in this month, regardless of which month's invoice it
       // settled — a parent clearing June's bill in August is money collected in
       // August, and that is the number the owner is measuring themselves by.
@@ -157,11 +173,15 @@ export default async function FeesPage({
       // boundary is a Dhaka calendar boundary; comparing against a bare date
       // would place the cutoff at 6am Dhaka and drop the early-morning payments
       // on the 1st into the previous month.
-      supabase
-        .from('fee_payments')
-        .select('amount_bdt')
-        .eq('coaching_center_id', session.active.centerId)
-        .gte('paid_at', `${thisMonth}T00:00:00+06:00`),
+      pageOrNull((from, to) =>
+        supabase
+          .from('fee_payments')
+          .select('amount_bdt')
+          .eq('coaching_center_id', session.active.centerId)
+          .gte('paid_at', `${thisMonth}T00:00:00+06:00`)
+          .order('id')
+          .range(from, to),
+      ),
       // Reminders since the start of last month, newest first, so each row can
       // say when this family was last chased.
       //
@@ -171,19 +191,28 @@ export default async function FeesPage({
       // from four months ago is not a reason to hold off today. Two billing
       // cycles is the window in which the answer still changes a decision.
       //
+      // Paged as well, and this one is not only about a label. `countChasesDue`
+      // below reads the same map to decide who is due a message, so a reminder lost
+      // to the row ceiling reads as a family never contacted — and the worklist
+      // would offer to message somebody who was messaged an hour ago.
+      //
       // Not asked at all on the read-only board. There is no policy that would
       // answer it for a teacher — who has been chased is the owner's record of
       // their own dunning — so the query would spend a round trip to be handed an
       // empty list, and every row would then draw its family as never-contacted.
       // Skipping it makes the absence deliberate instead of a silent zero.
       canWrite
-        ? supabase
-            .from('fee_reminders')
-            .select('invoice_id, channel, created_at')
-            .eq('coaching_center_id', session.active.centerId)
-            .gte('created_at', `${addMonths(thisMonth, -1)}T00:00:00+06:00`)
-            .order('created_at', { ascending: false })
-        : Promise.resolve({ data: null }),
+        ? pageOrNull((from, to) =>
+            supabase
+              .from('fee_reminders')
+              .select('invoice_id, channel, created_at')
+              .eq('coaching_center_id', session.active.centerId)
+              .gte('created_at', `${addMonths(thisMonth, -1)}T00:00:00+06:00`)
+              .order('created_at', { ascending: false })
+              .order('id')
+              .range(from, to),
+          )
+        : Promise.resolve(null),
       // The bills cancelled recently, so a mistaken tap has a way back and a
       // deliberate one has visible evidence. Everything else on this board reads
       // `voided_at is null`; this is the one query that asks for the other side of it.
@@ -199,13 +228,17 @@ export default async function FeesPage({
       // owner's record of correcting their own books, and there is no restore button on
       // a read-only board for the list to lead to.
       canWrite
-        ? supabase
-            .from('fee_invoice_balances')
-            .select(CANCELLED_COLUMNS)
-            .eq('coaching_center_id', session.active.centerId)
-            .not('voided_at', 'is', null)
-            .gte('voided_at', `${addMonths(thisMonth, -1)}T00:00:00+06:00`)
-        : Promise.resolve({ data: null }),
+        ? pageOrNull((from, to) =>
+            supabase
+              .from('fee_invoice_balances')
+              .select(CANCELLED_COLUMNS)
+              .eq('coaching_center_id', session.active.centerId)
+              .not('voided_at', 'is', null)
+              .gte('voided_at', `${addMonths(thisMonth, -1)}T00:00:00+06:00`)
+              .order('id')
+              .range(from, to),
+          )
+        : Promise.resolve(null),
       // Where a parent should send the money. Read once for the whole board
       // rather than per row: it is one value for the centre, and every reminder
       // on the page is going to name it. Also skipped when read-only, for the

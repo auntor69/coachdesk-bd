@@ -28,6 +28,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 
 import type { Database } from '../supabase/types.ts'
+import { pageOrNull } from '../supabase/page.ts'
 
 /** A guardian as the query below asks for them. */
 type GuardianRow = {
@@ -225,16 +226,26 @@ export async function readAudienceRows(
   supabase: SupabaseClient<Database>,
   centerId: string,
 ): Promise<AudienceRow[] | null> {
-  const { data } = await supabase
-    .from('enrollments')
-    .select(
-      `batch_id,
-       students (id, guardian_phone, sms_opt_out,
-                 guardians (phone, is_primary, sms_opt_out))`,
-    )
-    .eq('coaching_center_id', centerId)
-    .eq('status', 'active')
+  // Paged, and of every read in the app this is the one the ceiling was written for.
+  // One row per active enrolment, so the 250-student centre taking four subjects that
+  // sits in the middle of the ৳1,999 tier has exactly a thousand of them. Cut short,
+  // the screen would report a smaller reach and hand over a shorter list of numbers —
+  // and the families past the cut are simply never told, with no gap on the screen to
+  // notice. `.order('id')` because the offset walk needs one column that cannot tie.
+  const rows = await pageOrNull((from, to) =>
+    supabase
+      .from('enrollments')
+      .select(
+        `batch_id,
+         students (id, guardian_phone, sms_opt_out,
+                   guardians (phone, is_primary, sms_opt_out))`,
+      )
+      .eq('coaching_center_id', centerId)
+      .eq('status', 'active')
+      .order('id')
+      .range(from, to),
+  )
 
-  return (data as AudienceRow[] | null) ?? null
+  return (rows as AudienceRow[] | null) ?? null
 }
 

@@ -3,6 +3,7 @@ import Link from 'next/link'
 import { Card } from '@/components/ui'
 import { pageRole, getSession } from '@/lib/auth/session'
 import { createClient } from '@/lib/supabase/server'
+import { pageOrNull } from '@/lib/supabase/page'
 import { todayInDhaka, addDays, formatMonth } from '@/lib/bd/time'
 import { normalizeBdMobile } from '@/lib/bd/phone'
 import { sumTaka, formatTaka } from '@/lib/money'
@@ -56,14 +57,23 @@ export default async function RemindersPage() {
   const d = dict(locale)
   const t = d.reminders
 
-  const [{ data: owing }, { data: centerRow }] = await Promise.all([
-    supabase
-      .from('fee_invoice_balances')
-      .select(COLUMNS)
-      .eq('coaching_center_id', session.active.centerId)
-      .is('voided_at', null)
-      .gt('remaining_bdt', 0)
-      .order('due_date', { ascending: true }),
+  const [owing, { data: centerRow }] = await Promise.all([
+    // Paged, because this is the list the messages are sent from. PostgREST stops at
+    // 1000 rows in silence, one row is one unpaid invoice across every month the
+    // centre has billed, and a family past the cut is simply never chased — no gap on
+    // the screen, no smaller count, nothing to notice. The board that leads here has
+    // the same fix for the same query.
+    pageOrNull((from, to) =>
+      supabase
+        .from('fee_invoice_balances')
+        .select(COLUMNS)
+        .eq('coaching_center_id', session.active.centerId)
+        .is('voided_at', null)
+        .gt('remaining_bdt', 0)
+        .order('due_date', { ascending: true })
+        .order('id')
+        .range(from, to),
+    ),
     // Where a parent should send the money. Read once for the whole list rather
     // than per row: it is one value for the centre, and every message on this
     // screen is going to name it.
@@ -83,12 +93,20 @@ export default async function RemindersPage() {
   // answer; ordered ascending above, so the first row is the oldest.
   const earliest = addDays(invoices[0]?.due_date ?? today, -3)
 
-  const { data: chases } = await supabase
-    .from('fee_reminders')
-    .select('invoice_id, created_at')
-    .eq('coaching_center_id', session.active.centerId)
-    .gte('created_at', `${earliest}T00:00:00+06:00`)
-    .order('created_at', { ascending: false })
+  // Paged for a reason the cooldown depends on. A chase lost past the row ceiling
+  // reads as a family never contacted, and this screen's whole job is to decide who
+  // may be messaged again today — so the missing row would not hide a reminder, it
+  // would send a second one.
+  const chases = await pageOrNull((from, to) =>
+    supabase
+      .from('fee_reminders')
+      .select('invoice_id, created_at')
+      .eq('coaching_center_id', session.active.centerId)
+      .gte('created_at', `${earliest}T00:00:00+06:00`)
+      .order('created_at', { ascending: false })
+      .order('id')
+      .range(from, to),
+  )
 
   // Newest per invoice, which the descending order gives for free: the first row
   // seen for an invoice is its latest chase, so every later one is skipped.

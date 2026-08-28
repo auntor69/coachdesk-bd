@@ -4,6 +4,7 @@ import { Card } from '@/components/ui'
 import { greetingFor } from '@/components/app-shell'
 import { pageRole, getSession, isStaffAdmin, canReadFees, myTeacherIds } from '@/lib/auth/session'
 import { createClient } from '@/lib/supabase/server'
+import { pageOrNull } from '@/lib/supabase/page'
 import {
   todayInDhaka,
   currentPeriodMonth,
@@ -135,7 +136,7 @@ export default async function DashboardPage() {
 
   // Resolved, not queried, when the door is not being drawn. Typed so the
   // destructured `weekly` below is the view's rows or nothing, rather than `any`.
-  const noProgress: { data: ProgressCountRow[] | null } = { data: null }
+  const noProgress: ProgressCountRow[] | null = null
 
   /**
    * Stand-in for a head count that was not asked for.
@@ -151,13 +152,13 @@ export default async function DashboardPage() {
   const [
     { count: studentCount },
     { data: batchRows },
-    { data: owing },
+    owing,
     { data: payments },
     { data: todaySessions },
-    { data: chased },
+    chased,
     { data: rates },
-    { data: risky },
-    { data: weekly },
+    risky,
+    weekly,
     { count: enrolmentCount },
     { count: sessionCount },
   ] = await Promise.all([
@@ -170,12 +171,24 @@ export default async function DashboardPage() {
     // Unvoided and still owed. A voided invoice is a correction and counting it
     // would show the owner money they are not owed; a settled one is not owed at
     // all. Every balance here was subtracted by Postgres in numeric(10, 2).
-    supabase
-      .from('fee_invoice_balances')
-      .select(COLUMNS)
-      .eq('coaching_center_id', session.active.centerId)
-      .is('voided_at', null)
-      .gt('remaining_bdt', 0),
+    //
+    // Paged, because PostgREST stops at 1000 rows without saying so and this is one
+    // row per unpaid invoice across every month the centre has billed. The figure it
+    // adds up to is the first number on the owner's home screen; read short, it
+    // reports less owed than the centre is owed, and nothing on the page could hint
+    // that it had. `.order('id')` is for the paging, not the reader — an offset walk
+    // over an unordered query can repeat a row, and a repeated invoice would be
+    // counted twice into what is outstanding.
+    pageOrNull((from, to) =>
+      supabase
+        .from('fee_invoice_balances')
+        .select(COLUMNS)
+        .eq('coaching_center_id', session.active.centerId)
+        .is('voided_at', null)
+        .gt('remaining_bdt', 0)
+        .order('id')
+        .range(from, to),
+    ),
     // Collected this month, by payment date rather than by invoice period — the
     // owner is asking "what came in", not "what was billed".
     //
@@ -210,12 +223,21 @@ export default async function DashboardPage() {
     // worklist. RLS returns nothing to a teacher, so the query costs one round
     // trip inside a Promise.all that is already waiting on five others, and
     // making it conditional would buy nothing but a branch.
-    supabase
-      .from('fee_reminders')
-      .select('invoice_id, created_at')
-      .eq('coaching_center_id', session.active.centerId)
-      .gte('created_at', `${addMonths(period, -1)}T00:00:00+06:00`)
-      .order('created_at', { ascending: false }),
+    //
+    // Paged, and not for the sake of the card's wording: `countChasesDue` below is
+    // what turns this into "three need a message today", and a reminder lost past
+    // the row ceiling reads as a family never contacted. The number on the door
+    // would then send an owner to re-chase somebody they chased this morning.
+    pageOrNull((from, to) =>
+      supabase
+        .from('fee_reminders')
+        .select('invoice_id, created_at')
+        .eq('coaching_center_id', session.active.centerId)
+        .gte('created_at', `${addMonths(period, -1)}T00:00:00+06:00`)
+        .order('created_at', { ascending: false })
+        .order('id')
+        .range(from, to),
+    ),
     // Attendance rate per batch, counted by Postgres — forty students taking
     // class twenty times is eight hundred rows per batch, and this screen is
     // opened several times a day on a 3G phone.
@@ -249,19 +271,31 @@ export default async function DashboardPage() {
     // flagged, is the card lying about the size of the problem. Every row is one
     // student with at least one signal, so the worst case is a fraction of the
     // centre's roll and the ordering has to happen over all of them anyway.
-    supabase
-      .from('student_risk')
-      .select(RISK_COLUMNS)
-      .eq('coaching_center_id', session.active.centerId),
+    //
+    // Which is also why it is paged. The ceiling would cap that count at a thousand
+    // on a large enough roll, and a count that has been quietly capped is the same
+    // lie this comment already refuses.
+    pageOrNull((from, to) =>
+      supabase
+        .from('student_risk')
+        .select(RISK_COLUMNS)
+        .eq('coaching_center_id', session.active.centerId)
+        .order('student_id')
+        .range(from, to),
+    ),
     // How many guardians can be told how their child's week went. Six columns of
     // the twenty the /progress screen reads — the door needs a number, not names —
     // and counted by the same function that screen lists with, so the two cannot
     // disagree. Conditional; see `seeProgress` above for why this one query is.
     seeProgress
-      ? supabase
-          .from('student_progress_week')
-          .select(PROGRESS_COUNT_COLUMNS)
-          .eq('coaching_center_id', session.active.centerId)
+      ? pageOrNull((from, to) =>
+          supabase
+            .from('student_progress_week')
+            .select(PROGRESS_COUNT_COLUMNS)
+            .eq('coaching_center_id', session.active.centerId)
+            .order('student_id')
+            .range(from, to),
+        )
       : noProgress,
     /*
      * The two counts behind the setup card, and the reason they are counts rather than
