@@ -1818,7 +1818,11 @@ export const en: Dictionary = {
 
     audienceLabel: 'Who it is for',
     everyone: 'Every family at the centre',
-    /** A batch that has since been switched off, so its name is no longer to hand. */
+    /**
+     * A batch whose name is not to hand: switched off since the notice went out,
+     * or on a list that did not arrive with this page. True in both cases, which
+     * is why the second one is allowed to reach it — see the note on the page.
+     */
     oneBatch: 'One batch',
 
     reachLine: '{n} numbers',
@@ -1841,6 +1845,26 @@ export const en: Dictionary = {
     /** No retry brings a roster back under the ceiling — see close.tooLarge. */
     rosterTooLarge:
       'There are more families here than this screen can put on a clipboard at once, so the numbers are not here. The message is still yours to copy — please get in touch about the numbers.',
+
+    /**
+     * The two reads this screen withholds over, rather than drawing what arrived.
+     *
+     * `batchesUnreadable` takes the form away. Every other option list in this app
+     * fails open with a line beside it, and that is wrong here for one reason: the
+     * audience picker defaults to the whole centre. A batch list that did not arrive
+     * leaves a form that looks finished, is already set to three hundred families,
+     * and has no way left to say the thirty it was written for. The owner is the one
+     * who sends, off their own handset, so the cost is not a row that can be edited
+     * afterwards — it is an unrecallable message about one shut room, read by every
+     * family at the centre.
+     *
+     * `logUnreadable` replaces “nothing has been sent out yet”, which is what a
+     * failed read used to draw over a term of real announcements.
+     */
+    batchesUnreadable:
+      'Your batches could not be read just now, so this form is not shown. Without them the only audience left is every family at the centre, and a notice meant for one batch would reach all of them — please try again in a moment.',
+    logUnreadable:
+      'What you have told them could not be read just now, so it is not shown here. Nothing has been lost — please try again in a moment.',
 
     segments: 'Sends as {n} SMS',
     copyMessageHint: 'Paste it on your phone to send it.',

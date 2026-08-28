@@ -123,13 +123,18 @@ export async function postNotice(
    * was archived while the screen was open.
    */
   if (batchId) {
-    const { data: batch } = await supabase
+    const { data: batch, error: batchError } = await supabase
       .from('batches')
       .select('id')
       .eq('coaching_center_id', centerId)
       .eq('id', batchId)
       .maybeSingle()
 
+    // A check that could not run is not a batch that has been archived. `maybeSingle`
+    // answers null to both, and `noBatch` sends the reader back to the picker to choose
+    // another one off a list their batch is still on — so a dropped read is reported as
+    // the notice not being saved, which is what happened and is worth another tap.
+    if (batchError) return { error: t.errors.failed }
     if (!batch) return { error: t.errors.noBatch }
   }
 
@@ -148,6 +153,11 @@ export async function postNotice(
   recent = batchId ? recent.eq('batch_id', batchId) : recent.is('batch_id', null)
 
   const { data: already } = await recent
+  // `error` deliberately unread here, unlike the batch check above. A dedupe read that
+  // did not arrive must not stop the row being written: the argument for the row in the
+  // first place is that an owner who sends first and records second has told forty
+  // families something the centre has no record of, and a second identical line in the
+  // log is much the smaller of those two — visible, and dated, and theirs to read.
   if (already && already.length > 0) return { ok: t.saved }
 
   const { data: saved, error } = await supabase

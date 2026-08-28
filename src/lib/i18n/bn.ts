@@ -3339,7 +3339,11 @@ export const bn = {
 
     audienceLabel: 'কাদের জন্য',
     everyone: 'কোচিংয়ের সব পরিবার',
-    /** A batch that has since been switched off, so its name is no longer to hand. */
+    /**
+     * A batch whose name is not to hand: switched off since the notice went out,
+     * or on a list that did not arrive with this page. True in both cases, which
+     * is why the second one is allowed to reach it — see the note on the page.
+     */
     oneBatch: 'একটি ব্যাচ',
 
     reachLine: '{n}টি নম্বর',
@@ -3361,6 +3365,26 @@ export const bn = {
       'পরিবারের তালিকা আসেনি, তাই নম্বরগুলো এখানে নেই। মেসেজটি কপি করা যাবে — নম্বরের জন্য একটু পরে আবার দেখুন।',
     rosterTooLarge:
       'এখানে এত পরিবার যে একবারে সব নম্বর ক্লিপবোর্ডে নেওয়া যাচ্ছে না, তাই নম্বরগুলো এখানে নেই। মেসেজটি কপি করা যাবে — নম্বরের জন্য আমাদের সাথে যোগাযোগ করুন।',
+
+    /**
+     * The two reads this screen withholds over, rather than drawing what arrived.
+     *
+     * `batchesUnreadable` takes the form away. Every other option list in this app
+     * fails open with a line beside it, and that is wrong here for one reason: the
+     * audience picker defaults to the whole centre. A batch list that did not arrive
+     * leaves a form that looks finished, is already set to three hundred families,
+     * and has no way left to say the thirty it was written for. The owner is the one
+     * who sends, off their own handset, so the cost is not a row that can be edited
+     * afterwards — it is an unrecallable message about one shut room, read by every
+     * family at the centre.
+     *
+     * `logUnreadable` replaces “nothing has been sent out yet”, which is what a
+     * failed read used to draw over a term of real announcements.
+     */
+    batchesUnreadable:
+      'আপনার ব্যাচগুলো এখন পড়া গেল না, তাই ফর্মটি দেখানো হয়নি। ব্যাচের তালিকা না থাকলে শুধু কোচিংয়ের সব পরিবারকেই নোটিশ পাঠানো যায় — এক ব্যাচের জন্য লেখা কথা তখন সবার কাছে চলে যেত। একটু পরে আবার চেষ্টা করুন।',
+    logUnreadable:
+      'যা যা জানিয়েছেন তা এখন পড়া গেল না, তাই এখানে দেখানো হয়নি। কিছু হারায়নি — একটু পরে আবার চেষ্টা করুন।',
 
     segments: '{n}টি এসএমএস হিসেবে যাবে',
     copyMessageHint: 'ফোনে পেস্ট করে পাঠিয়ে দিন।',

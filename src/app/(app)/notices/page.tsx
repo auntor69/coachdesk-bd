@@ -84,8 +84,25 @@ export default async function NoticesPage() {
     readAudienceRows(supabase, centerId),
   ])
 
-  const batchRows = batches ?? []
-  const batchIds = batchRows.map((b) => b.id)
+  /*
+   * THE AUDIENCE PICKER DEFAULTS TO EVERY FAMILY AT THE CENTRE, SO A BATCH LIST THAT
+   * DID NOT ARRIVE MAY NOT BE THE ONLY THING LEFT ON IT.
+   *
+   * `batches ?? []` stood here, and on this screen of all of them it is the wrong
+   * reflex. Everywhere else a dropped option list costs a tick an owner can add later;
+   * here it leaves a form that looks finished, is already set to three hundred
+   * families, and has no way left to say the thirty it was written for. The owner is
+   * the one who sends — their own thumb, their own credit, out of their own handset —
+   * so what it costs is not a row that can be corrected afterwards. It is an
+   * unrecallable message about one shut room, read by every family in the centre.
+   *
+   * So null is carried down to the return, where the form is withheld and the reason
+   * given. Not a hidden field, because there is no present value to carry: nothing is
+   * being corrected here, a notice is being written. And not a line beside the picker
+   * either, the way both admission forms take their missing ticks — the one audience
+   * the picker could still offer is the widest one, and it is already chosen.
+   */
+  const batchIds = batches === null ? [] : batches.map((b) => b.id)
 
   // Null means the roster query failed, which is not the same as a centre with nobody
   // in it — see readAudienceRows. The form is told so it can offer the message chip
@@ -97,38 +114,59 @@ export default async function NoticesPage() {
   const rosterProblem = worstFailure(audience)
   const reach = 'rows' in audience ? noticeReach(audience.rows, batchIds) : null
 
-  const options: BatchOption[] = batchRows.map((batch) => ({
-    id: batch.id,
-    // The batch's own name and its subject, because a centre with "সকাল ক" twice —
-    // once for physics, once for chemistry — is the ordinary case, and a picker that
-    // shows only the first half asks the owner to guess which one they are texting.
-    label: `${batch.name} · ${localName(
-      Array.isArray(batch.subjects) ? batch.subjects[0] : batch.subjects,
-      locale,
-    )}`,
-    reach: reach?.byBatch[batch.id] ?? null,
-  }))
+  const options: BatchOption[] | null =
+    batches &&
+    batches.map((batch) => ({
+      id: batch.id,
+      // The batch's own name and its subject, because a centre with "সকাল ক" twice —
+      // once for physics, once for chemistry — is the ordinary case, and a picker that
+      // shows only the first half asks the owner to guess which one they are texting.
+      label: `${batch.name} · ${localName(
+        Array.isArray(batch.subjects) ? batch.subjects[0] : batch.subjects,
+        locale,
+      )}`,
+      reach: reach?.byBatch[batch.id] ?? null,
+    }))
 
-  const labelById = new Map(options.map((o) => [o.id, o.label]))
+  // `?? []` on purpose, and the last one on this screen. The log below is the half that
+  // still draws when the batch list did not arrive, and a row it cannot name falls back
+  // to `t.oneBatch` — which stays true either way. Its numbers are unaffected:
+  // `noticeReach` builds `byBatch` out of the roster's own rows, and `batchIds` only
+  // adds the batches nobody is enrolled in.
+  const labelById = new Map((options ?? []).map((o) => [o.id, o.label]))
 
-  const logRows: NoticeRowView[] = (notices ?? []).map((row) => {
-    const sms = buildNoticeSms({ body: row.body, centerName: session.active.centerName })
-    const forBatch = row.batch_id ? (reach?.byBatch[row.batch_id] ?? null) : reach?.all
+  /*
+   * Null when the log itself did not arrive, which is a third state and not an empty
+   * one. `(notices ?? []).map` made a dropped read indistinguishable from a centre on
+   * its first day, so the card at the bottom said "nothing has been sent out yet" over
+   * a term of real announcements — to a reader whose whole reason for opening this
+   * screen may have been to check whether Thursday's notice went out.
+   */
+  const logRows: NoticeRowView[] | null =
+    notices &&
+    notices.map((row) => {
+      const sms = buildNoticeSms({
+        body: row.body,
+        centerName: session.active.centerName,
+      })
+      const forBatch = row.batch_id ? (reach?.byBatch[row.batch_id] ?? null) : reach?.all
 
-    return {
-      id: row.id,
-      title: row.title,
-      body: row.body,
-      when: formatDate(row.published_at.slice(0, 10), locale),
-      // A batch that has since been switched off keeps its notice in the log and loses
-      // its name from it. The alternative is a second query for archived batches to
-      // label a row nobody can act on any more, and `t.oneBatch` says the true part.
-      audience: row.batch_id ? (labelById.get(row.batch_id) ?? t.oneBatch) : t.everyone,
-      sms: sms.body,
-      segments: sms.segments,
-      groups: chunkPhones(forBatch?.phones ?? []),
-    }
-  })
+      return {
+        id: row.id,
+        title: row.title,
+        body: row.body,
+        when: formatDate(row.published_at.slice(0, 10), locale),
+        // A batch that has since been switched off keeps its notice in the log and
+        // loses its name from it, and so does one whose list did not arrive at all.
+        // The alternative to the first is a second query for archived batches to label
+        // a row nobody can act on any more; the alternative to the second is hiding the
+        // record over a name. `t.oneBatch` says the true part of both.
+        audience: row.batch_id ? (labelById.get(row.batch_id) ?? t.oneBatch) : t.everyone,
+        sms: sms.body,
+        segments: sms.segments,
+        groups: chunkPhones(forBatch?.phones ?? []),
+      }
+    })
 
   return (
     <div className="flex flex-col gap-5">
@@ -143,14 +181,23 @@ export default async function NoticesPage() {
         <p className="mt-1 text-sm text-ink-soft">{t.lead}</p>
       </div>
 
-      <Card>
-        <NoticeForm
-          batches={options}
-          everyone={reach?.all ?? null}
-          t={t}
-          common={d.common}
-        />
-      </Card>
+      {/* The form, or the sentence in place of it. Amber and not the grey aside the
+          roster gets below, because this one is a thing withheld rather than a note
+          added: the reader came to write a notice and there is no form to write it on. */}
+      {options === null ? (
+        <Card className="border-late/30 bg-late/5">
+          <p className="font-medium text-ink">{t.batchesUnreadable}</p>
+        </Card>
+      ) : (
+        <Card>
+          <NoticeForm
+            batches={options}
+            everyone={reach?.all ?? null}
+            t={t}
+            common={d.common}
+          />
+        </Card>
+      )}
 
       {/* The roster failed to load, which is a different sentence from "nobody is
           enrolled" and has to be, because the numbers chip is missing in both cases and
@@ -165,7 +212,14 @@ export default async function NoticesPage() {
         </Card>
       )}
 
-      {logRows.length > 0 ? (
+      {/* Three arms, and the first is the whole point of the null above: a record that
+          could not be read, a record with something in it, and a centre that has genuinely
+          told its families nothing yet. The middle two were the only ones here. */}
+      {logRows === null ? (
+        <Card className="border-late/30 bg-late/5">
+          <p className="font-medium text-ink">{t.logUnreadable}</p>
+        </Card>
+      ) : logRows.length > 0 ? (
         <div>
           <h2 className="mb-2 font-semibold text-ink">{t.logTitle}</h2>
           <NoticeLog rows={logRows} t={t} chase={d.chase} />
