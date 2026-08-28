@@ -50,6 +50,13 @@ export default async function NewExamPage() {
   const isAdmin = isStaffAdmin(session)
   const mine = isAdmin ? null : await myTeacherIds()
 
+  /*
+   * A teacher who holds no teacher row teaches nothing, so the batch read below is
+   * skipped rather than sent — and skipped has to be told apart from failed, which
+   * is the whole of what this flag is for. Both used to arrive as the same `null`.
+   */
+  const noBatchesOfMine = mine?.length === 0
+
   let batchQuery = supabase
     .from('batches')
     .select('id, name, slot, subjects (name, name_bn)')
@@ -62,7 +69,7 @@ export default async function NewExamPage() {
     // An empty `mine` would be `in.()`, which PostgREST accepts and answers with
     // nothing — but the ordering has to come last, so the filter cannot be applied
     // after `.order()` returns a transform builder that no longer has `.in()`.
-    mine?.length === 0
+    noBatchesOfMine
       ? { data: null }
       : batchQuery.order('start_time', { ascending: true, nullsFirst: false }),
     supabase
@@ -73,11 +80,60 @@ export default async function NewExamPage() {
       .order('sort_order', { ascending: true }),
   ])
 
-  const batchOptions = (batches ?? []).map((batch) => {
+  /*
+   * THE EMPTY CARD BELOW IS A SENTENCE ABOUT THE CENTRE, SO A DROPPED READ MAY NOT
+   * BE ALLOWED TO REACH IT.
+   *
+   * `(batches ?? [])` sent a failed read straight into it, and to an owner that card
+   * reads “you need a batch first” under a button that makes one. A centre with nine
+   * batches would be told it has none and handed the single control that produces a
+   * tenth — so a read that did not arrive ends up as a duplicate batch, which is the
+   * expensive kind of duplicate: the students are enrolled on one of them and the
+   * exams are set on the other. To a teacher the same empty list says none of the
+   * batches around them are theirs, which is a statement about the owner’s
+   * permissions that they can do nothing about and would take to the owner.
+   *
+   * And there is nothing to draw instead. The batch is required, and it is the one
+   * field on this form that cannot be typed, so an empty picker is a form that
+   * submits nothing whatever the reader does with it.
+   */
+  const rows: NonNullable<typeof batches> | null = noBatchesOfMine ? [] : batches
+
+  if (rows === null) {
+    return (
+      <div className="flex flex-col gap-4">
+        <Link
+          href="/exams"
+          className="inline-flex min-h-tap items-center text-ink-soft hover:text-ink"
+        >
+          ← {t.title}
+        </Link>
+        <h1 className="text-xl font-bold text-ink">{t.newTitle}</h1>
+        <Card className="border-late/30 bg-late/5">
+          <p className="font-medium text-ink">{t.batchesUnreadable}</p>
+        </Card>
+      </div>
+    )
+  }
+
+  const batchOptions = rows.map((batch) => {
     const subject = Array.isArray(batch.subjects) ? batch.subjects[0] : batch.subjects
     const parts = [batch.name, localName(subject, locale), slotLabel(batch.slot, locale)]
     return { id: batch.id, label: parts.filter(Boolean).join(' · ') }
   })
+
+  /*
+   * The kinds are left failing open, which is the opposite call to the one above and
+   * made on the same grounds. Read as empty, this optional picker is not drawn and
+   * the exam is created without a kind — a blank the edit screen fills in, on a field
+   * that is blank anyway for every centre that has not set any kinds up. Refusing the
+   * whole form over it would stop a teacher creating the exam they are standing in
+   * front of a class to mark, which is by a wide margin the more expensive mistake.
+   */
+  const kindOptions = (examTypes ?? []).map((type) => ({
+    id: type.id,
+    label: localName(type, locale),
+  }))
 
   return (
     <div className="flex flex-col gap-5">
@@ -118,10 +174,7 @@ export default async function NewExamPage() {
       ) : (
         <ExamForm
           batches={batchOptions}
-          examTypes={(examTypes ?? []).map((type) => ({
-            id: type.id,
-            label: localName(type, locale),
-          }))}
+          examTypes={kindOptions}
           today={todayInDhaka()}
           t={d.examForm}
           common={d.common}

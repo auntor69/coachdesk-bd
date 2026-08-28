@@ -1022,6 +1022,17 @@ export const en: Dictionary = {
     needBatchBody:
       'An exam belongs to a batch — the batch’s students are the ones who arrive to be marked.',
     createBatch: 'Create a batch',
+    /**
+     * The form is not drawn, because the batch list behind its one required field
+     * did not arrive — see the note on the page.
+     *
+     * It denies the wrong inference out loud, which the two sentences above it are
+     * the reason for: read as empty, a dropped list draws “you need a batch first”
+     * over the button that makes one, so the reader’s next move is a duplicate
+     * batch. A line that only said “not just now” would leave that guess standing.
+     */
+    batchesUnreadable:
+      'Your batches could not be read just now, so this form is not shown. It does not mean the centre has none — please try again in a moment.',
 
     recipients: (n: number) => `${n} ${n === 1 ? 'guardian' : 'guardians'}`,
     credits: (n: number) => `${n} ${n === 1 ? 'credit' : 'credits'}`,
@@ -1222,6 +1233,17 @@ export const en: Dictionary = {
    */
   examEditForm: {
     submit: 'Save changes',
+    /**
+     * Where the kind picker would be, when the list of kinds could not be read.
+     *
+     * Two things, in this order. The field is missing: an owner who came here to
+     * change the kind needs that, or they go looking for a control that is not on
+     * the screen. And the value is not: everybody else came for the date, and this
+     * form writes the kind on every save, so a reader who is not told plainly that
+     * it is safe has been handed a reason to be afraid of the save button.
+     */
+    kindUnreadable:
+      'The exam kinds could not be read just now, so the kind cannot be changed here. It stays exactly as it is, and everything else on this form still saves.',
 
     removeOpen: 'Remove this exam',
     removeHeading: 'Remove this exam?',

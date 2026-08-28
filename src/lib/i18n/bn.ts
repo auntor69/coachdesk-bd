@@ -1958,6 +1958,9 @@ export const bn = {
     needBatchBody:
       'পরীক্ষা একটি ব্যাচের জন্য হয় — ব্যাচের শিক্ষার্থীরাই নম্বর দেওয়ার তালিকায় আসে।',
     createBatch: 'ব্যাচ তৈরি করুন',
+    /** See en.exams.batchesUnreadable for why it denies the wrong guess out loud. */
+    batchesUnreadable:
+      'আপনার ব্যাচগুলো এখন পড়া গেল না, তাই ফর্মটি দেখানো হয়নি। এর মানে কোচিংয়ে কোনো ব্যাচ নেই, তা নয় — একটু পরে আবার চেষ্টা করুন।',
 
     /**
      * The gate's figures, written here and handed down. Each one is a count that
@@ -2245,6 +2248,9 @@ export const bn = {
    */
   examEditForm: {
     submit: 'সেভ করুন',
+    /** See en.examEditForm.kindUnreadable for why it says the value is left alone. */
+    kindUnreadable:
+      'পরীক্ষার ধরনগুলো এখন পড়া গেল না, তাই এখানে ধরন বদলানো যাবে না। যেটা আছে সেটাই থাকবে, আর ফর্মের বাকি সব কিছু আগের মতোই সেভ হবে।',
 
     removeOpen: 'এই পরীক্ষা মুছে ফেলুন',
     removeHeading: 'পরীক্ষাটি মুছে ফেলবেন?',

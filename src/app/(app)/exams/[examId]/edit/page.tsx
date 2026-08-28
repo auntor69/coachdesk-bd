@@ -142,6 +142,30 @@ export default async function EditExamPage({
 
   const blockedReason = refusal()
 
+  /*
+   * THE KIND PICKER IS ALSO THE ONLY THING THAT SUBMITS THE KIND, SO A LIST THAT DID
+   * NOT ARRIVE MUST NOT SIMPLY TAKE IT AWAY.
+   *
+   * `updateExam` writes `exam_type_id` on every save and reads it out of this form, so a
+   * field the form did not draw arrives as '' and is written as null. `(examTypes ?? [])`
+   * therefore turned a dropped read into a cleared column: an owner opens this screen to
+   * correct a date, saves, and the exam is no longer a Model Test — quietly, under a
+   * green “saved”, with nothing on the screen that could have warned them. The action
+   * cannot catch it either, because from where it stands an empty field is a deliberate
+   * clearing and its own reads all succeeded. It is the rule the batch form states one
+   * directory over: a field the form chose not to ask about is not a field the owner
+   * emptied.
+   *
+   * `null` rather than an empty list, so the form can tell the two apart. Empty means
+   * this centre has set no kinds up, which is a real and common state and correctly
+   * hides the field; null means we could not find out, and the form carries the current
+   * value through untouched and says so.
+   */
+  const kindOptions =
+    examTypes === null
+      ? null
+      : examTypes.map((type) => ({ id: type.id, label: localName(type, locale) }))
+
   return (
     <div className="flex flex-col gap-5">
       <div>
@@ -177,10 +201,7 @@ export default async function EditExamPage({
 
       <EditExamForm
         examId={exam.id}
-        examTypes={(examTypes ?? []).map((type) => ({
-          id: type.id,
-          label: localName(type, locale),
-        }))}
+        examTypes={kindOptions}
         current={{
           title: exam.title,
           examTypeId: exam.exam_type_id ?? '',

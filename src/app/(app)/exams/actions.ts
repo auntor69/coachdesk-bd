@@ -875,12 +875,20 @@ export async function updateExam(
   // constraint name no reader can act on.
   let typeId: string | null = null
   if (examTypeId) {
-    const { data: kind } = await supabase
+    const { data: kind, error: kindError } = await supabase
       .from('exam_types')
       .select('id')
       .eq('coaching_center_id', session.active.centerId)
       .eq('id', examTypeId)
       .maybeSingle()
+
+    // A check that did not run is not a kind that turned out to be somebody else's.
+    // `maybeSingle` answers null to both, and read as "not ours" the line below writes
+    // null over the kind the form just submitted unchanged — the same silent clearing
+    // the edit screen's own note is about, reached one level down and by a different
+    // road. Nothing is written instead: `editFailed` says the exam did not change,
+    // which is exactly what happened, and the reader can press save again.
+    if (kindError) return { ok: false, error: t.errors.editFailed }
     typeId = kind?.id ?? null
   }
 

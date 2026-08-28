@@ -40,7 +40,8 @@ export function EditExamForm({
   common,
 }: {
   examId: string
-  examTypes: Option[]
+  /** `null` is the list we could not read — see the page, and the null arm below. */
+  examTypes: Option[] | null
   current: ExamDefaults
   /** A metered send has happened, so the two figures may not move. */
   frozen: boolean
@@ -76,27 +77,43 @@ export function EditExamForm({
         autoComplete="off"
       />
 
-      {/* Only when the centre has any. An exam created before the first type existed
-          keeps its blank, and "—" is a legal answer either way. */}
-      {examTypes.length > 0 && (
-        <label className="flex flex-col gap-1.5">
-          <span className="font-medium text-ink">
-            {form.kind} ({common.optional})
-          </span>
-          <select
-            name="examTypeId"
-            defaultValue={current.examTypeId}
-            className="min-h-tap rounded-xl border-2 border-line bg-white px-4
-              text-base outline-none focus:border-brand-500"
-          >
-            <option value="">—</option>
-            {examTypes.map((type) => (
-              <option key={type.id} value={type.id}>
-                {type.label}
-              </option>
-            ))}
-          </select>
-        </label>
+      {/* Three states, not two. The picker when the centre has kinds; nothing at all
+          when it genuinely has none, since an exam created before the first kind
+          existed keeps its blank and "—" is a legal answer either way; and the pair
+          below when the list could not be read.
+
+          That last arm carries the value rather than dropping the field, for the same
+          reason the figures further down are readOnly and not disabled: `updateExam`
+          writes exam_type_id on every save, so a field that submits nothing is a field
+          that clears the column. The line under it is not decoration — an owner who
+          came here to change the kind would otherwise hunt for a control that is not
+          on the screen, and every other reader needs to know the save button is safe. */}
+      {examTypes === null ? (
+        <>
+          <input type="hidden" name="examTypeId" value={current.examTypeId} />
+          <p className="text-sm text-ink-soft">{t.kindUnreadable}</p>
+        </>
+      ) : (
+        examTypes.length > 0 && (
+          <label className="flex flex-col gap-1.5">
+            <span className="font-medium text-ink">
+              {form.kind} ({common.optional})
+            </span>
+            <select
+              name="examTypeId"
+              defaultValue={current.examTypeId}
+              className="min-h-tap rounded-xl border-2 border-line bg-white px-4
+                text-base outline-none focus:border-brand-500"
+            >
+              <option value="">—</option>
+              {examTypes.map((type) => (
+                <option key={type.id} value={type.id}>
+                  {type.label}
+                </option>
+              ))}
+            </select>
+          </label>
+        )
       )}
 
       {/* readOnly and not disabled, which is the whole trick of a frozen figure: a
