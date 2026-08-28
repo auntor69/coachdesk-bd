@@ -2678,6 +2678,25 @@ export const en: Dictionary = {
         loginNeedsPhone:
           'A login needs a mobile number — the number is their ID.',
         loginFailed: 'The login was not created. Please try again.',
+        /**
+         * The read behind this is not the teacher’s own row — it is the check on
+         * whether the number already has an account, run past RLS with the admin
+         * client because an owner cannot see anybody else’s profile.
+         *
+         * A null from it was taken for "no account", and then both forms went on to
+         * make one. Usually the auth server refuses the duplicate, because every
+         * login address in this product is derived from the number — so the owner
+         * reads loginFailed about a number that is perfectly fine, and there is no
+         * way from there to the link offer that read exists to produce. Where the
+         * two addresses do not match it succeeds instead, and one number ends up
+         * with two accounts, which is the state profiles.phone being unique is
+         * there to prevent.
+         *
+         * So neither form guesses. Nothing is signed up and nothing is written, and
+         * a second submit a moment later reaches the link offer instead.
+         */
+        numberUnreadable:
+          'That number could not be checked just now, so no login has been made and nothing has been saved. Please try again in a moment.',
         hasLogin:
           'This teacher already has a login. If they have forgotten the password, use “Forgotten their password?” below.',
         notFound: 'Teacher not found.',

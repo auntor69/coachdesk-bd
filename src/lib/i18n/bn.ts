@@ -4326,6 +4326,9 @@ export const bn = {
         /** Because the number is the login id — there is nothing else to be. */
         loginNeedsPhone: 'লগইন দিতে হলে মোবাইল নম্বর লাগবে — নম্বরটাই তাঁর আইডি।',
         loginFailed: 'লগইন তৈরি করা যায়নি। আবার চেষ্টা করুন।',
+        /** See en.settings.teachers.errors.numberUnreadable. */
+        numberUnreadable:
+          'নম্বরটি এখন যাচাই করা গেল না, তাই কোনো লগইন তৈরি হয়নি, কিছুই সেভ হয়নি। একটু পরে আবার চেষ্টা করুন।',
         /**
          * Refused rather than treated as "change it": once an account exists, its
          * password is the reset box and its number is its identity in three places

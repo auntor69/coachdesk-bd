@@ -1867,11 +1867,17 @@ export async function createTeacher(
     // have to be linked to the one they have. Read with the admin client: RLS
     // shows an owner only their own profile row, which is the one row this
     // lookup is not interested in.
-    const { data: existing } = await admin
+    const { data: existing, error: existingError } = await admin
       .from('profiles')
       .select('id, full_name')
       .eq('phone', phone)
       .maybeSingle()
+
+    // The read that decides between linking and signing up, so a null it did not mean
+    // sends the form down the wrong one of the two. See numberUnreadable — the teacher
+    // is not added at all on this branch, because adding them without the login the
+    // owner asked for is a third answer nobody asked for.
+    if (existingError) return { error: t.teachers.errors.numberUnreadable }
 
     if (existing && !confirmedLink) {
       // Never link on the first submit. One mistyped digit would otherwise hand
@@ -2354,11 +2360,17 @@ export async function giveTeacherLogin(
 
   const admin = createAdminClient()
 
-  const { data: existing } = await admin
+  const { data: existing, error: existingError } = await admin
     .from('profiles')
     .select('id, full_name')
     .eq('phone', phone)
     .maybeSingle()
+
+  // The same read and the same refusal as createTeacher's. This screen is the one an
+  // owner reaches for a teacher who already works somewhere else, which is exactly the
+  // case the lookup is for, so guessing "no account" here is guessing wrong about the
+  // likeliest reader.
+  if (existingError) return { error: t.teachers.errors.numberUnreadable }
 
   // Never on the first submit — createTeacher's note, and the same stakes: one
   // mistyped digit would hand a stranger a teacher account inside this centre.
@@ -2487,7 +2499,7 @@ export async function resetTeacherPassword(
   let isPlatformAdmin = false
 
   if (userId) {
-    const [{ data: rows, error: readFailed }, { data: profile }] = await Promise.all([
+    const [membershipRows, profileRow] = await Promise.all([
       // scoped-by: deliberately platform-wide — the rule is "does this account
       // belong to any centre other than ours", and a centre filter would answer
       // yes to exactly the accounts that must be refused.
@@ -2495,10 +2507,25 @@ export async function resetTeacherPassword(
       admin.from('profiles').select('is_platform_admin').eq('id', userId).maybeSingle(),
     ])
 
-    // A failed read is not an empty one. Falling through with no memberships would
-    // refuse with "switch them on first", which is a wrong answer that sounds like
-    // a right one.
-    if (readFailed) return { error: t.errors.changeFailed }
+    // Destructured on their own lines because `error` on both no longer fits inside
+    // the array, the way the receipt page does it.
+    const { data: rows, error: rowsError } = membershipRows
+    const { data: profile, error: profileError } = profileRow
+
+    /*
+     * A failed read is not an empty one. Falling through with no memberships would
+     * refuse with "switch them on first", which is a wrong answer that sounds like
+     * a right one.
+     *
+     * The profile half is the worse of the two, because it fails open rather than
+     * closed. `is_platform_admin` coming back false takes away the one gate in
+     * passwordResetRefusal that is not about memberships, and what is left —
+     * exactly one teacher membership, here — is satisfied by a platform account
+     * with no centre of its own from the moment it is linked as a teacher. The
+     * password an owner sets then reads every centre in the product. So both halves
+     * are refused together; neither is safe to guess at.
+     */
+    if (rowsError || profileError) return { error: t.errors.changeFailed }
 
     memberships = rows ?? []
     isPlatformAdmin = profile?.is_platform_admin ?? false
