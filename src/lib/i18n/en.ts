@@ -891,6 +891,21 @@ export const en: Dictionary = {
      * enough to be a surprise, so it says what happened rather than what to do.
      */
     copyFailed: 'Could not copy',
+    /**
+     * Not "you have not set a number yet" — that is a different fact, and whether
+     * this centre has one at all is exactly what the read that failed was going to
+     * say. `walletText` returns an empty string for both, so a dropped read used to
+     * take the pay-to line out of every message an owner sent that session with
+     * nothing anywhere saying so.
+     *
+     * A note and not a refused screen. The list of who to chase is still right and
+     * every figure around it is real; a reminder naming what is owed and when it
+     * was due is worth sending without the number on it, because most of these
+     * families pay at the desk. What is not worth doing is sending forty of them
+     * with the number quietly missing.
+     */
+    payUnreadable:
+      'Your payment details could not be read just now, so today’s messages will not say where to send the money. Everything else here is right — try again in a moment if you would rather they carried it.',
   },
 
   chaseList: {

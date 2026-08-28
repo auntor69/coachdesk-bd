@@ -148,7 +148,7 @@ export default async function FeesPage({
     { data: collectedRow, error: collectedError },
     chased,
     cancelled,
-    { data: center },
+    { data: center, error: centerError },
   ] =
     await Promise.all([
       pageAll((from, to) =>
@@ -276,7 +276,9 @@ export default async function FeesPage({
             .select('payment_wallet, payment_number')
             .eq('id', session.active.centerId)
             .maybeSingle()
-        : Promise.resolve({ data: null }),
+        : // `error: null` so the note below can be read off one shape. A board with
+          // nothing to send is not a board whose payment details failed to load.
+          Promise.resolve({ data: null, error: null }),
     ])
 
   // Newest wins, which is what the descending order above buys: the first row
@@ -562,6 +564,16 @@ export default async function FeesPage({
         <p className="text-sm text-ink-soft">
           {chaseProblem === 'tooLarge' ? t.chaseHistoryTooLarge : t.chaseHistoryUnreadable}
         </p>
+      )}
+
+      {/* And the other half of what a reminder says. The chips below still open the
+          message, still record the chase, and still name the amount and the deadline
+          — what a dropped read takes out is the line telling a parent where to send
+          it, which `walletText` blanks for a centre that never set one up as well.
+          Said here, once, because the chips cannot say it: the owner is the only
+          person who can tell those two apart, and only if somebody tells them. */}
+      {canWrite && centerError && unpaid.length > 0 && (
+        <p className="text-sm text-ink-soft">{d.chase.payUnreadable}</p>
       )}
 
       {rows.length === 0 ? (

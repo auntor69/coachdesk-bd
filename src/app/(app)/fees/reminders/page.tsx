@@ -57,7 +57,7 @@ export default async function RemindersPage() {
   const d = dict(locale)
   const t = d.reminders
 
-  const [owing, { data: centerRow }] = await Promise.all([
+  const [owing, { data: centerRow, error: centerError }] = await Promise.all([
     // Paged, because this is the list the messages are sent from. PostgREST stops at
     // 1000 rows in silence, one row is one unpaid invoice across every month the
     // centre has billed, and a family past the cut is simply never chased — no gap on
@@ -314,6 +314,16 @@ export default async function RemindersPage() {
           <p className="font-medium text-ink">{t.noneTitle}</p>
           <p className="mt-1 text-sm text-ink-soft">{t.noneBecause[emptyReason]}</p>
         </Card>
+      )}
+
+      {/* Above the list rather than under it, because it is a thing to know before
+          the first tap and every tap sends a real message from the owner's own
+          handset. Grey and not amber, on the rule the fee board's chase note
+          follows: the worklist is right, the amounts are right, and this is the one
+          part of what goes out that is missing. See chase.payUnreadable for why it
+          does not say "set your number" — that may already be done. */}
+      {centerError && groups.length > 0 && (
+        <p className="text-sm text-ink-soft">{d.chase.payUnreadable}</p>
       )}
 
       {groups.length > 0 && (

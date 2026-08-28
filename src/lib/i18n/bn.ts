@@ -1724,6 +1724,9 @@ export const bn = {
     copied: 'কপি হয়েছে ✓',
     /** Nothing is recorded when this shows — see the English note. */
     copyFailed: 'কপি করা যায়নি',
+    /** See en.chase.payUnreadable — a note beside a working list, not a refusal. */
+    payUnreadable:
+      'টাকা পাঠানোর নম্বর এখন পড়া গেল না, তাই আজকের মেসেজে কোথায় টাকা পাঠাতে হবে তা লেখা থাকবে না। বাকি সব ঠিকই আছে — নম্বরটি মেসেজে রাখতে চাইলে একটু পরে আবার চেষ্টা করুন।',
   },
 
   /**
