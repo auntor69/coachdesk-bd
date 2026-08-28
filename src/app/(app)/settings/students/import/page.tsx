@@ -56,8 +56,47 @@ export default async function ImportStudentsPage() {
         .limit(HINT_CEILING + 1),
     ])
 
+  /*
+   * WHEN THIS SCREEN REFUSES TO DRAW THE PASTE BOX, and why two of the three reads
+   * above are allowed to take it away.
+   *
+   * The batch list, because of what an empty one does here. `batches.length === 0` in
+   * the form is a live sentence — “you have no batches yet”, with a link to make one —
+   * shown to an owner with twelve, who then pastes three hundred names that join
+   * nothing. The note on those tick-boxes says what that costs: no enrolment is no
+   * invoice, so the fee board stays at ₹0 on the afternoon it is being shown to the
+   * owner deciding whether to pay.
+   *
+   * The count, because on a capped plan the paste is refused anyway. `importStudents`
+   * returns `limitUnknown` the moment its own count comes back null, so a form built on
+   * this one would take three hundred typed lines and save none of them — the arrears
+   * screen's mistake, on the screen next to it. `?? 0` also read as the whole cap being
+   * free, which is the flattering direction.
+   *
+   * Not the roster, which is a hint and says so. A failed read there means no hint, and
+   * the form already has that state for a centre too large to send one — see
+   * `existingKeys` below.
+   */
+  if (batches === null || (session.plan.maxStudents !== null && studentCount === null)) {
+    return (
+      <div className="flex flex-col gap-5">
+        <div>
+          <Link
+            href="/settings/students"
+            className="inline-flex min-h-tap items-center text-ink-soft hover:text-ink"
+          >
+            ← {d.settings.students.title}
+          </Link>
+          <h1 className="mt-1 text-xl font-bold text-ink">{t.title}</h1>
+        </div>
+        <Card className="border-late/30 bg-late/5">
+          <p className="font-medium text-ink">{t.unreadable}</p>
+        </Card>
+      </div>
+    )
+  }
+
   const room = roomFor(session.plan, 'maxStudents', studentCount ?? 0)
-  const existing = roster ?? []
 
   return (
     <div className="flex flex-col gap-5">
@@ -89,12 +128,17 @@ export default async function ImportStudentsPage() {
           t={d.importForm}
           common={d.common}
           room={room}
+          // Null both for a centre too large to hint and for a roster that did not
+          // arrive, because the form treats null as “no hint” and counts every pasted
+          // line as new — which is the truthful answer to both. An empty array instead
+          // would have said the opposite: that we looked, and nobody on this list is
+          // already on the roster.
           existingKeys={
-            existing.length > HINT_CEILING
+            roster === null || roster.length > HINT_CEILING
               ? null
-              : existing.map((s) => rosterKey(s.name, s.guardian_phone ?? ''))
+              : roster.map((s) => rosterKey(s.name, s.guardian_phone ?? ''))
           }
-          batches={(batches ?? []).map((batch) => {
+          batches={batches.map((batch) => {
             const subject = Array.isArray(batch.subjects)
               ? batch.subjects[0]
               : batch.subjects

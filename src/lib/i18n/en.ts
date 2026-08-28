@@ -2096,6 +2096,18 @@ export const en: Dictionary = {
         'Paste every name straight out of the register or a spreadsheet — one student per line.',
 
       /**
+       * The screen with no paste box on it, for the two reads that are allowed to take
+       * it away — see the note on the page.
+       *
+       * Deliberately not naming which of the two, because neither is the owner's doing
+       * and the answer to both is the same one. What it does say is that nothing was
+       * lost, which is the sentence that stops somebody re-pasting a register they
+       * think went missing.
+       */
+      unreadable:
+        'This could not be got ready just now, so the paste box is not shown — nothing has been lost. Please try again in a moment.',
+
+      /**
        * Three clauses joined with " · " by the action — see the Bangla. English
        * inflects on all three counts, which is why they are functions.
        */

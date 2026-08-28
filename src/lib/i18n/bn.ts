@@ -3919,6 +3919,10 @@ export const bn = {
       title: 'তালিকা থেকে যোগ',
       body: 'রেজিস্টার বা এক্সেল থেকে সব নাম একসাথে বসিয়ে দিন — প্রতি লাইনে একজন।',
 
+      /** See en.settings.import.unreadable for why this does not say which read failed. */
+      unreadable:
+        'এখন এই পর্দাটি তৈরি করা গেল না, তাই নাম বসানোর ঘরটি দেখানো হয়নি — কিছুই হারায়নি। একটু পরে আবার চেষ্টা করুন।',
+
       /**
        * Three clauses the action joins with " · ". Separate keys because two of
        * the three are dropped when their count is zero — "৪০ জন যোগ হয়েছে · 0 জন
