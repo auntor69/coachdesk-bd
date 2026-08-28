@@ -1299,6 +1299,18 @@ export const en: Dictionary = {
     guardianName: 'Guardian’s name',
     guardianNamePlaceholder: 'Md Kamal Hossain',
     whichBatch: 'Which batch',
+    /**
+     * Where the batch ticks would be, when the list of batches could not be read.
+     *
+     * An aside and not a refusal, which is the call the page explains: a student is
+     * worth having on the roster without a batch, these ticks are optional even
+     * when they are drawn, and the roster’s own “in no batch” filter finds them
+     * again afterwards. It still has to name the way out, because no batch means no
+     * attendance and no bill, and an owner who is not told meets that in September
+     * on the fee board.
+     */
+    batchesUnreadable:
+      'The batch list could not be read just now, so it is not shown. The student can still be added, and you can put them in a batch from their own page afterwards.',
     moreInfo: 'More details',
     studentPhone: 'Student’s own mobile',
     institution: 'School / college',
@@ -1436,6 +1448,14 @@ export const en: Dictionary = {
     phoneHint: 'If you give them a login, this number is their ID',
     phoneBad: 'That number is not right',
     whichSubjects: 'Which subjects do they teach',
+    /**
+     * Where the subject ticks would be, when the list of subjects could not be
+     * read. An aside for the reason studentForm’s own gives, and a shorter one
+     * because the consequence is smaller: a teacher with no subjects against their
+     * name still teaches their batches, and the teacher list fills them in.
+     */
+    subjectsUnreadable:
+      'The subject list could not be read just now, so it is not shown. The teacher can still be added, and you can tick their subjects from the teacher list afterwards.',
     whatTheyCanDo: 'What they are allowed to do',
     loginNow: 'Give them a login now',
     loginNowBody:
@@ -2079,6 +2099,17 @@ export const en: Dictionary = {
       needSubjectBody:
         'A batch belongs to a subject. Without one, marks and fees have nowhere to land.',
       addSubject: 'Add a subject',
+      /**
+       * The form is not drawn, because the subject list behind its one required
+       * choice did not arrive — see the note on the page.
+       *
+       * Same shape as exams.batchesUnreadable and for the same reason: read as
+       * empty, the list draws the two sentences above this one over the button that
+       * adds a subject, so the reader’s answer to a dropped read is a second
+       * Physics — and every batch, mark and fee after it lands on one of the two.
+       */
+      subjectsUnreadable:
+        'Your subjects could not be read just now, so this form is not shown. It does not mean the centre has none — please try again in a moment.',
 
       created: 'Batch created',
       editTitle: 'Fix this batch',
@@ -2142,6 +2173,18 @@ export const en: Dictionary = {
       added: 'Student added',
 
       editTitle: 'Fix their details',
+      /**
+       * The edit form is not drawn, because the batch list its enrolment ticks are
+       * built from did not arrive — see the note on the page for what saving that
+       * form would otherwise have done to the child’s enrolments.
+       *
+       * It says they are safe, which is the fear this sentence exists to answer. An
+       * owner who came to correct a mobile number and finds the whole form gone
+       * needs telling that the child is still in their batches, or the next thing
+       * they do is enrol them again by hand.
+       */
+      batchesUnreadable:
+        'The centre’s batches could not be read just now, so this form is not shown — nothing about this student has changed. Please try again in a moment.',
       openHint: 'Tap a student to see their attendance, results and fees',
       /**
        * The roster read is the headcount, the plan usage and both warning cards, so a

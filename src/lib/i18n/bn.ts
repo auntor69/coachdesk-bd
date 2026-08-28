@@ -2341,6 +2341,9 @@ export const bn = {
     guardianName: 'অভিভাবকের নাম',
     guardianNamePlaceholder: 'মোঃ কামাল হোসেন',
     whichBatch: 'কোন ব্যাচে',
+    /** See en.studentForm.batchesUnreadable for why this is an aside, not a refusal. */
+    batchesUnreadable:
+      'ব্যাচের তালিকা এখন পড়া গেল না, তাই দেখানো হয়নি। শিক্ষার্থীকে এখনই যোগ করা যাবে, পরে তার নিজের পাতা থেকে ব্যাচে ঢোকানো যাবে।',
     moreInfo: 'আরও তথ্য',
     studentPhone: 'শিক্ষার্থীর নিজের মোবাইল',
     institution: 'স্কুল / কলেজ',
@@ -2646,6 +2649,9 @@ export const bn = {
     /** As they type, not on submit — the same words studentForm uses. */
     phoneBad: 'নম্বরটি ঠিক নেই',
     whichSubjects: 'কোন বিষয় পড়ান',
+    /** See en.teacherForm.subjectsUnreadable for why this is an aside, not a refusal. */
+    subjectsUnreadable:
+      'বিষয়ের তালিকা এখন পড়া গেল না, তাই দেখানো হয়নি। শিক্ষককে এখনই যোগ করা যাবে, পরে শিক্ষকের তালিকা থেকে তাঁর বিষয়গুলো টিক দেওয়া যাবে।',
     whatTheyCanDo: 'কী কী করতে পারবেন',
     loginNow: 'এখনই লগইন দিন',
     loginNowBody:
@@ -3800,6 +3806,9 @@ export const bn = {
       needSubjectBody:
         'ব্যাচ কোন বিষয়ের, সেটা ছাড়া নম্বর আর ফি ঠিক জায়গায় বসবে না।',
       addSubject: 'বিষয় যোগ করুন',
+      /** See en.settings.batches.subjectsUnreadable — it denies the wrong guess. */
+      subjectsUnreadable:
+        'আপনার বিষয়গুলো এখন পড়া গেল না, তাই ফর্মটি দেখানো হয়নি। এর মানে কোচিংয়ে কোনো বিষয় নেই, তা নয় — একটু পরে আবার চেষ্টা করুন।',
 
       created: 'ব্যাচ তৈরি হয়েছে',
       editTitle: 'ব্যাচ ঠিক করুন',
@@ -3900,6 +3909,9 @@ export const bn = {
        * this is only what sits above it.
        */
       editTitle: 'তথ্য ঠিক করুন',
+      /** See en.settings.students.batchesUnreadable — it says nothing changed. */
+      batchesUnreadable:
+        'কোচিংয়ের ব্যাচগুলো এখন পড়া গেল না, তাই ফর্মটি দেখানো হয়নি — এই শিক্ষার্থীর কোনো কিছু বদলায়নি। একটু পরে আবার চেষ্টা করুন।',
       /**
        * On the roster row, telling the reader the row is worth tapping — and where
        * it goes, which changed. The row used to open the edit form, so this used to

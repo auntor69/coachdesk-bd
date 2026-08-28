@@ -37,7 +37,8 @@ export function TeacherForm({
   t: T<'teacherForm'>
   permissions: T<'teacherPermissions'>
   common: T<'common'>
-  subjects: SubjectOption[]
+  /** `null` is the list that could not be read — see the aside below the ticks. */
+  subjects: SubjectOption[] | null
 }) {
   const router = useRouter()
   const [state, formAction, pending] = useActionState<ActionState, FormData>(
@@ -102,28 +103,36 @@ export function TeacherForm({
         )}
       </div>
 
-      {subjects.length > 0 && (
-        <fieldset className="flex flex-col gap-2">
-          <legend className="mb-1 font-medium text-ink">{t.whichSubjects}</legend>
-          <div className="flex flex-col gap-2">
-            {subjects.map((subject) => (
-              <label
-                key={subject.id}
-                className="flex min-h-tap cursor-pointer items-center gap-3
-                  rounded-xl border-2 border-line bg-white px-4
-                  has-[:checked]:border-brand-600 has-[:checked]:bg-brand-50"
-              >
-                <input
-                  type="checkbox"
-                  name="subjectIds"
-                  value={subject.id}
-                  className="h-5 w-5 shrink-0 accent-brand-600"
-                />
-                <span className="min-w-0 truncate text-ink">{subject.label}</span>
-              </label>
-            ))}
-          </div>
-        </fieldset>
+      {/* A line where the ticks would be, when the list of subjects could not be read.
+          The same call the new-student form makes and for the same reasons: the ticks
+          are optional, nothing exists yet to be overwritten, and the teacher list is
+          where a missing one gets put right. Silence is the only thing ruled out. */}
+      {subjects === null ? (
+        <p className="text-sm text-ink-soft">{t.subjectsUnreadable}</p>
+      ) : (
+        subjects.length > 0 && (
+          <fieldset className="flex flex-col gap-2">
+            <legend className="mb-1 font-medium text-ink">{t.whichSubjects}</legend>
+            <div className="flex flex-col gap-2">
+              {subjects.map((subject) => (
+                <label
+                  key={subject.id}
+                  className="flex min-h-tap cursor-pointer items-center gap-3
+                    rounded-xl border-2 border-line bg-white px-4
+                    has-[:checked]:border-brand-600 has-[:checked]:bg-brand-50"
+                >
+                  <input
+                    type="checkbox"
+                    name="subjectIds"
+                    value={subject.id}
+                    className="h-5 w-5 shrink-0 accent-brand-600"
+                  />
+                  <span className="min-w-0 truncate text-ink">{subject.label}</span>
+                </label>
+              ))}
+            </div>
+          </fieldset>
+        )
       )}
 
       <fieldset className="flex flex-col gap-2">

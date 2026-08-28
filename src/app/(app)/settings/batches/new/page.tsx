@@ -45,8 +45,29 @@ export default async function NewBatchPage() {
     ])
 
   // The action re-checks this; showing it here saves a teacher filling in a
-  // long form only to be refused at the end.
+  // long form only to be refused at the end. `?? 0` is deliberate on a plan gate:
+  // an unread count opens the form, and the action refuses honestly if it must.
   const atLimit = wouldExceed(session.plan, 'maxBatches', batchCount ?? 0)
+
+  /*
+   * FOUR ARMS BELOW, AND THE THIRD IS WHY: “ADD A SUBJECT FIRST” IS A CLAIM ABOUT
+   * THE CENTRE, SO A FAILED READ MAY NOT MAKE IT.
+   *
+   * `(subjects ?? []).length === 0` made that claim out of a dropped read, over the
+   * button that adds a subject — so a centre with eight subjects would be told it
+   * has none and handed the one control that creates a ninth. The duplicate is the
+   * part that lasts: batches hang off a subject, and marks and fees hang off the
+   * batch, so a second Physics splits a class in two across the whole product.
+   * There is nothing to draw instead, because the subject is required and cannot be
+   * typed — a form with an empty picker submits nothing whatever the reader does.
+   *
+   * The teacher list is left failing open, which is the opposite call and rests on
+   * the field being genuinely optional: its empty option is `teacherLater`, and a
+   * batch created without a teacher says so on the batch list and takes one on its
+   * own edit screen — which carries the value through a hidden input rather than
+   * clearing it, for the reason that screen explains. Refusing the whole form over
+   * an optional picker would stop the batch being made at all.
+   */
 
   return (
     <div className="flex flex-col gap-5">
@@ -68,7 +89,11 @@ export default async function NewBatchPage() {
             {t.cap(planName(session.plan, locale), session.plan.maxBatches ?? 0)}
           </p>
         </Card>
-      ) : (subjects ?? []).length === 0 ? (
+      ) : subjects === null ? (
+        <Card className="border-late/30 bg-late/5">
+          <p className="font-medium text-ink">{t.subjectsUnreadable}</p>
+        </Card>
+      ) : subjects.length === 0 ? (
         <Card>
           <p className="font-medium text-ink">{t.needSubjectTitle}</p>
           <p className="mt-1 text-sm text-ink-soft">{t.needSubjectBody}</p>
@@ -84,7 +109,7 @@ export default async function NewBatchPage() {
         <BatchForm
           t={d.batchForm}
           common={d.common}
-          subjects={(subjects ?? []).map((s) => ({
+          subjects={subjects.map((s) => ({
             id: s.id,
             label: localName(s, locale),
           }))}

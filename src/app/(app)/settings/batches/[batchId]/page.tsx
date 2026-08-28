@@ -94,8 +94,18 @@ export default async function BatchPage({
   const ownSubject = Array.isArray(batch.subjects) ? batch.subjects[0] : batch.subjects
   const ownTeacher = Array.isArray(batch.teachers) ? batch.teachers[0] : batch.teachers
 
-  // This batch's own subject first if the centre has since switched it off, so the
-  // select has something to match and the field can still be changed away from it.
+  /*
+   * This batch's own subject first if the centre has since switched it off, so the
+   * select has something to match and the field can still be changed away from it.
+   *
+   * The same line also makes this the one edit screen where `?? []` on the option
+   * list is safe, which is worth saying out loud now that the screens around it have
+   * been changed. A failed read leaves the list empty; the unshift below then puts
+   * this batch's current subject into it, so the picker is still drawn, still
+   * matches, and still submits the value it is showing. Narrowed, but never wrong —
+   * and never able to write null over the column the way the exam edit form's kind
+   * once could, because that field had nothing to fall back on.
+   */
   const subjectOptions = (subjects ?? []).map((s) => ({
     id: s.id,
     label: localName(s, locale),

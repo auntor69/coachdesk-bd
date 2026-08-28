@@ -41,6 +41,34 @@ export default async function NewStudentPage() {
 
   const atLimit = wouldExceed(session.plan, 'maxStudents', studentCount ?? 0)
 
+  /*
+   * `null` is passed down as `null`, because the form has something to say about a
+   * list that did not arrive and nothing to say about an empty one.
+   *
+   * Failing open here, unlike the batch form next door and unlike this student's own
+   * edit screen. The ticks are optional even when they are drawn; nothing can be
+   * overwritten, because the row does not exist yet; and a student admitted into no
+   * batch is a state the roster already counts and has a filter for. Refusing would
+   * mean turning a family away from the desk over a read that will probably work on
+   * the next tap. What the form must not do is stay silent — no batch is no
+   * attendance and no fee bill, so the aside there names the way to put it right.
+   */
+  const batchOptions =
+    batches &&
+    batches.map((batch) => {
+      const subject = Array.isArray(batch.subjects)
+        ? batch.subjects[0]
+        : batch.subjects
+      const parts = [
+        batch.name,
+        // The reader's own language, not always Bangla: this label is how an owner
+        // tells two batches of the same subject apart.
+        subject ? localName(subject, locale) : '',
+        slotLabel(batch.slot, locale),
+      ].filter(Boolean)
+      return { id: batch.id, label: parts.join(' · ') }
+    })
+
   return (
     <div className="flex flex-col gap-5">
       <div>
@@ -65,19 +93,7 @@ export default async function NewStudentPage() {
         <StudentForm
           t={d.studentForm}
           common={d.common}
-          batches={(batches ?? []).map((batch) => {
-            const subject = Array.isArray(batch.subjects)
-              ? batch.subjects[0]
-              : batch.subjects
-            const parts = [
-              batch.name,
-              // The reader's own language, not always Bangla: this label is how
-              // an owner tells two batches of the same subject apart.
-              subject ? localName(subject, locale) : '',
-              slotLabel(batch.slot, locale),
-            ].filter(Boolean)
-            return { id: batch.id, label: parts.join(' · ') }
-          })}
+          batches={batchOptions}
         />
       )}
     </div>

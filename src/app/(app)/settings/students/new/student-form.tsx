@@ -27,7 +27,8 @@ export function StudentForm({
 }: {
   t: T<'studentForm'>
   common: T<'common'>
-  batches: BatchOption[]
+  /** `null` is the list that could not be read — see the aside below the ticks. */
+  batches: BatchOption[] | null
 }) {
   const router = useRouter()
   const [state, formAction, pending] = useActionState<ActionState, FormData>(
@@ -84,28 +85,42 @@ export function StudentForm({
         autoComplete="off"
       />
 
-      {batches.length > 0 && (
-        <fieldset className="flex flex-col gap-2">
-          <legend className="mb-1 font-medium text-ink">{t.whichBatch}</legend>
-          <div className="flex flex-col gap-2">
-            {batches.map((batch) => (
-              <label
-                key={batch.id}
-                className="flex min-h-tap cursor-pointer items-center gap-3
-                  rounded-xl border-2 border-line bg-white px-4
-                  has-[:checked]:border-brand-600 has-[:checked]:bg-brand-50"
-              >
-                <input
-                  type="checkbox"
-                  name="batchIds"
-                  value={batch.id}
-                  className="h-5 w-5 shrink-0 accent-brand-600"
-                />
-                <span className="min-w-0 truncate text-ink">{batch.label}</span>
-              </label>
-            ))}
-          </div>
-        </fieldset>
+      {/* A line where the ticks would be, when the list of batches could not be read.
+
+          Said rather than left blank, and the form still submits: these ticks are
+          optional even when they are drawn, and a student on the roster with no batch
+          is a state the roster already names and filters for. But no batch is no
+          attendance and no fee bill, so an owner who was never told the list was
+          missing would meet this student's absence in September, on the fee board.
+
+          Not a refusal, and not the current value carried through in a hidden field
+          either — there is no current value on a form that is creating the row. */}
+      {batches === null ? (
+        <p className="text-sm text-ink-soft">{t.batchesUnreadable}</p>
+      ) : (
+        batches.length > 0 && (
+          <fieldset className="flex flex-col gap-2">
+            <legend className="mb-1 font-medium text-ink">{t.whichBatch}</legend>
+            <div className="flex flex-col gap-2">
+              {batches.map((batch) => (
+                <label
+                  key={batch.id}
+                  className="flex min-h-tap cursor-pointer items-center gap-3
+                    rounded-xl border-2 border-line bg-white px-4
+                    has-[:checked]:border-brand-600 has-[:checked]:bg-brand-50"
+                >
+                  <input
+                    type="checkbox"
+                    name="batchIds"
+                    value={batch.id}
+                    className="h-5 w-5 shrink-0 accent-brand-600"
+                  />
+                  <span className="min-w-0 truncate text-ink">{batch.label}</span>
+                </label>
+              ))}
+            </div>
+          </fieldset>
+        )
       )}
 
       <details className="rounded-2xl border border-line bg-white p-4">

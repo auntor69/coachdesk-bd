@@ -66,6 +66,20 @@ export default async function NewTeacherPage() {
 
   const atLimit = wouldExceed(session.plan, 'maxTeachers', teacherCount ?? 0)
 
+  /*
+   * `null` goes down as `null`, so the form can say the ticks are missing rather
+   * than let a dropped read look like a centre with no subjects on its books.
+   *
+   * Failing open, on the same grounds as the new-student form: the ticks are
+   * optional, nothing is overwritten because the teacher does not exist yet, and a
+   * teacher with no subject against their name still teaches whatever batches they
+   * are put on — the teacher list is where the ticks get added afterwards. An owner
+   * standing next to the new teacher should not be sent away over a failed read.
+   */
+  const subjectOptions =
+    subjects &&
+    subjects.map((subject) => ({ id: subject.id, label: localName(subject, locale) }))
+
   return (
     <div className="flex flex-col gap-5">
       <div>
@@ -96,10 +110,7 @@ export default async function NewTeacherPage() {
           t={d.teacherForm}
           permissions={d.teacherPermissions}
           common={d.common}
-          subjects={(subjects ?? []).map((subject) => ({
-            id: subject.id,
-            label: localName(subject, locale),
-          }))}
+          subjects={subjectOptions}
         />
       )}
     </div>

@@ -1,5 +1,6 @@
 import Link from 'next/link'
 
+import { Card } from '@/components/ui'
 import { pageRole, getSession } from '@/lib/auth/session'
 import { createClient } from '@/lib/supabase/server'
 import { slotLabel } from '@/lib/bd/schedule'
@@ -89,6 +90,46 @@ export default async function StudentPage({
     .filter((e) => e.status === 'active' || e.status === 'paused')
     .map((e) => e.batch_id)
 
+  /*
+   * THE MOST EXPENSIVE FAILED READ IN THE PRODUCT, AND THE ONLY WAY OUT OF IT IS TO
+   * DRAW NOTHING.
+   *
+   * The ticks below are how enrolments change: `updateStudent` reads `batchIds` off
+   * this form and every batch not in it is one the student is taken out of —
+   * `toEnd = live.filter((e) => !wanted.has(e.batch_id))`, which with an empty list
+   * is every live enrolment the child has. The form only draws the ticks when it was
+   * given batches, so `(batches ?? [])` meant a dropped read produced a form with no
+   * ticks, an owner correcting a guardian's mobile number saved it, and the child was
+   * quietly removed from every batch: off every register, off the invoice run, off the
+   * fee board, reported as “details saved”. Nobody finds that out until a parent asks
+   * why no bill came.
+   *
+   * The action cannot defend itself here. Its own guards are already fail-closed and
+   * they are right — an empty list genuinely is how an owner empties a student's
+   * batches — and every read it makes succeeded. Only this page knows the form it is
+   * about to build is wrong.
+   *
+   * And unlike the exam kind one directory over, the current value cannot be carried
+   * through in a hidden field: `enrolled` includes paused enrolments, so submitting it
+   * back would quietly restart a student the owner had paused, because `toRevive`
+   * takes any ticked batch and makes it active again. There is no faithful encoding of
+   * the present state, so the honest screen is no screen — the name that did arrive,
+   * and the reason.
+   */
+  if (batches === null) {
+    return (
+      <div className="flex flex-col gap-5">
+        <div>
+          {back}
+          <h1 className="mt-1 truncate text-xl font-bold text-ink">{student.name}</h1>
+        </div>
+        <Card className="border-late/30 bg-late/5">
+          <p className="font-medium text-ink">{t.batchesUnreadable}</p>
+        </Card>
+      </div>
+    )
+  }
+
   return (
     <div className="flex flex-col gap-5">
       <div>
@@ -112,7 +153,7 @@ export default async function StudentPage({
           classLevel: student.class_level ?? '',
           batchIds: enrolled,
         }}
-        batches={(batches ?? []).map((batch) => {
+        batches={batches.map((batch) => {
           const subject = Array.isArray(batch.subjects)
             ? batch.subjects[0]
             : batch.subjects
