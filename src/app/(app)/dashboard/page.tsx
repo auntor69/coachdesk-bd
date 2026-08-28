@@ -88,7 +88,24 @@ export default async function DashboardPage() {
   // student count of 2, and "1 of 9 batches marked today" over a teacher who had
   // marked both of theirs. Two numbers from the same screen describing two
   // different centres.
-  const mine = isAdmin ? null : await myTeacherIds()
+  const scope = isAdmin ? null : await myTeacherIds()
+
+  /*
+   * WHICH IS ONE VALUE ANSWERING TWO QUESTIONS, SO THE FAILURE IS SPLIT OFF HERE.
+   *
+   * A staff-admin is not filtered, and that is what `null` means on the line above.
+   * A staff list that did not arrive would have reached the filter below as the same
+   * `null` and dropped it — putting the centre's nine batches behind a teacher's two
+   * numbers, which is precisely the pair of figures the note above describes: 9
+   * batches beside a student count of 2, "1 of 9 batches marked today" over a teacher
+   * who had marked both of theirs.
+   *
+   * So the query is not sent. `batchRows` stays null, and the two numbers it feeds are
+   * already withheld on a null rather than drawn as zero — see `activeBatchIds` below.
+   * Nothing else on this page is narrowed by hand, so nothing else is affected.
+   */
+  const scopeUnreadable = scope !== null && 'unreadable' in scope
+  const mine = scope !== null && 'ids' in scope ? scope.ids : null
 
   /*
    * The ids, not a count — and that is the fix for a fraction that could exceed its
@@ -170,7 +187,9 @@ export default async function DashboardPage() {
       .select('id', { count: 'exact', head: true })
       .eq('coaching_center_id', session.active.centerId)
       .eq('status', 'active'),
-    batchQuery,
+    // Resolved rather than sent when the staff list could not be read — see the note
+    // on `scopeUnreadable` for why an unfiltered answer is the wrong one here.
+    scopeUnreadable ? { data: null } : batchQuery,
     // Unvoided and still owed. A voided invoice is a correction and counting it
     // would show the owner money they are not owed; a settled one is not owed at
     // all. Every balance here was subtracted by Postgres in numeric(10, 2).

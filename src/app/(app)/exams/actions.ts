@@ -152,18 +152,32 @@ export async function createExam(
   if (batchError) return { ok: false, error: t.errors.createFailed }
   if (!batch) return { ok: false, error: t.errors.noBatch }
 
+  /*
+   * Whose exam this is. The shared helper answers with a list because `teachers` has
+   * no unique key on (centre, user); the first is taken because this column holds one
+   * id, and for a centre that entered the same person twice there is no better answer
+   * than either of their rows. An empty list is an owner or manager who holds no
+   * teacher row at all, and null is the right value for them.
+   *
+   * A read that did not arrive is not that. It used to arrive as the same empty list,
+   * so the exam was created with no teacher on it — and `teacher_id` is what /exams
+   * filters a teacher's own list by, so the exam they had just made was missing from
+   * it, on a screen with nothing to explain the absence. They would make it again.
+   *
+   * Nothing is written instead, and `createFailed` is the true sentence for that: the
+   * exam was not created, one tap fixes it, and the tap is one the reader is already
+   * looking at.
+   */
+  const scope = await myTeacherIds()
+  if ('unreadable' in scope) return { ok: false, error: t.errors.createFailed }
+
   const { data: exam, error } = await supabase
     .from('exams')
     .insert({
       coaching_center_id: session.active.centerId,
       batch_id: batch.id,
       subject_id: batch.subject_id,
-      // Whose exam this is. The shared helper answers with a list because
-      // `teachers` has no unique key on (centre, user); the first is taken because
-      // this column holds one id, and for a centre that entered the same person
-      // twice there is no better answer than either of their rows. Null for an
-      // owner or manager who holds no teacher row at all.
-      teacher_id: (await myTeacherIds())[0] ?? null,
+      teacher_id: scope.ids[0] ?? null,
       exam_type_id: examTypeId || null,
       title,
       total_marks: totalMarks,

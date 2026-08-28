@@ -67,7 +67,24 @@ export default async function TeachPage() {
   // day rather than their own timetable, and bootstrap_center gives them a teachers
   // row that no batch need point at — filtering them would empty their own screen.
   const isAdmin = isStaffAdmin(session)
-  const mine = isAdmin ? null : await myTeacherIds()
+  const scope = isAdmin ? null : await myTeacherIds()
+
+  /*
+   * Two nulls that mean opposite things, kept apart before either is used.
+   *
+   * `null` on the line above is a staff-admin, and it means "do not filter" — every
+   * batch in the centre, which is what an owner opened this to see. A staff list that
+   * did not arrive would have meant exactly the same thing to the query below, and it
+   * would have been the widest answer the screen can give to the reader who least
+   * wants it: a teacher at a nine-batch centre shown all nine, with a register on each
+   * one they would not be allowed to save. Which is the bug the filter was added to
+   * fix, coming back in through the failure path.
+   *
+   * So the read is not sent at all. `batchesUnreadable` below is already the sentence
+   * for it, and this is the third way of reaching it.
+   */
+  const scopeUnreadable = scope !== null && 'unreadable' in scope
+  const mine = scope !== null && 'ids' in scope ? scope.ids : null
 
   // Two steps rather than one chain: supabase-js's `.order()` returns a builder
   // with the filter methods already dropped off it, so a conditional filter has to
@@ -94,9 +111,10 @@ export default async function TeachPage() {
   // not. Both used to come out of this line as the same `data: null`.
   const noBatchesOfMine = mine?.length === 0
 
-  const { data: batches } = noBatchesOfMine
-    ? { data: null }
-    : await batchQuery.order('start_time', { ascending: true, nullsFirst: false })
+  const { data: batches } =
+    noBatchesOfMine || scopeUnreadable
+      ? { data: null }
+      : await batchQuery.order('start_time', { ascending: true, nullsFirst: false })
 
   const { data: sessions } = await supabase
     .from('attendance_sessions')

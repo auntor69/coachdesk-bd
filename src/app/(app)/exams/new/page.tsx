@@ -48,14 +48,28 @@ export default async function NewExamPage() {
   // message that reads like a bug in the product rather than a batch that was never
   // theirs. The boundary is real; this list simply has to agree with it beforehand.
   const isAdmin = isStaffAdmin(session)
-  const mine = isAdmin ? null : await myTeacherIds()
+  const scope = isAdmin ? null : await myTeacherIds()
 
   /*
    * A teacher who holds no teacher row teaches nothing, so the batch read below is
    * skipped rather than sent — and skipped has to be told apart from failed, which
    * is the whole of what this flag is for. Both used to arrive as the same `null`.
    */
+  const mine = scope !== null && 'ids' in scope ? scope.ids : null
   const noBatchesOfMine = mine?.length === 0
+
+  /*
+   * And a staff list that did not arrive is a third thing, told apart from the other
+   * two here rather than by the query.
+   *
+   * `null` from a staff-admin means "offer every batch in the centre". Read that way,
+   * a failed read would have offered a teacher the whole centre's batches on a form
+   * whose insert is checked against exams_teacher_insert — so they would pick one,
+   * submit, and be told the exam could not be created, which is the exact failure the
+   * comment above this was written to remove. Better to say nothing than to offer a
+   * choice the boundary will refuse.
+   */
+  const scopeUnreadable = scope !== null && 'unreadable' in scope
 
   let batchQuery = supabase
     .from('batches')
@@ -69,7 +83,7 @@ export default async function NewExamPage() {
     // An empty `mine` would be `in.()`, which PostgREST accepts and answers with
     // nothing — but the ordering has to come last, so the filter cannot be applied
     // after `.order()` returns a transform builder that no longer has `.in()`.
-    noBatchesOfMine
+    noBatchesOfMine || scopeUnreadable
       ? { data: null }
       : batchQuery.order('start_time', { ascending: true, nullsFirst: false }),
     supabase

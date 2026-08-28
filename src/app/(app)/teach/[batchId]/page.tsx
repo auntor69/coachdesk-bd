@@ -90,7 +90,40 @@ export default async function AttendancePage({
   // /teach may well have listed it to them last month, so there is nothing left to
   // hide — and the 403 screen says the one useful thing, which is that the owner
   // decides who teaches what.
-  const mine = isStaffAdmin(session) ? null : await myTeacherIds()
+  const scope = isStaffAdmin(session) ? null : await myTeacherIds()
+
+  /*
+   * AND A CHECK THAT COULD NOT BE MADE IS NOT A CHECK THAT PASSED.
+   *
+   * `null` below is a staff-admin, for whom there is nothing to check. A staff list
+   * that did not arrive was the same `null`, so the guard under this simply did not
+   * run: a teacher reached any batch at their centre, and what they got was the screen
+   * the 403 exists to prevent — an empty roster under "no students in this batch",
+   * because the enrolment read behind it is scoped by app.teaches_batch and answers
+   * honestly. Two wrong sentences from one dropped read, and the milder of them is a
+   * teacher being told a full batch is empty.
+   *
+   * So the register is not drawn. Not the 403 either, which would say the owner
+   * decides who teaches what — true, and not what happened.
+   */
+  if (scope !== null && 'unreadable' in scope) {
+    return (
+      <div className="flex flex-col gap-4">
+        <Link
+          href="/teach"
+          className="inline-flex min-h-tap items-center text-ink-soft hover:text-ink"
+        >
+          ← {t.title}
+        </Link>
+        <h1 className="text-xl font-bold text-ink">{batch.name}</h1>
+        <Card className="border-late/30 bg-late/5">
+          <p className="font-medium text-ink">{t.unreadable}</p>
+        </Card>
+      </div>
+    )
+  }
+
+  const mine = scope !== null && 'ids' in scope ? scope.ids : null
   if (mine && (!batch.teacher_id || !mine.includes(batch.teacher_id))) forbidden()
 
   const [

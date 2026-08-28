@@ -319,14 +319,24 @@ type TeacherPerms = Record<PermissionKey, boolean>
  * third state and not a row of falses: `bootstrap_center` leaves the owner's own
  * teacher row that way, and the two defaults read that absence in opposite
  * directions. See canManageExams and canReadFees.
+ *
+ * AND THE WHOLE THING IS NULL WHEN THE READ DID NOT ARRIVE, which is a fourth
+ * state and used to be the same as the first. `(data ?? [])` turned a dropped
+ * query into an empty staff list, and an empty staff list is a person who teaches
+ * nothing and may do nothing — so a teacher whose one row failed to load was told
+ * by /teach that none of the batches were theirs, and by the roster screen that
+ * their owner had taken their admissions box away. Every reader of this now has to
+ * say which of the two it means.
  */
 const myTeacherRows = cache(
-  async (): Promise<{ id: string; perms: TeacherPerms | null }[]> => {
+  async (): Promise<{ id: string; perms: TeacherPerms | null }[] | null> => {
+    // Not a failure: nobody signed in, or signed in and attached to no centre, holds
+    // no teacher rows anywhere. An answer, and the same answer every time.
     const session = await getSession()
     if (!session?.active) return []
 
     const supabase = await createClient()
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from('teachers')
       // Spelled out rather than joined from PERMISSION_KEYS, because PostgREST's
       // types are inferred from the literal: a computed select string types every
@@ -345,7 +355,12 @@ const myTeacherRows = cache(
       .eq('user_id', session.userId)
       .eq('active', true)
 
-    return (data ?? []).map((row) => {
+    // A non-head select answers `[]` for a member who holds no rows and `null` only
+    // when the query failed, so `error` and the null say the same thing here and
+    // either one is enough to refuse to answer.
+    if (error || !data) return null
+
+    return data.map((row) => {
       // The embed is an object for a to-one relation; PostgREST types it loosely
       // enough that the unwrap costs nothing. Same shape as center_members above.
       const perms = Array.isArray(row.teacher_permissions)
@@ -355,6 +370,23 @@ const myTeacherRows = cache(
     })
   },
 )
+
+/**
+ * Either the reader's `teachers.id` values, or the fact that they could not be read.
+ *
+ * A two-armed object rather than `string[] | null`, and the shape is the whole point:
+ * four of the five callers below already use `null` to mean "this reader is a
+ * staff-admin, do not filter the list at all". A nullable return would have been
+ * absorbed straight into that — silently, with the compiler agreeing — and the
+ * absorbed value is the widest possible answer. A teacher whose staff list did not
+ * load would have been handed every batch in the centre instead of their two, on the
+ * screen whose entire job is to know the difference.
+ *
+ * So the two cannot be assigned to one another. `'unreadable' in scope` is a
+ * decision each caller has to write down, and the four that filter write it down
+ * differently to the one that stores a column.
+ */
+export type TeacherScope = { ids: string[] } | { unreadable: true }
 
 /**
  * The `teachers.id` values the reader holds at the active centre — the app-side
@@ -369,11 +401,12 @@ const myTeacherRows = cache(
  * roster. RLS was not the thing that was broken, so this is not the layer that
  * fixes it — the screen simply has to ask for what it means.
  *
- * Empty for a staff-admin who holds no teacher row, which is why callers check
- * `isStaffAdmin` first rather than filtering on this and finding nothing.
+ * `{ ids: [] }` for a staff-admin who holds no teacher row, which is why callers
+ * check `isStaffAdmin` first rather than filtering on this and finding nothing.
  */
-export const myTeacherIds = cache(async (): Promise<string[]> => {
-  return (await myTeacherRows()).map((row) => row.id)
+export const myTeacherIds = cache(async (): Promise<TeacherScope> => {
+  const rows = await myTeacherRows()
+  return rows === null ? { unreadable: true } : { ids: rows.map((row) => row.id) }
 })
 
 /* -------------------------------------------------------------------------- */
@@ -402,6 +435,16 @@ export const myTeacherIds = cache(async (): Promise<string[]> => {
 /* about what was paid for them, and a founder correcting a plan by hand must  */
 /* not blank a working teacher's screens as a side effect. Entitlement lives   */
 /* one layer in, here — narrower than the boundary, never wider.               */
+/*                                                                            */
+/* All five also answer false when the staff list could not be read at all,    */
+/* and that is the same rule pointing at a different cause: the app may be     */
+/* narrower than the boundary and must never be wider, so a permission that    */
+/* could not be checked is not granted. It costs a teacher a marks field or a  */
+/* column of figures for as long as the read keeps failing, which is a screen  */
+/* that says less than it could rather than one that says something untrue.    */
+/* requirePermission is where that false stops being enough — a whole screen   */
+/* refused reads as an owner having taken something away, so it asks these     */
+/* rows one more question before it says so.                                   */
 /* -------------------------------------------------------------------------- */
 
 /**
@@ -428,6 +471,9 @@ export const canManageExams = cache(async (): Promise<boolean> => {
   if (session.active.role !== 'teacher') return false
 
   const rows = await myTeacherRows()
+  // Unread, not unpermitted — see the block above. Ahead of the empty check because
+  // the two are different facts and only one of them is about this person.
+  if (rows === null) return false
   if (rows.length === 0) return false
   return !rows.some((row) => row.perms?.can_manage_exams === false)
 })
@@ -452,6 +498,8 @@ export const canSendSms = cache(async (): Promise<boolean> => {
   if (session.active.role !== 'teacher') return false
 
   const rows = await myTeacherRows()
+  // As above: a read that failed spends nothing rather than spending on a guess.
+  if (rows === null) return false
   if (rows.length === 0) return false
   return !rows.some((row) => row.perms?.can_send_sms === false)
 })
@@ -486,7 +534,12 @@ export const canReadFees = cache(async (): Promise<boolean> => {
   if (!hasStaff(session.plan)) return false
   if (session.active.role !== 'teacher') return false
 
-  return (await myTeacherRows()).some((row) => row.perms?.can_view_fees === true)
+  const rows = await myTeacherRows()
+  // The default is already no, so this line changes nothing about what renders — it
+  // is here so the reason is written down rather than inferred from `.some()` of
+  // nothing, which is how the other four used to answer this too.
+  if (rows === null) return false
+  return rows.some((row) => row.perms?.can_view_fees === true)
 })
 
 /**
@@ -522,9 +575,11 @@ export const canManageStudents = cache(async (): Promise<boolean> => {
   if (!hasStaff(session.plan)) return false
   if (session.active.role !== 'teacher') return false
 
-  return (await myTeacherRows()).some(
-    (row) => row.perms?.can_manage_students === true,
-  )
+  const rows = await myTeacherRows()
+  // See canReadFees. The screens behind this one throw rather than render, so the
+  // false is picked up again by requirePermission, which has more to say about it.
+  if (rows === null) return false
+  return rows.some((row) => row.perms?.can_manage_students === true)
 })
 
 /**
@@ -551,9 +606,10 @@ export const canManageBatches = cache(async (): Promise<boolean> => {
   if (!hasStaff(session.plan)) return false
   if (session.active.role !== 'teacher') return false
 
-  return (await myTeacherRows()).some(
-    (row) => row.perms?.can_manage_batches === true,
-  )
+  const rows = await myTeacherRows()
+  // See canManageStudents.
+  if (rows === null) return false
+  return rows.some((row) => row.perms?.can_manage_batches === true)
 })
 
 /**
@@ -590,12 +646,40 @@ const ROSTER_CHECK: Record<RosterPermission, () => Promise<boolean>> = {
  *
  * Throws like the require* helpers, for the Server Actions that catch. Pages call
  * pagePermission below.
+ *
+ * WHY THE REFUSAL IS ASKED ABOUT TWICE. The check above answers false for a
+ * permission it could not read, which is the right answer to give a *part* of a
+ * screen — a marks field, a column of figures — and the wrong one to build a whole
+ * screen out of. `forbidden` renders "you do not have access to this", and to a
+ * teacher who opened the roster they were admitting students to yesterday that is
+ * not a failure they can see: it is their owner having unticked a box overnight.
+ * What follows is a message to the owner, who looks at the checkbox, finds it
+ * ticked, and now has a product that lies to one of them.
+ *
+ * So a false that came from a read rather than from a decision is separated out
+ * here, at the one place a permission closes a door. Only for a teacher on a plan
+ * that sells the delegation: a staff-admin never reached this line, and a
+ * downgraded centre is refused by its plan whatever the staff list says, so
+ * neither is owed the extra question. `myTeacherRows` is cached and was already
+ * asked by the check above, so for the reader this is about it costs nothing.
  */
 export async function requirePermission(
   permission: RosterPermission,
 ): Promise<CenterSession> {
   const session = await requireCenter()
   if (await ROSTER_CHECK[permission]()) return session
+
+  if (
+    session.active.role === 'teacher' &&
+    hasStaff(session.plan) &&
+    (await myTeacherRows()) === null
+  ) {
+    throw new AuthError(
+      'unreadable',
+      'This account’s permissions could not be read just now.',
+    )
+  }
+
   throw new AuthError(
     'forbidden',
     `Needs manager or above, or ${permission}; this account is ${session.active.role}.`,
