@@ -427,12 +427,17 @@ export async function renameSubject(
   //
   // No cap check and no use check. A rename cannot break anything pointing here,
   // which is exactly why it is the repair every refusal below recommends.
-  const { data: before } = await supabase
+  const { data: before, error: beforeError } = await supabase
     .from('subjects')
     .select('id')
     .eq('coaching_center_id', session.active.centerId)
     .eq('id', subjectId)
     .maybeSingle()
+
+  // A rename is the repair every other refusal on this screen recommends, and
+  // refused it reads worst of all: "that subject is not on your list" about the
+  // row whose name the reader has just typed into the box. See readFailed.
+  if (beforeError) return { error: t.errors.readFailed }
 
   if (!before) return { error: t.subjects.errors.notFound }
 
@@ -477,12 +482,16 @@ export async function setSubjectActive(
 
   const supabase = await createClient()
 
-  const { data: before } = await supabase
+  const { data: before, error: beforeError } = await supabase
     .from('subjects')
     .select('id, active')
     .eq('coaching_center_id', session.active.centerId)
     .eq('id', subjectId)
     .maybeSingle()
+
+  // The switch. "Not on your list" is read as the subject having gone already, so
+  // the owner adds it back, and then two names mean one subject.
+  if (beforeError) return { error: t.errors.readFailed }
 
   if (!before) return { error: t.subjects.errors.notFound }
 
@@ -541,12 +550,16 @@ export async function deleteSubject(
 
   const supabase = await createClient()
 
-  const { data: before } = await supabase
+  const { data: before, error: beforeError } = await supabase
     .from('subjects')
     .select('id')
     .eq('coaching_center_id', session.active.centerId)
     .eq('id', subjectId)
     .maybeSingle()
+
+  // The delete button, where "not on your list" is believed on the spot. The
+  // subject is still there, and so is every batch and exam hanging off it.
+  if (beforeError) return { error: t.errors.readFailed }
 
   if (!before) return { error: t.subjects.errors.notFound }
 
@@ -609,12 +622,15 @@ export async function renameExamType(
 
   const supabase = await createClient()
 
-  const { data: before } = await supabase
+  const { data: before, error: beforeError } = await supabase
     .from('exam_types')
     .select('id')
     .eq('coaching_center_id', session.active.centerId)
     .eq('id', examTypeId)
     .maybeSingle()
+
+  // The same rename one entity over, and the same misreading.
+  if (beforeError) return { error: t.errors.readFailed }
 
   if (!before) return { error: t.examTypes.errors.notFound }
 
@@ -656,12 +672,16 @@ export async function setExamTypeActive(
 
   const supabase = await createClient()
 
-  const { data: before } = await supabase
+  const { data: before, error: beforeError } = await supabase
     .from('exam_types')
     .select('id, active')
     .eq('coaching_center_id', session.active.centerId)
     .eq('id', examTypeId)
     .maybeSingle()
+
+  // The kind's switch. An owner who believes it has gone adds it again, and then
+  // one term's results sit under two kinds with the same name on the report.
+  if (beforeError) return { error: t.errors.readFailed }
 
   if (!before) return { error: t.examTypes.errors.notFound }
 
@@ -702,12 +722,16 @@ export async function deleteExamType(
 
   const supabase = await createClient()
 
-  const { data: before } = await supabase
+  const { data: before, error: beforeError } = await supabase
     .from('exam_types')
     .select('id')
     .eq('coaching_center_id', session.active.centerId)
     .eq('id', examTypeId)
     .maybeSingle()
+
+  // And its delete button. Nothing has been removed, which is the thing worth
+  // saying to someone who just pressed it and was told the kind was not there.
+  if (beforeError) return { error: t.errors.readFailed }
 
   if (!before) return { error: t.examTypes.errors.notFound }
 
@@ -938,12 +962,17 @@ export async function updateBatch(
   // belonging to the other one. The old subject and the old active flag are both
   // needed — one decides whether the enrollments have to follow, the other whether
   // this save is a reopening that has to pass the plan cap.
-  const { data: before } = await supabase
+  const { data: before, error: beforeError } = await supabase
     .from('batches')
     .select('id, subject_id, active')
     .eq('coaching_center_id', session.active.centerId)
     .eq('id', batchId)
     .maybeSingle()
+
+  // The edit form carries the batch's own name in it, so "could not be found" is
+  // a bug report at best. At worst the owner makes a second batch, and the
+  // enrolments, the register and the marks all stay with the first one.
+  if (beforeError) return { error: t.errors.readFailed }
 
   if (!before) return { error: t.batches.errors.notFound }
 
@@ -1268,12 +1297,17 @@ export async function updateStudent(
   // would let an id from the other one through. The previous status is needed
   // anyway — it decides whether this save is a reactivation, and a reactivation has
   // to pass the plan cap.
-  const { data: before } = await supabase
+  const { data: before, error: beforeError } = await supabase
     .from('students')
     .select('id, status')
     .eq('coaching_center_id', session.active.centerId)
     .eq('id', studentId)
     .maybeSingle()
+
+  // The dearest of the eleven. "Student not found" and the child is admitted a
+  // second time; the enrolments, the attendance and the bills stay behind on the
+  // first record, and nothing in this product can put the two back together.
+  if (beforeError) return { error: t.errors.readFailed }
 
   if (!before) return { error: t.students.errors.notFound }
 
@@ -2107,12 +2141,17 @@ export async function toggleTeacherActive(
   const supabase = await createClient()
   const centerId = session.active.centerId
 
-  const { data: teacher } = await supabase
+  const { data: teacher, error: teacherError } = await supabase
     .from('teachers')
     .select('id, user_id')
     .eq('id', String(formData.get('teacherId') ?? ''))
     .eq('coaching_center_id', centerId)
     .maybeSingle()
+
+  // The switch that would have turned this teacher off. It did not: they are
+  // still on the list and can still sign in, which is the opposite of what
+  // "teacher not found" tells the owner who pressed it.
+  if (teacherError) return { error: t.errors.readFailed }
 
   if (!teacher) return { error: t.teachers.errors.notFound }
 
@@ -2251,12 +2290,18 @@ export async function giveTeacherLogin(
   const supabase = await createClient()
   const centerId = session.active.centerId
 
-  const { data: teacher } = await supabase
+  const { data: teacher, error: teacherError } = await supabase
     .from('teachers')
     .select('id, name, user_id, active')
     .eq('id', String(formData.get('teacherId') ?? ''))
     .eq('coaching_center_id', centerId)
     .maybeSingle()
+
+  // Read before an account is created, so a failed read here is worth a sentence
+  // of its own: an owner told the teacher is not found adds the teacher again and
+  // gives the login to the copy, leaving the batches on one row and the account
+  // on the other.
+  if (teacherError) return { error: t.errors.readFailed }
 
   if (!teacher) return { error: t.teachers.errors.notFound }
 
@@ -2382,12 +2427,16 @@ export async function resetTeacherPassword(
 
   // The account is read off our own teacher row and never taken from the form. A
   // `user_id` in a POST body is a request to change a stranger's password.
-  const { data: teacher } = await supabase
+  const { data: teacher, error: teacherError } = await supabase
     .from('teachers')
     .select('id, user_id')
     .eq('id', String(formData.get('teacherId') ?? ''))
     .eq('coaching_center_id', centerId)
     .maybeSingle()
+
+  // And the password screen. Waiting a moment costs nothing here; believing the
+  // teacher is gone costs a second teacher and a second account.
+  if (teacherError) return { error: t.errors.readFailed }
 
   if (!teacher) return { error: t.teachers.errors.notFound }
 

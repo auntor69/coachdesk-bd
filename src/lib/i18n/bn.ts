@@ -3606,6 +3606,9 @@ export const bn = {
        */
       saveFailed: 'সেভ করা যায়নি। আবার চেষ্টা করুন।',
       changeFailed: 'বদলানো যায়নি। আবার চেষ্টা করুন।',
+      /** See en.settings.errors.readFailed — one sentence for eleven actions. */
+      readFailed:
+        'এখন পড়া গেল না, তাই কোনো কিছু বদলায়নি। এটি তালিকায় ঠিকই আছে — একটু পরে আবার চেষ্টা করুন।',
     },
 
     /**

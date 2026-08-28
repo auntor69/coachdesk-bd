@@ -2162,6 +2162,27 @@ export const en: Dictionary = {
       createFailed: 'That was not created. Please try again.',
       saveFailed: 'That was not saved. Please try again.',
       changeFailed: 'That did not change. Please try again.',
+      /**
+       * Every action on this screen starts by reading the row it is about to change,
+       * and eleven of them answered a read that did not arrive with their own
+       * `notFound` — "that subject is not on your list", "teacher not found", "that
+       * batch could not be found".
+       *
+       * Shared rather than one sentence per entity, unlike most of this dictionary,
+       * because the mistake is identical in all eleven and the fix reads the same from
+       * every side: the row is there, nothing about it changed. `saveFailed` above it
+       * is the model — settings has always spoken about the outcome rather than the
+       * noun, since the reader is looking at the row when they read the sentence.
+       *
+       * What the wrong version costs is a second copy. An owner told a subject is not
+       * on their list adds it again, and then batches, exams and marks are split across
+       * two names that mean the same thing; told a student is not found, they admit the
+       * child a second time and the enrolments, register and bills stay with the first
+       * record. Both are the expensive kind of duplicate, because nothing in the
+       * product can merge them afterwards.
+       */
+      readFailed:
+        'Could not read that just now, so nothing has changed. It is still on your list — please try again in a moment.',
     },
 
     hub: {
