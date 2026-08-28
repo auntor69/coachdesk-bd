@@ -21,7 +21,7 @@ import {
   PROGRESS_COUNT_COLUMNS,
   type ProgressCountRow,
 } from '@/lib/students/progress'
-import { sumTaka, tallyOutstanding, formatTaka as taka } from '@/lib/money'
+import { tallyOutstanding, formatTaka as taka } from '@/lib/money'
 import { dict, DEFAULT_LOCALE } from '@/lib/i18n'
 import { ReminderEntry } from '@/app/(app)/fees/reminder-entry'
 import { AttendanceRates } from './attendance-rates'
@@ -153,7 +153,7 @@ export default async function DashboardPage() {
     { count: studentCount },
     { data: batchRows },
     owing,
-    { data: payments },
+    { data: collectedRow },
     { data: todaySessions },
     chased,
     { data: rates },
@@ -192,16 +192,21 @@ export default async function DashboardPage() {
     // Collected this month, by payment date rather than by invoice period — the
     // owner is asking "what came in", not "what was billed".
     //
-    // The +06:00 offset is the whole point of doing this in the query. paid_at is
-    // a timestamptz and PostgREST hands it back in UTC, so taking the first ten
-    // characters of the string gives a UTC date: a payment at 1am Dhaka on the
-    // 1st is 19:00 UTC on the last of the previous month, and would be counted
-    // against a month the owner has already closed and reported.
+    // One row, summed by Postgres, and the Dhaka month boundary is the view's
+    // problem now. It used to be a `+06:00` string built on this line and again on
+    // the fee board, because paid_at is a timestamptz that PostgREST hands back in
+    // UTC: a payment at 1am Dhaka on the 1st is 19:00 UTC on the last of the
+    // previous month, and would be counted against a month the owner has already
+    // closed and reported. Two screens each holding that fact is one screen away
+    // from getting it wrong.
+    //
+    // maybeSingle, because a month nobody has paid in has no row at all.
     supabase
-      .from('fee_payments')
-      .select('amount_bdt')
+      .from('fee_collections_month')
+      .select('collected_bdt')
       .eq('coaching_center_id', session.active.centerId)
-      .gte('paid_at', `${period}T00:00:00+06:00`),
+      .eq('period_month', period)
+      .maybeSingle(),
     // Today's registers, one row per batch that has one — `unique (batch_id,
     // session_date)` is what makes a row count a batch count.
     //
@@ -358,7 +363,9 @@ export default async function DashboardPage() {
   // to the child's name rather than diluting the one number this card is for.
   const remainders = (owing ?? []).map((r) => Number(r.remaining_bdt ?? 0))
   const { outstanding } = tallyOutstanding(remainders)
-  const collected = sumTaka((payments ?? []).map((p) => Number(p.amount_bdt)))
+  // Number(), not sumTaka: one row, already added up in SQL, arriving as a string
+  // because numeric always does. No row means no payments this month.
+  const collected = Number(collectedRow?.collected_bdt ?? 0)
 
   // Biggest debt first: the call an owner makes before the others.
   const overdue = (owing ?? [])

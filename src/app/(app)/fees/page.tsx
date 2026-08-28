@@ -15,7 +15,7 @@ import {
   formatDate,
 } from '@/lib/bd/time'
 import { normalizeBdMobile } from '@/lib/bd/phone'
-import { sumTaka, tallyOutstanding, formatTaka } from '@/lib/money'
+import { tallyOutstanding, formatTaka } from '@/lib/money'
 import { searchTerms, matchesSearch, MAX_QUERY } from '@/lib/search'
 import { countChasesDue } from '@/lib/fees/reminder-schedule'
 import { cancelledBills } from '@/lib/fees/void'
@@ -78,9 +78,11 @@ const CANCELLED_OPEN_UP_TO = 5
  *
  * Every taka on this page is added up by Postgres, not here. amount_bdt is
  * numeric(10, 2), which JavaScript cannot represent exactly, so the per-invoice
- * arithmetic lives in the fee_invoice_balances view and the few cross-row totals
- * go through sumTaka. An owner checks this board against a bKash statement, and
- * a board that is off by a taka is a board they stop believing.
+ * arithmetic lives in the fee_invoice_balances view, the month's collection in
+ * fee_collections_month, and what remains — one addition over the rows already on
+ * the screen — goes through tallyOutstanding. An owner checks this board against a
+ * bKash statement, and a board that is off by a taka is a board they stop
+ * believing.
  *
  * What is shown: everything still outstanding, from any month, because old debt
  * is the debt worth chasing — plus this month's settled invoices, so the day's
@@ -140,7 +142,7 @@ export default async function FeesPage({
   // hand back the same row twice and skip another, and a duplicated invoice here
   // would be double-counted in what the centre is owed. The display orders in front
   // of it are untouched.
-  const [owing, settled, monthPayments, chased, cancelled, { data: center }] =
+  const [owing, settled, { data: collectedRow }, chased, cancelled, { data: center }] =
     await Promise.all([
       pageOrNull((from, to) =>
         supabase
@@ -169,19 +171,21 @@ export default async function FeesPage({
       // settled — a parent clearing June's bill in August is money collected in
       // August, and that is the number the owner is measuring themselves by.
       //
-      // The +06:00 offset is load-bearing. paid_at is a timestamptz and the
-      // boundary is a Dhaka calendar boundary; comparing against a bare date
-      // would place the cutoff at 6am Dhaka and drop the early-morning payments
-      // on the 1st into the previous month.
-      pageOrNull((from, to) =>
-        supabase
-          .from('fee_payments')
-          .select('amount_bdt')
-          .eq('coaching_center_id', session.active.centerId)
-          .gte('paid_at', `${thisMonth}T00:00:00+06:00`)
-          .order('id')
-          .range(from, to),
-      ),
+      // One row, summed by Postgres. This read used to be one row per payment
+      // added up here, which crosses the thousand-row ceiling at a centre being
+      // paid in instalments against a thousand invoices — and paging it, the
+      // interim fix, dragged all of them over the wire to produce a single figure.
+      // The Dhaka month boundary that used to be a `+06:00` string built on this
+      // line now lives in the view, where a third screen cannot forget it.
+      //
+      // No row at all is a month with no payments in it, which is why this is
+      // maybeSingle and not single.
+      supabase
+        .from('fee_collections_month')
+        .select('collected_bdt')
+        .eq('coaching_center_id', session.active.centerId)
+        .eq('period_month', thisMonth)
+        .maybeSingle(),
       // Reminders since the start of last month, newest first, so each row can
       // say when this family was last chased.
       //
@@ -290,7 +294,9 @@ export default async function FeesPage({
 
   const unpaid = rows.filter((r) => r.remaining > 0)
   const overdue = unpaid.filter((r) => r.daysLate > 0)
-  const collected = sumTaka((monthPayments ?? []).map((p) => Number(p.amount_bdt)))
+  // Number(), not sumTaka: there is one row and Postgres has already added it up.
+  // numeric arrives as a string, and a missing row is a month nobody has paid in.
+  const collected = Number(collectedRow?.collected_bdt ?? 0)
 
   // How many of those are due a message today. Counted through the shared
   // function rather than filtered here, so the number on this link cannot drift

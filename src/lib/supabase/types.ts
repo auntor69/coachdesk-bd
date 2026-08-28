@@ -2041,6 +2041,14 @@ export type Database = {
         }
         Relationships: []
       }
+      fee_collections_month: {
+        Row: {
+          coaching_center_id: string | null
+          period_month: string | null
+          collected_bdt: number | null
+        }
+        Relationships: []
+      }
       fee_invoice_balances: {
         Row: {
           id: string | null

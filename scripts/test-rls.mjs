@@ -845,6 +845,133 @@ check(
   `paid=${bal.paid_bdt} remaining=${bal.remaining_bdt}`,
 )
 
+// ---------------------------------------------------------------------------
+// This month in the cash box (20260811000035).
+//
+// The dashboard's first card and the fee board each read one number out of this
+// view now, where they used to pull a row per payment and add the column up in the
+// browser — a read that crosses PostgREST's silent thousand at a centre being paid
+// in instalments against a thousand invoices.
+//
+// The two 500.05 payments above make this the same exactness test as the one
+// before it: added as doubles they give 1000.0999999999999. Every assertion here
+// compares ::text, so a view that lost its numeric(12, 2) scale fails on this line
+// rather than on somebody's receipt.
+// ---------------------------------------------------------------------------
+
+console.log('\nThis month in the cash box (fee_collections_month):')
+
+/** This Dhaka month's total for one centre, as the view spells it, or null. */
+const collectedText = async (tx, center) =>
+  (
+    await tx.query(
+      `select collected_bdt::text as t from fee_collections_month
+       where coaching_center_id = $1
+         and period_month = (date_trunc('month', now() at time zone 'Asia/Dhaka'))::date`,
+      [center],
+    )
+  ).rows[0]?.t ?? null
+
+await asUser(db, ids.ownerA, async (tx) => {
+  const total = await collectedText(tx, centerA)
+  check(
+    'the month totals what Postgres added up, to the paisa',
+    total === '1000.10',
+    `got ${total}`,
+  )
+  check(
+    'and it is one row for the month, not one per payment',
+    (await n(tx, 'select count(*)::int as n from fee_collections_month')) === 1,
+  )
+})
+
+// 01:00 Dhaka on the first of this month is 19:00 UTC on the last day of the one
+// before. Slicing ten characters off the UTC string — the obvious way, and what the
+// two screens did before they built a +06:00 bound into the query — files this
+// payment under a month the owner has already closed, reported and screenshotted.
+const dawnPayment = (
+  await db.query(
+    `insert into fee_payments (coaching_center_id, invoice_id, student_id, amount_bdt, paid_at)
+     values ($1, $2, $3, 100,
+             (date_trunc('month', now() at time zone 'Asia/Dhaka') + interval '1 hour')
+               at time zone 'Asia/Dhaka')
+     returning id`,
+    [centerA, invoiceAli, stAli],
+  )
+).rows[0].id
+
+await asUser(db, ids.ownerA, async (tx) => {
+  const total = await collectedText(tx, centerA)
+  check(
+    'a payment taken at 1am on the 1st belongs to the month that just started',
+    total === '1100.10',
+    `got ${total}`,
+  )
+  check(
+    'and the month before it is not credited with a row at all',
+    (await n(
+      tx,
+      `select count(*)::int as n from fee_collections_month
+       where period_month = (date_trunc('month', now() at time zone 'Asia/Dhaka')
+                             - interval '1 month')::date`,
+    )) === 0,
+  )
+})
+await db.query('delete from fee_payments where id = $1', [dawnPayment])
+
+// A refund in this schema is a negative row — money is never edited or deleted,
+// only countered — so the plain sum has to come down by itself, with no clause
+// anywhere about refunds.
+const refunded = (
+  await db.query(
+    `insert into fee_payments (coaching_center_id, invoice_id, student_id, amount_bdt)
+     values ($1, $2, $3, -100) returning id`,
+    [centerA, invoiceAli, stAli],
+  )
+).rows[0].id
+
+await asUser(db, ids.ownerA, async (tx) => {
+  const total = await collectedText(tx, centerA)
+  check('a refund comes back out of the month, not into it', total === '900.10', `got ${total}`)
+})
+await db.query('delete from fee_payments where id = $1', [refunded])
+
+// The leak, if there were one, would not be a forbidden name on a screen. It would
+// be a number that is too big, on a card that says "collected this month" — which is
+// exactly the kind of wrong nobody notices. Centre B has no money at all, so any
+// answer other than none is one.
+await asUser(db, ids.ownerB, async (tx) => {
+  check(
+    "owner B's cash box is empty, and stays empty while centre A's fills",
+    (await n(tx, 'select count(*)::int as n from fee_collections_month')) === 0,
+  )
+})
+
+await asUser(db, ids.karim, async (tx) => {
+  check(
+    'a teacher with no fee permission gets no month at all, not a zero',
+    (await n(tx, 'select count(*)::int as n from fee_collections_month')) === 0,
+  )
+})
+
+// The guardian's own child's money, which in this fixture is all the money centre A
+// has taken — so this asserts that their row exists and not yet that it stops at
+// their child. The sharper version of that is in the can_view_fees section below,
+// where a second child's payment exists to be excluded.
+await asUser(db, ids.guardianUser, async (tx) => {
+  check(
+    "the guardian is shown what they have paid, to the paisa",
+    (await collectedText(tx, centerA)) === '1000.10',
+  )
+})
+
+await asUser(db, null, async (tx) => {
+  check(
+    'a signed-out reader gets no total',
+    (await n(tx, 'select count(*)::int as n from fee_collections_month')) === 0,
+  )
+})
+
 // Leave the seed as found: the sections below assert exact counts, and a
 // payment or a changed fee left behind here would fail one of them for a reason
 // that has nothing to do with what it is testing.
@@ -3289,6 +3416,10 @@ await asUser(db, ids.ownerA, async (tx) => {
       invoiceMim,
     ])) === 2,
   )
+  // The centre's month, both children in it. The number the teacher below must not
+  // be able to reach.
+  const centreMonth = await collectedText(tx, centerA)
+  check("so the owner's cash box holds both payments", centreMonth === '500.00', `got ${centreMonth}`)
 })
 
 // No row at all is the state bootstrap_center leaves an owner's own teacher row in,
@@ -3370,6 +3501,20 @@ await asUser(db, ids.karim, async (tx) => {
     (await n(tx, 'select count(*)::int as n from fee_payments where invoice_id = $1', [
       invoiceMim,
     ])) === 0,
+  )
+
+  // THE ONE THAT MATTERS FOR AN AGGREGATE. The board above hides Mim's row, and
+  // anyone can see that it does. A total cannot show what it is hiding: had this view
+  // been written centre-wide, or with a staff-admin gate that fell through to the
+  // centre's own rows, a fee-visible teacher would read 500 here — the centre's month,
+  // wearing the name of their own — and every number on the page would still look
+  // like a number. It is 300 because the view is security_invoker and the caller's own
+  // fee_payments policy decides which payments reach the sum.
+  const teacherMonth = await collectedText(tx, centerA)
+  check(
+    "the teacher's month is their own batches' money and nothing else",
+    teacherMonth === '300.00',
+    `got ${teacherMonth}`,
   )
 
   // What the box must NOT also grant. can_manage_students is a separate checkbox an
