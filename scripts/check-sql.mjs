@@ -56,6 +56,28 @@ if (files.length === 0) {
   process.exit(1)
 }
 
+/*
+ * THE FILENAME IS A KEY, NOT A LABEL. Supabase records an applied migration in
+ * `supabase_migrations.schema_migrations` under the 14-digit prefix, and its
+ * GitHub integration decides what a database is missing by comparing that list
+ * to these filenames. A file the prefix cannot be read from is a file the
+ * platform can never mark as done, so it gets applied again on every deploy —
+ * which for anything creating a type, table or policy means a red check on every
+ * commit until someone notices. This repo shipped exactly that failure for
+ * thirty-four migrations, from the other direction (see scripts/db-push.mjs), so
+ * the shape of the name is now a gate rather than a convention.
+ *
+ * Lowercase and underscores only in the name half: it becomes the `name` column,
+ * and a space or a capital there is the kind of thing that works locally and
+ * argues with tooling later.
+ */
+const NAME_SHAPE = /^\d{14}_[a-z0-9_]+\.sql$/
+
+for (const file of files.filter((f) => !NAME_SHAPE.test(f))) {
+  console.log(`FAIL ${file} — name must be <14 digits>_<lower_snake_case>.sql`)
+  failed = true
+}
+
 for (const file of files) {
   const sql = readFileSync(`${dir}/${file}`, 'utf8')
   try {
