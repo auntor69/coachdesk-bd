@@ -1647,6 +1647,17 @@ export const en: Dictionary = {
       planLimit: 'This plan is full. Changing plan makes room.',
       batchFull: (batches: string, cap: number) =>
         `${batches} — that batch is full. This plan holds ${cap} ${cap === 1 ? 'student' : 'students'} per batch. Put them in another batch, or change plan.`,
+      /**
+       * The plan check itself could not be made — the count came back as no answer
+       * rather than as a number. Says nothing was added, because that is the part
+       * the owner needs: they will otherwise reload, see nothing, and paste again.
+       *
+       * A separate sentence from planLimit on purpose. Telling somebody their plan
+       * is full when the truth is that we could not look sends a paying centre to
+       * the upgrade screen for a network blip, and sends a free one away for good.
+       */
+      limitUnknown:
+        'Could not check whether this plan has room, so nothing was added. Please try again.',
       staffNeedsCenter: 'Staff and permissions come with the Coaching Center plan.',
       addFailed: 'That was not added. Please try again.',
       createFailed: 'That was not created. Please try again.',

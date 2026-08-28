@@ -137,15 +137,27 @@ function isSession(value: CenterSession | ActionState): value is CenterSession {
 }
 
 /**
- * Counts the rows that a plan limit applies to, then refuses if one more would
- * exceed it. `active`/`status` filters matter: a deactivated batch should not
- * hold a slot hostage on the one-batch free plan.
+ * Counts the rows that a plan limit applies to, then returns the refusal to send
+ * back — or null when there is room for one more. `active`/`status` filters matter:
+ * a deactivated batch should not hold a slot hostage on the one-batch free plan.
+ *
+ * IT HANDS BACK THE MESSAGE RATHER THAN A BOOLEAN, and that is the whole point of
+ * the shape. It used to answer true or false, and a count that came back as no
+ * answer at all was read as zero rows — so a failed read said "this centre has
+ * nothing yet", which is the one answer that opens the gate. Nothing else enforces
+ * these caps: there is no trigger behind them, this function is the limit. A
+ * boolean has nowhere to put "could not tell", and the caller that has to decide
+ * what to do with a third state is the caller that gets it wrong.
+ *
+ * `count: 'exact', head: true` is typed `number | null` and null means the query
+ * failed. It is not zero, and the difference is a free plan quietly taking a second
+ * batch on the day Supabase hiccups.
  */
-async function overLimit(
+async function limitRefusal(
   session: CenterSession,
   table: 'batches' | 'students' | 'teachers' | 'subjects',
   key: LimitKey,
-): Promise<boolean> {
+): Promise<ActionState | null> {
   const supabase = await createClient()
   const centerId = session.active.centerId
   const head = { count: 'exact' as const, head: true }
@@ -179,20 +191,28 @@ async function overLimit(
               .eq('coaching_center_id', centerId)
               .eq('active', true)
 
-  return wouldExceed(session.plan, key, count ?? 0)
+  const t = dict(session.locale).settings.errors
+  if (count === null) return { error: t.limitUnknown }
+  return wouldExceed(session.plan, key, count) ? { error: t.planLimit } : null
 }
 
 /**
  * Which of these batches cannot take `adding` more students.
  *
- * Its own function rather than another arm of `overLimit`, because the question is
- * a different shape: the cap is per batch, so the count has to be taken once per
+ * Its own function rather than another arm of `limitRefusal`, because the question
+ * is a different shape: the cap is per batch, so the count has to be taken once per
  * batch, and the refusal has to name the batch that is full. An owner enrolling
  * one student into three batches who is told only "this plan is full" has to guess
  * which of the three to change — and the centre may well have room in the other
  * two, in which case nobody needs to pay us anything to fix it.
  *
  * Returns names, in the paste's own words, for that reason.
+ *
+ * Null means neither read came back and the question is unanswered — not that every
+ * batch has room, which is what `?? []` on either query used to say. An unreadable
+ * roster made no batch look full; an unreadable name list turned a batch that *was*
+ * full into an empty array of names, and the caller checks the length. Both ended
+ * with the seat cap not applying.
  *
  * Empty on an uncapped plan without touching the database. The centre tiers have
  * no per-batch cap at all and this runs on the path every new student takes, so
@@ -206,7 +226,7 @@ async function fullBatches(
   session: CenterSession,
   batchIds: string[],
   adding: number,
-): Promise<string[]> {
+): Promise<string[] | null> {
   const cap = session.plan.maxStudentsPerBatch
   if (cap === null || batchIds.length === 0 || adding <= 0) return []
 
@@ -216,29 +236,33 @@ async function fullBatches(
   //
   // Active enrollments only, on the same reasoning as every other cap here: a
   // student who left the batch should not hold a seat nobody sits in.
-  const { data: taken } = await supabase
+  const { data: taken, error: takenError } = await supabase
     .from('enrollments')
     .select('batch_id')
     .eq('coaching_center_id', session.active.centerId)
     .eq('status', 'active')
     .in('batch_id', batchIds)
 
+  if (takenError || !taken) return null
+
   const seats = new Map<string, number>()
-  for (const row of taken ?? []) {
+  for (const row of taken) {
     seats.set(row.batch_id, (seats.get(row.batch_id) ?? 0) + 1)
   }
 
   const full = batchIds.filter((id) => (seats.get(id) ?? 0) + adding > cap)
   if (full.length === 0) return []
 
-  const { data: named } = await supabase
+  const { data: named, error: namedError } = await supabase
     .from('batches')
     .select('name')
     .eq('coaching_center_id', session.active.centerId)
     .in('id', full)
     .order('name')
 
-  return (named ?? []).map((b) => b.name)
+  if (namedError || !named) return null
+
+  return named.map((b) => b.name)
 }
 
 /**
@@ -251,19 +275,31 @@ async function fullBatches(
  *
  * Generic over the row so it can take the parser's output without this file
  * needing to name that type; all it looks at is the two fields in the key.
+ *
+ * Null when the roster could not be read, rather than "none of them are known".
+ * That fallback was the safe direction — every pasted line counted as new, so a
+ * capped plan refused the paste — but it refused it with the wrong sentence, and an
+ * owner told their plan is full when the truth is a failed read goes to the upgrade
+ * screen instead of tapping paste again.
+ *
+ * Unpaged on purpose, and it stays correct: the only caller skips this entirely on
+ * the uncapped tiers, so the roster it reads belongs to a plan that holds 150
+ * students. Nothing here would survive being called for a centre.
  */
 async function unknownRows<T extends { name: string; guardian_phone: string }>(
   supabase: SupabaseClient<Database>,
   centerId: string,
   ready: T[],
-): Promise<T[]> {
-  const { data: roster } = await supabase
+): Promise<T[] | null> {
+  const { data: roster, error } = await supabase
     .from('students')
     .select('name, guardian_phone')
     .eq('coaching_center_id', centerId)
 
+  if (error || !roster) return null
+
   const known = new Set(
-    (roster ?? []).map((s) => rosterKey(s.name, s.guardian_phone ?? '')),
+    roster.map((s) => rosterKey(s.name, s.guardian_phone ?? '')),
   )
   return ready.filter((s) => !known.has(rosterKey(s.name, s.guardian_phone)))
 }
@@ -288,9 +324,8 @@ export async function createSubject(
     return { error: nameTooLong(session.locale) }
   }
 
-  if (await overLimit(session, 'subjects', 'maxSubjects')) {
-    return { error: t.errors.planLimit }
-  }
+  const subjectLimit = await limitRefusal(session, 'subjects', 'maxSubjects')
+  if (subjectLimit) return subjectLimit
 
   const supabase = await createClient()
   const { error } = await supabase.from('subjects').insert({
@@ -460,9 +495,8 @@ export async function setSubjectActive(
     // Turning one back on is an addition as far as the plan is concerned, so it
     // passes the same cap createSubject does — checked before anything is written,
     // the way a reopened batch is.
-    if (await overLimit(session, 'subjects', 'maxSubjects')) {
-      return { error: t.errors.planLimit }
-    }
+    const limit = await limitRefusal(session, 'subjects', 'maxSubjects')
+    if (limit) return limit
   } else {
     // Turning one off frees a plan slot without stopping a single class, so a
     // subject a running batch still teaches may not go quiet. See subjectOffVerdict.
@@ -770,9 +804,8 @@ export async function createBatch(
     return { error: t.batches.errors.daysNeedTimes }
   }
 
-  if (await overLimit(session, 'batches', 'maxBatches')) {
-    return { error: t.errors.planLimit }
-  }
+  const batchLimit = await limitRefusal(session, 'batches', 'maxBatches')
+  if (batchLimit) return batchLimit
 
   const slot = SLOTS.has(rawSlot as BatchSlot) ? (rawSlot as BatchSlot) : null
 
@@ -917,9 +950,8 @@ export async function updateBatch(
   // A batch that was not counted against maxBatches and is about to be. Refused
   // before anything is written, so the batch stays exactly as it was.
   if (active && !before.active) {
-    if (await overLimit(session, 'batches', 'maxBatches')) {
-      return { error: t.errors.planLimit }
-    }
+    const limit = await limitRefusal(session, 'batches', 'maxBatches')
+    if (limit) return limit
   }
 
   // The subject is filtered through the centre's own rather than trusted, for the
@@ -1063,9 +1095,8 @@ export async function createStudent(
     return { error: t.students.errors.studentPhone }
   }
 
-  if (await overLimit(session, 'students', 'maxStudents')) {
-    return { error: t.errors.planLimit }
-  }
+  const studentLimit = await limitRefusal(session, 'students', 'maxStudents')
+  if (studentLimit) return studentLimit
 
   const supabase = await createClient()
 
@@ -1073,6 +1104,7 @@ export async function createStudent(
   // because the batch was full is a row the owner has to find and delete, and
   // they would reasonably assume the whole thing failed.
   const full = await fullBatches(supabase, session, batchIds, 1)
+  if (full === null) return { error: t.errors.limitUnknown }
   if (full.length > 0) {
     return {
       error: t.errors.batchFull(
@@ -1248,21 +1280,26 @@ export async function updateStudent(
   // A student who was not counted against maxStudents and is about to be. Checked
   // before anything is written, so a refusal leaves the roster exactly as it was.
   if (status === 'active' && before.status !== 'active') {
-    if (await overLimit(session, 'students', 'maxStudents')) {
-      return { error: t.errors.planLimit }
-    }
+    const limit = await limitRefusal(session, 'students', 'maxStudents')
+    if (limit) return limit
   }
 
   // Everything the batch checkboxes might change, decided before the first write
   // for the same reason: the per-batch cap has to refuse the whole save rather
   // than half of it.
-  const { data: existing } = await supabase
+  const { data: existing, error: existingError } = await supabase
     .from('enrollments')
     .select('id, batch_id, status')
     .eq('coaching_center_id', session.active.centerId)
     .eq('student_id', studentId)
 
-  const enrolments = existing ?? []
+  // A read that failed is not a student with no batches, and the `?? []` this
+  // replaces said it was. Read that way, the box the owner just unticked would be
+  // dropped on the floor and the save would report success, while every box they
+  // left ticked came back as an insert against a row that already exists.
+  if (existingError || !existing) return { error: t.errors.saveFailed }
+
+  const enrolments = existing
   const live = enrolments.filter((e) => e.status === 'active' || e.status === 'paused')
 
   // The checkbox set is authoritative only while the student is coming. Any other
@@ -1272,17 +1309,22 @@ export async function updateStudent(
   // endpoint, and a batch id from the other centre would otherwise become an
   // enrollment that RLS has no reason to refuse — the tenant column on the row would
   // be this centre's.
-  const wanted = new Set<string>(
-    status === 'active' && batchIds.length > 0
-      ? (
-          await supabase
-            .from('batches')
-            .select('id')
-            .eq('coaching_center_id', session.active.centerId)
-            .in('id', batchIds)
-        ).data?.map((b) => b.id) ?? []
-      : [],
-  )
+  let wantedIds: string[] = []
+  if (status === 'active' && batchIds.length > 0) {
+    const { data: mine, error: mineError } = await supabase
+      .from('batches')
+      .select('id')
+      .eq('coaching_center_id', session.active.centerId)
+      .in('id', batchIds)
+
+    // The same rule as above and a sharper consequence: nothing came back means
+    // none of those batches are this centre's, which ends every enrolment the
+    // student has. A failed read must not be allowed to say that.
+    if (mineError || !mine) return { error: t.errors.saveFailed }
+    wantedIds = mine.map((b) => b.id)
+  }
+
+  const wanted = new Set<string>(wantedIds)
 
   const toRevive = enrolments.filter((e) => e.status !== 'active' && wanted.has(e.batch_id))
   const toInsert = [...wanted].filter((id) => !enrolments.some((e) => e.batch_id === id))
@@ -1292,6 +1334,7 @@ export async function updateStudent(
   // the per-batch cap — and neither is written if any of them is full.
   const filling = [...toRevive.map((e) => e.batch_id), ...toInsert]
   const full = await fullBatches(supabase, session, filling, 1)
+  if (full === null) return { error: t.errors.limitUnknown }
   if (full.length > 0) {
     return {
       error: t.errors.batchFull(full.join(', '), session.plan.maxStudentsPerBatch ?? 0),
@@ -1444,14 +1487,21 @@ export async function importStudents(
   // to know which 65 are missing, and would have to diff two hundred lines.
   //
   // Only capped plans pay for the roster fetch — and a capped plan holds at most
-  // 300 students, so it is a small one. Rows that are already on the roster are
-  // taken out of the count first, or re-pasting a register to fix three names
-  // would be refused by a plan that has plenty of room for those three.
+  // 300 students, so it is a small one.
   const { count } = await supabase
     .from('students')
     .select('id', { count: 'exact', head: true })
     .eq('coaching_center_id', centerId)
     .eq('status', 'active')
+
+  // Asked only when the plan has a total to compare against, and refused rather
+  // than read as zero, for the reason `limitRefusal` carries. A paste is where it
+  // would cost the most: one failed count would not admit one row past the cap,
+  // it would admit eighty.
+  if (session.plan.maxStudents !== null && count === null) {
+    return { error: t.errors.limitUnknown }
+  }
+
   const room = roomFor(session.plan, 'maxStudents', count ?? 0)
   const perBatchCap = session.plan.maxStudentsPerBatch
 
@@ -1463,6 +1513,12 @@ export async function importStudents(
     room === null && perBatchCap === null
       ? ready
       : await unknownRows(supabase, centerId, ready)
+
+  // Null is an unread roster, and this one errs the other way: with nothing known,
+  // every pasted line looks new, so the paste would be refused as though it were
+  // eighty first-time students. Refused either way, then — but told the truth
+  // about it, so the owner tries again instead of going to look at our prices.
+  if (fresh === null) return { error: t.errors.limitUnknown }
 
   if (room !== null && fresh.length > room) {
     // Two sentences when there is room for some of them, because "the plan is
@@ -1482,6 +1538,7 @@ export async function importStudents(
   // refusing the paste whole is the point: the RPC is deliberately one statement,
   // and a half-imported register is exactly what that exists to prevent.
   const full = await fullBatches(supabase, session, batchIds, fresh.length)
+  if (full === null) return { error: t.errors.limitUnknown }
   if (full.length > 0) {
     return { error: t.errors.batchFull(full.join(', '), perBatchCap ?? 0) }
   }
@@ -1677,7 +1734,7 @@ export async function createTeacher(
    * The count check further down cannot stand in for this one. `bootstrap_center`
    * only writes the owner's own teacher row in teacher mode, so a centre that
    * signed up as a centre counts zero teachers — and zero is under a cap of one,
-   * so `overLimit` said yes and a solo plan could take on staff.
+   * so `limitRefusal` said yes and a solo plan could take on staff.
    */
   if (!hasStaff(session.plan)) {
     return { error: t.errors.staffNeedsCenter }
@@ -1705,9 +1762,8 @@ export async function createTeacher(
     return { error: passwordTooShort(session.locale) }
   }
 
-  if (await overLimit(session, 'teachers', 'maxTeachers')) {
-    return { error: t.errors.planLimit }
-  }
+  const teacherLimit = await limitRefusal(session, 'teachers', 'maxTeachers')
+  if (teacherLimit) return teacherLimit
 
   const supabase = await createClient()
   const centerId = session.active.centerId
@@ -2088,8 +2144,9 @@ export async function toggleTeacherActive(
 
   // Reactivating has to respect the plan limit, or "off then on" would be a way
   // past maxTeachers on the free plan.
-  if (active && (await overLimit(session, 'teachers', 'maxTeachers'))) {
-    return { error: t.errors.planLimit }
+  if (active) {
+    const limit = await limitRefusal(session, 'teachers', 'maxTeachers')
+    if (limit) return limit
   }
 
   const { error } = await supabase
