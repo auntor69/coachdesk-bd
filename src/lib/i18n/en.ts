@@ -636,6 +636,34 @@ export const en: Dictionary = {
      */
     unreadable:
       'The slip cannot be printed just now: the earlier payments on this bill could not be read, so the balance on it would be wrong. This payment is saved. Please try again in a moment.',
+    /**
+     * The payment row itself, or the bill behind it, when neither arrived — which
+     * `notFound()` was answering for as well, and on this screen that 404 renders as
+     * “we could not find that page”.
+     *
+     * `notFound` above says the quiet part out loud: “it may have been removed”. A
+     * receipt is looked up with a parent standing at the desk, usually seconds after
+     * the money went in, and this product’s one unbreakable promise is that a payment
+     * cannot be deleted from a browser. So the 404 is the app appearing to break its
+     * own promise, and what an owner does next is take the cash again or write a slip
+     * by hand — either of which puts the drawer out by the same amount.
+     *
+     * Which is why it says the payment is saved before it says anything else, and
+     * mentions the paper only to explain why none came out. It is used for the bill as
+     * well: the sheet cannot be built without the month’s figures, and the reader does
+     * not need to be told which of the two reads it was.
+     */
+    paymentUnreadable:
+      'This receipt could not be read just now, so the slip is not shown. The payment is saved and has not been removed — please try again in a moment.',
+    /**
+     * The name on the locked card, when the bill it comes from could not be read.
+     *
+     * `Unknown` was standing here, and that card exists to confirm the money landed on
+     * the right child — a card that names the payer “Unknown” says the centre does not
+     * know who paid it, which is a worse claim than the truth and one an owner would
+     * reasonably escalate. Short, because it sits in a value slot beside a label.
+     */
+    studentUnreadable: 'Could not be read',
     /** The paywall — see the Bangla for why it is named after the paper. */
     paperTitle: 'The printed slip comes with a paid plan',
     paperBody: (plan: string, pro: string) =>

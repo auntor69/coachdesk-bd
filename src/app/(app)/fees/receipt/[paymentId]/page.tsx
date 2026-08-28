@@ -76,12 +76,43 @@ export default async function ReceiptPage({
   const d = dict(locale)
   const t = d.receipt
 
-  const { data: payment } = await supabase
+  const { data: payment, error: paymentError } = await supabase
     .from('fee_payments')
     .select('id, receipt_no, amount_bdt, method, reference, paid_at, invoice_id')
     .eq('coaching_center_id', session.active.centerId)
     .eq('id', paymentId)
     .maybeSingle()
+
+  /*
+   * The read that failed, ahead of the 404 — because `notFound()` was answering for
+   * both, and of everywhere in this product that is true, here it costs cash.
+   *
+   * The dictionary's own `notFound` spells out how a miss is meant to read: "it may
+   * belong to another centre, or it may have been removed". A receipt is opened with a
+   * parent at the desk, often seconds after the money went in, and the one promise this
+   * product makes about money is that a payment cannot be deleted from a browser. So a
+   * 404 here is the app appearing to break that promise, and what happens next is the
+   * cash taken again or a slip written by hand — the drawer out by the amount either
+   * way, and nothing on paper to reconcile it against.
+   *
+   * The refusal says the payment is saved before it says anything else. No receipt
+   * number on this branch, unlike the two below it: the number is what did not arrive.
+   */
+  if (paymentError) {
+    return (
+      <div className="flex flex-col gap-4">
+        <Link
+          href="/fees"
+          className="inline-flex min-h-tap items-center font-medium text-brand-700"
+        >
+          ← {t.backToFees}
+        </Link>
+        <Card className="border-late/30 bg-late/5">
+          <p className="font-medium text-ink">{t.paymentUnreadable}</p>
+        </Card>
+      </div>
+    )
+  }
 
   if (!payment) notFound()
 
@@ -134,7 +165,13 @@ export default async function ReceiptPage({
           <dl className="mt-3 flex flex-col gap-1.5 border-t border-line pt-3">
             <Line
               label={t.student}
-              value={locked?.student_name ?? d.common.unknown}
+              // `Unknown` used to stand here on a dropped read, on the one card whose
+              // stated job is to confirm the money landed on the right child — which
+              // makes it a claim that the centre does not know who paid, worse than the
+              // truth and worth an owner's phone call. `?? unknown` is kept for the
+              // field itself, which the view can only leave null for a student row that
+              // is genuinely gone.
+              value={locked ? (locked.student_name ?? d.common.unknown) : t.studentUnreadable}
             />
             <Line
               label={t.date}
@@ -163,7 +200,7 @@ export default async function ReceiptPage({
     )
   }
 
-  const [{ data: invoice }, { data: center }, { data: siblings }] = await Promise.all([
+  const [invoiceRow, { data: center }, { data: siblings }] = await Promise.all([
     // Through the balance view rather than fee_invoices, because `net_bdt` is
     // billed-less-discount and that subtraction is numeric(10,2) arithmetic that
     // belongs in Postgres. The student's name comes from the same row, so the
@@ -188,6 +225,41 @@ export default async function ReceiptPage({
       .eq('coaching_center_id', session.active.centerId)
       .eq('invoice_id', payment.invoice_id),
   ])
+
+  // Destructured on its own line, the way the batch edit screen does it: `error` picks
+  // one of the two answers below and the array above has no room left for it.
+  const { data: invoice, error: invoiceError } = invoiceRow
+
+  /*
+   * The bill behind the payment, and the same refusal as the payment itself — see the
+   * note up there for why the money is named first.
+   *
+   * Worth its own guard rather than folding into `!invoice` below, because the two are
+   * not equally likely here: `invoice_id` is a foreign key and this is a view over the
+   * table it points at, so a row that is genuinely absent means the bill was deleted
+   * under a payment, which the schema does not allow. Nearly every null arriving here is
+   * a dropped read wearing a 404.
+   *
+   * The receipt number is not offered on this branch even though the payment row did
+   * arrive. It would be the third card on this page carrying it, and the two that do
+   * are the two whose reader has something to do with it — a paywall to weigh, or a
+   * balance line to wait for. There is nothing to weigh here.
+   */
+  if (invoiceError) {
+    return (
+      <div className="flex flex-col gap-4">
+        <Link
+          href="/fees"
+          className="inline-flex min-h-tap items-center font-medium text-brand-700"
+        >
+          ← {t.backToFees}
+        </Link>
+        <Card className="border-late/30 bg-late/5">
+          <p className="font-medium text-ink">{t.paymentUnreadable}</p>
+        </Card>
+      </div>
+    )
+  }
 
   if (!invoice) notFound()
 

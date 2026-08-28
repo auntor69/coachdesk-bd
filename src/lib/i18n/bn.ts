@@ -1378,6 +1378,11 @@ export const bn = {
     /** See en.receipt.unreadable for why this names the read that failed. */
     unreadable:
       'এখনই রসিদ ছাপানো যাবে না: এই বিলের আগের জমাগুলো পড়া গেল না, তাই বাকির অঙ্ক ভুল আসত। টাকা জমা হয়েছে। একটু পরে আবার চেষ্টা করুন।',
+    /** See en.receipt.paymentUnreadable — it says the money is safe first. */
+    paymentUnreadable:
+      'রসিদটি এখন পড়া গেল না, তাই রসিদ দেখানো হয়নি। টাকা জমা হয়েছে, মুছে যায়নি — একটু পরে আবার চেষ্টা করুন।',
+    /** See en.receipt.studentUnreadable — a value slot, not a sentence. */
+    studentUnreadable: 'পড়া গেল না',
     /**
      * The paywall, on the screen that withholds it.
      *
