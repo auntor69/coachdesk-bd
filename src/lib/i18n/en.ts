@@ -588,6 +588,19 @@ export const en: Dictionary = {
       'This is a computer-generated receipt. Please keep it as proof of payment.',
     notFound:
       'Receipt not found. It may belong to another centre, or it may have been removed.',
+    /**
+     * The sheet is not drawn, because the one figure on it that cannot be guessed could
+     * not be worked out — see the note on the page for what printing it anyway costs.
+     *
+     * It says which read failed, unusually for this product, and then it says the money
+     * is safe. Both are load-bearing here: an owner told only “not now” on a fee screen
+     * checks whether the payment they just took is still there, and one who is not told
+     * why reaches for the browser’s print button. The reason also happens to be the
+     * reassurance — the earlier payments are the part that could not be read, so the one
+     * being receipted plainly went in.
+     */
+    unreadable:
+      'The slip cannot be printed just now: the earlier payments on this bill could not be read, so the balance on it would be wrong. This payment is saved. Please try again in a moment.',
     /** The paywall — see the Bangla for why it is named after the paper. */
     paperTitle: 'The printed slip comes with a paid plan',
     paperBody: (plan: string, pro: string) =>

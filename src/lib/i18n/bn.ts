@@ -1352,6 +1352,9 @@ export const bn = {
      */
     footNote: 'এটি কম্পিউটারে তৈরি রসিদ। টাকা জমা হওয়ার প্রমাণ হিসেবে যত্ন করে রাখুন।',
     notFound: 'রসিদটি পাওয়া যায়নি। হয়তো অন্য কোচিংয়ের, বা মুছে ফেলা হয়েছে।',
+    /** See en.receipt.unreadable for why this names the read that failed. */
+    unreadable:
+      'এখনই রসিদ ছাপানো যাবে না: এই বিলের আগের জমাগুলো পড়া গেল না, তাই বাকির অঙ্ক ভুল আসত। টাকা জমা হয়েছে। একটু পরে আবার চেষ্টা করুন।',
     /**
      * The paywall, on the screen that withholds it.
      *

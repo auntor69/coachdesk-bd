@@ -191,12 +191,86 @@ export default async function ReceiptPage({
 
   if (!invoice) notFound()
 
+  /*
+   * THE ONE FIGURE ON THIS SHEET THAT CANNOT BE GUESSED, AND WHY A DROPPED READ TAKES
+   * THE WHOLE SHEET AWAY.
+   *
+   * `siblings` is every payment on this bill, and the as-of balance is the net less the
+   * ones up to this receipt. Read as an empty list it summed to nought, so the balance
+   * became the entire fee — and this page does not leave a blank where it does not
+   * know: the block below picks one of three sentences, and at `balance > 0` it picks
+   * "balance after this receipt". A family who has already paid ৳2,000 of ৳3,000
+   * would be handed printed paper, on the centre's own letterhead, asking for the whole
+   * ৳3,000. Once that has left the desk nothing in this product can call it back, and
+   * the parent holding it is the one who has to argue.
+   *
+   * Printing the sheet with the balance line left off was the other way and is worse for
+   * being quieter. The two figures still on it are the month's fee and this payment, so
+   * the reader subtracts them — and for the family with an earlier payment that answer
+   * is wrong too. The owner cannot see that a line is missing; they do not know the
+   * layout by heart, and the slip looks finished.
+   *
+   * So the paper is withheld and the payment is named instead: the number, the child,
+   * the amount, all three off reads that did arrive. There is a parent standing at the
+   * desk and the receipt number read aloud is what they came for. The sheet is one tap
+   * away as soon as the read comes back — which is the whole reason this is worth
+   * refusing over, because printing is the only thing here that cannot be done twice.
+   */
+  if (siblings === null) {
+    return (
+      <div className="flex flex-col gap-4">
+        <Link
+          href="/fees"
+          className="inline-flex min-h-tap items-center font-medium text-brand-700"
+        >
+          ← {t.backToFees}
+        </Link>
+
+        <Card>
+          <p className="text-sm font-medium text-ink-soft">{t.receiptNo}</p>
+          {/* The size it has on the slip, for the reason the locked card gives: this
+              is the part that is not missing, and printing it small beside a refusal
+              would read as an apology rather than as the answer. */}
+          <p className="num text-3xl font-bold text-ink">{payment.receipt_no}</p>
+          {isRefund && (
+            <p className="mt-1 font-semibold text-ink">{t.refundTitle}</p>
+          )}
+
+          <dl className="mt-3 flex flex-col gap-1.5 border-t border-line pt-3">
+            <Line
+              label={t.student}
+              value={invoice.student_name ?? d.common.unknown}
+            />
+            <Line
+              label={t.date}
+              value={formatDate(todayInDhaka(new Date(payment.paid_at)), locale)}
+              num
+            />
+            <Line
+              label={isRefund ? t.refundAmount : t.amount}
+              value={formatTaka(shown)}
+              num
+              strong
+            />
+          </dl>
+        </Card>
+
+        {/* No print button on this branch, and that is not an omission. The browser's
+            own Ctrl+P would put this card on paper without the balance line, which is
+            the second of the two things the note above refuses. */}
+        <Card className="border-late/30 bg-late/5">
+          <p className="font-medium text-ink">{t.unreadable}</p>
+        </Card>
+      </div>
+    )
+  }
+
   // Chronological, with the receipt number breaking a tie. paid_at is the order the
   // money arrived and is what a parent would reconstruct from their own memory;
   // receipt_no settles two payments taken in the same second, and cannot be relied
   // on alone because an imported slip legitimately carries a number from the old
   // paper book while its paid_at is months earlier.
-  const upToHere = (siblings ?? []).filter(
+  const upToHere = siblings.filter(
     (p) =>
       p.paid_at < payment.paid_at
       || (p.paid_at === payment.paid_at && p.receipt_no <= payment.receipt_no),
