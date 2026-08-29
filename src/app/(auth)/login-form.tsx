@@ -7,12 +7,22 @@ import { signIn, type FormState } from './actions'
 import { Alert, Button, Field } from '@/components/ui'
 
 /**
- * Phone + password. No email, no OTP.
+ * One box for who you are, then a password. No email, no OTP.
+ *
+ * The box takes a mobile number *or* a username, because MASTERPLAN.md §5.3 will
+ * not have a radio button or a second tab here — the server tells the two apart
+ * by their shape (see loginEmailFor). What that costs is the numeric keypad:
+ * `inputMode="numeric"` would hide the letters a teacher's username is made of,
+ * so everybody gets the full keyboard. Owners pay for it, and they pay once per
+ * device with a saved password; a teacher who could not type their username at
+ * all would simply be locked out.
  *
  * OTP would be the better login, and it is where this goes once a BTRC sender
  * ID is registered — but it would have blocked every other screen behind an
  * external approval with an unknown timeline. The real number is stored on the
- * profile, so that switch is a migration and not a re-signup.
+ * profile, so that switch is a migration and not a re-signup. Teachers stay
+ * exempt from it either way: §5.2 exists because so many of them have no number
+ * to send an OTP to.
  */
 export function LoginForm({ next }: { next?: string }) {
   const [state, formAction, pending] = useActionState<FormState, FormData>(
@@ -27,16 +37,19 @@ export function LoginForm({ next }: { next?: string }) {
       {state?.error && !state.field && <Alert>{state.error}</Alert>}
 
       <Field
-        label="মোবাইল নম্বর"
-        name="phone"
-        // tel, not number: number strips leading zeros and shows a spinner.
-        type="tel"
-        inputMode="numeric"
+        label="মোবাইল নম্বর বা ইউজারনেম"
+        // The example belongs in the hint, not the placeholder: a placeholder
+        // showing only a number reads as "numbers only" to the one teacher on
+        // this screen who does not have one.
+        hint="যেমন ০১৭১২৩৪৫৬৭৮, বা rahim"
+        name="identifier"
+        type="text"
         autoComplete="username"
-        placeholder="০১৭১২৩৪৫৬৭৮"
+        autoCapitalize="none"
+        spellCheck={false}
         required
         autoFocus
-        error={state?.field === 'phone' ? state.error : undefined}
+        error={state?.field === 'identifier' ? state.error : undefined}
       />
 
       <Field

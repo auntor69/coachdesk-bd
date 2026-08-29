@@ -284,6 +284,17 @@ export const bn = {
      * places at once, and moving it is not a form, it is a migration.
      */
     phoneHint: 'এই নম্বর দিয়েই আপনি লগইন করেন। নম্বর বদলাতে হলে কোচিংয়ের মালিককে বলুন।',
+    /*
+     * The same fact for a teacher who never gave a number: §5.2's username is their
+     * login id, and this card is the only place in the app that can tell them what it
+     * is — the person who was told it once, out loud, four months ago is the person
+     * who comes looking. Shown *instead of* the number, not beside it: an account has
+     * one identifier, and two labelled boxes with only one filled in reads as a step
+     * somebody forgot to finish.
+     */
+    usernameLabel: 'লগইন ইউজারনেম',
+    usernameHint:
+      'এই ইউজারনেম দিয়েই আপনি লগইন করেন। বদলাতে হলে কোচিংয়ের মালিককে বলুন।',
     passwordTitle: 'পাসওয়ার্ড বদলান',
     /**
      * The second sentence is the honest one. A password change does not throw other
@@ -2630,12 +2641,14 @@ export const bn = {
       'লগইন দিলে তিনি নিজের ফোন থেকে হাজিরা ও নম্বর দিতে পারবেন। উপরে যেসব অনুমতি টিক দেওয়া আছে, শুধু সেগুলোই কাজ করবে।',
     loginPhone: 'মোবাইল নম্বর',
     /**
-     * Two jobs in one line. The number is the login id, and this is the only screen
-     * in the app where a teacher's number can be corrected — after an account exists
-     * the same number lives on the profile and inside the login itself, so it stops
-     * being a field and becomes an identity.
+     * Three jobs in one line, and the third is the new one. The number is the login
+     * id when there is one; this is the only screen in the app where a teacher's
+     * number can be corrected, because after an account exists the same number
+     * lives on the profile and inside the login itself; and an empty box is not a
+     * dead end — §5.2's username is made from the name on the row.
      */
-    loginPhoneHint: 'এই নম্বর দিয়েই তিনি লগইন করবেন — ভুল থাকলে এখানেই ঠিক করে নিন',
+    loginPhoneHint:
+      'নম্বর দিলে সেটাই তাঁর আইডি — ভুল থাকলে এখানেই ঠিক করে নিন। না দিলে তাঁর নাম থেকে একটা ইউজারনেম তৈরি হবে।',
     loginPassword: 'শুরুর পাসওয়ার্ড',
     loginPasswordHint: 'শিক্ষককে বলে দিন — লেখাটা দেখা যাচ্ছে',
     loginSubmit: 'লগইন তৈরি করুন',
@@ -2694,8 +2707,9 @@ export const bn = {
     nameLabel: 'শিক্ষকের নাম',
     namePlaceholder: 'করিম স্যার',
     phone: 'মোবাইল নম্বর',
-    /** Optional field, so the hint says what giving it would buy. */
-    phoneHint: 'লগইন দিতে চাইলে এই নম্বরটাই তাঁর আইডি হবে',
+    /** Optional field, so the hint says what giving it — or not — leads to. */
+    phoneHint:
+      'নম্বর দিলে সেটাই তাঁর লগইন আইডি হবে; না দিলে নাম থেকে একটা ইউজারনেম তৈরি হবে',
     /** As they type, not on submit — the same words studentForm uses. */
     phoneBad: 'নম্বরটি ঠিক নেই',
     whichSubjects: 'কোন বিষয় পড়ান',
@@ -4296,6 +4310,14 @@ export const bn = {
       addedWithLogin: 'শিক্ষক ও তাঁর লগইন তৈরি হয়েছে',
       addedNoLogin: 'শিক্ষক যোগ হয়েছে (লগইন ছাড়া)',
       /**
+       * A teacher added with a login but no phone number, so their id is a username
+       * (§5.2). Names it inside the sentence, because this is the only place it is
+       * shown — the list cannot display it yet — and the owner is about to read it
+       * out to somebody standing next to them.
+       */
+      addedWithUsername: (username: string) =>
+        `শিক্ষক যোগ হয়েছে — তাঁর ইউজারনেম ${username}। এটা আর পাসওয়ার্ডটা তাঁকে বলে দিন।`,
+      /**
        * Names the account that was joined to. If the owner mistyped a digit and
        * linked somebody else, this sentence is where they find out — so it says
        * whose account it was rather than reporting a plain success.
@@ -4314,6 +4336,9 @@ export const bn = {
        * have just typed for the first time.
        */
       loginGiven: 'লগইন তৈরি হয়েছে — শিক্ষককে নম্বর আর পাসওয়ার্ডটা বলে দিন।',
+      /** The same login for a teacher with no number — see addedWithUsername. */
+      loginGivenUsername: (username: string) =>
+        `লগইন তৈরি হয়েছে — ইউজারনেম ${username}। এটা আর পাসওয়ার্ডটা শিক্ষককে বলে দিন।`,
       /**
        * Handing a teacher a new password, and the four reasons an account cannot be
        * handed one.
@@ -4351,8 +4376,13 @@ export const bn = {
       errors: {
         nameRequired: 'শিক্ষকের নাম লিখুন।',
         phoneInvalid: 'নম্বরটি ঠিক নেই (যেমন ০১৭১২৩৪৫৬৭৮)।',
-        /** Because the number is the login id — there is nothing else to be. */
-        loginNeedsPhone: 'লগইন দিতে হলে মোবাইল নম্বর লাগবে — নম্বরটাই তাঁর আইডি।',
+        /**
+         * A hundred teachers of one name across the whole platform. Says what to do
+         * about it — a fuller spelling of the name, or the number if there is one —
+         * because "চেষ্টা করুন" on its own would be the same refusal again.
+         */
+        usernameTaken:
+          'এই নামে অনেক ইউজারনেম হয়ে গেছে। নামের পুরো বানানটা লিখে আবার চেষ্টা করুন, বা তাঁর মোবাইল নম্বরটা দিন।',
         loginFailed: 'লগইন তৈরি করা যায়নি। আবার চেষ্টা করুন।',
         /** See en.settings.teachers.errors.numberUnreadable. */
         numberUnreadable:

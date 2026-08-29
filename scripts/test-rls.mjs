@@ -2451,6 +2451,132 @@ await db.exec(`
 `)
 
 // ---------------------------------------------------------------------------
+// Usernames — the identifier for a teacher with no phone number (§5.2), added by
+// 20260811000038.
+//
+// Two separate claims are under test. That a browser cannot write the column, for
+// the same reason it cannot write `phone`: it is unique across the platform, so
+// claiming one denies it to somebody else. And that the signup trigger only
+// believes identity metadata it can attribute to our own server — a `.invalid`
+// address, which GoTrue's public signup endpoint refuses to issue, so a browser
+// cannot forge one.
+// ---------------------------------------------------------------------------
+
+console.log('\nUsernames (a teacher with no number):')
+
+/** A raw account, the way GoTrue makes one: an auth.users row and its metadata. */
+const throwaway = []
+const signup = async (email, meta) => {
+  const { rows } = await db.query(
+    `insert into auth.users (id, email, raw_user_meta_data)
+     values (gen_random_uuid(), $1, $2::jsonb)
+     returning id`,
+    [email, JSON.stringify(meta)],
+  )
+  throwaway.push(rows[0].id)
+  return rows[0].id
+}
+
+const identity = async (id) =>
+  (await db.query('select username, phone, full_name from profiles where id = $1', [id]))
+    .rows[0]
+
+check(
+  'a signed-in user cannot claim a username',
+  await deniedAsUser(db, ids.ownerA, `update profiles set username = 'rahim' where id = $1`, [
+    ids.ownerA,
+  ]),
+)
+
+const karim = await signup('karim@user.coachdesk.invalid', {
+  full_name: 'করিম',
+  username: 'karim',
+})
+check(
+  'an account our server made gets the username it was given',
+  (await identity(karim)).username === 'karim',
+)
+
+// The other half of the same condition, and the one that would be missed: every
+// owner signs up by number, and their phone arrives through this same metadata.
+// A `ours` check that was too strict would lock the whole product out.
+const numbered = await signup('8801712345678@phone.coachdesk.invalid', {
+  full_name: 'Owner',
+  phone: '+8801712345678',
+})
+check(
+  'an account made from a number still gets its number',
+  (await identity(numbered)).phone === '+8801712345678',
+)
+
+// §5.4's squat through the front door. GoTrue's public signup endpoint is live on
+// the project and writes this same column, so a browser can sign up with a real
+// address and put somebody else's number — or username — in the metadata. Unique
+// platform-wide means the victim is the one who then cannot sign up.
+const squatter = await signup('attacker@gmail.com', {
+  full_name: 'Attacker',
+  phone: '+8801712345678',
+  username: 'rahim',
+})
+const squat = await identity(squatter)
+check(
+  'a self-signup cannot claim a number or a username in its metadata',
+  squat.phone === null && squat.username === null,
+  `phone=${squat.phone} username=${squat.username}`,
+)
+// And it is the identity columns that are dropped, not the whole insert: the
+// account is real and its own name is its own business.
+check('the self-signup still got a profile row', squat.full_name === 'Attacker')
+
+// A username reaching the trigger twice means email uniqueness and this index
+// disagreed, which the candidate walk in settings/actions.ts cannot cause —
+// `karim@user.coachdesk.invalid` is refused before the trigger runs. Somebody
+// writing the column by hand can, and it fails loudly rather than quietly
+// handing two teachers one login.
+let dupOk = false
+try {
+  await signup('karim2@user.coachdesk.invalid', { username: 'karim' })
+} catch {
+  dupOk = true
+}
+check('a second account cannot take a username that exists', dupOk)
+check('the first account kept it', (await identity(karim)).username === 'karim')
+
+// Nulls do not collide, which is what the partial index is for: everybody who
+// signs in with a number has no username at all.
+check(
+  'two accounts with no username at all are fine',
+  (await identity(await signup('one@phone.coachdesk.invalid', {}))).username === null &&
+    (await identity(await signup('two@phone.coachdesk.invalid', {}))).username === null,
+)
+
+// A generator bug should cost one username nobody has been told yet, not the
+// ability to give any teacher a login. Hence the shape test inside the trigger,
+// which is the same expression as the constraint.
+const malformed = await signup('bad@user.coachdesk.invalid', {
+  full_name: 'Bad',
+  username: 'AB',
+})
+check(
+  'a badly shaped username lands as null instead of refusing the account',
+  (await identity(malformed)).username === null,
+)
+
+// The constraint behind it, which is what protects the column from our own
+// server-side write.
+let shapeOk = false
+try {
+  await db.query(`update profiles set username = 'AB' where id = $1`, [karim])
+} catch (error) {
+  shapeOk = error.message.includes('profiles_username_shape')
+}
+check('the column itself refuses a username that is not one', shapeOk)
+
+// These accounts belong to no centre, but the founder panel at the bottom of this
+// file counts rows platform-wide.
+await db.query('delete from auth.users where id = any($1::uuid[])', [throwaway])
+
+// ---------------------------------------------------------------------------
 // The payment number — the only editable column on this table that moves money.
 //
 // Everything above protects what a centre is charged. This protects where the

@@ -27,7 +27,7 @@ import { createClient as createStatelessClient } from '@supabase/supabase-js'
 import { createClient } from '@/lib/supabase/server'
 import { requireCenter, getSession, AuthError } from '@/lib/auth/session'
 import { MIN_PASSWORD } from '@/lib/auth/password'
-import { phoneToLoginEmail } from '@/lib/bd/phone'
+import { loginEmailFor } from '@/lib/bd/username'
 import { MAX_NAME } from '@/lib/limits'
 import { dict, DEFAULT_LOCALE } from '@/lib/i18n'
 import { nameTooLong, passwordTooShort } from '@/lib/i18n/messages'
@@ -69,22 +69,24 @@ function isSession(value: CenterSession | AccountState): value is CenterSession 
  * the current password is asked for, and asked of GoTrue rather than compared here —
  * there is no hash on our side to compare against, and there should not be.
  *
+ * Takes the login address rather than a number, because as of §5.2 an account's
+ * identifier is a number *or* a username and only the address covers both. The
+ * caller builds it with the same dispatch the login screen uses, so this check
+ * cannot drift away from what actually signs somebody in.
+ *
  * On a client of its own, built from the anon key with `persistSession` off, because
  * `signInWithPassword` on the request-scoped client would mint a second session and
  * write its tokens straight over the caller's cookies. That is invisible when the
  * password is right and quietly signs you out of your own session when it is wrong.
  */
-async function passwordIsCurrent(phone: string, password: string): Promise<boolean> {
-  const email = phoneToLoginEmail(phone)
-  if (!email) return false
-
+async function passwordIsCurrent(loginEmail: string, password: string): Promise<boolean> {
   const probe = createStatelessClient<Database>(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
     { auth: { persistSession: false, autoRefreshToken: false } },
   )
 
-  const { error } = await probe.auth.signInWithPassword({ email, password })
+  const { error } = await probe.auth.signInWithPassword({ email: loginEmail, password })
   return !error
 }
 
@@ -115,18 +117,20 @@ export async function changeOwnPassword(
   if (next === current) return { error: t.errors.same }
 
   /*
-   * Read into a local so the refusal below narrows it for `passwordIsCurrent`, which
-   * wants a number and not the possibility of one.
+   * The address this account signs in with, from whichever identifier it has: a
+   * number for an owner, §5.2's username for a teacher who never gave one. Built
+   * with `loginEmailFor` — the login screen's own dispatch — so that the password
+   * this screen verifies is the password that screen accepts.
    *
-   * A session without a number is a type-level possibility rather than a reachable
-   * state: login is a phone and a password, and the phone is what the login address is
-   * derived from, so nobody without one has ever signed in. Reported as a failure and
-   * not as a wrong password — it would not be the reader's mistake.
+   * Null means an account with neither, which is not a reader's mistake and is not
+   * reported as a wrong password. It is reachable for a real-email account created
+   * outside the app; the founder's own is the only one, and it has both.
    */
-  const phone = session.phone
-  if (!phone) return { error: t.errors.failed }
+  const identifier = session.phone ?? session.username
+  const loginEmail = identifier ? loginEmailFor(identifier) : null
+  if (!loginEmail) return { error: t.errors.failed }
 
-  if (!(await passwordIsCurrent(phone, current))) {
+  if (!(await passwordIsCurrent(loginEmail, current))) {
     return { error: t.errors.wrongCurrent }
   }
 

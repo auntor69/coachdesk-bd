@@ -284,6 +284,10 @@ export function TeacherList({
            * is the login id, copied onto the profile and into the account itself, and
            * a list showing a number that does not sign in is worse than no edit at
            * all. So the one chance to fix a mistyped digit is before it becomes one.
+           *
+           * And it is optional, because §5.2 does not need it: an empty box means the
+           * login id is a username made from the name on this row. Which is also why
+           * an empty box is not "clear the stored number" — see giveTeacherLogin.
            */
           const asking = loginRow === teacher.id && loginState?.confirm
 
@@ -298,7 +302,7 @@ export function TeacherList({
                 {/* Per-row ids for the same reason the password box has them: Field
                     falls back to the field name, and nine rows would share one. */}
                 <Field
-                  label={t.loginPhone}
+                  label={`${t.loginPhone} (${common.optional})`}
                   hint={t.loginPhoneHint}
                   id={`login-phone-${teacher.id}`}
                   name="phone"
@@ -306,7 +310,6 @@ export function TeacherList({
                   inputMode="numeric"
                   placeholder="01712345678"
                   defaultValue={teacher.phone ?? ''}
-                  required
                 />
                 <Field
                   label={t.loginPassword}

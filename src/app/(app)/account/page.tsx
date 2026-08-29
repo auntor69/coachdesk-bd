@@ -28,11 +28,11 @@ export async function generateMetadata() {
  *
  * Two forms and a fact, in that order, and the fact is deliberately stranded between
  * them: a reader who has just corrected their own name is exactly the reader about to
- * try the number below it. Saying it cannot be moved right there saves the attempt.
+ * try the identifier below it. Saying it cannot be moved right there saves the attempt.
  * It is shown at all because it is the login id and people forget that — login is a
- * phone and a password, with no email anywhere — and it is read-only because changing
- * it is not a form: the same number sits on the profile, inside the auth account, and
- * on a teacher row, so moving it is a migration.
+ * number *or* a username, plus a password, with no email anywhere — and it is
+ * read-only because changing it is not a form: the same number sits on the profile,
+ * inside the auth account, and on a teacher row, so moving it is a migration.
  */
 export default async function AccountPage() {
   const session = await pageCenter()
@@ -65,9 +65,25 @@ export default async function AccountPage() {
       </Card>
 
       <Card>
-        <p className="text-sm text-ink-faint">{t.phoneLabel}</p>
-        <p className="num font-medium text-ink">{formatBdMobile(session.phone)}</p>
-        <p className="mt-1 text-sm text-ink-soft">{t.phoneHint}</p>
+        {/* Whichever of the two this account signs in with. A username teacher has no
+            number to show, and the number card standing empty under the heading
+            "Login number" would read as something they still have to supply — when in
+            fact they have an identifier and it is the one they cannot see anywhere
+            else. `session.username` comes off the login address itself, so this card
+            cannot show one thing while another signs them in. */}
+        {session.phone || !session.username ? (
+          <>
+            <p className="text-sm text-ink-faint">{t.phoneLabel}</p>
+            <p className="num font-medium text-ink">{formatBdMobile(session.phone)}</p>
+            <p className="mt-1 text-sm text-ink-soft">{t.phoneHint}</p>
+          </>
+        ) : (
+          <>
+            <p className="text-sm text-ink-faint">{t.usernameLabel}</p>
+            <p className="font-medium text-ink">{session.username}</p>
+            <p className="mt-1 text-sm text-ink-soft">{t.usernameHint}</p>
+          </>
+        )}
       </Card>
 
       <Card>

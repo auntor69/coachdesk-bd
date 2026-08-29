@@ -24,6 +24,12 @@ import {
   type RosterPermission,
 } from '@/lib/auth/session'
 import { normalizeBdMobile, phoneToLoginEmail } from '@/lib/bd/phone'
+import {
+  USERNAME_ATTEMPTS,
+  usernameBaseFor,
+  usernameCandidate,
+  usernameToLoginEmail,
+} from '@/lib/bd/username'
 import { isCapacityRefusal } from '@/lib/capacity'
 import {
   MAX_IMPORT_ROWS,
@@ -73,6 +79,12 @@ export type ActionState = {
    * knows not to navigate away from its own success message.
    */
   linked?: string
+  /**
+   * The username a teacher with no phone number will sign in with (§5.2). Set for
+   * the same reason `linked` is: it is the one thing on the screen the owner has to
+   * read and repeat out loud, so the form must not redirect past it.
+   */
+  username?: string
 } | null
 
 /**
@@ -1855,6 +1867,85 @@ async function ownTeacher(
 }
 
 /**
+ * What making a username login came to: the account, or which way it did not.
+ *
+ * `taken` and `failed` are separated because only one of them is worth retrying
+ * and they ask the owner for different things — a different spelling of the name
+ * versus the same submit again in a minute.
+ */
+type UsernameLogin =
+  | { userId: string; username: string }
+  | { refused: 'taken' | 'failed' }
+
+/**
+ * Whether GoTrue is saying this login address already belongs to somebody.
+ *
+ * The whole collision loop rests on this answer, so it reads two things rather
+ * than one. `email_exists` is the code the current API returns; the message regex
+ * is what older builds and the odd proxy send instead, and it is the same test
+ * (auth)/actions.ts already applies to a duplicate signup.
+ */
+function isEmailTakenError(error: { code?: string; message: string } | null): boolean {
+  if (!error) return false
+  if (error.code === 'email_exists') return true
+  return /already registered|already been registered|already exists/i.test(error.message)
+}
+
+/**
+ * An account for a teacher whose centre has no phone number for them (§5.2).
+ *
+ * WHERE THE UNIQUENESS COMES FROM. Not from a SELECT — this walks candidates and
+ * lets `auth.users.email` refuse the ones that are taken, because a SELECT that
+ * found nothing is not a reservation: two managers adding a Rahim in the same
+ * second would both read "free" and both try `rahim`. One of them gets it, the
+ * other is told the address exists and moves on to `rahim01`. The username is the
+ * local part of that address, so the constraint doing the work is the same one
+ * that decides who can sign in.
+ *
+ * ONE RESOLVER, AND IT IS THIS LOOP. The trigger in 20260811000038 writes what it
+ * is handed and never appends a suffix, so `profiles.username` cannot end up
+ * saying `rahim01` while the account signs in as `rahim` — a displayed username
+ * that does not work is the only way this feature really fails.
+ *
+ * ANYTHING THAT IS NOT A COLLISION STOPS IT. A dead network or a bad key would
+ * otherwise become a hundred round trips before one error message.
+ */
+async function createUsernameLogin(
+  admin: ReturnType<typeof createAdminClient>,
+  base: string,
+  name: string,
+  password: string,
+  locale: CenterSession['locale'],
+): Promise<UsernameLogin> {
+  for (let attempt = 0; attempt < USERNAME_ATTEMPTS; attempt += 1) {
+    const username = usernameCandidate(base, attempt)
+    const email = usernameToLoginEmail(username)
+
+    // Unreachable, and handled rather than asserted: tests/username.test.ts
+    // proves every candidate for every base is a valid username across the whole
+    // range, and a throw here would be a stack trace inside a Server Action.
+    if (!email) return { refused: 'failed' }
+
+    const { data, error } = await admin.auth.admin.createUser({
+      email,
+      password,
+      email_confirm: true,
+      // No `phone` key, which is the point of the whole exercise. `username` is
+      // read by app.handle_new_user and written to profiles.username, so a screen
+      // can show what this teacher types without digging it out of an address.
+      user_metadata: { full_name: name, username, locale },
+    })
+
+    if (!error && data.user) return { userId: data.user.id, username }
+    if (!isEmailTakenError(error)) return { refused: 'failed' }
+  }
+
+  // A hundred collisions on one base is a hundred teachers of that name across
+  // the whole platform. The honest answer is to ask for a different spelling.
+  return { refused: 'taken' }
+}
+
+/**
  * Adds a teacher, and optionally gives them a login.
  *
  * The login is optional on purpose: `teachers.user_id` is nullable so a centre
@@ -1863,6 +1954,13 @@ async function ownTeacher(
  * invite — there is no SMS sender ID yet to send an invite through, and letting
  * anyone who signs up with a matching number join a centre would hand a stranger
  * other people's children's marks and their parents' phone numbers.
+ *
+ * THE NUMBER IS OPTIONAL EVEN WHEN THE LOGIN IS NOT. It used to be the login id,
+ * so asking for a login without one was refused — which meant the commonest
+ * teacher in Bangladesh, the part-timer whose number the centre does not have,
+ * could not be given a way in at all. §5.2's answer is a username made from their
+ * name, and the two paths below are the two things "give them a login" can mean.
+ * Which one runs is decided by whether a number was typed, not by a radio button.
  */
 export async function createTeacher(
   _prev: ActionState,
@@ -1901,9 +1999,6 @@ export async function createTeacher(
   if (rawPhone.trim() && !phone) {
     return { error: t.teachers.errors.phoneInvalid }
   }
-  if (wantsLogin && !phone) {
-    return { error: t.teachers.errors.loginNeedsPhone }
-  }
   if (wantsLogin && password.length < MIN_PASSWORD) {
     return { error: passwordTooShort(session.locale) }
   }
@@ -1930,6 +2025,7 @@ export async function createTeacher(
 
   let userId: string | null = null
   let linkedName: string | null = null
+  let username: string | null = null
 
   if (wantsLogin && phone) {
     const loginEmail = phoneToLoginEmail(phone)
@@ -1990,6 +2086,42 @@ export async function createTeacher(
       }
       userId = created.user.id
     }
+  } else if (wantsLogin) {
+    /*
+     * No number, so the login id is a username made from the name in the field
+     * above (§5.2) — `rahim`, never `usr_8f92a1c`, because an owner reads this out
+     * across a staffroom and the teacher types it into a phone at arm's length
+     * once, months later. The centre's own name is the fallback base when the
+     * teacher's yields nothing usable.
+     *
+     * NOTHING IS LOOKED UP FIRST, AND THAT IS THE DIFFERENCE. The phone path
+     * exists because a number identifies a person across centres, so a teacher who
+     * already works down the road must be linked rather than duplicated. A name
+     * identifies nobody: two teachers called Rahim are two teachers. So this path
+     * always makes a *new* account, and a teacher who really does work at two
+     * centres is linked by typing their number, which is the only thing that can
+     * prove they are the same person.
+     */
+    const admin = createAdminClient()
+    const login = await createUsernameLogin(
+      admin,
+      usernameBaseFor(name, session.active.centerName),
+      name,
+      password,
+      session.locale,
+    )
+
+    if ('refused' in login) {
+      return {
+        error:
+          login.refused === 'taken'
+            ? t.teachers.errors.usernameTaken
+            : t.teachers.errors.loginFailed,
+      }
+    }
+
+    userId = login.userId
+    username = login.username
   }
 
   const { data: teacher, error } = await supabase
@@ -2054,6 +2186,13 @@ export async function createTeacher(
   // to stay put rather than redirect past it.
   if (linkedName) {
     return { ok: t.teachers.linked(linkedName), linked: linkedName }
+  }
+
+  // Also kept on the screen rather than redirected past: the username is the one
+  // thing here nobody can look up again from the list yet, and the owner has to
+  // read it out to somebody.
+  if (username) {
+    return { ok: t.teachers.addedWithUsername(username), username }
   }
 
   return { ok: userId ? t.teachers.addedWithLogin : t.teachers.addedNoLogin }
@@ -2355,13 +2494,20 @@ export async function toggleTeacherActive(
  *
  * The number comes from the form rather than from the row, because for most of these
  * teachers there is no number on the row — the field is optional on the add form and
- * the reason to fill it is exactly this. It is written back, which makes this the one
- * place a teacher's phone can be corrected, and deliberately the only one: once an
- * account exists that number is its login id, held on `profiles` and inside the auth
- * email as well, so editing the copy on the teacher row would leave the list showing
- * a number that does not sign in.
+ * one reason to fill it is exactly this. It is written back when it is given, which
+ * makes this the one place a teacher's phone can be corrected, and deliberately the
+ * only one: once an account exists that number is its login id, held on `profiles`
+ * and inside the auth email as well, so editing the copy on the teacher row would
+ * leave the list showing a number that does not sign in. An empty box is not a
+ * correction, so it does not wipe a number the row already has.
  *
- * The account itself is createTeacher's path, step for step: the admin client because
+ * THE NUMBER IS NO LONGER REQUIRED HERE EITHER (§5.2). It was, and that made this
+ * screen useless for the teacher it was built for: the part-timer whose number the
+ * centre never had. With the box empty the login id is a username made from their
+ * name, and the two branches below are createTeacher's two branches, for the same
+ * reasons — see `createUsernameLogin` for why nothing is looked up on that path.
+ *
+ * The phone branch is createTeacher's path step for step: the admin client because
  * the public signUp would try the shared free SMTP, the lookup against the unique
  * `profiles.phone`, and the refusal to link on the first submit. See that action for
  * why the confirm step is not a courtesy. The password typed here is used only when
@@ -2398,11 +2544,10 @@ export async function giveTeacherLogin(
   const password = String(formData.get('password') ?? '')
   const confirmedLink = formData.get('confirmLink') !== null
 
-  // The two failures are told apart, as they are on the add form: an empty box and
-  // a mistyped number are different mistakes and only one of them is retyping.
-  if (!rawPhone.trim()) return { error: t.teachers.errors.loginNeedsPhone }
-  const phone = normalizeBdMobile(rawPhone)
-  if (!phone) return { error: t.teachers.errors.phoneInvalid }
+  // Optional, and told apart from a mistyped one: an empty box is the username
+  // path, a number with a digit missing is a mistake worth naming.
+  const phone = rawPhone.trim() ? normalizeBdMobile(rawPhone) : null
+  if (rawPhone.trim() && !phone) return { error: t.teachers.errors.phoneInvalid }
 
   if (password.length < MIN_PASSWORD) {
     return { error: passwordTooShort(session.locale) }
@@ -2430,48 +2575,81 @@ export async function giveTeacherLogin(
   // resetTeacherPassword and changing the number behind a live login is neither.
   if (teacher.user_id) return { error: t.teachers.errors.hasLogin }
 
-  const loginEmail = phoneToLoginEmail(phone)
-  if (!loginEmail) return { error: t.teachers.errors.phoneInvalid }
-
   const admin = createAdminClient()
 
-  const { data: existing, error: existingError } = await admin
-    .from('profiles')
-    .select('id, full_name')
-    .eq('phone', phone)
-    .maybeSingle()
+  let userId: string | null = null
+  let linkedName: string | null = null
+  let username: string | null = null
 
-  // The same read and the same refusal as createTeacher's. This screen is the one an
-  // owner reaches for a teacher who already works somewhere else, which is exactly the
-  // case the lookup is for, so guessing "no account" here is guessing wrong about the
-  // likeliest reader.
-  if (existingError) return { error: t.teachers.errors.numberUnreadable }
+  if (phone) {
+    const loginEmail = phoneToLoginEmail(phone)
+    if (!loginEmail) return { error: t.teachers.errors.phoneInvalid }
 
-  // Never on the first submit — createTeacher's note, and the same stakes: one
-  // mistyped digit would hand a stranger a teacher account inside this centre.
-  if (existing && !confirmedLink) {
-    return { confirm: t.teachers.confirmLink(existing.full_name || t.teachers.noName) }
-  }
+    const { data: existing, error: existingError } = await admin
+      .from('profiles')
+      .select('id, full_name')
+      .eq('phone', phone)
+      .maybeSingle()
 
-  let userId = existing?.id ?? null
+    // The same read and the same refusal as createTeacher's. This screen is the one an
+    // owner reaches for a teacher who already works somewhere else, which is exactly the
+    // case the lookup is for, so guessing "no account" here is guessing wrong about the
+    // likeliest reader.
+    if (existingError) return { error: t.teachers.errors.numberUnreadable }
 
-  if (!userId) {
-    const { data: created, error: createError } = await admin.auth.admin.createUser({
-      email: loginEmail,
-      password,
-      email_confirm: true,
-      user_metadata: { full_name: teacher.name, phone, locale: session.locale },
-    })
-
-    if (createError || !created.user) {
-      return { error: t.teachers.errors.loginFailed }
+    // Never on the first submit — createTeacher's note, and the same stakes: one
+    // mistyped digit would hand a stranger a teacher account inside this centre.
+    if (existing && !confirmedLink) {
+      return { confirm: t.teachers.confirmLink(existing.full_name || t.teachers.noName) }
     }
-    userId = created.user.id
+
+    if (existing) {
+      userId = existing.id
+      linkedName = existing.full_name || t.teachers.noName
+    } else {
+      const { data: created, error: createError } = await admin.auth.admin.createUser({
+        email: loginEmail,
+        password,
+        email_confirm: true,
+        user_metadata: { full_name: teacher.name, phone, locale: session.locale },
+      })
+
+      if (createError || !created.user) {
+        return { error: t.teachers.errors.loginFailed }
+      }
+      userId = created.user.id
+    }
+  } else {
+    // The name on the row, not one from the form: this screen has no name field,
+    // and the row is what the owner is looking at while they read the username out.
+    const login = await createUsernameLogin(
+      admin,
+      usernameBaseFor(teacher.name, session.active.centerName),
+      teacher.name,
+      password,
+      session.locale,
+    )
+
+    if ('refused' in login) {
+      return {
+        error:
+          login.refused === 'taken'
+            ? t.teachers.errors.usernameTaken
+            : t.teachers.errors.loginFailed,
+      }
+    }
+
+    userId = login.userId
+    username = login.username
   }
 
   const { error } = await supabase
     .from('teachers')
-    .update({ user_id: userId, phone })
+    // `phone` is left out entirely when the box was empty, rather than written as
+    // null: this action gives a login, and a teacher whose number was recorded in
+    // June should not lose it because the login they got in September did not need
+    // one.
+    .update(phone ? { user_id: userId, phone } : { user_id: userId })
     .eq('id', teacher.id)
     .eq('coaching_center_id', centerId)
 
@@ -2497,11 +2675,12 @@ export async function giveTeacherLogin(
 
   revalidatePath('/settings/teachers')
 
-  if (existing) {
-    return {
-      ok: t.teachers.linked(existing.full_name || t.teachers.noName),
-      linked: existing.full_name || t.teachers.noName,
-    }
+  if (linkedName) {
+    return { ok: t.teachers.linked(linkedName), linked: linkedName }
+  }
+
+  if (username) {
+    return { ok: t.teachers.loginGivenUsername(username), username }
   }
 
   return { ok: t.teachers.loginGiven }
@@ -2511,9 +2690,10 @@ export async function giveTeacherLogin(
  * A new password for a teacher who cannot get in.
  *
  * The only way back into this app for somebody who has forgotten their password.
- * Login is a phone number and a password — no email, no OTP — so there is no link to
- * send and nowhere to send it; see (auth)/login-form.tsx. The owner told this teacher
- * their first password out loud, so telling them a second one is the same act.
+ * Login is a phone number *or* a username, plus a password — no email, no OTP — so
+ * there is no link to send and nowhere to send it; see (auth)/login-form.tsx. The owner
+ * told this teacher their first password out loud, so telling them a second one is the
+ * same act.
  *
  * WHO MAY BE RESET IS NOT "MY TEACHERS". It is lib/auth/reset.ts, and the reasoning
  * there is worth reading before touching this: because adding a teacher deliberately

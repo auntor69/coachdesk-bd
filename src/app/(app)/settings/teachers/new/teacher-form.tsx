@@ -44,10 +44,13 @@ export function TeacherForm({
   const [state, formAction, pending] = useActionState<ActionState, FormData>(
     async (prev, formData) => {
       const result = await createTeacher(prev, formData)
-      // Redirect on the ordinary success. When an existing account was linked,
-      // the success message names whose account it was — redirecting past it
-      // would hide exactly the sentence a mistyped digit shows up in.
-      if (result?.ok && !result.linked) router.push('/settings/teachers')
+      // Redirect on the ordinary success only. Two successes stay on this screen
+      // because the sentence itself is the deliverable: a linked account names
+      // whose it was, which is where a mistyped digit shows up, and a minted
+      // username is the one thing here the owner has to read out loud to somebody.
+      if (result?.ok && !result.linked && !result.username) {
+        router.push('/settings/teachers')
+      }
       return result
     },
     null,
@@ -58,11 +61,15 @@ export function TeacherForm({
   const normalized = normalizeBdMobile(phone)
   const showEcho = phone.trim().length > 0
 
-  if (state?.linked) {
+  // The form is finished with, but the message it produced is not: `ok` carries
+  // either the name of the account that was joined or the username that was minted,
+  // and both have to survive being read. `wrongPerson` belongs only to the first —
+  // there is nobody else a fresh username could have been.
+  if (state?.linked || state?.username) {
     return (
       <div className="flex flex-col gap-4">
         <Alert tone="ok">{state.ok}</Alert>
-        <p className="text-sm text-ink-soft">{t.wrongPerson}</p>
+        {state.linked && <p className="text-sm text-ink-soft">{t.wrongPerson}</p>}
         <Button type="button" full onClick={() => router.push('/settings/teachers')}>
           {t.seeList}
         </Button>

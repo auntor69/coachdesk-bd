@@ -17,6 +17,7 @@ import type { Route } from 'next'
 
 import { createClient } from '@/lib/supabase/server'
 import { loginEmailToPhone } from '@/lib/bd/phone'
+import { loginEmailToUsername } from '@/lib/bd/username'
 import { asLocale, type Locale } from '@/lib/i18n'
 import type { PermissionKey } from '@/lib/permissions'
 import { effectiveEntitlement } from '@/lib/entitlement'
@@ -44,7 +45,14 @@ export type Membership = {
 
 export type Session = {
   userId: string
-  /** Real email for owners, null for phone-login staff and students. */
+  /**
+   * A real email, or null when this account signs in with a number or a username.
+   *
+   * Decided by the login domain and not by "does it parse as a number", because a
+   * username address parses as neither: a check that only knew about the phone
+   * domain would hand `rahim@user.coachdesk.invalid` to a screen as though a
+   * teacher had an inbox.
+   */
   email: string | null
   /**
    * Canonical E.164 (+8801712345678), from the profile or recovered from the
@@ -52,6 +60,20 @@ export type Session = {
    * this raw, because Bangladeshis read their own numbers as 01712345678.
    */
   phone: string | null
+  /**
+   * What this account types into the login field when it has no number
+   * (MASTERPLAN.md §5.2).
+   *
+   * Read off the login address rather than `profiles.username`: the address is what
+   * actually signs them in and the column is a readable copy of it, so if the two
+   * ever disagree this field agrees with the thing that works. It costs no query —
+   * `getUser` above already returned it.
+   *
+   * Null for everybody who signs in with a number, which is every owner. A screen
+   * needs this because the person who was told their username in a staffroom four
+   * months ago is the person who will ask where to look it up.
+   */
+  username: string | null
   fullName: string | null
   /**
    * Which language every screen this session renders is written in. Read from
@@ -191,9 +213,14 @@ export const getSession = cache(async (): Promise<Session | null> => {
     (await cookies()).get(ACTIVE_CENTER_COOKIE)?.value,
   )
 
-  // A phone-login account has no real email; recover the number from the
-  // synthetic address so the UI can still greet them by number.
-  const isSynthetic = user.email ? loginEmailToPhone(user.email) !== null : false
+  // Neither synthetic address is a real email, and each one carries the identifier
+  // it was built from — the number for an owner, the username for a teacher who
+  // never gave one. Both are recovered here, so a screen can show somebody what
+  // they type to sign in without a second query.
+  const username = user.email ? loginEmailToUsername(user.email) : null
+  const isSynthetic = user.email
+    ? loginEmailToPhone(user.email) !== null || username !== null
+    : false
 
   /*
    * ONE RESOLVER CALL, and the two fields below are both taken off its answer.
@@ -240,6 +267,7 @@ export const getSession = cache(async (): Promise<Session | null> => {
     userId: user.id,
     email: isSynthetic ? null : (user.email ?? null),
     phone: profile?.phone ?? (user.email ? loginEmailToPhone(user.email) : null),
+    username,
     fullName: profile?.full_name ?? null,
     locale: asLocale(profile?.locale),
     isPlatformAdmin: profile?.is_platform_admin ?? false,

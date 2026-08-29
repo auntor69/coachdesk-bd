@@ -93,6 +93,9 @@ export const en: Dictionary = {
     phoneLabel: 'Login number',
     phoneHint:
       'This is the number you sign in with. To change the number, ask the centre owner.',
+    usernameLabel: 'Login username',
+    usernameHint:
+      'This is what you sign in with. To change it, ask the centre owner.',
     passwordTitle: 'Change your password',
     passwordBody:
       'The new password works straight away. Another phone that is already signed in will not be signed out on its own — you have to log out on that phone.',
@@ -1591,7 +1594,8 @@ export const en: Dictionary = {
     loginBody:
       'With a login they can take attendance and enter marks from their own phone. Only the permissions ticked above will work.',
     loginPhone: 'Mobile number',
-    loginPhoneHint: 'This is the number they will sign in with — correct it here if it is wrong',
+    loginPhoneHint:
+      'Give a number and that is their ID — correct it here if it is wrong. Leave it empty and a username is made from their name.',
     loginPassword: 'Starting password',
     loginPasswordHint: 'Tell it to the teacher — it stays visible',
     loginSubmit: 'Create the login',
@@ -1615,7 +1619,8 @@ export const en: Dictionary = {
     nameLabel: 'Teacher’s name',
     namePlaceholder: 'Karim Sir',
     phone: 'Mobile number',
-    phoneHint: 'If you give them a login, this number is their ID',
+    phoneHint:
+      'With a login, this number is their ID; leave it empty and a username is made from their name',
     phoneBad: 'That number is not right',
     whichSubjects: 'Which subjects do they teach',
     /**
@@ -2713,6 +2718,8 @@ export const en: Dictionary = {
         `${plan} covers ${limit} ${limit === 1 ? 'teacher' : 'teachers'}, and ${active} are switched on here. Switch off the ones who no longer teach at your centre — the attendance and marks they entered stay. Until you do, they can still take attendance for their own batches, but they no longer see fees or send SMS.`,
       addedWithLogin: 'Teacher and their login created',
       addedNoLogin: 'Teacher added (no login)',
+      addedWithUsername: (username: string) =>
+        `Teacher added — their username is ${username}. Tell them that and the password.`,
       linked: (name: string) =>
         `Teacher added — joined to an existing account (${name})`,
       detailsSaved: 'Name and subjects saved',
@@ -2720,6 +2727,8 @@ export const en: Dictionary = {
       activated: 'Turned on',
       deactivated: 'Turned off',
       loginGiven: 'The login is ready — tell the teacher the number and the password.',
+      loginGivenUsername: (username: string) =>
+        `The login is ready — the username is ${username}. Tell the teacher that and the password.`,
       reset: {
         done: 'New password set — tell it to the teacher.',
         failed: 'The password could not be changed. Try again.',
@@ -2738,8 +2747,8 @@ export const en: Dictionary = {
       errors: {
         nameRequired: 'Give the teacher’s name.',
         phoneInvalid: 'That number is not right (e.g. 01712345678).',
-        loginNeedsPhone:
-          'A login needs a mobile number — the number is their ID.',
+        usernameTaken:
+          'There are already too many usernames from this name. Try the fuller spelling of their name, or give their mobile number.',
         loginFailed: 'The login was not created. Please try again.',
         /**
          * The read behind this is not the teacher’s own row — it is the check on

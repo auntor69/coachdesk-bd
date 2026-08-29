@@ -19,6 +19,7 @@ import {
   phoneToLoginEmail,
   formatBdMobile,
 } from '@/lib/bd/phone'
+import { loginEmailFor } from '@/lib/bd/username'
 import { getSession, homePathFor } from '@/lib/auth/session'
 import { MIN_PASSWORD } from '@/lib/auth/password'
 import { MAX_NAME } from '@/lib/limits'
@@ -28,7 +29,7 @@ import { nameTooLong, passwordTooShort } from '@/lib/i18n/messages'
 export type FormState = {
   error?: string
   /** Which input to highlight, so the message lands next to the problem. */
-  field?: 'phone' | 'password' | 'name' | 'center' | 'email'
+  field?: 'identifier' | 'phone' | 'password' | 'name' | 'center' | 'email'
 } | null
 
 /**
@@ -38,7 +39,7 @@ export type FormState = {
  */
 function friendlyAuthError(message: string): string {
   if (/invalid login credentials/i.test(message)) {
-    return 'নম্বর বা পাসওয়ার্ড ঠিক নেই। আবার চেষ্টা করুন।'
+    return 'নম্বর, ইউজারনেম বা পাসওয়ার্ড ঠিক নেই। আবার চেষ্টা করুন।'
   }
   if (/email rate limit|too many requests|rate limit/i.test(message)) {
     return 'অনেকবার চেষ্টা হয়েছে। কিছুক্ষণ পর আবার চেষ্টা করুন।'
@@ -59,21 +60,34 @@ function friendlyAuthError(message: string): string {
 }
 
 /**
- * Sign in with a Bangladeshi mobile number and a password.
+ * Sign in with a mobile number *or* a username, in one field.
  *
- * The number is normalised to E.164 first, so 01712-345678, +8801712345678 and
- * ০১৭১২৩৪৫৬৭৮ all reach the same account instead of failing as "wrong password".
+ * MASTERPLAN.md §5.3 puts a single box on the login screen and makes the server
+ * work out which of the two it was handed — "no radio button, no second tab, no
+ * 'are you a teacher?' question". That dispatch is `loginEmailFor`, and it is
+ * unambiguous because the two sets cannot overlap: a username begins with a
+ * letter and no form of a Bangladeshi mobile number does.
+ *
+ * Both are normalised on the way through, so 01712-345678, +8801712345678 and
+ * ০১৭১২৩৪৫৬৭৮ reach one account, and `Rahim` reaches the same account as
+ * `rahim`, instead of failing as "wrong password".
  */
 export async function signIn(
   _prev: FormState,
   formData: FormData,
 ): Promise<FormState> {
-  const rawPhone = String(formData.get('phone') ?? '')
+  const rawIdentifier = String(formData.get('identifier') ?? '')
   const password = String(formData.get('password') ?? '')
 
-  const loginEmail = phoneToLoginEmail(rawPhone)
+  const loginEmail = loginEmailFor(rawIdentifier)
   if (!loginEmail) {
-    return { error: 'সঠিক মোবাইল নম্বর দিন (যেমন ০১৭১২৩৪৫৬৭৮)।', field: 'phone' }
+    // One message for both halves of the field. Saying *which* form it failed to
+    // be would be a hint about which form exists — and it is no help anyway: the
+    // teacher was told one identifier and is typing that one.
+    return {
+      error: 'মোবাইল নম্বর বা ইউজারনেম ঠিক নেই (যেমন ০১৭১২৩৪৫৬৭৮ বা rahim)।',
+      field: 'identifier',
+    }
   }
   if (!password) {
     return { error: 'পাসওয়ার্ড দিন।', field: 'password' }
