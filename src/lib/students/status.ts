@@ -14,8 +14,15 @@
 import type { StudentStatus } from '../supabase/types.ts'
 
 /**
- * `as const satisfies` so widening the enum breaks here rather than quietly leaving
- * a state out of the only screen that can reach it.
+ * `as const satisfies` catches a value that is not a status: a typo like 'droped'
+ * fails here rather than at runtime, on the one screen that can set it.
+ *
+ * What it does not catch — despite what this comment claimed until 20260811000040 —
+ * is the opposite direction. `satisfies` asks whether each element belongs to the
+ * union, so widening the enum leaves this list perfectly valid and the new state
+ * simply missing from the form. That migration adds two states, which turns a wrong
+ * comment into a state the office can be told about and the app cannot record.
+ * `Unlisted` below is the check that actually fails.
  */
 export const STUDENT_STATUSES = [
   'active',
@@ -23,3 +30,15 @@ export const STUDENT_STATUSES = [
   'graduated',
   'dropped',
 ] as const satisfies readonly StudentStatus[]
+
+/** Whatever the list above left out. `never` while it is complete. */
+type Unlisted = Exclude<StudentStatus, (typeof STUDENT_STATUSES)[number]>
+
+/**
+ * Nothing at runtime, and a compile error the moment `Unlisted` stops being `never`.
+ *
+ * Exported rather than left as a floating `const`, so that it is not an unused
+ * binding, and so the error names something greppable: a reader told that `true` is
+ * not assignable to `'transferred'` needs the next line to be the list to add it to.
+ */
+export const ALL_STATUSES_LISTED: Unlisted extends never ? true : Unlisted = true

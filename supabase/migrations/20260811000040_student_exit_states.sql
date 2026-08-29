@@ -1,0 +1,61 @@
+-- Two more things that can happen to a student: they were barred, or they left.
+--
+-- MASTERPLAN.md §7.1: "Today: active, inactive, graduated, dropped. Two more are
+-- needed — `transferred` (moved to another branch of the same institution) and
+-- `suspended` (temporarily barred, still enrolled, still owing)."
+--
+-- Both of these are being recorded today by writing something else down. A student
+-- barred for a term is marked `inactive`, which is the same word the register uses
+-- for a child who simply stopped coming — so the office cannot tell "we sent them
+-- home" from "they drifted away", and the two want opposite conversations. A student
+-- who left for another branch is marked `dropped`, which reads on every screen as a
+-- family the centre lost.
+--
+-- NEITHER IS CHARGEABLE, which is the part that matters beyond labelling. §7.1:
+-- "Only active students are chargeable." 20260811000036's capacity trigger counts
+-- `status = 'active'` and nothing else, so both of these free the student's seat the
+-- moment they are set, with no change to that function. That is the intended
+-- behaviour for both — a centre that has barred a student for the term is not paying
+-- for their place, and one whose student has gone is not paying for a ghost.
+--
+-- AND THAT IS WHY A BRANCH MOVE MUST NOT SET `transferred`. §7.1 introduces the
+-- value as "moved to another branch of the same institution" and §7.2 describes what
+-- such a move actually does: one row, `branch_id` updated, plus a transfer history
+-- record — explicitly not a copy-and-delete, because the attendance, the marks and
+-- the payments all point at the old id. A student moved between two branches of one
+-- institution is still being taught by that institution and is still chargeable to
+-- it, so they stay `active`; marking them `transferred` would take a child who is
+-- sitting in a room off the count that the institution's shared capacity pool is
+-- sized from. The status is for a student who has left the organisation — the exit
+-- the register had no word for. The branch move is a `branch_id` write, and the
+-- history table it needs is not in this file.
+--
+-- BOTH VALUES IN ONE FILE, which 20260811000015 says to be careful about: Postgres
+-- refuses to *use* a new enum value in the transaction that added it, and db-push
+-- runs one transaction per file. Adding two is fine — the restriction is on use, and
+-- nothing here compares against either value. Anything that does has to be in a
+-- later file.
+--
+-- ORDERED BY DISTANCE FROM THE CLASSROOM, so `order by status` reads the way an
+-- office would list them: active, suspended (barred, expected back), inactive
+-- (stopped coming), transferred (gone elsewhere), graduated, dropped.
+--
+-- THE TYPESCRIPT HALF CANNOT LAND WITH THIS. src/lib/supabase/types.ts is generated
+-- from the live database by scripts/gen-types.mjs, so `StudentStatus` does not widen
+-- until this migration is pushed and the types are regenerated. When that happens,
+-- two places stop compiling on purpose and both need an entry for each new value:
+--
+--   * ENROLMENT_END in src/app/(app)/settings/actions.ts — what leaving means for the
+--     batches the student was in. Intended: `suspended` → 'paused', because §7.1 says
+--     they are still enrolled and still owing and this is the pair that comes back;
+--     `transferred` → 'dropped', because the batch did not run its course.
+--   * STUDENT_STATUSES in src/lib/students/status.ts — the order the edit form offers,
+--     which is the only screen that can set any of them.
+--
+-- Plus a label for each in both dictionaries. Until then the values exist and no code
+-- path can reach them, which is the correct half to ship first: the register can
+-- record the two facts as soon as the screens learn to say them.
+
+alter type public.student_status add value if not exists 'suspended' after 'active';
+
+alter type public.student_status add value if not exists 'transferred' before 'graduated';

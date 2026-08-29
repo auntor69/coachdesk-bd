@@ -229,8 +229,8 @@ declare
   ceiling integer;
   in_use  integer;
 begin
-  -- Only an active student occupies a place. A `left`, `transferred` or
-  -- `suspended` row is history, and history is free — otherwise a centre would
+  -- Only an active student occupies a place. Every other status is a student who
+  -- has stopped, left or finished, and history is free — otherwise a centre would
   -- have to delete last year's students to admit this year's, and deleting a
   -- student deletes their attendance and their marks.
   if new.status <> 'active' then
@@ -288,7 +288,7 @@ begin
       'this centre has % of % student places in use', in_use, ceiling
       using errcode  = 'CD001',
             detail   = 'coaching_center_id=' || new.coaching_center_id::text,
-            hint     = 'Buy more student places, or set an existing student to left.';
+            hint     = 'Buy more student places, or set a student who has left to a status other than active.';
   end if;
 
   return new;
