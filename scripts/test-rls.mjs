@@ -2332,6 +2332,125 @@ await db.exec(`
 `)
 
 // ---------------------------------------------------------------------------
+// The founder flag, and the two other columns on `profiles` that are not the
+// account holder's to write.
+//
+// This section started as a probe too, and against the original policies it
+// printed:  UPDATE ALLOWED -> {"is_platform_admin":true}  — any signed-in user
+// making themselves a platform administrator with one call against their own
+// row. `profiles_self_update` was `using (id = auth.uid())` with no column
+// limit, and a `with check` expression cannot see the old row, so no policy
+// could have caught it. 20260811000037 closed it.
+//
+// What it bought is worth spelling out, because it is not one screen:
+// `app.is_platform_admin()` is an arm of the read policy on nearly every table
+// here — students, guardians and their phone numbers, invoices, payments, SMS
+// logs — for every centre on the platform, plus the founder panel. It is the
+// largest privilege this database can grant.
+// ---------------------------------------------------------------------------
+
+console.log('\nProfile identity (founder flag, phone, id):')
+
+check(
+  'a signed-in user cannot make themselves a platform admin',
+  await deniedAsUser(
+    db,
+    ids.ownerA,
+    'update profiles set is_platform_admin = true where id = $1',
+    [ids.ownerA],
+  ),
+)
+// Not an escalation but the squatting attack §5.4 describes: profiles_phone_key
+// is unique across the platform, so writing somebody else's number into your own
+// row denies that number to its real owner, forever, and they are the one who
+// then cannot sign up.
+check(
+  'a signed-in user cannot claim a phone number they did not sign up with',
+  await deniedAsUser(
+    db,
+    ids.ownerA,
+    `update profiles set phone = '+8801911000222' where id = $1`,
+    [ids.ownerA],
+  ),
+)
+check(
+  'a signed-in user cannot rewrite their own id',
+  await deniedAsUser(db, ids.ownerA, 'update profiles set id = $2 where id = $1', [
+    ids.ownerA,
+    ids.ownerB,
+  ]),
+)
+
+const profile = async (id = ids.ownerA) =>
+  (
+    await db.query(
+      'select is_platform_admin, phone, full_name, locale from profiles where id = $1',
+      [id],
+    )
+  ).rows[0]
+
+let me = await profile()
+check(
+  'nothing actually moved after those attempts',
+  me.is_platform_admin === false && me.phone === null,
+  `admin=${me.is_platform_admin} phone=${me.phone}`,
+)
+
+// The two columns the account screen writes, through the reader's own client.
+// If the lock caught these it would have broken the name field and the language
+// switch instead of the exploit.
+await asUser(db, ids.ownerA, (tx) =>
+  tx.query(`update profiles set full_name = 'Owner A', locale = 'en' where id = $1`, [
+    ids.ownerA,
+  ]),
+)
+me = await profile()
+check(
+  'a user can still set their own name and language',
+  me.full_name === 'Owner A' && me.locale === 'en',
+  `name=${me.full_name} locale=${me.locale}`,
+)
+
+// Setting the founder flag is a thing we do, by hand, in the SQL editor — so the
+// lock has to leave the server's own route open. The panel section at the bottom
+// of this file depends on it.
+let flagOk = true
+try {
+  await db.transaction(async (tx) => {
+    await tx.exec('set local role service_role;')
+    await tx.query('update profiles set is_platform_admin = true where id = $1', [
+      ids.rahim,
+    ])
+  })
+} catch (error) {
+  flagOk = false
+  console.log(`        ${error.message}`)
+}
+check(
+  'service_role can still set the founder flag',
+  flagOk && (await profile(ids.rahim)).is_platform_admin === true,
+)
+await db.query('update profiles set is_platform_admin = false where id = $1', [ids.rahim])
+
+// The same accident as above: a blanket re-grant from a setup snippet, and the
+// column revoke silently stops mattering. A trigger cannot be granted away.
+await db.exec('grant update on profiles to authenticated;')
+check(
+  'guard trigger still refuses the founder flag after a blanket re-grant',
+  await deniedAsUser(
+    db,
+    ids.ownerA,
+    'update profiles set is_platform_admin = true where id = $1',
+    [ids.ownerA],
+  ),
+)
+check('the flag survived the re-grant', (await profile()).is_platform_admin === false)
+await db.exec(`
+  revoke update on profiles from authenticated;
+  grant update (full_name, locale) on profiles to authenticated;
+`)
+
+// ---------------------------------------------------------------------------
 // The payment number — the only editable column on this table that moves money.
 //
 // Everything above protects what a centre is charged. This protects where the
