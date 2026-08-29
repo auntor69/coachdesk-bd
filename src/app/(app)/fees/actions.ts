@@ -28,6 +28,7 @@ import { arrearsPlan, oldestEnrollments, ARREARS_FIELD_PREFIX } from '@/lib/fees
 import { cancelVerdict } from '@/lib/fees/void'
 import { refundVerdict, refundable } from '@/lib/fees/refund'
 import { discountVerdict, maxDiscount } from '@/lib/fees/discount'
+import { PAYMENT_METHODS } from '@/lib/fees/methods'
 import { currentPeriodMonth } from '@/lib/bd/time'
 import { normalizeBdMobile } from '@/lib/bd/phone'
 import { readIdempotencyKey, UNIQUE_VIOLATION } from '@/lib/idempotency'
@@ -60,16 +61,12 @@ export type FeeState = {
  * list forgets is a payment the receptionist cannot record at all. 20260811000041 is
  * the file that says so, having widened the enum without the compiler being able to
  * point here.
+ *
+ * Built from @/lib/fees/methods rather than typed out, which is what finally makes that
+ * paragraph untrue: the enum and this set cannot disagree any more, because there is one
+ * list and adding to the enum fails the build against it.
  */
-const METHODS = new Set<PaymentMethod>([
-  'cash',
-  'bkash',
-  'nagad',
-  'rocket',
-  'bank_transfer',
-  'card',
-  'other',
-])
+const METHODS = new Set<PaymentMethod>(PAYMENT_METHODS)
 
 /** First day of a month, and nothing that merely looks like one. */
 const MONTH_RE = /^\d{4}-\d{2}-01$/

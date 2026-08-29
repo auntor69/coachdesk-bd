@@ -20,6 +20,8 @@ import {
   REGISTER_METHODS,
   type RegisterPaymentRow,
 } from '../src/lib/fees/register.ts'
+import { PAYMENT_METHODS } from '../src/lib/fees/methods.ts'
+import { sumTaka } from '../src/lib/money.ts'
 
 const UNKNOWN = 'নাম জানা নেই'
 
@@ -258,6 +260,47 @@ test('a method the month never used is left off', () => {
     tally.byMethod.map((m) => m.method),
     ['cash'],
   )
+})
+
+test('the breakdown adds up to the total, whichever method the money came through', () => {
+  // The invariant the page rests on, and the one nothing checked until a card payment
+  // broke it. `card` reached the enum in 20260811000041 and never reached
+  // REGISTER_METHODS, so it was counted in `total` and printed in no line of the
+  // breakdown — a foot that no longer added up to the figure above it, on the sheet an
+  // owner holds against a wallet statement.
+  //
+  // THE ROWS ARE BUILT FROM PAYMENT_METHODS AND THE LINES COUNTED AGAINST IT, not
+  // against REGISTER_METHODS. That is the whole point: a test that took its payments from
+  // the same list the breakdown iterates can never catch that list being short, because
+  // the method it forgot is a payment the test never makes. PAYMENT_METHODS is checked
+  // against the enum by the compiler (see ALL_METHODS_LISTED), so this fails on both
+  // halves of the drift — a value added to the enum and not to the list, and a list that
+  // stops agreeing with the canonical one.
+  const rows = registerRows(
+    PAYMENT_METHODS.map((method, i) => pay(`p${i}`, 100 * (i + 1), { method })),
+    UNKNOWN,
+  )
+  const tally = tallyRegister(rows)
+
+  assert.equal(tally.byMethod.length, PAYMENT_METHODS.length)
+  assert.equal(sumTaka(tally.byMethod.map((m) => m.amount)), tally.total)
+  assert.equal(tally.entries, PAYMENT_METHODS.length)
+})
+
+test('every method the enum has gets a line', () => {
+  // The runtime half of ALL_METHODS_LISTED, which is a compile-time check and so proves
+  // nothing about a `node --test` run. Belt and braces on the same drift: a register that
+  // silently drops one method's line is a wrong document, not a missing feature.
+  assert.deepEqual([...REGISTER_METHODS], [...PAYMENT_METHODS])
+  assert.ok(REGISTER_METHODS.includes('card'))
+})
+
+test('every method the enum has gets a line', () => {
+  // The runtime half of ALL_METHODS_LISTED, which is a compile-time check and so proves
+  // nothing about a `node --test` run. Belt and braces on the same drift: a register that
+  // silently drops one method's line is a wrong document, not a missing feature.
+  assert.deepEqual([...REGISTER_METHODS], [...PAYMENT_METHODS])
+  assert.ok(REGISTER_METHODS.includes('card'))
 })
 
 test('entries counts payments and not students, refunds included', () => {

@@ -36,23 +36,26 @@
 import { todayInDhaka } from '../bd/time.ts'
 import { sumTaka } from '../money.ts'
 import type { PaymentMethod } from '../supabase/types.ts'
+import { PAYMENT_METHODS } from './methods.ts'
 
 /**
- * Cash first, then the wallets.
+ * Cash first, then the wallets. The collection form's own order, so the breakdown at
+ * the foot of the sheet reads down in the order the owner is used to choosing from —
+ * and a fixed order rather than whatever the month happened to contain, so two months
+ * printed side by side have their lines in the same places.
  *
- * The same order as the collection form, so the breakdown at the foot of the sheet
- * reads down in the order the owner is used to choosing from — and a fixed order
- * rather than whatever the month happened to contain, so two months printed side by
- * side have their lines in the same places.
+ * ALIASED RATHER THAN LISTED, and the difference is not cosmetic. This was a hand-typed
+ * copy of the same seven values, and it was six of them: `card` reached the enum in
+ * 20260811000041 and never reached here, so a card payment counted in `total` below and
+ * appeared in no line of `byMethod` — a breakdown that no longer added up to the figure
+ * printed above it, on the sheet an owner holds against a wallet statement. See
+ * ./methods.ts for why the list now lives somewhere a compiler can check it.
+ *
+ * The name stays because the tests and the page read it, and because "the methods the
+ * register prints lines for" is still a meaningful thing to say — it just no longer gets
+ * to be a different list.
  */
-export const REGISTER_METHODS: readonly PaymentMethod[] = [
-  'cash',
-  'bkash',
-  'nagad',
-  'rocket',
-  'bank_transfer',
-  'other',
-]
+export const REGISTER_METHODS: readonly PaymentMethod[] = PAYMENT_METHODS
 
 /** One `fee_payments` row, as the register queries it. */
 export type RegisterPaymentRow = {

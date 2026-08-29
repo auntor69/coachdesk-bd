@@ -65,6 +65,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { createClient } from '@/lib/supabase/server'
 import { addMonths, formatMonth } from '@/lib/bd/time'
 import { formatBdMobile, normalizeBdMobile } from '@/lib/bd/phone'
+import { PAYMENT_METHODS } from '@/lib/fees/methods'
 import { dict, DEFAULT_LOCALE } from '@/lib/i18n'
 import { passwordTooShort } from '@/lib/i18n/messages'
 import { readIdempotencyKey, UNIQUE_VIOLATION } from '@/lib/idempotency'
@@ -100,18 +101,11 @@ export type FounderState = {
 
 /**
  * The methods a coaching centre will actually hand a founder money in. Same list as
- * the fee register's, and for the same reason: this set fails closed, so a value the
- * enum allows and this list forgets is a payment nobody can record.
+ * the fee register's, and now literally the same list: this set fails closed, so a value
+ * the enum allows and this list forgets is a payment nobody can record, and there is one
+ * array behind both so there is nothing left to forget. See @/lib/fees/methods.
  */
-const METHODS = new Set<PaymentMethod>([
-  'cash',
-  'bkash',
-  'nagad',
-  'rocket',
-  'bank_transfer',
-  'card',
-  'other',
-])
+const METHODS = new Set<PaymentMethod>(PAYMENT_METHODS)
 
 const PLAN_IDS = new Set<PlanId>(Object.keys(PLANS) as PlanId[])
 
