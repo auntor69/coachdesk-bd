@@ -9015,6 +9015,142 @@ check(
   ])) === 0,
 )
 
+console.log('\nWhich branch billed it (fee branch snapshot):')
+
+// Two branches and a student at the first of them. Seeded as the superuser, because this
+// section is about where the money is filed rather than about who may file it.
+const bBillA = await one(
+  `insert into branches (coaching_center_id, name) values ($1, 'Mirpur Fees') returning id`,
+  [centerA],
+)
+const bBillB = await one(
+  `insert into branches (coaching_center_id, name) values ($1, 'Uttara Fees') returning id`,
+  [centerA],
+)
+const stBilled = await one(
+  `insert into students (coaching_center_id, name, branch_id) values ($1, 'Billed Child', $2) returning id`,
+  [centerA, bBillA],
+)
+const bBranchOther = await one(
+  `insert into branches (coaching_center_id, name) values ($1, 'Khulna Fees') returning id`,
+  [centerB],
+)
+
+const raiseInvoice = (period, branch = null) =>
+  asUser(db, ids.ownerA, async (tx) =>
+    (
+      await tx.query(
+        `insert into fee_invoices
+           (coaching_center_id, student_id, period_month, amount_bdt, due_date, branch_id)
+         values ($1, $2, $3, 1200, $3::date + 10, $4) returning id`,
+        [centerA, stBilled, period, branch],
+      )
+    ).rows[0].id,
+  )
+
+const branchOf = (table, id) =>
+  db
+    .query(`select branch_id from ${table} where id = $1`, [id])
+    .then((r) => r.rows[0]?.branch_id ?? null)
+
+const invMarch = await raiseInvoice('2026-03-01')
+check(
+  "a bill is filed under the student's branch without anybody sending one",
+  (await branchOf('fee_invoices', invMarch)) === bBillA,
+)
+
+// The payment side, which takes the invoice's branch rather than the desk's, so the two
+// halves of a collection rate are grouped by the same thing.
+const payMarch = await asUser(db, ids.ownerA, async (tx) =>
+  (
+    await tx.query(
+      `insert into fee_payments (coaching_center_id, invoice_id, student_id, amount_bdt)
+       values ($1, $2, $3, 1200) returning id`,
+      [centerA, invMarch, stBilled],
+    )
+  ).rows[0].id,
+)
+check(
+  'and the money against it lands in the same branch as the bill',
+  (await branchOf('fee_payments', payMarch)) === bBillA,
+)
+
+// The whole reason the column exists. MASTERPLAN.md 7.2 moves a student by updating one
+// row, so a join through the student would rewrite March the moment April happens.
+await db.query('update students set branch_id = $2 where id = $1', [stBilled, bBillB])
+check(
+  'moving the student does not move the bill they were already sent',
+  (await branchOf('fee_invoices', invMarch)) === bBillA,
+)
+check('nor the money they already paid', (await branchOf('fee_payments', payMarch)) === bBillA)
+check(
+  'while the next bill goes to the branch they are at now',
+  (await branchOf('fee_invoices', await raiseInvoice('2026-04-01'))) === bBillB,
+)
+
+// Supplying it is allowed — an HQ desk raising a bill for a branch student is a real
+// thing — but only within the centre, which is the composite key's job.
+check(
+  'a bill may be filed under a branch on purpose',
+  (await branchOf('fee_invoices', await raiseInvoice('2026-05-01', bBillA))) === bBillA,
+)
+check(
+  "but not under another centre's branch",
+  await deniedAsUser(
+    db,
+    ids.ownerA,
+    `insert into fee_invoices
+       (coaching_center_id, student_id, period_month, amount_bdt, due_date, branch_id)
+     values ($1, $2, '2026-06-01', 1200, '2026-06-10', $3)`,
+    [centerA, stBilled, bBranchOther],
+  ),
+)
+
+// Not in either column grant, so it is refused before any trigger sees it.
+check(
+  'an owner cannot move a receipt to another branch afterwards',
+  await deniedAsUser(db, ids.ownerA, 'update fee_payments set branch_id = $2 where id = $1', [
+    payMarch,
+    bBillB,
+  ]),
+)
+check(
+  'nor re-file a bill they have already sent',
+  await deniedAsUser(db, ids.ownerA, 'update fee_invoices set branch_id = $2 where id = $1', [
+    invMarch,
+    bBillB,
+  ]),
+)
+
+// The landmine this schema has hit four times: the SET NULL is an UPDATE, and a guard
+// that refused it would make a branch that ever took money undeletable for ever.
+await db.query('delete from branches where id = $1', [bBillA])
+check(
+  'a branch that has taken money can still be closed',
+  (await n(db, 'select count(*)::int as n from branches where id = $1', [bBillA])) === 0,
+)
+check(
+  'leaving the money on the centre books rather than refusing the close',
+  (await branchOf('fee_payments', payMarch)) === null &&
+    (await branchOf('fee_invoices', invMarch)) === null,
+)
+
+// And the ordinary case: most centres are one location and have nothing to put here.
+check(
+  'a centre with no branches files its money under none',
+  (await branchOf(
+    'fee_invoices',
+    await one(
+      `insert into fee_invoices (coaching_center_id, student_id, period_month, amount_bdt, due_date)
+       values ($1, $2, '2026-07-01', 700, '2026-07-10') returning id`,
+      [centerB, stB],
+    ),
+  )) === null,
+)
+
+await db.query('delete from students where id = $1', [stBilled])
+await db.query('delete from branches where id in ($1, $2)', [bBillB, bBranchOther])
+
 console.log('\nAnonymous access:')
 
 await asUser(db, null, async (tx) => {
