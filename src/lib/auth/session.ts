@@ -19,15 +19,10 @@ import { createClient } from '@/lib/supabase/server'
 import { loginEmailToPhone } from '@/lib/bd/phone'
 import { asLocale, type Locale } from '@/lib/i18n'
 import type { PermissionKey } from '@/lib/permissions'
-import {
-  hasStaff,
-  planFor,
-  studentCeiling,
-  type PlanLimits,
-  type StudentCeiling,
-} from '@/lib/plans'
+import { effectiveEntitlement } from '@/lib/entitlement'
+import { hasStaff, type PlanLimits, type StudentCeiling } from '@/lib/plans'
 import { ACTIVE_CENTER_COOKIE, pickActive, strongestPerCenter } from '@/lib/auth/active-center'
-import type { MemberRole, PlanType } from '@/lib/supabase/types'
+import type { CenterStatus, MemberRole, PlanType } from '@/lib/supabase/types'
 
 export type Membership = {
   centerId: string
@@ -35,6 +30,15 @@ export type Membership = {
   role: MemberRole
   branchId: string | null
   plan: PlanType
+  /**
+   * The centre's standing: trialling, paying, suspended, cancelled.
+   *
+   * Beside the plan because entitlement is derived from both — a suspended centre is
+   * still *on* the Coaching Center plan, and the two columns answer different
+   * questions ("what did they buy" and "are they in good standing"). See
+   * `effectiveEntitlement`.
+   */
+  status: CenterStatus
   smsCreditBalance: number
 }
 
@@ -79,6 +83,12 @@ export type Session = {
    * never see the choice. See lib/auth/active-center.
    */
   active: Membership | null
+  /**
+   * The tier in force at the active centre — which is not always the tier they pay
+   * for. A trial is a temporary better plan rather than a fifth tier, so it arrives
+   * here as the plan itself and no gate downstream learns it was a trial. See
+   * `effectiveEntitlement`.
+   */
   plan: PlanLimits
   /**
    * How many active students this centre may hold.
@@ -93,13 +103,6 @@ export type Session = {
    * `kind` is what a refusal reads to choose its words: a teacher tier is full and
    * wants a plan change, a centre has run out of places and wants more places. See
    * `studentCeiling`.
-   *
-   * THE PURCHASED FIGURE IS ZERO HERE, and it is exact today rather than a stand-in.
-   * `coaching_centers.student_capacity` arrives with migration 36 and nothing can
-   * write it — there is no payment path — so every centre's real ceiling is the
-   * allowance its plan includes. When top-ups ship, that column joins the read above
-   * and this one line passes it; every gate downstream already asks the right
-   * question.
    */
   ceiling: StudentCeiling
 }
@@ -151,7 +154,7 @@ export const getSession = cache(async (): Promise<Session | null> => {
     supabase
       .from('center_members')
       .select(
-        'coaching_center_id, role, branch_id, coaching_centers (name, plan, sms_credit_balance)',
+        'coaching_center_id, role, branch_id, coaching_centers (name, plan, status, sms_credit_balance)',
       )
       .eq('user_id', user.id)
       .eq('active', true),
@@ -175,6 +178,7 @@ export const getSession = cache(async (): Promise<Session | null> => {
           role: row.role,
           branchId: row.branch_id,
           plan: center.plan,
+          status: center.status,
           smsCreditBalance: center.sms_credit_balance,
         }
       })
@@ -191,9 +195,46 @@ export const getSession = cache(async (): Promise<Session | null> => {
   // synthetic address so the UI can still greet them by number.
   const isSynthetic = user.email ? loginEmailToPhone(user.email) !== null : false
 
-  // Resolved once, because `ceiling` below is derived from it and the two must not
-  // be able to disagree about which tier this centre is on.
-  const plan = planFor(active?.plan)
+  /*
+   * ONE RESOLVER CALL, and the two fields below are both taken off its answer.
+   *
+   * `plan` and `ceiling` used to be derived here independently — `planFor(...)` and
+   * then `studentCeiling(plan, 0)` — which worked only because nothing had yet been
+   * able to make them disagree. A trial is exactly that thing: it changes which tier
+   * is in force, so a ceiling derived from the *paid* tier would have given a teacher
+   * trialling Pro thirty places while every feature on the screen said a hundred and
+   * fifty. There is now one derivation and no way to half-apply it.
+   *
+   * WHAT IS PASSED AS NULL, AND WHY THAT IS EXACT RATHER THAN A STAND-IN.
+   * `trial_plan`, `trial_ends_at` and `student_capacity` are added by migration 36,
+   * which is written and committed but not applied to the live database — so
+   * `src/lib/supabase/types.ts`, generated from the live schema, does not know them
+   * and the select above cannot ask for them. Today that costs nothing: nothing in
+   * the product can write any of the three, because there is no payment path and no
+   * trial is ever started, so "no trial and nothing bought" is the true state of
+   * every centre. When the migration is applied these three lines become three more
+   * columns on the select, and every gate downstream already asks the right question.
+   *
+   * `access` IS DELIBERATELY NOT SURFACED YET. The resolver answers it correctly from
+   * a status the select does now read, but nothing in the app refuses a write on it —
+   * so putting it on `Session` would be `can_manage_students` all over again: a field
+   * stored, typed, rendered and read by no gate, which reads to whoever finds it as a
+   * protection that exists. Read-only enforcement is its own change, with the banner
+   * that has to come with it; until then the honest thing is for the field not to be
+   * here at all.
+   */
+  const entitlement = effectiveEntitlement(
+    active
+      ? {
+          status: active.status,
+          plan: active.plan,
+          trial_plan: null,
+          trial_ends_at: null,
+          student_capacity: 0,
+        }
+      : null,
+    new Date(),
+  )
 
   return {
     userId: user.id,
@@ -205,8 +246,8 @@ export const getSession = cache(async (): Promise<Session | null> => {
     memberships,
     membershipsUnreadable: Boolean(rowsError),
     active,
-    plan,
-    ceiling: studentCeiling(plan, 0),
+    plan: entitlement.plan,
+    ceiling: entitlement.ceiling,
   }
 })
 

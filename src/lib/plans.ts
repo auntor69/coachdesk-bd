@@ -246,6 +246,32 @@ export const PLANS: Record<PlanId, PlanLimits> = {
   },
 }
 
+/**
+ * The tiers in order of what they grant, so "is this one better than that one" is a
+ * comparison rather than a chain of `||`.
+ *
+ * Written down rather than inferred from the order of `PLANS` above, which is only
+ * the order the founder panel happens to list them in — a tier inserted in the
+ * middle of that object for readability would silently re-rank every comparison
+ * that used its index. Total by construction, so a fifth tier cannot be added
+ * without saying where it sits.
+ *
+ * NOT A PRICE ORDER, and the two are not the same question. A centre plan bills
+ * less than Teacher Pro at fifty students; it still grants strictly more. This is
+ * about entitlement.
+ *
+ * The one caller today is the trial in `effectiveEntitlement`, which needs it for a
+ * reason worth stating: a trial is *a temporary better plan*, and a trial row left
+ * behind on a centre that has since paid for `center` would otherwise drop them to
+ * Teacher Pro — taking staff management off a customer the week they bought it.
+ */
+export const PLAN_RANK: Record<PlanId, number> = {
+  teacher_free: 0,
+  teacher_plus: 1,
+  center: 2,
+  institution: 3,
+}
+
 /* -------------------------------------------------------------------------- */
 /* Centre pricing                                                             */
 /* -------------------------------------------------------------------------- */
