@@ -1,5 +1,17 @@
 # Plans, SMS, WhatsApp, and calling — the sustainable version
 
+> **`MASTERPLAN.md` is canonical as of 2026-08-29.** This document keeps its value
+> for messaging: how an SMS actually reaches a guardian from a centre's own number,
+> why WhatsApp detection is not free, and what a desktop does with a button only a
+> phone can honour. Nothing here has been re-derived since.
+>
+> **Where this file and the masterplan disagree, the masterplan wins**, and the
+> known disagreements are: this document has no student-capacity concept, no Pro
+> trial, no Institution branch pricing, and it names the enforcement function
+> `overLimit()` — the live function is `limitRefusal()` in
+> `src/app/(app)/settings/actions.ts`. For numbers, `src/lib/plans.ts` is the source
+> of truth ahead of both documents.
+
 Written 2026-08-23, in answer to four questions: what the tiers should be, how SMS
 actually reaches a guardian from a centre's own number, how WhatsApp can be
 detected and charged for, and what the desktop does with a button that only a

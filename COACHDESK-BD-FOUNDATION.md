@@ -1,5 +1,14 @@
 # CoachDesk BD — Business & Technical Foundation
 
+> **Historical. `MASTERPLAN.md` is canonical as of 2026-08-29.**
+>
+> This was the original design brief and it is kept for its market reasoning and its
+> feature inventory, both of which still hold. Two things in it are dead and must not
+> be built from: **§2.3 and §2.4's per-enrollment pricing** — a student taking three
+> subjects is one student, not three, and the old model billed ৳75 for one child at
+> the ৳25 rate — and the **flat tier prices**, replaced by a floor plus marginal
+> bands. The stack section predates the move to Next.js 16 on Vercel.
+
 A complete, customizable **Coaching Center Management System (CCMS)** for Bangladesh.
 Product vision and detailed design brief. Version 2.0 — 2026-08-11.
 
