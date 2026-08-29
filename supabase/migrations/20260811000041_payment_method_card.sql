@@ -1,0 +1,44 @@
+-- One more way money arrives: a card.
+--
+-- MASTERPLAN.md §9.3 lists the payment methods as "✅ cash, bKash, Nagad, Rocket,
+-- bank transfer, other — `card` missing". It is the last gap in that row.
+--
+-- WHY IT IS NOT ALREADY COVERED BY `other`. It is representable there, and that is
+-- the problem: `other` is the value a receptionist picks when the truth is not on
+-- the list, so it is the one method that can mean anything. A card payment has
+-- properties none of the rest share — it settles into the centre's bank account a
+-- day or three later, minus a percentage the centre never sees — and the reports
+-- §9.6 asks for ("collected versus charged", cash position, profit) cannot answer
+-- "where is our money right now" if a card swipe and a rounding-error miscellaneous
+-- entry are the same row. A bigger centre with a POS terminal is exactly the
+-- customer the Institution tier is for.
+--
+-- NOTHING TO DO WITH bKASH, and worth saying so in the file: this is a label the
+-- receptionist chooses after a machine that belongs to somebody else has already
+-- taken the money, exactly like `bank_transfer` today. It is not a payment rail, it
+-- adds no integration, and it trusts nothing a browser says about whether a payment
+-- succeeded.
+--
+-- Placed before `other`, so the enum reads as cash, the three mobile wallets, the
+-- bank, the card, and then the catch-all last — which is the order a picker should
+-- offer them and what `order by method` gives a report.
+--
+-- ALONE IN ITS OWN FILE, per 20260811000015: Postgres refuses to use a new enum
+-- value in the transaction that added it, and db-push runs one transaction per file.
+-- Nothing here uses it.
+--
+-- WHAT HAS TO CHANGE WHEN THIS IS PUSHED, because src/lib/supabase/types.ts is
+-- generated from the live database and `PaymentMethod` does not widen until then.
+-- Three of these fail to compile, which is the point, and three do not:
+--
+--   * MethodLabels in src/app/(app)/fees/method-picker.tsx, the receipt's `methods`
+--     in fees/receipt/[paymentId]/page.tsx, and the founder panel's in
+--     founder/center-billing.tsx are all `Record<PaymentMethod, string>`. A missing
+--     key is a build error, so the label cannot be forgotten in either language.
+--   * METHODS in fees/method-picker.tsx (`PaymentMethod[]`), and the validation sets
+--     in fees/actions.ts and founder/actions.ts (`new Set<PaymentMethod>`), all
+--     accept a short list without complaint. They fail closed — a method absent from
+--     the set is refused rather than mis-saved — but they are the three places the
+--     compiler will not remind anybody about.
+
+alter type public.payment_method add value if not exists 'card' before 'other';
