@@ -7917,6 +7917,190 @@ check('deleting a student takes their transfer history with them', (await moves(
 
 await db.query('delete from branches where id = $1', [bMirpur])
 
+console.log('\nThe staff who do not teach (employees):')
+
+// §9.4's argument, tested from the direction that costs the customer money: a
+// cleaner on the payroll must not become a teacher seat, because a teacher seat is
+// a billable unit and the seat count is what Center pricing is built on.
+const teacherSeats = async () =>
+  n(db, 'select count(*)::int as n from teachers where coaching_center_id = $1', [centerA])
+
+const seatsBefore = await teacherSeats()
+
+let eAccountant
+await asUser(db, ids.ownerA, async (tx) => {
+  eAccountant = (
+    await tx.query(
+      `insert into employees (coaching_center_id, name, role, designation, phone)
+       values ($1, 'Shahin Alam', 'accountant', 'Head of Accounts', '+8801711223344')
+       returning id`,
+      [centerA],
+    )
+  ).rows[0].id
+  check('an owner puts the accountant on the staff list', typeof eAccountant === 'string')
+
+  await tx.query(
+    `insert into employees (coaching_center_id, name, role) values ($1, 'Jasim Uddin', 'cleaner')`,
+    [centerA],
+  )
+})
+
+check('and hiring a cleaner adds no teacher seat', (await teacherSeats()) === seatsBefore)
+
+// Most of a centre's staff never sign in, so the account link has to be absent on
+// row after row without the two of them colliding.
+check(
+  'staff with no login do not collide with each other',
+  (await n(db, 'select count(*)::int as n from employees where coaching_center_id = $1', [
+    centerA,
+  ])) === 2,
+)
+
+// PAYROLL_TESTS_PLACEHOLDER
+
+// The salary bill is management's business. A teacher's own row is in `teachers`
+// and they can read that; who else was hired, at what designation, and who has left
+// is not a colleague's to browse.
+await asUser(db, ids.karim, async (tx) => {
+  check(
+    'a teacher reads no staff list',
+    (await n(tx, 'select count(*)::int as n from employees')) === 0,
+  )
+})
+
+await asUser(db, ids.ownerB, async (tx) => {
+  check(
+    "another centre's owner reads none of them",
+    (await n(tx, 'select count(*)::int as n from employees')) === 0,
+  )
+})
+check(
+  "nor hires onto somebody else's payroll",
+  await deniedAsUser(
+    db,
+    ids.ownerB,
+    `insert into employees (coaching_center_id, name) values ($1, 'Planted Staff')`,
+    [centerA],
+  ),
+)
+
+// The composite key on (branch_id, coaching_center_id): a legitimate centre id
+// paired with another centre's branch id is the write 20260811000005 exists to
+// refuse, and a payroll filed under the wrong organisation's branch is how a branch
+// comparison table ends up part somebody else's.
+const bOtherCentre = (
+  await db.query(
+    `insert into branches (coaching_center_id, name) values ($1, 'B Main Branch') returning id`,
+    [centerB],
+  )
+).rows[0].id
+
+check(
+  "an employee cannot be filed under another centre's branch",
+  await deniedAsUser(db, ids.ownerA, 'update employees set branch_id = $1 where id = $2', [
+    bOtherCentre,
+    eAccountant,
+  ]),
+)
+
+const bHeadOffice = (
+  await db.query(
+    `insert into branches (coaching_center_id, name) values ($1, 'Head Office') returning id`,
+    [centerA],
+  )
+).rows[0].id
+
+await asUser(db, ids.ownerA, async (tx) => {
+  await tx.query('update employees set branch_id = $1 where id = $2', [bHeadOffice, eAccountant])
+})
+check(
+  'and can be filed under one of their own',
+  (await n(db, 'select count(*)::int as n from employees where branch_id = $1', [
+    bHeadOffice,
+  ])) === 1,
+)
+
+// ON DELETE SET NULL on the branch alone, per the column list in 20260811000005.
+// A centre closing an office must not lose the record of who it employed there —
+// the payroll history hangs off these rows.
+await db.query('delete from branches where id = $1', [bHeadOffice])
+check(
+  'closing a branch releases its staff rather than deleting them',
+  (await n(
+    db,
+    'select count(*)::int as n from employees where id = $1 and branch_id is null',
+    [eAccountant],
+  )) === 1,
+)
+
+// Two states that must not disagree. `active` is what payroll reads; `left_on` is
+// the day the job ended, and a row that carries one while claiming the other would
+// put a departed employee back on the salary bill.
+check(
+  'somebody who has left cannot still be active',
+  await deniedAsUser(db, ids.ownerA, 'update employees set left_on = current_date where id = $1', [
+    eAccountant,
+  ]),
+)
+await asUser(db, ids.ownerA, async (tx) => {
+  await tx.query(
+    'update employees set active = false, left_on = current_date where id = $1',
+    [eAccountant],
+  )
+})
+check(
+  'and leaving keeps the record rather than removing it',
+  (await n(db, 'select count(*)::int as n from employees where id = $1 and not active', [
+    eAccountant,
+  ])) === 1,
+)
+check(
+  'a leaving date before the joining date is refused',
+  await deniedAsUser(
+    db,
+    ids.ownerA,
+    'update employees set left_on = joined_on - 1 where id = $1',
+    [eAccountant],
+  ),
+)
+
+// A person may hold both records, which §9.4 allows on purpose: the coordinator who
+// also takes a Friday batch does teach, so the seat is real, and the employee row
+// records the other half of what they are paid for.
+let eNasrin
+await asUser(db, ids.ownerA, async (tx) => {
+  eNasrin = (
+    await tx.query(
+      `insert into employees (coaching_center_id, name, role, user_id)
+       values ($1, 'Nasrin Madam', 'coordinator', $2) returning id`,
+      [centerA, ids.nasrin],
+    )
+  ).rows[0].id
+})
+check('a teacher can also be on the payroll as a coordinator', typeof eNasrin === 'string')
+check(
+  'and one login is one staff record per centre',
+  await deniedAsUser(
+    db,
+    ids.ownerA,
+    `insert into employees (coaching_center_id, name, user_id)
+     values ($1, 'Second Claim On One Login', $2)`,
+    [centerA, ids.nasrin],
+  ),
+)
+
+// The column is a link and not a grant. Nothing in the product resolves permission
+// through employees.user_id — membership does that — so having a staff record must
+// not hand its holder a read the policy above refuses them.
+await asUser(db, ids.nasrin, async (tx) => {
+  check(
+    'and her own staff record still does not open the list to her',
+    (await n(tx, 'select count(*)::int as n from employees')) === 0,
+  )
+})
+
+await db.query('delete from branches where id = $1', [bOtherCentre])
+
 console.log('\nAnonymous access:')
 
 await asUser(db, null, async (tx) => {
@@ -7933,6 +8117,10 @@ await asUser(db, null, async (tx) => {
   check(
     'signed-out user reads no record of who was told about a missed class',
     (await n(tx, 'select count(*)::int as n from absence_notices')) === 0,
+  )
+  check(
+    'signed-out user reads no staff list',
+    (await n(tx, 'select count(*)::int as n from employees')) === 0,
   )
 })
 
