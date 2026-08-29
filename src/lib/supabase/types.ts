@@ -14,18 +14,23 @@ export type Json =
   | Json[]
 
 export type AttendanceStatus = 'present' | 'absent' | 'late' | 'excused'
+export type AuditOperation = 'created' | 'updated' | 'deleted'
 export type BatchSlot = 'morning' | 'noon' | 'afternoon' | 'evening' | 'night'
 export type CenterStatus = 'trial' | 'active' | 'suspended' | 'cancelled'
+export type EmployeeRole = 'manager' | 'accountant' | 'receptionist' | 'coordinator' | 'office_assistant' | 'librarian' | 'lab_assistant' | 'it_support' | 'marketing' | 'driver' | 'cook' | 'cleaner' | 'security_guard' | 'other'
 export type EnrollmentStatus = 'active' | 'paused' | 'completed' | 'dropped'
+export type ExpenseCategory = 'rent' | 'electricity' | 'internet' | 'marketing' | 'printing' | 'stationery' | 'equipment' | 'maintenance' | 'transport' | 'software' | 'salary' | 'miscellaneous'
 export type MemberRole = 'owner' | 'manager' | 'teacher' | 'student' | 'guardian'
 export type NoticeAudience = 'all' | 'students' | 'guardians' | 'teachers'
 export type OutreachChannel = 'sms' | 'whatsapp' | 'call'
-export type PaymentMethod = 'cash' | 'bkash' | 'nagad' | 'rocket' | 'bank_transfer' | 'other'
+export type PaymentMethod = 'cash' | 'bkash' | 'nagad' | 'rocket' | 'bank_transfer' | 'card' | 'other'
 export type PayoutWallet = 'bkash' | 'nagad' | 'rocket'
 export type PlanType = 'teacher_free' | 'teacher_plus' | 'center' | 'institution'
+export type RevenueCategory = 'tuition' | 'admission' | 'registration' | 'exam' | 'form' | 'other'
+export type SalaryBasis = 'monthly' | 'per_class'
 export type SmsKind = 'exam_result' | 'attendance_alert' | 'fee_reminder' | 'notice' | 'custom'
 export type SmsStatus = 'queued' | 'sending' | 'sent' | 'delivered' | 'failed' | 'cancelled'
-export type StudentStatus = 'active' | 'inactive' | 'graduated' | 'dropped'
+export type StudentStatus = 'active' | 'suspended' | 'inactive' | 'transferred' | 'graduated' | 'dropped'
 export type SubjectKind = 'academic' | 'coaching'
 export type SubscriptionStatus = 'trialing' | 'active' | 'past_due' | 'cancelled'
 
@@ -221,6 +226,60 @@ export type Database = {
             isOneToOne: false
             referencedRelation: 'teachers'
             referencedColumns: ['id', 'coaching_center_id']
+          },
+        ]
+      }
+      audit_log: {
+        Row: {
+          id: string
+          coaching_center_id: string
+          actor: string | null
+          actor_role: string | null
+          entity: string
+          entity_id: string | null
+          operation: AuditOperation
+          before: Json | null
+          after: Json | null
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          coaching_center_id: string
+          actor?: string | null
+          actor_role?: string | null
+          entity: string
+          entity_id?: string | null
+          operation: AuditOperation
+          before?: Json | null
+          after?: Json | null
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          coaching_center_id?: string
+          actor?: string | null
+          actor_role?: string | null
+          entity?: string
+          entity_id?: string | null
+          operation?: AuditOperation
+          before?: Json | null
+          after?: Json | null
+          created_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'audit_log_actor_fkey'
+            columns: ['actor']
+            isOneToOne: false
+            referencedRelation: 'users'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'audit_log_coaching_center_id_fkey'
+            columns: ['coaching_center_id']
+            isOneToOne: false
+            referencedRelation: 'coaching_centers'
+            referencedColumns: ['id']
           },
         ]
       }
@@ -455,6 +514,9 @@ export type Database = {
           updated_at: string
           payment_wallet: PayoutWallet | null
           payment_number: string | null
+          student_capacity: number
+          trial_plan: PlanType | null
+          trial_ends_at: string | null
         }
         Insert: {
           id?: string
@@ -471,6 +533,9 @@ export type Database = {
           updated_at?: string
           payment_wallet?: PayoutWallet | null
           payment_number?: string | null
+          student_capacity?: number
+          trial_plan?: PlanType | null
+          trial_ends_at?: string | null
         }
         Update: {
           id?: string
@@ -487,11 +552,87 @@ export type Database = {
           updated_at?: string
           payment_wallet?: PayoutWallet | null
           payment_number?: string | null
+          student_capacity?: number
+          trial_plan?: PlanType | null
+          trial_ends_at?: string | null
         }
         Relationships: [
           {
             foreignKeyName: 'coaching_centers_created_by_fkey'
             columns: ['created_by']
+            isOneToOne: false
+            referencedRelation: 'users'
+            referencedColumns: ['id']
+          },
+        ]
+      }
+      employees: {
+        Row: {
+          id: string
+          coaching_center_id: string
+          branch_id: string | null
+          user_id: string | null
+          name: string
+          phone: string | null
+          role: EmployeeRole
+          designation: string | null
+          joined_on: string
+          left_on: string | null
+          active: boolean
+          note: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          coaching_center_id: string
+          branch_id?: string | null
+          user_id?: string | null
+          name: string
+          phone?: string | null
+          role?: EmployeeRole
+          designation?: string | null
+          joined_on?: string
+          left_on?: string | null
+          active?: boolean
+          note?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          coaching_center_id?: string
+          branch_id?: string | null
+          user_id?: string | null
+          name?: string
+          phone?: string | null
+          role?: EmployeeRole
+          designation?: string | null
+          joined_on?: string
+          left_on?: string | null
+          active?: boolean
+          note?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'employees_branch_id_center_fkey'
+            columns: ['branch_id', 'coaching_center_id']
+            isOneToOne: false
+            referencedRelation: 'branches'
+            referencedColumns: ['id', 'coaching_center_id']
+          },
+          {
+            foreignKeyName: 'employees_coaching_center_id_fkey'
+            columns: ['coaching_center_id']
+            isOneToOne: false
+            referencedRelation: 'coaching_centers'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'employees_user_id_fkey'
+            columns: ['user_id']
             isOneToOne: false
             referencedRelation: 'users'
             referencedColumns: ['id']
@@ -779,6 +920,76 @@ export type Database = {
           },
         ]
       }
+      expenses: {
+        Row: {
+          id: string
+          coaching_center_id: string
+          branch_id: string | null
+          category: ExpenseCategory
+          note: string | null
+          amount_bdt: number
+          spent_on: string
+          method: PaymentMethod
+          reference: string | null
+          recurring: boolean
+          voucher_no: number
+          recorded_by: string | null
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          coaching_center_id: string
+          branch_id?: string | null
+          category?: ExpenseCategory
+          note?: string | null
+          amount_bdt: number
+          spent_on?: string
+          method?: PaymentMethod
+          reference?: string | null
+          recurring?: boolean
+          voucher_no?: number
+          recorded_by?: string | null
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          coaching_center_id?: string
+          branch_id?: string | null
+          category?: ExpenseCategory
+          note?: string | null
+          amount_bdt?: number
+          spent_on?: string
+          method?: PaymentMethod
+          reference?: string | null
+          recurring?: boolean
+          voucher_no?: number
+          recorded_by?: string | null
+          created_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'expenses_branch_id_center_fkey'
+            columns: ['branch_id', 'coaching_center_id']
+            isOneToOne: false
+            referencedRelation: 'branches'
+            referencedColumns: ['id', 'coaching_center_id']
+          },
+          {
+            foreignKeyName: 'expenses_coaching_center_id_fkey'
+            columns: ['coaching_center_id']
+            isOneToOne: false
+            referencedRelation: 'coaching_centers'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'expenses_recorded_by_fkey'
+            columns: ['recorded_by']
+            isOneToOne: false
+            referencedRelation: 'users'
+            referencedColumns: ['id']
+          },
+        ]
+      }
       fee_invoices: {
         Row: {
           id: string
@@ -798,6 +1009,8 @@ export type Database = {
           discount_reason: string | null
           discounted_by: string | null
           discounted_at: string | null
+          branch_id: string | null
+          revenue_category: RevenueCategory
         }
         Insert: {
           id?: string
@@ -817,6 +1030,8 @@ export type Database = {
           discount_reason?: string | null
           discounted_by?: string | null
           discounted_at?: string | null
+          branch_id?: string | null
+          revenue_category?: RevenueCategory
         }
         Update: {
           id?: string
@@ -836,8 +1051,17 @@ export type Database = {
           discount_reason?: string | null
           discounted_by?: string | null
           discounted_at?: string | null
+          branch_id?: string | null
+          revenue_category?: RevenueCategory
         }
         Relationships: [
+          {
+            foreignKeyName: 'fee_invoices_branch_id_center_fkey'
+            columns: ['branch_id', 'coaching_center_id']
+            isOneToOne: false
+            referencedRelation: 'branches'
+            referencedColumns: ['id', 'coaching_center_id']
+          },
           {
             foreignKeyName: 'fee_invoices_coaching_center_id_fkey'
             columns: ['coaching_center_id']
@@ -890,6 +1114,7 @@ export type Database = {
           created_at: string
           receipt_no: number
           idempotency_key: string | null
+          branch_id: string | null
         }
         Insert: {
           id?: string
@@ -905,6 +1130,7 @@ export type Database = {
           created_at?: string
           receipt_no?: number
           idempotency_key?: string | null
+          branch_id?: string | null
         }
         Update: {
           id?: string
@@ -920,8 +1146,16 @@ export type Database = {
           created_at?: string
           receipt_no?: number
           idempotency_key?: string | null
+          branch_id?: string | null
         }
         Relationships: [
+          {
+            foreignKeyName: 'fee_payments_branch_id_center_fkey'
+            columns: ['branch_id', 'coaching_center_id']
+            isOneToOne: false
+            referencedRelation: 'branches'
+            referencedColumns: ['id', 'coaching_center_id']
+          },
           {
             foreignKeyName: 'fee_payments_coaching_center_id_fkey'
             columns: ['coaching_center_id']
@@ -1218,6 +1452,24 @@ export type Database = {
           },
         ]
       }
+      plan_allowances: {
+        Row: {
+          plan: PlanType
+          included_students: number
+          updated_at: string
+        }
+        Insert: {
+          plan: PlanType
+          included_students: number
+          updated_at?: string
+        }
+        Update: {
+          plan?: PlanType
+          included_students?: number
+          updated_at?: string
+        }
+        Relationships: []
+      }
       profiles: {
         Row: {
           id: string
@@ -1227,6 +1479,7 @@ export type Database = {
           is_platform_admin: boolean
           created_at: string
           updated_at: string
+          username: string | null
         }
         Insert: {
           id: string
@@ -1236,6 +1489,7 @@ export type Database = {
           is_platform_admin?: boolean
           created_at?: string
           updated_at?: string
+          username?: string | null
         }
         Update: {
           id?: string
@@ -1245,6 +1499,7 @@ export type Database = {
           is_platform_admin?: boolean
           created_at?: string
           updated_at?: string
+          username?: string | null
         }
         Relationships: [
           {
@@ -1378,6 +1633,180 @@ export type Database = {
             columns: ['student_id', 'coaching_center_id']
             isOneToOne: false
             referencedRelation: 'students'
+            referencedColumns: ['id', 'coaching_center_id']
+          },
+        ]
+      }
+      salary_payments: {
+        Row: {
+          id: string
+          coaching_center_id: string
+          employee_id: string | null
+          teacher_id: string | null
+          for_month: string
+          basic_bdt: number
+          allowances_bdt: number
+          other_bdt: number
+          deductions_bdt: number
+          gross_bdt: number | null
+          amount_bdt: number | null
+          method: PaymentMethod
+          reference: string | null
+          note: string | null
+          voucher_no: number
+          paid_at: string
+          paid_by: string | null
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          coaching_center_id: string
+          employee_id?: string | null
+          teacher_id?: string | null
+          for_month: string
+          basic_bdt?: number
+          allowances_bdt?: number
+          other_bdt?: number
+          deductions_bdt?: number
+          gross_bdt?: number | null
+          amount_bdt?: number | null
+          method?: PaymentMethod
+          reference?: string | null
+          note?: string | null
+          voucher_no?: number
+          paid_at?: string
+          paid_by?: string | null
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          coaching_center_id?: string
+          employee_id?: string | null
+          teacher_id?: string | null
+          for_month?: string
+          basic_bdt?: number
+          allowances_bdt?: number
+          other_bdt?: number
+          deductions_bdt?: number
+          gross_bdt?: number | null
+          amount_bdt?: number | null
+          method?: PaymentMethod
+          reference?: string | null
+          note?: string | null
+          voucher_no?: number
+          paid_at?: string
+          paid_by?: string | null
+          created_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'salary_payments_coaching_center_id_fkey'
+            columns: ['coaching_center_id']
+            isOneToOne: false
+            referencedRelation: 'coaching_centers'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'salary_payments_employee_id_center_fkey'
+            columns: ['employee_id', 'coaching_center_id']
+            isOneToOne: false
+            referencedRelation: 'employees'
+            referencedColumns: ['id', 'coaching_center_id']
+          },
+          {
+            foreignKeyName: 'salary_payments_paid_by_fkey'
+            columns: ['paid_by']
+            isOneToOne: false
+            referencedRelation: 'users'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'salary_payments_teacher_id_center_fkey'
+            columns: ['teacher_id', 'coaching_center_id']
+            isOneToOne: false
+            referencedRelation: 'teachers'
+            referencedColumns: ['id', 'coaching_center_id']
+          },
+        ]
+      }
+      salary_terms: {
+        Row: {
+          id: string
+          coaching_center_id: string
+          employee_id: string | null
+          teacher_id: string | null
+          basis: SalaryBasis
+          basic_bdt: number
+          allowances_bdt: number
+          other_bdt: number
+          deductions_bdt: number
+          gross_bdt: number | null
+          net_bdt: number | null
+          per_class_bdt: number | null
+          effective_from: string
+          active: boolean
+          note: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          coaching_center_id: string
+          employee_id?: string | null
+          teacher_id?: string | null
+          basis?: SalaryBasis
+          basic_bdt?: number
+          allowances_bdt?: number
+          other_bdt?: number
+          deductions_bdt?: number
+          gross_bdt?: number | null
+          net_bdt?: number | null
+          per_class_bdt?: number | null
+          effective_from?: string
+          active?: boolean
+          note?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          coaching_center_id?: string
+          employee_id?: string | null
+          teacher_id?: string | null
+          basis?: SalaryBasis
+          basic_bdt?: number
+          allowances_bdt?: number
+          other_bdt?: number
+          deductions_bdt?: number
+          gross_bdt?: number | null
+          net_bdt?: number | null
+          per_class_bdt?: number | null
+          effective_from?: string
+          active?: boolean
+          note?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'salary_terms_coaching_center_id_fkey'
+            columns: ['coaching_center_id']
+            isOneToOne: false
+            referencedRelation: 'coaching_centers'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'salary_terms_employee_id_center_fkey'
+            columns: ['employee_id', 'coaching_center_id']
+            isOneToOne: false
+            referencedRelation: 'employees'
+            referencedColumns: ['id', 'coaching_center_id']
+          },
+          {
+            foreignKeyName: 'salary_terms_teacher_id_center_fkey'
+            columns: ['teacher_id', 'coaching_center_id']
+            isOneToOne: false
+            referencedRelation: 'teachers'
             referencedColumns: ['id', 'coaching_center_id']
           },
         ]
@@ -1646,6 +2075,64 @@ export type Database = {
             isOneToOne: false
             referencedRelation: 'coaching_centers'
             referencedColumns: ['id']
+          },
+        ]
+      }
+      student_transfers: {
+        Row: {
+          id: string
+          coaching_center_id: string
+          student_id: string
+          from_branch_id: string | null
+          from_branch_name: string | null
+          to_branch_id: string | null
+          to_branch_name: string | null
+          moved_by: string | null
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          coaching_center_id: string
+          student_id: string
+          from_branch_id?: string | null
+          from_branch_name?: string | null
+          to_branch_id?: string | null
+          to_branch_name?: string | null
+          moved_by?: string | null
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          coaching_center_id?: string
+          student_id?: string
+          from_branch_id?: string | null
+          from_branch_name?: string | null
+          to_branch_id?: string | null
+          to_branch_name?: string | null
+          moved_by?: string | null
+          created_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'student_transfers_coaching_center_id_fkey'
+            columns: ['coaching_center_id']
+            isOneToOne: false
+            referencedRelation: 'coaching_centers'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'student_transfers_moved_by_fkey'
+            columns: ['moved_by']
+            isOneToOne: false
+            referencedRelation: 'users'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'student_transfers_student_id_center_fkey'
+            columns: ['student_id', 'coaching_center_id']
+            isOneToOne: false
+            referencedRelation: 'students'
+            referencedColumns: ['id', 'coaching_center_id']
           },
         ]
       }
@@ -2041,6 +2528,38 @@ export type Database = {
         }
         Relationships: []
       }
+      center_profit_month: {
+        Row: {
+          coaching_center_id: string | null
+          period_month: string | null
+          collected_bdt: number | null
+          expenses_bdt: number | null
+          payroll_bdt: number | null
+          profit_bdt: number | null
+        }
+        Relationships: []
+      }
+      fee_charges_category_month: {
+        Row: {
+          coaching_center_id: string | null
+          period_month: string | null
+          revenue_category: RevenueCategory | null
+          charged_bdt: number | null
+          paid_bdt: number | null
+          outstanding_bdt: number | null
+        }
+        Relationships: []
+      }
+      fee_charges_month: {
+        Row: {
+          coaching_center_id: string | null
+          period_month: string | null
+          charged_bdt: number | null
+          paid_bdt: number | null
+          outstanding_bdt: number | null
+        }
+        Relationships: []
+      }
       fee_collections_month: {
         Row: {
           coaching_center_id: string | null
@@ -2180,15 +2699,20 @@ export type Database = {
     }
     Enums: {
       attendance_status: AttendanceStatus
+      audit_operation: AuditOperation
       batch_slot: BatchSlot
       center_status: CenterStatus
+      employee_role: EmployeeRole
       enrollment_status: EnrollmentStatus
+      expense_category: ExpenseCategory
       member_role: MemberRole
       notice_audience: NoticeAudience
       outreach_channel: OutreachChannel
       payment_method: PaymentMethod
       payout_wallet: PayoutWallet
       plan_type: PlanType
+      revenue_category: RevenueCategory
+      salary_basis: SalaryBasis
       sms_kind: SmsKind
       sms_status: SmsStatus
       student_status: StudentStatus

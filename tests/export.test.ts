@@ -232,10 +232,15 @@ test('the roster is every student on the books, not only the active ones', async
 test('an unknown status falls back to the code rather than a blank cell', async () => {
   // Only reachable if the enum gains a value before the dictionary does. A blank
   // there reads as "no status", which is a different and wrong claim.
-  const odd = { ...STUDENT, status: 'transferred' }
+  //
+  // The stand-in has to be a value the enum does not have. It used to be
+  // 'transferred', which stopped working the day 20260811000040's dictionary half
+  // landed — the failure this test threw then was the good kind, and the answer is a
+  // made-up code rather than borrowing the next real state and having to come back.
+  const odd = { ...STUDENT, status: 'expelled' }
   const f = fake({ students: { rows: [odd] } })
   const sheet = sheetOf(await buildReport('students', context(f.supabase)))
-  assert.equal(sheet.rows[0][8], 'transferred')
+  assert.equal(sheet.rows[0][8], 'expelled')
 })
 
 test('how a family is reached comes out in words, in the reader’s language', async () => {

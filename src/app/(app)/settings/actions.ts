@@ -1314,14 +1314,27 @@ export async function createStudent(
 /**
  * What leaving means for the batches the student was in.
  *
- * Not one value for all three, because the distinction is the difference between a
+ * Not one value for all of them, because the distinction is the difference between a
  * batch that ran its course and one somebody walked out of, and `completed` written
  * over as `dropped` cannot be recovered. `paused` for `inactive` is the pair that
  * does the most work: a student who has stopped coming for a while is the common
  * case, and it is the only one this screen brings back on its own.
+ *
+ * The two states 20260811000040 added map the way its header specifies. `suspended` is
+ * `paused` because §7.1 says a barred student is still enrolled and still owing — the
+ * seat is theirs when the term ends, and ending their enrollments would make coming
+ * back a re-admission. `transferred` is `dropped` because the batch did not run its
+ * course: the student has left the organisation, and marking those enrollments
+ * `completed` would put a subject they abandoned on their record as finished.
+ *
+ * Exhaustive by type rather than by care — `Record<Exclude<StudentStatus, 'active'>>`
+ * is what stopped this file compiling when the enum widened, which is the only reason
+ * these two entries exist.
  */
 const ENROLMENT_END: Record<Exclude<StudentStatus, 'active'>, EnrollmentStatus> = {
+  suspended: 'paused',
   inactive: 'paused',
+  transferred: 'dropped',
   graduated: 'completed',
   dropped: 'dropped',
 }

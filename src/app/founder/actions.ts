@@ -98,13 +98,18 @@ export type FounderState = {
   warn?: string
 } | null
 
-/** The methods a coaching centre will actually hand a founder money in. */
+/**
+ * The methods a coaching centre will actually hand a founder money in. Same list as
+ * the fee register's, and for the same reason: this set fails closed, so a value the
+ * enum allows and this list forgets is a payment nobody can record.
+ */
 const METHODS = new Set<PaymentMethod>([
   'cash',
   'bkash',
   'nagad',
   'rocket',
   'bank_transfer',
+  'card',
   'other',
 ])
 

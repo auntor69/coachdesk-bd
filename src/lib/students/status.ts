@@ -20,13 +20,20 @@ import type { StudentStatus } from '../supabase/types.ts'
  * What it does not catch — despite what this comment claimed until 20260811000040 —
  * is the opposite direction. `satisfies` asks whether each element belongs to the
  * union, so widening the enum leaves this list perfectly valid and the new state
- * simply missing from the form. That migration adds two states, which turns a wrong
- * comment into a state the office can be told about and the app cannot record.
- * `Unlisted` below is the check that actually fails.
+ * simply missing from the form. `Unlisted` below is the check that actually fails,
+ * and it did: `suspended` and `transferred` are here because it refused to compile
+ * without them, not because anybody remembered.
+ *
+ * ORDERED BY DISTANCE FROM THE CLASSROOM, which is 20260811000040's phrase and the
+ * enum's own order: still here, barred but expected back, stopped coming, gone
+ * elsewhere, finished, left. A select that offered them alphabetically would put
+ * `dropped` above `graduated` and invite the wrong click on a good outcome.
  */
 export const STUDENT_STATUSES = [
   'active',
+  'suspended',
   'inactive',
+  'transferred',
   'graduated',
   'dropped',
 ] as const satisfies readonly StudentStatus[]

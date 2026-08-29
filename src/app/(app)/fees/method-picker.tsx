@@ -27,6 +27,7 @@ export const METHODS: PaymentMethod[] = [
   'nagad',
   'rocket',
   'bank_transfer',
+  'card',
   'other',
 ]
 

@@ -1115,6 +1115,7 @@ export const bn = {
       nagad: 'নগদ',
       rocket: 'রকেট',
       bank_transfer: 'ব্যাংক',
+      card: 'কার্ড',
       other: 'অন্য',
     },
   },
@@ -2473,8 +2474,16 @@ export const bn = {
     statusHint: 'বন্ধ করলে পরের মাস থেকে আর বিল হবে না। আগের বিল আর রসিদ ঠিক থাকবে।',
     status: {
       active: 'সক্রিয়',
+      /** Discipline, not a pause. 'বন্ধ' is a centre's own status in the founder
+       * panel and cannot be borrowed here; and this student is still enrolled and
+       * still owes, which is why the word is harsher than আপাতত বন্ধ. */
+      suspended: 'সাময়িক বহিষ্কার',
       /** Reversible in the owner's head — "আপাতত আসছে না" — so the batches pause. */
       inactive: 'আপাতত বন্ধ',
+      /** Gone to another institution, not given up: 'ছেড়ে দিয়েছে' below is the
+       * student stopping of their own accord, and an owner reading the two the
+       * wrong way round would chase a family that has moved away. */
+      transferred: 'অন্য প্রতিষ্ঠানে গেছে',
       graduated: 'পাস করেছে',
       dropped: 'ছেড়ে দিয়েছে',
     },

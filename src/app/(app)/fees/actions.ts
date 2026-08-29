@@ -52,13 +52,22 @@ export type FeeState = {
   receipt?: { id: string; no: number }
 } | null
 
-/** Cash and the three mobile wallets an owner will actually be handed money in. */
+/**
+ * The ways an owner is actually handed money: cash, the three wallets, the bank, a
+ * card machine, and a catch-all.
+ *
+ * This set fails closed, so it is not a safety net — a method the enum allows and this
+ * list forgets is a payment the receptionist cannot record at all. 20260811000041 is
+ * the file that says so, having widened the enum without the compiler being able to
+ * point here.
+ */
 const METHODS = new Set<PaymentMethod>([
   'cash',
   'bkash',
   'nagad',
   'rocket',
   'bank_transfer',
+  'card',
   'other',
 ])
 

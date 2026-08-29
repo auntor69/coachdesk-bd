@@ -596,6 +596,7 @@ export const en: Dictionary = {
       nagad: 'Nagad',
       rocket: 'Rocket',
       bank_transfer: 'Bank',
+      card: 'Card',
       other: 'Other',
     },
   },
@@ -1518,7 +1519,9 @@ export const en: Dictionary = {
       'Stop a student and next month’s bill stops with them. Bills and receipts already raised stay exactly as they are.',
     status: {
       active: 'Coming',
+      suspended: 'Barred for now',
       inactive: 'Stopped for now',
+      transferred: 'Moved elsewhere',
       graduated: 'Finished',
       dropped: 'Left',
     },
