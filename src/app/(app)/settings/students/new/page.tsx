@@ -3,7 +3,7 @@ import Link from 'next/link'
 import { Card } from '@/components/ui'
 import { pagePermission, getSession } from '@/lib/auth/session'
 import { createClient } from '@/lib/supabase/server'
-import { wouldExceed, planName } from '@/lib/plans'
+import { studentRoom, planName } from '@/lib/plans'
 import { slotLabel } from '@/lib/bd/schedule'
 import { dict, localName, DEFAULT_LOCALE } from '@/lib/i18n'
 import { StudentForm } from './student-form'
@@ -39,7 +39,17 @@ export default async function NewStudentPage() {
       .eq('status', 'active'),
   ])
 
-  const atLimit = wouldExceed(session.plan, 'maxStudents', studentCount ?? 0)
+  /*
+   * The ceiling rather than `plan.maxStudents`, which is null on the tiers that bill
+   * per student — and this screen read that null as "no limit", so the one plan whose
+   * students are metered was the one plan that never saw this card.
+   *
+   * `?? 0` stays, and it fails open on purpose: a count that did not arrive draws the
+   * form, and `createStudent` refuses with `limitUnknown` if it is still failing when
+   * the family is at the desk. Showing "no places left" off a failed read would turn
+   * somebody away over a number nobody has.
+   */
+  const atLimit = studentRoom(session.ceiling, studentCount ?? 0) === 0
 
   /*
    * `null` is passed down as `null`, because the form has something to say about a
@@ -83,11 +93,26 @@ export default async function NewStudentPage() {
 
       {atLimit ? (
         <Card>
-          <p className="font-medium text-ink">{t.capTitle}</p>
-          <p className="mt-1 text-sm text-ink-soft">
-            {/* maxStudents is non-null here: wouldExceed only says yes when it is. */}
-            {t.cap(planName(session.plan, locale), session.plan.maxStudents ?? 0)}
-          </p>
+          {/*
+           * Two cards, because the two tiers have different ways out: a teacher plan is
+           * full and wants changing, a centre has used the places it bought and wants
+           * more. See settings.errors.placesFull.
+           */}
+          {session.ceiling.kind === 'purchased' ? (
+            <>
+              <p className="font-medium text-ink">{t.placesTitle}</p>
+              <p className="mt-1 text-sm text-ink-soft">
+                {t.places(session.ceiling.ceiling)}
+              </p>
+            </>
+          ) : (
+            <>
+              <p className="font-medium text-ink">{t.capTitle}</p>
+              <p className="mt-1 text-sm text-ink-soft">
+                {t.cap(planName(session.plan, locale), session.ceiling.ceiling)}
+              </p>
+            </>
+          )}
         </Card>
       ) : (
         <StudentForm

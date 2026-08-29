@@ -19,7 +19,13 @@ import { createClient } from '@/lib/supabase/server'
 import { loginEmailToPhone } from '@/lib/bd/phone'
 import { asLocale, type Locale } from '@/lib/i18n'
 import type { PermissionKey } from '@/lib/permissions'
-import { hasStaff, planFor, type PlanLimits } from '@/lib/plans'
+import {
+  hasStaff,
+  planFor,
+  studentCeiling,
+  type PlanLimits,
+  type StudentCeiling,
+} from '@/lib/plans'
 import { ACTIVE_CENTER_COOKIE, pickActive, strongestPerCenter } from '@/lib/auth/active-center'
 import type { MemberRole, PlanType } from '@/lib/supabase/types'
 
@@ -74,6 +80,28 @@ export type Session = {
    */
   active: Membership | null
   plan: PlanLimits
+  /**
+   * How many active students this centre may hold.
+   *
+   * Beside `plan` rather than inside it, because on a centre tier the answer is not
+   * in that table: `maxStudents` is null there, and null does not mean unlimited — it
+   * means the tier bills per student, so the ceiling is what the centre has paid for
+   * and no plan constant knows the figure. Every screen that read `plan.maxStudents`
+   * and got null therefore drew a centre as having no limit at all, on the same day
+   * migration 36 started refusing its student inserts.
+   *
+   * `kind` is what a refusal reads to choose its words: a teacher tier is full and
+   * wants a plan change, a centre has run out of places and wants more places. See
+   * `studentCeiling`.
+   *
+   * THE PURCHASED FIGURE IS ZERO HERE, and it is exact today rather than a stand-in.
+   * `coaching_centers.student_capacity` arrives with migration 36 and nothing can
+   * write it — there is no payment path — so every centre's real ceiling is the
+   * allowance its plan includes. When top-ups ship, that column joins the read above
+   * and this one line passes it; every gate downstream already asks the right
+   * question.
+   */
+  ceiling: StudentCeiling
 }
 
 /**
@@ -163,6 +191,10 @@ export const getSession = cache(async (): Promise<Session | null> => {
   // synthetic address so the UI can still greet them by number.
   const isSynthetic = user.email ? loginEmailToPhone(user.email) !== null : false
 
+  // Resolved once, because `ceiling` below is derived from it and the two must not
+  // be able to disagree about which tier this centre is on.
+  const plan = planFor(active?.plan)
+
   return {
     userId: user.id,
     email: isSynthetic ? null : (user.email ?? null),
@@ -173,7 +205,8 @@ export const getSession = cache(async (): Promise<Session | null> => {
     memberships,
     membershipsUnreadable: Boolean(rowsError),
     active,
-    plan: planFor(active?.plan),
+    plan,
+    ceiling: studentCeiling(plan, 0),
   }
 })
 

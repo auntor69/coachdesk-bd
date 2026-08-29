@@ -145,7 +145,13 @@ export default async function StudentsPage({
   }))
 
   const activeCount = rows.filter((r) => r.active).length
-  const limit = session.plan.maxStudents
+
+  // The ceiling, which every plan has, so this line always names a figure — it used to
+  // read `session.plan.maxStudents` and show a bare count on the centre tiers, where
+  // that column is null. Unlike batches and subjects, where a cap is a guardrail we set
+  // and `capIsQuota` hides it, a centre's student ceiling is the thing the centre is
+  // paying for: the number belongs to them and this is the screen it belongs on.
+  const limit = session.ceiling.ceiling
 
   // The two problem sets, kept as lists rather than counts, because each one is now
   // both a number on a card and the list that card opens. Two predicates written twice
@@ -212,7 +218,7 @@ export default async function StudentsPage({
           <div>
             <h1 className="text-xl font-bold text-ink">{t.title}</h1>
             <p className="mt-1 text-ink-soft">
-              {limit === null ? t.count(activeCount) : t.used(activeCount, limit)}
+              {t.used(activeCount, limit)}
             </p>
             {/* Every reader who gets this far can open a student, so the hint is
                 unconditional now — it was gated on `mayEdit` when the row was an

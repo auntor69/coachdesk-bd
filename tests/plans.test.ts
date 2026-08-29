@@ -120,8 +120,10 @@ test('room is what a bulk import needs, and never negative', () => {
   assert.equal(roomFor(PLANS.teacher_free, 'maxStudents', 30), 0)
   assert.equal(roomFor(PLANS.teacher_free, 'maxStudents', 400), 0)
   // Null on a centre, and it does not mean unlimited there — it means this table is
-  // not what answers. The centre's room is studentCeiling plus what it bought, so an
-  // import on a centre plan must ask that instead of reading this as "no ceiling".
+  // not what answers. Which is why no screen asks this about students any more: the
+  // import used to, read the null as "no ceiling", and offered a paste of three
+  // hundred names to a centre with seventy-nine places. `studentRoom` is what both
+  // the screen and the action ask now, and it is covered in plan-allowances.test.ts.
   assert.equal(roomFor(PLANS.center, 'maxStudents', 400), null)
 })
 

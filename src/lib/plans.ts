@@ -690,6 +690,13 @@ export function overStaffSeats(plan: PlanLimits, activeTeachers: number): boolea
  * bulk import: a paste of 80 names against 15 remaining slots must be refused
  * whole, with the number that would fit, rather than let 15 through and lose 65
  * without saying which.
+ *
+ * NOT FOR STUDENTS, and no caller in `src/` uses it at all today — the only bulk
+ * import in the product is the student paste, and that now asks `studentRoom`. The
+ * reason is the null above: on the two centre tiers `maxStudents` is null, so this
+ * answered "unlimited" for the tiers that charge by the student, and the import
+ * screen believed it. Anything bulk-capped later should ask whether its own limit
+ * has the same shape before reaching for this.
  */
 export function roomFor(
   plan: PlanLimits,

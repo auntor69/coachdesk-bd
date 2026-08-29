@@ -3,7 +3,7 @@ import Link from 'next/link'
 import { Card } from '@/components/ui'
 import { pagePermission, getSession } from '@/lib/auth/session'
 import { createClient } from '@/lib/supabase/server'
-import { roomFor, planName } from '@/lib/plans'
+import { studentRoom, planName } from '@/lib/plans'
 import { rosterKey } from '@/lib/bd/roster'
 import { slotLabel } from '@/lib/bd/schedule'
 import { dict, localName, DEFAULT_LOCALE } from '@/lib/i18n'
@@ -67,17 +67,22 @@ export default async function ImportStudentsPage() {
    * invoice, so the fee board stays at ₹0 on the afternoon it is being shown to the
    * owner deciding whether to pay.
    *
-   * The count, because on a capped plan the paste is refused anyway. `importStudents`
+   * The count, because the paste is refused anyway without it. `importStudents`
    * returns `limitUnknown` the moment its own count comes back null, so a form built on
    * this one would take three hundred typed lines and save none of them — the arrears
-   * screen's mistake, on the screen next to it. `?? 0` also read as the whole cap being
-   * free, which is the flattering direction.
+   * screen's mistake, on the screen next to it. `?? 0` also read as the whole ceiling
+   * being free, which is the flattering direction.
+   *
+   * Asked of every plan, where it used to be skipped when `maxStudents` was null. That
+   * exempted the centre tiers, which are the ones that charge by the student: their
+   * ceiling is the places they bought, so a failed count there is a paste refused for
+   * a reason this screen never mentioned.
    *
    * Not the roster, which is a hint and says so. A failed read there means no hint, and
    * the form already has that state for a centre too large to send one — see
    * `existingKeys` below.
    */
-  if (batches === null || (session.plan.maxStudents !== null && studentCount === null)) {
+  if (batches === null || studentCount === null) {
     return (
       <div className="flex flex-col gap-5">
         <div>
@@ -96,7 +101,11 @@ export default async function ImportStudentsPage() {
     )
   }
 
-  const room = roomFor(session.plan, 'maxStudents', studentCount ?? 0)
+  // The ceiling, not the plan's `maxStudents`, which is null on the tiers that bill
+  // per student — and null read as "no limit" here, on exactly the plans where the
+  // number is the thing the centre paid for. `studentCount` is non-null past the
+  // guard above, so this is the real figure rather than a count that failed.
+  const room = studentRoom(session.ceiling, studentCount)
 
   return (
     <div className="flex flex-col gap-5">
@@ -113,15 +122,31 @@ export default async function ImportStudentsPage() {
 
       {room === 0 ? (
         <Card>
-          {/* The same refusal the one-at-a-time form gives, in the same words. */}
-          <p className="font-medium text-ink">{d.settings.students.capTitle}</p>
-          <p className="mt-1 text-sm text-ink-soft">
-            {/* maxStudents is non-null here: roomFor only counts down from a cap. */}
-            {d.settings.students.cap(
-              planName(session.plan, locale),
-              session.plan.maxStudents ?? 0,
-            )}
-          </p>
+          {/*
+           * The same refusal the one-at-a-time form gives, in the same words — and
+           * like that form, two sets of words. A teacher plan is full and the way out
+           * is a different plan; a centre has used every place it bought and the way
+           * out is more places. See settings.errors.placesFull for why one sentence
+           * cannot do both jobs.
+           */}
+          {session.ceiling.kind === 'purchased' ? (
+            <>
+              <p className="font-medium text-ink">{d.settings.students.placesTitle}</p>
+              <p className="mt-1 text-sm text-ink-soft">
+                {d.settings.students.places(session.ceiling.ceiling)}
+              </p>
+            </>
+          ) : (
+            <>
+              <p className="font-medium text-ink">{d.settings.students.capTitle}</p>
+              <p className="mt-1 text-sm text-ink-soft">
+                {d.settings.students.cap(
+                  planName(session.plan, locale),
+                  session.ceiling.ceiling,
+                )}
+              </p>
+            </>
+          )}
         </Card>
       ) : (
         <ImportForm

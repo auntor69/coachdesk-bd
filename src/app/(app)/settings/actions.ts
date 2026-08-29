@@ -14,6 +14,7 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { pageOrNull } from '@/lib/supabase/page'
 import {
   requireRole,
   requirePermission,
@@ -23,6 +24,7 @@ import {
   type RosterPermission,
 } from '@/lib/auth/session'
 import { normalizeBdMobile, phoneToLoginEmail } from '@/lib/bd/phone'
+import { isCapacityRefusal } from '@/lib/capacity'
 import {
   MAX_IMPORT_ROWS,
   parseRoster,
@@ -39,7 +41,7 @@ import { MAX_NAME, MAX_LABEL, clamp } from '@/lib/limits'
 import { PERMISSION_KEYS, type PermissionKey } from '@/lib/permissions'
 import { dict, DEFAULT_LOCALE } from '@/lib/i18n'
 import { nameTooLong, passwordTooShort } from '@/lib/i18n/messages'
-import { roomFor, wouldExceed, hasStaff, type LimitKey } from '@/lib/plans'
+import { studentRoom, wouldExceed, hasStaff, type LimitKey } from '@/lib/plans'
 import {
   examTypeDeleteVerdict,
   subjectDeleteVerdict,
@@ -137,6 +139,27 @@ function isSession(value: CenterSession | ActionState): value is CenterSession {
 }
 
 /**
+ * "There is no room for another student", in the words that fit what this centre
+ * is paying for.
+ *
+ * Two sentences and not one, because the two tiers have different answers. A
+ * teacher plan holds a fixed number and the way out is a different plan. A centre
+ * plan holds what the centre bought, there is nothing above it to move to, and the
+ * way out is more places — so `planLimit` would send a paying owner to a screen
+ * that has nothing for them.
+ *
+ * Reads `kind` rather than asking the plan table what its pricing is, because the
+ * ceiling is the thing that already knows: see `studentCeiling`, and the note on
+ * `Session.ceiling` for why the figure is exact today.
+ */
+function noRoomForStudent(session: CenterSession): string {
+  const t = dict(session.locale).settings.errors
+  return session.ceiling.kind === 'purchased'
+    ? t.placesFull(session.ceiling.ceiling)
+    : t.planLimit
+}
+
+/**
  * Counts the rows that a plan limit applies to, then returns the refusal to send
  * back — or null when there is room for one more. `active`/`status` filters matter:
  * a deactivated batch should not hold a slot hostage on the one-batch free plan.
@@ -152,6 +175,13 @@ function isSession(value: CenterSession | ActionState): value is CenterSession {
  * `count: 'exact', head: true` is typed `number | null` and null means the query
  * failed. It is not zero, and the difference is a free plan quietly taking a second
  * batch on the day Supabase hiccups.
+ *
+ * STUDENTS ARE THE ONE ARM THAT DOES NOT ASK THE PLAN TABLE, and `key` is unused for
+ * them. `maxStudents` is null on the centre tiers — they bill per student, so their
+ * ceiling is what the centre bought — and `wouldExceed` reads a null cap as no cap,
+ * which had this function admitting every student on the tiers that charge for them.
+ * `session.ceiling` is where the number lives for both kinds of plan, and it agrees
+ * with `wouldExceed` exactly on the tiers that do have a cap.
  */
 async function limitRefusal(
   session: CenterSession,
@@ -193,6 +223,11 @@ async function limitRefusal(
 
   const t = dict(session.locale).settings.errors
   if (count === null) return { error: t.limitUnknown }
+  if (table === 'students') {
+    return studentRoom(session.ceiling, count) === 0
+      ? { error: noRoomForStudent(session) }
+      : null
+  }
   return wouldExceed(session.plan, key, count) ? { error: t.planLimit } : null
 }
 
@@ -282,21 +317,37 @@ async function fullBatches(
  * owner told their plan is full when the truth is a failed read goes to the upgrade
  * screen instead of tapping paste again.
  *
- * Unpaged on purpose, and it stays correct: the only caller skips this entirely on
- * the uncapped tiers, so the roster it reads belongs to a plan that holds 150
- * students. Nothing here would survive being called for a centre.
+ * PAGED, and it did not use to be. The old note here said the caller skipped this
+ * entirely on the uncapped tiers, so the roster it read belonged to a plan holding
+ * 150 students — and that nothing here would survive being called for a centre.
+ * There are no uncapped tiers any more: a centre has a ceiling too, it is the number
+ * of places it bought, so this now runs against three thousand students. One
+ * unpaged read of those returns PostgREST's first thousand and a 200, which reads as
+ * a roster where two thousand names are missing — every one of them counted as a new
+ * student, and the paste refused with a number two thousand too high. Past
+ * MAX_PAGED_ROWS pageOrNull answers null, which lands on the sentence above.
  */
 async function unknownRows<T extends { name: string; guardian_phone: string }>(
   supabase: SupabaseClient<Database>,
   centerId: string,
   ready: T[],
 ): Promise<T[] | null> {
-  const { data: roster, error } = await supabase
-    .from('students')
-    .select('name, guardian_phone')
-    .eq('coaching_center_id', centerId)
+  // Ordered by id, and it has to be ordered by something: `.range()` is an offset,
+  // and page two of an unordered read may repeat or skip rows page one already had.
+  // A skipped student is a name that reads as new, which is the refusal this
+  // function exists to prevent. The primary key rather than a name because it is
+  // unique and nothing here is displayed, so there is no order to prefer.
+  const roster = await pageOrNull<{ name: string; guardian_phone: string | null }>(
+    (from, to) =>
+      supabase
+        .from('students')
+        .select('name, guardian_phone')
+        .eq('coaching_center_id', centerId)
+        .order('id', { ascending: true })
+        .range(from, to),
+  )
 
-  if (error || !roster) return null
+  if (roster === null) return null
 
   const known = new Set(
     roster.map((s) => rosterKey(s.name, s.guardian_phone ?? '')),
@@ -1185,6 +1236,14 @@ export async function createStudent(
 
   if (error || !student) {
     if (error?.code === '23505') return { error: t.students.errors.duplicateCode }
+    // The database's own version of the check at the top of this function, and the
+    // reason it is worth answering separately: the count above and this insert are
+    // two round trips, so two managers adding the last student at the same moment
+    // both pass the check and one of them is refused here. The trigger is also the
+    // only guard that a request bypassing this action cannot get around, which is
+    // why it exists — see migration 36. Same sentence either way, because from the
+    // owner's side nothing different happened.
+    if (isCapacityRefusal(error)) return { error: noRoomForStudent(session) }
     return { error: t.errors.addFailed }
   }
 
@@ -1417,6 +1476,13 @@ export async function updateStudent(
 
   if (saveError) {
     if (saveError.code === '23505') return { error: t.students.errors.duplicateCode }
+    // Turning a student back on is an addition as far as the ceiling is concerned, so
+    // this save can be refused by the same trigger a new student can — see the note
+    // on the insert in `createStudent`. The check at the top of this function only
+    // runs when the status is changing, and that is the only case that can land here,
+    // so the two agree; this catches the gap between them, which two managers saving
+    // at once can open.
+    if (isCapacityRefusal(saveError)) return { error: noRoomForStudent(session) }
     return { error: t.students.errors.saveFailed }
   }
 
@@ -1544,32 +1610,35 @@ export async function importStudents(
   // The cap applies to the paste as a whole. Letting the first 15 of 80 names
   // through and dropping the rest is worse than refusing: the owner has no way
   // to know which 65 are missing, and would have to diff two hundred lines.
-  //
-  // Only capped plans pay for the roster fetch — and a capped plan holds at most
-  // 300 students, so it is a small one.
   const { count } = await supabase
     .from('students')
     .select('id', { count: 'exact', head: true })
     .eq('coaching_center_id', centerId)
     .eq('status', 'active')
 
-  // Asked only when the plan has a total to compare against, and refused rather
-  // than read as zero, for the reason `limitRefusal` carries. A paste is where it
-  // would cost the most: one failed count would not admit one row past the cap,
-  // it would admit eighty.
-  if (session.plan.maxStudents !== null && count === null) {
-    return { error: t.errors.limitUnknown }
-  }
+  // Refused rather than read as zero, for the reason `limitRefusal` carries. A paste
+  // is where it would cost the most: one failed count would not admit one row past
+  // the ceiling, it would admit eighty.
+  //
+  // Asked unconditionally now, where it used to be skipped when `maxStudents` was
+  // null. That test meant "this plan has no total to compare against", and the centre
+  // tiers were the plans it exempted — the tiers that charge by the student. They have
+  // a total; it is the number of places they bought.
+  if (count === null) return { error: t.errors.limitUnknown }
 
-  const room = roomFor(session.plan, 'maxStudents', count ?? 0)
+  const room = studentRoom(session.ceiling, count)
   const perBatchCap = session.plan.maxStudentsPerBatch
 
   // Both caps ask about the same number — how many of these lines are new — so
   // the roster is read once for both. Rows that are already on it are taken out
   // first, or re-pasting a register to fix three names would be refused by a
   // plan that has plenty of room for those three.
+  //
+  // Skipped when neither cap can bite: a paste that fits even if every line of it is
+  // new needs no roster to prove it, and on a centre with two thousand places that
+  // saves paging two thousand names to answer a question already settled.
   const fresh =
-    room === null && perBatchCap === null
+    ready.length <= room && perBatchCap === null
       ? ready
       : await unknownRows(supabase, centerId, ready)
 
@@ -1579,15 +1648,16 @@ export async function importStudents(
   // about it, so the owner tries again instead of going to look at our prices.
   if (fresh === null) return { error: t.errors.limitUnknown }
 
-  if (room !== null && fresh.length > room) {
-    // Two sentences when there is room for some of them, because "the plan is
-    // full" is not true yet and an owner who is told it stops reading. The
-    // plan sentence is the same one every other limit uses.
+  if (fresh.length > room) {
+    // Two sentences when there is room for some of them, because "there is no room"
+    // is not true yet and an owner who is told it stops reading. The second is the
+    // one every other student refusal uses, so a centre is told about its places and
+    // a teacher about their plan.
     return {
       error:
         room === 0
-          ? t.errors.planLimit
-          : `${t.import.errors.roomShort(room, fresh.length)} ${t.errors.planLimit}`,
+          ? noRoomForStudent(session)
+          : `${t.import.errors.roomShort(room, fresh.length)} ${noRoomForStudent(session)}`,
     }
   }
 
@@ -1614,6 +1684,11 @@ export async function importStudents(
     })
     .single()
 
+  // The database's own ceiling check, reached when the count above and this insert
+  // disagree — a second manager importing at the same moment, or a paste from a
+  // stale page. The whole import is one statement, so a refusal on line 200 leaves
+  // nothing behind, which is what this sentence tells the owner.
+  if (isCapacityRefusal(error)) return { error: noRoomForStudent(session) }
   if (error || !data) return { error: t.import.errors.failed }
 
   revalidatePath('/settings/students')

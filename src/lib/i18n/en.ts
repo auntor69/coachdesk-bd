@@ -2172,6 +2172,21 @@ export const en: Dictionary = {
        */
       limitUnknown:
         'Could not check whether this plan has room, so nothing was added. Please try again.',
+      /**
+       * The per-student tiers' own version of planLimit, and it has to be a different
+       * sentence because the answer is different. A Coaching Center is already on the
+       * tier it wants — there is nothing above it to change to — and what it has run
+       * out of is places, which are bought a band at a time rather than by moving
+       * plan. "Changing plan makes room" sends that owner to a screen with nothing on
+       * it for them.
+       *
+       * Names the figure, unlike planLimit, which deliberately does not name a plan's
+       * cap. The difference is that this number is the thing the centre paid for
+       * rather than a ceiling we set, so it is theirs to know — and an owner deciding
+       * how many more to ask for cannot do the sum without it.
+       */
+      placesFull: (places: number) =>
+        `This centre is using all ${places} of its student ${places === 1 ? 'place' : 'places'}, so nothing was added. Turn a student off, or ask for more places on the plan screen.`,
       staffNeedsCenter: 'Staff and permissions come with the Coaching Center plan.',
       addFailed: 'That was not added. Please try again.',
       createFailed: 'That was not created. Please try again.',
@@ -2452,7 +2467,6 @@ export const en: Dictionary = {
 
     students: {
       title: 'Students',
-      count: (n: number) => `${n} ${n === 1 ? 'student' : 'students'}`,
       /** The noun agrees with the cap, not the count: "9/60 students". */
       used: (n: number, limit: number) =>
         `${n}/${limit} ${limit === 1 ? 'student' : 'students'}`,
@@ -2488,6 +2502,14 @@ export const en: Dictionary = {
       capTitle: 'This plan has no room for another student',
       cap: (name: string, limit: number) =>
         `The ${name} plan holds ${limit} ${limit === 1 ? 'student' : 'students'}.`,
+      /**
+       * The same card, for a centre that pays per student. Its ceiling is not what
+       * its plan holds — see settings.errors.placesFull for why that needs its own
+       * words, and lib/plans.ts studentCeiling for where the number comes from.
+       */
+      placesTitle: 'There are no student places left',
+      places: (places: number) =>
+        `This centre has ${places} student ${places === 1 ? 'place' : 'places'} and is using every one. Turn a student off to free one, or ask for more places on the plan screen.`,
       added: 'Student added',
 
       editTitle: 'Fix their details',

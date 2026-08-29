@@ -3596,6 +3596,17 @@ export const bn = {
       limitUnknown:
         'প্ল্যানে জায়গা আছে কিনা এখন দেখা গেল না, তাই কিছু যোগ হয়নি। আবার চেষ্টা করুন।',
       /**
+       * planLimit-এর বদলে এটি, যখন সেন্টার শিক্ষার্থী-প্রতি টাকা দেয়: তার উপরে
+       * আর কোনো প্ল্যান নেই, তাই 'প্ল্যান বদলান' বলার কোনো মানে হয় না — যা শেষ
+       * হয়েছে তা হলো জায়গা, আর জায়গা প্ল্যান বদলে নয়, ব্যান্ড ধরে কেনা হয়।
+       *
+       * planLimit সংখ্যাটি বলে না, এটি বলে: এই সংখ্যাটি আমাদের বসানো সীমা নয়,
+       * সেন্টার নিজে যা কিনেছে — আর আরও কত লাগবে তার হিসাব এটি ছাড়া হয় না।
+       * See en.settings.errors.placesFull.
+       */
+      placesFull: (places: number) =>
+        `এই সেন্টারের ${digits(places, 'bn')}টি শিক্ষার্থীর জায়গা সবই ব্যবহার হচ্ছে, তাই কিছু যোগ হয়নি। কোনো শিক্ষার্থীকে বন্ধ করুন, বা প্ল্যানের পাতা থেকে আরও জায়গা চান।`,
+      /**
        * Not a cap being hit — a feature that does not exist on this plan. Worded
        * as what the centre tier is for, because the owner did nothing wrong.
        */
@@ -3970,9 +3981,7 @@ export const bn = {
 
     students: {
       title: 'শিক্ষার্থী',
-      /** Without a plan cap, the count on its own. ASCII: it is a tally. */
-      count: (n: number) => `${n} জন শিক্ষার্থী`,
-      /** With one, how much of it is spent — the same line the batch list shows. */
+      /** How much of the ceiling is spent — the same line the batch list shows. */
       used: (n: number, limit: number) => `${n}/${limit} জন শিক্ষার্থী`,
       /** On the button beside the heading. Short: it shares a row with the count. */
       new: 'নতুন',
@@ -4025,6 +4034,14 @@ export const bn = {
       /** Names the plan and its number — see subjects.cap for why, not errors. */
       cap: (name: string, limit: number) =>
         `${name} প্ল্যানে ${digits(limit, 'bn')} জন শিক্ষার্থী।`,
+      /**
+       * একই কার্ড, তবে শিক্ষার্থী-প্রতি টাকা দেওয়া সেন্টারের জন্য: তার সীমা
+       * প্ল্যানে যত জন ধরে তা নয়, সে যত জায়গা কিনেছে তত।
+       * See en.settings.students.places and lib/plans.ts studentCeiling.
+       */
+      placesTitle: 'শিক্ষার্থীর আর জায়গা নেই',
+      places: (places: number) =>
+        `এই সেন্টারে ${digits(places, 'bn')}টি শিক্ষার্থীর জায়গা, সবই ব্যবহার হচ্ছে। একটি জায়গা খালি করতে কোনো শিক্ষার্থীকে বন্ধ করুন, বা প্ল্যানের পাতা থেকে আরও জায়গা চান।`,
       added: 'শিক্ষার্থী যোগ হয়েছে',
 
       /**

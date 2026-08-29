@@ -53,8 +53,14 @@ export function ImportForm({
   batches: BatchOption[]
   /** null when the roster is too big to hint with. The import still checks. */
   existingKeys: string[] | null
-  /** Plan headroom left; null when unlimited. */
-  room: number | null
+  /**
+   * How many more students this centre may hold. Always a number: every tier has a
+   * ceiling now, including the ones that bill per student, whose ceiling is the
+   * number of places bought rather than a figure in the plan table. This used to be
+   * `number | null` with null meaning unlimited, which is what the centre tiers
+   * looked like before `studentCeiling` existed.
+   */
+  room: number
 }) {
   const [text, setText] = useState('')
 
@@ -101,7 +107,7 @@ export function ImportForm({
   const hinting = existingKeys !== null
   const newCount = hinting ? ready.length - alreadyThere : ready.length
   const tooMany = rows.length > MAX_IMPORT_ROWS
-  const overRoom = room !== null && newCount > room
+  const overRoom = newCount > room
 
   return (
     <form action={formAction} className="flex flex-col gap-4">
@@ -165,8 +171,7 @@ export function ImportForm({
 
       {overRoom && (
         <Alert tone="warn">
-          {/* room is non-null here: overRoom is false when the plan is unlimited. */}
-          {fill(t.overRoom, { room: room ?? 0, fresh: newCount })}
+          {fill(t.overRoom, { room, fresh: newCount })}
         </Alert>
       )}
 

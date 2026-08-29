@@ -70,7 +70,13 @@ import { passwordTooShort } from '@/lib/i18n/messages'
 import { readIdempotencyKey, UNIQUE_VIOLATION } from '@/lib/idempotency'
 import { MAX_LABEL, MAX_TEXT, clamp } from '@/lib/limits'
 import { formatTaka, parseTaka } from '@/lib/money'
-import { PLANS, planFor, planName, type PlanId } from '@/lib/plans'
+import {
+  PLANS,
+  planFor,
+  planName,
+  studentCeiling,
+  type PlanId,
+} from '@/lib/plans'
 import {
   MAX_CENTER_PAYMENT_BDT,
   coverageEnd,
@@ -362,8 +368,24 @@ export async function setCenterPlan(
       .eq('active', true),
   ])
 
+  /*
+   * Whether the centre is now above what the new plan holds — the one sentence that
+   * makes this panel safe to use, because moving a centre down a tier does not remove
+   * anybody and the founder would otherwise find out from the customer.
+   *
+   * The student half asks `studentCeiling` rather than `limits.maxStudents`, which is
+   * null on the two centre tiers and so never fired: a 300-student centre moved onto
+   * `center` — 79 included places — reported "saved" with no warning, and the next
+   * student that centre tried to admit was refused by migration 36's trigger with the
+   * founder none the wiser.
+   *
+   * The purchased figure is 0 because this is somebody else's centre and there is no
+   * `student_capacity` in the read above — accurate today, since nothing can write that
+   * column until top-ups ship, and the same seam `Session.ceiling` names. When they do
+   * ship, this read grows a column and this line passes it.
+   */
   const over =
-    (limits.maxStudents !== null && (students ?? 0) > limits.maxStudents) ||
+    (students ?? 0) > studentCeiling(limits, 0).ceiling ||
     (limits.maxTeachers !== null && (teachers ?? 0) > limits.maxTeachers)
 
   return over

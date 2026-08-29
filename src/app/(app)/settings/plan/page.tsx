@@ -171,7 +171,11 @@ export default async function PlanPage() {
    */
   const usage: { label: string; used: number | null; limit: number | null }[] = [
     { label: t.batches, used: batchCount, limit: plan.maxBatches },
-    { label: t.students, used: studentCount, limit: plan.maxStudents },
+    // The ceiling rather than `plan.maxStudents`, and this is the row where that null
+    // did the most damage: the note under this table tells a centre its student count
+    // is what the bill is worked out from, and the row above it said the count had no
+    // ceiling at all. See lib/plans.ts studentCeiling.
+    { label: t.students, used: studentCount, limit: session.ceiling.ceiling },
     { label: t.subjects, used: subjectCount, limit: plan.maxSubjects },
     // Only where there are colleagues to count. On a one-teacher plan "1 / 1" is a
     // row that tells the reader nothing they did not know when they signed up.
