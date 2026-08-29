@@ -7956,8 +7956,6 @@ check(
   ])) === 2,
 )
 
-// PAYROLL_TESTS_PLACEHOLDER
-
 // The salary bill is management's business. A teacher's own row is in `teachers`
 // and they can read that; who else was hired, at what designation, and who has left
 // is not a colleague's to browse.
@@ -8101,6 +8099,383 @@ await asUser(db, ids.nasrin, async (tx) => {
 
 await db.query('delete from branches where id = $1', [bOtherCentre])
 
+console.log('\nWhat the staff are owed (salary_terms):')
+
+// §9.5's simple mode is the whole test: one number typed, nothing else asked, and a
+// net that comes back equal to it. If this fails the owner is being made to fill in a
+// breakdown of a figure they have never broken down.
+let stNasrin
+await asUser(db, ids.ownerA, async (tx) => {
+  const row = (
+    await tx.query(
+      `insert into salary_terms (coaching_center_id, employee_id, basic_bdt)
+       values ($1, $2, 14000) returning id, gross_bdt, net_bdt`,
+      [centerA, eNasrin],
+    )
+  ).rows[0]
+  stNasrin = row.id
+  check(
+    'one number typed is one number owed',
+    Number(row.gross_bdt) === 14000 && Number(row.net_bdt) === 14000,
+  )
+})
+
+// Full mode opens the other three boxes, and the net still cannot disagree with its
+// parts because no caller writes it.
+await asUser(db, ids.ownerA, async (tx) => {
+  const row = (
+    await tx.query(
+      `insert into salary_terms
+         (coaching_center_id, teacher_id, basic_bdt, allowances_bdt, other_bdt, deductions_bdt)
+       values ($1, $2, 20000, 2500, 500, 1000) returning gross_bdt, net_bdt`,
+      [centerA, tKarim],
+    )
+  ).rows[0]
+  check(
+    'a breakdown adds up to a gross and a net nobody typed',
+    Number(row.gross_bdt) === 23000 && Number(row.net_bdt) === 22000,
+  )
+})
+
+check(
+  'and a gross cannot be written by hand at all',
+  await deniedAsUser(
+    db,
+    ids.ownerA,
+    'update salary_terms set gross_bdt = 99999 where id = $1',
+    [stNasrin],
+  ),
+)
+
+// Exactly one payee. Both halves of the mistake are refused: terms belonging to
+// nobody, and terms claiming a teacher and an employee at the same time.
+check(
+  'terms belonging to nobody are refused',
+  await deniedAsUser(
+    db,
+    ids.ownerA,
+    'insert into salary_terms (coaching_center_id, basic_bdt) values ($1, 9000)',
+    [centerA],
+  ),
+)
+check(
+  'and terms claiming a teacher and an employee at once are refused',
+  await deniedAsUser(
+    db,
+    ids.ownerA,
+    `insert into salary_terms (coaching_center_id, employee_id, teacher_id, basic_bdt)
+     values ($1, $2, $3, 9000)`,
+    [centerA, eAccountant, tKarim],
+  ),
+)
+
+// The basis decides which figure means anything, so the other one has to be absent —
+// otherwise a payroll screen has to guess what the centre meant.
+check(
+  'a per-class teacher with no rate is refused',
+  await deniedAsUser(
+    db,
+    ids.ownerA,
+    `insert into salary_terms (coaching_center_id, teacher_id, basis)
+     values ($1, $2, 'per_class')`,
+    [centerA, tNasrin],
+  ),
+)
+check(
+  'and a monthly salary carrying a per-class rate is refused too',
+  await deniedAsUser(
+    db,
+    ids.ownerA,
+    `insert into salary_terms (coaching_center_id, teacher_id, basic_bdt, per_class_bdt)
+     values ($1, $2, 18000, 400)`,
+    [centerA, tNasrin],
+  ),
+)
+
+// A raise is one write. The trigger stands the old agreement down, so granting one
+// never fails on the unique index in front of an owner who has done nothing wrong.
+await asUser(db, ids.ownerA, async (tx) => {
+  await tx.query(
+    `insert into salary_terms (coaching_center_id, employee_id, basic_bdt)
+     values ($1, $2, 16000)`,
+    [centerA, eNasrin],
+  )
+})
+check(
+  'a raise is one write and retires the old agreement itself',
+  (await n(db, 'select count(*)::int as n from salary_terms where employee_id = $1 and active', [
+    eNasrin,
+  ])) === 1,
+)
+check(
+  'and January is still readable in March',
+  (await n(
+    db,
+    'select count(*)::int as n from salary_terms where employee_id = $1 and basic_bdt = 14000',
+    [eNasrin],
+  )) === 1,
+)
+
+// Back-filling history must not disturb the live figure, which is what the `active`
+// short-circuit in the trigger is for.
+await asUser(db, ids.ownerA, async (tx) => {
+  await tx.query(
+    `insert into salary_terms (coaching_center_id, employee_id, basic_bdt, active, effective_from)
+     values ($1, $2, 11000, false, '2025-01-01')`,
+    [centerA, eNasrin],
+  )
+})
+check(
+  'and an old agreement can be back-filled without unseating the live one',
+  (await n(
+    db,
+    'select count(*)::int as n from salary_terms where employee_id = $1 and active and basic_bdt = 16000',
+    [eNasrin],
+  )) === 1,
+)
+
+// Tenancy, through the composite key: a legitimate centre id of one's own plus a
+// payee belonging to somebody else has to fail on the pair, not resolve.
+check(
+  "no centre can put another centre's teacher on its own payroll",
+  await deniedAsUser(
+    db,
+    ids.ownerB,
+    `insert into salary_terms (coaching_center_id, teacher_id, basic_bdt)
+     values ($1, $2, 30000)`,
+    [centerB, tKarim],
+  ),
+)
+
+// Salaries are the one roster fact a colleague must never be able to browse.
+await asUser(db, ids.karim, async (tx) => {
+  check(
+    'a teacher reads no salary terms, not even their own',
+    (await n(tx, 'select count(*)::int as n from salary_terms')) === 0,
+  )
+})
+await asUser(db, ids.ownerB, async (tx) => {
+  check(
+    "another centre's owner reads none of them",
+    (await n(tx, 'select count(*)::int as n from salary_terms')) === 0,
+  )
+})
+
+console.log('\nWhat the staff were paid (salary_payments):')
+
+// The voucher series, which is 20260811000017's argument about a different piece of
+// paper: per centre, starting at 1, so an employee can quote a number.
+let spFirst
+await asUser(db, ids.ownerA, async (tx) => {
+  const row = (
+    await tx.query(
+      `insert into salary_payments (coaching_center_id, employee_id, for_month, basic_bdt)
+       values ($1, $2, '2026-07-01', 16000) returning id, voucher_no, gross_bdt, amount_bdt`,
+      [centerA, eNasrin],
+    )
+  ).rows[0]
+  spFirst = row.id
+  check(
+    "a centre's first salary voucher is 1, and its amount is not typed",
+    row.voucher_no === 1 && Number(row.gross_bdt) === 16000 && Number(row.amount_bdt) === 16000,
+  )
+})
+
+await asUser(db, ids.ownerA, async (tx) => {
+  const row = (
+    await tx.query(
+      `insert into salary_payments
+         (coaching_center_id, teacher_id, for_month, basic_bdt, deductions_bdt, method, reference)
+       values ($1, $2, '2026-07-01', 23000, 1000, 'bkash', 'TRX1') returning voucher_no, amount_bdt`,
+      [centerA, tKarim],
+    )
+  ).rows[0]
+  check(
+    'the next one is 2, and a deduction comes off the amount',
+    row.voucher_no === 2 && Number(row.amount_bdt) === 22000,
+  )
+})
+
+// Per centre, not global — an owner watching their own vouchers must not be able to
+// read how much salary the centre next door paid last week.
+await asUser(db, ids.ownerB, async (tx) => {
+  const row = (
+    await tx.query(
+      `insert into salary_payments (coaching_center_id, teacher_id, for_month, basic_bdt)
+       values ($1, $2, '2026-07-01', 12000) returning voucher_no`,
+      [centerB, tRahim],
+    )
+  ).rows[0]
+  check("and another centre's first voucher is also 1", row.voucher_no === 1)
+})
+
+check(
+  'a voucher that moves no money is refused',
+  await deniedAsUser(
+    db,
+    ids.ownerA,
+    `insert into salary_payments (coaching_center_id, employee_id, for_month, basic_bdt)
+     values ($1, $2, '2026-06-01', 0)`,
+    [centerA, eNasrin],
+  ),
+)
+check(
+  'and a month that is not the first of a month is refused',
+  await deniedAsUser(
+    db,
+    ids.ownerA,
+    `insert into salary_payments (coaching_center_id, employee_id, for_month, basic_bdt)
+     values ($1, $2, '2026-06-15', 16000)`,
+    [centerA, eNasrin],
+  ),
+)
+
+// Money out is append-only on the same terms as money in. The slip is in somebody
+// else's hand and the record is the employer's, so the employer must not be able to
+// quietly change either half of the pair.
+check(
+  'a salary payment cannot be deleted by the centre that made it',
+  await deniedAsUser(db, ids.ownerA, 'delete from salary_payments where id = $1', [spFirst]),
+)
+check(
+  'nor rewritten to a different amount',
+  await deniedAsUser(db, ids.ownerA, 'update salary_payments set basic_bdt = 1 where id = $1', [
+    spFirst,
+  ]),
+)
+check(
+  'nor moved into another month',
+  await deniedAsUser(
+    db,
+    ids.ownerA,
+    `update salary_payments set for_month = '2026-06-01' where id = $1`,
+    [spFirst],
+  ),
+)
+check(
+  'nor renumbered once the voucher is issued',
+  await deniedAsUser(db, ids.ownerA, 'update salary_payments set voucher_no = 99 where id = $1', [
+    spFirst,
+  ]),
+)
+
+// The revoke above is what stops a browser session. This runs as the migration role —
+// the SQL editor, a support script, the next migration — and the trigger stops it too.
+// Two independent mechanisms, because a voucher number is the name of a slip in an
+// employee's hand and there is no version of changing it that is a fix.
+let revouchered = false
+try {
+  await db.query('update salary_payments set voucher_no = 99 where id = $1', [spFirst])
+  revouchered = true
+} catch {
+  /* expected */
+}
+check('not even the migration role can renumber a voucher', !revouchered)
+check(
+  'and an unrelated edit to the same row is still allowed',
+  (
+    await db.query(
+      `update salary_payments set note = 'counted twice at the desk' where id = $1
+       returning voucher_no`,
+      [spFirst],
+    )
+  ).rows[0].voucher_no === 1,
+)
+
+// The two columns that stay open, for the reason 20260811000017 gives: a mistyped
+// bKash trxID is a real thing that needs correcting, and correcting it changes no
+// number.
+await asUser(db, ids.ownerA, async (tx) => {
+  await tx.query(
+    `update salary_payments set reference = 'TRX-CORRECTED', note = 'paid in person'
+     where id = $1`,
+    [spFirst],
+  )
+})
+check(
+  'but a mistyped reference can still be corrected',
+  (await n(db, `select count(*)::int as n from salary_payments where id = $1
+                and reference = 'TRX-CORRECTED'`, [spFirst])) === 1,
+)
+
+// Which leaves the one way a wrong payment gets undone: a row that reverses it. This
+// is why the money columns carry no sign check, unlike the terms.
+await asUser(db, ids.ownerA, async (tx) => {
+  const row = (
+    await tx.query(
+      `insert into salary_payments (coaching_center_id, employee_id, for_month, basic_bdt, note)
+       values ($1, $2, '2026-07-01', -16000, 'paid twice, reversing') returning amount_bdt`,
+      [centerA, eNasrin],
+    )
+  ).rows[0]
+  check('a salary paid in error is undone by a reversing row', Number(row.amount_bdt) === -16000)
+})
+check(
+  'and the pair nets to nothing while both stay on the record',
+  (await n(
+    db,
+    `select coalesce(sum(amount_bdt), -1)::int as n from salary_payments
+     where employee_id = $1 and for_month = '2026-07-01'`,
+    [eNasrin],
+  )) === 0,
+)
+
+await asUser(db, ids.karim, async (tx) => {
+  check(
+    'a teacher reads no payroll, not even their own vouchers',
+    (await n(tx, 'select count(*)::int as n from salary_payments')) === 0,
+  )
+})
+await asUser(db, ids.ownerB, async (tx) => {
+  check(
+    "another centre's owner reads only their own voucher",
+    (await n(tx, 'select count(*)::int as n from salary_payments')) === 1,
+  )
+})
+
+// NO ACTION on the payee key, from the direction it protects: somebody who has been
+// paid cannot be deleted out of existence. Marking them as left is the way out, and
+// that keeps the wage bill answerable.
+check(
+  'an employee who has been paid cannot be deleted',
+  await deniedAsUser(db, ids.ownerA, 'delete from employees where id = $1', [eNasrin]),
+)
+
+// And from the direction that would have been a permanent landmine. RESTRICT here
+// would be checked immediately, so the cascade from a centre delete would trip over
+// its own children and no centre with a payroll could ever be closed. NO ACTION waits
+// until the end of the statement, by which time the payments are gone too. Done on a
+// throwaway centre of its own, because the assertion is that the delete succeeds.
+const closingOwner = (
+  await db.query('insert into auth.users (id) values (gen_random_uuid()) returning id')
+).rows[0].id
+const closingCenter = await one(
+  `insert into coaching_centers (name, created_by) values ('Closing Down Coaching', $1)
+   returning id`,
+  [closingOwner],
+)
+const closingStaff = await one(
+  `insert into employees (coaching_center_id, name, role) values ($1, 'Last Employee', 'cleaner')
+   returning id`,
+  [closingCenter],
+)
+await db.query(
+  `insert into salary_terms (coaching_center_id, employee_id, basic_bdt) values ($1, $2, 8000)`,
+  [closingCenter, closingStaff],
+)
+await db.query(
+  `insert into salary_payments (coaching_center_id, employee_id, for_month, basic_bdt)
+   values ($1, $2, '2026-07-01', 8000)`,
+  [closingCenter, closingStaff],
+)
+await db.query('delete from coaching_centers where id = $1', [closingCenter])
+check(
+  'but a centre that has met a payroll can still be closed',
+  (await n(db, 'select count(*)::int as n from salary_payments where coaching_center_id = $1', [
+    closingCenter,
+  ])) === 0,
+)
+
 console.log('\nAnonymous access:')
 
 await asUser(db, null, async (tx) => {
@@ -8121,6 +8496,14 @@ await asUser(db, null, async (tx) => {
   check(
     'signed-out user reads no staff list',
     (await n(tx, 'select count(*)::int as n from employees')) === 0,
+  )
+  check(
+    'signed-out user reads no salary terms',
+    (await n(tx, 'select count(*)::int as n from salary_terms')) === 0,
+  )
+  check(
+    'signed-out user reads no payroll',
+    (await n(tx, 'select count(*)::int as n from salary_payments')) === 0,
   )
 })
 
