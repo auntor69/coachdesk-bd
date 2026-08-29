@@ -66,6 +66,12 @@ const ASKABLE = new Set<PlanId>(['teacher_plus', 'center', 'institution'])
  * because this is a commitment of somebody else's money: a branch manager runs a
  * branch and does not decide what the centre pays, the same rule that keeps
  * `payments_owner_read` off them.
+ *
+ * NO `requireWritable` HERE, DELIBERATELY, and it is the one write in the whole app that
+ * a suspended centre most needs. Read-only exists to make an owner ring us; refusing the
+ * button that says "put me on a plan" would be refusing the thing we are asking them to
+ * do, and every other module in this arc runs the check. A cancelled centre can file one
+ * too, which is exactly right — that is a customer coming back.
  */
 async function planOwner(): Promise<CenterSession | UpgradeState> {
   try {

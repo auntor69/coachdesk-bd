@@ -44,6 +44,15 @@ export type AccountState = { error?: string; ok?: string } | null
  * nobody is signed in — because every role that reaches this screen is allowed to
  * change their own password and their own name, so there is one message and no table
  * of them. A caller with no session has no language either, hence the default.
+ *
+ * NO `requireWritable` HERE, AND THAT IS THE POINT OF THIS COMMENT rather than an
+ * oversight to be tidied up later. A read-only centre is a centre whose bill is unpaid;
+ * these two writes are not the centre's at all. Locking somebody out of changing their
+ * own password because the coaching centre they teach at owes us money would be a
+ * security failure with a billing excuse attached — the whole reason /account has no
+ * guard narrower than the layout's is that an account nobody can re-secure is not a
+ * thing to gate. `profiles` is also outside every centre, so there is no centre row
+ * being written to freeze.
  */
 async function caller(): Promise<CenterSession | AccountState> {
   try {

@@ -25,9 +25,14 @@
 import { revalidatePath } from 'next/cache'
 
 import { createClient } from '@/lib/supabase/server'
-import { requireRole, AuthError, getSession } from '@/lib/auth/session'
+import {
+  requireRole,
+  requireWritable,
+  authRefusal,
+  AuthError,
+} from '@/lib/auth/session'
 import { MAX_NAME, MAX_NOTICE } from '@/lib/limits'
-import { dict, DEFAULT_LOCALE } from '@/lib/i18n'
+import { dict } from '@/lib/i18n'
 import { nameTooLong } from '@/lib/i18n/messages'
 import type { CenterSession } from '@/lib/auth/session'
 
@@ -50,14 +55,17 @@ const SAME_NOTICE_MS = 2 * 60 * 60 * 1000
  * and a form wants a sentence. One message for both failures — not signed in, and
  * signed in as a teacher — because they are the same answer from the reader's side and
  * because a screen that distinguishes them tells a stranger which of the two they got.
+ *
+ * A read-only centre is the one failure here that does get its own sentence, and must:
+ * "you cannot open this" is the wrong thing to tell an owner whose plan simply lapsed,
+ * and a notice is the one write in the app that costs us money to deliver.
  */
 async function caller(): Promise<CenterSession | NoticeState> {
   try {
-    return await requireRole('manager')
+    return requireWritable(await requireRole('manager'))
   } catch (err) {
     if (err instanceof AuthError) {
-      const who = await getSession()
-      return { error: dict(who?.locale ?? DEFAULT_LOCALE).denied.title }
+      return { error: await authRefusal(err, (d) => d.denied.title) }
     }
     throw err
   }

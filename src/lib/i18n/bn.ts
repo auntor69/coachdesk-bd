@@ -390,6 +390,48 @@ export const bn = {
   },
 
   /**
+   * A centre whose plan has lapsed, or that was cancelled, reading its own screens.
+   *
+   * MASTERPLAN.md §4.4: read-only means read-only, not locked out. So this is a
+   * banner and a refusal, and neither of them is an error — nothing has gone wrong
+   * with the app and nothing has been lost. Both say what is still there before they
+   * say what stopped, because the first thing an owner in this state wants to know is
+   * whether their term's register is gone.
+   *
+   * NOT WORDED AS A PERMISSION. "You are not allowed to do this" is what the guards
+   * used to say for every refusal, and it is actively wrong here: the owner has every
+   * permission the product has, and there is no setting they can find that would let
+   * them. The fact is a bill, so the sentence is about the bill.
+   */
+  readOnly: {
+    suspendedTitle: 'এখন শুধু দেখা যাবে',
+    /**
+     * Names the four writes by name — new student, attendance, payment, message —
+     * rather than saying "saving is off", because a teacher who is refused mid-register
+     * needs to recognise their own situation in the sentence.
+     */
+    suspendedBody:
+      'প্ল্যানের মেয়াদ শেষ হয়ে গেছে, তাই নতুন কিছু সেভ হচ্ছে না — নতুন শিক্ষার্থী, '
+      + 'হাজিরা, টাকা জমা বা মেসেজ কিছুই না। আগের হাজিরা, নম্বর আর ফির হিসাব সব '
+      + 'যেমন ছিল তেমনই আছে। টাকা জমা দিলেই আবার আগের মতো চলবে।',
+    cancelledTitle: 'সেন্টারের অ্যাকাউন্ট বাতিল করা হয়েছে',
+    cancelledBody:
+      'অ্যাকাউন্ট বাতিল থাকায় নতুন কিছু সেভ হচ্ছে না। তবে আগের হাজিরা, নম্বর আর '
+      + 'ফির হিসাব কিছুই মুছে যায়নি — সব এখানেই আছে, দেখা যাবে। আবার চালু করতে '
+      + 'আমাদের ফোন দিন।',
+    /** On the banner's tel: chip, which appears only where a sales number is set. */
+    callUs: 'ফোন দিন',
+    /** Owners and managers only — a teacher cannot open the plan screen. */
+    seePlan: 'প্ল্যান দেখুন',
+    /**
+     * What a form says when the write was refused. Points at the banner rather than
+     * repeating it: the two are on the same screen, and a form alert that explains the
+     * whole billing state is a form alert nobody finishes reading.
+     */
+    refused: 'এখন শুধু দেখা যাবে — এটা সেভ হয়নি। কী করতে হবে স্ক্রিনের উপরে লেখা আছে।',
+  },
+
+  /**
    * The four marks. These are the app's vocabulary, not one screen's: the roster,
    * the rate card, a guardian's history and an SMS all name the same four states,
    * and a centre that calls them different things in two places has two systems.

@@ -140,6 +140,24 @@ export const en: Dictionary = {
     stillOffline: 'Still no connection',
   },
 
+  readOnly: {
+    suspendedTitle: 'You can look, but nothing new will save',
+    suspendedBody:
+      'The plan has run out, so nothing new is being saved — no new students, no '
+      + 'attendance, no payments, no messages. Every register, mark and fee already '
+      + 'recorded is exactly where it was. Settle the bill and it all works as before.',
+    cancelledTitle: 'This centre’s account was cancelled',
+    cancelledBody:
+      'Nothing new is being saved while the account is cancelled. Nothing has been '
+      + 'deleted either — every register, mark and fee is still here and still '
+      + 'readable. Ring us to open it again.',
+    callUs: 'Ring us',
+    seePlan: 'See the plan',
+    refused:
+      'You can look, but nothing new will save — this was not saved. What to do about '
+      + 'it is at the top of the screen.',
+  },
+
   attendance: {
     present: 'Present',
     absent: 'Absent',

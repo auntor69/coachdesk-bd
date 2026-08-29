@@ -14,7 +14,7 @@
 import { revalidatePath } from 'next/cache'
 
 import { createClient } from '@/lib/supabase/server'
-import { requireRole, AuthError } from '@/lib/auth/session'
+import { requireRole, requireWritable, AuthError } from '@/lib/auth/session'
 import { has } from '@/lib/plans'
 import { normalizeBdMobile } from '@/lib/bd/phone'
 import type { OutreachChannel } from '@/lib/supabase/types'
@@ -73,12 +73,17 @@ export async function logProgressUpdate(
 ): Promise<{ logged: boolean }> {
   let session
   try {
-    session = await requireRole('manager')
+    session = requireWritable(await requireRole('manager'))
   } catch (err) {
     // Nothing to say to the caller beyond "it did not happen": this is called from
     // a tap handler with no form and no place to put a sentence, so the row it
     // would have ticked simply stays unticked. An AuthError is the expected failure
     // here — anything else is a bug and belongs in the logs.
+    //
+    // A read-only centre lands here too and is refused for the same reason the rest of
+    // its writes are. The chip stays unticked, which is the truth: the SMS app opened
+    // because a link cannot be un-tapped, but nothing was recorded. The banner across
+    // the top of the screen is what explains it.
     if (err instanceof AuthError) return { logged: false }
     throw err
   }

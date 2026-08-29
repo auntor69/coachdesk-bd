@@ -17,7 +17,8 @@ import { createClient } from '@/lib/supabase/server'
 import { pageAll } from '@/lib/supabase/page'
 import {
   requireRole,
-  getSession,
+  requireWritable,
+  authRefusal,
   AuthError,
   type CenterSession,
 } from '@/lib/auth/session'
@@ -31,7 +32,7 @@ import { currentPeriodMonth } from '@/lib/bd/time'
 import { normalizeBdMobile } from '@/lib/bd/phone'
 import { readIdempotencyKey, UNIQUE_VIOLATION } from '@/lib/idempotency'
 import { MAX_LABEL, MAX_TEXT, clamp } from '@/lib/limits'
-import { dict, DEFAULT_LOCALE } from '@/lib/i18n'
+import { dict } from '@/lib/i18n'
 import type { OutreachChannel, PaymentMethod } from '@/lib/supabase/types'
 
 export type FeeState = {
@@ -69,18 +70,19 @@ const MONTH_RE = /^\d{4}-\d{2}-01$/
  * Fees are owner-and-manager work. A teacher with can_view_fees may read the
  * board, but recording money is not something the permission grants — a teacher
  * who could enter payments could write off a fee, and that is the owner's money.
+ *
+ * Also the write check for every action in this file, which is the one a lapsed
+ * subscription most obviously has to stop: raising invoices, taking payments,
+ * discounts, refunds, voids and arrears are the centre's money moving, and a centre
+ * whose plan has run out does not get to keep running its month on our software. The
+ * board itself stays readable — the pages do not come through here.
  */
 async function feeAdmin(): Promise<CenterSession | FeeState> {
   try {
-    return await requireRole('manager')
+    return requireWritable(await requireRole('manager'))
   } catch (err) {
     if (err instanceof AuthError) {
-      // No session at all, or one whose role is wrong — either way there is no
-      // `session.locale` to read. getSession is memoised per request and was
-      // already called by requireRole above, so this costs nothing.
-      const caller = await getSession()
-      const d = dict(caller?.locale ?? DEFAULT_LOCALE)
-      return { error: d.fees.errors.forbidden }
+      return { error: await authRefusal(err, (d) => d.fees.errors.forbidden) }
     }
     throw err
   }

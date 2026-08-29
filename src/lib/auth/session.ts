@@ -18,9 +18,9 @@ import type { Route } from 'next'
 import { createClient } from '@/lib/supabase/server'
 import { loginEmailToPhone } from '@/lib/bd/phone'
 import { loginEmailToUsername } from '@/lib/bd/username'
-import { asLocale, type Locale } from '@/lib/i18n'
+import { asLocale, dict, DEFAULT_LOCALE, type Dictionary, type Locale } from '@/lib/i18n'
 import type { PermissionKey } from '@/lib/permissions'
-import { effectiveEntitlement } from '@/lib/entitlement'
+import { effectiveEntitlement, type Access } from '@/lib/entitlement'
 import { hasStaff, type PlanLimits, type StudentCeiling } from '@/lib/plans'
 import { ACTIVE_CENTER_COOKIE, pickActive, strongestPerCenter } from '@/lib/auth/active-center'
 import type { CenterStatus, MemberRole, PlanType } from '@/lib/supabase/types'
@@ -105,6 +105,26 @@ export type Session = {
    * never see the choice. See lib/auth/active-center.
    */
   active: Membership | null
+  /**
+   * Whether this centre may be written to at all.
+   *
+   * `read_only` is a lapsed or cancelled subscription, and it is not a permission and
+   * not a role: every screen still renders, every register and fee still reads, and
+   * what stops is saving. MASTERPLAN.md §4.4 — holding a centre's own attendance and
+   * fee book hostage turns a late-payment conversation into an angry one, so the
+   * lever is discomfort rather than a locked door.
+   *
+   * IN FRONT OF THIS FIELD, NOT BEHIND IT: `requireWritable` is what refuses, and the
+   * banner in the app shell is what explains. A field that only the shell read would
+   * be decoration; a refusal nobody explained would read as the app being broken.
+   *
+   * `read_only` also for a reader with no active centre, because `effectiveEntitlement`
+   * has no organisation to judge and fails closed. Nothing reaches a centre write that
+   * way — `requireCenter` refuses first — but the banner has to check `active` before
+   * it says a word about a subscription, or an account midway through onboarding is
+   * told its centre has lapsed.
+   */
+  access: Access
   /**
    * The tier in force at the active centre — which is not always the tier they pay
    * for. A trial is a temporary better plan rather than a fifth tier, so it arrives
@@ -242,13 +262,11 @@ export const getSession = cache(async (): Promise<Session | null> => {
    * every centre. When the migration is applied these three lines become three more
    * columns on the select, and every gate downstream already asks the right question.
    *
-   * `access` IS DELIBERATELY NOT SURFACED YET. The resolver answers it correctly from
-   * a status the select does now read, but nothing in the app refuses a write on it —
-   * so putting it on `Session` would be `can_manage_students` all over again: a field
-   * stored, typed, rendered and read by no gate, which reads to whoever finds it as a
-   * protection that exists. Read-only enforcement is its own change, with the banner
-   * that has to come with it; until then the honest thing is for the field not to be
-   * here at all.
+   * `access` IS SURFACED AS OF THIS COMMIT, and only because the two things that had
+   * to come with it came with it: `requireWritable` below, which every action module's
+   * guard now runs, and the banner in the app shell. It was deliberately absent until
+   * then — a field stored, typed and read by no gate is `can_manage_students` all over
+   * again, a protection that exists only in the shape of the data.
    */
   const entitlement = effectiveEntitlement(
     active
@@ -274,6 +292,7 @@ export const getSession = cache(async (): Promise<Session | null> => {
     memberships,
     membershipsUnreadable: Boolean(rowsError),
     active,
+    access: entitlement.access,
     plan: entitlement.plan,
     ceiling: entitlement.ceiling,
   }
@@ -289,10 +308,22 @@ export const getSession = cache(async (): Promise<Session | null> => {
  * statements about the caller — you are not signed in, you have no centre, you may
  * not do this — and a dropped read is a statement about us. Every one of those three
  * sends the reader somewhere to fix it, and there is nothing for them to fix.
+ *
+ * `read_only` is a fifth that is not about the caller either: it is about the centre's
+ * standing, and the same owner who is refused today may write tomorrow having paid. It
+ * is a separate code rather than a `forbidden` with different words because every
+ * module's converter has to be able to reach for a different sentence — "you are not
+ * allowed to do this" is wrong and insulting when the truth is "the subscription
+ * lapsed", and the second one has a fix the reader can act on.
  */
 export class AuthError extends Error {
   constructor(
-    readonly code: 'unauthenticated' | 'no_center' | 'forbidden' | 'unreadable',
+    readonly code:
+      | 'unauthenticated'
+      | 'no_center'
+      | 'forbidden'
+      | 'unreadable'
+      | 'read_only',
     message: string,
   ) {
     super(message)
@@ -358,6 +389,64 @@ export async function requireRole(minimum: MemberRole): Promise<CenterSession> {
     )
   }
   return session
+}
+
+/**
+ * The write check, applied to whatever authorization the caller has already done.
+ *
+ * Not a `requireX()` of its own, and that is the whole design: role, permission and
+ * plan are questions about *who is asking*, and this one is a question about the
+ * centre they are asking on behalf of, so it composes rather than replaces —
+ * `requireWritable(await requireRole('manager'))`. Every action module's local guard
+ * runs it in exactly one place, which is why one line per module covers every action
+ * in it, and why an action added tomorrow is covered by having been added there.
+ *
+ * READ-ONLY IS NOT ENFORCED IN THE DATABASE, deliberately, and the note in
+ * `entitlement.ts` says the same about the plan. RLS is about whose rows these are;
+ * this is about whether a bill was paid, and wiring it into policies would mean the
+ * founder correcting a status by hand could blank a working centre's screens as a side
+ * effect — with the founder's own panel, which writes through the service role, the
+ * one thing still able to move. So the fence is here, in front of the writes, and the
+ * database keeps answering the question it can actually answer.
+ *
+ * Generic over the shape rather than typed to `CenterSession`, so the session it is
+ * handed comes back narrowed exactly as it went in, and so a test can ask the question
+ * with `{ access: 'read_only' }` instead of building a whole session to be refused.
+ */
+export function requireWritable<T extends { access: Access }>(session: T): T {
+  if (session.access !== 'full') {
+    throw new AuthError(
+      'read_only',
+      'This centre is read-only: its subscription has lapsed or was cancelled.',
+    )
+  }
+  return session
+}
+
+/**
+ * The sentence a refused guard shows, in the caller's own language.
+ *
+ * READ-ONLY OUTRANKS THE CALLER'S OWN MESSAGE, in one place rather than in seven. Every
+ * module used to answer its failures with a single "you are not allowed" line, which is
+ * the right words for a wrong role and the wrong words entirely for a lapsed
+ * subscription: it tells an owner who has every permission in the product that they
+ * personally are not permitted, so they look for the setting that would let them and
+ * there is none. The fix is a different fact, not a softer one.
+ *
+ * `fallback` is a function of the dictionary rather than a string, because the caller
+ * cannot read its own group until this has resolved which language to read it in.
+ *
+ * getSession is memoised per request and the guard that just threw already called it,
+ * so reading the locale back here costs nothing. A caller with no session at all has
+ * no language either, hence the default.
+ */
+export async function authRefusal(
+  err: AuthError,
+  fallback: (d: Dictionary) => string,
+): Promise<string> {
+  const caller = await getSession()
+  const d = dict(caller?.locale ?? DEFAULT_LOCALE)
+  return err.code === 'read_only' ? d.readOnly.refused : fallback(d)
 }
 
 /** Owners and managers — the two roles that may change a center's setup. */
@@ -835,6 +924,13 @@ async function pageGuard<T>(check: () => Promise<T>): Promise<T> {
       case 'unauthenticated':
         redirect('/login')
       case 'unreadable':
+        throw err
+      // Unreachable by construction: read-only stops writes, and a page is a read —
+      // no `pageX` helper runs `requireWritable`, because the screens are exactly
+      // what a suspended centre keeps. Handled so the switch stays total, and
+      // rethrown rather than turned into a 403, because if it ever does arrive it
+      // means a guard was composed wrongly and that is a bug to see, not to render.
+      case 'read_only':
         throw err
     }
   }

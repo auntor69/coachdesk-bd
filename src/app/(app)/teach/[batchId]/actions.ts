@@ -27,7 +27,8 @@ import { revalidatePath } from 'next/cache'
 import { createClient } from '@/lib/supabase/server'
 import {
   requireRole,
-  getSession,
+  requireWritable,
+  authRefusal,
   isStaffAdmin,
   canSendSms,
   AuthError,
@@ -41,7 +42,7 @@ import {
   lastClassDate,
 } from '@/lib/attendance/window'
 import { MAX_TEXT, clamp } from '@/lib/limits'
-import { dict, DEFAULT_LOCALE } from '@/lib/i18n'
+import { dict } from '@/lib/i18n'
 import type { AttendanceStatus, OutreachChannel } from '@/lib/supabase/types'
 
 export type SaveState =
@@ -62,17 +63,20 @@ export async function saveAttendance(
 ): Promise<SaveState> {
   // A Server Action is a public endpoint. Re-derive the caller here even though
   // the page that renders the form already did — the form is not the boundary.
+  //
+  // `requireWritable` is the subscription check, and attendance is the write §4.4 names
+  // first: a centre whose plan has lapsed keeps every register it has taken and stops
+  // being able to take another. The roster still opens and still reads.
   let session
   try {
-    session = await requireRole('teacher')
+    session = requireWritable(await requireRole('teacher'))
   } catch (err) {
     if (err instanceof AuthError) {
-      // No session at all, or one whose role is wrong — either way there is no
-      // `session.locale` to read. getSession is memoised per request and was
-      // already called by requireRole above, so this is free.
-      const caller = await getSession()
-      const d = dict(caller?.locale ?? DEFAULT_LOCALE)
-      return { ok: false, error: d.teach.errors.forbidden }
+      // No session at all, one whose role is wrong, or a centre that may no longer
+      // write — either way there is no `session.locale` to read here. getSession is
+      // memoised per request and was already called by requireRole above, so the read
+      // inside authRefusal is free.
+      return { ok: false, error: await authRefusal(err, (d) => d.teach.errors.forbidden) }
     }
     throw err
   }
@@ -342,10 +346,12 @@ export async function logAbsenceNotice(
   input: AbsenceNoticeLog,
 ): Promise<{ logged: boolean }> {
   // A Server Action is a public endpoint, so the caller is re-derived here even
-  // though the page that drew the chip already did.
+  // though the page that drew the chip already did. Refused for a read-only centre
+  // like every other write, which loses the tick and not the message — see
+  // `logProgressUpdate`, which makes the same trade for the same reason.
   let session
   try {
-    session = await requireRole('teacher')
+    session = requireWritable(await requireRole('teacher'))
   } catch (err) {
     if (err instanceof AuthError) return { logged: false }
     throw err

@@ -14,10 +14,15 @@ import { signOut } from '@/app/(auth)/actions'
 import { switchCenter } from '@/app/(app)/actions'
 import { LanguageSwitch } from '@/components/language-switch'
 import { Logo } from '@/components/ui'
-import type { MemberRole } from '@/lib/supabase/types'
+import type { MemberRole, CenterStatus } from '@/lib/supabase/types'
 import type { Session } from '@/lib/auth/session'
-import { canReadFees, canManageStudents, canManageBatches } from '@/lib/auth/session'
-import { formatBdMobile } from '@/lib/bd/phone'
+import {
+  atLeast,
+  canReadFees,
+  canManageStudents,
+  canManageBatches,
+} from '@/lib/auth/session'
+import { formatBdMobile, normalizeBdMobile } from '@/lib/bd/phone'
 import { dict, type Dictionary } from '@/lib/i18n'
 
 /**
@@ -193,6 +198,95 @@ async function teacherNav(role: MemberRole): Promise<NavItem[]> {
   ]
 }
 
+/**
+ * What a centre in read-only sees, on every screen, until the bill is settled.
+ *
+ * MASTERPLAN.md §4.4 asks for exactly this: writing stops, everything stays readable,
+ * "plus a banner that says plainly what happened and how to fix it, with the founder's
+ * number on it". Without it the product simply breaks — a teacher's register refuses to
+ * save with a one-line form error and no screen anywhere says why.
+ *
+ * IN THE SHELL RATHER THAN ON THE SCREENS, because there are thirty-odd screens and the
+ * ones a suspended centre reaches most are the ones nobody would remember to annotate.
+ * The refusal a form prints points back up here, so this is the one place the whole
+ * explanation lives.
+ *
+ * `print:hidden`, like the header and the nav. A receipt is handed across a desk to a
+ * parent and a register is filed; neither is a place to tell them the centre owes us
+ * money.
+ *
+ * AMBER, NOT RED. Red is for something that went wrong, and nothing has: the data is
+ * intact, the app is working, and a bill is unpaid. Red here would also be permanent —
+ * on every screen, all day — which is how people learn to stop reading a colour.
+ */
+function ReadOnlyBanner({
+  status,
+  t,
+  canSeePlan,
+}: {
+  status: CenterStatus
+  t: Dictionary['readOnly']
+  canSeePlan: boolean
+}) {
+  // Only `cancelled` and `suspended` reach read-only, and a status outside the enum
+  // reads as suspended: it is the sentence with a fix in it, and "ring us" is the right
+  // answer to a row that has gone wrong as well as to a bill that has lapsed.
+  const cancelled = status === 'cancelled'
+
+  // Empty in every deployment until the founder puts their own number in, exactly as
+  // on the plan screen — and the banner is not gated on it, for the reason the note
+  // there gives. What is gated is the chip: a `tel:` link to nobody is worse than none.
+  const salesPhone = normalizeBdMobile(process.env.NEXT_PUBLIC_SALES_PHONE ?? '')
+
+  return (
+    <div
+      // `status`, not `alert`. This is the state of the screen the reader just opened,
+      // not something that happened while they were on it, and `alert` would interrupt
+      // a screen reader on every single navigation.
+      role="status"
+      className="mb-5 rounded-xl border-2 border-late/40 bg-late/5 px-4 py-3 print:hidden"
+    >
+      <p className="font-semibold text-late">
+        {cancelled ? t.cancelledTitle : t.suspendedTitle}
+      </p>
+      <p className="mt-1 text-sm text-ink-soft">
+        {cancelled ? t.cancelledBody : t.suspendedBody}
+      </p>
+
+      {(canSeePlan || salesPhone) && (
+        <div className="mt-3 flex flex-wrap gap-2">
+          {/* Owners and managers only, because /settings/plan is pageRole('manager') —
+              offering a teacher a tab that answers with a 403 is worse than offering
+              them nothing, and there is nothing for them to do here anyway. */}
+          {canSeePlan && (
+            <Link
+              href="/settings/plan"
+              className="inline-flex min-h-tap items-center rounded-xl border-2
+                border-brand-500 bg-brand-50 px-4 font-medium text-brand-800"
+            >
+              {t.seePlan}
+            </Link>
+          )}
+          {salesPhone && (
+            <a
+              // The digits are printed rather than hidden behind the word, for the
+              // reason the plan screen's own call chip gives: `tel:` opens nothing on a
+              // laptop, and a number that can be read off the screen and dialled by
+              // hand works on anything.
+              href={`tel:${salesPhone}`}
+              className="inline-flex min-h-tap items-center rounded-xl border-2
+                border-line px-4 font-medium text-ink-soft"
+            >
+              {t.callUs}
+              <span className="num ml-1">{formatBdMobile(salesPhone)}</span>
+            </a>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
 export async function AppShell({
   session,
   children,
@@ -201,7 +295,8 @@ export async function AppShell({
   children: React.ReactNode
 }) {
   const role: MemberRole = session.active?.role ?? 'student'
-  const t = dict(session.locale).shell
+  const d = dict(session.locale)
+  const t = d.shell
 
   // The two entries the table above cannot decide, because they turn on a
   // permission rather than a role. Asked through the same helpers the screens guard
@@ -217,6 +312,21 @@ export async function AppShell({
   // has both tabs already, and a student or guardian holds no teacher row for a
   // permission to hang off.
   const items: NavItem[] = await teacherNav(role)
+
+  /*
+   * A lapsed or cancelled subscription, which the banner below explains and
+   * `requireWritable` is what actually refuses. See MASTERPLAN.md §4.4.
+   *
+   * `session.active` IS CHECKED FIRST AND IS NOT BELT-AND-BRACES. `access` is
+   * `read_only` for a reader with no centre as well, because entitlement has nothing to
+   * judge and fails closed — so without this an account midway through onboarding would
+   * be told its centre's plan had run out, about a centre it has not made yet. The
+   * layout redirects that reader to /onboarding, but Next's own docs are explicit that
+   * a layout does not re-run on every navigation, and the shell is not the place to
+   * rely on it having.
+   */
+  const readOnly =
+    session.active && session.access === 'read_only' ? session.active.status : null
 
   return (
     <div className="flex min-h-full flex-col">
@@ -283,6 +393,13 @@ export async function AppShell({
         className="mx-auto w-full max-w-3xl flex-1 px-4 py-5 pb-24
           print:max-w-none print:px-0 print:py-0 print:pb-0"
       >
+        {readOnly && (
+          <ReadOnlyBanner
+            status={readOnly}
+            t={d.readOnly}
+            canSeePlan={atLeast(role, 'manager')}
+          />
+        )}
         {children}
       </main>
 

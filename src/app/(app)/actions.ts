@@ -25,6 +25,11 @@ import {
  * An id that is not theirs is not an error worth a message: it means a stale tab,
  * a revoked membership, or somebody poking at the endpoint. All three want the
  * same answer — put them back on their own home screen.
+ *
+ * NO `requireWritable` HERE, and there is nothing for it to check: what this writes is a
+ * cookie on their own browser, not a row in any centre. Somebody who teaches at a
+ * suspended centre and a paying one has to be able to get from the first to the second,
+ * and a switcher that refuses would trap them on the screen that cannot help them.
  */
 export async function switchCenter(formData: FormData) {
   const session = await requireUser()

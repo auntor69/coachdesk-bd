@@ -17,7 +17,8 @@ import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import {
   requireRole,
-  getSession,
+  requireWritable,
+  authRefusal,
   canManageExams,
   canSendSms,
   myTeacherIds,
@@ -34,7 +35,7 @@ import { readExamFacts } from '@/lib/exams/facts'
 import { planResultSms } from '@/lib/sms/result-dispatch'
 import type { OutreachChannel } from '@/lib/supabase/types'
 import { MAX_NAME, MAX_NOTE, clamp } from '@/lib/limits'
-import { dict, DEFAULT_LOCALE } from '@/lib/i18n'
+import { dict } from '@/lib/i18n'
 import { nameTooLong } from '@/lib/i18n/messages'
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/
@@ -46,6 +47,10 @@ const DATE_RE = /^\d{4}-\d{2}-\d{2}$/
  * the guard had no way to prove the error string existed and every caller ended
  * in `session?.error ?? 'no permission'`: a fallback that could not be reached
  * and would still have needed translating.
+ *
+ * Also where a lapsed subscription is refused, for every action in this file — marks,
+ * exams, and the two result-SMS writes. An exam already marked stays readable and
+ * printable; what stops is adding to it.
  */
 type Caller =
   | { ok: true; session: CenterSession }
@@ -53,16 +58,12 @@ type Caller =
 
 async function teacherOrAbove(): Promise<Caller> {
   try {
-    return { ok: true, session: await requireRole('teacher') }
+    return { ok: true, session: requireWritable(await requireRole('teacher')) }
   } catch (err) {
     if (err instanceof AuthError) {
-      // getSession is memoised per request and requireRole above already called
-      // it, so reading the caller's language back costs nothing. A signed-out
-      // caller has no language at all, hence the default.
-      const caller = await getSession()
       return {
         ok: false,
-        error: dict(caller?.locale ?? DEFAULT_LOCALE).exams.errors.forbidden,
+        error: await authRefusal(err, (d) => d.exams.errors.forbidden),
       }
     }
     throw err

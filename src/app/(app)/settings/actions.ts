@@ -18,7 +18,8 @@ import { pageOrNull } from '@/lib/supabase/page'
 import {
   requireRole,
   requirePermission,
-  getSession,
+  requireWritable,
+  authRefusal,
   AuthError,
   type CenterSession,
   type RosterPermission,
@@ -45,7 +46,7 @@ import {
 import { SLOT_ORDER } from '@/lib/bd/schedule'
 import { MAX_NAME, MAX_LABEL, clamp } from '@/lib/limits'
 import { PERMISSION_KEYS, type PermissionKey } from '@/lib/permissions'
-import { dict, DEFAULT_LOCALE } from '@/lib/i18n'
+import { dict } from '@/lib/i18n'
 import { nameTooLong, passwordTooShort } from '@/lib/i18n/messages'
 import { studentRoom, wouldExceed, hasStaff, type LimitKey } from '@/lib/plans'
 import {
@@ -100,18 +101,26 @@ export type ActionState = {
  * so they get the default.
  *
  * `message` takes the whole dictionary rather than a string, because it is chosen
- * before the locale is known.
+ * before the locale is known. `authRefusal` is what applies it, and it is also what
+ * overrides it for a read-only centre — see that helper.
+ *
+ * THE WRITE CHECK IS HERE, ONCE, and that is why it covers a file this long: every
+ * action below reaches its session through this, so a lapsed subscription refuses the
+ * lot — subjects, batches, students, the import, teacher rows, permissions, logins,
+ * the centre's own details — and an action added next month is refused by having been
+ * written like the others. Nothing in this file is something a suspended centre must
+ * still be able to do; the two things that are (asking to be put on a plan, and an
+ * account's own name and password) live in other modules and do not run this.
  */
 async function guard(
   check: () => Promise<CenterSession>,
   message: (d: ReturnType<typeof dict>) => string,
 ): Promise<CenterSession | ActionState> {
   try {
-    return await check()
+    return requireWritable(await check())
   } catch (err) {
     if (err instanceof AuthError) {
-      const caller = await getSession()
-      return { error: message(dict(caller?.locale ?? DEFAULT_LOCALE)) }
+      return { error: await authRefusal(err, message) }
     }
     throw err
   }
