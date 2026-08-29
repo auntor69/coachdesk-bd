@@ -338,20 +338,52 @@ export async function setCenterPlan(
   const status = String(formData.get('status') ?? '') as CenterStatus
   if (!STATUSES.has(status)) return { error: words.badStatus }
 
+  const limits = planFor(plan)
   const admin = createAdminClient()
 
-  // scoped-by: the founder panel is every centre; requirePlatformAdmin above is the
-  // gate, and this update names a single id.
-  const { error } = await admin
+  /*
+   * THE TRIAL PAIR IS CLEARED WHEN THE NEW TIER IS ONE SOMEBODY PAYS FOR, which is
+   * MASTERPLAN.md §4.3's "the founder clears the trial fields when a customer pays"
+   * expressed as a property of the row rather than as a step to remember.
+   *
+   * A trial is a temporary grant of a *better* tier, and `effectiveEntitlement` will
+   * not let a stale one demote anybody — so the failure it cannot prevent is the
+   * opposite one: a founder agrees Teacher Pro on the phone, sets it here, and the
+   * fortnight-old Plus trial keeps granting whatever it granted until a date nobody
+   * mentioned. Recording the purchase is exactly the moment the trial has been
+   * answered, so it ends here.
+   *
+   * AND IT SURVIVES A MOVE TO THE FREE TIER, which is the case an unconditional clear
+   * would have broken. `bootstrap_center` starts every signup on a 14-day Teacher Plus
+   * trial, so almost every centre this form touches early has a live pair; a founder
+   * correcting a status typo on a three-day-old centre would otherwise take the trial
+   * off it silently, and the owner would lose features mid-fortnight. Leaving it alone
+   * costs nothing, because an expired trial is a comparison at read time and stops
+   * granting on its own.
+   *
+   * The row comes back so the warning below can be about this centre rather than about
+   * a centre with nothing bought. A `.select()` on an update also turns "no such
+   * centre" into an answer: an update matching zero rows is not an error, so without
+   * this the founder was told a plan had been saved for an id that does not exist.
+   *
+   * scoped-by: the founder panel is every centre; requirePlatformAdmin above is the
+   * gate, and this update names a single id.
+   */
+  const { data: updated, error } = await admin
     .from('coaching_centers')
-    .update({ plan, status })
+    .update(
+      limits.pricing === 'free'
+        ? { plan, status }
+        : { plan, status, trial_plan: null, trial_ends_at: null },
+    )
     .eq('id', centerId)
+    .select('student_capacity')
+    .maybeSingle()
 
-  if (error) return { error: words.failed }
+  if (error || !updated) return { error: words.failed }
 
   revalidatePath('/founder')
 
-  const limits = planFor(plan)
   const applied = t.planSaved(
     planName(limits, session.locale),
     t.status[status],
@@ -384,13 +416,16 @@ export async function setCenterPlan(
    * student that centre tried to admit was refused by migration 36's trigger with the
    * founder none the wiser.
    *
-   * The purchased figure is 0 because this is somebody else's centre and there is no
-   * `student_capacity` in the read above — accurate today, since nothing can write that
-   * column until top-ups ship, and the same seam `Session.ceiling` names. When they do
-   * ship, this read grows a column and this line passes it.
+   * The purchased figure is the centre's own `student_capacity`, read back off the
+   * update above, and it has to be: `app.student_ceiling` in the database is
+   * `greatest(included_students, student_capacity)` on the two centre tiers, so a 0
+   * passed here would predict a refusal the trigger is not going to make and warn a
+   * founder about a centre that has bought the places. The TypeScript side ignores it
+   * on the teacher tiers for the same reason the SQL does — those are not priced per
+   * student — so the two agree on every plan rather than only on the ones tested.
    */
   const over =
-    (students ?? 0) > studentCeiling(limits, 0).ceiling ||
+    (students ?? 0) > studentCeiling(limits, updated.student_capacity).ceiling ||
     (limits.maxTeachers !== null && (teachers ?? 0) > limits.maxTeachers)
 
   return over

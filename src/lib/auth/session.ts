@@ -41,6 +41,30 @@ export type Membership = {
    */
   status: CenterStatus
   smsCreditBalance: number
+  /**
+   * The tier being trialled and the instant it stops granting it, or null twice.
+   *
+   * Both or neither: `coaching_centers_trial_pair` says so in the database, and
+   * `effectiveEntitlement` re-checks it anyway rather than trusting the constraint —
+   * a plan with no end date would be a permanent free upgrade, and an end date with
+   * no plan is a timer attached to nothing.
+   *
+   * Carried per membership and not only for the active centre, because a trial is a
+   * fact about a centre and not about which one somebody is looking at. Anything that
+   * resolves entitlement for a list of centres wants all of them.
+   */
+  trialPlan: PlanType | null
+  trialEndsAt: string | null
+  /**
+   * Places bought on top of what the plan allows (MASTERPLAN.md §4.5's per-student
+   * top-up), which is why the ceiling is derived from the plan *and* this rather than
+   * from the plan alone.
+   *
+   * Zero for every centre until something can write it, and it stays a number the
+   * browser is shown rather than one it is believed: the enforcement is
+   * `limitRefusal` counting rows server-side, per §4.5.
+   */
+  studentCapacity: number
 }
 
 export type Session = {
@@ -195,8 +219,12 @@ export const getSession = cache(async (): Promise<Session | null> => {
     // scoped by the answer this one gives; see scripts/check-scoping.mjs.
     supabase
       .from('center_members')
+      // One string literal and not three concatenated, however long it reads: the
+      // generated types resolve a select at the type level from the literal itself, so
+      // `'a' + 'b'` widens to `string` and every column on the row comes back as
+      // `GenericStringError`. Wrapping this for width costs the whole embed's typing.
       .select(
-        'coaching_center_id, role, branch_id, coaching_centers (name, plan, status, sms_credit_balance)',
+        'coaching_center_id, role, branch_id, coaching_centers (name, plan, status, sms_credit_balance, student_capacity, trial_plan, trial_ends_at)',
       )
       .eq('user_id', user.id)
       .eq('active', true),
@@ -222,6 +250,9 @@ export const getSession = cache(async (): Promise<Session | null> => {
           plan: center.plan,
           status: center.status,
           smsCreditBalance: center.sms_credit_balance,
+          trialPlan: center.trial_plan,
+          trialEndsAt: center.trial_ends_at,
+          studentCapacity: center.student_capacity,
         }
       })
       .filter((m): m is Membership => m !== null),
@@ -252,15 +283,20 @@ export const getSession = cache(async (): Promise<Session | null> => {
    * trialling Pro thirty places while every feature on the screen said a hundred and
    * fifty. There is now one derivation and no way to half-apply it.
    *
-   * WHAT IS PASSED AS NULL, AND WHY THAT IS EXACT RATHER THAN A STAND-IN.
-   * `trial_plan`, `trial_ends_at` and `student_capacity` are added by migration 36,
-   * which is written and committed but not applied to the live database — so
-   * `src/lib/supabase/types.ts`, generated from the live schema, does not know them
-   * and the select above cannot ask for them. Today that costs nothing: nothing in
-   * the product can write any of the three, because there is no payment path and no
-   * trial is ever started, so "no trial and nothing bought" is the true state of
-   * every centre. When the migration is applied these three lines become three more
-   * columns on the select, and every gate downstream already asks the right question.
+   * WHAT THE THREE BILLING COLUMNS COST TODAY, now that they are actually read.
+   * `trial_plan`, `trial_ends_at` and `student_capacity` were passed as null, null and
+   * 0 from the day this resolver was written until migration 36 reached the live
+   * database and `src/lib/supabase/types.ts` was regenerated, because a select cannot
+   * ask for a column the generated types do not have. Those three literals were the
+   * true state of every centre while nothing could write them, and they are the wrong
+   * shape of correct: the moment a founder starts a trial, a stand-in that says "no
+   * trial" is a downgrade applied by a screen. They are now read from the row.
+   *
+   * `student_capacity` will still be 0 everywhere for a while, and that is a fact
+   * about the product rather than about this line: nothing writes it yet, because the
+   * §4.5 top-up dialog and the payment path behind it are not built. The difference is
+   * that when one of them writes it, every gate downstream is already asking the row
+   * instead of a constant.
    *
    * `access` IS SURFACED AS OF THIS COMMIT, and only because the two things that had
    * to come with it came with it: `requireWritable` below, which every action module's
@@ -273,9 +309,9 @@ export const getSession = cache(async (): Promise<Session | null> => {
       ? {
           status: active.status,
           plan: active.plan,
-          trial_plan: null,
-          trial_ends_at: null,
-          student_capacity: 0,
+          trial_plan: active.trialPlan,
+          trial_ends_at: active.trialEndsAt,
+          student_capacity: active.studentCapacity,
         }
       : null,
     new Date(),
