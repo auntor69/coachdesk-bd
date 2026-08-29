@@ -8656,6 +8656,365 @@ await asUser(db, ids.ownerB, async (tx) => {
   )
 })
 
+console.log('\nWho did that (audit_log):')
+
+// §10's requirement is not "the app logs this" but "a change cannot exist without its
+// log line", so every check here writes through an ordinary screen path and then looks
+// for the line nobody asked for.
+const auditOf = (entity, entityId) =>
+  db.query(
+    `select actor, actor_role, operation, before, after
+       from audit_log where entity = $1 and entity_id = $2 order by created_at`,
+    [entity, entityId],
+  )
+
+// Its own row rather than one the expenses section above already corrected three times:
+// the checks below count lines, and a count off a shared row measures the rest of this
+// file rather than the trigger.
+const xAudited = await asUser(db, ids.ownerA, async (tx) =>
+  (
+    await tx.query(
+      `insert into expenses (coaching_center_id, category, amount_bdt, note, spent_on)
+       values ($1, 'internet', 8500, 'August broadband', '2026-08-04') returning id`,
+      [centerA],
+    )
+  ).rows[0].id,
+)
+
+const xLogged = (await auditOf('expenses', xAudited)).rows
+check('recording an expense writes its own log line', xLogged.length === 1)
+check('naming who recorded it', xLogged[0]?.actor === ids.ownerA)
+check(
+  'and the role the write arrived as',
+  xLogged[0]?.actor_role === 'authenticated',
+)
+check('a new row is logged as created', xLogged[0]?.operation === 'created')
+// `amount_bdt` is numeric(10,2) and to_jsonb writes numerics as JSON numbers, not
+// strings — so the amount arrives back as 8500, not '8500.00'. Compared numerically for
+// that reason: the log keeps the value, not its formatting.
+check(
+  'with nothing before it and the whole row after',
+  xLogged[0]?.before === null && Number(xLogged[0]?.after?.amount_bdt) === 8500,
+  `before=${JSON.stringify(xLogged[0]?.before)} amount=${JSON.stringify(xLogged[0]?.after?.amount_bdt)}`,
+)
+
+// The correction the money tables deliberately allow, and the log line that makes it
+// safe to allow: the note may change, and the change is on the record.
+await asUser(db, ids.ownerA, (tx) =>
+  tx.query(`update expenses set note = 'August broadband (paid late)' where id = $1`, [xAudited]),
+)
+const xEdited = (await auditOf('expenses', xAudited)).rows
+check('correcting the note is logged too', xEdited.length === 2)
+check('as an update', xEdited[1]?.operation === 'updated')
+
+// The whole point of storing a diff rather than two rows. `updated_at` is stripped
+// before the comparison, so it never shows up as the change nobody made.
+check(
+  'and the line holds only the column that moved',
+  JSON.stringify(Object.keys(xEdited[1]?.before ?? {})) === '["note"]',
+)
+check(
+  'with the old value on one side and the new on the other',
+  xEdited[1]?.before?.note === 'August broadband' &&
+    xEdited[1]?.after?.note === 'August broadband (paid late)',
+)
+
+// A form submitted without an edit is not an event. Every audited table bumps
+// updated_at on any UPDATE, so without stripping it this would log a line saying the
+// timestamp changed.
+await asUser(db, ids.ownerA, (tx) =>
+  tx.query(`update expenses set note = 'August broadband (paid late)' where id = $1`, [xAudited]),
+)
+check(
+  'a save that changed nothing writes no line',
+  (await auditOf('expenses', xAudited)).rows.length === 2,
+)
+
+// The claim in §10's own words — "a change cannot exist without its log line" — tested
+// against everything the rest of this suite did to the money table before reaching here,
+// rather than against one write set up to pass. Both centres only, so a throwaway centre
+// deleted earlier in the file cannot skew it.
+const feeLines = (
+  await db.query(
+    `select
+       (select count(*)::int from fee_payments
+         where coaching_center_id in ($1, $2)) as rows,
+       (select count(*)::int from audit_log
+         where entity = 'fee_payments' and operation = 'created'
+           and coaching_center_id in ($1, $2)) as created,
+       (select count(*)::int from audit_log
+         where entity = 'fee_payments' and operation = 'deleted'
+           and coaching_center_id in ($1, $2)) as removed`,
+    [centerA, centerB],
+  )
+).rows[0]
+check(
+  'every fee payment these two centres ever had has a line saying who made it',
+  feeLines.created - feeLines.removed === feeLines.rows,
+  `${feeLines.created} created - ${feeLines.removed} removed vs ${feeLines.rows} rows`,
+)
+
+// §10 lists student status changes and branch transfers by name. student_transfers keeps
+// the richer record of a move; this is the line that sits in one list with everything
+// else, so an owner reading a week does not have to know which screen was used.
+const auditedStudent = (
+  await db.query(
+    'select id, status from students where coaching_center_id = $1 order by created_at limit 1',
+    [centerA],
+  )
+).rows[0]
+await asUser(db, ids.ownerA, (tx) =>
+  tx.query(`update students set status = 'suspended' where id = $1`, [auditedStudent.id]),
+)
+const sLines = (await auditOf('students', auditedStudent.id)).rows
+check(
+  'a student put on hold is logged, with the old status still readable',
+  sLines.some(
+    (r) =>
+      r.operation === 'updated' &&
+      r.after?.status === 'suspended' &&
+      r.before?.status === auditedStudent.status,
+  ),
+  `was ${auditedStudent.status}`,
+)
+
+// Not on §10's list, and audited because a guardian phone is where every fee reminder
+// goes: changing one redirects the centre's money conversation to whoever changed it.
+const auditedGuardian = (
+  await db.query(
+    'select id from guardians where coaching_center_id = $1 order by created_at limit 1',
+    [centerA],
+  )
+).rows[0].id
+await asUser(db, ids.ownerA, (tx) =>
+  tx.query('update guardians set phone = $2 where id = $1', [auditedGuardian, '+8801999000111']),
+)
+check(
+  'moving the number a reminder goes to is on the record',
+  (await auditOf('guardians', auditedGuardian)).rows.some(
+    (r) => r.after?.phone === '+8801999000111',
+  ),
+)
+
+// The table keyed on teacher_id rather than id, which is the one place the trigger is
+// told which column names its target. Getting this wrong would file every permission
+// change under a null.
+await asUser(db, ids.ownerA, (tx) =>
+  tx.query(
+    `insert into teacher_permissions (teacher_id, coaching_center_id, can_view_fees)
+     values ($1, $2, true)
+     on conflict (teacher_id) do update set can_view_fees = true`,
+    [tKarim, centerA],
+  ),
+)
+check(
+  'a permission change is filed under the teacher it was granted to',
+  (await auditOf('teacher_permissions', tKarim)).rows.length >= 1,
+)
+
+// And the one table with no coaching_center_id of its own, where the tenant has to come
+// from the row's own id. A plan change filed under a null centre is a plan change no
+// owner can ever read.
+//
+// A value this centre does not already carry, and the line found by the column it moved
+// rather than by being last. Earlier sections have already updated this row as
+// service_role, so `bd_area = 'Mirpur'` would be a save that changed nothing — correctly
+// unlogged — and the newest line would be somebody else's.
+await db.query(`update coaching_centers set address = 'Plot 9, Block C' where id = $1`, [centerA])
+const cLines = (await auditOf('coaching_centers', centerA)).rows
+const cMoved = cLines.filter((r) => r.after?.address === 'Plot 9, Block C')
+check(
+  "a change to the centre itself is filed under the centre",
+  cMoved.length === 1,
+  `${cLines.length} line(s) for the centre, ${cMoved.length} for this change`,
+)
+check(
+  'and a write with no request behind it records no actor and no role',
+  cMoved[0]?.actor === null && cMoved[0]?.actor_role === null,
+  `actor=${JSON.stringify(cMoved[0]?.actor)} role=${JSON.stringify(cMoved[0]?.actor_role)}`,
+)
+
+// A delete keeps the whole row, because there the whole row is what changed. Using a
+// branch, which is not itself audited, would prove nothing — so this uses a throwaway
+// employee, which is.
+const goneEmployee = await one(
+  `insert into employees (coaching_center_id, name, role) values ($1, 'Temp Guard', 'security_guard') returning id`,
+  [centerA],
+)
+await db.query('delete from employees where id = $1', [goneEmployee])
+const eLines = (await auditOf('employees', goneEmployee)).rows
+check(
+  'a deleted staff record leaves both the line that made it and the line that removed it',
+  eLines.length === 2 && eLines[0].operation === 'created' && eLines[1].operation === 'deleted',
+)
+check(
+  'and the removal keeps the whole row, not a diff',
+  eLines[1]?.before?.name === 'Temp Guard' && eLines[1]?.after === null,
+)
+
+// Nothing may edit a line, and unlike the money tables not even a note is handed back:
+// every column here is a statement about what somebody did.
+const anyLine = (
+  await db.query('select id from audit_log where coaching_center_id = $1 limit 1', [centerA])
+).rows[0].id
+check(
+  'an owner cannot write a line of their own log by hand',
+  await deniedAsUser(
+    db,
+    ids.ownerA,
+    `insert into audit_log (coaching_center_id, entity, operation) values ($1, 'expenses', 'created')`,
+    [centerA],
+  ),
+)
+check(
+  'nor delete one',
+  await deniedAsUser(db, ids.ownerA, 'delete from audit_log where id = $1', [anyLine]),
+)
+check(
+  'nor change who a line says did it',
+  await deniedAsUser(db, ids.ownerA, 'update audit_log set actor = null where id = $1', [anyLine]),
+)
+
+// Owner only, and this is the one administrative table where a manager is refused. The
+// log carries subscriptions and payments rows, which 20260811000002 keeps from managers
+// in as many words, and §10's question is about the manager.
+const auditManager = (
+  await db.query('insert into auth.users (id) values (gen_random_uuid()) returning id')
+).rows[0].id
+await db.query(
+  `insert into center_members (coaching_center_id, user_id, role) values ($1, $2, 'manager')`,
+  [centerA, auditManager],
+)
+await asUser(db, ids.ownerA, async (tx) => {
+  check('an owner reads their own log', (await n(tx, 'select count(*)::int as n from audit_log')) > 0)
+})
+await asUser(db, auditManager, async (tx) => {
+  check(
+    'a manager reads none of it',
+    (await n(tx, 'select count(*)::int as n from audit_log')) === 0,
+  )
+  check(
+    'while still running the centre they manage',
+    (await n(tx, 'select count(*)::int as n from expenses')) > 0,
+  )
+})
+await asUser(db, ids.karim, async (tx) => {
+  check('a teacher reads none of it', (await n(tx, 'select count(*)::int as n from audit_log')) === 0)
+})
+await asUser(db, ids.ownerB, async (tx) => {
+  check(
+    "and an owner reads nothing of another centre's",
+    (await n(tx, `select count(*)::int as n from audit_log where coaching_center_id = $1`, [
+      centerA,
+    ])) === 0,
+  )
+})
+// §10's support conversation is ours to have, so the founder reads and never writes.
+await asUser(db, ids.founder, async (tx) => {
+  check(
+    'the founder reads it, for the support conversation',
+    (await n(tx, 'select count(*)::int as n from audit_log')) > 0,
+  )
+})
+check(
+  'and cannot add to it either',
+  await deniedAsUser(
+    db,
+    ids.founder,
+    `insert into audit_log (coaching_center_id, entity, operation) values ($1, 'expenses', 'created')`,
+    [centerA],
+  ),
+)
+await db.query('delete from center_members where user_id = $1', [auditManager])
+
+// The writes §10 most wants attributed — plan changes, capacity purchases — are made by
+// our own server with the service_role key and no JWT, so `app.actor` is how the server
+// names itself. Without it those lines would all read "nobody".
+await db.transaction(async (tx) => {
+  await tx.query(`select set_config('app.actor', $1, true)`, [ids.founder])
+  await tx.query(
+    `insert into expenses (coaching_center_id, category, amount_bdt, note)
+     values ($1, 'software', 900, 'Server write')`,
+    [centerA],
+  )
+})
+const serverLine = (
+  await db.query(
+    `select actor from audit_log where entity = 'expenses' and after ->> 'note' = 'Server write'`,
+  )
+).rows[0]
+check('a server write can name the person behind it', serverLine?.actor === ids.founder)
+
+// And it is not a way to forge one: auth.uid() is read first, so a session with a JWT is
+// always recorded as itself no matter what the setting says.
+await asUser(db, ids.ownerA, async (tx) => {
+  await tx.query(`select set_config('app.actor', $1, true)`, [ids.founder])
+  await tx.query(
+    `insert into expenses (coaching_center_id, category, amount_bdt, note)
+     values ($1, 'transport', 300, 'Claimed by someone else')`,
+    [centerA],
+  )
+})
+const forgedLine = (
+  await db.query(
+    `select actor from audit_log
+      where entity = 'expenses' and after ->> 'note' = 'Claimed by someone else'`,
+  )
+).rows[0]
+check('but it cannot overwrite the session that made the write', forgedLine?.actor === ids.ownerA)
+
+// A row trigger does not fire for TRUNCATE, so the log's promise depends on nobody
+// holding the privilege. Supabase's default grants hand it out with `all`.
+check(
+  'a signed-in user cannot truncate the student table',
+  await deniedAsUser(db, ids.ownerA, 'truncate students'),
+)
+check(
+  'nor the staff list',
+  await deniedAsUser(db, ids.ownerA, 'truncate employees'),
+)
+check(
+  'nor empty the log itself',
+  await deniedAsUser(db, ids.ownerA, 'truncate audit_log'),
+)
+
+// The landmine: audit_log cascades from coaching_centers, and the cascade removes the
+// centre row before its children — so a log line written during a centre's deletion would
+// reference a parent that is already gone and make closing a centre impossible for ever.
+// Same class as 20260811000042's dropped constraint and 20260811000044's NO ACTION.
+const auditedOwner = (
+  await db.query('insert into auth.users (id) values (gen_random_uuid()) returning id')
+).rows[0].id
+const auditedCenter = await one(
+  `insert into coaching_centers (name, created_by) values ('Wound Up Coaching', $1) returning id`,
+  [auditedOwner],
+)
+await asUser(db, auditedOwner, (tx) =>
+  tx.query(
+    `insert into expenses (coaching_center_id, category, amount_bdt) values ($1, 'rent', 7000)`,
+    [auditedCenter],
+  ),
+)
+check(
+  'a centre accumulates a log as it is used',
+  (await n(db, 'select count(*)::int as n from audit_log where coaching_center_id = $1', [
+    auditedCenter,
+  ])) > 0,
+)
+await db.query('delete from coaching_centers where id = $1', [auditedCenter])
+check(
+  'and a centre with a log can still be closed',
+  (await n(db, 'select count(*)::int as n from coaching_centers where id = $1', [
+    auditedCenter,
+  ])) === 0,
+)
+check(
+  'its log going with it, rather than outliving the centre it describes',
+  (await n(db, 'select count(*)::int as n from audit_log where coaching_center_id = $1', [
+    auditedCenter,
+  ])) === 0,
+)
+
 console.log('\nAnonymous access:')
 
 await asUser(db, null, async (tx) => {
@@ -8688,6 +9047,10 @@ await asUser(db, null, async (tx) => {
   check(
     'signed-out user reads no spending',
     (await n(tx, 'select count(*)::int as n from expenses')) === 0,
+  )
+  check(
+    'signed-out user reads no record of who did what',
+    (await n(tx, 'select count(*)::int as n from audit_log')) === 0,
   )
 })
 
