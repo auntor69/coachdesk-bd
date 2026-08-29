@@ -8476,6 +8476,186 @@ check(
   ])) === 0,
 )
 
+console.log('\nEvery taka that leaves (expenses):')
+
+let xRent
+await asUser(db, ids.ownerA, async (tx) => {
+  const row = (
+    await tx.query(
+      `insert into expenses (coaching_center_id, category, note, amount_bdt, recurring)
+       values ($1, 'rent', 'August, Mirpur floor', 12000, true) returning id, voucher_no`,
+      [centerA],
+    )
+  ).rows[0]
+  xRent = row.id
+  check("a centre's first expense voucher is 1", row.voucher_no === 1)
+
+  const second = (
+    await tx.query(
+      `insert into expenses (coaching_center_id, category, amount_bdt, method, reference)
+       values ($1, 'printing', 2400, 'bkash', 'TRX-PRINT') returning voucher_no`,
+      [centerA],
+    )
+  ).rows[0]
+  check('and the next one is 2', second.voucher_no === 2)
+})
+
+// Per centre, for the reason 20260811000017 gives about receipts: an owner watching
+// their own numbers climb must learn nothing about the centre next door.
+await asUser(db, ids.ownerB, async (tx) => {
+  const row = (
+    await tx.query(
+      `insert into expenses (coaching_center_id, category, amount_bdt)
+       values ($1, 'electricity', 3100) returning voucher_no`,
+      [centerB],
+    )
+  ).rows[0]
+  check("and another centre's first expense voucher is also 1", row.voucher_no === 1)
+})
+
+check(
+  'an expense that moves no money is refused',
+  await deniedAsUser(
+    db,
+    ids.ownerA,
+    `insert into expenses (coaching_center_id, category, amount_bdt) values ($1, 'rent', 0)`,
+    [centerA],
+  ),
+)
+
+// §10 predicts the support conversation this protects: "my manager says he never
+// entered that". A ledger the person who wrote a row can silently edit cannot answer
+// it, so the row is append-only from a browser session on both mechanisms.
+check(
+  'an expense cannot be deleted by the centre that recorded it',
+  await deniedAsUser(db, ids.ownerA, 'delete from expenses where id = $1', [xRent]),
+)
+check(
+  'nor rewritten to a different amount',
+  await deniedAsUser(db, ids.ownerA, 'update expenses set amount_bdt = 1 where id = $1', [xRent]),
+)
+check(
+  'nor moved into a different category',
+  await deniedAsUser(
+    db,
+    ids.ownerA,
+    `update expenses set category = 'miscellaneous' where id = $1`,
+    [xRent],
+  ),
+)
+check(
+  'nor renumbered once the voucher is issued',
+  await deniedAsUser(db, ids.ownerA, 'update expenses set voucher_no = 99 where id = $1', [xRent]),
+)
+
+let expenseRenumbered = false
+try {
+  await db.query('update expenses set voucher_no = 99 where id = $1', [xRent])
+  expenseRenumbered = true
+} catch {
+  /* expected */
+}
+check('not even the migration role can renumber an expense voucher', !expenseRenumbered)
+
+// The three columns handed back. A mistyped reference and a note about which month
+// the rent covers change no number, and a forgotten recurring tick is a hint about
+// next month rather than a claim about what happened.
+await asUser(db, ids.ownerA, async (tx) => {
+  await tx.query(
+    `update expenses set note = 'August, both floors', reference = 'CHQ-4411', recurring = true
+     where id = $1`,
+    [xRent],
+  )
+})
+check(
+  'but the note, the reference and the recurring tick can be corrected',
+  (await n(
+    db,
+    `select count(*)::int as n from expenses
+     where id = $1 and note = 'August, both floors' and reference = 'CHQ-4411' and recurring`,
+    [xRent],
+  )) === 1,
+)
+
+// Which leaves one way to undo a wrong entry, and it leaves both rows on the record.
+await asUser(db, ids.ownerA, async (tx) => {
+  await tx.query(
+    `insert into expenses (coaching_center_id, category, amount_bdt, note)
+     values ($1, 'printing', -2400, 'billed to the wrong centre') returning id`,
+    [centerA],
+  )
+})
+check(
+  'a wrong expense is undone by a negative row, and the pair nets to nothing',
+  (await n(
+    db,
+    `select coalesce(sum(amount_bdt), -1)::int as n from expenses
+     where coaching_center_id = $1 and category = 'printing'`,
+    [centerA],
+  )) === 0,
+)
+
+// Composite key on (branch_id, coaching_center_id): a cost filed under another
+// organisation's branch is how §8.3's comparison table ends up part somebody else's.
+const bxOther = (
+  await db.query(
+    `insert into branches (coaching_center_id, name) values ($1, 'B Cost Centre') returning id`,
+    [centerB],
+  )
+).rows[0].id
+check(
+  "a cost cannot be filed under another centre's branch",
+  await deniedAsUser(
+    db,
+    ids.ownerA,
+    `insert into expenses (coaching_center_id, branch_id, category, amount_bdt)
+     values ($1, $2, 'rent', 5000)`,
+    [centerA, bxOther],
+  ),
+)
+await db.query('delete from branches where id = $1', [bxOther])
+
+// And ON DELETE SET NULL on the branch alone: closing an office must not erase what it
+// cost to run, or last year's profit changes when a branch is tidied away.
+const bxMirpur = (
+  await db.query(
+    `insert into branches (coaching_center_id, name) values ($1, 'Mirpur Costs') returning id`,
+    [centerA],
+  )
+).rows[0].id
+let xBranchCost
+await asUser(db, ids.ownerA, async (tx) => {
+  xBranchCost = (
+    await tx.query(
+      `insert into expenses (coaching_center_id, branch_id, category, amount_bdt)
+       values ($1, $2, 'internet', 1800) returning id`,
+      [centerA, bxMirpur],
+    )
+  ).rows[0].id
+})
+await db.query('delete from branches where id = $1', [bxMirpur])
+check(
+  'closing a branch leaves its costs on the books',
+  (await n(db, 'select count(*)::int as n from expenses where id = $1 and branch_id is null', [
+    xBranchCost,
+  ])) === 1,
+)
+
+// What the centre pays in rent is not a colleague's business, and can_view_fees is
+// about collecting money for a batch — a different thing from reading the cost base.
+await asUser(db, ids.karim, async (tx) => {
+  check(
+    'a teacher reads no expenses',
+    (await n(tx, 'select count(*)::int as n from expenses')) === 0,
+  )
+})
+await asUser(db, ids.ownerB, async (tx) => {
+  check(
+    "another centre's owner reads only their own",
+    (await n(tx, 'select count(*)::int as n from expenses')) === 1,
+  )
+})
+
 console.log('\nAnonymous access:')
 
 await asUser(db, null, async (tx) => {
@@ -8504,6 +8684,10 @@ await asUser(db, null, async (tx) => {
   check(
     'signed-out user reads no payroll',
     (await n(tx, 'select count(*)::int as n from salary_payments')) === 0,
+  )
+  check(
+    'signed-out user reads no spending',
+    (await n(tx, 'select count(*)::int as n from expenses')) === 0,
   )
 })
 
