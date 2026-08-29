@@ -507,6 +507,71 @@ the owner never taps — this check needs to learn about it deliberately.`,
       .join(', ')}), all counted.`,
   )
 
+  // -------------------------------------------------------------------------
+  // No table in public may leave TRUNCATE with a signed-in request.
+  //
+  // Supabase ships
+  //
+  //   alter default privileges in schema public grant all on tables to anon,
+  //     authenticated, service_role
+  //
+  // and `all` on a table includes TRUNCATE. So every `create table` in this
+  // schema hands out the right to empty it, to every signed-in user and to
+  // signed-out ones, without any migration saying so.
+  //
+  // What makes that worth a build failure rather than a note is what TRUNCATE
+  // does to the rest of the schema's promises. A row trigger does not fire for
+  // it: the append-only guards on fee_payments, salary_payments and expenses all
+  // refuse a DELETE row by row and see nothing at all, and 20260811000046's audit
+  // log would record no line for a table emptied in one statement. It is the one
+  // write in Postgres that is invisible to every mechanism this database uses to
+  // make money and history hard to rewrite.
+  //
+  // It is held rather than reachable today, because PostgREST has no verb that
+  // issues a TRUNCATE — which is exactly why it needs a gate instead of a test.
+  // Nothing an integration test can do will notice the privilege, and the day
+  // something can reach it is not the day to find out who holds it.
+  //
+  // 20260811000046 closed the whole class with one statement. That statement
+  // cannot reach a table created after it, so this check is the part that lasts:
+  // a migration that adds a table now fails here until it says what it means.
+  // -------------------------------------------------------------------------
+  const truncatable = await db.query(`
+    select c.relname, r.rolname
+    from pg_class c
+    join pg_namespace n on n.oid = c.relnamespace and n.nspname = 'public'
+    cross join (values ('authenticated'), ('anon')) as r(rolname)
+    where c.relkind in ('r', 'p')
+      and pg_catalog.has_table_privilege(r.rolname, c.oid, 'TRUNCATE')
+    order by c.relname, r.rolname;
+  `)
+
+  if (truncatable.rows.length > 0) {
+    console.error(
+      `\nTRUNCATE IS GRANTED — ${truncatable.rows.length} table/role pair(s) let a request empty a table in one statement:\n`,
+    )
+    for (const t of truncatable.rows) console.error(`  ${t.relname} → ${t.rolname}`)
+    console.error(
+      `
+No trigger fires for a TRUNCATE, so every append-only guard in this schema and
+every line the audit log would have written are bypassed at once. Supabase's
+default privileges granted this; the table did not ask for it.
+
+Add it to the end of the migration that creates the table:
+
+  revoke truncate on public.<table> from authenticated, anon;
+
+service_role keeps it, because a support request has to be answerable.
+
+If a table genuinely should be emptiable by a signed-in user, this check needs to
+learn about it deliberately — and whatever writes it should be a function with a
+name, not a privilege nobody granted on purpose.`,
+    )
+    process.exit(1)
+  }
+
+  console.log('TRUNCATE: not held by authenticated or anon on any table.')
+
   await db.close()
 } catch (error) {
   console.error(`\nMIGRATION FAILED\n${error.message}`)
