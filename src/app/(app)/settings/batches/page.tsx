@@ -7,6 +7,7 @@ import { BatchSlot } from '@/lib/bd/schedule'
 import { dayNameShort } from '@/lib/bd/time'
 import { formatTaka } from '@/lib/money'
 import { dict, localName, DEFAULT_LOCALE } from '@/lib/i18n'
+import { capIsQuota } from '@/lib/plans'
 
 /** getSession, not pageRole — see the note on teach/page.tsx's own. */
 export async function generateMetadata() {
@@ -106,7 +107,11 @@ export default async function BatchesPage() {
   })
 
   const activeCount = rows.filter((r) => r.active).length
-  const limit = session.plan.maxBatches
+  // Null on the centre tiers even though they now cap batches at a hundred: that
+  // ceiling is a guardrail, not a quota, and "4 of 100 batches" invites an owner to
+  // manage a number nobody sold them. The cap still refuses the hundred-and-first,
+  // and /settings/batches/new is where it says so. See capIsQuota.
+  const limit = capIsQuota(session.plan, 'maxBatches') ? session.plan.maxBatches : null
 
   return (
     <div className="flex flex-col gap-5">

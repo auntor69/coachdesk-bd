@@ -7,16 +7,21 @@ import {
   planName,
   roomFor,
   wouldExceed,
+  capIsQuota,
   hasStaff,
   overStaffSeats,
   has,
   monthlyBillBdt,
   studentChargeBdt,
   teacherChargeBdt,
+  branchChargeBdt,
   STUDENT_BANDS,
   CENTER_MONTHLY_FLOOR_BDT,
   CENTER_FREE_TEACHER_SEATS,
   CENTER_TEACHER_SEAT_BDT,
+  INSTITUTION_MONTHLY_FLOOR_BDT,
+  INSTITUTION_INCLUDED_BRANCHES,
+  INSTITUTION_BRANCH_BDT,
 } from '../src/lib/plans.ts'
 import { LOCALES } from '../src/lib/i18n/locale.ts'
 
@@ -47,8 +52,63 @@ test('the free plan admits its first batch and refuses its second', () => {
   const free = PLANS.teacher_free
   assert.equal(wouldExceed(free, 'maxBatches', 0), false)
   assert.equal(wouldExceed(free, 'maxBatches', 1), true)
-  // null is unlimited, and must never read as zero.
-  assert.equal(wouldExceed(PLANS.center, 'maxBatches', 9000), false)
+})
+
+test('the centre tiers bound batches and subjects, far above any real centre', () => {
+  // These were null — "unlimited" — and that was a claim nothing was built against:
+  // no screen, index or export was designed for a centre with nine thousand batches,
+  // and a paste or a script is all it takes. A centre pays by student, so there is no
+  // revenue reason to bound batches and there is still a reason to bound them.
+  for (const plan of [PLANS.center, PLANS.institution]) {
+    assert.equal(wouldExceed(plan, 'maxBatches', 99), false, plan.id)
+    assert.equal(wouldExceed(plan, 'maxBatches', 100), true, plan.id)
+    assert.equal(wouldExceed(plan, 'maxSubjects', 199), false, plan.id)
+    assert.equal(wouldExceed(plan, 'maxSubjects', 200), true, plan.id)
+
+    // Where the ceiling sits is the whole difference between a guardrail and a limit
+    // somebody was sold. Well clear of four batches a day for a month, and of every
+    // subject a school board recognises — a centre that reaches either is a
+    // conversation, not a number to raise quietly.
+    assert.ok((plan.maxBatches ?? 0) >= 60, `${plan.id} bounds batches inside real use`)
+    assert.ok((plan.maxSubjects ?? 0) >= 100, `${plan.id} bounds subjects inside real use`)
+
+    // And the caps a per-student tier must NOT carry. A number on any of these three
+    // would refuse a row the centre has already been billed for — students come from
+    // studentCeiling and what they bought, teachers are charged by the seat, and a
+    // per-batch cap would price a lecture hall the same as a section and then refuse
+    // to hold it.
+    assert.equal(plan.maxStudents, null, `${plan.id} caps the students it bills for`)
+    assert.equal(plan.maxTeachers, null, `${plan.id} caps the teachers it bills for`)
+    assert.equal(plan.maxStudentsPerBatch, null, plan.id)
+  }
+})
+
+test('a guardrail is enforced but not shown as a quota', () => {
+  // The distinction the three screens depend on. They used to ask `=== null`, which
+  // was right only while the centre tiers claimed to be unlimited — so the moment the
+  // ceiling existed, the settings hub would have started telling a paying owner their
+  // plan was "100 batches", and the batch and subject lists would have counted them
+  // towards a number nobody sold them.
+  for (const plan of [PLANS.center, PLANS.institution]) {
+    assert.equal(capIsQuota(plan, 'maxBatches'), false, plan.id)
+    assert.equal(capIsQuota(plan, 'maxSubjects'), false, plan.id)
+    // Enforced all the same, which is the half that makes this a display decision
+    // rather than a retreat.
+    assert.equal(wouldExceed(plan, 'maxBatches', 100), true, plan.id)
+  }
+
+  // On a teacher tier every cap IS the pitch — "free means one batch" is the sentence
+  // the tier is sold with, and hiding it would be hiding the reason to upgrade.
+  for (const plan of [PLANS.teacher_free, PLANS.teacher_plus]) {
+    for (const key of ['maxBatches', 'maxStudents', 'maxSubjects', 'maxTeachers'] as const) {
+      assert.equal(capIsQuota(plan, key), true, `${plan.id}/${key}`)
+    }
+  }
+
+  // Nothing that has no cap is a quota, on any tier. A screen asking about a null
+  // limit must get false rather than a claim it cannot render.
+  assert.equal(capIsQuota(PLANS.center, 'maxStudents'), false)
+  assert.equal(capIsQuota(PLANS.teacher_free, 'maxStudentsPerBatch'), true)
 })
 
 test('room is what a bulk import needs, and never negative', () => {
@@ -59,6 +119,9 @@ test('room is what a bulk import needs, and never negative', () => {
   assert.equal(roomFor(PLANS.teacher_free, 'maxStudents', 28), 2)
   assert.equal(roomFor(PLANS.teacher_free, 'maxStudents', 30), 0)
   assert.equal(roomFor(PLANS.teacher_free, 'maxStudents', 400), 0)
+  // Null on a centre, and it does not mean unlimited there — it means this table is
+  // not what answers. The centre's room is studentCeiling plus what it bought, so an
+  // import on a centre plan must ask that instead of reading this as "no ceiling".
   assert.equal(roomFor(PLANS.center, 'maxStudents', 400), null)
 })
 
@@ -234,6 +297,59 @@ test('a small centre pays the floor, and its staff on top of it', () => {
 
   // And a centre past the floor pays what the bands say, plus seats.
   assert.equal(monthlyBillBdt(PLANS.center, 250, 6), 5200 + 400)
+})
+
+test('an institution gets three branches and pays for the fourth', () => {
+  // Three, because one branch is a centre and two is a centre with a second room. The
+  // customer this tier was drawn for has three buildings, and charging them for the
+  // third would make the tier's own headline a lie.
+  assert.equal(branchChargeBdt(PLANS.institution, 0), 0)
+  assert.equal(branchChargeBdt(PLANS.institution, INSTITUTION_INCLUDED_BRANCHES), 0)
+  assert.equal(branchChargeBdt(PLANS.institution, 4), INSTITUTION_BRANCH_BDT)
+  assert.equal(branchChargeBdt(PLANS.institution, 10), 7 * INSTITUTION_BRANCH_BDT)
+})
+
+test('a tier without branches is never charged for one', () => {
+  // The downgrade, again: branch rows outlive the plan that bought them exactly as
+  // teacher rows do. An institution moved down to `center` keeps four branch rows, and
+  // billing them for a feature they can no longer use is the one outcome nobody could
+  // defend on a phone call. Keyed on the feature flag, so this holds for any future
+  // tier that lacks it too.
+  for (const plan of [PLANS.teacher_free, PLANS.teacher_plus, PLANS.center]) {
+    assert.equal(branchChargeBdt(plan, 9), 0, plan.id)
+  }
+
+  // And through the bill, which is where it would actually have been charged.
+  assert.equal(monthlyBillBdt(PLANS.center, 50, 0, 9), CENTER_MONTHLY_FLOOR_BDT)
+})
+
+test('the bill adds branches to students and seats, not instead of them', () => {
+  // Three parts, and the floor applies only to the first. An institution with four
+  // branches and six teachers pays its own floor, plus the four seats past the two
+  // included, plus the one branch past the three — a branch must not be swallowed by
+  // the floor any more than a teacher seat is.
+  assert.equal(
+    monthlyBillBdt(PLANS.institution, 50, 6, 4),
+    INSTITUTION_MONTHLY_FLOOR_BDT + 4 * CENTER_TEACHER_SEAT_BDT + INSTITUTION_BRANCH_BDT,
+  )
+
+  // One branch by default, not zero: every organisation has a building, and a default
+  // of zero would have quietly given the first one away twice.
+  assert.equal(monthlyBillBdt(PLANS.institution, 50), INSTITUTION_MONTHLY_FLOOR_BDT)
+  assert.equal(
+    monthlyBillBdt(PLANS.institution, 50, 0, 1),
+    monthlyBillBdt(PLANS.institution, 50),
+  )
+
+  // A nonsense count costs nothing rather than NaN — these figures reach a calculator
+  // an owner is typing into.
+  for (const n of [-3, Number.NaN, Number.POSITIVE_INFINITY]) {
+    assert.equal(branchChargeBdt(PLANS.institution, n), 0, `${n} branches`)
+  }
+
+  // And a teacher tier reaches none of it, at any size.
+  assert.equal(monthlyBillBdt(PLANS.teacher_plus, 900, 9, 9), PLANS.teacher_plus.priceBdt)
+  assert.equal(monthlyBillBdt(PLANS.teacher_free, 900, 9, 9), 0)
 })
 
 test('the bill counts students, not enrollments', () => {

@@ -19,10 +19,13 @@ import path from 'node:path'
 
 import {
   PLANS,
+  includedStudents,
   monthlyBillBdt,
   monthlyFloorBdt,
   seatsCoveredByFloor,
+  studentCeiling,
   studentChargeBdt,
+  studentRoom,
   CENTER_MONTHLY_FLOOR_BDT,
   INSTITUTION_MONTHLY_FLOOR_BDT,
   type PlanId,
@@ -80,6 +83,19 @@ test('the centre tiers allow what their floor has already paid for', () => {
   )
 })
 
+test('every seeded allowance is what includedStudents says', () => {
+  // The assertion that actually matters, and the reason includedStudents exists: it
+  // is the single function the app resolves an allowance through, so checking the
+  // seed against it checks the seed against every screen at once. The two tests above
+  // are the same claim spelled out per tier, kept because a failure in one of them
+  // says which half moved.
+  const seeded = seededAllowances()
+
+  for (const plan of Object.values(PLANS)) {
+    assert.equal(seeded.get(plan.id), includedStudents(plan), plan.id)
+  }
+})
+
 test('a floor buys every seat it pays for and not one more', () => {
   // The property, rather than the two numbers. 79 and 238 are consequences.
   for (const floor of [CENTER_MONTHLY_FLOOR_BDT, INSTITUTION_MONTHLY_FLOOR_BDT]) {
@@ -134,6 +150,65 @@ test('an institution pays its own floor, not a centre’s', () => {
   // The teacher tiers must not reach the floor at all.
   assert.equal(monthlyBillBdt(PLANS.teacher_free, 900), 0)
   assert.equal(monthlyBillBdt(PLANS.teacher_plus, 900), PLANS.teacher_plus.priceBdt)
+})
+
+test('a teacher tier ignores purchased capacity entirely', () => {
+  // The downgrade case, and the one worth getting wrong quietly: a centre that bought
+  // 900 places and moved to Teacher Pro lands on 150. Limits apply to new actions and
+  // the new action is priced by the new plan. Nothing is lost — the purchase record
+  // outlives the plan — but the ceiling is the plan's.
+  for (const plan of [PLANS.teacher_free, PLANS.teacher_plus]) {
+    for (const bought of [0, 120, 900]) {
+      const ceiling = studentCeiling(plan, bought)
+      assert.equal(ceiling.kind, 'plan', plan.id)
+      assert.equal(ceiling.ceiling, plan.maxStudents, `${plan.id} @ ${bought}`)
+    }
+  }
+})
+
+test('a centre gets the greater of what it was included and what it bought', () => {
+  // The same rule as app.student_ceiling, which is the half that enforces it. If
+  // these two ever disagree the app promises room the database refuses.
+  const included = includedStudents(PLANS.center)
+
+  // Zero capacity is what every centre looks like before its first top-up, and it
+  // must not mean "no students" — that would refuse the first student of a customer
+  // who has just paid the floor.
+  assert.deepEqual(studentCeiling(PLANS.center, 0), {
+    kind: 'purchased',
+    ceiling: included,
+    included,
+    purchased: 0,
+  })
+
+  // Bought less than the floor already gave: the floor still wins.
+  assert.equal(studentCeiling(PLANS.center, included - 10).ceiling, included)
+
+  // Bought more: the purchase wins, and that is the whole point of the column.
+  assert.equal(studentCeiling(PLANS.center, 900).ceiling, 900)
+
+  // A column that has gone wrong reads as nothing bought, not as a ceiling under
+  // the floor's own.
+  for (const broken of [-1, -900, Number.NaN, Number.POSITIVE_INFINITY]) {
+    assert.equal(studentCeiling(PLANS.center, broken).ceiling, included, `${broken}`)
+  }
+
+  // Institution resolves the same way, off its own larger floor.
+  const inst = studentCeiling(PLANS.institution, 0)
+  assert.equal(inst.kind, 'purchased')
+  assert.equal(inst.ceiling, includedStudents(PLANS.institution))
+})
+
+test('room to add students is never negative', () => {
+  // A centre downgraded below its own roster is a real state — nothing deletes
+  // students when a plan moves — and "you may add -70 students" is not a sentence.
+  const centre = studentCeiling(PLANS.center, 120)
+
+  assert.equal(studentRoom(centre, 0), 120)
+  assert.equal(studentRoom(centre, 119), 1)
+  assert.equal(studentRoom(centre, 120), 0)
+  assert.equal(studentRoom(centre, 900), 0)
+  assert.equal(studentRoom(centre, Number.NaN), 0)
 })
 
 test('the capacity check fires per row, not per statement', () => {

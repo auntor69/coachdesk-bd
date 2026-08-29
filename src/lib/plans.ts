@@ -93,7 +93,19 @@ export type PlanLimits = {
   nameEn: string
   /** null means unlimited. */
   maxBatches: number | null
-  /** Distinct students across the whole centre. null means unlimited. */
+  /**
+   * Distinct students the PLAN grants across the whole centre.
+   *
+   * null on the per-student tiers, and it does not mean unlimited there — it means
+   * the number is not the plan's to give. A centre's ceiling is
+   * `greatest(what the floor included, what they have bought)`, which no constant
+   * can hold, so `studentCeiling()` is the only thing that answers for them and
+   * `app.student_ceiling` in 20260811000036 is what actually enforces it.
+   *
+   * So `wouldExceed(plan, 'maxStudents', n)` is a correct question for a teacher
+   * tier and a meaningless one for a centre, where it always answers no. Anything
+   * gating a student on a centre plan reads the ceiling, not this.
+   */
   maxStudents: number | null
   /**
    * Students in any one batch. null means unlimited.
@@ -193,30 +205,40 @@ export const PLANS: Record<PlanId, PlanLimits> = {
 
   // The real business. Priced by distinct students in marginal bands, with two
   // teacher seats included and the rest per seat — see monthlyBillBdt.
+  //
+  // THE CAPS HERE ARE ABUSE CEILINGS, NOT PRODUCT LIMITS, and the distinction is
+  // why the numbers are round and large. A centre pays for students, so batches and
+  // subjects are free to it and there is no revenue reason to bound them — but
+  // "unbounded" is a different claim, and it is one no screen, index or export was
+  // designed against. A hundred batches is four a day for a month; two hundred
+  // subjects is every subject a school board recognises, twice. A customer who
+  // needs more is a customer to talk to, not a limit to raise silently.
   center: {
     id: 'center',
     nameBn: 'কোচিং সেন্টার',
     nameEn: 'Coaching Center',
-    maxBatches: null,
+    maxBatches: 100,
     maxStudents: null,
     maxStudentsPerBatch: null,
     maxTeachers: null,
-    maxSubjects: null,
+    maxSubjects: 200,
     monthlySmsCredits: 0,
     priceBdt: 0,
     pricing: 'per_student',
     features: CENTER_FEATURES,
   },
 
+  // Everything a centre has, plus branches. Same bands, higher floor, and the only
+  // feature flag that separates the two tiers.
   institution: {
     id: 'institution',
     nameBn: 'প্রতিষ্ঠান',
     nameEn: 'Institution',
-    maxBatches: null,
+    maxBatches: 100,
     maxStudents: null,
     maxStudentsPerBatch: null,
     maxTeachers: null,
-    maxSubjects: null,
+    maxSubjects: 200,
     monthlySmsCredits: 0,
     priceBdt: 0,
     pricing: 'per_student',
@@ -269,6 +291,27 @@ export const CENTER_FREE_TEACHER_SEATS = 2
 
 /** Monthly price per teacher seat beyond the included two. */
 export const CENTER_TEACHER_SEAT_BDT = 100
+
+/**
+ * Branches an Institution includes before any are charged for.
+ *
+ * Three, because one branch is a centre and two is a centre with a second room. An
+ * institution that has three buildings is the customer this tier was drawn for, and
+ * charging them for the third would make the tier's own headline a lie.
+ */
+export const INSTITUTION_INCLUDED_BRANCHES = 3
+
+/**
+ * Monthly price per branch beyond the included three.
+ *
+ * Below a teacher seat times eight and above one, which is the honest position: a
+ * branch is a reporting boundary and a set of registers, not eight new people. The
+ * cost it stands for is the head office's — consolidated collection, a dashboard
+ * that has to add up across buildings, and the support call when it does not.
+ *
+ * UNCALIBRATED, like every other figure in this block.
+ */
+export const INSTITUTION_BRANCH_BDT = 750
 
 /**
  * Per-student rates, as MARGINAL bands — the same shape as income tax.
@@ -375,6 +418,23 @@ export function teacherChargeBdt(teachers: number): number {
 }
 
 /**
+ * What the branches cost, beyond the three an Institution includes.
+ *
+ * Zero on any tier without `multipleBranches`, and keyed on the feature rather than
+ * on `plan.id === 'institution'` on purpose: a centre cannot create a second branch,
+ * so if one somehow has two rows the answer must be "we do not charge you for that"
+ * rather than a bill for something they were never sold. A downgrade is exactly how
+ * that state arrives — the branch rows outlive the plan that bought them, the same
+ * way teacher rows do.
+ */
+export function branchChargeBdt(plan: PlanLimits, activeBranches: number): number {
+  if (!plan.features.multipleBranches) return 0
+  if (!Number.isFinite(activeBranches)) return 0
+  const billable = Math.max(0, Math.floor(activeBranches) - INSTITUTION_INCLUDED_BRANCHES)
+  return billable * INSTITUTION_BRANCH_BDT
+}
+
+/**
  * What we charge this month.
  *
  * COUNTED IN DISTINCT STUDENTS, NOT ENROLLMENTS, and that is a correction rather
@@ -390,17 +450,109 @@ export function teacherChargeBdt(teachers: number): number {
  * The floor comes from the plan (`monthlyFloorBdt`) and not from the centre constant,
  * because Institution's is higher. Reading `CENTER_MONTHLY_FLOOR_BDT` here would have
  * billed an institution at a centre's minimum — a ৳3,000 discount nobody decided on.
+ *
+ * `activeBranches` defaults to one because that is what every organisation has: a
+ * centre has exactly one and an institution's head office is a branch too. A default
+ * of zero would have been the tidier-looking number and would have quietly given the
+ * first branch away twice.
  */
 export function monthlyBillBdt(
   plan: PlanLimits,
   activeStudents: number,
   activeTeachers = 0,
+  activeBranches = 1,
 ): number {
   if (plan.pricing === 'free') return 0
   if (plan.pricing === 'flat') return plan.priceBdt
 
   const students = Math.max(monthlyFloorBdt(plan), studentChargeBdt(activeStudents))
-  return students + teacherChargeBdt(activeTeachers)
+  return students + teacherChargeBdt(activeTeachers) + branchChargeBdt(plan, activeBranches)
+}
+
+/* -------------------------------------------------------------------------- */
+/* How many students this organisation may have                               */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Students the plan includes before anything is bought.
+ *
+ * The one place the two halves of this meet: for a teacher tier the included figure
+ * IS the cap, because 30 and 150 never move; for a per-student tier it is what the
+ * floor already paid for at the band rates. `plan_allowances` in 20260811000036
+ * holds the same four numbers for the trigger to read, and
+ * tests/plan-allowances.test.ts fails if the two ever disagree.
+ */
+export function includedStudents(plan: PlanLimits): number {
+  if (plan.pricing === 'per_student') return seatsCoveredByFloor(monthlyFloorBdt(plan))
+  return plan.maxStudents ?? 0
+}
+
+/**
+ * How many active students this organisation may hold, and what to do about it.
+ *
+ * A DISCRIMINATED SHAPE AND NOT A NUMBER, because the number alone cannot be acted
+ * on. A teacher at 30 of 30 needs to hear "this is as far as the free plan goes"; a
+ * centre at 120 of 120 needs to hear "buy more places, here is the price" — and the
+ * centre must NOT be told to change plan, because they are already on the one they
+ * want. One integer forces every screen to re-derive which sentence it is from
+ * `plan.pricing`, and the third screen to do it will get it wrong.
+ *
+ * NOT `number | null` EITHER, and that is a lesson this repo has already paid for.
+ * `null` means unlimited at four cap call sites in this same file, so a ceiling that
+ * returned null for "we cannot say" would read as "no limit" at whichever one forgot
+ * — the identical sentinel collision that produced `TeacherScope` and `OwnTeacher`.
+ * Every arm here carries a real ceiling and the caller must open it to reach one.
+ */
+export type StudentCeiling =
+  /** Fixed by the tier. More students means a different plan. */
+  | { kind: 'plan'; ceiling: number }
+  /**
+   * Bought. More students means more places, at a price.
+   *
+   * `included` and `purchased` are both here because the top-up dialog needs the
+   * difference: what the floor gave is not refundable and not re-sellable, and a
+   * centre asking "what have I actually paid for" is asking for `purchased`.
+   */
+  | { kind: 'purchased'; ceiling: number; included: number; purchased: number }
+
+/**
+ * The ceiling this organisation is entitled to, from its plan and what it has bought.
+ *
+ * THE SAME RULE AS `app.student_ceiling`, deliberately duplicated: the trigger is
+ * what enforces the ceiling and this is what explains it, and they have to agree or
+ * the app promises room the database refuses. `greatest`, not the purchased figure
+ * alone, so a centre is never below its own floor's allowance — a capacity of zero is
+ * what every fresh centre looks like before its first top-up, and it must not mean
+ * "no students".
+ *
+ * Purchased capacity is ignored on the teacher tiers for the same reason the SQL
+ * ignores it: a centre that bought 900 places and downgraded to Teacher Pro lands on
+ * 150, because limits apply to new actions and the new action is priced by the new
+ * plan. The places are not lost — capacity_purchases keeps the record, so
+ * re-upgrading restores them.
+ */
+export function studentCeiling(plan: PlanLimits, purchasedCapacity: number): StudentCeiling {
+  const included = includedStudents(plan)
+  if (plan.pricing !== 'per_student') return { kind: 'plan', ceiling: included }
+
+  // A negative or non-numeric capacity is a column that has gone wrong, and the safe
+  // reading of it is "nothing bought" rather than a ceiling below the floor's own.
+  const purchased = Number.isFinite(purchasedCapacity)
+    ? Math.max(0, Math.floor(purchasedCapacity))
+    : 0
+
+  return { kind: 'purchased', ceiling: Math.max(included, purchased), included, purchased }
+}
+
+/**
+ * How many more students fit, given the ceiling and what is already there.
+ *
+ * Never negative, for the reason `roomFor` is not: a centre downgraded below its own
+ * roster is a real state, and "you may add -70 students" is not a sentence.
+ */
+export function studentRoom(ceiling: StudentCeiling, activeStudents: number): number {
+  if (!Number.isFinite(activeStudents)) return 0
+  return Math.max(0, ceiling.ceiling - Math.floor(activeStudents))
 }
 
 /* -------------------------------------------------------------------------- */
@@ -459,6 +611,32 @@ export function wouldExceed(
   const limit = plan[what]
   if (limit === null) return false
   return currentCount + 1 > limit
+}
+
+/**
+ * Whether this cap is part of what the tier sells, and so worth showing as a quota.
+ *
+ * NOT the same question as `wouldExceed`, and the difference is what a screen says
+ * rather than what an action allows. Both centre tiers cap batches and subjects, and
+ * those caps are abuse ceilings set far above any real centre — so a centre shown
+ * "3 of 100 batches" reads a guardrail as a quota to manage, and worse, reads 100 as
+ * the thing they paid for. What they paid for is students.
+ *
+ * The list headers and the settings hub used to ask `plan.maxBatches === null`, which
+ * gave the right answer only while the centre tiers claimed to be unlimited. Once the
+ * ceiling exists that test silently changes what three screens mean, so the reason is
+ * named here instead — the same reason `hasStaff` exists rather than a fourth reading
+ * of `maxTeachers`.
+ *
+ * /settings/plan is the deliberate exception and reads the raw number: stating the
+ * limits IS that screen's job, and so is the refusal copy on the add forms, which
+ * names the ceiling at the moment somebody reaches it.
+ */
+export function capIsQuota(plan: PlanLimits, what: LimitKey): boolean {
+  if (plan[what] === null) return false
+  // Every non-null cap on a per-student tier is a guardrail: the number that tier
+  // sells is students, and that one comes from `studentCeiling`, not from this table.
+  return plan.pricing !== 'per_student'
 }
 
 /**

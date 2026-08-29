@@ -13,7 +13,7 @@ import {
 import { createClient } from '@/lib/supabase/server'
 import { formatBdMobile } from '@/lib/bd/phone'
 import { dict, DEFAULT_LOCALE } from '@/lib/i18n'
-import { planName, hasStaff, has, overStaffSeats } from '@/lib/plans'
+import { planName, hasStaff, has, overStaffSeats, capIsQuota } from '@/lib/plans'
 
 /** getSession, not pageRole — see the note on teach/page.tsx's own. */
 export async function generateMetadata() {
@@ -148,7 +148,13 @@ export default async function SettingsPage() {
 
   // The centre's own plan, not the free one. Every tier below `center` has caps,
   // so this line is read by paying owners too.
-  const maxBatches = session.plan.maxBatches
+  //
+  // capIsQuota rather than `=== null`: both centre tiers now cap batches at a hundred
+  // as an abuse ceiling, and "Coaching Center plan: 100 batches" would tell a paying
+  // owner the guardrail is what they bought. What they bought is students. The
+  // unlimited sentence stays true for them — the ceiling sits far above any need it
+  // claims to cover, which is the whole reason it was set where it was.
+  const maxBatches = capIsQuota(session.plan, 'maxBatches') ? session.plan.maxBatches : null
   const planLine =
     maxBatches === null
       ? t.planUnlimited(planName(session.plan, locale))

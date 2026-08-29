@@ -4,7 +4,7 @@ import { Card } from '@/components/ui'
 import { pageRole, getSession } from '@/lib/auth/session'
 import { createClient } from '@/lib/supabase/server'
 import { dict, localName, DEFAULT_LOCALE } from '@/lib/i18n'
-import { planName } from '@/lib/plans'
+import { planName, capIsQuota } from '@/lib/plans'
 import { subjectDeleteVerdict, subjectOffVerdict } from '@/lib/settings/retire'
 import type { SubjectUse } from '@/lib/settings/retire'
 import { emptySubjectUse, readSubjectUses } from '@/lib/settings/usage'
@@ -91,6 +91,12 @@ export default async function SubjectsPage() {
   // Built where `limit` is still narrowed to a number, and used twice: as the card
   // under the list, and as the reason a subject cannot be switched back on.
   const capSentence = limit === null ? null : t.cap(planName(session.plan, locale), limit)
+  // The header's own view of the same number, and null on the centre tiers even though
+  // they cap subjects at two hundred. That ceiling is a guardrail against a pasted
+  // syllabus, not a quota an owner should be counting towards — but `atCap` above reads
+  // the real number, so the two-hundred-and-first is still refused and `capSentence`
+  // still names the figure when it happens. See capIsQuota.
+  const quota = capIsQuota(session.plan, 'maxSubjects') ? limit : null
 
   /**
    * Why a subject cannot be removed, or null when nothing points at it.
@@ -146,7 +152,7 @@ export default async function SubjectsPage() {
         </Link>
         <h1 className="mt-1 text-xl font-bold text-ink">{t.title}</h1>
         <p className="mt-1 text-ink-soft">
-          {limit === null ? t.count(activeCount) : t.used(activeCount, limit)}
+          {quota === null ? t.count(activeCount) : t.used(activeCount, quota)}
         </p>
       </div>
 
