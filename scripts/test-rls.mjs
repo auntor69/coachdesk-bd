@@ -9151,6 +9151,169 @@ check(
 await db.query('delete from students where id = $1', [stBilled])
 await db.query('delete from branches where id in ($1, $2)', [bBillB, bBranchOther])
 
+console.log('\nWhat the money was for (revenue categories):')
+
+// Its own student and enrollment. Nine thousand lines of this file have billed the seeded
+// ones, and the last checks in this section add invoices up.
+const stRev = await student(centerA, 'Revenue Child')
+const eRev = await enroll(centerA, stRev, sBio, bBioMorning)
+
+const categoryOf = (id) =>
+  db
+    .query('select revenue_category from fee_invoices where id = $1', [id])
+    .then((r) => r.rows[0]?.revenue_category ?? null)
+
+// The shape the month-close generator writes: an enrollment, a month, and no category at
+// all. The upsert near the top of this file already proves `on conflict (enrollment_id,
+// period_month)` still finds the arbiter index it names with the new column and the new
+// constraint in place — which is the thing that would have broken had the unique key been
+// widened to carry the category.
+const generated = await asUser(db, ids.ownerA, async (tx) =>
+  (
+    await tx.query(
+      `insert into fee_invoices
+         (coaching_center_id, student_id, enrollment_id, period_month, amount_bdt, due_date)
+       values ($1, $2, $3, '2026-03-01', 800, '2026-03-10') returning id`,
+      [centerA, stRev, eRev],
+    )
+  ).rows[0].id,
+)
+check('a bill nobody categorised is a month of classes', (await categoryOf(generated)) === 'tuition')
+
+// A second and a third bill in the same month, which is what admission season is: the
+// family pays the monthly fee and the admission fee in one visit. Neither carries an
+// enrollment, because that slot is held by the tuition bill above.
+const raiseFee = (category, month = '2026-03-01', enrollment = null) =>
+  asUser(db, ids.ownerA, async (tx) =>
+    (
+      await tx.query(
+        `insert into fee_invoices
+           (coaching_center_id, student_id, enrollment_id, period_month, amount_bdt,
+            due_date, revenue_category)
+         values ($1, $2, $3, $4, 2500, $4::date + 10, $5::public.revenue_category)
+         returning id`,
+        [centerA, stRev, enrollment, month, category],
+      )
+    ).rows[0].id,
+  )
+
+const admission = await raiseFee('admission')
+check(
+  'a centre can bill for something other than a month of classes',
+  (await categoryOf(admission)) === 'admission',
+)
+check(
+  'and twice over in one month, which is what admission season looks like',
+  (await categoryOf(await raiseFee('exam'))) === 'exam',
+)
+check(
+  "with that month's tuition bill still standing beside them",
+  (await categoryOf(generated)) === 'tuition',
+)
+// The CHECK, and the whole reason it is there: without it this write would collide with
+// the tuition bill on a key that mentions neither tuition nor categories, and only for
+// students who had already been billed that month.
+check(
+  'a bill that is not tuition cannot name an enrollment, because that slot is taken',
+  await deniedAsUser(
+    db,
+    ids.ownerA,
+    `insert into fee_invoices
+       (coaching_center_id, student_id, enrollment_id, period_month, amount_bdt, due_date,
+        revenue_category)
+     values ($1, $2, $3, '2026-03-01', 2500, '2026-03-10', 'admission')`,
+    [centerA, stRev, eRev],
+  ),
+)
+check(
+  'and a category nobody agreed on never reaches a report',
+  await deniedAsUser(
+    db,
+    ids.ownerA,
+    `insert into fee_invoices
+       (coaching_center_id, student_id, period_month, amount_bdt, due_date, revenue_category)
+     values ($1, $2, '2026-04-01', 100, '2026-04-10', 'hall rent')`,
+    [centerA, stRev],
+  ),
+)
+
+// Refused by the column grant before any trigger sees it, and refused again by the guard
+// if that grant is ever widened.
+check(
+  'an owner cannot re-file a bill under another category afterwards',
+  await deniedAsUser(
+    db,
+    ids.ownerA,
+    `update fee_invoices set revenue_category = 'admission' where id = $1`,
+    [generated],
+  ),
+)
+check(
+  'nor by sending it beside a column they are allowed to correct',
+  await deniedAsUser(
+    db,
+    ids.ownerA,
+    `update fee_invoices
+        set discount_reason = 'sibling', revenue_category = 'admission'
+      where id = $1`,
+    [generated],
+  ),
+)
+// The way out every frozen column on this table has. A term of admission fees entered as
+// tuition is exactly the support case 10 predicts, and the guard exempts the server so it
+// can be answered without refunding and re-taking every payment.
+await db.query(`update fee_invoices set revenue_category = 'registration' where id = $1`, [
+  admission,
+])
+check(
+  'while the server can put a miscategorised bill right',
+  (await categoryOf(admission)) === 'registration',
+)
+
+await asUser(db, ids.ownerA, (tx) =>
+  tx.query(
+    `update fee_invoices set voided_at = now(), void_reason = 'entered twice' where id = $1`,
+    [admission],
+  ),
+)
+check(
+  'cancelling a bill does not change what it was for',
+  (await categoryOf(admission)) === 'registration',
+)
+
+// 9.7 in one query — the owner asking whether admission season carried the year. Cancelled
+// bills are in no line of it, which is what the index predicate is for.
+const byCategory = (
+  await db.query(
+    `select revenue_category, sum(amount_bdt - discount_bdt)::numeric(12, 2) as charged
+       from fee_invoices
+      where coaching_center_id = $1 and student_id = $2 and voided_at is null
+      group by revenue_category`,
+    [centerA, stRev],
+  )
+).rows
+const revLine = (c) => byCategory.find((r) => r.revenue_category === c)
+check(
+  'and the charged column splits into what it was charged for',
+  byCategory.length === 2 &&
+    Number(revLine('tuition')?.charged) === 800 &&
+    Number(revLine('exam')?.charged) === 2500,
+  JSON.stringify(byCategory),
+)
+check('with the cancelled bill in none of the lines', revLine('registration') === undefined)
+
+// 46's log keeps the whole row, so what a bill was for is in the line that raised it —
+// which is what makes a re-categorisation by the server answerable rather than silent.
+const revLogged = (await auditOf('fee_invoices', generated)).rows
+check(
+  'and the log of the bill being raised says what it was for',
+  revLogged[0]?.operation === 'created' && revLogged[0]?.after?.revenue_category === 'tuition',
+  JSON.stringify(revLogged[0]?.after?.revenue_category),
+)
+
+await db.query('delete from students where id = $1', [stRev])
+
+
 console.log('\nAnonymous access:')
 
 await asUser(db, null, async (tx) => {
