@@ -187,6 +187,110 @@ not belong in the public schema where PostgREST will expose it.`,
   console.log(`Views: ${views.rows[0].n}, all security_invoker.`)
 
   // -------------------------------------------------------------------------
+  // One view sums the expense table, and it is the profit line.
+  //
+  // 20260811000045 shipped `salary` in the expense category list on purpose — a
+  // centre that has not set up per-person salary terms still knows it paid the
+  // staff, and refusing the category would send that money to `miscellaneous`
+  // where it is invisible instead of merely awkward. Its header then said what
+  // has to follow: the profit line must define its expense side as
+  // sum(amount_bdt) where category <> 'salary' and take payroll from
+  // salary_payments, "and nothing else in the product may sum expenses to get a
+  // profit". 20260811000049 built that view. This is the sentence enforced.
+  //
+  // WHY A SECOND SUMMING VIEW IS A WRONG NUMBER RATHER THAN A DUPLICATE ONE. A
+  // centre that pays through payroll and also logs the same money as a `salary`
+  // expense has both rows on purpose, and only the `category <> 'salary'` filter
+  // keeps that from being subtracted twice. A second view that sums expenses
+  // without it does not disagree with the first by a rounding error — it reads a
+  // profitable month as a loss, on the screen an owner uses to decide whether to
+  // open another branch. Nothing in the schema can tell the two rows apart, so
+  // the filter is the whole defence and it has to live in one place.
+  //
+  // A LEGITIMATE READER WILL EVENTUALLY TRIP THIS, and that is the intended way
+  // to use it: MASTERPLAN.md §9.6's expense breakdown is a list rather than a
+  // profit figure, and a view for it is fine. Whoever adds one reads this, checks
+  // that theirs does not compute a profit, and adds it to the set below. What is
+  // not fine is doing that by accident.
+  //
+  // PAYROLL IS NOT COVERED HERE, deliberately. §9.5 may well want a salary
+  // register view, and a second reader of salary_payments is not the same hazard:
+  // the double-count comes from the expense side carrying salaries too, so the
+  // filter that prevents it is on expenses. The asymmetry is the reasoning, not
+  // an omission.
+  //
+  // pg_depend rather than a grep over pg_views.definition: a dependency is a fact
+  // Postgres records, so a column named `expenses_bdt` and the word inside a
+  // comment cannot produce a hit, and a view that reads the table under an alias
+  // cannot hide from one.
+  // -------------------------------------------------------------------------
+  const EXPENSE_READERS = new Set(['center_profit_month'])
+
+  const expenseViews = await db.query(`
+    select distinct v.relname
+    from pg_depend d
+    join pg_rewrite r on r.oid = d.objid and d.classid = 'pg_rewrite'::regclass
+    join pg_class v on v.oid = r.ev_class and v.relkind = 'v'
+    join pg_namespace vn on vn.oid = v.relnamespace and vn.nspname = 'public'
+    join pg_class t on t.oid = d.refobjid and d.refclassid = 'pg_class'::regclass
+    join pg_namespace tn on tn.oid = t.relnamespace and tn.nspname = 'public'
+    where t.relname = 'expenses'
+    order by 1;
+  `)
+
+  const strayExpenses = expenseViews.rows
+    .map((r) => r.relname)
+    .filter((name) => !EXPENSE_READERS.has(name))
+
+  const missingProfit = [...EXPENSE_READERS].filter(
+    (name) => !expenseViews.rows.some((r) => r.relname === name),
+  )
+
+  if (strayExpenses.length > 0 || missingProfit.length > 0) {
+    if (strayExpenses.length > 0) {
+      console.error(
+        `\nEXPENSES SUMMED SOMEWHERE ELSE — ${strayExpenses.length} view(s) besides the profit line read the expense table:\n`,
+      )
+      for (const name of strayExpenses) console.error(`  ${name}`)
+      console.error(
+        `
+20260811000045's header: nothing else in the product may sum expenses to get a
+profit. The reason is the 'salary' expense category, which exists so a centre
+without per-person salary terms can still record paying its staff — a centre
+that also runs payroll has that money in both tables, and only
+center_profit_month's \`category <> 'salary'\` filter stops it being subtracted
+twice.
+
+If the view above lists or groups expenses rather than netting them into a
+profit — §9.6's breakdown, say — it is fine. Add its name to EXPENSE_READERS in
+this file, beside center_profit_month, and say in its own header what it is and
+is not.`,
+      )
+    }
+    if (missingProfit.length > 0) {
+      console.error(
+        `\nPROFIT LINE MISSING — expected view(s) no longer read the expense table:\n`,
+      )
+      for (const name of missingProfit) console.error(`  ${name}`)
+      console.error(
+        `
+This is the other direction of the same rule. §9.8's profit is collected minus
+expenses minus payroll, and a profit line that has stopped reading expenses is
+not a profit line — it reports a centre's takings as its earnings. Either the
+view was renamed, in which case rename it in EXPENSE_READERS too, or the
+expense side was dropped, in which case put it back.`,
+      )
+    }
+    process.exit(1)
+  }
+
+  console.log(
+    `Expenses: summed by ${expenseViews.rows.length} view(s) — ${expenseViews.rows
+      .map((r) => r.relname)
+      .join(', ')}.`,
+  )
+
+  // -------------------------------------------------------------------------
   // No function in public may be callable by a signed-out request.
   //
   // This one is not Postgres's doing, which is what makes it dangerous. Postgres
