@@ -7781,6 +7781,142 @@ check(
 await db.query('delete from coaching_centers where id = $1', [joinedCenter])
 await db.query('delete from auth.users where id = $1', [joiner])
 
+console.log('\nWho moved this child (student_transfers):')
+
+// Two branches and a student who starts at neither, all seeded as the superuser so
+// this section is about the transfer log rather than about the capacity ceiling.
+const bMirpur = (
+  await db.query(
+    `insert into branches (coaching_center_id, name) values ($1, 'Mirpur Branch') returning id`,
+    [centerA],
+  )
+).rows[0].id
+const bUttara = (
+  await db.query(
+    `insert into branches (coaching_center_id, name) values ($1, 'Uttara Branch') returning id`,
+    [centerA],
+  )
+).rows[0].id
+const stMove = (
+  await db.query(
+    `insert into students (coaching_center_id, name) values ($1, 'Moved Child') returning id`,
+    [centerA],
+  )
+).rows[0].id
+
+const moves = async (tx = db) =>
+  n(tx, 'select count(*)::int as n from student_transfers where student_id = $1', [stMove])
+
+const lastMove = async () =>
+  (
+    await db.query(
+      `select from_branch_id, from_branch_name, to_branch_id, to_branch_name, moved_by
+         from student_transfers where student_id = $1
+        order by created_at desc, id desc limit 1`,
+      [stMove],
+    )
+  ).rows[0]
+
+check('a student who has never moved has no history', (await moves()) === 0)
+
+// The move itself, done the way §7.2 requires: one row, branch_id updated. The
+// history is a side effect the owner never asked for and cannot skip.
+await asUser(db, ids.ownerA, async (tx) => {
+  await tx.query('update students set branch_id = $1 where id = $2', [bMirpur, stMove])
+})
+
+check('putting a student on a branch records the move', (await moves()) === 1)
+
+const firstMove = await lastMove()
+check(
+  'from nowhere, to the branch they were put on',
+  firstMove?.from_branch_id === null &&
+    firstMove?.to_branch_id === bMirpur &&
+    firstMove?.to_branch_name === 'Mirpur Branch',
+  `from ${firstMove?.from_branch_id} to ${firstMove?.to_branch_name}`,
+)
+// The question §7.2 says is always asked first.
+check(
+  'and it names who did it',
+  firstMove?.moved_by === ids.ownerA,
+  `moved_by = ${firstMove?.moved_by}`,
+)
+
+// The trigger is `of branch_id`, so the rest of the roster screen does not write
+// history every time somebody fixes a spelling.
+await asUser(db, ids.ownerA, async (tx) => {
+  await tx.query(`update students set name = 'Moved Child Corrected' where id = $1`, [stMove])
+})
+check('correcting a name is not a transfer', (await moves()) === 1)
+
+await asUser(db, ids.ownerA, async (tx) => {
+  await tx.query('update students set branch_id = $1 where id = $2', [bUttara, stMove])
+})
+check('moving them again records both ends', (await moves()) === 2)
+
+const secondMove = await lastMove()
+check(
+  'the second row is Mirpur to Uttara',
+  secondMove?.from_branch_name === 'Mirpur Branch' && secondMove?.to_branch_name === 'Uttara Branch',
+  `${secondMove?.from_branch_name} -> ${secondMove?.to_branch_name}`,
+)
+
+// Frozen, not joined. A branch that gets renamed must not rewrite what the record
+// said at the time, or the history quietly agrees with whatever the branch is called
+// today — which is exactly the argument a transfer dispute turns on.
+await db.query(`update branches set name = 'Uttara Sector 10' where id = $1`, [bUttara])
+check(
+  'renaming a branch does not rewrite the history',
+  (await lastMove())?.to_branch_name === 'Uttara Branch',
+)
+
+// Management's business, not a colleague's. §6.5 gives a teacher the students they
+// teach; it does not give them who moved a child and on whose signature.
+await asUser(db, ids.karim, async (tx) => {
+  check('a teacher reads no transfer history', (await moves(tx)) === 0)
+})
+
+// And unwritable from any session, which is what makes it evidence. Both of these
+// are refused twice over — no policy grants them, and the privileges are revoked.
+check(
+  'an owner cannot forge a transfer',
+  await deniedAsUser(
+    db,
+    ids.ownerA,
+    `insert into student_transfers (coaching_center_id, student_id, from_branch_id, to_branch_id)
+     values ($1, $2, null, $3)`,
+    [centerA, stMove, bMirpur],
+  ),
+)
+check(
+  'nor delete one they would rather nobody read',
+  await deniedAsUser(db, ids.ownerA, 'delete from student_transfers where student_id = $1', [
+    stMove,
+  ]),
+)
+check('so both moves are still on the record', (await moves()) === 2)
+
+// Closing a branch has to be possible, which is why the two branch columns carry no
+// foreign key: the ON DELETE SET NULL on students.branch_id fires this trigger after
+// the branch row is gone, and a reference would make the delete fail for ever. The
+// name cannot be read at that point, so the row keeps the id and says the rest.
+await db.query('delete from branches where id = $1', [bUttara])
+check('a branch with students in it can still be closed', (await moves()) === 3)
+
+const closing = await lastMove()
+check(
+  'and the closure reads as a move out of it',
+  closing?.from_branch_id === bUttara && closing?.to_branch_id === null,
+  `from ${closing?.from_branch_id} to ${closing?.to_branch_id}`,
+)
+
+// The history is the student's, so it goes when they do — the same trade the notice
+// tables make, and the reason this is not the audit log §16 step 18 asks for.
+await db.query('delete from students where id = $1', [stMove])
+check('deleting a student takes their transfer history with them', (await moves()) === 0)
+
+await db.query('delete from branches where id = $1', [bMirpur])
+
 console.log('\nAnonymous access:')
 
 await asUser(db, null, async (tx) => {
