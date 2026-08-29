@@ -7674,6 +7674,113 @@ check('deleting a student takes their absence notices with them', (await absence
 // notices above do, so nothing below inherits a row it did not ask for.
 await db.query('delete from teacher_permissions where teacher_id = $1', [tKarim])
 
+console.log('\nThe trial a signup is given (bootstrap_center):')
+
+// A brand-new account that owns nothing, which is the only state bootstrap_center
+// will run for — it refuses a second centre for the same owner.
+const joiner = (
+  await db.query('insert into auth.users (id) values (gen_random_uuid()) returning id')
+).rows[0].id
+
+let joinedCenter = null
+
+await asUser(db, joiner, async (tx) => {
+  joinedCenter = (
+    await tx.query('select public.bootstrap_center($1, $2, $3, $4) as id', [
+      'Trial Signup Centre',
+      '+8801812345678',
+      'Nayeem Hasan',
+      true,
+    ])
+  ).rows[0].id
+  check('a signup creates its centre', typeof joinedCenter === 'string')
+})
+
+const trialRow = async (center) =>
+  (
+    await db.query(
+      `select plan::text as plan,
+              status::text as status,
+              trial_plan::text as trial_plan,
+              trial_ends_at,
+              -- Rounded to whole days so this does not depend on how long the rest
+              -- of the suite took to reach here.
+              round(extract(epoch from (trial_ends_at - now())) / 86400) as days_left
+         from coaching_centers where id = $1`,
+      [center],
+    )
+  ).rows[0]
+
+const signedUp = await trialRow(joinedCenter)
+
+// MASTERPLAN.md §4.3, first row. Before 20260811000039 both columns were NULL on
+// every centre ever created, which the resolver reads — correctly — as no trial,
+// so a signup landed on Teacher Free with a 30-student cap on day one.
+check(
+  'a signup is given the Teacher Pro trial',
+  signedUp?.trial_plan === 'teacher_plus',
+  `trial_plan = ${signedUp?.trial_plan}`,
+)
+check(
+  'and it runs fourteen days',
+  Number(signedUp?.days_left) === 14,
+  `days_left = ${signedUp?.days_left}`,
+)
+
+// The pair, not just the plan. `coaching_centers_trial_pair` refuses one without
+// the other, so a trial_plan with no end date cannot be a permanent free upgrade.
+check('with an end date on it', signedUp?.trial_ends_at != null)
+
+// `plan` is what has been paid for, and nothing has. The trial is a state on top
+// of it (§2.2, "A Pro trial is not a fifth plan"), which is what lets it expire by
+// comparison instead of by a job that has to run on a deadline.
+check(
+  'while the plan itself stays Teacher Free',
+  signedUp?.plan === 'teacher_free',
+  `plan = ${signedUp?.plan}`,
+)
+check(
+  'and the status is the one signup already meant',
+  signedUp?.status === 'trial',
+  `status = ${signedUp?.status}`,
+)
+
+// The half that matters more than the grant. A trial the customer can edit is a
+// subscription they never have to buy. Two things refuse this and the test does not
+// care which one speaks first: 20260811000004 re-granted UPDATE on five columns
+// only, and 20260811000036 extended `guard_center_billing` to cover both trial
+// columns for the day somebody pastes a `grant all` out of a setup snippet.
+check(
+  'the owner cannot push their own trial back',
+  await deniedAsUser(
+    db,
+    joiner,
+    `update coaching_centers set trial_ends_at = now() + interval '10 years' where id = $1`,
+    [joinedCenter],
+  ),
+)
+check(
+  'nor promote the trial to a tier they never bought',
+  await deniedAsUser(
+    db,
+    joiner,
+    `update coaching_centers set trial_plan = 'institution' where id = $1`,
+    [joinedCenter],
+  ),
+)
+
+const afterTry = await trialRow(joinedCenter)
+check(
+  'so the trial is still the fourteen days it was given',
+  afterTry?.trial_plan === 'teacher_plus' && Number(afterTry?.days_left) === 14,
+  `trial_plan = ${afterTry?.trial_plan}, days_left = ${afterTry?.days_left}`,
+)
+
+// Taken away again, centre and account both, so the sections below count what they
+// expect and no signup fixture is left sitting in the centre list.
+await db.query('delete from coaching_centers where id = $1', [joinedCenter])
+await db.query('delete from auth.users where id = $1', [joiner])
+
 console.log('\nAnonymous access:')
 
 await asUser(db, null, async (tx) => {
