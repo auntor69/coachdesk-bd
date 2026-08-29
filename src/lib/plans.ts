@@ -238,6 +238,32 @@ export const PLANS: Record<PlanId, PlanLimits> = {
  */
 export const CENTER_MONTHLY_FLOOR_BDT = 1999
 
+/**
+ * The Institution floor.
+ *
+ * Higher than the centre floor and not because branches cost us more to store. An
+ * institution is a customer with a head office, several buildings and somebody whose
+ * job is asking us questions — the support load is a different shape, and the floor
+ * is where that gets paid for. The per-student bands above it are identical, so a
+ * 400-student institution and a 400-student centre pay the same for their students
+ * and differ only in what the floor bought.
+ *
+ * UNCALIBRATED, exactly as the bands are. No institution has been sold anything yet.
+ */
+export const INSTITUTION_MONTHLY_FLOOR_BDT = 4999
+
+/**
+ * Which floor this plan pays.
+ *
+ * A function rather than a field on PlanLimits because the floor is only meaningful
+ * for a per-student tier: a free plan has no floor and a flat plan IS its floor. Put
+ * on the type, it would need a value for `teacher_free`, and any number there is a
+ * lie somebody eventually reads.
+ */
+export function monthlyFloorBdt(plan: PlanLimits): number {
+  return plan.id === 'institution' ? INSTITUTION_MONTHLY_FLOOR_BDT : CENTER_MONTHLY_FLOOR_BDT
+}
+
 /** Teacher seats included before any are charged for. */
 export const CENTER_FREE_TEACHER_SEATS = 2
 
@@ -297,6 +323,50 @@ export function studentChargeBdt(students: number): number {
   return charged
 }
 
+/**
+ * How many students the floor has already paid for.
+ *
+ * A centre that pays ৳1,999 and is then refused its first student has bought
+ * nothing, so the floor comes with seats. This is what those seats are: the largest
+ * number of students whose band-sum still fits inside the floor. At ৳1,999 that is
+ * 79 (79 x ৳25 = ৳1,975, and the eightieth tips it to ৳2,000); at ৳4,999 it is 238
+ * (৳2,500 for the first hundred, then 138 at ৳18).
+ *
+ * DERIVED AND NOT TYPED IN, which is the whole reason this function exists. 79 and
+ * 238 are consequences of the floor and the first two band rates; writing them down
+ * as constants would mean three numbers that must be changed together, and the day
+ * the first band moves to ৳22 somebody updates the rate, ships it, and the included
+ * seats silently stop matching what the floor buys.
+ *
+ * The floor is a parameter rather than read from a plan so a caller can ask the
+ * question about a price that is not on sale yet — the pricing page's own "what if"
+ * column does exactly that.
+ */
+export function seatsCoveredByFloor(floorBdt: number): number {
+  if (!Number.isFinite(floorBdt) || floorBdt <= 0) return 0
+
+  let seats = 0
+  let spent = 0
+  let bandFloor = 0
+
+  for (const band of STUDENT_BANDS) {
+    const bandSize = band.upTo === null ? Infinity : band.upTo - bandFloor
+    // Integer division on purpose: a part-paid student is not a student.
+    const affordable = Math.floor((floorBdt - spent) / band.rateBdt)
+    const taken = Math.min(bandSize, affordable)
+
+    seats += taken
+    spent += taken * band.rateBdt
+
+    // Ran out of money inside this band, so this is the answer. The last band's
+    // size is Infinity, so this always returns before the loop ends.
+    if (taken < bandSize) return seats
+    bandFloor = band.upTo ?? bandFloor
+  }
+
+  return seats
+}
+
 /** What the teacher seats cost, beyond the two the plan includes. */
 export function teacherChargeBdt(teachers: number): number {
   if (!Number.isFinite(teachers)) return 0
@@ -316,6 +386,10 @@ export function teacherChargeBdt(teachers: number): number {
  * The floor applies to the student charge, not to the total, so a small centre that
  * hires a sixth teacher pays the floor plus those seats rather than having the
  * seats swallowed by it.
+ *
+ * The floor comes from the plan (`monthlyFloorBdt`) and not from the centre constant,
+ * because Institution's is higher. Reading `CENTER_MONTHLY_FLOOR_BDT` here would have
+ * billed an institution at a centre's minimum — a ৳3,000 discount nobody decided on.
  */
 export function monthlyBillBdt(
   plan: PlanLimits,
@@ -325,7 +399,7 @@ export function monthlyBillBdt(
   if (plan.pricing === 'free') return 0
   if (plan.pricing === 'flat') return plan.priceBdt
 
-  const students = Math.max(CENTER_MONTHLY_FLOOR_BDT, studentChargeBdt(activeStudents))
+  const students = Math.max(monthlyFloorBdt(plan), studentChargeBdt(activeStudents))
   return students + teacherChargeBdt(activeTeachers)
 }
 
