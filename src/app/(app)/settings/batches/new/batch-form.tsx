@@ -11,7 +11,9 @@
 import { useActionState, useState } from 'react'
 import { useRouter } from 'next/navigation'
 
+import { BranchPicker } from '@/components/branch-picker'
 import { Alert, Button, Field } from '@/components/ui'
+import type { BranchChoice } from '@/lib/branches'
 import type { T } from '@/lib/i18n'
 import { createBatch, type ActionState } from '../../actions'
 import { MAX_NAME } from '@/lib/limits'
@@ -25,6 +27,8 @@ export function BatchForm({
   teachers,
   slots,
   days: dayOptions,
+  branchPick,
+  branches,
 }: {
   t: T<'batchForm'>
   common: T<'common'>
@@ -41,6 +45,9 @@ export function BatchForm({
    */
   slots: { value: string; label: string }[]
   days: { value: number; label: string }[]
+  branchPick: T<'branchPick'>
+  /** `null` draws no branch field at all — see branchChoicesFor. */
+  branches: BranchChoice[] | null
 }) {
   const router = useRouter()
   const [state, formAction, pending] = useActionState<ActionState, FormData>(
@@ -121,6 +128,11 @@ export function BatchForm({
           </select>
         </label>
       )}
+
+      {/* With the time and not with the subject, because it is the same kind of fact:
+          §8.4's "rooms and timetables are physical and do not pool". Draws nothing for
+          all but the head office of an institution. */}
+      <BranchPicker t={branchPick} branches={branches} />
 
       <fieldset className="flex flex-col gap-2">
         <legend className="mb-1 font-medium text-ink">{t.whichSlot}</legend>

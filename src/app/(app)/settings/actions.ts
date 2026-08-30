@@ -25,6 +25,7 @@ import {
   type RosterPermission,
 } from '@/lib/auth/session'
 import { normalizeBdMobile, phoneToLoginEmail } from '@/lib/bd/phone'
+import { postedBranchId } from '@/lib/branches'
 import {
   USERNAME_ATTEMPTS,
   usernameBaseFor,
@@ -917,6 +918,14 @@ export async function createBatch(
       start_time: startTime,
       end_time: endTime,
       monthly_fee_bdt: monthlyFee,
+      /*
+       * Which building. Passed through unchecked for the reasons createStudent's own
+       * insert sets out at length, and this is the one the rest of the timetable hangs
+       * off: attendance, exams and marks all reach a branch through `app.batch_branch`
+       * rather than carrying a column, because a batch is a room in a building at a
+       * time of day and does not move.
+       */
+      branch_id: postedBranchId(formData),
     })
     .select('id')
     .single()
@@ -1251,6 +1260,23 @@ export async function createStudent(
       guardian_phone: guardianPhone,
       institution: institution || null,
       class_level: classLevel || null,
+      /*
+       * Which building, when the form asked. Null when it did not, which is every
+       * centre in the country today and every reader below the institution tier.
+       *
+       * PASSED THROUGH UNCHECKED, and that is the design rather than an omission. A
+       * pinned manager posting somebody else's branch is refused by
+       * `students_branch_scope`; another centre's branch is refused by the composite
+       * foreign key from 20260811000005; and a branchless post from a pinned manager
+       * is filled in by 20260811000054's stamp before the check runs. Re-deriving any
+       * of that here would be a second copy of the rule, and the second copy is the
+       * one that goes stale. See postedBranchId.
+       *
+       * This is also the branch fifteen other tables read through
+       * `app.student_branch` — the guardians and enrollments written below among them
+       * — so a student filed here is a whole family filed with them.
+       */
+      branch_id: postedBranchId(formData),
     })
     .select('id')
     .single()
@@ -2153,6 +2179,17 @@ export async function createTeacher(
       user_id: userId,
       name,
       phone,
+      /*
+       * Which building they teach in. Passed through unchecked, per createStudent.
+       *
+       * NOT WHAT THEY MAY READ. `app.payee_branch` reads this column to file their
+       * salary under a branch, and the staff list groups by it — but what a colleague
+       * can reach is `center_members.branch_id`, upserted below with no branch on it
+       * and deliberately so. 20260811000054's section 3 is explicit: a permission has
+       * to be typed, because inferring it would confine somebody's new colleague to
+       * one building with nothing on the screen saying it happened.
+       */
+      branch_id: postedBranchId(formData),
     })
     .select('id')
     .single()

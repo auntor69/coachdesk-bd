@@ -18,10 +18,12 @@
 import { useActionState, useState } from 'react'
 import { useRouter } from 'next/navigation'
 
+import { BranchPicker } from '@/components/branch-picker'
 import { Alert, Button, Field } from '@/components/ui'
 import { formatBdMobile, normalizeBdMobile } from '@/lib/bd/phone'
 import { MIN_PASSWORD } from '@/lib/auth/password'
 import { PERMISSION_KEYS, PERMISSION_DEFAULTS } from '@/lib/permissions'
+import type { BranchChoice } from '@/lib/branches'
 import type { T } from '@/lib/i18n'
 import { createTeacher, type ActionState } from '../../actions'
 import { MAX_NAME } from '@/lib/limits'
@@ -33,12 +35,17 @@ export function TeacherForm({
   permissions: labels,
   common,
   subjects,
+  branchPick,
+  branches,
 }: {
   t: T<'teacherForm'>
   permissions: T<'teacherPermissions'>
   common: T<'common'>
   /** `null` is the list that could not be read — see the aside below the ticks. */
   subjects: SubjectOption[] | null
+  branchPick: T<'branchPick'>
+  /** `null` draws no branch field at all — see branchChoicesFor. */
+  branches: BranchChoice[] | null
 }) {
   const router = useRouter()
   const [state, formAction, pending] = useActionState<ActionState, FormData>(
@@ -109,6 +116,15 @@ export function TeacherForm({
           </p>
         )}
       </div>
+
+      {/* WHERE THEY TEACH, NOT WHAT THEY MAY SEE, and the two are easy to confuse
+          because both are a branch. This one is `teachers.branch_id`: it puts them on
+          the Mirpur staff list and in Mirpur's salary bill. What a colleague may reach
+          is `center_members.branch_id`, which is a permission and has to be typed on
+          its own screen — 20260811000054 declines to infer it for exactly this reason.
+          A teacher filed under Mirpur still reads the whole organisation until
+          somebody says otherwise. */}
+      <BranchPicker t={branchPick} branches={branches} />
 
       {/* A line where the ticks would be, when the list of subjects could not be read.
           The same call the new-student form makes and for the same reasons: the ticks

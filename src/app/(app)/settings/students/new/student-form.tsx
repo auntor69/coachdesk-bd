@@ -12,8 +12,10 @@
 import { useActionState, useState } from 'react'
 import { useRouter } from 'next/navigation'
 
+import { BranchPicker } from '@/components/branch-picker'
 import { Alert, Button, Field } from '@/components/ui'
 import { formatBdMobile, normalizeBdMobile } from '@/lib/bd/phone'
+import type { BranchChoice } from '@/lib/branches'
 import type { T } from '@/lib/i18n'
 import { createStudent, type ActionState } from '../../actions'
 import { MAX_NAME, MAX_LABEL } from '@/lib/limits'
@@ -24,11 +26,16 @@ export function StudentForm({
   t,
   common,
   batches,
+  branchPick,
+  branches,
 }: {
   t: T<'studentForm'>
   common: T<'common'>
   /** `null` is the list that could not be read — see the aside below the ticks. */
   batches: BatchOption[] | null
+  branchPick: T<'branchPick'>
+  /** `null` draws no branch field at all — see branchChoicesFor. */
+  branches: BranchChoice[] | null
 }) {
   const router = useRouter()
   const [state, formAction, pending] = useActionState<ActionState, FormData>(
@@ -84,6 +91,12 @@ export function StudentForm({
         maxLength={MAX_NAME}
         autoComplete="off"
       />
+
+      {/* Before the batches and not after, because it is the wider question: a batch is
+          a room in a building, so an owner who has decided the building has narrowed
+          which classes make sense. Draws nothing for all but the head office of an
+          institution. */}
+      <BranchPicker t={branchPick} branches={branches} />
 
       {/* A line where the ticks would be, when the list of batches could not be read.
 

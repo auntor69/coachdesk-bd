@@ -2,6 +2,7 @@ import Link from 'next/link'
 
 import { Card } from '@/components/ui'
 import { pagePermission, getSession } from '@/lib/auth/session'
+import { branchChoicesFor } from '@/lib/branches'
 import { createClient } from '@/lib/supabase/server'
 import { studentRoom, planName } from '@/lib/plans'
 import { slotLabel } from '@/lib/bd/schedule'
@@ -22,7 +23,7 @@ export default async function NewStudentPage() {
   const d = dict(locale)
   const t = d.settings.students
 
-  const [{ data: batches }, { count: studentCount }] = await Promise.all([
+  const [{ data: batches }, { count: studentCount }, branches] = await Promise.all([
     supabase
       .from('batches')
       .select('id, name, slot, subjects (name, name_bn)')
@@ -37,6 +38,10 @@ export default async function NewStudentPage() {
       .select('id', { count: 'exact', head: true })
       .eq('coaching_center_id', session.active.centerId)
       .eq('status', 'active'),
+    // Which building this child attends, for the head office of an organisation that
+    // has more than one. `null` for everybody else, and no query for them either —
+    // see branchChoicesFor.
+    branchChoicesFor(supabase, session),
   ])
 
   /*
@@ -119,6 +124,8 @@ export default async function NewStudentPage() {
           t={d.studentForm}
           common={d.common}
           batches={batchOptions}
+          branchPick={d.branchPick}
+          branches={branches}
         />
       )}
     </div>

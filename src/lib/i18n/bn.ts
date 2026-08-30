@@ -3548,6 +3548,30 @@ export const bn = {
   },
 
   /**
+   * The one field the head office's own add forms gain.
+   *
+   * THREE STRINGS AND ONE OF THEM IS A CONSEQUENCE, which is why this is a group of
+   * its own rather than three more keys in `branchForm` above. Those words are the
+   * branches screen's; these are a field that appears on six other forms, and the
+   * component that draws it is shared.
+   *
+   * Nobody else sees it. 20260811000054 files a pinned manager's row under their own
+   * branch, so the only reader with a question is the head office of an organisation
+   * that has more than one building -- see `mayChooseBranch`.
+   */
+  branchPick: {
+    label: 'কোন শাখা',
+    /**
+     * What leaving it alone costs, said before it costs anything. An unfiled row is
+     * outside every branch's column in the comparison table and invisible to a pinned
+     * manager, and both of those are discovered a month later otherwise.
+     */
+    hint: 'প্রধান কার্যালয়ে রেখে দিলে এটি কোনো শাখার নিজের হিসাবে আসবে না, আর কোনো এক শাখায় নির্দিষ্ট ম্যানেজার এটি দেখতেও পাবেন না।',
+    /** The first option, and the default: this is what every row holds today. */
+    hq: 'প্রধান কার্যালয় — কোনো শাখা নয়',
+  },
+
+  /**
    * The centre's own name and the number a parent sends fees to.
    *
    * Every string here is on one screen, and the screen is unusual: it shows the

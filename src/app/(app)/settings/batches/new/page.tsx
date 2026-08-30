@@ -2,6 +2,7 @@ import Link from 'next/link'
 
 import { Card } from '@/components/ui'
 import { pagePermission, getSession } from '@/lib/auth/session'
+import { branchChoicesFor } from '@/lib/branches'
 import { createClient } from '@/lib/supabase/server'
 import { wouldExceed, planName, hasStaff } from '@/lib/plans'
 import { SLOT_ORDER, slotLabel } from '@/lib/bd/schedule'
@@ -23,7 +24,7 @@ export default async function NewBatchPage() {
   const d = dict(locale)
   const t = d.settings.batches
 
-  const [{ data: subjects }, { data: teachers }, { count: batchCount }] =
+  const [{ data: subjects }, { data: teachers }, { count: batchCount }, branches] =
     await Promise.all([
       supabase
         .from('subjects')
@@ -42,6 +43,15 @@ export default async function NewBatchPage() {
         .select('id', { count: 'exact', head: true })
         .eq('coaching_center_id', session.active.centerId)
         .eq('active', true),
+      /*
+       * Which building this class meets in, for the head office of an organisation
+       * that has more than one. §8.4 is the reason this is the least optional of the
+       * four branch pickers: "Rooms and timetables are physical and do not pool" — a
+       * batch is a room at a time of day, so it is in a building whether or not
+       * anybody wrote which. Attendance and marks then reach that building through
+       * `app.batch_branch` and carry no column of their own.
+       */
+      branchChoicesFor(supabase, session),
     ])
 
   // The action re-checks this; showing it here saves a teacher filling in a
@@ -109,6 +119,8 @@ export default async function NewBatchPage() {
         <BatchForm
           t={d.batchForm}
           common={d.common}
+          branchPick={d.branchPick}
+          branches={branches}
           subjects={subjects.map((s) => ({
             id: s.id,
             label: localName(s, locale),

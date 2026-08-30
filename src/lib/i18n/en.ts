@@ -2104,6 +2104,13 @@ export const en: Dictionary = {
     turnOn: 'Open it again',
   },
 
+  /** See the Bangla: the one field the head office's own add forms gain. */
+  branchPick: {
+    label: 'Which branch',
+    hint: 'Left at head office it stays out of every branch’s own figures, and a manager pinned to a branch cannot see it.',
+    hq: 'Head office — no branch',
+  },
+
   centerForm: {
     nameLabel: 'Centre’s name',
     nameHint: 'This name signs every SMS, so a short one is better',

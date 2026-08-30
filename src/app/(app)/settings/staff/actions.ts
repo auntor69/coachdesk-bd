@@ -35,6 +35,7 @@ import {
 } from '@/lib/auth/session'
 import { normalizeBdMobile } from '@/lib/bd/phone'
 import { todayInDhaka } from '@/lib/bd/time'
+import { postedBranchId } from '@/lib/branches'
 import { dict } from '@/lib/i18n'
 import { MAX_LABEL, MAX_NAME, MAX_TEXT, clamp } from '@/lib/limits'
 import { has } from '@/lib/plans'
@@ -158,11 +159,23 @@ function isFields(value: Fields | StaffState): value is Fields {
 /**
  * Puts one person on the centre's books.
  *
- * `branch_id` is left null, and that is 20260811000043's decision rather than this
- * file's: §8.2 wants the column from birth so a centre that grows into branches does
- * not have to guess its history, and nothing in `src/` reads `branches` yet. Writing a
- * branch here before the scoping of §16's steps 13 and 14 would be this screen
- * inventing a boundary no policy enforces.
+ * `branch_id` NOW COMES FROM THE FORM, WHERE THERE IS ONE. This docstring used to say
+ * the column was left null because "nothing in `src/` reads `branches` yet", which was
+ * true when 20260811000043 added it and stopped being true in three steps: the branches
+ * screen let somebody type a building, 20260811000053 gave the column its meaning, and
+ * 20260811000054 files a new row under the branch of whoever wrote it. So the null is
+ * still the answer for almost everybody — it is what a single-building centre holds and
+ * what the stamp fills for a pinned manager — and the one reader who is asked is the head
+ * office of an organisation with more than one building, which is the one desk the stamp
+ * cannot answer for.
+ *
+ * Passed through unchecked, per createStudent's own insert: the composite foreign key
+ * and `employees_branch_scope` are the boundary, and a second copy of that rule in this
+ * file would be the copy that goes stale — as the paragraph above just demonstrated.
+ *
+ * WHAT IT DECIDES IS THE WAGE BILL. `app.payee_branch` reads this column to file a
+ * salary payment under a branch, so §8.3's comparison table asks it what each building
+ * spends on people. An unfiled cleaner is a wage in nobody's column.
  */
 export async function addEmployee(
   _prev: StaffState,
@@ -185,6 +198,7 @@ export async function addEmployee(
     phone: fields.phone,
     joined_on: fields.joinedOn,
     note: fields.note,
+    branch_id: postedBranchId(formData),
   })
 
   if (error) return { error: d.errors.addFailed }

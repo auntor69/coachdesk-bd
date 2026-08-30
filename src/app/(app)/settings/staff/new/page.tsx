@@ -3,9 +3,11 @@ import Link from 'next/link'
 import { Card } from '@/components/ui'
 import { pageRole, getSession } from '@/lib/auth/session'
 import { todayInDhaka } from '@/lib/bd/time'
+import { branchChoicesFor } from '@/lib/branches'
 import { dict, DEFAULT_LOCALE } from '@/lib/i18n'
 import { has, planName, PLANS } from '@/lib/plans'
 import { EMPLOYEE_ROLES } from '@/lib/staff/roles'
+import { createClient } from '@/lib/supabase/server'
 import { EmployeeForm } from './employee-form'
 
 /** getSession, not pageRole — see the note on teach/page.tsx's own. */
@@ -58,6 +60,18 @@ export default async function NewStaffPage() {
 
   const roles = EMPLOYEE_ROLES.map((role) => ({ value: role, label: t.roles[role] }))
 
+  /*
+   * Which building they work in, for the head office of an organisation that has more
+   * than one — and the first query this screen has ever needed.
+   *
+   * After the plan card above, so a centre without `staffManagement` still costs
+   * nothing: `branchChoicesFor` returns early for every reader who cannot be asked, so
+   * a client is built and no request is made. Worth the line here because §8.3's
+   * comparison table reads salaries by branch through `app.payee_branch`, which is this
+   * column — an unfiled cleaner is a wage in nobody's column.
+   */
+  const branches = await branchChoicesFor(await createClient(), session)
+
   return (
     <div className="flex flex-col gap-5">
       <div>
@@ -75,6 +89,8 @@ export default async function NewStaffPage() {
         roles={roles}
         common={d.common}
         today={todayInDhaka()}
+        branchPick={d.branchPick}
+        branches={branches}
       />
     </div>
   )

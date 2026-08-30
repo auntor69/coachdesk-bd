@@ -22,7 +22,9 @@
 import { useActionState } from 'react'
 import { useRouter } from 'next/navigation'
 
+import { BranchPicker } from '@/components/branch-picker'
 import { Alert, Button, Field } from '@/components/ui'
+import type { BranchChoice } from '@/lib/branches'
 import type { T } from '@/lib/i18n'
 import { MAX_LABEL, MAX_NAME, MAX_TEXT } from '@/lib/limits'
 import type { EmployeeRole } from '@/lib/supabase/types'
@@ -41,6 +43,8 @@ export function EmployeeForm({
   roles,
   common,
   today,
+  branchPick,
+  branches,
 }: {
   t: T<'staffForm'>
   /** The fourteen jobs in the enum's order, labelled by the page. */
@@ -48,6 +52,9 @@ export function EmployeeForm({
   common: T<'common'>
   /** Today in Dhaka, as YYYY-MM-DD, written by the page. */
   today: string
+  branchPick: T<'branchPick'>
+  /** `null` draws no branch field at all — see branchChoicesFor. */
+  branches: BranchChoice[] | null
 }) {
   const router = useRouter()
   const [state, action, pending] = useActionState<StaffState, FormData>(
@@ -98,6 +105,11 @@ export function EmployeeForm({
         maxLength={MAX_LABEL}
         autoComplete="off"
       />
+
+      {/* Which building they work in — the branch their wage is billed to, through
+          `app.payee_branch`. Draws nothing for all but the head office of an
+          institution. */}
+      <BranchPicker t={branchPick} branches={branches} />
 
       <Field
         label={`${t.phoneLabel} (${common.optional})`}

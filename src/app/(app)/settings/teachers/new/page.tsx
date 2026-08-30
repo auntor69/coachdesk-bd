@@ -2,6 +2,7 @@ import Link from 'next/link'
 
 import { Card } from '@/components/ui'
 import { pageRole, getSession } from '@/lib/auth/session'
+import { branchChoicesFor } from '@/lib/branches'
 import { createClient } from '@/lib/supabase/server'
 import { wouldExceed, hasStaff, planName, PLANS } from '@/lib/plans'
 import { dict, localName, DEFAULT_LOCALE } from '@/lib/i18n'
@@ -47,7 +48,7 @@ export default async function NewTeacherPage() {
 
   const supabase = await createClient()
 
-  const [{ data: subjects }, { count: teacherCount }] = await Promise.all([
+  const [{ data: subjects }, { count: teacherCount }, branches] = await Promise.all([
     supabase
       .from('subjects')
       .select('id, name, name_bn')
@@ -62,6 +63,9 @@ export default async function NewTeacherPage() {
       .select('id', { count: 'exact', head: true })
       .eq('coaching_center_id', session.active.centerId)
       .eq('active', true),
+    // Which building they teach in — the staff list they appear on and the branch
+    // their salary is billed to, not what they are allowed to read. See the form.
+    branchChoicesFor(supabase, session),
   ])
 
   const atLimit = wouldExceed(session.plan, 'maxTeachers', teacherCount ?? 0)
@@ -111,6 +115,8 @@ export default async function NewTeacherPage() {
           permissions={d.teacherPermissions}
           common={d.common}
           subjects={subjectOptions}
+          branchPick={d.branchPick}
+          branches={branches}
         />
       )}
     </div>

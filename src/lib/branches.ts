@@ -21,7 +21,16 @@
  * restrictive check for a row whose id is not their branch. That refusal arrives as a
  * Postgres error a screen can only render as "could not save", which is the other half
  * of why this is asked here as well.
+ *
+ * AND WHAT TO ASK, which is the half added for the add forms. 20260811000054 files a new
+ * row under the branch of whoever wrote it, so a pinned manager is never asked — there is
+ * one answer and the database already knows it. The head office is the reader with a real
+ * question, because head office is the one desk that is not in any building.
  */
+import type { SupabaseClient } from '@supabase/supabase-js'
+
+import { has, type PlanLimits } from './plans.ts'
+import type { Database } from './supabase/types.ts'
 
 /**
  * The head office reads and writes the whole organisation; everybody else is confined
@@ -34,4 +43,102 @@
  */
 export function isHqMember(member: { branchId: string | null }): boolean {
   return member.branchId === null
+}
+
+/**
+ * Whether an add form should ask which building the new row belongs to.
+ *
+ * BOTH HALVES ARE NECESSARY AND NEITHER IS THE BOUNDARY. The plan half is obvious —
+ * a centre that is one building has nothing to ask, and `multipleBranches` is the
+ * feature that says so. The membership half is the interesting one: a pinned manager
+ * must not be asked, because 20260811000054 already fills the column from their own
+ * membership and the only answer they are permitted to give is the one it fills. A
+ * select with one option in it is a form asking a question it knows the answer to,
+ * and a select with two would be a control whose second option the policies refuse.
+ *
+ * Drawn or not, the database decides. A browser that posts a branch it may not name
+ * is refused by `<table>_branch_scope` and by the composite foreign key onto
+ * (branch_id, coaching_center_id) — see the note on `branchChoicesFor`.
+ */
+export function mayChooseBranch(session: {
+  plan: PlanLimits
+  active: { branchId: string | null }
+}): boolean {
+  return has(session.plan, 'multipleBranches') && isHqMember(session.active)
+}
+
+/** One building, as an add form's select needs it. */
+export type BranchChoice = { id: string; name: string }
+
+/**
+ * The buildings this reader may file a new row under, or `null` for "do not ask".
+ *
+ * ONE CALL PER ADD FORM, so the two-part decision above is not spelled out on six
+ * pages. `null` covers every reason there is nothing to ask, deliberately including
+ * the read that failed:
+ *
+ *   * the plan is not an institution, or the reader is pinned (`mayChooseBranch`);
+ *   * the organisation has no open branch — an institution that has bought the tier
+ *     and not yet typed a building is every institution on its first day;
+ *   * the query did not come back.
+ *
+ * The last one is a judgement and the branches screen made the opposite one, so it is
+ * worth saying why they differ. There, a dropped read draws an empty list over an add
+ * form, and the owner's next move is to type in a building that already exists — a
+ * duplicate that cannot be deleted, with rows filed under both. Here, a missing select
+ * files the row at head office, which is where every row in every centre in the country
+ * is filed today and what this form did last week. It is a value left blank, not a
+ * wrong one, and the one reader who can see it is the one who can put it right.
+ *
+ * CLOSED BUILDINGS ARE NOT OFFERED, matching what closing one means: "nothing new is
+ * filed under it". Nothing stops a stale form posting a branch that was closed while
+ * it sat open, and nothing needs to — a row filed under a building that shut this
+ * morning is a true statement about where it happened.
+ *
+ * NOT A BOUNDARY, per §8.2, and the caller must not treat it as one. What bounds a
+ * posted branch is the database: the composite foreign key refuses another centre's,
+ * the restrictive policy from 20260811000053 refuses one this reader cannot reach, and
+ * a pinned member cannot name a branch at all. So an action's job is to pass the value
+ * through, not to check it against this list — a second copy of the rule in
+ * application code is the copy that goes stale.
+ *
+ * Takes the client as an argument rather than importing one, like `readAudienceRows`:
+ * this module is imported by `node --test`, which has no `next/headers` to give it.
+ */
+export async function branchChoicesFor(
+  supabase: SupabaseClient<Database>,
+  session: {
+    plan: PlanLimits
+    active: { centerId: string; branchId: string | null }
+  },
+): Promise<BranchChoice[] | null> {
+  if (!mayChooseBranch(session)) return null
+
+  const { data } = await supabase
+    .from('branches')
+    .select('id, name')
+    .eq('coaching_center_id', session.active.centerId)
+    .eq('active', true)
+    .order('name', { ascending: true })
+
+  if (!data || data.length === 0) return null
+  return data
+}
+
+/**
+ * The branch an add form posted, or null for the head office.
+ *
+ * The empty string is what the select's first option carries, and it means the same
+ * thing a missing field does: file this under no branch. Both arrive as `null`, which
+ * is the value the column already holds and the value 20260811000054's stamp fills.
+ *
+ * A malformed value is passed on rather than swallowed, and that is the point of
+ * returning the string unexamined. Postgres refuses it — a uuid column is a uuid
+ * column — and the action's own "could not save" is the honest answer. Turning it into
+ * `null` here would file the row at head office instead, which is quiet and wrong where
+ * the alternative is loud and missing.
+ */
+export function postedBranchId(formData: FormData): string | null {
+  const value = formData.get('branchId')
+  return typeof value === 'string' && value !== '' ? value : null
 }
