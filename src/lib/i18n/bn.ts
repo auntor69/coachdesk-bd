@@ -4494,6 +4494,12 @@ export const bn = {
        */
       batchFull: (batches: string, cap: number) =>
         `${batches} — এই ব্যাচে আর জায়গা নেই। এই প্ল্যানে এক ব্যাচে সর্বোচ্চ ${digits(cap, 'bn')} জন। অন্য ব্যাচে দিন, বা প্ল্যান বদলান।`,
+      /** See en.settings.errors.batchOtherBranch. */
+      batchOtherBranch: (batches: string) =>
+        `${batches} — এই ব্যাচ অন্য ভবনের। শিক্ষার্থী যে ভবনে আছে সেখানেই ক্লাস করে, তাই ওই ভবনের কোনো ব্যাচে দিন, বা আগে শিক্ষার্থীকে সেই ভবনে সরান।`,
+      /** See en.settings.errors.studentsOtherBranch. */
+      studentsOtherBranch: (students: string) =>
+        `${students} — এরা অন্য ভবনের খাতায় আছে, তাই এই ব্যাচ এখন সরানো যাবে না। আগে তাদের সরান, বা এই ব্যাচ থেকে বাদ দিন।`,
       /**
        * প্ল্যানের হিসাবটাই করা যায়নি — গোনার উত্তর সংখ্যা নয়, ফাঁকা এসেছে। বলা
        * হচ্ছে কিছু যোগ হয়নি, কারণ মালিকের ওটাই দরকার: নইলে তিনি রিলোড করে কিছু

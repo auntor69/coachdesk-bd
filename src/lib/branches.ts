@@ -142,3 +142,24 @@ export function postedBranchId(formData: FormData): string | null {
   const value = formData.get('branchId')
   return typeof value === 'string' && value !== '' ? value : null
 }
+
+/**
+ * Which of these rows are filed under a different building, by name.
+ *
+ * 20260811000053 asks for this in so many words: a student enrolled in another branch's
+ * batch makes `app.student_branch` and `app.batch_branch` disagree, "which is a thing the
+ * picker should refuse rather than a thing a policy should adjudicate". A policy cannot —
+ * both rows are legal on their own, and the pair is what is wrong. So the refusal is here,
+ * and both sides of it (a student joining a batch, a batch moving away from its students)
+ * ask the same question of the same function.
+ *
+ * Head office is a value and not a wildcard: null matches null and nothing else. A child
+ * filed at head office in a Mirpur batch is the same broken pair the other way round —
+ * Mirpur's manager would mark a register they cannot see the enrolment behind.
+ */
+export function elsewhere(
+  branchId: string | null,
+  rows: { name: string; branchId: string | null }[],
+): string[] {
+  return rows.filter((row) => row.branchId !== branchId).map((row) => row.name)
+}

@@ -2733,6 +2733,17 @@ export const en: Dictionary = {
       batchFull: (batches: string, cap: number) =>
         `${batches} — that batch is full. This plan holds ${cap} ${cap === 1 ? 'student' : 'students'} per batch. Put them in another batch, or change plan.`,
       /**
+       * A student and a batch in two different buildings. Refused rather than written,
+       * because 20260811000053 scopes an enrolment by the child's branch and a register
+       * by the batch's — so the row would be visible to one manager and its register to
+       * the other, and neither would see a whole class.
+       */
+      batchOtherBranch: (batches: string) =>
+        `${batches} — that batch is in another building. A student attends in the building they are filed under, so put them in a batch there, or move them to that building first.`,
+      /** The same refusal from the batch's side, naming who is in the way. */
+      studentsOtherBranch: (students: string) =>
+        `${students} — they are filed under another building, so this batch cannot move there yet. Move them first, or take them off this batch.`,
+      /**
        * The plan check itself could not be made — the count came back as no answer
        * rather than as a number. Says nothing was added, because that is the part
        * the owner needs: they will otherwise reload, see nothing, and paste again.

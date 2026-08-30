@@ -3,6 +3,7 @@ import assert from 'node:assert/strict'
 
 import {
   branchChoicesFor,
+  elsewhere,
   isHqMember,
   mayChooseBranch,
   postedBranchId,
@@ -11,6 +12,7 @@ import { PLANS } from '../src/lib/plans.ts'
 
 const MIRPUR = '11111111-1111-1111-1111-111111111111'
 const CENTER = '22222222-2222-2222-2222-222222222222'
+const UTTARA = '33333333-3333-3333-3333-333333333333'
 
 test('the head office is a null branch', () => {
   // 20260811000053's rule, from the app's side. `app.branch_ok` reads a null
@@ -102,4 +104,30 @@ test('a branch that is not a branch reaches the database', () => {
   // and the action answers "could not save", which is loud and missing. Swallowing it
   // into `null` would file the row at head office instead, which is quiet and wrong.
   assert.equal(postedBranchId(form), 'not-a-uuid')
+})
+
+test('a row in another building is named, and one in this building is not', () => {
+  const rows = [
+    { name: 'HSC Physics', branchId: MIRPUR },
+    { name: 'HSC Chemistry', branchId: UTTARA },
+    { name: 'SSC Maths', branchId: MIRPUR },
+  ]
+
+  assert.deepEqual(elsewhere(MIRPUR, rows), ['HSC Chemistry'])
+  assert.deepEqual(elsewhere(UTTARA, rows), ['HSC Physics', 'SSC Maths'])
+  assert.deepEqual(elsewhere(MIRPUR, []), [])
+})
+
+test('head office is a building and not a wildcard', () => {
+  // The half that is easy to get wrong. A student filed at head office in a Mirpur
+  // batch is the same broken pair as the other way round: `app.student_branch` says
+  // null, `app.batch_branch` says Mirpur, and Mirpur's manager gets a register with a
+  // child in it whose enrolment they cannot see. So null matches null and nothing else.
+  assert.deepEqual(elsewhere(null, [{ name: 'HSC Physics', branchId: MIRPUR }]), [
+    'HSC Physics',
+  ])
+  assert.deepEqual(elsewhere(MIRPUR, [{ name: 'Head office batch', branchId: null }]), [
+    'Head office batch',
+  ])
+  assert.deepEqual(elsewhere(null, [{ name: 'Head office batch', branchId: null }]), [])
 })

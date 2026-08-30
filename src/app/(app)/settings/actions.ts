@@ -25,7 +25,7 @@ import {
   type RosterPermission,
 } from '@/lib/auth/session'
 import { normalizeBdMobile, phoneToLoginEmail } from '@/lib/bd/phone'
-import { postedBranchId } from '@/lib/branches'
+import { elsewhere, mayChooseBranch, postedBranchId } from '@/lib/branches'
 import {
   USERNAME_ATTEMPTS,
   usernameBaseFor,
@@ -1004,11 +1004,11 @@ export async function createBatch(
  *
  * WHAT DOES NOT FOLLOW IS THE STUDENTS. An enrolment is scoped by the child's own branch
  * and not by the batch's, deliberately — 20260811000053 argues that a branch admits a
- * student — so moving a batch away from the children in it leaves rows whose two answers
- * disagree: their manager can see the register and not the class, or the class and not the
- * register. That migration says a mismatch like this is for a picker to refuse rather than
- * a policy to adjudicate, and the refusal is the next commit's; nothing here or in
- * `updateStudent` checks it yet.
+ * student — so moving a batch away from the children in it would leave rows whose two
+ * answers disagree: their manager can see the register and not the class, or the class and
+ * not the register. So the move is refused while anybody is still enrolled from another
+ * building, which is what that migration asks for in the words "a thing the picker should
+ * refuse rather than a thing a policy should adjudicate". Move the students first.
  */
 export async function updateBatch(
   _prev: ActionState,
@@ -1064,7 +1064,7 @@ export async function updateBatch(
   // this save is a reopening that has to pass the plan cap.
   const { data: before, error: beforeError } = await supabase
     .from('batches')
-    .select('id, subject_id, active')
+    .select('id, subject_id, active, branch_id')
     .eq('coaching_center_id', session.active.centerId)
     .eq('id', batchId)
     .maybeSingle()
@@ -1135,6 +1135,39 @@ export async function updateBatch(
     teacher = teacherRow?.id ?? null
   }
 
+  const nextBranchId = postedBranchId(formData)
+
+  /*
+   * Moving the class out from under the children in it, refused rather than written.
+   * Only when the branch is actually changing, so the ordinary save — a fee, a name, a
+   * day — costs no read at all.
+   *
+   * Who is still in it, and not who ever was: a dropped enrolment is a record of a term
+   * that ended, and refusing a move because of somebody who left in March would leave
+   * the batch stuck for ever with no way to unstick it. A paused one counts, because a
+   * suspended student is still enrolled and still coming back (§7.1).
+   */
+  if (nextBranchId !== before.branch_id) {
+    const { data: enrolled, error: enrolledError } = await supabase
+      .from('enrollments')
+      .select('students (name, branch_id)')
+      .eq('coaching_center_id', session.active.centerId)
+      .eq('batch_id', batchId)
+      .in('status', ['active', 'paused'])
+
+    if (enrolledError || !enrolled) return { error: t.errors.readFailed }
+
+    const students = enrolled
+      .map((row) => (Array.isArray(row.students) ? row.students[0] : row.students))
+      .filter((s) => s !== null)
+
+    const away = elsewhere(
+      nextBranchId,
+      students.map((s) => ({ name: s.name, branchId: s.branch_id })),
+    )
+    if (away.length > 0) return { error: t.errors.studentsOtherBranch(away.join(', ')) }
+  }
+
   const { error: saveError } = await supabase
     .from('batches')
     .update({
@@ -1148,7 +1181,7 @@ export async function updateBatch(
       active,
       // The building the class is in, from the form on every save. See the head of this
       // function for what moves with it.
-      branch_id: postedBranchId(formData),
+      branch_id: nextBranchId,
     })
     .eq('coaching_center_id', session.active.centerId)
     .eq('id', batchId)
@@ -1271,6 +1304,40 @@ export async function createStudent(
     }
   }
 
+  // Which building the child is about to be filed under: what the form chose, or what
+  // 20260811000054 stamps for a reader who was not asked.
+  const branchId = mayChooseBranch(session)
+    ? postedBranchId(formData)
+    : session.active.branchId
+
+  /*
+   * The batches, read before the student is written for the reason above, and carrying
+   * their own subject because an enrollment takes the batch's — a separately chosen one
+   * can disagree, and then the marks screen shows the wrong list.
+   *
+   * Scoped by centre as well as by RLS: an owner of two centres satisfies is_staff_admin
+   * for both, so the policy alone would let the other one's batch through.
+   */
+  let chosen: { id: string; subject_id: string }[] = []
+  if (batchIds.length > 0) {
+    const { data: batches, error: batchError } = await supabase
+      .from('batches')
+      .select('id, name, subject_id, branch_id')
+      .eq('coaching_center_id', session.active.centerId)
+      .in('id', batchIds)
+
+    if (batchError || !batches) return { error: t.errors.addFailed }
+
+    // A class in another building, refused before anything is written. See `elsewhere`.
+    const away = elsewhere(
+      branchId,
+      batches.map((b) => ({ name: b.name, branchId: b.branch_id })),
+    )
+    if (away.length > 0) return { error: t.errors.batchOtherBranch(away.join(', ')) }
+
+    chosen = batches
+  }
+
   const { data: student, error } = await supabase
     .from('students')
     .insert({
@@ -1326,31 +1393,15 @@ export async function createStudent(
     is_primary: true,
   })
 
-  if (batchIds.length > 0) {
-    // Each batch carries its own subject, so an enrollment needs the batch's
-    // subject rather than a separately chosen one — otherwise a student can be
-    // enrolled in a maths batch under the physics subject and the marks screen
-    // quietly shows the wrong list.
-    //
-    // Scoped by center id as well as by RLS: an owner of two centres satisfies
-    // is_staff_admin for both, so the policy alone would let a batch from the
-    // other one through.
-    const { data: batches } = await supabase
-      .from('batches')
-      .select('id, subject_id')
-      .eq('coaching_center_id', session.active.centerId)
-      .in('id', batchIds)
-
-    if (batches && batches.length > 0) {
-      await supabase.from('enrollments').insert(
-        batches.map((b) => ({
-          coaching_center_id: session.active.centerId,
-          student_id: student.id,
-          subject_id: b.subject_id,
-          batch_id: b.id,
-        })),
-      )
-    }
+  if (chosen.length > 0) {
+    await supabase.from('enrollments').insert(
+      chosen.map((b) => ({
+        coaching_center_id: session.active.centerId,
+        student_id: student.id,
+        subject_id: b.subject_id,
+        batch_id: b.id,
+      })),
+    )
   }
 
   revalidatePath('/settings/students')
@@ -1510,6 +1561,10 @@ export async function updateStudent(
     if (limit) return limit
   }
 
+  // Where the child will be filed once this save lands. The form always submits it,
+  // so on a save that is not a transfer this is the branch they already had.
+  const nextBranchId = postedBranchId(formData)
+
   // Everything the batch checkboxes might change, decided before the first write
   // for the same reason: the per-batch cap has to refuse the whole save rather
   // than half of it.
@@ -1539,7 +1594,7 @@ export async function updateStudent(
   if (status === 'active' && batchIds.length > 0) {
     const { data: mine, error: mineError } = await supabase
       .from('batches')
-      .select('id')
+      .select('id, name, branch_id')
       .eq('coaching_center_id', session.active.centerId)
       .in('id', batchIds)
 
@@ -1547,6 +1602,16 @@ export async function updateStudent(
     // none of those batches are this centre's, which ends every enrolment the
     // student has. A failed read must not be allowed to say that.
     if (mineError || !mine) return { error: t.errors.saveFailed }
+
+    // A class in another building, refused before the first write — see `elsewhere`.
+    // Checked against the branch the form posted rather than the one on the row, so a
+    // save that moves the child and leaves a batch behind is caught on the way in.
+    const away = elsewhere(
+      nextBranchId,
+      mine.map((b) => ({ name: b.name, branchId: b.branch_id })),
+    )
+    if (away.length > 0) return { error: t.errors.batchOtherBranch(away.join(', ')) }
+
     wantedIds = mine.map((b) => b.id)
   }
 
@@ -1580,7 +1645,7 @@ export async function updateStudent(
       class_level: classLevel || null,
       // The building, from the form on every save. See the head of this function for
       // what follows the child across and what stays behind.
-      branch_id: postedBranchId(formData),
+      branch_id: nextBranchId,
     })
     .eq('coaching_center_id', session.active.centerId)
     .eq('id', studentId)
