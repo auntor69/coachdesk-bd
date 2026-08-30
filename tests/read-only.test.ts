@@ -95,6 +95,7 @@ test('the modules that skip the check are exactly the three that should', () => 
     'src/app/(app)/notices/actions.ts',
     'src/app/(app)/progress/actions.ts',
     'src/app/(app)/settings/actions.ts',
+    'src/app/(app)/settings/staff/actions.ts',
     'src/app/(app)/teach/[batchId]/actions.ts',
   ])
 })

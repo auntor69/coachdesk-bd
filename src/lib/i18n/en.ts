@@ -1830,6 +1830,30 @@ export const en: Dictionary = {
     submit: 'Add teacher',
   },
 
+  /** See the Bangla for why the staff screen's words are split off like this. */
+  staffForm: {
+    nameLabel: 'Name',
+    namePlaceholder: 'e.g. Rahim Uddin',
+    roleLabel: 'What they do here',
+    designationLabel: 'What you call the job',
+    designationHint: 'Only if your own word for it is different — this is what prints',
+    phoneLabel: 'Mobile number',
+    phoneHint: 'For reaching them. It gives no login and no access to anything.',
+    phoneBad: 'That number is not right',
+    joinedLabel: 'Joined on',
+    noteLabel: 'Note',
+    notePlaceholder: 'Anything worth remembering about this person',
+    submit: 'Add staff member',
+    /** On the row, not the add form: the fields above are theirs to correct. */
+    editHint: 'A name, a number or a job title typed wrong is corrected here.',
+    turnOff: 'They have left',
+    turnOffHint:
+      'Their record and everything they were paid stays. They come off the payroll list and out of the salary bill.',
+    turnOn: 'Put them back on',
+    leftLabel: 'Last day',
+    leftHint: 'Blank means today',
+  },
+
   centerForm: {
     nameLabel: 'Centre’s name',
     nameHint: 'This name signs every SMS, so a short one is better',
@@ -2427,6 +2451,8 @@ export const en: Dictionary = {
       subjectsHint: 'Maths, physics, English — your own list',
       teachers: 'Teachers & permissions',
       teachersHint: 'Who is allowed to do what',
+      staff: 'Staff & payroll',
+      staffHint: 'Who else works here, and what they are paid',
       examTypes: 'Exam kinds',
       examTypesHint: 'Weekly, model test, monthly — whatever you run',
       sms: 'SMS',
@@ -2957,6 +2983,56 @@ export const en: Dictionary = {
         notFound: 'Teacher not found.',
         keepOwnSeat:
           'This is your own teacher record — the one seat this plan covers. Switch a colleague off instead.',
+      },
+    },
+
+    /** See the Bangla for why staff who do not teach are their own screen. */
+    staff: {
+      title: 'Staff',
+      subtitle: 'The people who work here and do not teach',
+      newTitle: 'New staff member',
+      count: (n: number) => `${n} on the payroll`,
+      new: 'Add a staff member',
+      emptyTitle: 'No staff added yet',
+      emptyBody:
+        'An accountant, a receptionist, a coordinator, a cleaner, a guard — anyone the centre pays who does not hold a batch. Teachers are on their own screen.',
+      /** The badge on a row for somebody who has left or been switched off. */
+      inactive: 'Off',
+      /** Under the name, when the centre's own word for the job is not the role's. */
+      roleUnder: (role: string) => `Role: ${role}`,
+      joined: (date: string) => `Joined ${date}`,
+      left: (date: string) => `Left ${date}`,
+      /** Only where there is one, and it is a fact about sign-in, not a permission. */
+      hasLogin: 'Has a login',
+      lockedTitle: 'Staff comes with the centre plan',
+      lockedBody: (plan: string, center: string) =>
+        `${plan} is one teacher — you. An accountant, a receptionist or a cleaner, what each of them is paid, and the payroll that subtracts it from what you collected come with ${center}.`,
+      /** See the Bangla: the enum's fourteen jobs, and why the order is the enum's. */
+      roles: {
+        manager: 'Manager',
+        accountant: 'Accountant',
+        receptionist: 'Receptionist',
+        coordinator: 'Coordinator',
+        office_assistant: 'Office assistant',
+        librarian: 'Librarian',
+        lab_assistant: 'Lab assistant',
+        it_support: 'IT support',
+        marketing: 'Marketing',
+        driver: 'Driver',
+        cook: 'Cook',
+        cleaner: 'Cleaner',
+        security_guard: 'Security guard',
+        other: 'Other',
+      },
+      errors: {
+        nameRequired: 'Please write their name.',
+        roleRequired: 'Please choose what they do here.',
+        phoneInvalid: 'That number is not right.',
+        dateInvalid: 'Please give the date they joined.',
+        dateFuture: 'That date has not arrived yet.',
+        /** The table's own check, in words an owner can act on. */
+        leftBeforeJoined: 'The day they left cannot be before the day they joined.',
+        notFound: 'That staff member is not on your list.',
       },
     },
 

@@ -244,6 +244,32 @@ export default async function SettingsPage() {
                 },
               ]
             : []),
+          /*
+           * Who else works here, and what they are paid. Gated on the plan and not on
+           * a count, unlike the teachers row above: `staffManagement` is bought or it
+           * is not, and there is no downgrade that can leave a free plan holding
+           * employees — a plan without staff never had a screen to add one on.
+           *
+           * Hidden rather than shown locked, unlike the export row. The difference is
+           * what the reader would do with it: the export screen's locked branch is a
+           * feature a centre already has data for and can buy access to today, while
+           * an owner on a one-teacher plan has no accountant and no cleaner to write
+           * down. A row that opens a card saying "not on your plan" is an
+           * advertisement, and the plan screen is where we sell.
+           */
+          ...(has(session.plan, 'staffManagement')
+            ? [
+                {
+                  href: '/settings/staff' as Route,
+                  label: t.staff,
+                  hint: t.staffHint,
+                  // No chip, and no query for one. A count of employees would cost
+                  // every owner a round trip to print a number that is on the screen
+                  // this row opens; the hint is doing the work here.
+                  count: null,
+                },
+              ]
+            : []),
           {
             href: '/settings/exam-types' as Route,
             label: t.examTypes,

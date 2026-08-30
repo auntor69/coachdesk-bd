@@ -2964,6 +2964,50 @@ export const bn = {
   },
 
   /**
+   * The words on the add-a-staff-member form, and on the panel behind a row.
+   *
+   * SPLIT OFF FROM `settings.staff` FOR THE REASON `teacherForm` IS: the form is a
+   * client component, it is handed `T<'staffForm'>`, and `T` maps a function leaf to
+   * `never`. The count and the two dates above take a number and a date, so handing
+   * the whole of `settings.staff` across would hand over three `never`s. Nothing in
+   * here takes an argument, and that is a rule about this section rather than an
+   * accident: a string that needs a value in it belongs above, on the server's side.
+   */
+  staffForm: {
+    nameLabel: 'নাম',
+    namePlaceholder: 'যেমন রহিম উদ্দিন',
+    roleLabel: 'তিনি এখানে কী করেন',
+    designationLabel: 'পদটাকে আপনি কী বলেন',
+    designationHint: 'আপনার নিজের শব্দ আলাদা হলে শুধু তখনই — এটাই ছাপা হবে',
+    phoneLabel: 'মোবাইল নম্বর',
+    /**
+     * The sentence that stops the question this field always raises. An owner who
+     * types a number into an app expects the person to get access, because that is
+     * what the teacher screen does with one. Here it reaches nobody and grants
+     * nothing — so the hint says both, in that order.
+     */
+    phoneHint: 'যোগাযোগের জন্য। এতে কোনো লগইন হয় না, কিছু দেখার অনুমতিও হয় না।',
+    phoneBad: 'নম্বরটি ঠিক নয়',
+    joinedLabel: 'যোগ দেওয়ার তারিখ',
+    noteLabel: 'নোট',
+    notePlaceholder: 'এই মানুষটির ব্যাপারে মনে রাখার মতো কিছু',
+    submit: 'কর্মী যোগ করুন',
+    /** On the row's panel, not the add form: those fields are theirs to correct. */
+    editHint: 'নাম, নম্বর বা পদের নাম ভুল লেখা থাকলে এখানে ঠিক করুন।',
+    /**
+     * "They have left" and not "turn off", because that is the thing that happened.
+     * The hint answers what an owner is actually afraid of — that the record and the
+     * salaries already paid go with them.
+     */
+    turnOff: 'তিনি চলে গেছেন',
+    turnOffHint:
+      'তাঁর তথ্য আর যত বেতন দেওয়া হয়েছে, সব থাকবে। শুধু বেতনের তালিকা আর মাসের বেতন-খরচ থেকে বাদ যাবেন।',
+    turnOn: 'আবার তালিকায় নিন',
+    leftLabel: 'শেষ দিন',
+    leftHint: 'খালি রাখলে আজকের তারিখ',
+  },
+
+  /**
    * The centre's own name and the number a parent sends fees to.
    *
    * Every string here is on one screen, and the screen is unusual: it shows the
@@ -3895,6 +3939,8 @@ export const bn = {
       subjectsHint: 'গণিত, পদার্থ, ইংরেজি — আপনার নিজের তালিকা',
       teachers: 'শিক্ষক ও অনুমতি',
       teachersHint: 'কে কী করতে পারবে',
+      staff: 'কর্মী ও বেতন',
+      staffHint: 'আর কে কাজ করেন, আর তাঁরা কত পান',
       examTypes: 'পরীক্ষার ধরন',
       examTypesHint: 'সাপ্তাহিক, মডেল টেস্ট, মাসিক — যা আপনি নেন',
       sms: 'SMS',
@@ -4626,6 +4672,92 @@ export const bn = {
          */
         keepOwnSeat:
           'এটি আপনার নিজের শিক্ষক রেকর্ড — এই প্ল্যানে এই একটি জায়গাই আছে। অন্য কাউকে বন্ধ করুন।',
+      },
+    },
+
+    /**
+     * The people a centre pays who do not teach — their own screen, next to the
+     * teacher list rather than inside it.
+     *
+     * ONE LIST AND NOT TWO KINDS OF ROW ON THE TEACHER SCREEN, because the two lists
+     * answer different questions and only one of them is about seats. A teacher costs
+     * a seat and holds a batch, so that screen is about permission: what this person
+     * may see and mark. A cook costs a salary and holds nothing, so this screen is
+     * about employment: when they started, what the job is called, what number to
+     * ring. Merged, the picker would offer "may take attendance" beside a night guard.
+     *
+     * WHAT ANYBODY IS PAID IS NOT HERE. Salary agreements and salary payments are one
+     * screen along, because a teacher is paid too — and a payroll list that quietly
+     * missed the teachers would be worse than no payroll list at all. This screen owns
+     * the record of a person; that one owns the money, for everybody.
+     */
+    staff: {
+      title: 'কর্মী',
+      subtitle: 'যাঁরা এখানে কাজ করেন, পড়ান না',
+      newTitle: 'নতুন কর্মী',
+      count: (n: number) => `বেতনের খাতায় ${n} জন`,
+      new: 'কর্মী যোগ করুন',
+      emptyTitle: 'এখনও কোনো কর্মী যোগ করা হয়নি',
+      emptyBody:
+        'হিসাবরক্ষক, রিসেপশনিস্ট, কো-অর্ডিনেটর, পরিচ্ছন্নতাকর্মী, দরজার গার্ড — ব্যাচ নেন না কিন্তু কোচিং বেতন দেয়, এমন যে কেউ। শিক্ষকেরা তাঁদের নিজের পাতায় আছেন।',
+      /** The badge on a row for somebody who has left, or been switched off. */
+      inactive: 'বন্ধ',
+      /**
+       * Under the name, and only where the centre's own word for the job replaced the
+       * role's. The role is what a payroll report groups by, so an owner who reads
+       * "Front Desk Officer" on the row still needs to be told it counts as a
+       * receptionist — otherwise the report looks like it lost somebody.
+       */
+      roleUnder: (role: string) => `কাজ: ${role}`,
+      joined: (date: string) => `যোগ দিয়েছেন ${date}`,
+      left: (date: string) => `শেষ দিন ${date}`,
+      /**
+       * Only on a row that has one, and it is a fact about signing in rather than a
+       * permission: `employees.user_id` is a link and not a grant, so an accountant
+       * with a login can still do nothing here until the teachers-and-permissions
+       * screen says so. Printed anyway, because "why can Karim sign in?" is a question
+       * an owner will bring to this list, and a row with nothing on it is no answer.
+       */
+      hasLogin: 'লগইন আছে',
+      lockedTitle: 'কর্মী কেন্দ্র প্ল্যানের সঙ্গে আসে',
+      lockedBody: (plan: string, center: string) =>
+        `${plan}-এ শিক্ষক একজনই — আপনি। হিসাবরক্ষক, রিসেপশনিস্ট বা পরিচ্ছন্নতাকর্মী, কে কত বেতন পান, আর আদায় থেকে সেই বেতন বাদ দিয়ে মাসের লাভ — সব ${center}-এ।`,
+      /**
+       * The enum's fourteen jobs, in the enum's own order: office roles, then support
+       * roles, then `other` last. That is also what `order by role` gives a report, so
+       * this picker and the payroll list read in the same order — worth having, since
+       * an owner checks one against the other.
+       *
+       * Keyed by the enum and not by a loose string, so a job added in a migration
+       * cannot ship without a Bangla word for it, and a word cannot outlive the job it
+       * names. `RoleLabels` beside the list in lib/staff/roles.ts is the same shape,
+       * and `ALL_ROLES_LISTED` there is what fails if the enum grows.
+       */
+      roles: {
+        manager: 'ম্যানেজার',
+        accountant: 'হিসাবরক্ষক',
+        receptionist: 'রিসেপশনিস্ট',
+        coordinator: 'কো-অর্ডিনেটর',
+        office_assistant: 'অফিস সহকারী',
+        librarian: 'লাইব্রেরিয়ান',
+        lab_assistant: 'ল্যাব সহকারী',
+        it_support: 'আইটি সাপোর্ট',
+        marketing: 'মার্কেটিং',
+        driver: 'ড্রাইভার',
+        cook: 'বাবুর্চি',
+        cleaner: 'পরিচ্ছন্নতাকর্মী',
+        security_guard: 'নিরাপত্তাকর্মী',
+        other: 'অন্যান্য',
+      },
+      errors: {
+        nameRequired: 'নাম লিখুন।',
+        roleRequired: 'তিনি এখানে কী করেন, বেছে নিন।',
+        phoneInvalid: 'নম্বরটি ঠিক নয়।',
+        dateInvalid: 'যোগ দেওয়ার তারিখ দিন।',
+        dateFuture: 'এই তারিখ এখনও আসেনি।',
+        /** The table's own check (`employees_left_after_joining`), in words. */
+        leftBeforeJoined: 'শেষ দিন যোগ দেওয়ার দিনের আগে হতে পারে না।',
+        notFound: 'এই কর্মী আপনার তালিকায় নেই।',
       },
     },
 
