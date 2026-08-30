@@ -2,6 +2,7 @@ import Link from 'next/link'
 
 import { Card } from '@/components/ui'
 import { pageRole, getSession } from '@/lib/auth/session'
+import { branchChoicesFor } from '@/lib/branches'
 import { createClient } from '@/lib/supabase/server'
 import { slotLabel } from '@/lib/bd/schedule'
 import { dict, localName, DEFAULT_LOCALE } from '@/lib/i18n'
@@ -40,27 +41,34 @@ export default async function StudentPage({
   const d = dict(locale)
   const t = d.settings.students
 
-  const [{ data: student, error: studentError }, { data: batches }] = await Promise.all([
-    supabase
-      .from('students')
-      .select(
-        `id, name, student_code, phone, guardian_name, guardian_phone,
-         institution, class_level, status,
-         enrollments (batch_id, status)`,
-      )
-      // Scoped as well as governed by RLS: an owner of two centres passes
-      // is_staff_admin for both, so the policy alone would open a student
-      // belonging to the other one.
-      .eq('coaching_center_id', session.active.centerId)
-      .eq('id', studentId)
-      .maybeSingle(),
-    supabase
-      .from('batches')
-      .select('id, name, slot, subjects (name, name_bn)')
-      .eq('coaching_center_id', session.active.centerId)
-      .eq('active', true)
-      .order('start_time', { ascending: true, nullsFirst: false }),
-  ])
+  const [{ data: student, error: studentError }, { data: batches }, branches] =
+    await Promise.all([
+      supabase
+        .from('students')
+        .select(
+          `id, name, student_code, phone, guardian_name, guardian_phone,
+           institution, class_level, status, branch_id,
+           enrollments (batch_id, status)`,
+        )
+        // Scoped as well as governed by RLS: an owner of two centres passes
+        // is_staff_admin for both, so the policy alone would open a student
+        // belonging to the other one.
+        .eq('coaching_center_id', session.active.centerId)
+        .eq('id', studentId)
+        .maybeSingle(),
+      supabase
+        .from('batches')
+        .select('id, name, slot, subjects (name, name_bn)')
+        .eq('coaching_center_id', session.active.centerId)
+        .eq('active', true)
+        .order('start_time', { ascending: true, nullsFirst: false }),
+      // The buildings this child could be moved between, for the head office of an
+      // organisation that has more than one. `null` for everybody else and no query for
+      // them either — see branchChoicesFor. The form still submits the branch the child
+      // is filed under when there is nothing to choose, which is what stops an ordinary
+      // correction from moving them; see BranchPicker.
+      branchChoicesFor(supabase, session),
+    ])
 
   const back = (
     <Link
@@ -168,6 +176,8 @@ export default async function StudentPage({
       <StudentEditForm
         t={d.studentForm}
         common={d.common}
+        branchPick={d.branchPick}
+        branches={branches}
         student={{
           id: student.id,
           name: student.name,
@@ -178,6 +188,7 @@ export default async function StudentPage({
           guardianPhone: student.guardian_phone ?? '',
           institution: student.institution ?? '',
           classLevel: student.class_level ?? '',
+          branchId: student.branch_id,
           batchIds: enrolled,
         }}
         batches={batches.map((batch) => {

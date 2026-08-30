@@ -2,6 +2,7 @@ import Link from 'next/link'
 
 import { Card } from '@/components/ui'
 import { pageRole, getSession } from '@/lib/auth/session'
+import { branchChoicesFor } from '@/lib/branches'
 import { createClient } from '@/lib/supabase/server'
 import { wouldExceed, hasStaff, overStaffSeats, planName, PLANS } from '@/lib/plans'
 import { PERMISSION_DEFAULTS } from '@/lib/permissions'
@@ -51,11 +52,11 @@ export default async function TeachersPage() {
 
   const supabase = await createClient()
 
-  const [{ data: teachers }, { data: allSubjects }] = await Promise.all([
+  const [{ data: teachers }, { data: allSubjects }, branches] = await Promise.all([
     supabase
       .from('teachers')
       .select(
-        `id, name, phone, active, user_id,
+        `id, name, phone, active, user_id, branch_id,
          teacher_permissions (
            can_manage_students, can_manage_exams, can_send_sms,
            can_view_fees, can_manage_batches
@@ -78,6 +79,11 @@ export default async function TeachersPage() {
       .select('id, name, name_bn, active')
       .eq('coaching_center_id', session.active.centerId)
       .order('name', { ascending: true }),
+    // Which building each of them is based in, for the head office of an organisation
+    // with more than one. `null` for everybody else and no query for them — see
+    // branchChoicesFor. This is `teachers.branch_id` and not the membership's: which
+    // building's list they appear on and whose salary bill pays them, not what they see.
+    branchChoicesFor(supabase, session),
   ])
 
   /*
@@ -155,6 +161,9 @@ export default async function TeachersPage() {
       // at a second centre. Read by the trimmed list, which will not switch it
       // off, and by the password box, which is not where you change your own.
       isSelf: teacher.user_id === session.userId,
+      // Filed as it stands, so the panel below can hand it straight back when there
+      // is nothing to choose from. Null is head office and a real answer.
+      branchId: teacher.branch_id,
       subjects,
       subjectIds: linked.map((subject) => subject?.id).filter(Boolean) as string[],
       // A finished sentence rather than the number, because the row is a client
@@ -261,6 +270,8 @@ export default async function TeachersPage() {
           t={d.teacherList}
           permissions={d.teacherPermissions}
           common={d.common}
+          branchPick={d.branchPick}
+          branches={branches}
           trim={!staff}
         />
       )}

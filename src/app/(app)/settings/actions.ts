@@ -990,6 +990,25 @@ export async function createBatch(
  * Guarded by rank, like updateStudent and for the same reason: 20260811000019 grants
  * `can_manage_batches` INSERT on batches and their schedules and deliberately no
  * UPDATE. Opening a batch is not the same permission as repricing one.
+ *
+ * AND THE BATCH CAN BE MOVED TO ANOTHER BUILDING. `branch_id` is written on every save
+ * because the form always submits it — a `<select>` for an institution's head office, a
+ * hidden field carrying the batch's own branch for everybody else, which is what keeps a
+ * fee correction from refiling the class. See BranchPicker.
+ *
+ * Its timetable, its registers and its marks go with it: `batch_schedules`,
+ * `attendance_sessions`, `exams` and `marks` all reach a branch through
+ * `app.batch_branch` or a hop to it (20260811000053), so a class that moves to Uttara
+ * appears in Uttara's register the same afternoon. §8.4's "rooms and timetables are
+ * physical and do not pool" is the argument for the field existing at all.
+ *
+ * WHAT DOES NOT FOLLOW IS THE STUDENTS. An enrolment is scoped by the child's own branch
+ * and not by the batch's, deliberately — 20260811000053 argues that a branch admits a
+ * student — so moving a batch away from the children in it leaves rows whose two answers
+ * disagree: their manager can see the register and not the class, or the class and not the
+ * register. That migration says a mismatch like this is for a picker to refuse rather than
+ * a policy to adjudicate, and the refusal is the next commit's; nothing here or in
+ * `updateStudent` checks it yet.
  */
 export async function updateBatch(
   _prev: ActionState,
@@ -1127,6 +1146,9 @@ export async function updateBatch(
       end_time: endTime,
       monthly_fee_bdt: monthlyFee,
       active,
+      // The building the class is in, from the form on every save. See the head of this
+      // function for what moves with it.
+      branch_id: postedBranchId(formData),
     })
     .eq('coaching_center_id', session.active.centerId)
     .eq('id', batchId)
@@ -1390,6 +1412,32 @@ const ENROLMENT_END: Record<Exclude<StudentStatus, 'active'>, EnrollmentStatus> 
  * UPDATE, because "admit students" is what that box says and editing a guardian's
  * number is not that. A teacher reaching this action is refused twice — here, and
  * again by RLS if this check were ever removed.
+ *
+ * AND IT IS THE ONE PLACE A STUDENT MOVES BETWEEN BUILDINGS. `branch_id` is written on
+ * every save and not only when it changed, because the form always submits it: a
+ * `<select>` for the head office of an institution, and a hidden field carrying the row's
+ * own branch for everybody else — see BranchPicker for why that has to be an answer
+ * rather than a silence. So this line is a transfer on the one save that means it and a
+ * no-op on every other, and there is no case where a correction quietly refiles a child
+ * at head office.
+ *
+ * WHAT MOVES WITH THEM: their enrolments, attendance, marks and guardian rows, which
+ * carry no branch of their own and reach one through `app.student_branch`
+ * (20260811000053) — so a Mirpur manager stops seeing them the moment they become
+ * Uttara's, which is the point. Next month's bill moves too, because
+ * `app.stamp_invoice_branch` reads the student's branch when the invoice is raised.
+ *
+ * WHAT STAYS: every invoice and payment already written. 20260811000047 and
+ * 20260811000052 snapshot the branch onto those rows rather than deriving it, so July's
+ * collection stays in the building that collected it. That is the right way round —
+ * §8.3's comparison table would otherwise rewrite a month an owner has already read, and
+ * a branch's takings would change because a child changed school buildings in October.
+ *
+ * Nothing here checks that the branch is one the caller may use, per createStudent's own
+ * insert: `students_branch_scope` is `for all … using(…)` with no `with check`, so
+ * Postgres tests the new row against the same expression and a pinned manager filing a
+ * child into somebody else's building is refused. It arrives as a save failure, which is
+ * what it is.
  */
 export async function updateStudent(
   _prev: ActionState,
@@ -1530,6 +1578,9 @@ export async function updateStudent(
       guardian_phone: guardianPhone,
       institution: institution || null,
       class_level: classLevel || null,
+      // The building, from the form on every save. See the head of this function for
+      // what follows the child across and what stays behind.
+      branch_id: postedBranchId(formData),
     })
     .eq('coaching_center_id', session.active.centerId)
     .eq('id', studentId)
@@ -2280,6 +2331,27 @@ export async function createTeacher(
  * the profile is the person's own — they may teach at two centres and see their own
  * name in both. An owner fixing their spelling of it does not get to rewrite what
  * somebody else's app calls them.
+ *
+ * AND THIS IS WHERE A COLLEAGUE MOVES BUILDINGS. The branch comes in on every save,
+ * for BranchPicker's reason, and a head office that runs three buildings can put a
+ * teacher in the one they actually teach in.
+ *
+ * WHAT MOVES WITH THEM is thinner than it looks and worth knowing before you use it.
+ * `teachers.branch_id` is which building's staff list they are on and which building's
+ * payroll pays them — 20260811000053 reads it for their own row, and
+ * `app.payee_branch` reads it again to file a salary payment. Their batches do not
+ * follow: `batches.branch_id` is its own column, because the class is in a room and
+ * the room does not move when the teacher does. So a teacher moved to Mirpur whose
+ * batches are still at Dhanmondi is a real and perfectly ordinary state — they travel.
+ *
+ * WHAT STAYS is every salary already paid. 20260811000052 snapshots the branch onto
+ * the voucher, so June's payroll stays in the building that paid it and July's follows
+ * them across.
+ *
+ * NOT `center_members.branch_id`, which is the other thing a branch can mean about a
+ * person: what they are allowed to see. A teacher pinned there reads one building's
+ * roster and nothing else, and that is a permission rather than a filing — it is set
+ * on another screen, in a later commit, and this field does not touch it.
  */
 export async function updateTeacher(
   _prev: ActionState,
@@ -2327,7 +2399,12 @@ export async function updateTeacher(
 
   const { data: saved, error } = await supabase
     .from('teachers')
-    .update({ name })
+    .update({
+      name,
+      // The building, from the panel on every save. See the head of this function for
+      // what follows them across and what does not.
+      branch_id: postedBranchId(formData),
+    })
     .eq('coaching_center_id', centerId)
     .eq('id', teacherId)
     .select('id')

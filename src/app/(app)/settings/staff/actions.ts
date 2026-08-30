@@ -238,10 +238,24 @@ async function employmentDates(
 /**
  * Corrects what was written down about somebody.
  *
- * A name, a number, a job title or a start date typed wrong, and nothing else — the
- * money is one screen along and the login is not this screen's to give. `active` and
- * `left_on` are not touched here either: a correction and a resignation are different
- * things and share no submit button.
+ * A name, a number, a job title or a start date typed wrong, and the building they work
+ * in — nothing else. The money is one screen along and the login is not this screen's to
+ * give. `active` and `left_on` are not touched here either: a correction and a
+ * resignation are different things and share no submit button.
+ *
+ * THE BUILDING IS WRITTEN ON EVERY SAVE, and that is BranchPicker's doing rather than
+ * this action's: a form that submitted the field for the head office and not for a
+ * pinned manager would leave this update unable to tell "head office" from "not asked",
+ * and 20260811000053's restrictive policy has no `with check`, so a manager posting null
+ * would have their corrected phone number refused. The panel hands back the branch the
+ * row already holds when it has nothing to offer, so the write below is a no-op for
+ * everybody it was not asked of.
+ *
+ * WHAT MOVES IS NEXT MONTH'S WAGE. `app.payee_branch` reads this column when a salary
+ * payment is filed, and 20260811000052 snapshots the answer onto the voucher — so June's
+ * payslip stays in the building that paid it and July's follows them across. Anything
+ * already agreed on the payroll screen moves with them too: `salary_terms` carries no
+ * branch of its own, because what somebody is paid is not a fact about a room.
  */
 export async function saveEmployee(
   _prev: StaffState,
@@ -276,6 +290,8 @@ export async function saveEmployee(
       phone: fields.phone,
       joined_on: fields.joinedOn,
       note: fields.note,
+      // The building, from the panel on every save. See the head of this function.
+      branch_id: postedBranchId(formData),
     })
     .eq('id', employeeId)
     .eq('coaching_center_id', session.active.centerId)

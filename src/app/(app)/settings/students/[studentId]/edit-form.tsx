@@ -5,19 +5,29 @@
  *
  * Deliberately the same fields in the same order as the add form, because it is the
  * same information and an owner who has typed one should not have to re-find
- * anything in the other. The differences are the two things only an edit can do:
- * the status, and batches that come off as well as on.
+ * anything in the other. The differences are the things only an edit can do: the
+ * status, batches that come off as well as on, and moving the child to another building.
  *
  * The status drives the batch list's visibility rather than the server deciding
  * quietly. A student who has left is not in any batch, so offering the checkboxes
  * beside "left" would be offering a contradiction — and an owner who ticked one and
  * saved anyway would have to be told why it did not take. Hiding them says it first.
+ *
+ * THE BRANCH FIELD STAYS WHATEVER THE STATUS IS, unlike the batches. A child who left in
+ * March left one of the buildings, and taking the answer off the form would file their
+ * whole history at head office the next time anybody corrected a spelling. It sits above
+ * the status for the add form's reason — a batch is a room in a building, so the building
+ * is the wider question — and this is the only screen in the product that can move a
+ * student between them; see `updateStudent` for what follows them across and what does
+ * not.
  */
 import { useActionState, useState } from 'react'
 import { useRouter } from 'next/navigation'
 
+import { BranchPicker } from '@/components/branch-picker'
 import { Alert, Button, Field } from '@/components/ui'
 import { formatBdMobile, normalizeBdMobile } from '@/lib/bd/phone'
+import type { BranchChoice } from '@/lib/branches'
 import type { T } from '@/lib/i18n'
 import type { StudentStatus } from '@/lib/supabase/types'
 import { STUDENT_STATUSES } from '@/lib/students/status'
@@ -36,17 +46,28 @@ type StudentValues = {
   guardianPhone: string
   institution: string
   classLevel: string
+  /**
+   * Null and not `''`, unlike every text field above it: null is head office, which is
+   * a real answer here rather than an empty box. The picker turns it into the empty
+   * string a `<select>` needs and `postedBranchId` turns it back.
+   */
+  branchId: string | null
   batchIds: string[]
 }
 
 export function StudentEditForm({
   t,
   common,
+  branchPick,
+  branches,
   student,
   batches,
 }: {
   t: T<'studentForm'>
   common: T<'common'>
+  branchPick: T<'branchPick'>
+  /** `null` draws no branch field — see branchChoicesFor. */
+  branches: BranchChoice[] | null
   student: StudentValues
   batches: BatchOption[]
 }) {
@@ -109,6 +130,12 @@ export function StudentEditForm({
         maxLength={MAX_NAME}
         autoComplete="off"
       />
+
+      {/* Where the add form puts it, above the batches, and carrying the building the
+          child is in today. Everybody who is not asked still submits it — see
+          BranchPicker — which is what makes a save on this form a correction rather than
+          a transfer. */}
+      <BranchPicker t={branchPick} branches={branches} current={student.branchId} />
 
       <label className="flex flex-col gap-1.5">
         <span className="font-medium text-ink">{t.statusLabel}</span>

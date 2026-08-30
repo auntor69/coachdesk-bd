@@ -3,6 +3,7 @@ import Link from 'next/link'
 import { Card } from '@/components/ui'
 import { pageRole, getSession } from '@/lib/auth/session'
 import { formatDate, todayInDhaka } from '@/lib/bd/time'
+import { branchChoicesFor } from '@/lib/branches'
 import { dict, DEFAULT_LOCALE } from '@/lib/i18n'
 import { has, planName, PLANS } from '@/lib/plans'
 import { EMPLOYEE_ROLES, jobTitle } from '@/lib/staff/roles'
@@ -73,18 +74,28 @@ export default async function StaffPage() {
 
   const supabase = await createClient()
 
-  const { data: employees } = await supabase
-    .from('employees')
-    .select('id, name, role, designation, phone, joined_on, left_on, active, note, user_id')
-    // Scoped as well as governed by RLS, for the reason the roster gives: an owner of
-    // two centres passes is_staff_admin for both, so the policy alone would list the
-    // other centre's staff — and their phone numbers — under a switcher saying this one.
-    .eq('coaching_center_id', session.active.centerId)
-    // People who have left sink to the bottom. A centre five years old has more
-    // ex-employees than employees, and mixing them by name alone would bury the cook
-    // who is here today under three who are not.
-    .order('active', { ascending: false })
-    .order('name', { ascending: true })
+  const [{ data: employees }, branches] = await Promise.all([
+    supabase
+      .from('employees')
+      .select(
+        `id, name, role, designation, phone, joined_on, left_on, active, note,
+         user_id, branch_id`,
+      )
+      // Scoped as well as governed by RLS, for the reason the roster gives: an owner of
+      // two centres passes is_staff_admin for both, so the policy alone would list the
+      // other centre's staff — and their phone numbers — under a switcher saying this one.
+      .eq('coaching_center_id', session.active.centerId)
+      // People who have left sink to the bottom. A centre five years old has more
+      // ex-employees than employees, and mixing them by name alone would bury the cook
+      // who is here today under three who are not.
+      .order('active', { ascending: false })
+      .order('name', { ascending: true }),
+    // Which building each of them works in, for the head office of an organisation with
+    // more than one. `null` for everybody else and no query for them — see
+    // branchChoicesFor. Read alongside the list rather than after it: the panel needs it
+    // to draw, and neither read depends on the other.
+    branchChoicesFor(supabase, session),
+  ])
 
   /*
    * FAILING CLOSED, and the empty card is why. A dropped read hands back `null`, and
@@ -135,6 +146,9 @@ export default async function StaffPage() {
       joinedOn: employee.joined_on,
       active: employee.active,
       note: employee.note,
+      // Filed as it stands, so the panel can hand it back when there is nothing to
+      // choose from. Null is head office and a real answer.
+      branchId: employee.branch_id,
       // The centre's own word for the job, or the role's. One place decides, because
       // this row prints it and the payslip will.
       title: jobTitle(employee.role, employee.designation, t.roles),
@@ -187,6 +201,8 @@ export default async function StaffPage() {
               offLabel={t.inactive}
               today={todayInDhaka()}
               t={d.staffForm}
+              branchPick={d.branchPick}
+              branches={branches}
               common={d.common}
             />
           ))}

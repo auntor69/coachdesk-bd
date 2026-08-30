@@ -152,16 +152,17 @@ export function ExpenseForm({
       </label>
 
       {/* Which building's bill this is, and only for the head office of an institution
-          with more than one — see BranchPicker, which draws nothing for everybody else.
-          Beside the category rather than lower down, because the two of them are the
-          same kind of question: what this row is, as against what it cost. Below them
-          the amount, the date and the method read as one block of figures.
+          with more than one — see BranchPicker, which draws no field for everybody else
+          and answers for them in a hidden one. Beside the category rather than lower
+          down, because the two of them are the same kind of question: what this row is,
+          as against what it cost. Below them the amount, the date and the method read as
+          one block of figures.
 
           `reset()` above puts it back to head office after each save, unlike the method
           below it. The method survives because the next bill in the pile was usually
           paid the same way; the building usually was not, because the head office is
           the one desk that holds every building's paper. */}
-      <BranchPicker t={branchPick} branches={branches} />
+      <BranchPicker t={branchPick} branches={branches} current={null} />
 
       {/* `type="text"` with a decimal keypad rather than `type="number"`: a number input
           swallows the taka sign and the Bangla digits a phone keyboard produces, and its

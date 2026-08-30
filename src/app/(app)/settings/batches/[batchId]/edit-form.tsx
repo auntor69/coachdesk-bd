@@ -7,11 +7,19 @@
  * and an owner who has filled one in should not have to re-find anything in the
  * other. Two things are only here: the switch that closes a batch, and the line under
  * the subject saying what changing it does to marks already taken.
+ *
+ * MOVING A BATCH TO ANOTHER BUILDING IS THE THIRD, and the branch field rides along in a
+ * hidden input for the readers it does not ask — the same shape as `teacherId` below and
+ * a stricter reason: a manager pinned to one building cannot write "no building" at all,
+ * so a form that submitted nothing would fail their ordinary corrections outright. See
+ * BranchPicker.
  */
 import { useActionState, useState } from 'react'
 import { useRouter } from 'next/navigation'
 
+import { BranchPicker } from '@/components/branch-picker'
 import { Alert, Button, Field } from '@/components/ui'
+import type { BranchChoice } from '@/lib/branches'
 import type { T } from '@/lib/i18n'
 import { updateBatch, type ActionState } from '../../actions'
 import { MAX_NAME } from '@/lib/limits'
@@ -28,12 +36,16 @@ type BatchValues = {
   endTime: string
   fee: number
   active: boolean
+  /** Null is head office, and a real answer — see the student form's own note. */
+  branchId: string | null
   days: number[]
 }
 
 export function BatchEditForm({
   t,
   common,
+  branchPick,
+  branches,
   batch,
   subjects,
   teachers,
@@ -42,6 +54,9 @@ export function BatchEditForm({
 }: {
   t: T<'batchForm'>
   common: T<'common'>
+  branchPick: T<'branchPick'>
+  /** `null` draws no branch field — see branchChoicesFor. */
+  branches: BranchChoice[] | null
   batch: BatchValues
   subjects: Option[]
   teachers: Option[]
@@ -127,6 +142,12 @@ export function BatchEditForm({
         // teacher_id would take the batch off its own teacher's list.
         <input type="hidden" name="teacherId" value={batch.teacherId} />
       )}
+
+      {/* Where the create form puts it, with the time rather than the subject: §8.4's
+          "rooms and timetables are physical and do not pool". Moving a batch takes its
+          register, its marks and its enrolments with it, because none of those carry a
+          building of their own — see `updateBatch`. */}
+      <BranchPicker t={branchPick} branches={branches} current={batch.branchId} />
 
       <fieldset className="flex flex-col gap-2">
         <legend className="mb-1 font-medium text-ink">{t.whichSlot}</legend>

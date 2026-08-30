@@ -2,6 +2,7 @@ import Link from 'next/link'
 
 import { Card } from '@/components/ui'
 import { pageRole, getSession } from '@/lib/auth/session'
+import { branchChoicesFor } from '@/lib/branches'
 import { createClient } from '@/lib/supabase/server'
 import { hasStaff } from '@/lib/plans'
 import { SLOT_ORDER, slotLabel } from '@/lib/bd/schedule'
@@ -43,12 +44,12 @@ export default async function BatchPage({
   const d = dict(locale)
   const t = d.settings.batches
 
-  const [batchRow, { data: subjects }, { data: teachers }] = await Promise.all([
+  const [batchRow, { data: subjects }, { data: teachers }, branches] = await Promise.all([
     supabase
       .from('batches')
       .select(
         `id, name, subject_id, teacher_id, slot, start_time, end_time,
-         monthly_fee_bdt, active,
+         monthly_fee_bdt, active, branch_id,
          subjects (id, name, name_bn), teachers (id, name),
          batch_schedules (day_of_week)`,
       )
@@ -70,6 +71,9 @@ export default async function BatchPage({
       .eq('coaching_center_id', session.active.centerId)
       .eq('active', true)
       .order('name'),
+    // Which building the class is in, for the head office of an organisation with more
+    // than one. `null` for everybody else and no query for them — see branchChoicesFor.
+    branchChoicesFor(supabase, session),
   ])
 
   // Destructured on its own line, because `error` decides one of the two answers
@@ -168,6 +172,8 @@ export default async function BatchPage({
       <BatchEditForm
         t={d.batchForm}
         common={d.common}
+        branchPick={d.branchPick}
+        branches={branches}
         batch={{
           id: batch.id,
           name: batch.name,
@@ -180,6 +186,7 @@ export default async function BatchPage({
           endTime: (batch.end_time ?? '').slice(0, 5),
           fee: Number(batch.monthly_fee_bdt),
           active: batch.active,
+          branchId: batch.branch_id,
           days: (batch.batch_schedules ?? []).map((s) => s.day_of_week),
         }}
         subjects={subjectOptions}

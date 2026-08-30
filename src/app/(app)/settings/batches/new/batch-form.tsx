@@ -132,7 +132,7 @@ export function BatchForm({
       {/* With the time and not with the subject, because it is the same kind of fact:
           §8.4's "rooms and timetables are physical and do not pool". Draws nothing for
           all but the head office of an institution. */}
-      <BranchPicker t={branchPick} branches={branches} />
+      <BranchPicker t={branchPick} branches={branches} current={null} />
 
       <fieldset className="flex flex-col gap-2">
         <legend className="mb-1 font-medium text-ink">{t.whichSlot}</legend>

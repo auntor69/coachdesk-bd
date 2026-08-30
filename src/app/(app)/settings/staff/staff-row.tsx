@@ -14,6 +14,12 @@
  * be deleted, and deleting the ones who have not been paid yet would be a different rule
  * for the same kind of person. See the head of ./actions.ts.
  *
+ * THE BRANCH IS IN THE FIRST SECTION ONLY. Moving somebody to another building is a
+ * correction of the same kind as their job title, and `setEmployeeActive` below writes
+ * `active` and `left_on` and nothing else — a picker over that button would look like it
+ * decided which building they left from, which is a thing nobody can change after the
+ * fact. See BranchPicker for why the field answers even when it draws nothing.
+ *
  * `SettingsListRow` was not reused, though the shape rhymes: that component is two
  * names, a count and three verbs, and every field on it is a name. This row has six
  * fields, a select and a date, and the thing it can refuse is a date rather than a
@@ -21,7 +27,9 @@
  */
 import { useActionState, useState } from 'react'
 
+import { BranchPicker } from '@/components/branch-picker'
 import { Alert, Button, Field } from '@/components/ui'
+import type { BranchChoice } from '@/lib/branches'
 import type { T } from '@/lib/i18n'
 import { MAX_LABEL, MAX_NAME, MAX_TEXT } from '@/lib/limits'
 import type { EmployeeRole } from '@/lib/supabase/types'
@@ -46,6 +54,12 @@ export type StaffMember = {
   active: boolean
   note: string | null
   /**
+   * Which building they are filed under, or `null` for head office — a real answer and
+   * not a blank. `employees.branch_id`, which is the staff list they appear on and the
+   * branch `app.payee_branch` bills their wage to.
+   */
+  branchId: string | null
+  /**
    * The job as it should print — the centre's own word for it, or the role's. Worked
    * out by the page with `jobTitle`, because the labels are the dictionary's.
    */
@@ -65,6 +79,8 @@ export function StaffRow({
   offLabel,
   today,
   t,
+  branchPick,
+  branches,
   common,
 }: {
   employee: StaffMember
@@ -74,6 +90,9 @@ export function StaffRow({
   /** Today in Dhaka, as YYYY-MM-DD. Caps both date fields. See ExpenseForm. */
   today: string
   t: T<'staffForm'>
+  branchPick: T<'branchPick'>
+  /** `null` draws no branch field — see branchChoicesFor. */
+  branches: BranchChoice[] | null
   common: T<'common'>
 }) {
   const [open, setOpen] = useState(false)
@@ -170,6 +189,19 @@ export function StaffRow({
               defaultValue={employee.designation ?? ''}
               maxLength={MAX_LABEL}
               autoComplete="off"
+            />
+
+            {/* Where the add form puts it, between the job and the phone number. Its own
+                id, because this list draws a panel per person and every one of them is in
+                the document as soon as it is opened — a shared id would point each label
+                at the first row's select. Everybody the picker does not ask still submits
+                the building they are filed under, which is what keeps a corrected phone
+                number from moving them to head office; see BranchPicker. */}
+            <BranchPicker
+              t={branchPick}
+              branches={branches}
+              current={employee.branchId}
+              id={`employee-branch-${employee.id}`}
             />
 
             <Field

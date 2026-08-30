@@ -3,9 +3,9 @@
 /**
  * The teacher list, with each teacher's record editable in place.
  *
- * Three errands behind one summary, in the order an owner needs them: their name
- * and subjects, which is the repair almost everybody eventually wants and the one
- * that can never be refused; their permissions; and their account.
+ * Three errands behind one summary, in the order an owner needs them: their name,
+ * subjects and building, which is the repair almost everybody eventually wants and the
+ * one that can never be refused; their permissions; and their account.
  *
  * Permissions are per-teacher rather than per-role because real centres are not
  * tidy: one senior teacher collects fees and edits the roster, another only marks
@@ -15,9 +15,11 @@
  */
 import { useActionState, useState } from 'react'
 
+import { BranchPicker } from '@/components/branch-picker'
 import { Alert, Field } from '@/components/ui'
 import { formatBdMobile } from '@/lib/bd/phone'
 import { MIN_PASSWORD } from '@/lib/auth/password'
+import type { BranchChoice } from '@/lib/branches'
 import { MAX_NAME } from '@/lib/limits'
 import { PERMISSION_KEYS } from '@/lib/permissions'
 import type { T } from '@/lib/i18n'
@@ -51,6 +53,14 @@ export type TeacherRow = {
   /** Already a sentence — see settings.teachers.batches for why. */
   batchLabel: string
   permissions: Record<string, boolean>
+  /**
+   * Which building they teach in, and null for head office.
+   *
+   * `teachers.branch_id`, which is which building's list they appear on and whose salary
+   * bill they land in — not `center_members.branch_id`, which is what they may read and
+   * is a different screen's business. See the note in the add form.
+   */
+  branchId: string | null
   /** The reader's own teacher record, which `trim` refuses to switch off. */
   isSelf: boolean
 }
@@ -59,6 +69,8 @@ export function TeacherList({
   teachers,
   subjects,
   t,
+  branchPick,
+  branches,
   permissions: labels,
   common,
   trim = false,
@@ -66,6 +78,9 @@ export function TeacherList({
   teachers: TeacherRow[]
   subjects: SubjectOption[]
   t: T<'teacherList'>
+  branchPick: T<'branchPick'>
+  /** `null` draws no branch field — see branchChoicesFor. */
+  branches: BranchChoice[] | null
   permissions: T<'teacherPermissions'>
   common: T<'common'>
   /**
@@ -236,6 +251,20 @@ export function TeacherList({
                 required
                 maxLength={MAX_NAME}
                 autoComplete="off"
+              />
+
+              {/* Where they teach, which the add form asks in the same place — after
+                  the name, before the subjects. Per-row id for the reason the name
+                  field has one: every row's panel is in the document whether it is
+                  open or not, so one shared id would point nine labels at the first
+                  row's select. Everybody who is not asked still submits the branch
+                  they are filed under, which is what keeps a spelling correction from
+                  moving them to head office; see BranchPicker. */}
+              <BranchPicker
+                t={branchPick}
+                branches={branches}
+                current={teacher.branchId}
+                id={`teacher-branch-${teacher.id}`}
               />
 
               {offered.length > 0 && (

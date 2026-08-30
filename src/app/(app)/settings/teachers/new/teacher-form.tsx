@@ -124,7 +124,7 @@ export function TeacherForm({
           its own screen — 20260811000054 declines to infer it for exactly this reason.
           A teacher filed under Mirpur still reads the whole organisation until
           somebody says otherwise. */}
-      <BranchPicker t={branchPick} branches={branches} />
+      <BranchPicker t={branchPick} branches={branches} current={null} />
 
       {/* A line where the ticks would be, when the list of subjects could not be read.
           The same call the new-student form makes and for the same reasons: the ticks

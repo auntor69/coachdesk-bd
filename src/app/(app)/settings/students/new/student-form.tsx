@@ -96,7 +96,9 @@ export function StudentForm({
           a room in a building, so an owner who has decided the building has narrowed
           which classes make sense. Draws nothing for all but the head office of an
           institution. */}
-      <BranchPicker t={branchPick} branches={branches} />
+      {/* `current={null}`: a form that has no row yet has no building to keep, and null
+          is head office, which is where a single-building centre files everything. */}
+      <BranchPicker t={branchPick} branches={branches} current={null} />
 
       {/* A line where the ticks would be, when the list of batches could not be read.
 

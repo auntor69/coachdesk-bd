@@ -109,7 +109,7 @@ export function EmployeeForm({
       {/* Which building they work in — the branch their wage is billed to, through
           `app.payee_branch`. Draws nothing for all but the head office of an
           institution. */}
-      <BranchPicker t={branchPick} branches={branches} />
+      <BranchPicker t={branchPick} branches={branches} current={null} />
 
       <Field
         label={`${t.phoneLabel} (${common.optional})`}
