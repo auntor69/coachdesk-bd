@@ -202,6 +202,20 @@ export default async function StaffPage() {
         <span aria-hidden>+&nbsp;</span>
         {t.new}
       </Link>
+
+      {/* And on to what they are paid. Under the add button rather than above the list,
+          because the sequence runs that way: a centre writes its people down first and
+          agrees their salaries afterwards, and until it does, their wages are missing
+          from every profit figure it reads. A plain underlined link and not a second
+          dashed panel — there is one thing to do on this screen, and adding somebody
+          is it. */}
+      <Link
+        href="/payroll"
+        className="inline-flex min-h-tap items-center font-medium text-brand-800
+          underline"
+      >
+        {t.payrollLink} →
+      </Link>
     </div>
   )
 }

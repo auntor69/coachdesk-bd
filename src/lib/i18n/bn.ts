@@ -813,6 +813,17 @@ export const bn = {
     spendingLink: 'এই মাসের খরচ',
 
     /**
+     * The way onto the wage bill, fourth and last in the money card, and the same
+     * argument as the spending link above it taken one step further. §9.8 is
+     * `collected − expenses − payroll`; the register says where the money came from,
+     * the month-close says whether it was enough, spending says what went out, and
+     * this is the one term of the four none of them can see. Ungated like the other
+     * three — a plan that cannot open it is told so on the page rather than shown a
+     * dead end here.
+     */
+    payrollLink: 'বেতনের হিসাব',
+
+    /**
      * The way onto the old-dues screen, under the invoice generator rather than in
      * the total card. It is a setup job done once, not a reading of the month — but
      * it sits directly above the empty board, which is exactly where an owner whose
@@ -1834,6 +1845,280 @@ export const bn = {
     immutable:
       'একবার লিখে রাখলে তা হিসাবে থেকে যায়। অঙ্ক ভুল হলে আবার মাইনাস অঙ্কে লিখুন — তাহলে সংশোধনটা খাতায় দেখা যাবে, ভুলটা চুপচাপ মুছে যাবে না।',
   },
+
+  /**
+   * What the centre has agreed to pay the people who work for it.
+   *
+   * THE THIRD TERM OF THE PROFIT LINE, and the word is বেতন — what an owner calls it —
+   * rather than a transliteration of "payroll", which nobody here reads. The spending
+   * screen has a বেতন category too, and that is not a collision to be tidied away:
+   * they are two places the same money can be written down, `center_profit_month`
+   * takes it from this one, and `expenses.deferredNote` is the sentence that keeps an
+   * owner who uses both from reading their profit as higher than it was.
+   *
+   * WHAT THIS SCREEN CANNOT TOTAL is a per-class agreement, and half the strings below
+   * exist to say so. 20260811000044 refuses to store what a per-class teacher earns in
+   * a month, because that figure goes stale the next time they teach — so a bill of
+   * four monthly agreements and two per-class ones has a total covering four of its six
+   * rows, and the owner has to be able to see that from the foot of the page.
+   */
+  payroll: {
+    title: 'বেতন',
+    subtitle: 'কার বেতন কত, তা ঠিক করে রাখুন',
+    backToFees: 'ফি-এর তালিকায় ফিরুন',
+
+    lockedTitle: 'বেতনের হিসাব সেন্টার প্ল্যানে',
+    /**
+     * What is missing, not what is disallowed. An owner who followed a link here has
+     * done nothing wrong, and the sentence names the plan they are on so the answer is
+     * not "no" but "not yet, and here".
+     */
+    lockedBody: (plan: string, center: string) =>
+      `${plan} প্ল্যানে কত টাকা আদায় হয়েছে তা ফি-এর তালিকায় দেখা যায়। কার বেতন কত, মাসে মোট বেতন কত, আর আদায় থেকে খরচ ও বেতন বাদ দিয়ে লাভ কত — তা ${center}-এ।`,
+
+    /**
+     * Written and read back in one sentence, with the retirement said out loud.
+     *
+     * `salary_terms_retire_previous` switches off the payee's previous live agreement
+     * on every insert, so an owner correcting a typo and an owner granting a raise do
+     * the same thing here. Silence about it would leave both wondering whether there
+     * are now two figures on the bill.
+     */
+    saved: 'বেতন ঠিক করা হলো। আগে কোনো অঙ্ক ঠিক করা থাকলে সেটি বন্ধ হয়ে গেছে।',
+    stopped: 'এই বেতন বন্ধ করা হলো।',
+
+    billTitle: 'যাঁদের বেতন ঠিক করা আছে',
+    empty: 'এখনো কারও বেতন ঠিক করা হয়নি।',
+    /**
+     * All three reads fail closed together, so one sentence covers them.
+     *
+     * See settings.listUnreadable for the argument: a dropped read drawn as an empty
+     * list is "nobody is on the payroll" on the screen of a centre with fourteen
+     * people on it — under a form, so the owner's next move is to type in somebody
+     * whose figure is already agreed.
+     */
+    unreadable:
+      'বেতনের তালিকা এখন পড়া যাচ্ছে না, তাই কিছুই দেখানো হচ্ছে না — অর্ধেক তালিকা না দেখানোই ভালো। আবার চেষ্টা করুন।',
+
+    /** A teacher has no job title, because teaching is the job. See staff/roles.ts. */
+    teacherJob: 'শিক্ষক',
+    /** The same word the staff list puts beside somebody who has been switched off. */
+    inactive: 'বাদ',
+    /** On the row, under the name: when this figure started applying. */
+    since: (date: string) => `${date} থেকে`,
+    /**
+     * The figure on a per-class row, where there is no monthly one to print.
+     *
+     * A rate and not a total, and the words have to carry that: ৳৩৫০ printed alone in
+     * the place the row above it prints ৳১৩,০০০ is a teacher who looks very cheap.
+     */
+    perClassRate: (amount: string) => `প্রতি ক্লাসে ${amount}`,
+
+    monthlyTotal: 'প্রতি মাসে বেতন',
+    monthlyCount: (n: number) => `${n} জনের মাসিক বেতন`,
+    /**
+     * What the total does not cover, printed whenever there is any of it.
+     *
+     * The count and not the money, because the money is not knowable from this screen:
+     * a per-class teacher's month is a number of classes times a rate, and neither
+     * factor is on this table. Two figures — the total and how many rows it leaves out
+     * — is the whole reason `tallyBill` returns five.
+     */
+    perClassCount: (n: number) => `আরও ${n} জন ক্লাস-প্রতি হারে`,
+    perClassNote:
+      'ক্লাস-প্রতি বেতন মাসে কত হবে তা কত ক্লাস হলো তার উপর, তাই ওপরের যোগে সেটি নেই। প্রতি ক্লাসের হার সারিতে লেখা আছে।',
+    /**
+     * A bill of nothing but per-class agreements, where a ৳০ total would be a lie
+     * about two teachers who are certainly paid something. The register hides its own
+     * empty figures the same way.
+     */
+    noMonthly:
+      'সবাই ক্লাস-প্রতি হারে, তাই মাসে মোট বেতন কত হবে তা এই পর্দা থেকে বলা যায় না।',
+
+    /**
+     * The line this screen exists to be able to draw, and the reason the bill flags a
+     * row instead of dropping it.
+     *
+     * `employees.active` and `salary_terms.active` are two different facts and the
+     * tables know nothing about each other, so a cook marked as gone in March is still
+     * agreed at ৳8,000 in August. Dropping the row would quietly correct a figure the
+     * centre is wrong about; this says there is something to do and what it costs not
+     * to do it, in that order.
+     */
+    goneCount: (n: number) => `${n} জন তালিকা থেকে বাদ, কিন্তু তাঁদের বেতন এখনো চালু`,
+    goneNote:
+      'কেউ চলে গেলে তাঁর বেতন নিজে থেকে বন্ধ হয় না। সারিতে গিয়ে বন্ধ করে দিন — নইলে প্রতি মাসের বেতন-খরচ আসলের চেয়ে বেশি দেখাবে, আর লাভ কম দেখাবে।',
+
+    /**
+     * THE QUESTION THIS SCREEN IS ACTUALLY OPENED WITH, at least the first time.
+     *
+     * The bill itself cannot ask it: an absent row looks like an absent person.
+     * Somebody with no agreement is not paid nothing, they are unrecorded, and the
+     * difference is a wage bill short by a cook. Active people only — see
+     * `withoutTerms` for why listing the ones who left would put a permanent "you have
+     * not finished" prompt on the screen of every centre with any staff turnover.
+     */
+    missingTitle: 'এখনো যাঁদের বেতন ঠিক করা হয়নি',
+    missingBody:
+      'তালিকায় নাম না থাকলে বেতন শূন্য ধরা হয় না, ধরা হয় লেখা হয়নি। তাই এঁদের বেতন এই মাসের হিসাবে নেই, আর লাভ আসলের চেয়ে বেশি দেখাচ্ছে।',
+
+    /**
+     * The two bases, keyed by the enum so a third one added in a migration cannot ship
+     * without a label. Order lives in src/lib/payroll/basis.ts, not here — the page
+     * and the form both read this map and neither decides what comes first.
+     */
+    bases: {
+      monthly: 'মাসিক',
+      per_class: 'ক্লাস-প্রতি',
+    },
+
+    errors: {
+      /** Not "not allowed": an owner on a teacher plan has bought a different thing. */
+      needsCenter: 'বেতনের হিসাব সেন্টার প্ল্যানের সুবিধা।',
+      payeeRequired: 'কার বেতন, তা বেছে নিন।',
+      /**
+       * Read back before the insert so the composite foreign key's `23503` never
+       * reaches the screen as "it did not save". A malformed id lands here too, and
+       * "this centre has no such person" is the true sentence about it.
+       */
+      payeeNotFound: 'এই সেন্টারে এমন কেউ নেই। পর্দাটি আবার লোড করে দেখুন।',
+      /**
+       * The refusal with a fix in it. Two things bring somebody here — the wrong name
+       * picked off a stale form, or a centre that has taken somebody back and not said
+       * so on the staff screen — and only the second one is actionable, so it is named.
+       */
+      payeeGone:
+        'তিনি তালিকা থেকে বাদ আছেন। আবার কাজ করছেন হলে আগে কর্মী বা শিক্ষকের তালিকায় তাঁকে ফিরিয়ে নিন, তারপর বেতন ঠিক করুন।',
+      basisRequired: 'বেতন কীভাবে হিসাব হবে, তা বেছে নিন।',
+      dateRequired: 'কোন তারিখ থেকে এই বেতন, তা লিখুন।',
+      /** A year typed into a date field. Same trap as the expense screen's own. */
+      dateTooOld: 'তারিখটা ঠিক মনে হচ্ছে না — সালটা দেখে নিন।',
+      /**
+       * The one refusal here the table would not make, and the sentence says why
+       * rather than just no.
+       *
+       * `salary_terms_retire_previous` knows nothing about `effective_from`: a raise
+       * dated the 1st of next month switches off today's agreement the moment it is
+       * written, and every screen reading the live row shows the new figure straight
+       * away. The schema's model is "active means current".
+       */
+      dateFuture:
+        'আগামী দিনের বেতন আগে থেকে লিখে রাখা যায় না — লিখলে আজ থেকেই নতুন অঙ্কটা চালু হয়ে যাবে। যেদিন থেকে নতুন বেতন, সেদিন এসে লিখুন।',
+      rateRequired: 'প্রতি ক্লাসে কত টাকা, তা লিখুন।',
+      rateZero: 'প্রতি ক্লাসে শূন্য টাকা কোনো হার নয়। যত টাকা দেওয়া হয় তা লিখুন।',
+      amountTooLarge: 'অঙ্কটা এই পর্দার সীমার চেয়ে বড়। দেখে নিন, বা আমাদের জানান।',
+      basicRequired: 'মূল বেতন কত, তা লিখুন।',
+        /**
+       * One of the three optional boxes held something `parseTaka` could not read.
+       *
+       * Refused rather than treated as zero, which is the whole reason `parseTaka`
+       * returns null: a ৳1,500 allowance typed `1,5OO` silently becoming nothing is a
+       * wage bill short by ৳1,500 that nobody will ever look for.
+       */
+      partUnreadable:
+        'ভাতা, অন্যান্য বা কাটার ঘরের অঙ্কটা পড়া যাচ্ছে না। শুধু টাকার অঙ্ক লিখুন, খালি রাখলে শূন্য ধরা হবে।',
+      /**
+       * The columns' own `check (>= 0)`, said as a sentence about the box. A deduction
+       * typed negative would be added to the salary rather than taken off it.
+       */
+      partNegative:
+        'কোনো ঘরে মাইনাস অঙ্ক দেওয়া যাবে না। যত টাকা কাটা যাবে তা কাটার ঘরে প্লাস অঙ্কেই লিখুন — যোগফল থেকে নিজে থেকেই বাদ যাবে।',
+      /**
+       * The table permits this and the screen must not. All four columns default to 0
+       * and their sum is checked nowhere, so an empty form submitted would sit on the
+       * bill as a line saying the centre pays this person nothing.
+       */
+      netZero: 'শূন্য টাকার বেতন কোনো বেতন নয়। মাসে কত টাকা দিতে হবে তা লিখুন।',
+      deductionsTooBig:
+        'কাটার অঙ্কটা বেতনের চেয়ে বেশি হয়ে গেছে, তাই হাতে কিছুই থাকছে না। অঙ্কগুলো দেখে নিন।',
+      failed: 'এটি সংরক্ষণ করা যায়নি।',
+      /**
+       * Both the stop verb's misses: no id in the form, and an id that matched nothing
+       * live at this centre. The second is what a second tap on a stale page gets, and
+       * it is deliberately not a success — the row it would have stopped is already off
+       * the bill, and saying "stopped" twice teaches an owner the button is unreliable.
+       */
+      notFound: 'এই বেতনটি আর তালিকায় নেই। পর্দাটি আবার লোড করে দেখুন।',
+    },
+  },
+
+  /**
+   * The form that agrees a figure with somebody, which is a client component.
+   *
+   * SEPARATE FROM `payroll` BECAUSE OF `T`. That type maps a group's function leaves to
+   * `never` (see @/lib/i18n), and `payroll` holds seven strings that take an argument —
+   * so `t={d.payroll}` on this form would not compile. Same split as `expenseForm`.
+   *
+   * The basis labels are not here. Both halves name a basis — the form in its picker,
+   * the bill in every row — and a second copy of two labels is a second answer to what
+   * `per_class` is called. The page passes `payroll.bases` down, the way the spending
+   * screen passes its categories down.
+   */
+  salaryForm: {
+    formTitle: 'বেতন ঠিক করে দিন',
+    payeeLabel: 'কার বেতন',
+    /** The two groups in the picker, because an id alone does not say which table. */
+    payeeTeachers: 'শিক্ষক',
+    payeeStaff: 'কর্মী',
+    basisLabel: 'বেতন কীভাবে হিসাব হবে',
+    basicLabel: 'মূল বেতন',
+    allowancesLabel: 'ভাতা',
+    otherLabel: 'অন্যান্য',
+    deductionsLabel: 'কাটা যাবে',
+    deductionsHint: 'প্লাস অঙ্কেই লিখুন — যোগফল থেকে নিজে থেকেই বাদ যাবে',
+    perClassLabel: 'প্রতি ক্লাসে কত',
+    /**
+     * Why this basis has no monthly figure anywhere on the screen, said in the form
+     * that chooses it rather than only in the foot of the bill.
+     */
+    perClassHint:
+      'মাসে কত ক্লাস হলো তার উপর নির্ভর করে, তাই মাসের মোট বেতনের যোগে এই হারটি থাকবে না',
+    effectiveLabel: 'কোন তারিখ থেকে',
+    noteLabel: 'নোট',
+    notePlaceholder: 'যেমন ঈদ বোনাস আলাদা',
+    submit: 'বেতন ঠিক করুন',
+    /**
+     * The raise rule, under the button, said before the owner submits rather than after.
+     *
+     * There is no edit verb on this screen and no way to change a figure in place: a
+     * new number is a new agreement, the trigger switches the old one off, and last
+     * April's salary stays explicable by the row that was live in April. An owner
+     * expecting an edit button needs to know that picking the same person again *is*
+     * the edit button.
+     */
+    replaces:
+      'যাঁর বেতন আগে ঠিক করা আছে তাঁকে আবার বেছে নিলে নতুন অঙ্কটাই চালু হবে, আর আগের অঙ্কটা কবে থেকে কত ছিল তা হিসাবে থেকে যাবে। বেতন বাড়ানো বা কমানো এভাবেই লেখা হয়।',
+  },
+
+  /**
+   * One agreement on the bill, and the tap that stands it down.
+   *
+   * Its own group and not part of `salaryForm`: the row is read far more often than the
+   * form is used, and the four words here are the whole of what a reader can do to a
+   * row. Same call as `cancel` beside `feeRow` on the fee board.
+   */
+  salaryRow: {
+    /** A plain underlined word, not a button. See CancelBill for why. */
+    open: 'এই বেতন বন্ধ করুন',
+    heading: 'এই বেতন বন্ধ করে দেব?',
+    /**
+     * What survives, first, because losing the record is what an owner is afraid of —
+     * and it is an UPDATE on `active`, so nothing is lost. `salary_payments` revokes
+     * DELETE outright, so the salaries already paid could not go even if this tried.
+     */
+    warning:
+      'কত টাকা কবে থেকে ঠিক করা ছিল তা হিসাবে থেকে যাবে, যত বেতন দেওয়া হয়েছে তাও। শুধু এখন থেকে মাসের বেতন-খরচে আর যোগ হবে না।',
+    keep: 'থাকুক',
+    confirm: 'হ্যাঁ, বন্ধ করুন',
+    stopping: 'বন্ধ হচ্ছে…',
+    /**
+     * Beside a row whose payee has been switched off. On the row and not only in the
+     * foot, because this is the row the owner has to tap and a count at the bottom of
+     * the page does not say which one.
+     */
+    goneHint: 'তিনি তালিকা থেকে বাদ, কিন্তু এই বেতন এখনো চালু আছে।',
+  },
+
 
   /**
    * The column headings inside the downloaded spreadsheets, and the few cells that
@@ -4697,6 +4982,17 @@ export const bn = {
       newTitle: 'নতুন কর্মী',
       count: (n: number) => `বেতনের খাতায় ${n} জন`,
       new: 'কর্মী যোগ করুন',
+      /**
+       * The way from "who works here" to "what they are paid", at the foot of the list.
+       *
+       * Both screens are on the same plan flag today, so this is not a dead end — and it
+       * is the one link in the app with a sequence behind it: somebody who has just
+       * written down a cook is the person who now needs to say what the cook earns, and
+       * until they do, the cook's wages are missing from every profit figure the centre
+       * reads. The fee board carries the same link for the owner who arrives the other
+       * way round.
+       */
+      payrollLink: 'বেতনের হিসাব',
       emptyTitle: 'এখনও কোনো কর্মী যোগ করা হয়নি',
       emptyBody:
         'হিসাবরক্ষক, রিসেপশনিস্ট, কো-অর্ডিনেটর, পরিচ্ছন্নতাকর্মী, দরজার গার্ড — ব্যাচ নেন না কিন্তু কোচিং বেতন দেয়, এমন যে কেউ। শিক্ষকেরা তাঁদের নিজের পাতায় আছেন।',

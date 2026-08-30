@@ -526,6 +526,19 @@ export default async function FeesPage({
             >
               {t.spendingLink} →
             </Link>
+            {/* And the third term of the same subtraction. Spending and salaries are
+                both money going out, but a centre's wage bill is not a bill it pays
+                once — it is an agreement standing behind every month, which is why it
+                has a screen rather than a category on the one above. Last of the four,
+                because it is the only one that is not about this month at all. No
+                `month` in the URL for the same reason: an agreement is not a month. */}
+            <Link
+              href="/payroll"
+              className="inline-flex min-h-tap items-center font-medium
+                text-brand-800 underline"
+            >
+              {t.payrollLink} →
+            </Link>
           </p>
         )}
       </Card>

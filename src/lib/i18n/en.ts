@@ -424,6 +424,9 @@ export const en: Dictionary = {
     /** The way onto the spending screen. See the Bangla note. */
     spendingLink: 'This month’s spending',
 
+    /** The way onto the wage bill. See the Bangla note. */
+    payrollLink: 'The wage bill',
+
     /** The way onto the old-dues screen. See the Bangla note. */
     arrearsLink: 'Load the old dues',
 
@@ -996,6 +999,120 @@ export const en: Dictionary = {
     immutable:
       'Once it is saved it stays on the record. If you get a figure wrong, write it again as a minus amount — that way the correction is on the sheet instead of the mistake being quietly gone.',
   },
+
+  /**
+   * What the centre has agreed to pay the people who work for it.
+   *
+   * See the Bangla for why half of these strings are about what the total leaves out,
+   * and for why salary written down on the spending screen is a different figure.
+   */
+  payroll: {
+    title: 'Salaries',
+    subtitle: 'Write down what each person is paid',
+    backToFees: 'Back to fees',
+
+    lockedTitle: 'The wage bill is part of the Centre plan',
+    lockedBody: (plan: string, center: string) =>
+      `On ${plan} you can see what has been collected on the fee board. What each person is paid, what the month's wage bill comes to, and what is left as profit once spending and salaries come off — that is on ${center}.`,
+
+    saved: 'Saved. Any figure agreed before this one has been switched off.',
+    stopped: 'This salary has been stopped.',
+
+    billTitle: 'Salaries agreed',
+    empty: 'No salary has been agreed with anybody yet.',
+    unreadable:
+      'The salary list cannot be read just now, so nothing is being shown — half a list is worse than none. Please try again.',
+
+    teacherJob: 'Teacher',
+    inactive: 'Off',
+    since: (date: string) => `from ${date}`,
+    perClassRate: (amount: string) => `${amount} per class`,
+
+    monthlyTotal: 'Every month',
+    monthlyCount: (n: number) => `${n} paid monthly`,
+    perClassCount: (n: number) => `${n} more paid per class`,
+    perClassNote:
+      'What a per-class salary comes to in a month depends on how many classes were taught, so it is not in the total above. Each rate is on its own row.',
+    noMonthly:
+      'Everybody here is paid per class, so this screen cannot say what the month will come to.',
+
+    goneCount: (n: number) => `${n} no longer on the staff list, still on the payroll`,
+    goneNote:
+      'A salary is not switched off when somebody leaves. Stop it on the row — otherwise every month shows a wage bill bigger than it is, and a profit smaller.',
+
+    missingTitle: 'Nobody has agreed a salary with these people yet',
+    missingBody:
+      'A missing row does not mean somebody is paid nothing, it means it has not been written down. Their pay is not in this month’s figures, so the profit looks higher than it is.',
+
+    bases: {
+      monthly: 'Monthly',
+      per_class: 'Per class',
+    },
+
+    errors: {
+      needsCenter: 'The wage bill is part of the Centre plan.',
+      payeeRequired: 'Choose whose salary this is.',
+      payeeNotFound: 'There is nobody like that at this centre. Please reload the screen.',
+      payeeGone:
+        'They are marked as no longer here. If they are working again, put them back on the staff or teacher list first, then agree a salary.',
+      basisRequired: 'Choose how the salary is worked out.',
+      dateRequired: 'Write the date this salary starts from.',
+      dateTooOld: 'That date does not look right — please check the year.',
+      /** See the Bangla: the trigger knows nothing about `effective_from`. */
+      dateFuture:
+        'A salary cannot be written down ahead of time — it would start today rather than on the date you chose. Come back on the day the new figure starts.',
+      rateRequired: 'Write how much is paid for one class.',
+      rateZero: 'Nothing per class is not a rate. Write what is actually paid.',
+      amountTooLarge: 'That figure is larger than this screen allows. Please check it, or tell us.',
+      basicRequired: 'Write the basic salary.',
+      partUnreadable:
+        'One of the allowance, other or deduction boxes cannot be read. Please write figures only — an empty box counts as nothing.',
+      partNegative:
+        'No box here takes a minus figure. Write what is deducted in the deduction box as a plain amount — it comes off the total on its own.',
+      netZero: 'A salary of nothing is not a salary. Write what is paid each month.',
+      deductionsTooBig:
+        'The deduction has come out larger than the salary, so there is nothing left to pay. Please check the figures.',
+      failed: 'This could not be saved.',
+      notFound: 'This salary is no longer on the list. Please reload the screen.',
+    },
+  },
+
+  /** See the Bangla for why the form's words are a section of their own. */
+  salaryForm: {
+    formTitle: 'Agree a salary',
+    payeeLabel: 'Whose salary',
+    payeeTeachers: 'Teachers',
+    payeeStaff: 'Staff',
+    basisLabel: 'How the salary is worked out',
+    basicLabel: 'Basic',
+    allowancesLabel: 'Allowances',
+    otherLabel: 'Other',
+    deductionsLabel: 'Deductions',
+    deductionsHint: 'A plain amount — it comes off the total on its own',
+    perClassLabel: 'Paid per class',
+    perClassHint:
+      'This depends on how many classes were taught, so this rate is not in the monthly total',
+    effectiveLabel: 'Starting from',
+    noteLabel: 'Note',
+    notePlaceholder: 'Eid bonus paid separately',
+    submit: 'Agree this salary',
+    /** See the Bangla: picking the same person again is the edit button. */
+    replaces:
+      'Choosing somebody who already has a salary agreed makes this the figure that applies, and keeps the old one on the record with the date it ran from. That is how a rise or a cut is written down.',
+  },
+
+  /** See the Bangla for why the row's words are a section of their own. */
+  salaryRow: {
+    open: 'Stop this salary',
+    heading: 'Stop this salary?',
+    warning:
+      'What was agreed and when stays on the record, and so does every salary already paid. It just stops counting towards the monthly wage bill from now on.',
+    keep: 'Leave it',
+    confirm: 'Yes, stop it',
+    stopping: 'Stopping…',
+    goneHint: 'No longer on the staff list, but this salary is still running.',
+  },
+
 
   /** See the Bangla for why the headings are translated and the values are not. */
   exportSheet: {
@@ -2993,6 +3110,8 @@ export const en: Dictionary = {
       newTitle: 'New staff member',
       count: (n: number) => `${n} on the payroll`,
       new: 'Add a staff member',
+      /** See the Bangla: the one link in the app with a sequence behind it. */
+      payrollLink: 'What each person is paid',
       emptyTitle: 'No staff added yet',
       emptyBody:
         'An accountant, a receptionist, a coordinator, a cleaner, a guard — anyone the centre pays who does not hold a batch. Teachers are on their own screen.',
