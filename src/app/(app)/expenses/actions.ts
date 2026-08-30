@@ -47,6 +47,7 @@ import { todayInDhaka } from '@/lib/bd/time'
 import { dict } from '@/lib/i18n'
 import { EXPENSE_CATEGORIES } from '@/lib/expenses/categories'
 import { PAYMENT_METHODS } from '@/lib/fees/methods'
+import { has } from '@/lib/plans'
 import type { CenterSession } from '@/lib/auth/session'
 import type { ExpenseCategory, PaymentMethod } from '@/lib/supabase/types'
 
@@ -93,16 +94,31 @@ const EARLIEST_SPEND = '2000-01-01'
  * A read-only centre gets its own sentence out of `authRefusal`, and must: an owner whose
  * plan has lapsed is not somebody who "cannot open this", and writing down what the
  * centre spent is not a thing we should be charging for at the moment it matters.
+ *
+ * AND THE PLAN IS CHECKED HERE, not only on the screen. `centerWideReporting` is what
+ * gates the spending ledger, and the locked card the page draws for a plan without it is
+ * a sentence rather than a fence: this action is a public HTTP endpoint, so a centre on a
+ * teacher plan could post the form's fields to it and write rows into a ledger it cannot
+ * open — rows that `center_profit_month` would then subtract from a profit line it also
+ * cannot open. Nothing leaks and no entitlement is raised, but a feature that has not
+ * been bought would be writing to the record, and the write is the part nobody can undo:
+ * 20260811000045 revoked DELETE. The same flag and the same argument as ../payroll's own
+ * caller, which is where the choice of flag is set out at length.
  */
 async function caller(): Promise<CenterSession | ExpenseState> {
+  let session: CenterSession
   try {
-    return requireWritable(await requireRole('manager'))
+    session = requireWritable(await requireRole('manager'))
   } catch (err) {
     if (err instanceof AuthError) {
       return { error: await authRefusal(err, (d) => d.denied.title) }
     }
     throw err
   }
+  if (!has(session.plan, 'centerWideReporting')) {
+    return { error: dict(session.locale).expenses.errors.needsCenter }
+  }
+  return session
 }
 
 function isSession(value: CenterSession | ExpenseState): value is CenterSession {

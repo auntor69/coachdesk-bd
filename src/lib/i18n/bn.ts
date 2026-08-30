@@ -1775,6 +1775,16 @@ export const bn = {
     },
 
     errors: {
+      /**
+       * The plan gate, said by the action rather than only by the screen.
+       *
+       * A Server Action is a public HTTP endpoint, so the locked card above is a sentence
+       * and not a fence: without this check a centre on a teacher plan could post to the
+       * expense form's action and write rows into a ledger it cannot open, which would
+       * then be subtracted from a profit line it also cannot open. Nobody would be
+       * reading a leak, but they would be writing into a feature they have not bought.
+       */
+      needsCenter: 'খরচের হিসাব কেন্দ্র প্ল্যানের সঙ্গে আসে।',
       categoryRequired: 'কোন খাতে খরচ, তা বেছে নিন।',
       amountRequired: 'কত টাকা খরচ হয়েছে লিখুন।',
       /** The table's own `check (amount_bdt <> 0)`, said in advance. */

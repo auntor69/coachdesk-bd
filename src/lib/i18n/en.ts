@@ -940,6 +940,8 @@ export const en: Dictionary = {
     },
 
     errors: {
+      /** See the Bangla: a Server Action is a public HTTP endpoint, not a locked card. */
+      needsCenter: 'Spending comes with the centre plan.',
       categoryRequired: 'Pick what the money was for.',
       amountRequired: 'Say how much was paid.',
       /** The table's own `check (amount_bdt <> 0)`, said in advance. */
