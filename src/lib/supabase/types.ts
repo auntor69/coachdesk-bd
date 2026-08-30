@@ -935,6 +935,7 @@ export type Database = {
           voucher_no: number
           recorded_by: string | null
           created_at: string
+          idempotency_key: string | null
         }
         Insert: {
           id?: string
@@ -950,6 +951,7 @@ export type Database = {
           voucher_no?: number
           recorded_by?: string | null
           created_at?: string
+          idempotency_key?: string | null
         }
         Update: {
           id?: string
@@ -965,6 +967,7 @@ export type Database = {
           voucher_no?: number
           recorded_by?: string | null
           created_at?: string
+          idempotency_key?: string | null
         }
         Relationships: [
           {

@@ -32,6 +32,7 @@ import { useActionState, useEffect, useRef, useState } from 'react'
 
 import Link from 'next/link'
 
+import { MethodPicker, type MethodLabels } from '@/components/method-picker'
 import { Alert, Button, Field } from '@/components/ui'
 import { refundable } from '@/lib/fees/refund'
 import { mintIdempotencyKey } from '@/lib/idempotency'
@@ -41,7 +42,6 @@ import { fill } from '@/lib/i18n/fill'
 import { formatTaka as taka } from '@/lib/money'
 import type { PaymentMethod } from '@/lib/supabase/types'
 import { refundPayment, type FeeState } from './actions'
-import { MethodPicker, type MethodLabels } from './method-picker'
 
 export function RefundBill({
   invoiceId,

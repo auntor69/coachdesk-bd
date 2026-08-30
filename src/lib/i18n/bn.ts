@@ -804,6 +804,15 @@ export const bn = {
     closeLink: 'এই মাসের পুরো হিসাব',
 
     /**
+     * The way onto the spending screen, third in the money card rather than in the
+     * bottom bar. Five staff-admin tabs already fill that bar on a 320px screen, and
+     * this is the question an owner asks immediately after "was the month enough" —
+     * so it belongs beside the two links that answer that, not competing with
+     * attendance for a thumb.
+     */
+    spendingLink: 'এই মাসের খরচ',
+
+    /**
      * The way onto the old-dues screen, under the invoice generator rather than in
      * the total card. It is a setup job done once, not a reading of the month — but
      * it sits directly above the empty board, which is exactly where an owner whose
@@ -1660,6 +1669,170 @@ export const bn = {
      */
     tooLarge:
       'এই মাসে এত বিল আর জমা হয়েছে যে এক দফায় এই পর্দায় যোগ করা যাচ্ছে না। আপনার হিসাবে কোনো সমস্যা নেই — আমাদের সাথে যোগাযোগ করুন, আমরা হিসাব পৌঁছে দেব।',
+  },
+
+  /**
+   * Money going the other way.
+   *
+   * The heading is খরচ — the word an owner uses about their own centre — and not a
+   * transliteration of the table name, which no owner reads.
+   */
+  expenses: {
+    title: 'খরচ',
+    subtitle: 'সেন্টার কোন খাতে কত টাকা দিয়েছে',
+    month: 'মাস',
+    show: 'দেখুন',
+    backToFees: 'ফি-এর তালিকায় ফিরুন',
+
+    lockedTitle: 'খরচের হিসাব সেন্টার প্ল্যানে',
+    lockedBody: (plan: string, center: string) =>
+      `${plan} প্ল্যানে কত টাকা আদায় হয়েছে তা ফি-এর তালিকা আর আদায় খাতায় দেখা যায়। সেন্টার কোন খাতে কত দিচ্ছে — ভাড়া, বিল, বেতন — আর আদায় থেকে সেটা বাদ দিয়ে লাভ কত, তা ${center}-এ।`,
+
+    /**
+     * The voucher number, read back the way the register reads back a receipt number.
+     *
+     * A function, so it cannot cross into the form as a prop — the action builds the
+     * finished sentence and returns it, which is where a number the server assigned
+     * belongs.
+     */
+    savedVoucher: (no: number) => `লেখা হয়েছে। ভাউচার ${no}।`,
+
+    colDate: 'তারিখ',
+    colVoucher: 'ভাউচার',
+    colCategory: 'কোন খাতে',
+    colNote: 'বিবরণ',
+    colMethod: 'কীভাবে',
+    colAmount: 'টাকা',
+    /**
+     * The word on a row where the money came back — a bill paid twice and returned, or a
+     * figure typed wrong and cancelled. `expenses` admits a negative amount and revokes
+     * DELETE, so this is the only correction there is, and without the word the sheet says
+     * nothing about it: one minus sign at the left of a right-aligned figure in a column
+     * of figures that all look like it. Same decision as the register's ফেরত.
+     */
+    correctionLabel: 'সংশোধন',
+    recurringMark: 'মাসিক',
+
+    total: 'এই মাসে খরচ',
+    /**
+     * The two lines under the total, drawn only in a month that has a salary row.
+     *
+     * In a month without one they are the total repeated and a zero — two more figures to
+     * check and nothing more said. The register hides ফেরত the same way.
+     */
+    counted: 'লাভের হিসাব থেকে বাদ যাচ্ছে',
+    deferred: 'বেতনের হিসাবে রাখা হলো',
+    /**
+     * The sentence this screen exists to be able to say.
+     *
+     * `center_profit_month` takes its expense side as everything except the salary
+     * category and its payroll side from `salary_payments`, so salary written down here
+     * and nowhere else is money that left the centre and comes off no side of the profit
+     * figure. That is the right design — it is what stops a centre that uses both screens
+     * being charged twice for the same wages — but it is only safe if the owner is told.
+     */
+    deferredNote: (amount: string) =>
+      `এর মধ্যে ${amount} বেতন খাতে লেখা। লাভের হিসাব বেতন এই পর্দা থেকে বাদ দেয় না, বেতনের পর্দা থেকে বাদ দেয় — যাতে একই বেতন দুবার বাদ না পড়ে। এই বেতন ওই পর্দাতেও লেখা না থাকলে এই মাসের লাভ আসলের চেয়ে বেশি দেখাবে।`,
+    byCategory: 'কোন খাতে কত',
+    entries: (n: number) => `${n}টি খরচ`,
+    empty: 'এই মাসে এখনো কোনো খরচ লেখা হয়নি।',
+    /** See register.unreadable: a document with a hole in it is worse than no document. */
+    unreadable:
+      'এই মাসের খরচ এখন পড়া যাচ্ছে না, তাই কিছুই দেখানো হচ্ছে না — অর্ধেক তালিকা না দেখানোই ভালো। আবার চেষ্টা করুন।',
+    /** See close.tooLarge for why this does not point anywhere. */
+    tooLarge:
+      'এই মাসে এত খরচ লেখা হয়েছে যে এক দফায় এই পর্দায় যোগ করা যাচ্ছে না। আপনার হিসাবে কোনো সমস্যা নেই — আমাদের সাথে যোগাযোগ করুন, আমরা হিসাব পৌঁছে দেব।',
+
+    /**
+     * The twelve categories, keyed by the enum so a new one cannot ship without a label
+     * and a label cannot outlive the value it names. Order lives in
+     * src/lib/expenses/categories.ts, not here.
+     */
+    categories: {
+      rent: 'ঘর ভাড়া',
+      electricity: 'বিদ্যুৎ বিল',
+      internet: 'ইন্টারনেট',
+      marketing: 'প্রচার',
+      printing: 'প্রিন্ট ও ফটোকপি',
+      stationery: 'খাতা-কলম',
+      equipment: 'জিনিসপত্র',
+      maintenance: 'মেরামত',
+      transport: 'যাতায়াত',
+      software: 'সফটওয়্যার ও সাবস্ক্রিপশন',
+      salary: 'বেতন',
+      miscellaneous: 'অন্যান্য',
+    },
+
+    errors: {
+      categoryRequired: 'কোন খাতে খরচ, তা বেছে নিন।',
+      amountRequired: 'কত টাকা খরচ হয়েছে লিখুন।',
+      /** The table's own `check (amount_bdt <> 0)`, said in advance. */
+      amountZero:
+        'শূন্য টাকার খরচ কোনো খরচ নয়। যত টাকা গেছে তা লিখুন, আর কিছু সংশোধন করতে চাইলে মাইনাস অঙ্কে লিখুন।',
+      amountTooLarge: 'অঙ্কটা এই পর্দার সীমার চেয়ে বড়। দেখে নিন, বা আমাদের জানান।',
+      dateRequired: 'কোন তারিখে দেওয়া হয়েছে লিখুন।',
+      /**
+       * A year typed into a date field on a desktop keyboard. Refused rather than stored,
+       * because 0026-08-05 is a row that shows up in no month an owner will ever open and
+       * that nothing can delete — the invisible half of the same problem `dateFuture`
+       * catches at the other end.
+       */
+      dateTooOld: 'তারিখটা ঠিক মনে হচ্ছে না — সালটা দেখে নিন।',
+      /**
+       * `spent_on` is when the money left. A date in the future is a plan, and a plan
+       * subtracted from a month's profit is a figure that is wrong until it comes true.
+       */
+      dateFuture:
+        'ওই দিন এখনো আসেনি। এখানে যে টাকা ইতিমধ্যে চলে গেছে তা লেখা হয় — যেদিন যাবে সেদিন লিখুন।',
+      methodRequired: 'কীভাবে দেওয়া হয়েছে তা বেছে নিন।',
+      failed: 'এটি সংরক্ষণ করা যায়নি।',
+      /**
+       * The insert was refused as a duplicate and the read-back that would have found the
+       * voucher number failed too. The row is there; only its number is unknown. Same
+       * shape as the fee payment path, and for the same reason: a second attempt writes a
+       * second row that nothing can delete.
+       */
+      savedUnknown:
+        'এটি প্রায় নিশ্চিতভাবেই লেখা হয়ে গেছে — নিচের তালিকায় দেখা যাবে। আবার লেখার আগে একবার দেখে নিন, কারণ দুবার লেখা খরচ মুছে ফেলা যায় না, শুধু সংশোধন করা যায়।',
+    },
+  },
+
+  /**
+   * The form half of the spending screen, which is a client component.
+   *
+   * SEPARATE FROM `expenses` BECAUSE OF `T`. That type poisons a group's function
+   * leaves to `never` (see @/lib/i18n), so a section holding a count-dependent string
+   * cannot be handed to a client component at all — `savedVoucher` and `deferredNote`
+   * are built by the server and would make `t={d.expenses}` a compile error on the
+   * form. Splitting on that boundary is the same call `feeRow` and `examForm` make.
+   *
+   * The category labels are not here. Both halves name a category — the form in its
+   * picker, the list in every row — and a second copy of twelve labels is a second
+   * answer to what `printing` is called. The page passes `expenses.categories` down,
+   * the way it passes the payment methods down out of `feeRow`.
+   */
+  expenseForm: {
+    formTitle: 'যা খরচ হয়েছে লিখে রাখুন',
+    categoryLabel: 'কোন খাতে',
+    amountLabel: 'কত টাকা',
+    dateLabel: 'কোন তারিখে দেওয়া হয়েছে',
+    methodLegend: 'কীভাবে দেওয়া হয়েছে',
+    referenceLabel: 'ট্রানজেকশন আইডি',
+    noteLabel: 'সংক্ষেপে কী বাবদ',
+    notePlaceholder: 'শ্রাবণ মাসের ভাড়া',
+    recurringLabel: 'প্রতি মাসেই এই খরচ হয়',
+    recurringHint:
+      'ভাড়া, বিদ্যুৎ, ইন্টারনেট। নিচের তালিকায় চিহ্ন থাকবে, তাই এক নজরেই দেখা যাবে প্রতি মাসে সেন্টারের বাঁধা খরচ কোনগুলো।',
+    submit: 'লিখে রাখুন',
+
+    /**
+     * Why the form has no edit button, said before the owner looks for one.
+     *
+     * 20260811000045 revoked DELETE and all but three columns of UPDATE from a browser
+     * session, so this is not a policy the screen chose and could bend on request.
+     */
+    immutable:
+      'একবার লিখে রাখলে তা হিসাবে থেকে যায়। অঙ্ক ভুল হলে আবার মাইনাস অঙ্কে লিখুন — তাহলে সংশোধনটা খাতায় দেখা যাবে, ভুলটা চুপচাপ মুছে যাবে না।',
   },
 
   /**

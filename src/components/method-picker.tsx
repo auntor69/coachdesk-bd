@@ -3,31 +3,28 @@
 /**
  * The ways money changes hands, as one radio group.
  *
- * ITS OWN FILE RATHER THAN A PIECE OF payment-row.tsx, because two forms ask the
- * question now: the one that takes money in and the one that hands it back. Sharing the
- * control is the only way the two lists cannot drift — a wallet added to the enum has
- * to turn up on both forms or on neither — and it keeps the refund panel from having to
- * import the board row it is rendered inside.
+ * IN components/ RATHER THAN IN fees/, because the third form to ask the question is not
+ * a fee form: writing down what the centre paid the landlord asks it too, and money going
+ * out changes hands the same seven ways money coming in does. It sat next to the board it
+ * was written for while both callers lived there; a sibling route folder reaching across
+ * into another one to borrow a control would have been the wrong shape, and this is where
+ * the components more than one screen needs already live.
+ *
+ * Sharing the control is the only way the lists cannot drift — a wallet added to the enum
+ * turns up on every form or on none — and it keeps the refund panel from having to import
+ * the board row it is rendered inside.
  *
  * NOT A `<select>`. The person using this is holding a phone in one hand with a parent
  * in front of them, and a row of chips' worth of tap target is worth more than the
  * vertical space a native picker would save.
+ *
+ * The values come straight from @/lib/fees/methods, which is the one list and carries the
+ * compile-time check that it holds every value of the enum. Values only: the labels are
+ * looked up in the dictionary, so a wallet added to the enum without a label is a compile
+ * error rather than a blank chip.
  */
 import type { PaymentMethod } from '@/lib/supabase/types'
 import { PAYMENT_METHODS } from '@/lib/fees/methods'
-
-/**
- * Cash first, then the wallets an owner is actually handed money through.
- *
- * An alias now rather than a list, because this was one of five hand-typed copies of the
- * same seven values and one of them had drifted — see @/lib/fees/methods for the whole
- * story and for the compile-time check that replaces having to remember. Values only:
- * the labels are looked up in the dictionary, so a wallet added to the enum without a
- * label is still a compile error rather than a blank chip.
- *
- * The name stays because two forms import it.
- */
-export const METHODS: readonly PaymentMethod[] = PAYMENT_METHODS
 
 /**
  * The dictionary's labels for them, keyed by the enum rather than by a loose string, so
@@ -63,7 +60,7 @@ export function MethodPicker({
         {legend}
       </span>
       <div role="radiogroup" aria-labelledby={id} className="flex flex-wrap gap-2">
-        {METHODS.map((m) => (
+        {PAYMENT_METHODS.map((m) => (
           <label
             key={m}
             className={`inline-flex min-h-tap cursor-pointer items-center rounded-xl

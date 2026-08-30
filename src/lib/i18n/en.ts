@@ -421,6 +421,9 @@ export const en: Dictionary = {
     registerLink: 'This month’s collection register',
     closeLink: 'This month’s full picture',
 
+    /** The way onto the spending screen. See the Bangla note. */
+    spendingLink: 'This month’s spending',
+
     /** The way onto the old-dues screen. See the Bangla note. */
     arrearsLink: 'Load the old dues',
 
@@ -833,6 +836,165 @@ export const en: Dictionary = {
      */
     tooLarge:
       'This month has more bills and payments than this screen can add up in one go. Nothing is wrong with your records — please get in touch and we will get you the figures.',
+  },
+
+  /**
+   * Money going the other way.
+   *
+   * "Spending" rather than "Expenses" in the heading, because that is the word an owner
+   * uses about their own centre; the table is called `expenses` and no owner reads a
+   * table name.
+   */
+  expenses: {
+    title: 'Spending',
+    subtitle: 'What the centre paid out, and what for',
+    month: 'Month',
+    show: 'Show',
+    backToFees: 'Back to fees',
+
+    /**
+     * Why a teacher-tier owner gets a sentence here instead of the screen.
+     *
+     * The finance module is the centre plan's, and `centerWideReporting` is the flag
+     * that says so — this is its first reader. Not `staffManagement`, which is about
+     * colleagues: a one-person centre still pays rent, and the reason this is not free
+     * is that it is the plan's substance rather than that nobody else works there.
+     *
+     * Reachable and refused rather than 404, like every other locked screen: an owner
+     * who taps a link and gets nothing goes looking for the bug.
+     */
+    lockedTitle: 'Spending comes with the centre plan',
+    lockedBody: (plan: string, center: string) =>
+      `On ${plan} the fee board and the collection register still show every taka that came in. What the centre pays out — rent, bills, salaries — and the profit figure that subtracts it from what you collected come with ${center}.`,
+
+    /**
+     * The voucher number, read back the way the register reads back a receipt number.
+     *
+     * A function, so it cannot cross into the form as a prop — the action builds the
+     * finished sentence and returns it, which is where a number the server assigned
+     * belongs.
+     */
+    savedVoucher: (no: number) => `Saved as voucher ${no}.`,
+
+    colDate: 'Date',
+    colVoucher: 'Voucher',
+    colCategory: 'What for',
+    colNote: 'Note',
+    colMethod: 'How',
+    colAmount: 'Amount',
+    correctionLabel: 'Correction',
+    recurringMark: 'Monthly',
+
+    total: 'Spent this month',
+    /**
+     * The two lines under the total, shown only in a month that has a salary row.
+     *
+     * In a month without one they would be the total repeated and a zero, which is two
+     * more figures to check and nothing more said — the register hides "paid back" the
+     * same way.
+     */
+    counted: 'Taken off the profit figure',
+    deferred: 'Left to the payroll screen',
+    /**
+     * The sentence this screen exists to be able to say.
+     *
+     * `center_profit_month` takes its expense side as everything except the salary
+     * category and its payroll side from `salary_payments`, so salary written down here
+     * and nowhere else is money that left the centre and comes off no side of the profit
+     * figure. That is the right design — it is what stops a centre that uses both screens
+     * being charged twice for the same wages — but it is only safe if the owner is told.
+     */
+    deferredNote: (amount: string) =>
+      `${amount} of this is in the salary category. The profit figure does not take salary off from here — it takes it off the payroll screen, so the same wages are never subtracted twice. If these wages were not written down there as well, this month’s profit reads higher than it really was.`,
+    byCategory: 'What it went on',
+    entries: (n: number) => `${n} ${n === 1 ? 'entry' : 'entries'}`,
+    empty: 'Nothing has been written down for this month yet.',
+    /** See register.unreadable: a document with a hole in it is worse than no document. */
+    unreadable:
+      'This month’s spending could not be read just now, so none of it is shown — an incomplete list is worse than none. Please try again.',
+    /** See close.tooLarge for why this does not point anywhere. */
+    tooLarge:
+      'This month has more entries than this screen can add up in one go. Nothing is wrong with your records — please get in touch and we will get you the figures.',
+
+    /**
+     * The twelve categories, keyed by the enum so a new one cannot ship without a label
+     * and a label cannot outlive the value it names. Order lives in
+     * src/lib/expenses/categories.ts, not here.
+     */
+    categories: {
+      rent: 'Rent',
+      electricity: 'Electricity',
+      internet: 'Internet',
+      marketing: 'Marketing',
+      printing: 'Printing and photocopying',
+      stationery: 'Stationery',
+      equipment: 'Equipment',
+      maintenance: 'Repairs and upkeep',
+      transport: 'Transport',
+      software: 'Software and subscriptions',
+      salary: 'Salary',
+      miscellaneous: 'Something else',
+    },
+
+    errors: {
+      categoryRequired: 'Pick what the money was for.',
+      amountRequired: 'Say how much was paid.',
+      /** The table's own `check (amount_bdt <> 0)`, said in advance. */
+      amountZero:
+        'An expense of nothing is not an expense. Type what was paid, or a minus amount to correct something.',
+      amountTooLarge:
+        'That figure is larger than this screen will take. Please check it, or get in touch.',
+      dateRequired: 'Say when it was paid.',
+      /**
+       * A year typed into a date field on a desktop keyboard. Refused rather than stored,
+       * because 0026-08-05 is a row that shows up in no month an owner will ever open and
+       * that nothing can delete — the invisible half of the same problem `dateFuture`
+       * catches at the other end.
+       */
+      dateTooOld: 'That date does not look right — please check the year.',
+
+      /**
+       * `spent_on` is when the money left. A date in the future is a plan, and a plan
+       * subtracted from a month’s profit is a figure that is wrong until it comes true.
+       */
+      dateFuture:
+        'That day has not come yet. This is for money that has already gone out — write it down on the day it does.',
+      methodRequired: 'Say how it was paid.',
+      failed: 'This could not be saved.',
+      /**
+       * The insert was refused as a duplicate and the read-back that would have found the
+       * voucher number failed too. The row is there; only its number is unknown. Same
+       * shape as the fee payment path, and for the same reason: a second attempt writes a
+       * second row that nothing can delete.
+       */
+      savedUnknown:
+        'This was almost certainly saved — the list below will show it. Please look before writing it again, because an entry written twice cannot be deleted, only corrected.',
+    },
+  },
+
+  /** See the Bangla for why the spending screen's words come in two sections. */
+  expenseForm: {
+    formTitle: 'Write down something you paid for',
+    categoryLabel: 'What it was for',
+    amountLabel: 'How much',
+    dateLabel: 'When it was paid',
+    methodLegend: 'How it was paid',
+    referenceLabel: 'Transaction ID',
+    noteLabel: 'A note about it',
+    notePlaceholder: 'Rent for Shrabon',
+    recurringLabel: 'A bill that comes every month',
+    recurringHint:
+      'Rent, electricity, internet. Marked in the list below, so you can see at a glance what the centre pays every month.',
+    submit: 'Save this',
+
+    /**
+     * Why the form has no edit button, said before the owner looks for one.
+     *
+     * 20260811000045 revoked DELETE and all but three columns of UPDATE from a browser
+     * session, so this is not a policy the screen chose and could bend on request.
+     */
+    immutable:
+      'Once it is saved it stays on the record. If you get a figure wrong, write it again as a minus amount — that way the correction is on the sheet instead of the mistake being quietly gone.',
   },
 
   /** See the Bangla for why the headings are translated and the values are not. */

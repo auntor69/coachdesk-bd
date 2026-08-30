@@ -510,6 +510,22 @@ export default async function FeesPage({
             >
               {t.closeLink} →
             </Link>
+            {/* And the money that went the other way, which is the half of the month
+                this card cannot see. Third and last of the three, because the two
+                above answer questions about the figure printed above them and this
+                one changes what that figure means: ৳40,000 collected is a good month
+                or a bad one depending on what the rent was. Here rather than in the
+                bottom bar because five staff-admin tabs already fill that at 320px,
+                and ungated like the register's own link — see the head of the
+                spending page for why a plan that cannot open it is told so there
+                rather than shown a dead end here. */}
+            <Link
+              href={`/expenses?month=${thisMonth}`}
+              className="inline-flex min-h-tap items-center font-medium
+                text-brand-800 underline"
+            >
+              {t.spendingLink} →
+            </Link>
           </p>
         )}
       </Card>

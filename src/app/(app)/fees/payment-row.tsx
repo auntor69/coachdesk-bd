@@ -19,6 +19,7 @@ import { useActionState, useEffect, useRef, useState } from 'react'
 
 import Link from 'next/link'
 
+import { MethodPicker } from '@/components/method-picker'
 import { Alert, Button, Field } from '@/components/ui'
 import { formatDate } from '@/lib/bd/time'
 import { mintIdempotencyKey } from '@/lib/idempotency'
@@ -30,7 +31,6 @@ import type { OutreachChannel, PaymentMethod } from '@/lib/supabase/types'
 import { recordPayment, type FeeState } from './actions'
 import { CancelBill } from './cancel-bill'
 import { DiscountBill } from './discount'
-import { MethodPicker } from './method-picker'
 import { RefundBill } from './refund'
 import {
   ChaseChips,

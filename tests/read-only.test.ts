@@ -87,9 +87,10 @@ test('the modules that skip the check are exactly the three that should', () => 
 
   // Named rather than counted, so a module that quietly stops enforcing shows up as
   // itself. These are the writes a lapsed subscription has to stop: attendance, marks,
-  // money, messages, and the whole of settings.
+  // money in and money out, messages, and the whole of settings.
   assert.deepEqual(enforcing, [
     'src/app/(app)/exams/actions.ts',
+    'src/app/(app)/expenses/actions.ts',
     'src/app/(app)/fees/actions.ts',
     'src/app/(app)/notices/actions.ts',
     'src/app/(app)/progress/actions.ts',
