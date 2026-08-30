@@ -1013,6 +1013,9 @@ export const en: Dictionary = {
     subtitle: 'Write down what each person is paid',
     backToFees: 'Back to fees',
 
+    /** See the Bangla: a month, not a verb, so it does not read as a button. */
+    payLink: 'This month’s salary payments',
+
     lockedTitle: 'The wage bill is part of the Centre plan',
     lockedBody: (plan: string, center: string) =>
       `On ${plan} you can see what has been collected on the fee board. What each person is paid, what the month's wage bill comes to, and what is left as profit once spending and salaries come off — that is on ${center}.`,
@@ -1115,6 +1118,117 @@ export const en: Dictionary = {
     goneHint: 'No longer on the staff list, but this salary is still running.',
   },
 
+
+  /** See the Bangla for why a month's payroll is a group of its own, apart from `payroll`. */
+  payrollPay: {
+    title: 'Pay salaries',
+    subtitle: 'What was handed over, for which month',
+    backToTerms: 'What each person is paid',
+
+    lockedTitle: 'Paying salaries is part of the Centre plan',
+    lockedBody: (plan: string, center: string) =>
+      `On ${plan} you can see what has been collected. What each person is paid, what was handed over in a month, and what is left as profit once spending and salaries come off — that is on ${center}.`,
+
+    month: 'Which month',
+    show: 'Show',
+
+    /** See the Bangla: a dropped payments read would draw every row as unpaid. */
+    unreadable:
+      'This month’s payroll cannot be read just now, so nothing is being shown — half a payroll on a screen you pay people from is worse than none. Please try again.',
+    tooLarge:
+      'There are more rows this month than one screen holds. Tell us and we will sort it out.',
+    empty: 'No salary has been agreed with anybody, and nobody has been paid this month.',
+
+    peopleTitle: 'Who is still owed',
+    agreedLabel: 'Agreed',
+    paidLabel: 'Paid',
+    leftLabel: 'Left',
+    notPaidYet: 'Nothing paid yet',
+    settled: 'Paid in full for this month',
+    /** See the Bangla: two rows for one month is not an error, and this is where it shows. */
+    paidTimes: (n: number) => `in ${n} payments`,
+    perClassRate: (amount: string) => `${amount} per class`,
+    perClassLine:
+      'A per-class rate, so what this month comes to cannot be worked out here — count the classes taught and write the figure in.',
+    overpaid: (amount: string) => `${amount} more than agreed`,
+    /** See the Bangla: paid and then stood down, or a settlement after somebody left. */
+    noTermsHint:
+      'Money was handed over this month, but there is no salary agreed with them now. It still counts in the figures below.',
+
+    perClassCount: (n: number) => `${n} more paid per class`,
+    unagreedCount: (n: number) => `${n} paid with no salary agreed`,
+    pendingCount: (n: number) => `${n} still owed something this month`,
+    allPaid: 'Everybody on a monthly salary has been paid for this month.',
+
+    agreedTotal: 'Due this month',
+    paidTotal: 'Paid this month',
+    outstandingTotal: 'Still owed',
+    /** See the Bangla: this is the figure the profit line subtracts, not a copy of it. */
+    profitNote:
+      'Profit is what was collected, less spending, less the salaries paid for that month. So write a salary against the month it is for — December’s salary handed over in January is still December’s cost.',
+
+    registerTitle: 'Salaries paid this month',
+    registerEmpty: 'No salary has been paid for this month yet.',
+    colVoucher: 'Voucher',
+    colName: 'Paid to',
+    colWhen: 'When',
+    colMethod: 'How',
+    colNote: 'Note',
+    colAmount: 'Amount',
+    correctionLabel: 'Reversal',
+    unknownName: 'Name not found',
+    entries: (n: number) => `${n} vouchers`,
+
+    savedVoucher: (voucherNo: number) => `Paid. Voucher no. ${voucherNo}.`,
+
+    errors: {
+      needsCenter: 'Paying salaries is part of the Centre plan.',
+      payeeRequired: 'Choose who was paid.',
+      payeeNotFound: 'There is nobody like that at this centre. Please reload the screen.',
+      monthRequired: 'Choose which month this salary is for.',
+      monthTooOld: 'That month does not look right — please check the year.',
+      /** See the Bangla: the picker only offers this month and the eleven before it. */
+      monthFuture: 'A salary cannot be written down for a month that has not come yet.',
+      amountRequired: 'Write how much was paid.',
+      partUnreadable:
+        'One of the allowance, other or deduction boxes cannot be read. Please write figures only — an empty box counts as nothing.',
+      /** See the Bangla: a negative deduction would add to the salary, not come off it. */
+      deductionsNegative:
+        'The deduction box does not take a minus figure — write what is deducted as a plain amount and it comes off the total on its own.',
+      amountTooLarge: 'That figure is larger than this screen allows. Please check it, or tell us.',
+      netZero: 'Paying nothing is not a payment. Write how much was handed over.',
+      methodRequired: 'Choose how the money was handed over.',
+      failed: 'This could not be saved.',
+      /** See the Bangla: this must never say it failed, or they will pay twice. */
+      savedUnknown:
+        'The payment has almost certainly been saved, but its voucher number cannot be read just now. Check the list below — do not pay again, or it will be recorded twice.',
+    },
+  },
+
+  /** See the Bangla for why the form's words are a section of their own. */
+  salaryPayForm: {
+    open: 'Pay salary',
+    heading: 'Salary paid',
+    basicLabel: 'Basic',
+    allowancesLabel: 'Allowances',
+    otherLabel: 'Other',
+    deductionsLabel: 'Deductions',
+    deductionsHint: 'Absence or an advance recovered — a plain amount',
+    /** See the Bangla: one box where there is no agreed figure to prefill. */
+    amountLabel: 'How much was paid',
+    methodLabel: 'How it was paid',
+    referenceLabel: 'Reference',
+    referencePlaceholder: 'bKash transaction ID or cheque number',
+    noteLabel: 'Note',
+    notePlaceholder: 'Eid bonus',
+    totalLabel: 'Total',
+    submit: 'Record this payment',
+    paying: 'Saving…',
+    cancel: 'Cancel',
+    /** See the Bangla: there is no edit button, so the form has to say what to do instead. */
+    correctionHint:
+      'A wrong figure cannot be deleted once saved — it is put right by recording a second payment as a minus amount.',
+  },
 
   /** See the Bangla for why the headings are translated and the values are not. */
   exportSheet: {

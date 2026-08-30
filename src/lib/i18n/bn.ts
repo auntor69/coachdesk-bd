@@ -1877,6 +1877,16 @@ export const bn = {
     subtitle: 'কার বেতন কত, তা ঠিক করে রাখুন',
     backToFees: 'ফি-এর তালিকায় ফিরুন',
 
+    /**
+     * The way through to the month, worded as a month and not as a verb.
+     *
+     * This screen holds agreements, which are standing figures with no month attached; the
+     * one behind the link is a month of payments. A label like "বেতন দিন" would read as a
+     * button on a row and invite a second payment for a month already settled, so it names
+     * where it goes and the screen it opens does the arguing.
+     */
+    payLink: 'এই মাসের বেতন পরিশোধ',
+
     lockedTitle: 'বেতনের হিসাব সেন্টার প্ল্যানে',
     /**
      * What is missing, not what is disallowed. An owner who followed a link here has
@@ -2129,6 +2139,207 @@ export const bn = {
     goneHint: 'তিনি তালিকা থেকে বাদ, কিন্তু এই বেতন এখনো চালু আছে।',
   },
 
+
+  /**
+   * A month's payroll: who has had what, and the voucher register underneath.
+   *
+   * A SEPARATE GROUP FROM `payroll`, because they are two different questions about the
+   * same people. That screen holds standing agreements — a figure with a date it applies
+   * from and no month attached. This one is a month: what was handed over, what is left,
+   * and the row 20260811000049's profit line actually subtracts.
+   *
+   * THE WORDS HAVE TO KEEP "AGREED" AND "PAID" APART EVERYWHERE. A screen that printed one
+   * taka figure per person would be read as either, and the two are different by however
+   * much is still owed. Every row prints three — agreed, paid, left — and so does the foot.
+   */
+  payrollPay: {
+    title: 'বেতন দেওয়া',
+    subtitle: 'কোন মাসের বেতন কাকে কত দেওয়া হলো',
+    backToTerms: 'কার বেতন কত',
+
+    lockedTitle: 'বেতনের হিসাব সেন্টার প্ল্যানে',
+    /** What is missing, not what is disallowed. Same argument as `payroll.lockedBody`. */
+    lockedBody: (plan: string, center: string) =>
+      `${plan} প্ল্যানে ফি আদায়ের হিসাব আছে। কার বেতন কত, কোন মাসে কত বেতন দেওয়া হলো, আর আদায় থেকে খরচ ও বেতন বাদ দিয়ে লাভ কত — তা ${center}-এ।`,
+
+    month: 'কোন মাসের বেতন',
+    show: 'দেখুন',
+
+    /**
+     * Four reads fail closed together, so one sentence covers them.
+     *
+     * A dropped payments read is the dangerous one: the month would draw every agreement
+     * with "nothing paid yet" beside it, on a screen whose next tap hands over money.
+     */
+    unreadable:
+      'এই মাসের বেতনের হিসাব এখন পড়া যাচ্ছে না, তাই কিছুই দেখানো হচ্ছে না — অর্ধেক হিসাব দেখিয়ে বেতন দেওয়ানো ঠিক হবে না। আবার চেষ্টা করুন।',
+    tooLarge:
+      'এই মাসে বেতনের সারি এত বেশি যে এক পর্দায় ধরছে না। আমাদের জানান, আমরা ঠিক করে দেব।',
+    empty:
+      'এখনো কারও বেতনের অঙ্ক ঠিক করা হয়নি, আর এই মাসে কাউকে বেতনও দেওয়া হয়নি।',
+
+    peopleTitle: 'কার বেতন বাকি',
+    /** The three figures on every row, which must never collapse into one. */
+    agreedLabel: 'ঠিক করা আছে',
+    paidLabel: 'দেওয়া হয়েছে',
+    leftLabel: 'বাকি',
+    notPaidYet: 'এখনো কিছু দেওয়া হয়নি',
+    settled: 'এই মাসের বেতন দেওয়া হয়ে গেছে',
+    /**
+     * How many rows the money came in, printed only when it is more than one.
+     *
+     * 20260811000044 has no unique index on (payee, for_month) on purpose — half a salary
+     * on the 5th and half on the 20th is two real rows — so this is the only place an owner
+     * finds out that a month already holds two payments before they add a third.
+     */
+    paidTimes: (n: number) => `${n} বারে`,
+    /** A rate and not a total: ৳350 printed where a monthly figure goes is a bargain. */
+    perClassRate: (amount: string) => `প্রতি ক্লাসে ${amount}`,
+    /**
+     * Why this row has no "left to pay" figure. The table refuses to store a monthly
+     * figure for a per-class agreement, so the screen cannot subtract from one.
+     */
+    perClassLine:
+      'ক্লাস-প্রতি হার, তাই মাসে কত হবে তা এখান থেকে বলা যায় না — কত ক্লাস হলো তা দেখে অঙ্কটা লিখুন।',
+    /** Seen once and then never again if it were clamped to zero. */
+    overpaid: (amount: string) => `${amount} বেশি দেওয়া হয়েছে`,
+    /**
+     * Money on this month with no live agreement behind it: paid and then stood down, or a
+     * final settlement after somebody left. The row stays, because the month's total
+     * includes it and a row the total does not show is a page nobody can reconcile.
+     */
+    noTermsHint:
+      'এই মাসে টাকা দেওয়া হয়েছে, কিন্তু এখন তাঁর কোনো চালু বেতনের অঙ্ক নেই। হিসাবে টাকাটা থাকছে।',
+
+    /**
+     * The two counts the money figures do not cover, said out loud rather than folded in.
+     * A per-class month is not knowable and an unagreed payment has nothing to measure.
+     */
+    perClassCount: (n: number) => `আরও ${n} জন ক্লাস-প্রতি হারে`,
+    unagreedCount: (n: number) => `${n} জনের বেতনের অঙ্ক ঠিক করা নেই`,
+    pendingCount: (n: number) => `${n} জনের বেতন এখনো বাকি`,
+    allPaid: 'এই মাসে যাঁদের মাসিক বেতন ঠিক করা আছে, সবাইকে দেওয়া হয়ে গেছে।',
+
+    agreedTotal: 'এই মাসে দেওয়ার কথা',
+    paidTotal: 'এই মাসে দেওয়া হয়েছে',
+    outstandingTotal: 'এখনো বাকি',
+    /**
+     * The one figure on this screen that leaves it, named as such.
+     *
+     * `center_profit_month` sums exactly these rows for exactly this month. An owner who
+     * later finds the dashboard's payroll figure different from this one should know they
+     * are the same arithmetic, so a difference is a bug and not two definitions.
+     */
+    profitNote:
+      'আদায় থেকে খরচ আর এই মাসে দেওয়া বেতন বাদ দিয়েই লাভ হিসাব হয়। তাই যে মাসের বেতন, সেই মাসেই লিখুন — জানুয়ারিতে ডিসেম্বরের বেতন দিলেও সেটি ডিসেম্বরের খরচ।',
+
+    registerTitle: 'এই মাসের বেতনের রসিদ',
+    registerEmpty: 'এই মাসে এখনো কোনো বেতন দেওয়া হয়নি।',
+    colVoucher: 'রসিদ',
+    colName: 'কাকে',
+    colWhen: 'কবে',
+    colMethod: 'কীভাবে',
+    colNote: 'নোট',
+    colAmount: 'টাকা',
+    /** Words and not one minus sign in a column where every figure looks like it. */
+    correctionLabel: 'ফেরত',
+    unknownName: 'নাম পাওয়া যায়নি',
+    entries: (n: number) => `${n} টি রসিদ`,
+
+    /** Read back out of the insert, because a second query would be a guess. */
+    savedVoucher: (voucherNo: number) => `বেতন দেওয়া হলো। রসিদ নম্বর ${voucherNo}।`,
+
+    errors: {
+      /** Not "not allowed": an owner on a teacher plan has bought a different thing. */
+      needsCenter: 'বেতনের হিসাব সেন্টার প্ল্যানের সুবিধা।',
+      payeeRequired: 'কাকে বেতন দেওয়া হলো, তা বেছে নিন।',
+      payeeNotFound: 'এই সেন্টারে এমন কেউ নেই। পর্দাটি আবার লোড করে দেখুন।',
+      monthRequired: 'কোন মাসের বেতন, তা বেছে নিন।',
+      monthTooOld: 'মাসটা ঠিক মনে হচ্ছে না — সালটা দেখে নিন।',
+      /**
+       * A month filed forward puts cost into a month whose profit line is not due yet.
+       * The picker only offers this month and the eleven before it, so this is for a URL
+       * somebody has edited.
+       */
+      monthFuture: 'আগামী মাসের বেতন আগে থেকে লিখে রাখা যায় না।',
+      amountRequired: 'কত টাকা দেওয়া হলো, তা লিখুন।',
+      partUnreadable:
+        'ভাতা, অন্যান্য বা কাটার ঘরের অঙ্কটা পড়া যাচ্ছে না। শুধু টাকার অঙ্ক লিখুন, খালি রাখলে শূন্য ধরা হবে।',
+      /**
+       * The one box where a minus sign is always a mistake: it is subtracted by the
+       * generated column, so a negative deduction adds to the salary. The other three
+       * stay signed, because that is how a wrong payment is reversed.
+       */
+      deductionsNegative:
+        'কাটার ঘরে মাইনাস অঙ্ক দেওয়া যাবে না — যত টাকা কাটা যাবে তা প্লাস অঙ্কেই লিখুন, যোগফল থেকে নিজে থেকেই বাদ যাবে।',
+      amountTooLarge: 'অঙ্কটা এই পর্দার সীমার চেয়ে বড়। দেখে নিন, বা আমাদের জানান।',
+      /** The table's own `check (… <> 0)`. An empty form is the usual way to get here. */
+      netZero: 'শূন্য টাকা দেওয়া কোনো বেতন নয়। কত টাকা দেওয়া হলো তা লিখুন।',
+      methodRequired: 'টাকাটা কীভাবে দেওয়া হলো, তা বেছে নিন।',
+      failed: 'এটি সংরক্ষণ করা যায়নি।',
+      /**
+       * THE SENTENCE THAT MUST NOT SAY "IT DID NOT SAVE". Getting here means the unique
+       * index already refused the insert, which is proof a row with this token is on the
+       * record — the salary is paid and only its voucher number is unknown. An owner told
+       * it failed would pay again with a fresh token, and `salary_payments` revokes DELETE.
+       */
+      savedUnknown:
+        'বেতনটি সম্ভবত লেখা হয়ে গেছে, কিন্তু রসিদ নম্বরটি এখন পড়া যাচ্ছে না। নিচের তালিকায় দেখে নিন — আবার দেবেন না, নইলে দুবার লেখা হয়ে যাবে।',
+    },
+  },
+
+  /**
+   * The form on one person's row that hands over a salary. A client component.
+   *
+   * SEPARATE FROM `payrollPay` BECAUSE OF `T`, which maps a group's function leaves to
+   * `never` — and that group holds nine strings taking an argument. Same split as
+   * `expenseForm` and `salaryForm`.
+   *
+   * The method labels are not here. The register prints them, the form picks them, and a
+   * second copy of six words is a second answer to what `bkash` is called: the page passes
+   * `feeRow.methods` down, as the spending screen does.
+   */
+  salaryPayForm: {
+    /** A plain underlined word on the row, not a button. See salaryRow.open. */
+    open: 'বেতন দিন',
+    heading: 'বেতন দেওয়া হলো',
+    basicLabel: 'মূল বেতন',
+    allowancesLabel: 'ভাতা',
+    otherLabel: 'অন্যান্য',
+    deductionsLabel: 'কাটা যাবে',
+    deductionsHint: 'অনুপস্থিতি বা আগে দেওয়া টাকা — প্লাস অঙ্কেই লিখুন',
+    /**
+     * The single box, for a per-class teacher or somebody with no live agreement: there is
+     * no agreed figure to prefill, so the four boxes would be four empty questions.
+     */
+    amountLabel: 'কত টাকা দেওয়া হলো',
+    methodLabel: 'কীভাবে দেওয়া হলো',
+    referenceLabel: 'রেফারেন্স',
+    referencePlaceholder: 'বিকাশের আইডি বা চেক নম্বর',
+    noteLabel: 'নোট',
+    notePlaceholder: 'যেমন ঈদ বোনাস',
+    /**
+     * The figure that will be recorded, added up as the boxes are typed in.
+     *
+     * `amount_bdt` is generated from the four columns, so the total is not a box anybody
+     * fills in — and an owner handing over ৳13,000 needs to see ৳13,000 before they tap,
+     * not four numbers they are expected to add up on a phone.
+     */
+    totalLabel: 'মোট',
+    submit: 'বেতন দেওয়া হলো লিখুন',
+    paying: 'লেখা হচ্ছে…',
+    cancel: 'বাতিল',
+    /**
+     * How a mistake is undone, said in the form rather than only in a document.
+     *
+     * 20260811000044 revokes DELETE and grants UPDATE on `(reference, note)` alone, so a
+     * wrong figure cannot be edited or removed: the correction is a second row with a minus
+     * amount. An owner who does not know that will look for an edit button that is not
+     * there and, not finding one, pay again.
+     */
+    correctionHint:
+      'ভুল অঙ্ক লেখা হয়ে গেলে মুছে ফেলা যায় না — মাইনাস অঙ্কে আরেকটি সারি লিখে ফেরত দেখাতে হয়।',
+  },
 
   /**
    * The column headings inside the downloaded spreadsheets, and the few cells that

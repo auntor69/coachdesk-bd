@@ -1660,6 +1660,7 @@ export type Database = {
           paid_at: string
           paid_by: string | null
           created_at: string
+          idempotency_key: string | null
         }
         Insert: {
           id?: string
@@ -1680,6 +1681,7 @@ export type Database = {
           paid_at?: string
           paid_by?: string | null
           created_at?: string
+          idempotency_key?: string | null
         }
         Update: {
           id?: string
@@ -1700,6 +1702,7 @@ export type Database = {
           paid_at?: string
           paid_by?: string | null
           created_at?: string
+          idempotency_key?: string | null
         }
         Relationships: [
           {

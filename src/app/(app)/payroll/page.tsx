@@ -216,6 +216,26 @@ export default async function PayrollPage() {
         <p className="text-sm text-ink-soft">{t.subtitle}</p>
       </header>
 
+      {/*
+        THE WAY THROUGH TO A MONTH, and the two screens are not the same question. What is
+        agreed here is a standing figure with no month attached and no money moved; the
+        profit line subtracts `salary_payments`, which is what that screen writes. An owner
+        who agreed fourteen figures and never opened it has a wage bill on paper and a
+        payroll term of zero in every month's profit.
+
+        Above the form on purpose: agreeing a salary is what a centre does twice a year, and
+        paying one is what it does every month. No `?month=` — that screen opens on this
+        month by itself, and a link carrying one would go stale in a bookmark. Not gated on
+        `canWrite`: a read-only centre can read the month, and the figures are part of what
+        they need to decide whether to renew.
+      */}
+      <Link
+        href="/payroll/pay"
+        className="inline-flex min-h-tap items-center font-medium text-brand-800 underline"
+      >
+        {t.payLink} →
+      </Link>
+
       {/* A read-only centre keeps the bill and loses the form, the same call the
           spending screen makes: `requireWritable` is in front of the action, and a form
           that submits into a refusal is a worse way to learn the subscription lapsed
