@@ -3627,6 +3627,70 @@ export const bn = {
     students: 'শিক্ষার্থী',
     batches: 'ব্যাচ',
 
+    /**
+     * PLACES REMAINING — see en.dashboard.placesLeft for why it is on every plan and
+     * not only the paid ones.
+     *
+     * ASCII digits, interpolated, like `batchesTaken` two keys down: money and counts
+     * stay ASCII across this product while dates go Bangla, and a line that mixed the
+     * two numeral systems would be harder to read than either convention alone.
+     */
+    placesLeft: (left: number, total: number) => `${total}-এর মধ্যে ${left}টি জায়গা খালি`,
+    /** The ceiling reached. See en.dashboard.placesFull for why it is its own sentence. */
+    placesFull: 'এই প্ল্যানে শিক্ষার্থীর সব জায়গা পূরণ হয়ে গেছে',
+    placesLink: 'প্ল্যান ও জায়গা',
+
+    /**
+     * THE PROFIT LINE — MASTERPLAN.md §9.8, on the home screen because §9.10 puts it
+     * there. Every reason behind the wording is on en.dashboard.money; what follows is
+     * the Bangla for it.
+     *
+     * The four labels are the four rows of one subtraction, each one beside its own
+     * figure, so they are as short as they can be while still saying WHICH money they
+     * mean — three of the four have a near neighbour elsewhere in the app.
+     */
+    money: {
+      title: 'এ মাসের লাভ',
+      /** The same figure as the tile above, from the same view. */
+      collected: 'আদায়',
+      /**
+       * 'বেতন ছাড়া' is load-bearing, not a footnote: the profit view leaves out the
+       * expenses filed under the salary category, so this figure is smaller than the
+       * month's total on the spending screen. An owner who found that out by comparing
+       * the two would stop believing both.
+       */
+      expenses: 'খরচ, বেতন ছাড়া',
+      /** Salaries FOR this month, whenever they were handed over. §9.5. */
+      payroll: 'বেতন',
+      profit: 'লাভ',
+      /** The figure above is red, and a colour in this product never travels alone. */
+      lossNote: 'এ মাসে আদায়ের চেয়ে খরচ বেশি হয়েছে।',
+      /** What the month BILLED — a different question from what it collected. §9.1. */
+      billed: (amount: string) => `এ মাসের বিল ${amount}`,
+      stillOwed: (amount: string) => `এর মধ্যে ${amount} এখনো বাকি`,
+      allBilledPaid: 'পুরোটাই আদায় হয়েছে',
+      /** `people` is live agreements, not employees — one live row per payee. */
+      payrollMissing: (people: number) =>
+        `${people} জনের বেতন ঠিক করা আছে, এ মাসে কারও বেতন দেওয়ার হিসাব নেই`,
+      payrollMissingNote:
+        'তাই উপরের লাভের হিসাবে এ মাসের বেতন ধরা নেই — যা সাধারণত সবচেয়ে বড় খরচ। বেতন দেওয়ার হিসাব লিখে দিলেই এটা ঠিক হয়ে যাবে।',
+      payrollUnknown: 'বেতনের দিকটা মিলিয়ে দেখা গেল না',
+      payrollUnknownNote:
+        'উপরের লাভের হিসাবে এ মাসের বেতন ধরা নাও থাকতে পারে। আপনার হিসাবে কোনো সমস্যা নেই — যে সংখ্যাটা দিয়ে মিলিয়ে দেখা হতো তা আসেনি। একটু পরে আবার চেষ্টা করুন।',
+      /** 'হিসাব আছে' and never 'সব দেওয়া হয়েছে' — see the English. */
+      payrollRecorded: (payments: number) =>
+        `এ মাসে ${payments}টি বেতন দেওয়ার হিসাব আছে — এখনো কারও বাকি থাকলে তা উপরের হিসাবে ধরা নেই`,
+      /** Money in neither term of the sum. */
+      salaryExpense: (entries: number) => `${entries}টি খরচ বেতনের খাতে লেখা আছে`,
+      salaryExpenseNote:
+        'দুই খাতায় একই টাকা যেন দুইবার ধরা না হয়, তাই বেতনের খাতে লেখা খরচ উপরের হিসাবে ধরা হয়নি। ওই টাকাটা বেতনের খাতায় লিখলেই লাভের হিসাব ঠিক হবে।',
+      expensesLink: 'খরচ',
+      payrollLink: 'বেতন দিন',
+      /** In place of the whole card. Same argument as `outstandingUnreadable` above. */
+      unreadable:
+        'এ মাসের লাভ কত তা এখন বের করা গেল না, তাই কোনো হিসাব দেখানো হয়নি। আপনার হিসাবে কোনো সমস্যা নেই — একটু পরে আবার চেষ্টা করুন।',
+    },
+
     todayAttendance: 'আজকের হাজিরা',
     batchesTaken: (done: number, total: number) => `${done}/${total} ব্যাচ নেওয়া হয়েছে`,
 

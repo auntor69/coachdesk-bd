@@ -11,9 +11,10 @@ import {
   addMonths,
   formatDate,
 } from '@/lib/bd/time'
-import { has } from '@/lib/plans'
+import { has, studentRoom } from '@/lib/plans'
 import { setupSteps } from '@/lib/setup'
 import { countChasesDue } from '@/lib/fees/reminder-schedule'
+import { monthBills, monthMoney, payrollState } from '@/lib/finance/profit'
 import { ratesForDashboard } from '@/lib/attendance/rates'
 import { studentsAtRisk, RISK_COLUMNS } from '@/lib/students/risk'
 import {
@@ -24,6 +25,7 @@ import {
 import { tallyOutstanding, formatTaka as taka } from '@/lib/money'
 import { dict, DEFAULT_LOCALE } from '@/lib/i18n'
 import { ReminderEntry } from '@/app/(app)/fees/reminder-entry'
+import { ProfitCard } from './profit-card'
 import { AttendanceRates } from './attendance-rates'
 import { AtRiskCard } from './at-risk-card'
 import { ProgressEntry } from './progress-entry'
@@ -169,6 +171,23 @@ export default async function DashboardPage() {
    */
   const noCount: { count: number | null } = { count: null }
 
+  /**
+   * Whether this reader gets §9.8's profit line at all.
+   *
+   * The same gate as /expenses and /payroll, and it has to be, because the profit line
+   * is those two screens subtracted from the fee board: a reader who cannot open the
+   * spending ledger must not be handed its total on the home screen under a different
+   * heading. `center_profit_month` carries the role half of it in SQL as well, in
+   * `app.is_staff_admin` — that is the gate that counts, and this one only decides
+   * whether five queries are sent.
+   *
+   * NO LOCKED TEASER on FREE or PRO, unlike the plan-gated doors elsewhere. A paywall
+   * card on the screen an owner opens six times a day is furniture inside a week, and
+   * /settings/plan already lists what the centre tiers add. The three tiles above stay
+   * on every plan either way, so nobody loses a figure they had.
+   */
+  const showMoney = isAdmin && has(session.plan, 'centerWideReporting')
+
   const [
     { count: studentCount },
     { data: batchRows },
@@ -181,6 +200,11 @@ export default async function DashboardPage() {
     weekly,
     { count: enrolmentCount },
     { count: sessionCount },
+    { data: profitRow, error: profitError },
+    { data: chargesRow, error: chargesError },
+    { count: termsCount },
+    { count: salaryPayCount },
+    { count: salaryExpenseCount },
   ] = await Promise.all([
     supabase
       .from('students')
@@ -359,6 +383,97 @@ export default async function DashboardPage() {
           .select('id', { count: 'exact', head: true })
           .eq('coaching_center_id', session.active.centerId)
       : noCount,
+    /*
+     * §9.8's four figures, already subtracted by Postgres in numeric(12, 2).
+     *
+     * Read and never recomputed here — see the note on `MonthMoney.profit`. The view is
+     * the one place in this product allowed to sum expenses toward a profit figure, and
+     * a second subtraction in JavaScript floats would disagree with it in the paisa on
+     * some months, which is the one thing §9.1 forbids a finance screen outright.
+     *
+     * maybeSingle, like the collection figure above, and with the same trap: a month
+     * with no row and a read that failed both arrive as `data: null`, and they are
+     * opposite claims. `error` is what tells them apart, which is why `monthMoney` takes
+     * it as an argument instead of guessing from the row.
+     */
+    showMoney
+      ? supabase
+          .from('center_profit_month')
+          .select('collected_bdt, expenses_bdt, payroll_bdt, profit_bdt')
+          .eq('coaching_center_id', session.active.centerId)
+          .eq('period_month', period)
+          .maybeSingle()
+      : Promise.resolve({ data: null, error: null }),
+    /*
+     * What the month BILLED, which is not one of the four above and is not drawn as one.
+     *
+     * A separate view and a separate question: `collected_bdt` up there is cash that
+     * arrived in the month whatever it was for, and `paid_bdt` here is money against the
+     * month's own bills whenever it arrived. A March bill paid in April is in one and
+     * not the other. Separate read, too, so it can fail on its own without taking the
+     * profit line with it — which is why it is not a second column on the query above.
+     */
+    showMoney
+      ? supabase
+          .from('fee_charges_month')
+          .select('charged_bdt, paid_bdt, outstanding_bdt')
+          .eq('coaching_center_id', session.active.centerId)
+          .eq('period_month', period)
+          .maybeSingle()
+      : Promise.resolve({ data: null, error: null }),
+    /*
+     * AND THE TWO COUNTS THAT DECIDE WHETHER THE PAYROLL TERM ABOVE IS A LIE.
+     *
+     * 20260811000049's own header asks for these: "A month with no payroll row reads as
+     * a month with no staff, and nothing in the schema can tell those apart… §9.10's
+     * dashboard has to say which months have a payroll row rather than leaving an owner
+     * to notice." A centre that has not written December's salaries down yet is reading
+     * a profit too high by the largest single number in its business, and the view has
+     * no column that can say so.
+     *
+     * Live agreements, then payments filed for the month. Head counts because the
+     * question is "is there at least one", both off an index — `salary_terms` has a
+     * partial unique index on the payee and `salary_payments_center_month_idx` covers
+     * the second. Neither is a sum: the figures are already in the view.
+     */
+    showMoney
+      ? supabase
+          .from('salary_terms')
+          .select('id', { count: 'exact', head: true })
+          .eq('coaching_center_id', session.active.centerId)
+          .eq('active', true)
+      : noCount,
+    showMoney
+      ? supabase
+          .from('salary_payments')
+          .select('id', { count: 'exact', head: true })
+          .eq('coaching_center_id', session.active.centerId)
+          .eq('for_month', period)
+      : noCount,
+    /*
+     * The money that is in neither term of the sum.
+     *
+     * 20260811000045 kept `salary` in the expense categories on purpose and
+     * 20260811000049 then had to exclude it, so that a centre keeping both books is not
+     * subtracted twice. Both decisions are right and the cost of them lands on this
+     * screen: a centre paying staff only through the expense category has that money in
+     * neither the spending term nor the payroll term, and the profit reads high by all
+     * of it.
+     *
+     * The bucket is the view's own — `date_trunc('month', spent_on)` — expressed as a
+     * half-open range so it can use `expenses_center_spent_idx` rather than a function
+     * on the column. Both bounds are Dhaka calendar dates already; `spent_on` is a plain
+     * date, so no timezone enters this.
+     */
+    showMoney
+      ? supabase
+          .from('expenses')
+          .select('id', { count: 'exact', head: true })
+          .eq('coaching_center_id', session.active.centerId)
+          .eq('category', 'salary')
+          .gte('spent_on', period)
+          .lt('spent_on', addMonths(period, 1))
+      : noCount,
   ])
 
   /*
@@ -509,6 +624,32 @@ export default async function DashboardPage() {
     sessions: sessionCount,
   })
 
+  /*
+   * §9.8's profit line, and the three separate ways it can decline to speak.
+   *
+   * Each read answers for itself. The profit figures failing takes the whole card off
+   * the page — four noughts and a profit of ৳0 is a sentence about how the month went,
+   * and a query that did not arrive has not earned it — while the bills line and the
+   * salary-expense warning simply do not draw. The payroll counts are the interesting
+   * one: their failure has to be SAID, because the missing warning is what would let a
+   * profit figure with no wages in it pass for a good month.
+   */
+  const money = monthMoney(profitRow, Boolean(profitError))
+  const bills = monthBills(chargesRow, Boolean(chargesError))
+  const payroll = payrollState(termsCount, salaryPayCount)
+
+  /*
+   * Places remaining — §9.10's last item, and the only one on this page that costs
+   * nothing: the ceiling is on the session and the count is the tile it sits under.
+   *
+   * Drawn on every plan rather than behind `showMoney`. Capacity is not a centre
+   * feature — the ceiling is nearest on free, where it is thirty — and an owner who
+   * finds out about it by being refused at student thirty-one has already had the
+   * afternoon this line exists to prevent.
+   */
+  const placesLeft =
+    studentCount === null ? null : studentRoom(session.ceiling, studentCount)
+
   return (
     <div className="flex flex-col gap-5">
       <div>
@@ -589,33 +730,90 @@ export default async function DashboardPage() {
       {/* Two or three, and the column count follows, because a two-item row in a
           three-column grid leaves a gap that reads as a stat that failed to load.
           Both class names are written out rather than interpolated from a number,
-          so Tailwind's scanner can still see them. */}
-      <div className={`grid gap-3 ${isAdmin ? 'grid-cols-3' : 'grid-cols-2'}`}>
-        {/* Staff-admin, and not merely `seeFees`. What came in this month is the
-            centre's revenue; a teacher's copy of it would be the takings of their
-            own batches under a label that says the centre's, and unlike arrears it
-            is not a number they can do anything with. Their share of the money is
-            on the fee board, next to the names. */}
-        {/* A dash, not a nought, for whichever of the three could not be counted.
-            `?? 0` put “0” under Students on a centre of three hundred and ৳0 under
-            Collected over a month that took eighty thousand — small type, but the
-            same false claim as the card above, and these are the three figures an
-            owner takes in at a glance rather than reads. */}
-        {isAdmin && (
+          so Tailwind's scanner can still see them.
+
+          Wrapped with the places line below, so the two are one item in the page's
+          `gap-5` column: that line is counted off the student tile beside it, and a
+          full gap between them would read as an unrelated sentence. */}
+      <div>
+        <div className={`grid gap-3 ${isAdmin ? 'grid-cols-3' : 'grid-cols-2'}`}>
+          {/* Staff-admin, and not merely `seeFees`. What came in this month is the
+              centre's revenue; a teacher's copy of it would be the takings of their
+              own batches under a label that says the centre's, and unlike arrears it
+              is not a number they can do anything with. Their share of the money is
+              on the fee board, next to the names.
+
+              Kept on the centre tiers as well, beside the profit card that repeats
+              it. Dropping it there would take the figure off the screen entirely the
+              first time the profit read failed, and both come out of the same view,
+              so they cannot disagree: the tile is the glance and the card is the sum. */}
+          {/* A dash, not a nought, for whichever of the three could not be counted.
+              `?? 0` put “0” under Students on a centre of three hundred and ৳0 under
+              Collected over a month that took eighty thousand — small type, but the
+              same false claim as the card above, and these are the three figures an
+              owner takes in at a glance rather than reads. */}
+          {isAdmin && (
+            <Stat
+              label={t.collected}
+              value={collected === null ? '—' : taka(collected)}
+            />
+          )}
           <Stat
-            label={t.collected}
-            value={collected === null ? '—' : taka(collected)}
+            label={t.students}
+            value={studentCount === null ? '—' : String(studentCount)}
           />
+          <Stat
+            label={t.batches}
+            value={batchCount === null ? '—' : String(batchCount)}
+          />
+        </div>
+
+        {/* Places remaining, on every plan — see the note on `placesLeft`. One faint
+            line and a door, because it is a fact an owner needs to have seen rather
+            than one they act on today, and the day they do act on it the door is the
+            only thing on this line that matters. */}
+        {isAdmin && placesLeft !== null && (
+          <p className="num mt-2 text-sm text-ink-soft">
+            {placesLeft > 0
+              ? t.placesLeft(placesLeft, session.ceiling.ceiling)
+              : t.placesFull}{' '}
+            <Link
+              href="/settings/plan"
+              className="font-medium text-brand-800 underline"
+            >
+              {t.placesLink} →
+            </Link>
+          </p>
         )}
-        <Stat
-          label={t.students}
-          value={studentCount === null ? '—' : String(studentCount)}
-        />
-        <Stat
-          label={t.batches}
-          value={batchCount === null ? '—' : String(batchCount)}
-        />
       </div>
+
+      {/* THE PROFIT LINE — §9.8's box, here because §9.10 puts it on this screen and
+          not on one of its own. A separate finance page would print "collected this
+          month" twice in two places, which is the discrepancy this file's own header
+          refuses; the tiles above are the glance and this is the working.
+
+          Under the tiles rather than over them: the outstanding card at the top is what
+          the product is sold on and what an owner opens the app to check, and the sum
+          below is what they read once a month with the shutter down. Above today's
+          attendance, though — everything past that card is about the teaching. */}
+      {showMoney && money === null && (
+        <Card className="border-late/30 bg-late/5">
+          <p className="font-medium text-ink">{t.money.title}</p>
+          <p className="mt-1 text-sm text-ink-soft">{t.money.unreadable}</p>
+        </Card>
+      )}
+
+      {showMoney && money !== null && (
+        <ProfitCard
+          month={period}
+          locale={locale}
+          money={money}
+          bills={bills}
+          payroll={payroll}
+          salaryEntries={salaryExpenseCount}
+          t={t.money}
+        />
+      )}
 
       <Card>
         <div className="flex items-center justify-between gap-3">

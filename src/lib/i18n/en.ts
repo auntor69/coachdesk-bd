@@ -2153,6 +2153,108 @@ export const en: Dictionary = {
     students: 'Students',
     batches: 'Batches',
 
+    /**
+     * PLACES REMAINING, on every plan and not only the paid ones.
+     *
+     * §9.10 lists it among the Center dashboard's figures, but the audience for it is
+     * the owner rather than the tier: the ceiling is nearest on free, where it is 30,
+     * and an owner who finds out about it by being refused at student thirty-one has
+     * already had the afternoon this line exists to prevent. It costs no query either —
+     * the ceiling is on the session and the count is on the tile above it.
+     *
+     * Both numbers, because "12 left" says nothing about whether that is comfortable.
+     * Twelve of thirty is a different month from twelve of three hundred.
+     */
+    placesLeft: (left: number, total: number) => `${left} of ${total} places left`,
+    /**
+     * The ceiling reached, and a different sentence rather than "0 places left": a
+     * nought is a figure, and this is the one state where the next student is a
+     * decision instead of a form. The link says where to make it.
+     */
+    placesFull: 'Every student place on this plan is taken',
+    placesLink: 'Plan and places',
+
+    /**
+     * THE PROFIT LINE — §9.8's box, on the home screen because §9.10 puts it there.
+     *
+     * One subtraction with its working shown. The labels are short because each one
+     * sits in a column beside its own figure and the figures are what get read; what
+     * they have to do is be unmistakable about WHICH money each term is, because three
+     * of the four have a near neighbour elsewhere in this app that means something
+     * slightly different.
+     */
+    money: {
+      title: 'Profit this month',
+      /**
+       * Cash through the door in the month, whatever it was billed for — the same
+       * figure as the tile above, out of the same view, so the two cannot disagree.
+       * Not the same question as what the month billed, which is the line under the
+       * sum and is labelled separately for that reason.
+       */
+      collected: 'Collected',
+      /**
+       * "excluding salaries" is not a footnote. `center_profit_month` drops the salary
+       * expense category so that a centre paying staff through both books is not
+       * subtracted twice, which makes this figure smaller than the month's total on the
+       * spending screen — and an owner who discovered that by comparing the two would
+       * stop trusting both. Two words prevent it, and point at the row below.
+       */
+      expenses: 'Spending, excluding salaries',
+      /** Salaries FOR this month, whenever they were handed over. §9.5. */
+      payroll: 'Salaries',
+      profit: 'Profit',
+      /** Colour never travels alone: the figure above is red, and this is what red means. */
+      lossNote: 'The centre spent more this month than it collected.',
+      /**
+       * What the month BILLED, under the sum and not in it. A different question from
+       * `collected` — a March bill paid in April is in one and not the other — so both
+       * are labelled, which is what §9.1 asks of a screen showing the pair.
+       */
+      billed: (amount: string) => `${amount} billed for the month`,
+      stillOwed: (amount: string) => `${amount} of it still owed`,
+      /** Not "৳0 still owed", which is a figure where this is an all-clear. */
+      allBilledPaid: 'all of it paid',
+      /**
+       * The loud one: people are on an agreed salary and not one payment is recorded,
+       * so the profit above is missing the whole wage bill. `people` is live agreements
+       * rather than employees — `salary_terms` allows one live row per payee.
+       */
+      payrollMissing: (people: number) =>
+        people === 1
+          ? 'One agreed salary, and nothing recorded as paid this month'
+          : `${people} agreed salaries, and nothing recorded as paid this month`,
+      payrollMissingNote:
+        'So the profit above is missing this month’s wages — usually the largest single figure in the business. Record the payments and it corrects itself.',
+      payrollUnknown: 'The salary side could not be checked',
+      payrollUnknownNote:
+        'The profit above may be missing this month’s wages. Nothing is wrong with your records — the count that would have told us did not arrive. Please try again in a moment.',
+      /**
+       * "recorded" and never "complete". Two payments can belong to one person, so no
+       * pair of counts can say whether everybody has been paid; what this can say is
+       * that the term is real and who is outside it.
+       */
+      payrollRecorded: (payments: number) =>
+        `${payments} salary ${payments === 1 ? 'payment' : 'payments'} recorded for the month — anyone still unpaid is not in the figure above`,
+      /**
+       * Money in neither term of the sum: filed as a salary expense, so the spending
+       * side drops it, and absent from the payroll book, so the payroll side never had
+       * it. The profit reads high by all of it, and this is the only place that says so.
+       */
+      salaryExpense: (entries: number) =>
+        `${entries} spending ${entries === 1 ? 'entry is' : 'entries are'} filed under salaries`,
+      salaryExpenseNote:
+        'Salary spending is left out of the figures above, so that a centre keeping both books is not charged twice. Record those payments in the salary book instead and the profit is right.',
+      expensesLink: 'Spending',
+      payrollLink: 'Pay salaries',
+      /**
+       * In place of the whole card, on the same argument as `outstandingUnreadable`
+       * above: four noughts and a profit of ৳0 is a sentence about the centre, and a
+       * read that failed is not entitled to say it.
+       */
+      unreadable:
+        'This month’s profit could not be worked out just now, so no figures are shown. Nothing is wrong with your records — please try again in a moment.',
+    },
+
     todayAttendance: 'Today’s attendance',
     /**
      * The noun agrees with the denominator, not with `done`. A centre with one
