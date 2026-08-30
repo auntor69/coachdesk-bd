@@ -10034,15 +10034,21 @@ check(
     [centerA, brUttara],
   ),
 )
+// Leaving the branch off used to be refused here, and 20260811000054 is why it is not any
+// more: the stamp fills it from the writer's own membership before the WITH CHECK runs. The
+// assertion that mattered has not changed — a pinned manager still cannot produce a row
+// filed against the whole organisation — it is now met by filing the row rather than by
+// refusing it. See the section below for the whole of that argument.
+await allowed(
+  'a Mirpur manager can file a cost without naming a branch',
+  pinnedManager,
+  `insert into expenses (coaching_center_id, category, amount_bdt, spent_on, note)
+   values ($1, 'electricity', 301, '2026-04-11', 'unnamed branch')`,
+  [centerA],
+)
 check(
-  'nor leave the branch off it, which would file it against the whole organisation',
-  await deniedAsUser(
-    db,
-    pinnedManager,
-    `insert into expenses (coaching_center_id, category, amount_bdt, spent_on)
-     values ($1, 'electricity', 300, '2026-04-11')`,
-    [centerA],
-  ),
+  'and it lands under Mirpur rather than against the whole organisation',
+  (await one(`select branch_id as id from expenses where note = 'unnamed branch'`)) === brMirpur,
 )
 
 // 2. Billing another branch's child. Nothing in the statement mentions a branch — the
@@ -10306,6 +10312,227 @@ await asUser(db, ids.founder, async (tx) => {
     (await n(tx, 'select count(*)::int as n from expenses where id = $1', [mirpur.expenses])) === 1,
   )
 })
+
+// ---------------------------------------------------------------------------
+// Filing a new row under the branch that wrote it — 20260811000054.
+//
+// The section above proved that a pinned manager cannot reach another branch. This one
+// proves the thing that makes a pinned manager able to work at all, which the migration
+// before it took away: every add form in this product posts a row with no branch on it, and
+// 20260811000053 refuses an unfiled row to a pinned member. So the state between those two
+// migrations is one where somebody pinned to Mirpur can read their branch and write nothing
+// — not "writes and then loses it", the insert is refused, by a row-level security error on
+// a form that never mentioned a branch.
+//
+// A CASE PER TABLE, for §8.2's reason and one more of its own: the stamp is one trigger
+// function attached six times, so the thing that can go wrong is not the logic, it is a
+// table that never got the trigger. Six tables carry a branch and are created by a form;
+// six are asserted below, from a real session, with the branch column read back as the
+// superuser so the assertion is about what landed and not about what the session can see.
+//
+// AND THE SAME SIX FOR AN HQ MEMBER, which is the control that matters most. Every centre in
+// the country is HQ-only today, so if this migration changed anything for an unpinned
+// member it would have changed everything for everybody. HQ files nothing, deliberately, and
+// keeps the null the column already held.
+// ---------------------------------------------------------------------------
+
+console.log('\nFiling a new row under the branch that wrote it:')
+
+// The six inserts, tagged so the two runs do not collide on a name. Each one names no branch
+// — which is exactly what src/ posts today — and each returns its id so the column the
+// trigger filled can be read back.
+const unnamedWrites = (tag) => ({
+  students: [
+    `insert into students (coaching_center_id, name, guardian_phone)
+     values ($1, $2, '01799000009') returning id`,
+    [centerA, `${tag} Child`],
+  ],
+  teachers: [
+    `insert into teachers (coaching_center_id, name) values ($1, $2) returning id`,
+    [centerA, `${tag} Sir`],
+  ],
+  batches: [
+    `insert into batches (coaching_center_id, subject_id, teacher_id, name, slot,
+                          monthly_fee_bdt)
+     values ($1, $2, $3, $4, 'evening', 800) returning id`,
+    [centerA, sBio, mirpur.teachers, `${tag} Batch`],
+  ],
+  employees: [
+    `insert into employees (coaching_center_id, name, role)
+     values ($1, $2, 'cleaner') returning id`,
+    [centerA, `${tag} Cleaner`],
+  ],
+  expenses: [
+    `insert into expenses (coaching_center_id, category, amount_bdt, spent_on, note)
+     values ($1, 'electricity', 302, '2026-04-12', $2) returning id`,
+    [centerA, `${tag} cost`],
+  ],
+  notices: [
+    `insert into notices (coaching_center_id, title, body)
+     values ($1, $2, 'Classes as usual') returning id`,
+    [centerA, `${tag} Notice`],
+  ],
+})
+
+async function fileSix(user, tag, who) {
+  const out = {}
+  for (const [table, [sql, params]] of Object.entries(unnamedWrites(tag))) {
+    let id = null
+    let message = null
+    try {
+      id = (await asUser(db, user, (tx) => tx.query(sql, params))).rows[0].id
+    } catch (error) {
+      message = error.message
+    }
+    check(`${who} may write into ${table} without naming a branch`, id !== null, message ?? '')
+    out[table] = id
+  }
+  return out
+}
+
+const byMirpur = await fileSix(pinnedManager, 'Stamped Mirpur', 'a pinned manager')
+const byHq = await fileSix(hqManager, 'Stamped HQ', 'HQ')
+
+check(
+  'the stamp is proven on all six tables a form creates',
+  Object.keys(byMirpur).length === 6 && Object.keys(byHq).length === 6,
+)
+
+for (const table of Object.keys(byMirpur)) {
+  check(
+    `a new row in ${table} is filed under the pinned manager's own branch`,
+    (await branchOf(table, byMirpur[table])) === brMirpur,
+    String(await branchOf(table, byMirpur[table])),
+  )
+  check(
+    `and an HQ row in ${table} is left unfiled, as every centre's are today`,
+    (await branchOf(table, byHq[table])) === null,
+    String(await branchOf(table, byHq[table])),
+  )
+}
+
+// The bug this migration closes is not the null itself, it is what the null did next. A
+// pinned member's own row was invisible to them the moment they wrote it, so the roster they
+// had just added a child to came back empty.
+await asUser(db, pinnedManager, async (tx) => {
+  for (const table of Object.keys(byMirpur)) {
+    check(
+      `and they can read back the ${table} row they just wrote`,
+      (await seen(tx, table, byMirpur[table])) === 1,
+    )
+  }
+})
+
+// A branch named on the insert is respected, which is the whole of what the head office's
+// own picker will rely on: an owner standing at head office filing a child at Uttara.
+const namedUttara = (
+  await asUser(db, hqManager, (tx) =>
+    tx.query(
+      `insert into students (coaching_center_id, branch_id, name, guardian_phone)
+       values ($1, $2, 'Picked Uttara Child', '01799000012') returning id`,
+      [centerA, brUttara],
+    ),
+  )
+).rows[0].id
+check(
+  'a branch named on the insert survives the stamp, which is what an HQ picker needs',
+  (await branchOf('students', namedUttara)) === brUttara,
+)
+check(
+  'while a pinned manager naming another branch is refused, stamp or no stamp',
+  await deniedAsUser(
+    db,
+    pinnedManager,
+    `insert into students (coaching_center_id, branch_id, name, guardian_phone)
+     values ($1, $2, 'Cross Branch Child', '01799000013')`,
+    [centerA, brUttara],
+  ),
+)
+
+// auth.uid() is null for the service-role client, for the SMS cron and for this fixture's own
+// seeding, so app.writer_branch finds no membership and fills nothing. Every check above this
+// line depends on that and none of them says it.
+const seededByService = await one(
+  `insert into students (coaching_center_id, name, guardian_phone)
+   values ($1, 'Service Role Child', '01799000011') returning id`,
+  [centerA],
+)
+check(
+  'a service-role insert is filed under no branch, having no membership to read',
+  (await branchOf('students', seededByService)) === null,
+)
+
+// Two active memberships, two buildings. center_members is unique on (centre, user, role), so
+// one person can be a manager at Mirpur and a teacher at Uttara, and then there is no branch
+// that is theirs. Nothing is filed and 20260811000053 refuses the row: loud and missing beats
+// quiet and wrong, and the repair is on the membership screen.
+const secondPin = await one(
+  `insert into center_members (coaching_center_id, user_id, role, branch_id)
+   values ($1, $2, 'teacher', $3) returning id`,
+  [centerA, pinnedManager, brUttara],
+)
+check(
+  'a member pinned to two branches at once has nothing filled in, so the insert is refused',
+  await deniedAsUser(
+    db,
+    pinnedManager,
+    `insert into students (coaching_center_id, name, guardian_phone)
+     values ($1, 'Two Pins Child', '01799000010')`,
+    [centerA],
+  ),
+)
+check(
+  'and no half-filed child was left behind',
+  (await n(db, `select count(*)::int as n from students where name = 'Two Pins Child'`)) === 0,
+)
+
+// The same two rows with one of them unpinned is HQ, in the same order of precedence
+// app.branch_ok reads them in: a manager of the organisation who also teaches at Mirpur must
+// not have their own work hidden from themselves.
+await db.query('update center_members set branch_id = null where id = $1', [secondPin])
+const alsoHq = (
+  await asUser(db, pinnedManager, (tx) =>
+    tx.query(
+      `insert into students (coaching_center_id, name, guardian_phone)
+       values ($1, 'Also HQ Child', '01799000014') returning id`,
+      [centerA],
+    ),
+  )
+).rows[0].id
+check(
+  'an HQ membership beside a pinned one wins, and files nothing',
+  (await branchOf('students', alsoHq)) === null,
+)
+
+await db.query('delete from center_members where id = $1', [secondPin])
+const pinnedAgain = (
+  await asUser(db, pinnedManager, (tx) =>
+    tx.query(
+      `insert into students (coaching_center_id, name, guardian_phone)
+       values ($1, 'Pinned Again Child', '01799000015') returning id`,
+      [centerA],
+    ),
+  )
+).rows[0].id
+check(
+  'and with the second membership gone the stamp names Mirpur again',
+  (await branchOf('students', pinnedAgain)) === brMirpur,
+)
+
+// A branch is still a subdivision of one organisation. app.writer_branch takes the centre
+// from the row being inserted, so a membership at centre A can never fill a branch onto a
+// centre B row — and the composite key onto (branch_id, coaching_center_id) would refuse it
+// if it somehow did.
+check(
+  "a Mirpur manager's membership fills nothing onto another centre's row",
+  await deniedAsUser(
+    db,
+    pinnedManager,
+    `insert into students (coaching_center_id, name, guardian_phone)
+     values ($1, 'Wrong Centre Child', '01799000016')`,
+    [centerB],
+  ),
+)
 
 console.log(`\n${passed} passed, ${failed} failed`)
 await db.close()
