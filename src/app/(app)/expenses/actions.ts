@@ -44,6 +44,7 @@ import { readIdempotencyKey, UNIQUE_VIOLATION } from '@/lib/idempotency'
 import { MAX_LABEL, MAX_TEXT, clamp } from '@/lib/limits'
 import { MAX_TAKA, parseTaka } from '@/lib/money'
 import { todayInDhaka } from '@/lib/bd/time'
+import { postedBranchId } from '@/lib/branches'
 import { dict } from '@/lib/i18n'
 import { EXPENSE_CATEGORIES } from '@/lib/expenses/categories'
 import { PAYMENT_METHODS } from '@/lib/fees/methods'
@@ -128,12 +129,24 @@ function isSession(value: CenterSession | ExpenseState): value is CenterSession 
 /**
  * Puts one expense on the centre's record.
  *
- * `branch_id` is left null, and that is a decision with a date on it rather than an
- * oversight. §8.2 says the column exists from birth so that a centre which grows into
- * branches does not have to rewrite its history; nothing in `src/` reads `branches` yet —
- * the picker, and the scoping that has to come with it, are §16's steps 13 and 14. Writing
- * a branch here before that would be this screen inventing a boundary the rest of the app
- * does not enforce.
+ * `branch_id` COMES FROM THE FORM NOW, where the form had anything to ask. This
+ * docstring used to say the column was left null because nothing in `src/` read
+ * `branches` yet and writing one here would be inventing a boundary the rest of the app
+ * did not enforce. Three steps closed that: the branches screen let somebody type a
+ * building, 20260811000053 made the column mean who may read the row, and 20260811000054
+ * files a new row under the branch of whoever wrote it. So the null is still the answer
+ * for a single-building centre and for a manager pinned to one — the stamp fills theirs —
+ * and the head office of an institution is asked, because head office is the one desk
+ * that is not in any building and the electricity bill it is holding belongs to one.
+ *
+ * Passed through unchecked, per createStudent's own insert: `expenses_branch_scope` and
+ * the composite foreign key from 20260811000005 are the boundary, and a second copy of
+ * either rule in this file would be the copy that goes stale — as the paragraph above
+ * just demonstrated.
+ *
+ * WHAT IT DECIDES IS WHICH BUILDING LOOKS PROFITABLE. §8.3's comparison table takes each
+ * branch's spending off this column, so rent filed at head office is rent no building
+ * pays and a branch that looks better than it is.
  *
  * `recorded_by` is the caller, from the session and never from the form. It is `on delete
  * set null`, so a manager who leaves takes their name off the row without taking the money
@@ -206,6 +219,7 @@ export async function recordExpense(
       recurring,
       recorded_by: session.userId,
       idempotency_key: key,
+      branch_id: postedBranchId(formData),
     })
     .select('voucher_no')
     .single()
@@ -257,7 +271,4 @@ export async function recordExpense(
   // owner their expense was "already recorded" would read as a warning that they had paid
   // the rent twice, which is not what happened and not what the sentence is for.
   return { ok: t.savedVoucher(voucherNo) }
-
 }
-
-

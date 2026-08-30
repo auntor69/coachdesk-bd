@@ -3,6 +3,7 @@ import { forbidden } from 'next/navigation'
 
 import { Card } from '@/components/ui'
 import { pageCenter, getSession, isStaffAdmin } from '@/lib/auth/session'
+import { branchChoicesFor } from '@/lib/branches'
 import { createClient } from '@/lib/supabase/server'
 import { pageAll, worstFailure } from '@/lib/supabase/page'
 import { has, planName, PLANS } from '@/lib/plans'
@@ -118,18 +119,27 @@ export default async function ExpensesPage({
   //
   // Half-open still, for the ordinary reason: >= the 1st of this month, < the 1st of
   // the next, so nothing on either boundary is counted twice or dropped.
-  const spending = await pageAll((from, to) =>
-    supabase
-      .from('expenses')
-      .select(COLUMNS)
-      .eq('coaching_center_id', session.active.centerId)
-      .gte('spent_on', month)
-      .lt('spent_on', nextMonth)
-      .order('spent_on', { ascending: false })
-      .order('voucher_no', { ascending: false })
-      .order('id')
-      .range(from, to),
-  )
+  const [spending, branches] = await Promise.all([
+    pageAll((from, to) =>
+      supabase
+        .from('expenses')
+        .select(COLUMNS)
+        .eq('coaching_center_id', session.active.centerId)
+        .gte('spent_on', month)
+        .lt('spent_on', nextMonth)
+        .order('spent_on', { ascending: false })
+        .order('voucher_no', { ascending: false })
+        .order('id')
+        .range(from, to),
+    ),
+    // Which building's bill it is, for the head office of an institution with more than
+    // one. Only where the form is drawn at all: a read-only centre gets the list and no
+    // form, so this would be a query for a control nobody sees. `branchChoicesFor`
+    // returns early for every other reader, so nothing is asked of the database unless
+    // there is genuinely a question. §8.3's comparison table reads spending by branch,
+    // which is this column.
+    session.access === 'full' ? branchChoicesFor(supabase, session) : null,
+  ])
 
   // pageAll and not pageOrNull, the register's argument transplanted: a failed read
   // shown as an empty month is a page saying the centre spent nothing, which is a
@@ -169,6 +179,8 @@ export default async function ExpensesPage({
             // Computed here, once, on the server: see the form's own note on why a
             // client component must not read the clock in Dhaka.
             today={todayInDhaka()}
+            branchPick={d.branchPick}
+            branches={branches}
           />
         </Card>
       )}

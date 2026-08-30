@@ -17,14 +17,19 @@
  * anything at all. The page computes it once with `todayInDhaka()`, and the same string
  * both fills the field and caps it.
  *
- * NO EDIT BUTTON AND NO DELETE, then, and no branch picker either: nothing in `src/`
- * reads `branches` yet, so a picker here would be this screen inventing a boundary the
- * rest of the app does not enforce. See the action for what it writes instead.
+ * NO EDIT BUTTON AND NO DELETE, then. There is a branch field now, where there is
+ * anything to ask: this docstring used to say a picker here would be "this screen
+ * inventing a boundary the rest of the app does not enforce", which was true until
+ * 20260811000053 gave the column its meaning and 20260811000054 started filling it in.
+ * Rent is the plainest thing a branch owns, so an institution's head office is asked
+ * which building's bill this is; everybody else is answered for and sees no field.
  */
 import { useActionState, useEffect, useRef, useState } from 'react'
 
+import { BranchPicker } from '@/components/branch-picker'
 import { MethodPicker, type MethodLabels } from '@/components/method-picker'
 import { Alert, Button, Field } from '@/components/ui'
+import type { BranchChoice } from '@/lib/branches'
 import { EXPENSE_CATEGORIES, type CategoryLabels } from '@/lib/expenses/categories'
 import type { T } from '@/lib/i18n'
 import { mintIdempotencyKey } from '@/lib/idempotency'
@@ -53,6 +58,8 @@ export function ExpenseForm({
   methods,
   common,
   today,
+  branchPick,
+  branches,
 }: {
   t: T<'expenseForm'>
   /** The page's own labels, passed down rather than duplicated. See CategoryLabels. */
@@ -62,6 +69,9 @@ export function ExpenseForm({
   common: T<'common'>
   /** Today in Dhaka, as YYYY-MM-DD, written by the page. */
   today: string
+  branchPick: T<'branchPick'>
+  /** `null` draws no branch field at all — see branchChoicesFor. */
+  branches: BranchChoice[] | null
 }) {
   const [state, action, pending] = useActionState<ExpenseState, FormData>(
     recordExpense,
@@ -140,6 +150,18 @@ export function ExpenseForm({
           ))}
         </select>
       </label>
+
+      {/* Which building's bill this is, and only for the head office of an institution
+          with more than one — see BranchPicker, which draws nothing for everybody else.
+          Beside the category rather than lower down, because the two of them are the
+          same kind of question: what this row is, as against what it cost. Below them
+          the amount, the date and the method read as one block of figures.
+
+          `reset()` above puts it back to head office after each save, unlike the method
+          below it. The method survives because the next bill in the pile was usually
+          paid the same way; the building usually was not, because the head office is
+          the one desk that holds every building's paper. */}
+      <BranchPicker t={branchPick} branches={branches} />
 
       {/* `type="text"` with a decimal keypad rather than `type="number"`: a number input
           swallows the taka sign and the Bangla digits a phone keyboard produces, and its

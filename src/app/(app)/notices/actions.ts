@@ -89,6 +89,27 @@ function isSession(value: CenterSession | NoticeState): value is CenterSession {
  * it would make the record read as five announcements and would make the log unusable
  * by the third holiday.
  *
+ * AND `branch_id` IS DERIVED HERE RATHER THAN ASKED, which is the one place this screen
+ * differs from every other form that gained a branch field. A notice about a batch
+ * belongs to the building the batch is in, and the audience picker has already said which
+ * batch — so the branch comes off the row this action reads back two blocks down, for the
+ * same reason `app.stamp_invoice_branch` files a fee under the student's branch instead of
+ * the desk's: a row goes where the thing it is about is.
+ *
+ * A picker would be worse than redundant on the other arm. "Everyone" means every family
+ * in the centre, and filing that under one building would hide a message forty other
+ * families received from the manager of the building those families attend. So a
+ * whole-centre notice keeps 20260811000054's answer: null when the head office wrote it,
+ * because the notice is the organisation's, and the writer's own branch when a pinned
+ * manager did — whose "everyone" is already only their own families, since the roster
+ * behind the phone list is branch-scoped too.
+ *
+ * What deriving buys is the reading, not the writing. `app.branch_ok` lets the head
+ * office read every row and a pinned manager read their own branch's, so putting Mirpur's
+ * name on a notice to a Mirpur batch is what lets Mirpur's manager answer "did we tell
+ * them about Thursday?" — filed at head office it would be a message their families got
+ * and they cannot see.
+ *
  * WHY AN IDENTICAL NOTICE IS NOT WRITTEN TWICE. Any Server Action in this app may be
  * replayed: `useOffline` queues the request when the phone has no signal and sends it
  * again when it does, and the browser's own double-submit is a thumb on a slow
@@ -129,11 +150,16 @@ export async function postNotice(
    * would refuse another centre's batch anyway, but it would refuse it as a database
    * error, and "something went wrong" is the wrong sentence for a picker whose batch
    * was archived while the screen was open.
+   *
+   * And the building it is in comes back with it, one column on a query that was being
+   * made regardless. Null for a whole-centre notice, which is where the stamp takes over.
    */
+  let branchId: string | null = null
+
   if (batchId) {
     const { data: batch, error: batchError } = await supabase
       .from('batches')
-      .select('id')
+      .select('id, branch_id')
       .eq('coaching_center_id', centerId)
       .eq('id', batchId)
       .maybeSingle()
@@ -144,6 +170,8 @@ export async function postNotice(
     // the notice not being saved, which is what happened and is worth another tap.
     if (batchError) return { error: t.errors.failed }
     if (!batch) return { error: t.errors.noBatch }
+
+    branchId = batch.branch_id
   }
 
   const since = new Date(Date.now() - SAME_NOTICE_MS).toISOString()
@@ -176,6 +204,10 @@ export async function postNotice(
       title,
       body,
       audience: 'guardians',
+      // The batch's own building, read above. Left null for the whole centre, where
+      // 20260811000054's stamp fills in a pinned manager's branch and leaves the head
+      // office's notice belonging to the organisation. See the head of this function.
+      branch_id: branchId,
       // Who wrote it, for a centre with a manager as well as an owner. Nothing reads
       // it back on any screen yet; it is here because the day somebody asks "who told
       // them the exam moved" is the day it is too late to start recording it.
