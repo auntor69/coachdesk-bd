@@ -1661,6 +1661,7 @@ export type Database = {
           paid_by: string | null
           created_at: string
           idempotency_key: string | null
+          branch_id: string | null
         }
         Insert: {
           id?: string
@@ -1682,6 +1683,7 @@ export type Database = {
           paid_by?: string | null
           created_at?: string
           idempotency_key?: string | null
+          branch_id?: string | null
         }
         Update: {
           id?: string
@@ -1703,8 +1705,16 @@ export type Database = {
           paid_by?: string | null
           created_at?: string
           idempotency_key?: string | null
+          branch_id?: string | null
         }
         Relationships: [
+          {
+            foreignKeyName: 'salary_payments_branch_id_center_fkey'
+            columns: ['branch_id', 'coaching_center_id']
+            isOneToOne: false
+            referencedRelation: 'branches'
+            referencedColumns: ['id', 'coaching_center_id']
+          },
           {
             foreignKeyName: 'salary_payments_coaching_center_id_fkey'
             columns: ['coaching_center_id']
