@@ -100,6 +100,10 @@ test('the modules that skip the check are exactly the three that should', () => 
     'src/app/(app)/payroll/pay/actions.ts',
     'src/app/(app)/progress/actions.ts',
     'src/app/(app)/settings/actions.ts',
+    // Opening a branch raises the organisation's own monthly bill, so a lapsed
+    // subscription adding buildings would be a centre growing what it owes us while it
+    // is not paying. The head-office check in that module is a separate question.
+    'src/app/(app)/settings/branches/actions.ts',
     'src/app/(app)/settings/staff/actions.ts',
     'src/app/(app)/teach/[batchId]/actions.ts',
   ])

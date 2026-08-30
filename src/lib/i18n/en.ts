@@ -2087,6 +2087,23 @@ export const en: Dictionary = {
     leftHint: 'Blank means today',
   },
 
+  /** See the Bangla: shared by the add form and the row panel, like staffForm. */
+  branchForm: {
+    nameLabel: 'What this branch is called',
+    namePlaceholder: 'e.g. Mirpur',
+    addressLabel: 'Where it is',
+    addressHint:
+      'Optional, and printed nowhere yet — it is here so two branches with similar names can be told apart.',
+    submit: 'Add branch',
+    editHint:
+      'A name typed wrong is corrected here. Nothing filed under the branch moves.',
+    off: 'Closed',
+    turnOff: 'Close this branch',
+    turnOffHint:
+      'Nothing new is filed under it. Every student, bill and salary already recorded stays exactly where it is, and it can be opened again.',
+    turnOn: 'Open it again',
+  },
+
   centerForm: {
     nameLabel: 'Centre’s name',
     nameHint: 'This name signs every SMS, so a short one is better',
@@ -2735,6 +2752,8 @@ export const en: Dictionary = {
       placesFull: (places: number) =>
         `This centre is using all ${places} of its student ${places === 1 ? 'place' : 'places'}, so nothing was added. Turn a student off, or ask for more places on the plan screen.`,
       staffNeedsCenter: 'Staff and permissions come with the Coaching Center plan.',
+      /** staffNeedsCenter one tier up. See settings.branches for the screen's own card. */
+      branchesNeedInstitution: 'Branches come with the Institution plan.',
       addFailed: 'That was not added. Please try again.',
       createFailed: 'That was not created. Please try again.',
       saveFailed: 'That was not saved. Please try again.',
@@ -2788,6 +2807,8 @@ export const en: Dictionary = {
       teachersHint: 'Who is allowed to do what',
       staff: 'Staff & payroll',
       staffHint: 'Who else works here, and what they are paid',
+      branches: 'Branches',
+      branchesHint: 'The buildings this organisation runs',
       examTypes: 'Exam kinds',
       examTypesHint: 'Weekly, model test, monthly — whatever you run',
       sms: 'SMS',
@@ -3370,6 +3391,40 @@ export const en: Dictionary = {
         /** The table's own check, in words an owner can act on. */
         leftBeforeJoined: 'The day they left cannot be before the day they joined.',
         notFound: 'That staff member is not on your list.',
+      },
+    },
+
+    /** See the Bangla for why this screen is addressed to the head office. */
+    branches: {
+      title: 'Branches',
+      subtitle: 'Each building the organisation runs, and what it is called',
+      count: (n: number) => `${n} ${n === 1 ? 'branch' : 'branches'} open`,
+      /**
+       * The noun beside the figure on a row: students at that branch today. The
+       * count itself is set in its own element so it can carry `.num`.
+       */
+      students: (n: number) => (n === 1 ? 'student' : 'students'),
+      emptyTitle: 'No branches written down yet',
+      emptyBody:
+        'Add each building the organisation teaches in. Students, batches, teachers, fees and salaries are then filed under the one they belong to, and the head office can see which building is carrying the others.',
+      addTitle: 'Add a branch',
+      /** While the included three are not used up. */
+      addFree: (n: number) =>
+        `The first ${n} are included, so this one adds nothing to the bill.`,
+      /** And after they are. See §3.7 for why a form has to say this at all. */
+      addCost: (taka: string) => `This one adds ${taka} a month to the bill.`,
+      mineTitle: 'Your branch',
+      mineBody:
+        'Opening a branch, renaming one and closing one belong to the head office, because a branch is a line on the monthly bill. Everything you add is filed under your own branch without you having to say so.',
+      lockedTitle: 'Branches come with the Institution plan',
+      lockedBody: (plan: string, institution: string) =>
+        `${plan} is one building. ${institution} runs several — each with its own students, registers, fees and payroll, and a head office that reads all of them at once and can see which is carrying the others.`,
+      errors: {
+        nameRequired: 'Give the branch a name.',
+        duplicate: 'You already have a branch with this name.',
+        notFound: 'That branch is not on your list.',
+        /** A branch manager, refused. Names who can, because they will have to ask. */
+        hqOnly: 'Only the head office can add, rename or close a branch.',
       },
     },
 

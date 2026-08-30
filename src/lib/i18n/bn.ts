@@ -3514,6 +3514,40 @@ export const bn = {
   },
 
   /**
+   * The words the branches screen's two client components share.
+   *
+   * Split off from `settings.branches` for the reason staffForm is: `T<'group'>`
+   * maps a function leaf to `never`, so a group that crosses the client boundary
+   * cannot hold one. The add form and the row panel both take this, and nothing
+   * in here takes an argument -- the two sentences that need a value in them
+   * (addFree, addCost) stayed above on the server's side.
+   */
+  branchForm: {
+    nameLabel: 'এই শাখাকে কী নামে ডাকা হয়',
+    namePlaceholder: 'যেমন মিরপুর',
+    addressLabel: 'কোথায়',
+    /**
+     * Honest about the column: `branches.address` is stored and read back into
+     * this form, and printed on nothing else yet. Saying so stops an owner
+     * typing an address in the hope it reaches a guardian's SMS.
+     */
+    addressHint:
+      'না দিলেও চলে, আর এখনো কোথাও ছাপা হয় না — কাছাকাছি নামের দুটি শাখা আলাদা করে চেনার জন্য এটি আছে।',
+    submit: 'শাখা যোগ করুন',
+    /** On the row's panel, not the add form. Answers what a rename touches. */
+    editHint: 'নাম ভুল লেখা থাকলে এখানে ঠিক করুন। শাখায় জমা থাকা কিছুই সরবে না।',
+    off: 'বন্ধ',
+    turnOff: 'এই শাখা বন্ধ করুন',
+    /**
+     * What closing does, in the order an owner worries about it: new work stops,
+     * old work stays, and it is not a decision they are stuck with.
+     */
+    turnOffHint:
+      'নতুন কিছু আর এতে জমা হবে না। আগে লেখা প্রতিটি শিক্ষার্থী, বিল আর বেতন যেমন আছে তেমনই থাকবে, আর চাইলে আবার চালু করা যাবে।',
+    turnOn: 'আবার চালু করুন',
+  },
+
+  /**
    * The centre's own name and the number a parent sends fees to.
    *
    * Every string here is on one screen, and the screen is unusual: it shows the
@@ -4463,6 +4497,8 @@ export const bn = {
        * as what the centre tier is for, because the owner did nothing wrong.
        */
       staffNeedsCenter: 'একাধিক শিক্ষক আর অনুমতি কোচিং সেন্টার প্ল্যানের ফিচার।',
+      /** staffNeedsCenter one tier up. See settings.branches for the screen's own card. */
+      branchesNeedInstitution: 'শাখা ইনস্টিটিউশন প্ল্যানের ফিচার।',
       addFailed: 'যোগ করা যায়নি। আবার চেষ্টা করুন।',
       createFailed: 'তৈরি করা যায়নি। আবার চেষ্টা করুন।',
       /**
@@ -4511,6 +4547,8 @@ export const bn = {
       teachersHint: 'কে কী করতে পারবে',
       staff: 'কর্মী ও বেতন',
       staffHint: 'আর কে কাজ করেন, আর তাঁরা কত পান',
+      branches: 'শাখা',
+      branchesHint: 'এই প্রতিষ্ঠান যে ভবনগুলো চালায়',
       examTypes: 'পরীক্ষার ধরন',
       examTypesHint: 'সাপ্তাহিক, মডেল টেস্ট, মাসিক — যা আপনি নেন',
       sms: 'SMS',
@@ -5339,6 +5377,63 @@ export const bn = {
         /** The table's own check (`employees_left_after_joining`), in words. */
         leftBeforeJoined: 'শেষ দিন যোগ দেওয়ার দিনের আগে হতে পারে না।',
         notFound: 'এই কর্মী আপনার তালিকায় নেই।',
+      },
+    },
+
+    /**
+     * Every building the organisation teaches in.
+     *
+     * The screen is addressed to the head office and not to whoever opens it,
+     * which is unusual here and worth saying why. A branch is a line on the
+     * monthly bill (INSTITUTION_BRANCH_BDT, after the included three), so opening
+     * one spends the owner's money and closing one is the sort of thing a
+     * manager should not be able to do to a building that is not theirs.
+     * 20260811000053 already settled that in the database: `branches_branch_scope`
+     * hands a pinned member exactly their own row, so a manager's insert has
+     * nothing to insert against. These strings only have to make the refusal
+     * legible before it happens — mineTitle/mineBody for the manager who is
+     * simply looking, errors.hqOnly for the one who found a form anyway.
+     */
+    branches: {
+      title: 'শাখা',
+      subtitle: 'প্রতিষ্ঠান যে ভবনগুলো চালায়, আর তাদের নাম',
+      /** A chip beside the title, not a sentence. ASCII: it is a tally. */
+      count: (n: number) => `${n}টি শাখা চালু`,
+      /**
+       * The noun after a figure on a row: how many students that branch has
+       * today. The figure is set in its own element so it can carry `.num`, so
+       * this is the noun alone and the argument goes unused, as in
+       * settings.subjects.batches.
+       */
+      students: (_n: number) => 'জন শিক্ষার্থী',
+      emptyTitle: 'এখনো কোনো শাখা লেখা হয়নি',
+      emptyBody:
+        'প্রতিষ্ঠান যে ভবনগুলোতে পড়ায়, প্রতিটি যোগ করুন। এরপর শিক্ষার্থী, ব্যাচ, শিক্ষক, ফি আর বেতন যে শাখার, সেই শাখাতেই জমা হবে — আর হেড অফিস দেখতে পাবে কোন ভবন কোনটির খরচ টানছে।',
+      addTitle: 'শাখা যোগ করুন',
+      /** While the plan's included branches are not used up. */
+      addFree: (n: number) =>
+        `প্রথম ${digits(n, 'bn')}টি শাখা প্ল্যানেই আছে, তাই এটির জন্য বিলে কিছু যোগ হবে না।`,
+      /**
+       * And after they are. A form that adds money to a monthly bill has to say
+       * so on the form (MASTERPLAN 3.7) — an owner should never learn the price
+       * of a tap from the invoice. The figure is the marginal one from
+       * `nextBranchCostBdt`, not the total the branches cost together.
+       */
+      addCost: (taka: string) => `এটির জন্য মাসে ${taka} বিলে যোগ হবে।`,
+      mineTitle: 'আপনার শাখা',
+      mineBody:
+        'শাখা খোলা, নাম বদলানো আর বন্ধ করা হেড অফিসের কাজ, কারণ প্রতিটি শাখা মাসের বিলের একটি লাইন। আপনি যা যোগ করবেন, আলাদা করে বলার দরকার ছাড়াই আপনার নিজের শাখাতেই জমা হবে।',
+      lockedTitle: 'শাখা আছে ইনস্টিটিউশন প্ল্যানে',
+      /** Names both plans, so the sentence still reads if the tiers are renamed. */
+      lockedBody: (plan: string, institution: string) =>
+        `${plan} একটি ভবনের জন্য। ${institution} একাধিক শাখা চালায় — প্রত্যেকটির শিক্ষার্থী, হাজিরা, ফি আর বেতন আলাদা, আর হেড অফিস একসাথে সবগুলো দেখে বুঝতে পারে কোন শাখা কোনটির খরচ টানছে।`,
+      errors: {
+        nameRequired: 'শাখার একটি নাম দিন।',
+        /** The table's `unique (coaching_center_id, name)`, in words. */
+        duplicate: 'এই নামে আপনার একটি শাখা আগেই আছে।',
+        notFound: 'এই শাখা আপনার তালিকায় নেই।',
+        /** A branch manager, refused. Names who can, because they will have to ask. */
+        hqOnly: 'শাখা যোগ করা, নাম বদলানো বা বন্ধ করা শুধু হেড অফিস করতে পারে।',
       },
     },
 

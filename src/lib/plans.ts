@@ -461,6 +461,31 @@ export function branchChargeBdt(plan: PlanLimits, activeBranches: number): numbe
 }
 
 /**
+ * What adding one more branch adds to the monthly bill.
+ *
+ * The marginal figure, not the total, because that is the question somebody standing
+ * in front of the add form is asking. §3.7 is why it is asked at all: "a branch
+ * manager is not the billing owner and must not be able to increase the organisation's
+ * monthly cost on their own signature" — and the same sentence obliges the form an
+ * owner uses to say what the signature costs before they give it.
+ *
+ * A DIFFERENCE RATHER THAN A CONSTANT, and that is the whole reason this is a function
+ * instead of `INSTITUTION_BRANCH_BDT` printed on the screen. The fourth branch is the
+ * first that costs anything; the first three are free, so a form that always named
+ * ৳750 would invent a charge for the centre opening its second building. Subtracting
+ * `branchChargeBdt` from itself means the included-branch rule is stated once, and a
+ * change to `INSTITUTION_INCLUDED_BRANCHES` cannot leave this line disagreeing with
+ * the bill.
+ *
+ * Zero on any tier without `multipleBranches`, inherited from `branchChargeBdt`, which
+ * is correct without being useful: those tiers have no add form to put it on.
+ */
+export function nextBranchCostBdt(plan: PlanLimits, activeBranches: number): number {
+  const now = branchChargeBdt(plan, activeBranches)
+  return branchChargeBdt(plan, activeBranches + 1) - now
+}
+
+/**
  * What we charge this month.
  *
  * COUNTED IN DISTINCT STUDENTS, NOT ENROLLMENTS, and that is a correction rather

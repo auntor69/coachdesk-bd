@@ -270,6 +270,27 @@ export default async function SettingsPage() {
                 },
               ]
             : []),
+          /*
+           * The buildings, on the one tier that has more than one. Gated on the plan
+           * like the staff row above and hidden rather than shown locked, for the same
+           * reason: an owner of a single-building centre has nothing to write down here,
+           * and a row that opens a card saying "not on your plan" is an advertisement.
+           * The plan screen is where we sell.
+           *
+           * No chip, and no query for one. A count of branches would cost every owner of
+           * every centre a round trip to print a number that is on the screen this row
+           * opens, and only institutions would ever read it.
+           */
+          ...(has(session.plan, 'multipleBranches')
+            ? [
+                {
+                  href: '/settings/branches' as Route,
+                  label: t.branches,
+                  hint: t.branchesHint,
+                  count: null,
+                },
+              ]
+            : []),
           {
             href: '/settings/exam-types' as Route,
             label: t.examTypes,

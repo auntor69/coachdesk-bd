@@ -15,6 +15,7 @@ import {
   studentChargeBdt,
   teacherChargeBdt,
   branchChargeBdt,
+  nextBranchCostBdt,
   STUDENT_BANDS,
   CENTER_MONTHLY_FLOOR_BDT,
   CENTER_FREE_TEACHER_SEATS,
@@ -309,6 +310,31 @@ test('an institution gets three branches and pays for the fourth', () => {
   assert.equal(branchChargeBdt(PLANS.institution, INSTITUTION_INCLUDED_BRANCHES), 0)
   assert.equal(branchChargeBdt(PLANS.institution, 4), INSTITUTION_BRANCH_BDT)
   assert.equal(branchChargeBdt(PLANS.institution, 10), 7 * INSTITUTION_BRANCH_BDT)
+})
+
+test('the add-a-branch form names what the next one costs, not what all of them cost', () => {
+  // The marginal figure, because §3.7 makes the form say what the signature costs and
+  // an owner with six branches is not being asked to approve ৳2,250 again.
+  assert.equal(nextBranchCostBdt(PLANS.institution, 6), INSTITUTION_BRANCH_BDT)
+
+  // Free while the included three are not used up, and free is the answer for the
+  // third itself. A form that always printed ৳750 would invent a charge for the centre
+  // opening its second building.
+  for (let n = 0; n < INSTITUTION_INCLUDED_BRANCHES; n += 1) {
+    assert.equal(nextBranchCostBdt(PLANS.institution, n), 0, `${n} branches`)
+  }
+  assert.equal(nextBranchCostBdt(PLANS.institution, INSTITUTION_INCLUDED_BRANCHES), INSTITUTION_BRANCH_BDT)
+
+  // And it agrees with the bill rather than restating its rule: the difference between
+  // two totals is what the sentence promises the owner they are about to owe.
+  assert.equal(
+    nextBranchCostBdt(PLANS.institution, 4),
+    monthlyBillBdt(PLANS.institution, 200, 2, 5) - monthlyBillBdt(PLANS.institution, 200, 2, 4),
+  )
+
+  // Nothing on a tier that has no branches to add. Correct without being useful —
+  // those tiers have no form to print it on.
+  assert.equal(nextBranchCostBdt(PLANS.center, 9), 0)
 })
 
 test('a tier without branches is never charged for one', () => {
