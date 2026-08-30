@@ -9669,6 +9669,644 @@ check(
   (await namedAnywhere('Anon Inserted')) === 0,
 )
 
+// ---------------------------------------------------------------------------
+// Branch scoping — 20260811000053, and the reason it can be trusted.
+//
+// Everything above this line was written by a centre with no branches, or with branches
+// nobody is pinned to, which is every centre in the product today. That is exactly why the
+// 800-odd checks above are the first half of this proof: they say the new restrictive
+// policies changed NOTHING for a member whose `center_members.branch_id` is null.
+//
+// This section is the second half. It builds two structurally identical branches inside
+// centre A, pins a manager to one of them, and then asks — table by table, because §8.2 asks
+// for "a case per table, not one case for the idea" — whether that manager can reach the
+// other branch's copy. Twenty-six tables are scoped by that migration and twenty-six are
+// listed below; a table added to the schema without a decision about branches will show up
+// here as a missing key rather than as a leak in production.
+//
+// The hostile half matters more than the read half. A branch manager is a signed-in user
+// with a real session, so the client is theirs to edit: the tests below post another
+// branch's uuid, bill another branch's child, pay another branch's cleaner, and try to
+// unpin themselves. Each one is paired with the same write filed under their OWN branch,
+// which must succeed — without that control a refusal proves nothing, since a permissive
+// policy might have been what refused it.
+// ---------------------------------------------------------------------------
+
+console.log('\nBranch scoping (a manager pinned to one branch of centre A):')
+
+const brMirpur = await one(
+  `insert into branches (coaching_center_id, name) values ($1, 'Mirpur Scope') returning id`,
+  [centerA],
+)
+const brUttara = await one(
+  `insert into branches (coaching_center_id, name) values ($1, 'Uttara Scope') returning id`,
+  [centerA],
+)
+
+// A whole branch, twice over: the same twenty-six rows filed under Mirpur and under Uttara,
+// so every assertion below is the same question asked of two identical things that differ
+// only in which office they belong to.
+async function branchWorld(tag, branch, salary, rent) {
+  const w = { branches: branch }
+
+  // A colleague, so the roster itself can be tested: a manager at Mirpur has no business
+  // reading who works at Uttara, or on what terms.
+  const colleague = (
+    await db.query('insert into auth.users (id) values (gen_random_uuid()) returning id')
+  ).rows[0].id
+  await addMember(centerA, colleague, 'teacher')
+  await db.query('update center_members set branch_id = $1 where user_id = $2', [
+    branch,
+    colleague,
+  ])
+  w.center_members = await one('select id from center_members where user_id = $1', [colleague])
+
+  w.teachers = await one(
+    `insert into teachers (coaching_center_id, branch_id, name) values ($1, $2, $3) returning id`,
+    [centerA, branch, `${tag} Teacher`],
+  )
+  await db.query(
+    `insert into teacher_permissions (teacher_id, coaching_center_id) values ($1, $2)`,
+    [w.teachers, centerA],
+  )
+  await db.query(
+    `insert into teacher_subjects (teacher_id, subject_id, coaching_center_id)
+     values ($1, $2, $3)`,
+    [w.teachers, sBio, centerA],
+  )
+  // Both hang off the teacher and are keyed by them, so the lookup below uses teacher_id.
+  w.teacher_permissions = w.teachers
+  w.teacher_subjects = w.teachers
+
+  w.batches = await one(
+    `insert into batches (coaching_center_id, branch_id, subject_id, teacher_id, name, slot,
+                          monthly_fee_bdt)
+     values ($1, $2, $3, $4, $5, 'morning', 900) returning id`,
+    [centerA, branch, sBio, w.teachers, `${tag} Batch`],
+  )
+  await db.query(
+    `insert into batch_schedules (coaching_center_id, batch_id, day_of_week, start_time, end_time)
+     values ($1, $2, 2, '09:00', '10:30')`,
+    [centerA, w.batches],
+  )
+  w.batch_schedules = w.batches
+
+  w.students = await one(
+    `insert into students (coaching_center_id, branch_id, name, guardian_phone)
+     values ($1, $2, $3, '01799000000') returning id`,
+    [centerA, branch, `${tag} Child`],
+  )
+  w.guardians = await one(
+    `insert into guardians (coaching_center_id, student_id, phone, name)
+     values ($1, $2, '01799000001', $3) returning id`,
+    [centerA, w.students, `${tag} Parent`],
+  )
+  w.enrollments = await one(
+    `insert into enrollments (coaching_center_id, student_id, subject_id, batch_id)
+     values ($1, $2, $3, $4) returning id`,
+    [centerA, w.students, sBio, w.batches],
+  )
+  w.student_transfers = await one(
+    `insert into student_transfers (coaching_center_id, student_id, from_branch_id, to_branch_id)
+     values ($1, $2, null, $3) returning id`,
+    [centerA, w.students, branch],
+  )
+
+  // April, because the register guard in 20260811000031 refuses a class that has not
+  // happened yet and the hostile insert further down has to be refused by the branch and
+  // not by the calendar.
+  w.attendance_sessions = await one(
+    `insert into attendance_sessions (coaching_center_id, batch_id, session_date)
+     values ($1, $2, '2026-04-02') returning id`,
+    [centerA, w.batches],
+  )
+  w.attendance_records = await one(
+    `insert into attendance_records (coaching_center_id, session_id, enrollment_id, status)
+     values ($1, $2, $3, 'absent') returning id`,
+    [centerA, w.attendance_sessions, w.enrollments],
+  )
+  w.absence_notices = await one(
+    `insert into absence_notices (coaching_center_id, session_id, student_id, channel)
+     values ($1, $2, $3, 'sms') returning id`,
+    [centerA, w.attendance_sessions, w.students],
+  )
+
+  w.exams = await one(
+    `insert into exams (coaching_center_id, subject_id, batch_id, teacher_id, title,
+                        total_marks, exam_date)
+     values ($1, $2, $3, $4, $5, 50, '2026-04-05') returning id`,
+    [centerA, sBio, w.batches, w.teachers, `${tag} Test`],
+  )
+  w.exam_results = await one(
+    `insert into exam_results (coaching_center_id, exam_id, enrollment_id, obtained_marks)
+     values ($1, $2, $3, 37) returning id`,
+    [centerA, w.exams, w.enrollments],
+  )
+  w.result_notices = await one(
+    `insert into result_notices (coaching_center_id, exam_id, student_id, channel)
+     values ($1, $2, $3, 'sms') returning id`,
+    [centerA, w.exams, w.students],
+  )
+  w.progress_updates = await one(
+    `insert into progress_updates
+       (coaching_center_id, student_id, channel, covers_from, covers_to, to_phone, body)
+     values ($1, $2, 'sms', '2026-04-01', '2026-04-30', '01799000001', $3) returning id`,
+    [centerA, w.students, `${tag} is doing well`],
+  )
+
+  w.fee_invoices = await one(
+    `insert into fee_invoices (coaching_center_id, student_id, enrollment_id, period_month,
+                               amount_bdt, due_date)
+     values ($1, $2, $3, '2026-12-01', 900, '2026-12-10') returning id`,
+    [centerA, w.students, w.enrollments],
+  )
+  w.fee_payments = await one(
+    `insert into fee_payments (coaching_center_id, invoice_id, student_id, amount_bdt, method)
+     values ($1, $2, $3, 900, 'cash') returning id`,
+    [centerA, w.fee_invoices, w.students],
+  )
+  w.fee_reminders = await one(
+    `insert into fee_reminders (coaching_center_id, invoice_id, channel, amount_bdt)
+     values ($1, $2, 'sms', 900) returning id`,
+    [centerA, w.fee_invoices],
+  )
+
+  w.employees = await one(
+    `insert into employees (coaching_center_id, branch_id, name, role)
+     values ($1, $2, $3, 'cleaner') returning id`,
+    [centerA, branch, `${tag} Cleaner`],
+  )
+  w.salary_terms = await one(
+    `insert into salary_terms (coaching_center_id, employee_id, basic_bdt)
+     values ($1, $2, $3) returning id`,
+    [centerA, w.employees, salary],
+  )
+  // No branch_id passed on purpose: 20260811000052 stamps it from the employee, and a test
+  // that supplied it would be testing the test rather than the trigger.
+  w.salary_payments = await one(
+    `insert into salary_payments (coaching_center_id, employee_id, for_month, basic_bdt)
+     values ($1, $2, '2026-12-01', $3) returning id`,
+    [centerA, w.employees, salary],
+  )
+  w.expenses = await one(
+    `insert into expenses (coaching_center_id, branch_id, category, amount_bdt, spent_on, note)
+     values ($1, $2, 'rent', $3, '2026-12-05', 'branch scope fixture') returning id`,
+    [centerA, branch, rent],
+  )
+  w.notices = await one(
+    `insert into notices (coaching_center_id, branch_id, title, body)
+     values ($1, $2, $3, 'Classes resume on Sunday') returning id`,
+    [centerA, branch, `${tag} Notice`],
+  )
+
+  return w
+}
+
+const mirpur = await branchWorld('Mirpur', brMirpur, 3000, 1100)
+const uttara = await branchWorld('Uttara', brUttara, 4000, 2200)
+
+// The manager under test, and an unpinned one beside them. Same role, same centre, same
+// screens: the only difference is one column on one membership row.
+const pinnedManager = (
+  await db.query('insert into auth.users (id) values (gen_random_uuid()) returning id')
+).rows[0].id
+await addMember(centerA, pinnedManager, 'manager')
+await db.query('update center_members set branch_id = $1 where user_id = $2', [
+  brMirpur,
+  pinnedManager,
+])
+
+const hqManager = (
+  await db.query('insert into auth.users (id) values (gen_random_uuid()) returning id')
+).rows[0].id
+await addMember(centerA, hqManager, 'manager')
+
+check(
+  'the pinned manager is pinned and the HQ one is not, or nothing below means anything',
+  (await one('select branch_id as id from center_members where user_id = $1', [pinnedManager])) ===
+    brMirpur &&
+    (await db.query('select branch_id from center_members where user_id = $1', [hqManager]))
+      .rows[0].branch_id === null,
+)
+
+// Every scoped table, and the column its row is found by. `id` for most of them; the two
+// that hang off a teacher are keyed by the teacher, and batch_schedules by its batch.
+const SCOPED = {
+  branches: 'id',
+  center_members: 'id',
+  teachers: 'id',
+  teacher_permissions: 'teacher_id',
+  teacher_subjects: 'teacher_id',
+  employees: 'id',
+  batches: 'id',
+  batch_schedules: 'batch_id',
+  students: 'id',
+  guardians: 'id',
+  enrollments: 'id',
+  student_transfers: 'id',
+  attendance_sessions: 'id',
+  attendance_records: 'id',
+  absence_notices: 'id',
+  exams: 'id',
+  exam_results: 'id',
+  result_notices: 'id',
+  progress_updates: 'id',
+  fee_invoices: 'id',
+  fee_payments: 'id',
+  fee_reminders: 'id',
+  salary_terms: 'id',
+  salary_payments: 'id',
+  expenses: 'id',
+  notices: 'id',
+}
+
+check(
+  'the fixture covers every table the migration scopes',
+  Object.keys(SCOPED).length === 26 &&
+    Object.keys(SCOPED).every((table) => mirpur[table] && uttara[table]),
+  Object.keys(SCOPED)
+    .filter((table) => !mirpur[table] || !uttara[table])
+    .join(', '),
+)
+
+const seen = (tx, table, id) =>
+  n(tx, `select count(*)::int as n from ${table} where ${SCOPED[table]} = $1`, [id])
+
+await asUser(db, pinnedManager, async (tx) => {
+  for (const table of Object.keys(SCOPED)) {
+    check(`a Mirpur manager reads their own ${table}`, (await seen(tx, table, mirpur[table])) === 1)
+    check(`and not Uttara's ${table}`, (await seen(tx, table, uttara[table])) === 0)
+  }
+})
+
+// The other side of the same coin: an unpinned membership is HQ, and HQ is the whole
+// organisation. If this loop failed, branch scoping would have broken the owner's own
+// centre-wide screens rather than narrowed a manager's.
+await asUser(db, hqManager, async (tx) => {
+  for (const table of Object.keys(SCOPED)) {
+    check(
+      `an HQ manager reads both branches' ${table}`,
+      (await seen(tx, table, mirpur[table])) === 1 && (await seen(tx, table, uttara[table])) === 1,
+    )
+  }
+})
+
+// The rows filed under no branch, which is every row this product has written so far. A
+// pinned member is refused them, on purpose and documented in the migration: a shared
+// reading would put the same unattributed child in both branches' reports, and the sum of
+// the branches would stop being the organisation.
+await asUser(db, pinnedManager, async (tx) => {
+  check(
+    'a pinned manager cannot read a student who is filed under no branch',
+    (await n(tx, 'select count(*)::int as n from students where id = $1', [stAli])) === 0,
+  )
+  check(
+    'nor an unfiled batch',
+    (await n(tx, 'select count(*)::int as n from batches where id = $1', [bBioMorning])) === 0,
+  )
+  check(
+    "nor the owner's own membership row, which carries no branch",
+    (await n(
+      tx,
+      `select count(*)::int as n from center_members where user_id = $1 and role = 'owner'`,
+      [ids.ownerA],
+    )) === 0,
+  )
+})
+
+await asUser(db, hqManager, async (tx) => {
+  check(
+    'while HQ reads the unfiled rows, which is what makes them HQ',
+    (await n(tx, 'select count(*)::int as n from students where id = $1', [stAli])) === 1,
+  )
+})
+
+console.log('\nBranch scoping, from a hostile branch session:')
+
+// A refusal only means something next to the same write that is supposed to work, so each
+// attack below is paired with one. `deniedAsUser` swallows the message, which is right for a
+// refusal we want and useless for a refusal we do not — so the control reports its own.
+async function allowed(name, user, sql, params) {
+  let message = null
+  try {
+    await asUser(db, user, (tx) => tx.query(sql, params))
+  } catch (error) {
+    message = error.message
+  }
+  check(name, message === null, message ?? '')
+}
+
+// A number series is the centre's, and section 5 of 20260811000053 exists because a
+// branch-pinned caller taking `max(voucher_no) + 1` through their own policies gets the
+// branch's max. The series is read here as the superuser, so the assertion is about the
+// number the trigger actually issued and not about what this session can see.
+const seriesTop = async (table, column) =>
+  Number(
+    (
+      await db.query(
+        `select coalesce(max(${column}), 0) as id from ${table} where coaching_center_id = $1`,
+        [centerA],
+      )
+    ).rows[0].id,
+  )
+
+// 1. Filing a cost under another branch. The oldest version of this attack: the form posts
+// a branch id, so the client posts a different one.
+const voucherBefore = await seriesTop('expenses', 'voucher_no')
+await allowed(
+  'a Mirpur manager can file a cost under Mirpur',
+  pinnedManager,
+  `insert into expenses (coaching_center_id, branch_id, category, amount_bdt, spent_on)
+   values ($1, $2, 'electricity', 300, '2026-04-11')`,
+  [centerA, brMirpur],
+)
+check(
+  "and its voucher number continued the centre's book, not their branch's",
+  (await seriesTop('expenses', 'voucher_no')) === voucherBefore + 1,
+)
+check(
+  "and cannot file one under Uttara's",
+  await deniedAsUser(
+    db,
+    pinnedManager,
+    `insert into expenses (coaching_center_id, branch_id, category, amount_bdt, spent_on)
+     values ($1, $2, 'electricity', 300, '2026-04-11')`,
+    [centerA, brUttara],
+  ),
+)
+check(
+  'nor leave the branch off it, which would file it against the whole organisation',
+  await deniedAsUser(
+    db,
+    pinnedManager,
+    `insert into expenses (coaching_center_id, category, amount_bdt, spent_on)
+     values ($1, 'electricity', 300, '2026-04-11')`,
+    [centerA],
+  ),
+)
+
+// 2. Billing another branch's child. Nothing in the statement mentions a branch — the
+// invoice takes one from the student, via the stamp in 20260811000047, and the WITH CHECK
+// runs after that trigger. This is the case that makes the stamp columns load-bearing
+// rather than decorative.
+await allowed(
+  "a Mirpur manager can bill Mirpur's child",
+  pinnedManager,
+  `insert into fee_invoices (coaching_center_id, student_id, period_month, amount_bdt, due_date)
+   values ($1, $2, '2027-01-01', 900, '2027-01-10')`,
+  [centerA, mirpur.students],
+)
+check(
+  "and cannot bill Uttara's, though the statement names no branch at all",
+  await deniedAsUser(
+    db,
+    pinnedManager,
+    `insert into fee_invoices (coaching_center_id, student_id, period_month, amount_bdt, due_date)
+     values ($1, $2, '2027-01-01', 900, '2027-01-10')`,
+    [centerA, uttara.students],
+  ),
+)
+
+// And taking the money for it, which is where the receipt series lives. The invoice is the
+// one the manager just raised; its number came from the centre's book, and so must the
+// receipt's.
+const janInvoice = await one(
+  `select id from fee_invoices where student_id = $1 and period_month = '2027-01-01'`,
+  [mirpur.students],
+)
+const receiptBefore = await seriesTop('fee_payments', 'receipt_no')
+await allowed(
+  "a Mirpur manager can take Mirpur's fee",
+  pinnedManager,
+  `insert into fee_payments (coaching_center_id, invoice_id, student_id, amount_bdt, method)
+   values ($1, $2, $3, 900, 'cash')`,
+  [centerA, janInvoice, mirpur.students],
+)
+check(
+  "and the receipt continued the centre's numbering",
+  (await seriesTop('fee_payments', 'receipt_no')) === receiptBefore + 1,
+)
+check(
+  "and cannot take a fee against Uttara's invoice",
+  await deniedAsUser(
+    db,
+    pinnedManager,
+    `insert into fee_payments (coaching_center_id, invoice_id, student_id, amount_bdt, method)
+     values ($1, $2, $3, 900, 'cash')`,
+    [centerA, uttara.fee_invoices, uttara.students],
+  ),
+)
+
+// 3. Paying another branch's staff, which is the same trick against 20260811000052's stamp.
+const payVoucherBefore = await seriesTop('salary_payments', 'voucher_no')
+await allowed(
+  "a Mirpur manager can pay Mirpur's cleaner",
+  pinnedManager,
+  `insert into salary_payments (coaching_center_id, employee_id, for_month, basic_bdt)
+   values ($1, $2, '2027-01-01', 3000)`,
+  [centerA, mirpur.employees],
+)
+check(
+  "and that payslip took the centre's next voucher number",
+  (await seriesTop('salary_payments', 'voucher_no')) === payVoucherBefore + 1,
+)
+check(
+  "and cannot pay Uttara's",
+  await deniedAsUser(
+    db,
+    pinnedManager,
+    `insert into salary_payments (coaching_center_id, employee_id, for_month, basic_bdt)
+     values ($1, $2, '2027-01-01', 4000)`,
+    [centerA, uttara.employees],
+  ),
+)
+
+// 4. A register on another branch's batch — the derived-table lookup, two hops from the
+// branch and reached through app.batch_branch().
+await allowed(
+  "a Mirpur manager can open a register on Mirpur's batch",
+  pinnedManager,
+  `insert into attendance_sessions (coaching_center_id, batch_id, session_date)
+   values ($1, $2, '2026-04-09')`,
+  [centerA, mirpur.batches],
+)
+check(
+  "and cannot open one on Uttara's",
+  await deniedAsUser(
+    db,
+    pinnedManager,
+    `insert into attendance_sessions (coaching_center_id, batch_id, session_date)
+     values ($1, $2, '2026-04-09')`,
+    [centerA, uttara.batches],
+  ),
+)
+
+// 5. A parent's phone number against another branch's child. The most private write in the
+// schema, and the one a leak would be least forgivable on. Not primary: the fixture's own
+// guardian already holds that slot, and one_primary_per_student is right to say so.
+await allowed(
+  "a Mirpur manager can add a guardian to Mirpur's child",
+  pinnedManager,
+  `insert into guardians (coaching_center_id, student_id, phone, name, is_primary)
+   values ($1, $2, '01766000000', 'Mirpur uncle', false)`,
+  [centerA, mirpur.students],
+)
+check(
+  "and cannot add one to Uttara's",
+  await deniedAsUser(
+    db,
+    pinnedManager,
+    `insert into guardians (coaching_center_id, student_id, phone, name, is_primary)
+     values ($1, $2, '01766000000', 'Uttara uncle', false)`,
+    [centerA, uttara.students],
+  ),
+)
+
+// 6. A mark on another branch's exam, and a message about another branch's child.
+check(
+  "a Mirpur manager cannot enter a mark on Uttara's exam",
+  await deniedAsUser(
+    db,
+    pinnedManager,
+    `insert into exam_results (coaching_center_id, exam_id, enrollment_id, obtained_marks)
+     values ($1, $2, $3, 50)`,
+    [centerA, uttara.exams, uttara.enrollments],
+  ),
+)
+check(
+  "nor record a call about Uttara's child",
+  await deniedAsUser(
+    db,
+    pinnedManager,
+    `insert into progress_updates
+       (coaching_center_id, student_id, channel, covers_from, covers_to, to_phone, body)
+     values ($1, $2, 'call', '2026-04-01', '2026-04-30', '01766000000', 'reached out')`,
+    [centerA, uttara.students],
+  ),
+)
+
+// 7. Escalation, which is the point of §12. A manager may edit the roster — members_admin_write
+// says so — and the branch on their own membership is the whole of their limit. Unpinning
+// themselves would be the shortest path from one branch to an organisation, so the WITH CHECK
+// on their own row is what has to refuse it.
+check(
+  'a pinned manager cannot unpin themselves',
+  await deniedAsUser(
+    db,
+    pinnedManager,
+    'update center_members set branch_id = null where user_id = $1',
+    [pinnedManager],
+  ),
+)
+check(
+  'nor move themselves to another branch',
+  await deniedAsUser(
+    db,
+    pinnedManager,
+    'update center_members set branch_id = $1 where user_id = $2',
+    [brUttara, pinnedManager],
+  ),
+)
+check(
+  'nor hire somebody into another branch',
+  await deniedAsUser(
+    db,
+    pinnedManager,
+    `insert into center_members (coaching_center_id, user_id, role, branch_id)
+     values ($1, $2, 'teacher', $3)`,
+    [centerA, hqManager, brUttara],
+  ),
+)
+check(
+  'and is still pinned to Mirpur after all of that',
+  (await one('select branch_id as id from center_members where user_id = $1', [pinnedManager])) ===
+    brMirpur,
+)
+
+// 8. An UPDATE or a DELETE that no policy raises on, because a row nobody can see is a row
+// nobody matches: Postgres reports success and changes nothing. The row itself is the only
+// honest witness.
+await asUser(db, pinnedManager, (tx) =>
+  tx.query(`update students set name = 'Renamed by Mirpur' where id = $1`, [uttara.students]),
+)
+check(
+  "a Mirpur manager's rename of an Uttara child changes nothing",
+  (await one(`select id from students where id = $1 and name = 'Uttara Child'`, [
+    uttara.students,
+  ])) === uttara.students,
+)
+await asUser(db, pinnedManager, (tx) =>
+  tx.query('delete from notices where id = $1', [uttara.notices]),
+)
+check(
+  "and their delete of an Uttara notice leaves it standing",
+  (await n(db, 'select count(*)::int as n from notices where id = $1', [uttara.notices])) === 1,
+)
+
+// 9. The eight finance views are security_invoker, so they answer with whatever the caller
+// can see — which now means a pinned manager reads their own branch's money out of the same
+// view the owner reads the organisation's from. That is §8.3's comparison table already
+// working at the database level, and the reason the screen only has to change its title.
+const scopedProfit = async (user) =>
+  (
+    await asUser(db, user, (tx) =>
+      tx.query(
+        `select expenses_bdt, payroll_bdt from center_profit_month
+          where coaching_center_id = $1 and period_month = '2026-12-01'`,
+        [centerA],
+      ),
+    )
+  ).rows[0] ?? null
+
+const mirpurMoney = await scopedProfit(pinnedManager)
+check(
+  'a pinned manager reads their own branch out of the centre-wide profit view',
+  Number(mirpurMoney?.expenses_bdt) === 1100 && Number(mirpurMoney?.payroll_bdt) === 3000,
+  JSON.stringify(mirpurMoney),
+)
+
+const hqMoney = await scopedProfit(hqManager)
+check(
+  'and HQ reads both branches added together, from the same view',
+  Number(hqMoney?.expenses_bdt) === 3300 && Number(hqMoney?.payroll_bdt) === 7000,
+  JSON.stringify(hqMoney),
+)
+
+// 10. And none of it opened a door between centres. A branch is a subdivision of one
+// organisation; centre B is a different organisation, and the restrictive policy returns
+// true for a caller who holds no membership here precisely so that the permissive policies
+// keep being what refuses them.
+await asUser(db, ids.ownerB, async (tx) => {
+  check(
+    "another centre's owner still reads none of centre A's branches",
+    (await n(tx, 'select count(*)::int as n from branches where id in ($1, $2)', [
+      brMirpur,
+      brUttara,
+    ])) === 0,
+  )
+  check(
+    "nor a branch-filed child, a branch-filed cost or a branch-filed payslip",
+    (await n(tx, 'select count(*)::int as n from students where id = $1', [mirpur.students])) ===
+      0 &&
+      (await n(tx, 'select count(*)::int as n from expenses where id = $1', [mirpur.expenses])) ===
+        0 &&
+      (await n(tx, 'select count(*)::int as n from salary_payments where id = $1', [
+        mirpur.salary_payments,
+      ])) === 0,
+  )
+})
+
+// The founder holds no membership anywhere, which is the carve-out in app.branch_ok()'s
+// second disjunct. Seventeen policy clauses in this schema are written on
+// app.is_platform_admin(), and demanding a membership row would have turned every one of
+// them into a refusal the moment this migration landed.
+await asUser(db, ids.founder, async (tx) => {
+  check(
+    'the founder can still reach a branch-filed cost, having no membership to be pinned by',
+    (await n(tx, 'select count(*)::int as n from expenses where id = $1', [mirpur.expenses])) === 1,
+  )
+})
+
 console.log(`\n${passed} passed, ${failed} failed`)
 await db.close()
 process.exit(failed ? 1 : 0)

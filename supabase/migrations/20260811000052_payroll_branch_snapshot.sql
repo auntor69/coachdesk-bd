@@ -47,8 +47,9 @@
 --
 -- WHAT IS NOT HERE, and it is the same list 20260811000047 left. The RLS half — §8.2's
 -- "a branch-scoped member reads and writes their branch, an HQ member reads and writes
--- all of them, and the check is in the database" — is §16's step 14, one policy written
+-- all of them, and the check is in the database" — is §16's step 13, one policy written
 -- across a dozen tables at once plus the cross-branch leak tests §8.2 asks for by name.
+-- (It landed in 20260811000053, one migration after this one.)
 -- The per-branch profit view is not here either: 20260811000049 built the centre-wide one
 -- beside the screen that reads it, and the branch comparison table has no screen yet.
 -- This migration's job is to make sure that when both are written there is a column on
@@ -171,7 +172,7 @@ alter table public.salary_payments enable trigger salary_payments_audit;
 -- There the INVOKER failure is reachable today: a teacher taking a fee payment under §6.5
 -- cannot necessarily read the student. Here everybody who can insert a salary payment is a
 -- staff admin, and both payee tables' read policies are centre-wide, so an INVOKER lookup
--- would work — today. §8.2's branch policies are step 14, and what they say is that a
+-- would work — today. §8.2's branch policies are step 13, and what they say is that a
 -- branch-scoped member reads their branch. The day that lands, an INVOKER lookup would
 -- return no row for precisely the cross-branch payment somebody needed attributed, the
 -- insert would still succeed, and the salary would go missing from one line of §8.3's

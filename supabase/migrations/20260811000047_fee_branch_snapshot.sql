@@ -51,8 +51,9 @@
 --
 -- WHAT IS NOT HERE. The RLS half. §8.2's rule — "A branch-scoped member reads and writes
 -- their branch. An HQ member reads and writes all of them. There is no third answer, and
--- the check is in the database" — is §16's step 14, and it needs the same policy written
+-- the check is in the database" — is §16's step 13, and it needs the same policy written
 -- across a dozen tables at once plus the cross-branch leak tests §8.2 asks for by name.
+-- (It landed in 20260811000053, as restrictive policies over this column and its siblings.)
 -- Doing half of it here would leave the schema in the state §8.1 already complains about:
 -- a column that exists and nothing that reads it. This migration's job is to make sure
 -- that when those policies are written, there is a column on the money tables for them to
