@@ -1,16 +1,18 @@
 'use server'
 
 /**
- * The founder's own writes: money a centre paid us, what plan they are on, ticking off
- * a customer who asked to change tier, and getting a locked-out owner back in.
+ * The founder's own writes: money a centre paid us, what plan they are on, confirming a
+ * purchase the customer started themselves, ticking off a request to change tier, and
+ * getting a locked-out owner back in.
  *
- * THE ONLY PLACE IN THE APP THAT WRITES `payments`. Until this file existed the
- * founder panel's "we have received" column read ৳0 for every customer forever,
- * because centres are signed up in person and handed over bKash — the money was real
- * and nothing recorded it. A spreadsheet would have worked for a week; the reason it
- * belongs here is that the panel already knows what each centre *should* pay, and a
- * screen that shows the bill beside what arrived is the difference between chasing
- * the right centre and chasing all of them.
+ * THE ONLY PLACE IN THE APP THAT WRITES `payments`, directly or through
+ * `settle_payment_intent`. Until this file existed the founder panel's "we have
+ * received" column read ৳0 for every customer forever, because centres are signed up in
+ * person and handed over bKash — the money was real and nothing recorded it. A
+ * spreadsheet would have worked for a week; the reason it belongs here is that the panel
+ * already knows what each centre *should* pay, and a screen that shows the bill beside
+ * what arrived is the difference between chasing the right centre and chasing all of
+ * them.
  *
  * WHY BOTH OF THESE GO THROUGH createAdminClient(), AND WHAT THAT COSTS.
  *
@@ -35,14 +37,22 @@
  * customer's bill and will find out when they complain. Separate forms, separate
  * submits, and neither can move the other's data.
  *
- * THE THIRD ACTION IS THE ODD ONE OUT and deliberately does not use the admin client.
- * `markUpgradeHandled` writes `upgrade_requests`, which has a policy for exactly this
- * — `upgrade_requests_platform_update` — so the write can be checked by the database
- * instead of trusted from here. Nothing about a request is money or a tier, so there
- * is no trigger standing in the way and no reason to reach past RLS. Where a policy
- * can do the job, the policy does the job.
+ * CONFIRMING A PURCHASE IS NOT THE SAME AS RECORDING A PAYMENT, which is why it is its
+ * own action and not a fifth field on the receipt form. `recordCenterPayment` is money
+ * that arrived with nothing behind it — cash at a desk, a transfer against a bill. A
+ * purchase already has a server-priced intent behind it (§11.2), so confirming one goes
+ * through the provider interface and `settle_payment_intent`, which writes the receipt
+ * and raises the student ceiling in one transaction. Neither action can do the other's
+ * job: this one cannot name an amount, and that one cannot grant a place.
  *
- * THE FOURTH ONE TOUCHES AN ACCOUNT RATHER THAN A CENTRE, which makes it the most
+ * TICKING OFF A REQUEST IS THE ODD ONE OUT and deliberately does not use the admin
+ * client. `markUpgradeHandled` writes `upgrade_requests`, which has a policy for exactly
+ * this — `upgrade_requests_platform_update` — so the write can be checked by the
+ * database instead of trusted from here. Nothing about a request is money or a tier, so
+ * there is no trigger standing in the way and no reason to reach past RLS. Where a
+ * policy can do the job, the policy does the job.
+ *
+ * THE PASSWORD RESET TOUCHES AN ACCOUNT RATHER THAN A CENTRE, which makes it the most
  * dangerous thing in this file and the one with a rule module of its own. Read
  * lib/auth/founder-reset.ts for what it refuses and why the answer to "should the
  * platform admin be able to reset any password" is that they already can, from their
@@ -61,9 +71,11 @@ import {
 } from '@/lib/auth/session'
 import { founderResetRefusal } from '@/lib/auth/founder-reset'
 import { MIN_PASSWORD } from '@/lib/auth/password'
+import { readIntent } from '@/lib/billing/intents'
+import { paymentProvider } from '@/lib/billing/provider'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { createClient } from '@/lib/supabase/server'
-import { addMonths, formatMonth } from '@/lib/bd/time'
+import { addMonths, formatMonth, hasPassed } from '@/lib/bd/time'
 import { formatBdMobile, normalizeBdMobile } from '@/lib/bd/phone'
 import { PAYMENT_METHODS } from '@/lib/fees/methods'
 import { dict, DEFAULT_LOCALE } from '@/lib/i18n'
@@ -427,6 +439,165 @@ export async function setCenterPlan(
   return over
     ? { ok: applied, warn: t.overLimit(planName(limits, session.locale)) }
     : { ok: applied }
+}
+
+/**
+ * The founder confirming that money for one priced purchase actually arrived.
+ *
+ * THE HUMAN HALF OF §11.3. The manual provider "is a real provider whose verification
+ * step is a human being", and this is that step: the founder is looking at a transfer in
+ * their own bKash app, matching it to a quote on this screen, and typing the TrxID they
+ * can see. Nothing about the amount is theirs to decide — `settle_payment_intent` charges
+ * what the intent says and grants what the intent says, so the worst a mistake here can
+ * do is settle the wrong quote, which is visible in both rows afterwards.
+ *
+ * WHY IT CAN DRIVE `createPayment` TOO. Only an `initiated` intent settles: the
+ * reference-bearing step is what makes `successful` mean "reconciled", so §11.2 leaves
+ * `pending -> successful` out of the diagram on purpose. An intent the customer never
+ * opened the instructions for is still `pending`, and a founder who has the money in
+ * hand should not be told to go and make the customer click something. So the provider's
+ * own transition runs first — its function, not a state write in this file — and the
+ * settlement follows.
+ *
+ * Safe to arrive twice. The intent's `already` answer is a success, not an error: a
+ * founder tapping Confirm on a slow connection reads back what the first delivery did.
+ */
+export async function confirmCenterPurchase(
+  _prev: FounderState,
+  formData: FormData,
+): Promise<FounderState> {
+  const gate = await founder()
+  if (!isSession(gate)) return gate
+
+  const session = gate
+  const t = dict(session.locale).founder
+  const words = t.purchases
+
+  const centerId = String(formData.get('centerId') ?? '')
+  if (!centerId) return { error: t.money.noCenter }
+
+  const intentId = String(formData.get('intentId') ?? '')
+  if (!intentId) return { error: words.noIntent }
+
+  // The one fact only the person holding the phone has, and the one thing the payload
+  // legitimately contributes (§11.4). Refused here as a sentence rather than at the
+  // bottom of the RPC as a 42501.
+  const providerRef = clamp(String(formData.get('providerRef') ?? ''), MAX_LABEL)
+  if (!providerRef) return { error: words.noReference }
+
+  const method = String(formData.get('method') ?? 'bkash') as PaymentMethod
+  if (!METHODS.has(method)) return { error: t.money.badMethod }
+
+  const note = clamp(String(formData.get('note') ?? ''), MAX_TEXT)
+
+  const admin = createAdminClient(session.userId)
+
+  const intent = await readIntent(admin, centerId, intentId)
+  if (!intent) return { error: words.noIntent }
+
+  // Read off the row, not off the form: the check constraint ties `grants_capacity` to
+  // the purpose, so this is the same number the database is about to grant.
+  const grantsPlaces = intent.purpose === 'student_capacity'
+
+  // Checked here for the sentence, and again by the provider and the RPC for the answer.
+  // A quote that lapsed is re-quoted at today's price rather than honoured.
+  if (intent.state !== 'successful') {
+    if (intent.state !== 'pending' && intent.state !== 'initiated') {
+      return { error: words.closed }
+    }
+    if (hasPassed(intent.expires_at)) {
+      return { error: words.expiredQuote }
+    }
+  }
+
+  try {
+    const provider = paymentProvider(intent.provider)
+
+    if (intent.state === 'pending') {
+      const opened = await provider.createPayment(admin, intent)
+      if (opened.kind === 'blocked') return { error: words.closed }
+    }
+
+    const settled = await provider.handleCallback(admin, {
+      intentId: intent.id,
+      providerRef,
+      method,
+      confirmedBy: session.userId,
+      note,
+    })
+
+    if (!settled.ok) {
+      return { error: settled.reason === 'refused' ? words.refused : words.noIntent }
+    }
+
+    revalidatePath('/founder')
+
+    if (settled.already) return { ok: words.already }
+
+    const confirmed = t.purchaseConfirmed(formatTaka(settled.chargedBdt))
+
+    // The ceiling is the half of this the founder can be asked about tomorrow, so it is
+    // said out loud — and only for the purchase that moves it.
+    return {
+      ok: grantsPlaces
+        ? `${confirmed} ${t.purchaseHolds(settled.capacityAfter)}`
+        : confirmed,
+    }
+  } catch {
+    // `paymentProvider` throws for a provider with no module behind it (§11.1). A
+    // deployment mistake rather than something the founder can act on.
+    return { error: words.failed }
+  }
+}
+
+/**
+ * Closing a quote nobody is going to pay.
+ *
+ * Not a delete. `cancelled` is a state §11.2 draws from both open states, the row keeps
+ * saying what was quoted and to whom, and the trigger refuses the transition from
+ * anything settled — so the wrong tap on a paid purchase changes nothing.
+ *
+ * The reason it exists is the expiry rule: nothing sweeps for a lapsed quote, so without
+ * this the founder's list would fill with dead rows they could only clear from the SQL
+ * editor.
+ */
+export async function cancelCenterPurchase(
+  _prev: FounderState,
+  formData: FormData,
+): Promise<FounderState> {
+  const gate = await founder()
+  if (!isSession(gate)) return gate
+
+  const session = gate
+  const t = dict(session.locale).founder
+  const words = t.purchases
+
+  const centerId = String(formData.get('centerId') ?? '')
+  if (!centerId) return { error: t.money.noCenter }
+
+  const intentId = String(formData.get('intentId') ?? '')
+  if (!intentId) return { error: words.noIntent }
+
+  const admin = createAdminClient(session.userId)
+
+  // The state filter is what turns "already settled" into a sentence: the trigger would
+  // refuse the transition anyway, and a founder should read words rather than a 42501.
+  // scoped-by: coaching_center_id is filtered below, beside the id.
+  const { data, error } = await admin
+    .from('payment_intents')
+    .update({ state: 'cancelled' })
+    .eq('id', intentId)
+    .eq('coaching_center_id', centerId)
+    .in('state', ['pending', 'initiated'])
+    .select('id')
+    .maybeSingle()
+
+  if (error) return { error: words.failed }
+  if (!data) return { error: words.closed }
+
+  revalidatePath('/founder')
+
+  return { ok: words.cancelled }
 }
 
 /**

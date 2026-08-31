@@ -3,8 +3,9 @@ import Link from 'next/link'
 import { Card } from '@/components/ui'
 import { pagePlatformAdmin } from '@/lib/auth/session'
 import { createClient } from '@/lib/supabase/server'
+import { transferReference } from '@/lib/billing/manual'
 import { formatBdMobile } from '@/lib/bd/phone'
-import { digits, formatDate, formatMonth, todayInDhaka } from '@/lib/bd/time'
+import { digits, formatDate, formatMonth, hasPassed, todayInDhaka } from '@/lib/bd/time'
 import { dict } from '@/lib/i18n'
 import { formatTaka } from '@/lib/money'
 import { PLANS, planFor, planName, type PlanId } from '@/lib/plans'
@@ -17,6 +18,7 @@ import {
   type CenterStatus,
 } from '@/lib/platform/centers'
 import { CenterBilling } from './center-billing'
+import { CenterPurchases, type OpenPurchase } from './center-purchases'
 import { AskedToUpgrade } from './asked-to-upgrade'
 import { StaffReset } from './staff-reset'
 
@@ -60,11 +62,13 @@ const STATUS_ORDER: CenterStatus[] = ['trial', 'active', 'suspended', 'cancelled
  * one thing this page needs from a shell is the way back, which is the link at the
  * top.
  *
- * ONE QUERY, and it is an RPC rather than a table read. `platform_centers()` is
- * security definer and computes the counts on the far side of the RLS line the
- * founder is deliberately not allowed to cross — see the migration for why that is
- * the privacy-preserving option rather than the lazy one. Nothing on this screen
- * touches a student row, because nothing here can.
+ * TWO QUERIES, and the first is an RPC rather than a table read.
+ * `platform_centers()` is security definer and computes the counts on the far side of
+ * the RLS line the founder is deliberately not allowed to cross — see the migration for
+ * why that is the privacy-preserving option rather than the lazy one. Nothing on this
+ * screen touches a student row, because nothing here can. The second is the open
+ * purchases, which is a plain read: `payment_intents_owner_read` already answers
+ * `app.is_platform_admin()`, so there is nothing for a function to do.
  *
  * WHAT IT DOES NOT HAVE: filters, sorting, a search box, or a link into any
  * centre's data. With a customer list this size every control would be a way to
@@ -80,11 +84,27 @@ export default async function FounderPage() {
 
   const supabase = await createClient()
 
-  // Not scoped by coaching_center_id, and it cannot be: the whole point is every
-  // centre. The gate is app.is_platform_admin() inside the function.
-  // scoped-by: platform_centers() is a security definer RPC over all centres,
-  // gated on app.is_platform_admin(). See 20260811000020_platform_panel.sql.
-  const { data, error } = await supabase.rpc('platform_centers')
+  // Not scoped by coaching_center_id, and neither can be: the whole point is every
+  // centre. The gate on the first is app.is_platform_admin() inside the function, and on
+  // the second it is the same call inside the policy.
+  const [{ data, error }, { data: intents }] = await Promise.all([
+    // scoped-by: platform_centers() is a security definer RPC over all centres,
+    // gated on app.is_platform_admin(). See 20260811000020_platform_panel.sql.
+    supabase.rpc('platform_centers'),
+    // Everything a customer has started paying for and not finished. Capped, because a
+    // panel is not a queue processor: if this ever runs long the answer is a screen of
+    // its own, not a longer card.
+    // scoped-by: payment_intents_owner_read allows a platform admin every centre's
+    // rows, which is what this list is. See 20260811000057_payment_intents.sql.
+    supabase
+      .from('payment_intents')
+      .select(
+        'id, coaching_center_id, purpose, quantity, amount_bdt, state, provider, created_at, expires_at',
+      )
+      .in('state', ['pending', 'initiated'])
+      .order('created_at', { ascending: false })
+      .limit(60),
+  ])
 
   const list = customers(data, t.unnamed)
   const totals = platformTotals(list)
@@ -94,6 +114,41 @@ export default async function FounderPage() {
   // yesterday" against their own memory should not have to allow for six hours.
   const dhakaDay = (iso: string | null) =>
     iso ? formatDate(todayInDhaka(new Date(iso)), locale) : null
+
+  /*
+   * The open purchases, per centre, with every sentence composed here.
+   *
+   * `lapsed` is computed rather than stored: nothing sweeps for an expired quote — the
+   * migration says why — so `state` alone would have the founder confirming a purchase
+   * `settle_payment_intent` is about to refuse.
+   *
+   * `transferReference` is read as a pure function, not asked of the provider:
+   * `createPayment` is what hands a customer their reference and it writes a state
+   * transition, which a page rendering a list must not do.
+   */
+  const purchases = new Map<string, OpenPurchase[]>()
+
+  for (const intent of intents ?? []) {
+    const lapsed = hasPassed(intent.expires_at)
+    const quoted = dhakaDay(intent.created_at)
+    const until = dhakaDay(intent.expires_at)
+
+    const open = purchases.get(intent.coaching_center_id) ?? []
+    open.push({
+      id: intent.id,
+      line: `${t.bought[intent.purpose](intent.quantity)} — ${formatTaka(intent.amount_bdt)}`,
+      meta: [
+        quoted && t.quotedOn(quoted),
+        until && (lapsed ? t.quoteLapsed(until) : t.quoteGood(until)),
+        intent.provider === 'manual' && transferReference(intent.id),
+      ]
+        .filter(Boolean)
+        .join(' · '),
+      told: intent.state === 'initiated',
+      lapsed,
+    })
+    purchases.set(intent.coaching_center_id, open)
+  }
 
   /*
    * The dropdown contents, built once for the whole list rather than per card.
@@ -209,6 +264,7 @@ export default async function FounderPage() {
             {list.map((c) => {
               const signedUp = dhakaDay(c.createdAt)
               const lastActive = dhakaDay(c.lastActiveAt)
+              const open = purchases.get(c.centerId)
 
               return (
                 <li key={c.centerId}>
@@ -300,6 +356,31 @@ export default async function FounderPage() {
                     <p className="mt-2 text-sm text-ink-soft">
                       {sizeLine(c, locale, t.size)}
                     </p>
+
+                    {/* Above a plan request, because money already sent outranks
+                        money offered: somebody has been given a number to send to
+                        and is waiting on us to say it arrived. */}
+                    {open && (
+                      <CenterPurchases
+                        centerId={c.centerId}
+                        items={open}
+                        words={t.purchases}
+                        methods={d.feeRow.methods}
+                      />
+                    )}
+
+                    {/* Above a plan request, because money already sent outranks money
+                        somebody is thinking about. Both are the customer waiting on us;
+                        only one of them has a transfer in our own bKash app with nothing
+                        recorded against it. */}
+                    {open && (
+                      <CenterPurchases
+                        centerId={c.centerId}
+                        items={open}
+                        words={t.purchases}
+                        methods={d.feeRow.methods}
+                      />
+                    )}
 
                     {/* Above the phone number, because the two are read together:
                         they asked for this, ring that. Only when there is an open

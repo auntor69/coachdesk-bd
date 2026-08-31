@@ -5945,6 +5945,64 @@ export const bn = {
       failed: 'লেখা যায়নি। আবার চেষ্টা করুন।',
     },
     /**
+     * What a purchase bought, keyed by the purpose enum.
+     *
+     * Bangla has no plural for a counted noun, so all four are one form — but each still
+     * takes a `number` and converts it, because a founder reading ৩৬০ and a customer
+     * reading 360 on the same purchase would be two people talking about two things.
+     */
+    bought: {
+      subscription: (n: number) => `প্ল্যানের ${digits(n, 'bn')} মাস`,
+      student_capacity: (n: number) => `${digits(n, 'bn')}টি শিক্ষার্থীর জায়গা`,
+      teacher_seat: (n: number) => `${digits(n, 'bn')}টি শিক্ষকের আসন`,
+      branch: (n: number) => `${digits(n, 'bn')}টি শাখা`,
+    },
+    /** Three halves of one line, joined by the page with a ` · `. */
+    quotedOn: (date: string) => `${date}-এ দাম বলা হয়েছে`,
+    quoteGood: (date: string) => `${date} পর্যন্ত চলবে`,
+    quoteLapsed: (date: string) => `${date}-এ সময় শেষ`,
+    /** Composed by the Server Action once the receipt is written, like `paymentSaved`. */
+    purchaseConfirmed: (amount: string) => `${amount} নিশ্চিত করা হয়েছে।`,
+    purchaseHolds: (places: number) =>
+      `এই সেন্টারে এখন ${digits(places, 'bn')} জন শিক্ষার্থী রাখা যাবে।`,
+    /**
+     * The purchases a customer has started and not paid for.
+     *
+     * STRING LEAVES ONLY — handed straight to a client component, like `money`. The taka
+     * figure and the count that come back after a confirmation are built above.
+     *
+     * "আমাদের অপেক্ষায়" and not "বাকি পেমেন্ট": the customer has already been told where
+     * to send the money. What is outstanding is our own checking, and the founder is the
+     * one holding it up.
+     */
+    purchases: {
+      title: 'আমাদের অপেক্ষায়',
+      hint: 'টাকা পাঠানোর নম্বর তাদের দেওয়া হয়েছে। নিজের অ্যাপে দেখে নিশ্চিত করুন।',
+      fresh: 'এখনও বলা হয়নি',
+      waiting: 'টাকার অপেক্ষায়',
+      lapsed: 'দামের সময় শেষ',
+      lapsedHint:
+        'এই দাম অনেক পুরনো, নিশ্চিত করা যাবে না। বাতিল করে আজকের দামে আবার শুরু করতে '
+        + 'বলুন। টাকা সত্যিই এসে থাকলে উপরে পেমেন্ট হিসেবে লিখুন।',
+      reference: 'ট্রানজেকশন আইডি',
+      /** Ours starts `CD-`; theirs is what reconciles. Saying which is which. */
+      referenceHint: 'আপনার নিজের বিকাশ/নগদ অ্যাপের TrxID — উপরের কোডটা নয়।',
+      method: 'কীভাবে এসেছে',
+      note: 'নোট',
+      confirm: 'টাকা এসেছে',
+      confirming: 'নিশ্চিত করা হচ্ছে…',
+      cancel: 'বাতিল',
+      cancelling: 'বাতিল করা হচ্ছে…',
+      already: 'আগেই নিশ্চিত করা হয়েছে।',
+      cancelled: 'বাতিল করা হয়েছে।',
+      noIntent: 'কেনাকাটাটা পাওয়া যায়নি।',
+      noReference: 'আগে নিজের অ্যাপের ট্রানজেকশন আইডি লিখুন।',
+      expiredQuote: 'এই দামের সময় শেষ। বাতিল করে আবার শুরু করতে বলুন।',
+      closed: 'কেনাকাটাটা আর খোলা নেই।',
+      refused: 'ডেটাবেস এটা নেয়নি। কেনাকাটাটা আরেকবার দেখুন।',
+      failed: 'কাজটা হয়নি। আবার চেষ্টা করুন।',
+    },
+    /**
      * "সেন্টার প্ল্যান চেয়েছে" — an owner raised their hand on /settings/plan.
      *
      * OUTSIDE `asked`, and for the same reason `paymentSaved` sits outside `money`:

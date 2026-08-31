@@ -110,3 +110,30 @@ export async function openIntent(
 
   return { ok: true, intent: existing, reused: true }
 }
+
+/**
+ * One intent, as a provider is allowed to see it.
+ *
+ * Scoped to the centre as well as the id, so an id from one card cannot be confirmed
+ * against another customer's row. The column list is `INTENT_COLUMNS` rather than a
+ * second copy, which is why this lives beside `openIntent` instead of in the caller.
+ *
+ * `grants_capacity` is deliberately not read: `payment_intents_grant_matches_purpose`
+ * makes it `quantity` on a capacity purchase and 0 on everything else, so a caller that
+ * has the purpose already knows it.
+ */
+export async function readIntent(
+  supabase: SupabaseClient<Database>,
+  centerId: string,
+  intentId: string,
+): Promise<PayableIntent | null> {
+  // scoped-by: coaching_center_id is filtered below, beside the id.
+  const { data } = await supabase
+    .from('payment_intents')
+    .select(INTENT_COLUMNS)
+    .eq('id', intentId)
+    .eq('coaching_center_id', centerId)
+    .maybeSingle()
+
+  return data ?? null
+}

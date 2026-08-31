@@ -3747,6 +3747,50 @@ export const en: Dictionary = {
       badStatus: 'That status is not one of the choices.',
       failed: 'Could not save it. Try again.',
     },
+    /**
+     * What a purchase bought, one sentence per purpose, composed on the server because
+     * each takes a count. Keyed by the enum so a purpose added to the database fails to
+     * compile here rather than rendering blank.
+     */
+    bought: {
+      subscription: (n: number) => `${n} ${n === 1 ? 'month' : 'months'} of the plan`,
+      student_capacity: (n: number) => `${n} student ${n === 1 ? 'place' : 'places'}`,
+      teacher_seat: (n: number) => `${n} teacher ${n === 1 ? 'seat' : 'seats'}`,
+      branch: (n: number) => `${n} ${n === 1 ? 'branch' : 'branches'}`,
+    },
+    quotedOn: (date: string) => `Quoted ${date}`,
+    quoteGood: (date: string) => `good until ${date}`,
+    quoteLapsed: (date: string) => `ran out ${date}`,
+    /** Composed by the Server Action, after the receipt is written. */
+    purchaseConfirmed: (amount: string) => `Confirmed ${amount}.`,
+    purchaseHolds: (places: number) => `This centre now holds ${places} students.`,
+    /** String leaves only — this group is handed to a client component. */
+    purchases: {
+      title: 'Waiting on us',
+      hint: 'They have been given a number to send money to. Check your own app, then confirm.',
+      fresh: 'Not told yet',
+      waiting: 'Waiting for money',
+      lapsed: 'Quote ran out',
+      lapsedHint:
+        'This quote is too old to confirm. Cancel it and let them start again at '
+        + 'today’s price. If the money did arrive, record it as a payment above.',
+      reference: 'Transaction ID',
+      referenceHint: 'The TrxID from your own bKash or Nagad app — not the code above.',
+      method: 'How it came',
+      note: 'Note',
+      confirm: 'Confirm it arrived',
+      confirming: 'Confirming…',
+      cancel: 'Cancel',
+      cancelling: 'Cancelling…',
+      already: 'Already confirmed.',
+      cancelled: 'Cancelled.',
+      noIntent: 'That purchase was not found.',
+      noReference: 'Type the transaction ID from your own app first.',
+      expiredQuote: 'That quote has run out. Cancel it and let them start again.',
+      closed: 'That purchase is no longer open.',
+      refused: 'The database refused it. Check the purchase again.',
+      failed: 'Could not do it. Try again.',
+    },
     /** Outside `asked` because it takes an argument. See the Bangla note. */
     askedFor: (plan: string) => `Asked for ${plan}`,
     /** String leaves only — this group is handed to a client component. */

@@ -10,6 +10,7 @@ import {
   formatDate,
   formatMonth,
   formatTime,
+  hasPassed,
   monthName,
   currentPeriodMonth,
   todayInDhaka,
@@ -170,4 +171,24 @@ test('numerals follow the reader and money follows neither', () => {
   // Non-digits pass through untouched, which is what lets this run over a
   // pre-formatted string like "09:05".
   assert.equal(digits('09:05', 'bn'), '০৯:০৫')
+})
+
+test('a quote that has run out is a moment, not a calendar day', () => {
+  const now = new Date('2026-09-01T08:00:00Z') // 2pm in Dhaka
+
+  // Both sides are instants, so the answer does not depend on where it is read.
+  assert.equal(hasPassed('2026-09-01T07:59:59Z', now), true)
+  assert.equal(hasPassed('2026-09-01T08:00:01Z', now), false)
+  // The boundary itself has gone: settle_payment_intent refuses expires_at <= now(),
+  // and a screen offering a button the database will refuse is the bug this closes.
+  assert.equal(hasPassed('2026-09-01T08:00:00Z', now), true)
+  // Later the same Dhaka day, and past. A date comparison would say no until midnight.
+  assert.equal(hasPassed('2026-09-01T05:00:00Z', now), true)
+
+  // Nothing to check is not past — an intent with no expiry is not a lapsed one.
+  assert.equal(hasPassed(null, now), false)
+  // And neither is a string that is not a timestamp: the caller uses this to decide
+  // whether to offer an action, and a parse failure must not hide it.
+  assert.equal(hasPassed('sometime next week', now), false)
+  assert.equal(hasPassed('', now), false)
 })

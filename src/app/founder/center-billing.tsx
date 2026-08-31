@@ -327,14 +327,15 @@ export function CenterBilling({
 /**
  * A native `<select>` wearing `Field`'s clothes.
  *
- * Local rather than added to components/ui.tsx, which is explicit about being the
- * primitives *every* screen shares: four dropdowns on one admin screen is not a
- * pattern yet. Native because it is the right control on a phone — Android and iOS
- * both give it a full-height picker that a custom listbox spends a week failing to
- * match — and `text-base` because iOS Safari zooms the page on any focused control
- * under 16px and the layout never comes back.
+ * Exported, and read by ./center-purchases.tsx as well: it is the founder panel's own
+ * control rather than a primitive. Still not in components/ui.tsx, which is explicit
+ * about being what *every* screen shares — six dropdowns on one admin screen is not a
+ * pattern yet. Native because it is the right control on a phone — Android and iOS both
+ * give it a full-height picker that a custom listbox spends a week failing to match — and
+ * `text-base` because iOS Safari zooms the page on any focused control under 16px and the
+ * layout never comes back.
  */
-function Select({
+export function Select({
   label,
   id,
   name,

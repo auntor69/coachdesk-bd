@@ -275,6 +275,27 @@ export function currentPeriodMonth(now: Date = new Date()): string {
   return `${todayInDhaka(now).slice(0, 7)}-01`
 }
 
+/**
+ * Whether a `timestamptz` from the database has already gone by.
+ *
+ * A moment rather than a calendar day, so no timezone comes into it: both sides are
+ * instants and the comparison is the same in Dhaka as in UTC. That matters for a quote
+ * that runs out at 2pm — reading it as a Dhaka date would keep it alive until midnight.
+ *
+ * Here rather than at the call site because a page is not allowed to read the clock:
+ * `Date.now()` during render is an impure call the React compiler refuses, and every
+ * other clock read in the app already goes through this module.
+ *
+ * An unreadable timestamp has NOT passed. A caller uses this to decide whether to offer
+ * an action, and a parse failure should leave the button there for the database to refuse
+ * rather than hide it on the strength of a bad string.
+ */
+export function hasPassed(iso: string | null, now: Date = new Date()): boolean {
+  if (!iso) return false
+  const at = Date.parse(iso)
+  return !Number.isNaN(at) && at <= now.getTime()
+}
+
 /** Renders a YYYY-MM-01 as "আগস্ট ২০২৬" — a billing period, not a day. */
 export function formatMonth(periodMonth: string, locale: Locale = 'bn'): string {
   const [y, m] = periodMonth.split('-').map(Number)
