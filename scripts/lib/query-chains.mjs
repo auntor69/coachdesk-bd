@@ -28,10 +28,19 @@ export function sourceFiles(dir) {
 }
 
 /**
- * Index just past the `)` matching the `(` at `open`, honouring strings.
+ * Index just past the `)` matching the `(` at `open`, honouring strings and comments.
  *
  * A `.eq('a', foo(bar))` must not end the chain early, and a `'` inside a
  * template literal must not swallow the rest of the file.
+ *
+ * COMMENTS ARE SKIPPED, and that is not tidiness. An apostrophe inside one —
+ * `createStudent's own insert`, above a column in an `.insert({ … })` payload — used to
+ * open a quote that ran until the next `'` anywhere in the file. Where it landed decided
+ * whether this returned the real closing paren, a wrong one, or -1, and both gates read
+ * the answer: check-scoping saw a chain cut off before its `coaching_center_id` and
+ * called a filtered query unfiltered, and a chain run long is the quieter half — one
+ * query's filter vouching for the next one's missing filter. Editing a comment three
+ * hundred lines away moved the verdict, which is the signature of the bug.
  */
 export function balancedEnd(src, open) {
   let depth = 0
@@ -41,6 +50,18 @@ export function balancedEnd(src, open) {
     if (quote) {
       if (c === '\\') i++
       else if (c === quote) quote = null
+      continue
+    }
+    if (c === '/' && src[i + 1] === '/') {
+      const nl = src.indexOf('\n', i)
+      if (nl === -1) return -1
+      i = nl
+      continue
+    }
+    if (c === '/' && src[i + 1] === '*') {
+      const close = src.indexOf('*/', i + 2)
+      if (close === -1) return -1
+      i = close + 1
       continue
     }
     if (c === "'" || c === '"' || c === '`') {
