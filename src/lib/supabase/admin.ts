@@ -16,8 +16,20 @@ import type { Database } from '@/lib/supabase/types'
  * scoped to. Everything else uses the request-scoped client in `server.ts`.
  *
  * Any query written here must filter by coaching_center_id by hand. RLS is off.
+ *
+ * PASS THE ACTOR WHEN A HUMAN ASKED FOR THIS WRITE. A service-role request
+ * carries no JWT, so `auth.uid()` is null inside the database and migration 46's
+ * audit trigger has nobody to name — the plan change, the capacity purchase and
+ * the login it created all land in `audit_log` anonymous. `actor` is sent as the
+ * `x-app-actor` header, which migration 56 reads back as the third and last
+ * source of an actor: it can only fill a null, never outrank a JWT, and only a
+ * holder of this key can send it at all.
+ *
+ * Leave it out for a machine. The cron worker's honest record is
+ * `actor_role = 'service_role'` with no actor, and `tests/admin-actor.test.ts`
+ * knows which call sites are which.
  */
-export function createAdminClient() {
+export function createAdminClient(actor?: string) {
   const key = process.env.SUPABASE_SERVICE_ROLE_KEY
 
   if (!key) {
@@ -27,6 +39,12 @@ export function createAdminClient() {
   return createSupabaseClient<Database>(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     key,
-    { auth: { persistSession: false, autoRefreshToken: false } },
+    {
+      auth: { persistSession: false, autoRefreshToken: false },
+      // Only when there is one. An `x-app-actor: undefined` header would be read
+      // as a malformed uuid, which migration 56 turns into null anyway — but a
+      // header that says the wrong thing is worse than no header.
+      ...(actor ? { global: { headers: { 'x-app-actor': actor } } } : {}),
+    },
   )
 }

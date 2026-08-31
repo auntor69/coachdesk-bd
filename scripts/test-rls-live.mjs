@@ -1303,6 +1303,75 @@ try {
   check('and a signed-out reader gets nothing',
     (await rateRows(null)) === 0)
 
+  header('Who did that (audit actor, 20260811000046 + 20260811000056)')
+
+  /*
+   * The one property migration 56 rests on: the header can only FILL a null actor, never
+   * replace one. Worth proving against the real trigger rather than reasoning about,
+   * because the whole security argument is the order of three expressions inside a
+   * coalesce, and reordering them is a one-line edit that no other gate would notice.
+   *
+   * Each case writes to `students` — audited, and an update of one column is the smallest
+   * write that produces a log line — then reads back the line it just made.
+   */
+  const auditActor = async ({ jwt = null, header: hdr = null, setting = null }, name) => {
+    await client.query(`select set_config('request.jwt.claim.sub', $1, true)`, [jwt ?? ''])
+    await client.query(`select set_config('request.headers', $1, true)`, [
+      hdr === null ? '' : JSON.stringify({ 'x-app-actor': hdr }),
+    ])
+    await client.query(`select set_config('app.actor', $1, true)`, [setting ?? ''])
+
+    await client.query(`update students set name = $2 where id = $1`, [stMim, name])
+
+    const { rows } = await client.query(
+      `select actor from audit_log
+       where entity = 'students' and entity_id = $1 and after ->> 'name' = $2
+       order by created_at desc limit 1`,
+      [stMim, name],
+    )
+
+    // Clear the settings again so a later section cannot inherit them.
+    await client.query(`select set_config('request.headers', '', true)`)
+    await client.query(`select set_config('app.actor', '', true)`)
+    await client.query(`select set_config('request.jwt.claim.sub', '', true)`)
+
+    return rows.length ? rows[0].actor : 'no line was written'
+  }
+
+  check('a write with no actor anywhere is logged as nobody',
+    (await auditActor({}, 'Mim Akter A')) === null)
+
+  check('the x-app-actor header names the actor when nothing else can',
+    (await auditActor({ header: ids.ownerA }, 'Mim Akter B')) === ids.ownerA)
+
+  // The one that matters. A request carrying a JWT is recorded as that JWT's user even
+  // when a header disagrees — otherwise anybody who can reach PostgREST could stamp their
+  // own writes with somebody else's id, which is precisely the accusation §10's support
+  // conversation is about.
+  check('a JWT outranks the header, so nobody can sign a write as somebody else',
+    (await auditActor({ jwt: ids.karim, header: ids.ownerA }, 'Mim Akter C')) === ids.karim)
+
+  check('and the transaction setting still fills a null, for a psql session',
+    (await auditActor({ setting: ids.nasrin }, 'Mim Akter D')) === ids.nasrin)
+
+  check('the setting also loses to a JWT',
+    (await auditActor({ jwt: ids.karim, setting: ids.ownerA }, 'Mim Akter E')) === ids.karim)
+
+  // A malformed header must cost the attribution and nothing else: these writes are
+  // payments and plan changes, and an exception here would abort one over a bad string.
+  check('a header that is not a uuid costs the name, not the write',
+    (await auditActor({ header: 'rahim' }, 'Mim Akter F')) === null)
+  check('nor does an empty one',
+    (await auditActor({ header: '' }, 'Mim Akter G')) === null)
+
+  // Reachable only by a holder of the service key. `authenticated` calling it directly is
+  // harmless — it would read its own request's header — but the grant is what a future RPC
+  // marked SECURITY DEFINER would inherit.
+  check('app.request_actor is not callable by a signed-in user',
+    await denied(ids.karim, 'select app.request_actor()'))
+  check('nor by anyone signed out',
+    await denied(null, 'select app.request_actor()'))
+
   header('Anonymous access')
   check('signed-out user reads no students',
     (await n(null, 'select count(*)::int as n from students')) === 0)

@@ -170,6 +170,9 @@ async function handle(request: NextRequest) {
 
 async function run(): Promise<Summary> {
   const startedAt = performance.now()
+  // actor-less: a machine write, and its honest record is `actor_role = 'service_role'`
+  // with no actor. Naming the owner whose queue this drained would put a person's id on
+  // a send they were asleep for.
   const db = createAdminClient()
 
   const backlog = async () => {

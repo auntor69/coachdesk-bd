@@ -204,7 +204,9 @@ export async function recordCenterPayment(
   // protection rather than refusing it.
   const key = readIdempotencyKey(formData.get('idempotencyKey'))
 
-  const admin = createAdminClient()
+  // Named, because migration 46's log has no JWT to read here and §10 wants "every
+  // taka the centre pays us" attributed to whoever wrote it down.
+  const admin = createAdminClient(session.userId)
 
   // The centre is read before the insert for the error message, not for safety: the
   // FK would refuse an id that is not a centre either way, but "centre not found" is
@@ -333,7 +335,7 @@ export async function setCenterPlan(
   if (!STATUSES.has(status)) return { error: words.badStatus }
 
   const limits = planFor(plan)
-  const admin = createAdminClient()
+  const admin = createAdminClient(session.userId)
 
   /*
    * THE TRIAL PAIR IS CLEARED WHEN THE NEW TIER IS ONE SOMEBODY PAYS FOR, which is
@@ -539,7 +541,7 @@ export async function resetCenterStaffPassword(
     return { error: passwordTooShort(session.locale) }
   }
 
-  const admin = createAdminClient()
+  const admin = createAdminClient(session.userId)
 
   // scoped-by: profiles is not centre-scoped — phone is unique platform-wide, which
   // is what makes one number one account. requirePlatformAdmin above is the gate.

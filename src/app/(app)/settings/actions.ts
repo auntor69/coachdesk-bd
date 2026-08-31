@@ -2292,7 +2292,7 @@ export async function createTeacher(
     const loginEmail = phoneToLoginEmail(phone)
     if (!loginEmail) return { error: t.teachers.errors.phoneInvalid }
 
-    const admin = createAdminClient()
+    const admin = createAdminClient(session.userId)
 
     // profiles.phone is unique across the whole platform, so a teacher who
     // already works at another centre cannot be given a second account — they
@@ -2363,7 +2363,7 @@ export async function createTeacher(
      * centres is linked by typing their number, which is the only thing that can
      * prove they are the same person.
      */
-    const admin = createAdminClient()
+    const admin = createAdminClient(session.userId)
     const login = await createUsernameLogin(
       admin,
       usernameBaseFor(name, session.active.centerName),
@@ -2908,7 +2908,7 @@ export async function giveTeacherLogin(
   // resetTeacherPassword and changing the number behind a live login is neither.
   if (teacher.user_id) return { error: t.teachers.errors.hasLogin }
 
-  const admin = createAdminClient()
+  const admin = createAdminClient(session.userId)
 
   let userId: string | null = null
   let linkedName: string | null = null
@@ -3084,7 +3084,7 @@ export async function resetTeacherPassword(
   if (!teacher) return { error: t.teachers.errors.notFound }
 
   const userId = teacher.user_id
-  const admin = createAdminClient()
+  const admin = createAdminClient(session.userId)
 
   let memberships: Membership[] = []
   let isPlatformAdmin = false

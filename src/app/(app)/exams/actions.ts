@@ -427,7 +427,7 @@ export async function declineResultSms(
   // error, `{ ok: true, declined: true }`, and the gate asking again on the next
   // page load. Deciding not to spend credits is not the same authority as entering
   // marks, so the check above is the boundary and this write is bookkeeping.
-  const admin = createAdminClient()
+  const admin = createAdminClient(session.userId)
   const { error } = await admin
     .from('exams')
     .update({ sms_declined_at: new Date().toISOString() })
@@ -526,7 +526,7 @@ export async function sendResultSms(
   }
 
   const cost = plan.creditCost
-  const admin = createAdminClient()
+  const admin = createAdminClient(session.userId)
 
   // Read the balance through the admin client rather than trusting the session
   // copy, which was cached when the page was rendered.

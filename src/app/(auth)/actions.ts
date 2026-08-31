@@ -157,6 +157,11 @@ export async function signUp(
   // What the endpoint can't do is race prevention: two people signing up with
   // the same number in the same instant can both pass the check below. That is
   // acceptable — the loser is still fully usable, just redirected to login.
+  // actor-less: nobody exists to name yet. This call is what creates the account, so
+  // its id cannot be in a header sent before it, and nothing audited is written either
+  // way — the on_auth_user_created trigger writes `profiles`, which is not one of
+  // migration 46's fourteen tables. The first audited row this person causes is their
+  // centre, and `bootstrap_center` below writes it through their own JWT.
   const admin = createAdminClient()
   const { error } = await admin.auth.admin.createUser({
     email: loginEmail,
