@@ -23,7 +23,10 @@ export type ExpenseCategory = 'rent' | 'electricity' | 'internet' | 'marketing' 
 export type MemberRole = 'owner' | 'manager' | 'teacher' | 'student' | 'guardian'
 export type NoticeAudience = 'all' | 'students' | 'guardians' | 'teachers'
 export type OutreachChannel = 'sms' | 'whatsapp' | 'call'
+export type PaymentIntentState = 'pending' | 'initiated' | 'successful' | 'failed' | 'cancelled' | 'expired' | 'refunded'
 export type PaymentMethod = 'cash' | 'bkash' | 'nagad' | 'rocket' | 'bank_transfer' | 'card' | 'other'
+export type PaymentProvider = 'manual' | 'bkash'
+export type PaymentPurpose = 'subscription' | 'student_capacity' | 'teacher_seat' | 'branch'
 export type PayoutWallet = 'bkash' | 'nagad' | 'rocket'
 export type PlanType = 'teacher_free' | 'teacher_plus' | 'center' | 'institution'
 export type RevenueCategory = 'tuition' | 'admission' | 'registration' | 'exam' | 'form' | 'other'
@@ -1385,6 +1388,116 @@ export type Database = {
           },
         ]
       }
+      payment_intents: {
+        Row: {
+          id: string
+          coaching_center_id: string
+          purpose: PaymentPurpose
+          quantity: number
+          amount_bdt: number
+          grants_capacity: number
+          covers_period_start: string | null
+          covers_period_end: string | null
+          branch_id: string | null
+          state: PaymentIntentState
+          provider: PaymentProvider
+          provider_ref: string | null
+          failure_reason: string | null
+          idempotency_key: string | null
+          requested_by: string | null
+          settled_by: string | null
+          created_at: string
+          initiated_at: string | null
+          settled_at: string | null
+          failed_at: string | null
+          cancelled_at: string | null
+          refunded_at: string | null
+          expires_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          coaching_center_id: string
+          purpose: PaymentPurpose
+          quantity: number
+          amount_bdt: number
+          grants_capacity?: number
+          covers_period_start?: string | null
+          covers_period_end?: string | null
+          branch_id?: string | null
+          state?: PaymentIntentState
+          provider?: PaymentProvider
+          provider_ref?: string | null
+          failure_reason?: string | null
+          idempotency_key?: string | null
+          requested_by?: string | null
+          settled_by?: string | null
+          created_at?: string
+          initiated_at?: string | null
+          settled_at?: string | null
+          failed_at?: string | null
+          cancelled_at?: string | null
+          refunded_at?: string | null
+          expires_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          coaching_center_id?: string
+          purpose?: PaymentPurpose
+          quantity?: number
+          amount_bdt?: number
+          grants_capacity?: number
+          covers_period_start?: string | null
+          covers_period_end?: string | null
+          branch_id?: string | null
+          state?: PaymentIntentState
+          provider?: PaymentProvider
+          provider_ref?: string | null
+          failure_reason?: string | null
+          idempotency_key?: string | null
+          requested_by?: string | null
+          settled_by?: string | null
+          created_at?: string
+          initiated_at?: string | null
+          settled_at?: string | null
+          failed_at?: string | null
+          cancelled_at?: string | null
+          refunded_at?: string | null
+          expires_at?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'payment_intents_branch_fkey'
+            columns: ['branch_id', 'coaching_center_id']
+            isOneToOne: false
+            referencedRelation: 'branches'
+            referencedColumns: ['id', 'coaching_center_id']
+          },
+          {
+            foreignKeyName: 'payment_intents_coaching_center_id_fkey'
+            columns: ['coaching_center_id']
+            isOneToOne: false
+            referencedRelation: 'coaching_centers'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'payment_intents_requested_by_fkey'
+            columns: ['requested_by']
+            isOneToOne: false
+            referencedRelation: 'users'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'payment_intents_settled_by_fkey'
+            columns: ['settled_by']
+            isOneToOne: false
+            referencedRelation: 'users'
+            referencedColumns: ['id']
+          },
+        ]
+      }
       payments: {
         Row: {
           id: string
@@ -1400,6 +1513,7 @@ export type Database = {
           recorded_by: string | null
           created_at: string
           idempotency_key: string | null
+          intent_id: string | null
         }
         Insert: {
           id?: string
@@ -1415,6 +1529,7 @@ export type Database = {
           recorded_by?: string | null
           created_at?: string
           idempotency_key?: string | null
+          intent_id?: string | null
         }
         Update: {
           id?: string
@@ -1430,6 +1545,7 @@ export type Database = {
           recorded_by?: string | null
           created_at?: string
           idempotency_key?: string | null
+          intent_id?: string | null
         }
         Relationships: [
           {
@@ -1438,6 +1554,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: 'coaching_centers'
             referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'payments_intent_fkey'
+            columns: ['intent_id', 'coaching_center_id']
+            isOneToOne: false
+            referencedRelation: 'payment_intents'
+            referencedColumns: ['id', 'coaching_center_id']
           },
           {
             foreignKeyName: 'payments_recorded_by_fkey'
@@ -2745,6 +2868,16 @@ export type Database = {
         Args: Record<PropertyKey, never>
         Returns: number
       }
+      settle_payment_intent: {
+        Args: {
+          p_intent: string | null
+          p_provider_ref?: string | null
+          p_method?: PaymentMethod | null
+          p_settled_by?: string | null
+          p_note?: string | null
+        }
+        Returns: { intent_id: string; payment_id: string; intent_state: PaymentIntentState; charged_bdt: number; capacity_after: number; already: boolean }[]
+      }
     }
     Enums: {
       attendance_status: AttendanceStatus
@@ -2757,7 +2890,10 @@ export type Database = {
       member_role: MemberRole
       notice_audience: NoticeAudience
       outreach_channel: OutreachChannel
+      payment_intent_state: PaymentIntentState
       payment_method: PaymentMethod
+      payment_provider: PaymentProvider
+      payment_purpose: PaymentPurpose
       payout_wallet: PayoutWallet
       plan_type: PlanType
       revenue_category: RevenueCategory

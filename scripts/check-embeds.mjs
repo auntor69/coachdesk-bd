@@ -328,6 +328,9 @@ const closedRpcs = [
   ['finish_sms', { p_id: '00000000-0000-0000-0000-000000000000', p_ok: false }],
   ['cancel_opted_out_sms', {}],
   ['reap_stranded_sms', {}],
+  // Settling an intent writes a receipt and raises the student ceiling (migration 57). A
+  // browser that could reach it would be buying places for free.
+  ['settle_payment_intent', { p_intent: '00000000-0000-0000-0000-000000000000' }],
 ]
 
 console.log('\nServer-only RPCs, asked with the anon key:')

@@ -10640,6 +10640,506 @@ check(
   ),
 )
 
+// ---------------------------------------------------------------------------
+// Buying something from us — 20260811000057.
+//
+// §11.2 puts the price on the server. That is one grant (no INSERT for a session) and one
+// trigger (the transitions), and both are worth proving because the thing they prevent is
+// not a crash: it is a browser that names its own amount, or an intent that reaches
+// `successful` without money behind it.
+//
+// A CENTRE OF ITS OWN, because the settle path writes `student_capacity` and every centre
+// above this line has been through the capacity section. Centre C starts on the centre plan
+// with nothing purchased, which is what a fresh signup looks like, and the ceiling is read
+// from `app.student_ceiling` rather than hard-coded so the assertions are about the
+// arithmetic and not about today's price list.
+// ---------------------------------------------------------------------------
+
+console.log('\nPayment intents (what a centre buys from us):')
+
+// The real settle path runs as service_role: it bypasses RLS and it is the role
+// app.guard_center_billing exempts, so running these as the superuser would pass for a role
+// nothing in production uses. `asService` is the SMS worker's helper, reused unchanged.
+const deniedAsService = async (sql, params = []) => {
+  try {
+    await asService(sql, params)
+    return false
+  } catch {
+    return true
+  }
+}
+
+const uuid = () => one('select gen_random_uuid() as id')
+
+const ownerC = (
+  await db.query('insert into auth.users (id) values (gen_random_uuid()) returning id')
+).rows[0].id
+
+const centerC = await one(
+  `insert into coaching_centers (name, created_by, plan)
+   values ('Sylhet Prime Coaching', $1, 'center') returning id`,
+  [ownerC],
+)
+await db.query('update coaching_centers set student_capacity = 0 where id = $1', [centerC])
+
+const includedC = await n(db, 'select app.student_ceiling($1)::int as n', [centerC])
+check(
+  'a fresh centre on the centre plan already has its included places',
+  includedC > 0,
+  `ceiling ${includedC}`,
+)
+
+// One intent, with everything the caller does not care about defaulted. `grants` follows
+// the purpose the way the table's check constraint demands, so a test that wants them to
+// disagree has to say so.
+const newIntent = async (center, fields = {}) => {
+  const {
+    purpose = 'student_capacity',
+    quantity = 41,
+    amount = 738,
+    grants = purpose === 'student_capacity' ? quantity : 0,
+    key = null,
+    branch = null,
+    provider = 'manual',
+    ref = null,
+    created = null,
+    expires = null,
+  } = fields
+
+  return one(
+    `insert into payment_intents (
+       coaching_center_id, purpose, quantity, amount_bdt, grants_capacity,
+       idempotency_key, branch_id, provider, provider_ref,
+       created_at, expires_at
+     )
+     values ($1, $2, $3, $4, $5, $6, $7, $8, $9,
+             coalesce($10::timestamptz, now()),
+             coalesce($11::timestamptz, now() + interval '7 days'))
+     returning id`,
+    [center, purpose, quantity, amount, grants, key, branch, provider, ref, created, expires],
+  )
+}
+
+const intentC = await newIntent(centerC, { key: await uuid() })
+const intentA = await newIntent(centerA, {
+  purpose: 'subscription',
+  quantity: 1,
+  amount: 1999,
+  key: await uuid(),
+})
+
+await asUser(db, ownerC, async (tx) => {
+  check(
+    'the owner sees the intent their centre opened',
+    (await n(tx, 'select count(*)::int as n from payment_intents')) === 1,
+  )
+})
+
+check(
+  "an owner cannot see another centre's purchases",
+  (await asUser(db, ids.ownerA, (tx) =>
+    n(tx, 'select count(*)::int as n from payment_intents where id = $1', [intentC]),
+  )) === 0,
+)
+
+// A teacher is a member of the centre and still sees nothing: §2.4 keeps what the centre
+// pays us out of every screen but the owner's, and the policy says `is_owner` for that
+// reason rather than `is_member`.
+check(
+  'a teacher of the same centre sees no purchases at all',
+  (await asUser(db, ids.karim, (tx) =>
+    n(tx, 'select count(*)::int as n from payment_intents'),
+  )) === 0,
+)
+
+check(
+  'a signed-out request sees none',
+  (await asUser(db, null, (tx) => n(tx, 'select count(*)::int as n from payment_intents'))) === 0,
+)
+
+check(
+  'the founder sees every centre',
+  (await asUser(db, ids.founder, (tx) =>
+    n(tx, 'select count(*)::int as n from payment_intents where id in ($1, $2)', [
+      intentA,
+      intentC,
+    ]),
+  )) === 2,
+)
+
+// §11.4, as three absent grants. The owner is the one person allowed to see this row and
+// still cannot open one, which is the whole design: naming your own price is not a
+// validation somebody remembered to write, it is a privilege nobody has.
+check(
+  'an owner cannot open an intent at a price of their own',
+  await deniedAsUser(
+    db,
+    ownerC,
+    `insert into payment_intents (coaching_center_id, purpose, quantity, amount_bdt)
+     values ($1, 'student_capacity', 500, 1)`,
+    [centerC],
+  ),
+)
+check(
+  'an owner cannot mark their own purchase paid',
+  await deniedAsUser(db, ownerC, `update payment_intents set state = 'successful' where id = $1`, [
+    intentC,
+  ]),
+)
+check(
+  'an owner cannot re-price the quote they were given',
+  await deniedAsUser(db, ownerC, 'update payment_intents set amount_bdt = 1 where id = $1', [
+    intentC,
+  ]),
+)
+check(
+  'an owner cannot delete the record of what they were quoted',
+  await deniedAsUser(db, ownerC, 'delete from payment_intents where id = $1', [intentC]),
+)
+check(
+  'and a session cannot empty the table either',
+  await deniedAsUser(db, ownerC, 'truncate payment_intents'),
+)
+
+// --- The transitions, which are §11.2's diagram -----------------------------
+
+const field = async (id, column) =>
+  (await db.query(`select ${column} as v from payment_intents where id = $1`, [id])).rows[0].v
+
+const move = (id, state) =>
+  asService('update payment_intents set state = $2 where id = $1', [id, state])
+
+const cannotMove = (id, state) =>
+  deniedAsService('update payment_intents set state = $2 where id = $1', [id, state])
+
+// The move that would make "successful" meaningless. A settled intent has a provider
+// reference behind it because the reference is what `initiated` is for, and reconciliation
+// is why both are true.
+check('a purchase cannot jump straight from pending to successful', await cannotMove(intentC, 'successful'))
+
+await move(intentC, 'initiated')
+check('a purchase may be initiated', (await field(intentC, 'state')) === 'initiated')
+check('and the clock is stamped by the database, not the caller', (await field(intentC, 'initiated_at')) !== null)
+
+const killed = await newIntent(centerC)
+await move(killed, 'cancelled')
+check('an open purchase may be cancelled', (await field(killed, 'state')) === 'cancelled')
+check('which stamps its own clock', (await field(killed, 'cancelled_at')) !== null)
+check('a cancelled purchase is over', await cannotMove(killed, 'initiated'))
+check('and cannot be quietly settled later', await cannotMove(killed, 'successful'))
+
+const failedIntent = await newIntent(centerC)
+await move(failedIntent, 'failed')
+check('a failed purchase cannot be retried in place', await cannotMove(failedIntent, 'initiated'))
+
+const lapsedIntent = await newIntent(centerC)
+await move(lapsedIntent, 'expired')
+check('an unpaid quote may be marked expired', (await field(lapsedIntent, 'state')) === 'expired')
+
+// --- The price is fixed when the quote is given -----------------------------
+//
+// Refused to service_role too, which is the point: our own server is the only thing that
+// can reach this table, so a re-price would be our bug and not an attack. 20260811000025
+// makes the same call about `receipt_no` — no version of changing it is a fix, and the
+// answer is to cancel and quote again.
+
+const quoted = await newIntent(centerC, { key: await uuid() })
+
+for (const [what, sql, params] of [
+  ['the amount', 'update payment_intents set amount_bdt = 1 where id = $1', [quoted]],
+  ['the number of places', 'update payment_intents set quantity = 500 where id = $1', [quoted]],
+  ['what it is for', `update payment_intents set purpose = 'branch' where id = $1`, [quoted]],
+  [
+    'the centre buying it',
+    'update payment_intents set coaching_center_id = $2 where id = $1',
+    [quoted, centerA],
+  ],
+  ['what it grants', 'update payment_intents set grants_capacity = 900 where id = $1', [quoted]],
+  [
+    'when it was opened',
+    `update payment_intents set created_at = now() - interval '1 year' where id = $1`,
+    [quoted],
+  ],
+]) {
+  check(
+    `even the server cannot change ${what} of a quote already given`,
+    await deniedAsService(sql, params),
+  )
+}
+
+check(
+  'and the coverage a subscription payment pays for is just as fixed',
+  await deniedAsService(
+    `update payment_intents
+        set covers_period_start = '2026-01-01', covers_period_end = '2026-01-31'
+      where id = $1`,
+    [intentA],
+  ),
+)
+
+// What may still be corrected: a mistyped reference, a failure reason, an extension. A
+// support case needs those, and none of them is the price.
+await asService('update payment_intents set provider_ref = $2 where id = $1', [intentC, 'TRX77123'])
+check(
+  'a mistyped reference can still be corrected before settlement',
+  (await field(intentC, 'provider_ref')) === 'TRX77123',
+)
+check(
+  'but you cannot start with one provider and finish with another',
+  await deniedAsService(`update payment_intents set provider = 'bkash' where id = $1`, [intentC]),
+)
+
+// --- Settling, which is three writes or none --------------------------------
+
+const settle = (id, ref = null, method = 'bkash', by = null) =>
+  asService(
+    `select intent_id, payment_id, intent_state, charged_bdt, capacity_after, already
+       from settle_payment_intent($1, $2, $3::public.payment_method, $4)`,
+    [id, ref, method, by],
+  )
+
+const cannotSettle = async (id, ref = null) => {
+  try {
+    await settle(id, ref)
+    return false
+  } catch {
+    return true
+  }
+}
+
+const receipts = (id) =>
+  n(db, 'select count(*)::int as n from payments where intent_id = $1', [id])
+
+const settled = (await settle(intentC, null, 'bkash', ownerC)).rows[0]
+
+check('settling an initiated purchase reports it as new', settled.already === false)
+check('the amount charged is the one the server quoted', Number(settled.charged_bdt) === 738)
+check('the ceiling comes back raised by the places bought', settled.capacity_after === includedC + 41)
+
+// THE ONE THIS SECTION EXISTS FOR. `student_capacity` is an absolute number that
+// app.student_ceiling reads as greatest(plan_included, purchased), so adding the seats to a
+// zero column would leave the plan's own allowance winning and the customer with nothing
+// for their money. 41 places bought on top of the plan's floor must read as floor + 41.
+check(
+  'and app.student_ceiling agrees, which is what admissions are measured against',
+  (await n(db, 'select app.student_ceiling($1)::int as n', [centerC])) === includedC + 41,
+)
+
+check('one receipt was written', (await receipts(intentC)) === 1)
+
+const receipt = (
+  await db.query(
+    `select amount_bdt, method, reference, recorded_by, idempotency_key
+       from payments where intent_id = $1`,
+    [intentC],
+  )
+).rows[0]
+check('the receipt carries the amount from the intent', Number(receipt.amount_bdt) === 738)
+check('and the reference the money arrived with', receipt.reference === 'TRX77123')
+check('and says who confirmed it', receipt.recorded_by === ownerC)
+check(
+  "and carries the intent's request key, so 20260811000025's index guards it too",
+  receipt.idempotency_key === (await field(intentC, 'idempotency_key')),
+)
+
+// The duplicate path: §11.2's own rule, and what makes a retried Confirm or a webhook
+// delivered twice harmless rather than a second charge.
+const settledTwice = (await settle(intentC, null, 'bkash', ownerC)).rows[0]
+check('settling twice reads the first answer back', settledTwice.already === true)
+check('with the same receipt', settledTwice.payment_id === settled.payment_id)
+check('no second receipt was written', (await receipts(intentC)) === 1)
+check(
+  'and the ceiling did not move a second time',
+  (await n(db, 'select app.student_ceiling($1)::int as n', [centerC])) === includedC + 41,
+)
+
+check(
+  'the reference on a settled purchase is no longer ours to edit',
+  await deniedAsService('update payment_intents set provider_ref = $2 where id = $1', [
+    intentC,
+    'TRX00000',
+  ]),
+)
+await move(intentC, 'refunded')
+check('a settled purchase may be refunded', (await field(intentC, 'state')) === 'refunded')
+check('but not un-settled', await cannotMove(intentC, 'cancelled'))
+
+// Even the superuser, because a payments row explains itself through this id.
+let deletedSettled = false
+try {
+  await db.query('delete from payment_intents where id = $1', [intentC])
+  deletedSettled = true
+} catch {
+  deletedSettled = false
+}
+check('an intent that settled money cannot be deleted at all', deletedSettled === false)
+
+check('a purchase nobody has initiated cannot be settled', await cannotSettle(await newIntent(centerC)))
+
+const noRef = await newIntent(centerC)
+await move(noRef, 'initiated')
+check('and neither can one with no reference to reconcile against', await cannotSettle(noRef))
+check('nothing was written for it', (await receipts(noRef)) === 0)
+
+const stale = await newIntent(centerC, {
+  created: new Date(Date.now() - 30 * 864e5).toISOString(),
+  expires: new Date(Date.now() - 23 * 864e5).toISOString(),
+  ref: 'TRXOLD1',
+})
+await move(stale, 'initiated')
+check('an expired quote is refused rather than honoured', await cannotSettle(stale))
+check('and its money is not silently taken', (await receipts(stale)) === 0)
+check(
+  'the ceiling is untouched by everything that was refused',
+  (await n(db, 'select app.student_ceiling($1)::int as n', [centerC])) === includedC + 41,
+)
+
+// --- What else is for sale, and what it does not grant ----------------------
+
+const branchBuy = await newIntent(centerC, {
+  purpose: 'branch',
+  quantity: 1,
+  amount: 750,
+  ref: 'TRXBR01',
+})
+await move(branchBuy, 'initiated')
+const branchSettled = (await settle(branchBuy)).rows[0]
+check('a branch purchase settles like any other', branchSettled.already === false)
+check('with a receipt of its own', (await receipts(branchBuy)) === 1)
+check(
+  'and grants no student places, because only places are a stored ceiling',
+  branchSettled.capacity_after === includedC + 41,
+)
+
+// The refusal that stops us taking money for nothing. 20260811000036 ignores purchased
+// capacity on the teacher tiers, so a place sold to one would raise a column that
+// app.student_ceiling never reads — the settle function checks the ceiling actually moved
+// and rolls the whole transaction back when it did not.
+const ownerD = (
+  await db.query('insert into auth.users (id) values (gen_random_uuid()) returning id')
+).rows[0].id
+const centerD = await one(
+  `insert into coaching_centers (name, created_by, plan)
+   values ('Rangpur Tutor', $1, 'teacher_plus') returning id`,
+  [ownerD],
+)
+
+const doomed = await newIntent(centerD, { ref: 'TRXTP01' })
+await move(doomed, 'initiated')
+check('a teacher plan cannot be sold student places', await cannotSettle(doomed))
+check('and the money is refused rather than taken', (await receipts(doomed)) === 0)
+check('leaving the purchase open to cancel', (await field(doomed, 'state')) === 'initiated')
+
+// --- Two ways to pay twice for one thing ------------------------------------
+
+const refusedInsert = async (center, fields) => {
+  try {
+    await newIntent(center, fields)
+    return false
+  } catch {
+    return true
+  }
+}
+
+const sharedKey = await uuid()
+await newIntent(centerC, { key: sharedKey })
+check('a retried submit cannot open a second purchase', await refusedInsert(centerC, { key: sharedKey }))
+check(
+  'but the same key at another centre is a different request',
+  (await refusedInsert(centerA, {
+    key: sharedKey,
+    purpose: 'subscription',
+    quantity: 1,
+    amount: 1999,
+  })) === false,
+)
+
+await newIntent(centerC, { ref: 'TRXDUP1' })
+check(
+  'one provider reference cannot be claimed by two purchases',
+  await refusedInsert(centerC, { ref: 'TRXDUP1' }),
+)
+check(
+  'though a reference only has to be unique inside the centre that quotes it',
+  (await refusedInsert(centerA, {
+    ref: 'TRXDUP1',
+    purpose: 'subscription',
+    quantity: 1,
+    amount: 1999,
+  })) === false,
+)
+
+// --- What the row itself refuses to represent -------------------------------
+
+check(
+  "a branch from another organisation cannot be named as the buyer's",
+  await refusedInsert(centerC, { branch: brMirpur }),
+)
+check(
+  'a capacity purchase cannot grant fewer places than it charges for',
+  await refusedInsert(centerC, { grants: 5 }),
+)
+check(
+  'and a branch purchase cannot grant places at all',
+  await refusedInsert(centerC, { purpose: 'branch', quantity: 1, amount: 750, grants: 3 }),
+)
+check('nothing is sold for nothing', await refusedInsert(centerC, { amount: 0 }))
+check('and no purchase is of nothing', await refusedInsert(centerC, { quantity: 0, grants: 0 }))
+
+const refusedSql = async (sql, params = []) => {
+  try {
+    await db.query(sql, params)
+    return false
+  } catch {
+    return true
+  }
+}
+
+check(
+  'only a subscription payment covers a period',
+  await refusedSql(
+    `insert into payment_intents
+       (coaching_center_id, purpose, quantity, amount_bdt, covers_period_start, covers_period_end)
+     values ($1, 'student_capacity', 1, 18, '2026-01-01', '2026-01-31')`,
+    [centerC],
+  ),
+)
+check(
+  'and a coverage period has both ends or neither',
+  await refusedSql(
+    `insert into payment_intents
+       (coaching_center_id, purpose, quantity, amount_bdt, covers_period_start)
+     values ($1, 'subscription', 1, 1999, '2026-01-01')`,
+    [centerC],
+  ),
+)
+check(
+  'a quote cannot expire before it was given',
+  await refusedSql(
+    `insert into payment_intents
+       (coaching_center_id, purpose, quantity, amount_bdt, expires_at)
+     values ($1, 'subscription', 1, 1999, now() - interval '1 day')`,
+    [centerC],
+  ),
+)
+
+// Every purchase is logged with a name on it, which is 20260811000046's whole point: §10
+// asks for an actor on capacity purchases by name.
+check(
+  'each move of a purchase left an audit line for the centre',
+  (await n(db, `select count(*)::int as n from audit_log where entity = 'payment_intents'`)) > 0,
+)
+check(
+  "and the log filed them under the buyer's own centre",
+  (await n(
+    db,
+    `select count(*)::int as n from audit_log
+      where entity = 'payment_intents' and coaching_center_id <> $1 and coaching_center_id <> $2
+        and coaching_center_id <> $3`,
+    [centerA, centerC, centerD],
+  )) === 0,
+)
+
 console.log(`\n${passed} passed, ${failed} failed`)
 await db.close()
 process.exit(failed ? 1 : 0)
