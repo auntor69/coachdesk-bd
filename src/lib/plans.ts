@@ -91,7 +91,15 @@ export type PlanLimits = {
   /** Shown to users; Bangla is the primary language. */
   nameBn: string
   nameEn: string
-  /** null means unlimited. */
+  /**
+   * null means unlimited.
+   *
+   * PER BRANCH on a plan that has them (§8.4): "Rooms and timetables are physical and
+   * do not pool", so an institution running four buildings runs four timetables of this
+   * size. `batchRoomRefusal` in settings/actions.ts is what counts it that way; below
+   * the institution tier the whole organisation is one building and the number is the
+   * organisation's. Student places are the opposite — see `maxStudents`.
+   */
   maxBatches: number | null
   /**
    * Distinct students the PLAN grants across the whole centre.

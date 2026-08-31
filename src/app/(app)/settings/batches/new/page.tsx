@@ -2,7 +2,7 @@ import Link from 'next/link'
 
 import { Card } from '@/components/ui'
 import { pagePermission, getSession } from '@/lib/auth/session'
-import { branchChoicesFor } from '@/lib/branches'
+import { branchChoicesFor, mayChooseBranch } from '@/lib/branches'
 import { createClient } from '@/lib/supabase/server'
 import { wouldExceed, planName, hasStaff } from '@/lib/plans'
 import { SLOT_ORDER, slotLabel } from '@/lib/bd/schedule'
@@ -54,10 +54,26 @@ export default async function NewBatchPage() {
       branchChoicesFor(supabase, session),
     ])
 
-  // The action re-checks this; showing it here saves a teacher filling in a
-  // long form only to be refused at the end. `?? 0` is deliberate on a plan gate:
-  // an unread count opens the form, and the action refuses honestly if it must.
-  const atLimit = wouldExceed(session.plan, 'maxBatches', batchCount ?? 0)
+  /*
+   * The action re-checks this; showing it here saves a teacher filling in a long form
+   * only to be refused at the end. `?? 0` is deliberate on a plan gate: an unread count
+   * opens the form, and the action refuses honestly if it must.
+   *
+   * NOT DRAWN FOR A READER WHO IS ABOUT TO CHOOSE A BUILDING, because for them this
+   * count is the wrong number and the card's sentence is the wrong claim. §8.4 caps
+   * batches per branch, so the head office of an institution has as much room as its
+   * emptiest building — and `t.cap` would tell an owner with four buildings that their
+   * plan holds a hundred batches full stop. Which branch they will pick is not known
+   * until they pick it, so the refusal is left to the action, where the building is.
+   *
+   * Everybody else still gets the card, and they are the readers it was written for:
+   * the teacher tiers hold one batch and five, caps a solo teacher meets in the first
+   * week, and neither tier has branches at all. A pinned manager keeps it too — their
+   * read of `batches` is already narrowed to their own building by
+   * `batches_branch_scope`, so the count above is their branch's count.
+   */
+  const atLimit =
+    !mayChooseBranch(session) && wouldExceed(session.plan, 'maxBatches', batchCount ?? 0)
 
   /*
    * FOUR ARMS BELOW, AND THE THIRD IS WHY: “ADD A SUBJECT FIRST” IS A CLAIM ABOUT

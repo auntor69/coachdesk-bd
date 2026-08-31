@@ -2760,6 +2760,18 @@ export const en: Dictionary = {
        * costs more than it buys.
        */
       planLimit: 'This plan is full. Changing plan makes room.',
+      /**
+       * planLimit's per-branch sibling, and a different sentence because the answer
+       * is different. §8.4: "Batches: 100 per branch, not 100 for the organisation.
+       * Rooms and timetables are physical and do not pool." An institution whose
+       * Mirpur building is full has not run out of plan — it is already at the top of
+       * the ladder — so "changing plan makes room" would send a paying owner to a
+       * screen with nothing on it for them. The other building is where the room is,
+       * and the number is named because the owner deciding what to switch off cannot
+       * do the sum without it.
+       */
+      branchBatchesFull: (cap: number) =>
+        `This branch is already running ${cap} ${cap === 1 ? 'batch' : 'batches'}, which is as many as one building can hold. Turn one off, or start this class in another branch.`,
       batchFull: (batches: string, cap: number) =>
         `${batches} — that batch is full. This plan holds ${cap} ${cap === 1 ? 'student' : 'students'} per batch. Put them in another batch, or change plan.`,
       /**
@@ -2891,6 +2903,15 @@ export const en: Dictionary = {
       teachers: 'Teachers',
       noCap: 'No limit',
       perBatchCap: (cap: number) => `Up to ${cap} students in any one batch.`,
+      /**
+       * The row above reads the organisation's batches against a cap that is per
+       * building (§8.4), so the two figures in it are not the same kind of number.
+       * Said out loud rather than left to be worked out: an institution with three
+       * buildings and 90 batches is not close to anything, and an owner who reads
+       * "90 / 100" as a warning switches off classes that were fine.
+       */
+      perBranchBatches: (cap: number) =>
+        `The batch limit is per branch: each building may run up to ${cap}. The count above is the whole organisation.`,
 
       haveTitle: 'This plan includes',
       lackTitle: 'This plan does not include',

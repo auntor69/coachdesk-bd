@@ -4535,6 +4535,9 @@ export const bn = {
        */
       planLimit:
         'এই প্ল্যানের সীমা শেষ। আরও যোগ করতে প্ল্যান বদলাতে হবে।',
+      /** See en.settings.errors.branchBatchesFull. */
+      branchBatchesFull: (cap: number) =>
+        `এই শাখায় ইতিমধ্যেই ${digits(cap, 'bn')}টি ব্যাচ চলছে, এক ভবনে এর বেশি রাখা যায় না। একটি বন্ধ করুন, বা ক্লাসটি অন্য শাখায় শুরু করুন।`,
       /**
        * A different refusal from `planLimit`, and it has to be: the centre has
        * room for the student, just not in that batch. So it names the batch and
@@ -4697,6 +4700,9 @@ export const bn = {
       noCap: 'সীমা নেই',
       perBatchCap: (cap: number) =>
         `এক ব্যাচে সর্বোচ্চ ${digits(cap, 'bn')} জন।`,
+      /** See en.settings.plan.perBranchBatches. */
+      perBranchBatches: (cap: number) =>
+        `ব্যাচের সীমা প্রতি শাখায়: প্রতিটি ভবনে সর্বোচ্চ ${digits(cap, 'bn')}টি। উপরের সংখ্যাটি পুরো প্রতিষ্ঠানের।`,
 
       haveTitle: 'এই প্ল্যানে আছে',
       lackTitle: 'এই প্ল্যানে নেই',

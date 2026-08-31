@@ -308,6 +308,11 @@ export default async function PlanPage() {
             {t.perBatchCap(plan.maxStudentsPerBatch)}
           </p>
         )}
+        {plan.maxBatches !== null && has(plan, 'multipleBranches') && (
+          <p className="mt-2 text-sm text-ink-faint">
+            {t.perBranchBatches(plan.maxBatches)}
+          </p>
+        )}
       </Card>
 
       <Card>

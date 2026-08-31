@@ -49,7 +49,7 @@ import { MAX_NAME, MAX_LABEL, clamp } from '@/lib/limits'
 import { PERMISSION_KEYS, type PermissionKey } from '@/lib/permissions'
 import { dict } from '@/lib/i18n'
 import { nameTooLong, passwordTooShort } from '@/lib/i18n/messages'
-import { studentRoom, wouldExceed, hasStaff, type LimitKey } from '@/lib/plans'
+import { has, studentRoom, wouldExceed, hasStaff, type LimitKey } from '@/lib/plans'
 import {
   examTypeDeleteVerdict,
   subjectDeleteVerdict,
@@ -184,7 +184,11 @@ function noRoomForStudent(session: CenterSession): string {
 /**
  * Counts the rows that a plan limit applies to, then returns the refusal to send
  * back — or null when there is room for one more. `active`/`status` filters matter:
- * a deactivated batch should not hold a slot hostage on the one-batch free plan.
+ * a retired subject should not hold a slot hostage on a plan that caps them.
+ *
+ * BATCHES ARE NOT IN HERE, and they were until §8.4 was read properly: their cap is
+ * 100 per branch rather than 100 for the organisation, so the count is a different
+ * query and the refusal is a different sentence. See `batchRoomRefusal` below.
  *
  * IT HANDS BACK THE MESSAGE RATHER THAN A BOOLEAN, and that is the whole point of
  * the shape. It used to answer true or false, and a count that came back as no
@@ -207,7 +211,7 @@ function noRoomForStudent(session: CenterSession): string {
  */
 async function limitRefusal(
   session: CenterSession,
-  table: 'batches' | 'students' | 'teachers' | 'subjects',
+  table: 'students' | 'teachers' | 'subjects',
   key: LimitKey,
 ): Promise<ActionState | null> {
   const supabase = await createClient()
@@ -216,7 +220,7 @@ async function limitRefusal(
 
   // Built per table rather than through one shared builder: the generated
   // Supabase types narrow column names to whichever table is named, so a union
-  // `from(table)` only admits the columns all four share — which excludes the
+  // `from(table)` only admits the columns all three share — which excludes the
   // two we filter on.
   const { count } =
     table === 'students'
@@ -225,23 +229,17 @@ async function limitRefusal(
           .select('id', head)
           .eq('coaching_center_id', centerId)
           .eq('status', 'active')
-      : table === 'batches'
+      : table === 'teachers'
         ? await supabase
-            .from('batches')
+            .from('teachers')
             .select('id', head)
             .eq('coaching_center_id', centerId)
             .eq('active', true)
-        : table === 'teachers'
-          ? await supabase
-              .from('teachers')
-              .select('id', head)
-              .eq('coaching_center_id', centerId)
-              .eq('active', true)
-          : await supabase
-              .from('subjects')
-              .select('id', head)
-              .eq('coaching_center_id', centerId)
-              .eq('active', true)
+        : await supabase
+            .from('subjects')
+            .select('id', head)
+            .eq('coaching_center_id', centerId)
+            .eq('active', true)
 
   const t = dict(session.locale).settings.errors
   if (count === null) return { error: t.limitUnknown }
@@ -251,6 +249,83 @@ async function limitRefusal(
       : null
   }
   return wouldExceed(session.plan, key, count) ? { error: t.planLimit } : null
+}
+
+/**
+ * "There is no room for another batch in that building", which is not the same
+ * question as "there is no room for another batch".
+ *
+ * §8.4 IS THE WHOLE REASON THIS IS ITS OWN FUNCTION: "Batches: 100 per branch, not
+ * 100 for the organisation. Rooms and timetables are physical and do not pool.
+ * Student places are the opposite — they pool, because a place is a licence, not a
+ * chair." An institution running four buildings has four timetables, and a cap that
+ * added them together would have Mirpur's afternoon classes stopping because
+ * Uttara filled its mornings. `limitRefusal` counts one number for the centre and
+ * has nowhere to put a building, which is the `batchesFullFor` argument again: the
+ * question is a different shape, so it gets a different function.
+ *
+ * PER BRANCH ONLY WHERE BRANCHES ARE BOUGHT, and the `has` check is load-bearing
+ * rather than tidy. A centre moved down off the institution tier keeps every
+ * `branch_id` it wrote — nothing clears the column, and nothing should, because
+ * last year's fees were taken in a building that existed — so counting per branch
+ * without asking the plan would quietly multiply the guardrail by the number of
+ * buildings a centre no longer pays for. Below the institution tier the whole
+ * organisation is one place and the count is the one it always was.
+ *
+ * NOT A BOUNDARY, per §8.2: "Not in a query filter. A branch-scoped
+ * `.eq('branch_id', …)` in application code is one forgotten call site away from a
+ * cross-branch leak." Nothing here is protecting anything. What confines a pinned
+ * manager to their own building is `batches_branch_scope` from 20260811000053, which
+ * has already narrowed this count to their branch before the filter is applied — for
+ * them the filter is a no-op that agrees with the policy. The filter exists so that
+ * the head office, which reads all four buildings, counts the one it is about to
+ * file into.
+ *
+ * `branchId` is where the batch will actually end up, which the caller works out and
+ * this function does not guess. On an edit that is the value on the form; on an add
+ * it is the posted branch for a reader who was asked and their own for a reader who
+ * was not, because 20260811000054's stamp fills the column from the writer's
+ * membership when nothing was posted.
+ *
+ * Hands back the message rather than a boolean, and treats an unreadable count as
+ * unanswered, for the reasons `limitRefusal` sets out at length. There is no trigger
+ * behind this cap either: these two calls are the limit.
+ */
+async function batchRoomRefusal(
+  session: CenterSession,
+  branchId: string | null,
+): Promise<ActionState | null> {
+  const supabase = await createClient()
+  const perBranch = has(session.plan, 'multipleBranches')
+
+  const active = supabase
+    .from('batches')
+    .select('id', { count: 'exact', head: true })
+    .eq('coaching_center_id', session.active.centerId)
+    .eq('active', true)
+
+  // Head office is a value and not a wildcard, the way `elsewhere` reads it: a batch
+  // filed under no building is one of head office's own, and those have a room of
+  // their own rather than a share of every building's.
+  const { count } = await (!perBranch
+    ? active
+    : branchId === null
+      ? active.is('branch_id', null)
+      : active.eq('branch_id', branchId))
+
+  const t = dict(session.locale).settings.errors
+  if (count === null) return { error: t.limitUnknown }
+  if (!wouldExceed(session.plan, 'maxBatches', count)) return null
+
+  // maxBatches is non-null here: wouldExceed only says yes when it is. The sentence
+  // that names a building is only true when the count was taken per building —
+  // planLimit's "changing plan makes room" is right for a teacher plan and wrong for
+  // an institution, which is already as high as the ladder goes.
+  return {
+    error: perBranch
+      ? t.branchBatchesFull(session.plan.maxBatches ?? count)
+      : t.planLimit,
+  }
 }
 
 /**
@@ -901,7 +976,13 @@ export async function createBatch(
     return { error: t.batches.errors.daysNeedTimes }
   }
 
-  const batchLimit = await limitRefusal(session, 'batches', 'maxBatches')
+  // Room in the building this class will meet in, not room in the organisation. The
+  // branch is the posted one for a reader the form asked and their own for a reader it
+  // did not, which is what the insert below ends up filing under either way.
+  const batchLimit = await batchRoomRefusal(
+    session,
+    mayChooseBranch(session) ? postedBranchId(formData) : session.active.branchId,
+  )
   if (batchLimit) return batchLimit
 
   const slot = SLOTS.has(rawSlot as BatchSlot) ? (rawSlot as BatchSlot) : null
@@ -1076,13 +1157,6 @@ export async function updateBatch(
 
   if (!before) return { error: t.batches.errors.notFound }
 
-  // A batch that was not counted against maxBatches and is about to be. Refused
-  // before anything is written, so the batch stays exactly as it was.
-  if (active && !before.active) {
-    const limit = await limitRefusal(session, 'batches', 'maxBatches')
-    if (limit) return limit
-  }
-
   // The subject is filtered through the centre's own rather than trusted, for the
   // reason createBatch's own note gives about batchId: this is a public endpoint, and
   // an id from the other centre would be refused by the composite foreign key as an
@@ -1136,6 +1210,26 @@ export async function updateBatch(
   }
 
   const nextBranchId = postedBranchId(formData)
+
+  /*
+   * A batch that is about to start taking up a room, either because it is being
+   * switched back on or because it is moving into a building that may be full.
+   *
+   * The move half had no check at all while the cap was one number for the
+   * organisation, and could not have had one: a batch crossing from Uttara to Mirpur
+   * changes no total, so nothing counting the centre would ever have noticed it fill
+   * Mirpur's hundredth room. Refused before anything is written, so a batch that
+   * cannot move stays exactly where it is.
+   *
+   * Only when it will be active after the save. Switching a batch off and moving it in
+   * the same save needs no room, because an inactive batch takes none — and the count
+   * is taken with `active = true`, so a reopening is not competing with itself and a
+   * move is still counted in the building it is leaving.
+   */
+  if (active && (!before.active || nextBranchId !== before.branch_id)) {
+    const limit = await batchRoomRefusal(session, nextBranchId)
+    if (limit) return limit
+  }
 
   /*
    * Moving the class out from under the children in it, refused rather than written.
