@@ -615,6 +615,146 @@ export function studentRoom(ceiling: StudentCeiling, activeStudents: number): nu
 }
 
 /* -------------------------------------------------------------------------- */
+/* What another student place costs                                           */
+/* -------------------------------------------------------------------------- */
+
+/** One band's share of a seat purchase, for the breakdown a price has to show. */
+export type SeatBand = { seats: number; rateBdt: number; costBdt: number }
+
+/**
+ * A priced request for more student places, or the reason there is nothing to pay.
+ *
+ * ONE SHAPE FOR BOTH SCREENS. §3.4 adds one student past the ceiling and §3.5 pastes
+ * two hundred, and the difference between them is the quantity — the bands, the floor's
+ * free seats and the "you already have room" case are the same question asked twice. Two
+ * functions would be two chances to answer it differently, and the one that would drift
+ * is the import, because it is the one nobody tests by hand.
+ *
+ * `seats` is what must be BOUGHT, not what was asked for: a centre with four places
+ * free that admits ten buys six.
+ */
+export type SeatQuote = {
+  /** Places to buy. Zero means the request already fits. */
+  seats: number
+  costBdt: number
+  /** Per-band, in ascending rate order, for the "180 at ৳18, 20 at ৳12" line. */
+  bands: SeatBand[]
+  /** The ceiling this purchase would produce, which is what the server writes. */
+  newCeiling: number
+  /** The ceiling now, so a screen can say "120 of 120" without asking twice. */
+  ceiling: number
+}
+
+/**
+ * Which bands a purchase falls in, and what each part of it costs.
+ *
+ * MARGINAL, so raising a ceiling from 120 to 320 is priced as the seats between them
+ * and never as a fresh bill for 320. §3.5's worked example is exactly this: 180 places
+ * at ৳18 and 20 at ৳12, ৳3,480 — and it is shown broken down because a bare ৳3,480
+ * invites the suspicion that it was invented.
+ *
+ * Ceilings in, not student counts. The seats between two ceilings are what money buys;
+ * how many are occupied is a different question, asked by `studentRoom`.
+ */
+export function capacityBands(fromCeiling: number, toCeiling: number): SeatBand[] {
+  const from = Number.isFinite(fromCeiling) ? Math.max(0, Math.floor(fromCeiling)) : 0
+  const to = Number.isFinite(toCeiling) ? Math.floor(toCeiling) : from
+  if (to <= from) return []
+
+  const out: SeatBand[] = []
+  let bandFloor = 0
+
+  for (const band of STUDENT_BANDS) {
+    // The last band has no top, so it stops wherever the purchase does.
+    const bandTop = band.upTo ?? to
+    const seats = Math.min(to, bandTop) - Math.max(from, bandFloor)
+
+    if (seats > 0) {
+      out.push({ seats, rateBdt: band.rateBdt, costBdt: seats * band.rateBdt })
+    }
+
+    if (bandTop >= to) break
+    bandFloor = band.upTo ?? bandFloor
+  }
+
+  return out
+}
+
+/**
+ * What it costs to raise the ceiling from one number to another.
+ *
+ * Equal to `studentChargeBdt(to) − studentChargeBdt(from)` by construction, and
+ * tests/seats.test.ts asserts that across the band boundaries rather than trusting it:
+ * the two walk the same table in opposite directions, so a band edited into one and not
+ * the other is a monthly bill that disagrees with the price of the seat that caused it.
+ */
+export function capacityCostBdt(fromCeiling: number, toCeiling: number): number {
+  return capacityBands(fromCeiling, toCeiling).reduce((sum, band) => sum + band.costBdt, 0)
+}
+
+/**
+ * What the next single place costs — §3.4's "one more place costs ৳18".
+ *
+ * Takes the CEILING and not the student count, so the floor's own seats are already in
+ * it: a centre at 50 students has a ceiling of 79 and is not asked for money at all,
+ * which is `quoteSeats` returning zero seats rather than this returning zero taka.
+ *
+ * ONE SEAT IS MISPRICED BY DESIGN, and it is the eightieth. The floor buys 79 seats for
+ * ৳1,999 but their band-sum is ৳1,975, so ৳24 of the floor is change nobody gets back —
+ * the eightieth place is charged ৳25 while the monthly bill it produces rises by ৳1.
+ * Pricing it off the bill instead would make the first seat above the floor nearly free
+ * and break the one property worth having, that a seat costs the same whoever asks and
+ * whenever. Documented rather than smoothed; ৳24 once is not worth a second price list.
+ */
+export function nextSeatCostBdt(ceiling: number): number {
+  return capacityCostBdt(ceiling, ceiling + 1)
+}
+
+/**
+ * Price a request for `wanted` more active students.
+ *
+ * THE TEACHER TIERS RETURN ZERO SEATS AND ZERO TAKA, which is not "it is free" — it is
+ * "this is not a purchase". A ceiling of `kind: 'plan'` moves by changing plan, so a
+ * price here would be a price for something we do not sell, and every caller has to
+ * open the ceiling to find out which sentence it is showing. That is the whole reason
+ * `StudentCeiling` is a discriminated union rather than a number.
+ *
+ * NEVER TRUSTED FROM A BROWSER (§11.4). This computes what a screen may SHOW; the amount
+ * that is charged is computed again on the server from the centre's own row, because a
+ * quote that arrives in a form body is a price the customer chose.
+ */
+export function quoteSeats(
+  ceiling: StudentCeiling,
+  activeStudents: number,
+  wanted: number,
+): SeatQuote {
+  const free = studentRoom(ceiling, activeStudents)
+  const asked = Number.isFinite(wanted) ? Math.max(0, Math.floor(wanted)) : 0
+  const shortfall = Math.max(0, asked - free)
+
+  const nothingToBuy: SeatQuote = {
+    seats: 0,
+    costBdt: 0,
+    bands: [],
+    newCeiling: ceiling.ceiling,
+    ceiling: ceiling.ceiling,
+  }
+
+  if (ceiling.kind === 'plan' || shortfall === 0) return nothingToBuy
+
+  const newCeiling = ceiling.ceiling + shortfall
+  const bands = capacityBands(ceiling.ceiling, newCeiling)
+
+  return {
+    seats: shortfall,
+    costBdt: bands.reduce((sum, band) => sum + band.costBdt, 0),
+    bands,
+    newCeiling,
+    ceiling: ceiling.ceiling,
+  }
+}
+
+/* -------------------------------------------------------------------------- */
 /* Reading a plan                                                             */
 /* -------------------------------------------------------------------------- */
 
