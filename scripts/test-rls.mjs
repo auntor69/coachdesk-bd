@@ -9316,9 +9316,12 @@ await db.query('delete from students where id = $1', [stRev])
 
 console.log('\nCharged, collected and profit (20260811000049):')
 
-// This section owns September, October and November 2026, which no other fixture in this
-// file touches, so every figure below is exact arithmetic rather than whatever the
-// sections above happened to leave in the centre.
+// This section owns September, October and November 2019, and the year is in the past on
+// purpose. It needs three months no other fixture in this file can touch, and "three
+// months nobody has got to yet" is not that: the seed above bills the *current* month, so
+// a section pinned to 2026 started reading an extra 800 in its charged column the morning
+// the calendar reached September 2026. A month that has already gone cannot be reached by
+// current_date again, so every figure below stays exact arithmetic.
 const stFin = await student(centerA, 'Finance Child')
 const eFin = await enroll(centerA, stFin, sBio, bBioMorning)
 
@@ -9359,7 +9362,7 @@ const catLines = (month) =>
     .then((r) => r.rows)
 
 // September: a full month, so the profit line below is exact.
-const finTuition = await bill('2026-09-01', 3000, { enrollment: eFin })
+const finTuition = await bill('2019-09-01', 3000, { enrollment: eFin })
 await asUser(db, ids.ownerA, (tx) =>
   tx.query(
     `update fee_invoices set discount_bdt = 500, discount_reason = 'Sibling at the centre'
@@ -9367,15 +9370,15 @@ await asUser(db, ids.ownerA, (tx) =>
     [finTuition],
   ),
 )
-await takeFee(finTuition, 1000, '2026-09-05 11:00+06')
-await takeFee(finTuition, 200, '2026-09-20 11:00+06')
+await takeFee(finTuition, 1000, '2019-09-05 11:00+06')
+await takeFee(finTuition, 200, '2019-09-20 11:00+06')
 
-const finExam = await bill('2026-09-01', 800, { category: 'exam' })
-await takeFee(finExam, 800, '2026-09-22 11:00+06')
+const finExam = await bill('2019-09-01', 800, { category: 'exam' })
+await takeFee(finExam, 800, '2019-09-22 11:00+06')
 
 // Raised twice by mistake and cancelled with nothing on it — the case §9.1's charged
 // column must not count.
-const finVoid = await bill('2026-09-01', 9999, { category: 'form' })
+const finVoid = await bill('2019-09-01', 9999, { category: 'form' })
 await asUser(db, ids.ownerA, (tx) =>
   tx.query(
     `update fee_invoices set voided_at = now(), void_reason = 'Raised twice' where id = $1`,
@@ -9383,7 +9386,7 @@ await asUser(db, ids.ownerA, (tx) =>
   ),
 )
 
-const sept = await catLines('2026-09-01')
+const sept = await catLines('2019-09-01')
 const septOf = (c) => sept.find((r) => r.revenue_category === c)
 
 check(
@@ -9416,8 +9419,8 @@ check(
 
 // A refund is a negative row and nothing else, so the money goes back on the bill with no
 // clause in the view to make it happen.
-await takeFee(finTuition, -200, '2026-09-25 11:00+06')
-const septRefunded = await catLines('2026-09-01')
+await takeFee(finTuition, -200, '2019-09-25 11:00+06')
+const septRefunded = await catLines('2019-09-01')
 const tuitionRefunded = septRefunded.find((r) => r.revenue_category === 'tuition')
 check(
   'a refund puts the money back on what the family owes',
@@ -9436,7 +9439,7 @@ const monthLine = (view, month, uid = null) => {
 
 // 2500 + 800 charged, 1000 + 800 arrived, 1500 + 0 outstanding — the headline is its own
 // breakdown summed, which is why it selects from the breakdown.
-const septTotal = (await monthLine('fee_charges_month', '2026-09-01'))[0]
+const septTotal = (await monthLine('fee_charges_month', '2019-09-01'))[0]
 check(
   'the headline and the category breakdown cannot disagree',
   Number(septTotal?.charged_bdt) === 3300 &&
@@ -9448,12 +9451,12 @@ check(
 // October's teaching, paid for in November — the case that makes two views necessary
 // rather than one. The same 1500 is October's charge and November's cash, and a report
 // that called both "collected" would be the lie §9.1 names.
-const finLate = await bill('2026-10-01', 1500, { enrollment: eFin })
-await takeFee(finLate, 1500, '2026-11-08 11:00+06')
+const finLate = await bill('2019-10-01', 1500, { enrollment: eFin })
+await takeFee(finLate, 1500, '2019-11-08 11:00+06')
 
-const octCharges = (await monthLine('fee_charges_month', '2026-10-01'))[0]
-const octCash = await monthLine('fee_collections_month', '2026-10-01')
-const novCash = (await monthLine('fee_collections_month', '2026-11-01'))[0]
+const octCharges = (await monthLine('fee_charges_month', '2019-10-01'))[0]
+const octCash = await monthLine('fee_collections_month', '2019-10-01')
+const novCash = (await monthLine('fee_collections_month', '2019-11-01'))[0]
 check(
   'a bill belongs to the month it was for, however late the money is',
   Number(octCharges?.charged_bdt) === 1500 && Number(octCharges?.paid_bdt) === 1500,
@@ -9476,9 +9479,9 @@ const spend = (category, amount, on) =>
     ),
   )
 
-await spend('rent', 5000, '2026-09-03')
-await spend('salary', 7000, '2026-09-07')
-await spend('electricity', 900, '2026-10-04')
+await spend('rent', 5000, '2019-09-03')
+await spend('salary', 7000, '2019-09-07')
+await spend('electricity', 900, '2019-10-04')
 
 // Payroll, dated by the month it settles and not by the day the money moved. November's
 // salary handed over in December is November's cost — 20260811000044's whole argument, and
@@ -9493,14 +9496,14 @@ const payroll = (forMonth, basic, paidAt, deductions = 0) =>
     ),
   )
 
-await payroll('2026-09-01', 12000, '2026-09-28 11:00+06', 2000)
-await payroll('2026-11-01', 6000, '2026-12-06 11:00+06')
+await payroll('2019-09-01', 12000, '2019-09-28 11:00+06', 2000)
+await payroll('2019-11-01', 6000, '2019-12-06 11:00+06')
 
 const profitOf = (month, uid) => monthLine('center_profit_month', month, uid)
 
 // 1800 collected, 5000 spent, 10000 in salaries — and the 7000 salary expense nowhere,
 // which is the rule 20260811000045's header made this view's job.
-const septProfit = (await profitOf('2026-09-01', ids.ownerA))[0]
+const septProfit = (await profitOf('2019-09-01', ids.ownerA))[0]
 check(
   'collected minus expenses minus payroll is the profit line',
   Number(septProfit?.collected_bdt) === 1800 &&
@@ -9523,7 +9526,7 @@ check(
 
 // The spine: neither collections nor expenses nor payroll is the complete list of months,
 // so a month present on one side and absent from the other two still has to have a line.
-const octProfit = (await profitOf('2026-10-01', ids.ownerA))[0]
+const octProfit = (await profitOf('2019-10-01', ids.ownerA))[0]
 check(
   'a month that took no money but paid the electricity still has a profit line',
   Number(octProfit?.collected_bdt) === 0 &&
@@ -9533,7 +9536,7 @@ check(
   JSON.stringify(octProfit ?? null),
 )
 
-const novProfit = (await profitOf('2026-11-01', ids.ownerA))[0]
+const novProfit = (await profitOf('2019-11-01', ids.ownerA))[0]
 check(
   'a salary is the cost of the month it settles, not the month it left the bank',
   Number(novProfit?.collected_bdt) === 1500 &&
@@ -9544,7 +9547,7 @@ check(
 )
 check(
   'so December, when that money actually moved, has no line of its own',
-  (await profitOf('2026-12-01', ids.ownerA)).length === 0,
+  (await profitOf('2019-12-01', ids.ownerA)).length === 0,
 )
 
 // THE GATE, which is the intersection of who may read the three parts rather than a choice.
@@ -9557,7 +9560,7 @@ const finManager = (
 ).rows[0].id
 await addMember(centerA, finManager, 'manager')
 
-const managerProfit = (await profitOf('2026-09-01', finManager))[0]
+const managerProfit = (await profitOf('2019-09-01', finManager))[0]
 check(
   'a manager reads the profit line, because a manager reads all three of its parts',
   Number(managerProfit?.profit_bdt) === -13200,
@@ -9569,11 +9572,11 @@ check(
 // no payroll, and read a profit equal to the fees he happened to collect.
 check(
   'a fee-visible teacher reads the charge views, which need no gate',
-  (await monthLine('fee_charges_month', '2026-09-01', ids.karim)).length === 1,
+  (await monthLine('fee_charges_month', '2019-09-01', ids.karim)).length === 1,
 )
 check(
   'but not the profit line, where a narrower caller gets a wrong number and not a partial one',
-  (await profitOf('2026-09-01', ids.karim)).length === 0,
+  (await profitOf('2019-09-01', ids.karim)).length === 0,
 )
 
 // The founder, and this is why app.is_platform_admin() is absent from the view. They can
@@ -9585,26 +9588,26 @@ check(
     n(
       tx,
       `select count(*)::int as n from expenses
-        where coaching_center_id = $1 and spent_on = '2026-09-03'`,
+        where coaching_center_id = $1 and spent_on = '2019-09-03'`,
       [centerA],
     ),
   )) === 1,
 )
 check(
   'and is still refused the profit line, which without collections would be a fabricated loss',
-  (await profitOf('2026-09-01', ids.founder)).length === 0,
+  (await profitOf('2019-09-01', ids.founder)).length === 0,
 )
 
 check(
   "another centre's owner reads none of any of it",
-  (await profitOf('2026-09-01', ids.ownerB)).length === 0 &&
-    (await monthLine('fee_charges_month', '2026-09-01', ids.ownerB)).length === 0,
+  (await profitOf('2019-09-01', ids.ownerB)).length === 0 &&
+    (await monthLine('fee_charges_month', '2019-09-01', ids.ownerB)).length === 0,
 )
 
 // The invoices and payments go with the student; the expense and payroll rows are keyed to
 // the centre, so they have to be cleared by hand.
 await db.query(`delete from expenses where note = 'finance view fixture'`)
-await db.query(`delete from salary_payments where for_month in ('2026-09-01', '2026-11-01')`)
+await db.query(`delete from salary_payments where for_month in ('2019-09-01', '2019-11-01')`)
 await db.query('delete from students where id = $1', [stFin])
 await db.query('delete from center_members where user_id = $1', [finManager])
 await db.query('delete from auth.users where id = $1', [finManager])
