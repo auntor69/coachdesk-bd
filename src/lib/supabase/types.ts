@@ -2544,6 +2544,38 @@ export type Database = {
         }
         Relationships: []
       }
+      branch_charges_month: {
+        Row: {
+          coaching_center_id: string | null
+          branch_id: string | null
+          period_month: string | null
+          charged_bdt: number | null
+          paid_bdt: number | null
+          outstanding_bdt: number | null
+        }
+        Relationships: []
+      }
+      branch_collections_month: {
+        Row: {
+          coaching_center_id: string | null
+          branch_id: string | null
+          period_month: string | null
+          collected_bdt: number | null
+        }
+        Relationships: []
+      }
+      branch_profit_month: {
+        Row: {
+          coaching_center_id: string | null
+          branch_id: string | null
+          period_month: string | null
+          collected_bdt: number | null
+          expenses_bdt: number | null
+          payroll_bdt: number | null
+          profit_bdt: number | null
+        }
+        Relationships: []
+      }
       center_profit_month: {
         Row: {
           coaching_center_id: string | null
@@ -2563,6 +2595,7 @@ export type Database = {
           charged_bdt: number | null
           paid_bdt: number | null
           outstanding_bdt: number | null
+          branch_id: string | null
         }
         Relationships: []
       }

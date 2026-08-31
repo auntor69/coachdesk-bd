@@ -223,8 +223,15 @@ not belong in the public schema where PostgREST will expose it.`,
   // Postgres records, so a column named `expenses_bdt` and the word inside a
   // comment cannot produce a hit, and a view that reads the table under an alias
   // cannot hide from one.
+  //
+  // THE ONE READER MOVED, IT DID NOT MULTIPLY. 20260811000055 needed the same
+  // profit line per branch for §8.3's comparison table, and wrote it as the finer
+  // grouping with `center_profit_month` redefined to sum it — so the arithmetic is
+  // still in one view and a branch row cannot fail to add up to the centre total.
+  // A dependency is on the relation a view names directly, so the centre view no
+  // longer reads `expenses` and `branch_profit_month` does.
   // -------------------------------------------------------------------------
-  const EXPENSE_READERS = new Set(['center_profit_month'])
+  const EXPENSE_READERS = new Set(['branch_profit_month'])
 
   const expenseViews = await db.query(`
     select distinct v.relname
@@ -258,12 +265,12 @@ not belong in the public schema where PostgREST will expose it.`,
 profit. The reason is the 'salary' expense category, which exists so a centre
 without per-person salary terms can still record paying its staff — a centre
 that also runs payroll has that money in both tables, and only
-center_profit_month's \`category <> 'salary'\` filter stops it being subtracted
+branch_profit_month's \`category <> 'salary'\` filter stops it being subtracted
 twice.
 
 If the view above lists or groups expenses rather than netting them into a
 profit — §9.6's breakdown, say — it is fine. Add its name to EXPENSE_READERS in
-this file, beside center_profit_month, and say in its own header what it is and
+this file, beside branch_profit_month, and say in its own header what it is and
 is not.`,
       )
     }

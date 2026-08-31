@@ -10249,7 +10249,7 @@ check(
   (await n(db, 'select count(*)::int as n from notices where id = $1', [uttara.notices])) === 1,
 )
 
-// 9. The eight finance views are security_invoker, so they answer with whatever the caller
+// 9. The eleven finance views are security_invoker, so they answer with whatever the caller
 // can see — which now means a pinned manager reads their own branch's money out of the same
 // view the owner reads the organisation's from. That is §8.3's comparison table already
 // working at the database level, and the reason the screen only has to change its title.
@@ -10276,6 +10276,112 @@ check(
   'and HQ reads both branches added together, from the same view',
   Number(hqMoney?.expenses_bdt) === 3300 && Number(hqMoney?.payroll_bdt) === 7000,
   JSON.stringify(hqMoney),
+)
+
+// 9b. The same money at §8.3's own grain — branches as rows, which is the comparison table.
+//
+// A cost that belongs to no building first, so the null branch is under test rather than
+// assumed absent: written as the superuser, which holds no membership, so 20260811000054's
+// stamp leaves the column alone. Head office is a row here and not a wildcard, and a
+// comparison table that read it as "every branch" would double the organisation's costs.
+await db.query(
+  `insert into expenses (coaching_center_id, category, amount_bdt, spent_on, note)
+   values ($1, 'software', 500, '2026-12-09', 'head office cost')`,
+  [centerA],
+)
+
+const branchRows = (view, user, month = '2026-12-01') =>
+  asUser(db, user, (tx) =>
+    tx
+      .query(
+        `select * from ${view}
+          where coaching_center_id = $1 and period_month = $2
+          order by branch_id nulls first`,
+        [centerA, month],
+      )
+      .then((r) => r.rows),
+  )
+
+const hqBranches = await branchRows('branch_profit_month', hqManager)
+const profitRowOf = (id) => hqBranches.find((r) => r.branch_id === id)
+check(
+  'HQ reads a profit row per branch, with head office as one of them',
+  hqBranches.length === 3 &&
+    hqBranches[0].branch_id === null &&
+    Number(hqBranches[0].expenses_bdt) === 500,
+  JSON.stringify(hqBranches.map((r) => [r.branch_id, r.expenses_bdt, r.payroll_bdt])),
+)
+check(
+  "and each row carries its own costs and nobody else's",
+  Number(profitRowOf(brMirpur)?.expenses_bdt) === 1100 &&
+    Number(profitRowOf(brMirpur)?.payroll_bdt) === 3000 &&
+    Number(profitRowOf(brUttara)?.expenses_bdt) === 2200 &&
+    Number(profitRowOf(brUttara)?.payroll_bdt) === 4000,
+  JSON.stringify([profitRowOf(brMirpur), profitRowOf(brUttara)]),
+)
+
+// The assertion 20260811000055 exists for. An owner who totals the branch column, gets a
+// different profit from the dashboard's, and cannot tell which is lying stops trusting both
+// numbers — so the centre view is defined as this sum rather than checked against it, and
+// this is that definition holding on real rows.
+const centreDec = (
+  await asUser(db, hqManager, (tx) =>
+    tx.query(
+      `select collected_bdt, expenses_bdt, payroll_bdt, profit_bdt from center_profit_month
+        where coaching_center_id = $1 and period_month = '2026-12-01'`,
+      [centerA],
+    ),
+  )
+).rows[0]
+const sumOf = (column) => hqBranches.reduce((total, r) => total + Number(r[column]), 0)
+check(
+  'the branch rows add up to the centre line, on every side of the subtraction',
+  Number(centreDec.collected_bdt) === sumOf('collected_bdt') &&
+    Number(centreDec.expenses_bdt) === sumOf('expenses_bdt') &&
+    Number(centreDec.payroll_bdt) === sumOf('payroll_bdt') &&
+    Number(centreDec.profit_bdt) === sumOf('profit_bdt'),
+  `${JSON.stringify(centreDec)} against ${sumOf('profit_bdt')} summed`,
+)
+
+const mirpurBranches = await branchRows('branch_profit_month', pinnedManager)
+check(
+  'a pinned manager reads one row out of the comparison table, and it is theirs',
+  mirpurBranches.length === 1 &&
+    mirpurBranches[0].branch_id === brMirpur &&
+    Number(mirpurBranches[0].profit_bdt) === -4100,
+  JSON.stringify(mirpurBranches),
+)
+
+// The charge side, which takes its branch from the invoice rather than the payment: one bill
+// paid at two counters is still one bill, and grouping by the payment's branch would count
+// the charge twice.
+const mirpurCharges = await branchRows('branch_charges_month', pinnedManager)
+const hqCharges = await branchRows('branch_charges_month', hqManager)
+const hqChargeTotal = (
+  await asUser(db, hqManager, (tx) =>
+    tx.query(
+      `select charged_bdt from fee_charges_month
+        where coaching_center_id = $1 and period_month = '2026-12-01'`,
+      [centerA],
+    ),
+  )
+).rows[0]
+check(
+  'the charge side splits off the invoice branch and still totals the headline',
+  mirpurCharges.length === 1 &&
+    mirpurCharges[0].branch_id === brMirpur &&
+    Number(mirpurCharges[0].charged_bdt) === 900 &&
+    Number(hqChargeTotal.charged_bdt) ===
+      hqCharges.reduce((total, r) => total + Number(r.charged_bdt), 0),
+  `${JSON.stringify(mirpurCharges)} against ${JSON.stringify(hqChargeTotal)}`,
+)
+
+// And the gate came with it, because the view is where it lives: a fee-visible teacher reads
+// the charge side and not the profit side, at this grain as at the centre's.
+check(
+  'a fee-visible teacher reads no branch profit row, and the founder none either',
+  (await branchRows('branch_profit_month', ids.karim)).length === 0 &&
+    (await branchRows('branch_profit_month', ids.founder)).length === 0,
 )
 
 // 10. And none of it opened a door between centres. A branch is a subdivision of one
