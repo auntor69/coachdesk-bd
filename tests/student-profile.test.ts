@@ -1,11 +1,12 @@
 /**
  * The student profile's arithmetic.
  *
- * Three shapers, and what is tested is the part that inverts silently: which batches
+ * Four shapers, and what is tested is the part that inverts silently: which batches
  * appear when nothing has been recorded against them, whether a rate matches the one
- * SQL computes for the same rows, whether an absence survives to the screen, and
- * whether a credit on one invoice pays off a debt on another. None of those is
- * visible in a screenshot and every one of them is a wrong sentence said to a parent.
+ * SQL computes for the same rows, whether an absence survives to the screen, whether a
+ * credit on one invoice pays off a debt on another, and which building a move says a
+ * child came from. None of those is visible in a screenshot and every one of them is a
+ * wrong sentence said to a parent.
  *
  * Relative imports with extensions — `node --test` on TS, no tsconfig paths.
  */
@@ -16,15 +17,18 @@ import {
   attendanceByBatch,
   examMarks,
   feeHistory,
+  studentTransfers,
   PROFILE_ATTENDANCE_DAYS,
   PROFILE_EXAM_LIMIT,
   PROFILE_INVOICE_LIMIT,
+  PROFILE_TRANSFER_LIMIT,
   type EnrolledBatch,
   type ProfileInvoiceRow,
   type ProfileMarkRow,
   type ProfilePaymentRow,
   type ProfileResultRow,
   type ProfileSessionRow,
+  type ProfileTransferRow,
 } from '../src/lib/students/profile.ts'
 
 const PHYSICS: EnrolledBatch = { batchId: 'b-phy', label: 'HSC 26 Physics' }
@@ -45,6 +49,7 @@ test('the windows are the documented ones', () => {
   assert.equal(PROFILE_ATTENDANCE_DAYS, 56)
   assert.equal(PROFILE_EXAM_LIMIT, 12)
   assert.equal(PROFILE_INVOICE_LIMIT, 12)
+  assert.equal(PROFILE_TRANSFER_LIMIT, 12)
 })
 
 test('attendance: an enrolled batch with nothing recorded is still a row', () => {
@@ -669,4 +674,149 @@ test('fees: no payments given is no slips listed, not a throw', () => {
       .lines[0].receipts,
     [],
   )
+})
+
+const VIEWER = 'u-owner'
+const MOVE_LABELS = {
+  viewerId: VIEWER,
+  headOffice: 'Head office',
+  unnamedBranch: 'Another branch',
+}
+
+function move(
+  id: string,
+  from: readonly [string | null, string | null],
+  to: readonly [string | null, string | null],
+  createdAt: string,
+  movedBy: string | null = VIEWER,
+): ProfileTransferRow {
+  return {
+    id,
+    from_branch_id: from[0],
+    from_branch_name: from[1],
+    to_branch_id: to[0],
+    to_branch_name: to[1],
+    moved_by: movedBy,
+    created_at: createdAt,
+  }
+}
+
+test('moves: a null branch id is head office on either side of the arrow', () => {
+  // 20260811000053's meaning for the null, and the frozen name is ignored rather than
+  // trusted: the trigger has nothing to copy for head office, so whatever is in that
+  // column is not a building's name.
+  const rows = studentTransfers(
+    [move('m1', [null, null], ['b-mirpur', 'Mirpur'], '2026-07-10T06:00:00Z')],
+    MOVE_LABELS,
+  )
+
+  assert.equal(rows[0].from, 'Head office')
+  assert.equal(rows[0].to, 'Mirpur')
+
+  const back = studentTransfers(
+    [move('m2', ['b-mirpur', 'Mirpur'], [null, 'stale'], '2026-07-10T06:00:00Z')],
+    MOVE_LABELS,
+  )
+  assert.equal(back[0].to, 'Head office')
+})
+
+test('moves: the name comes off the row and never from a branch list', () => {
+  // The point of freezing it. A building renamed from Mirpur to Mirpur-1 in August must
+  // still read as Mirpur on a move made in July, or the history describes a place that
+  // did not exist yet. There is no lookup to get wrong because there is no lookup.
+  const rows = studentTransfers(
+    [move('m1', ['b-1', 'Mirpur'], ['b-2', 'Uttara'], '2026-07-10T06:00:00Z')],
+    MOVE_LABELS,
+  )
+
+  assert.equal(rows[0].from, 'Mirpur')
+  assert.equal(rows[0].to, 'Uttara')
+})
+
+test('moves: a building with no captured name is named, not left blank', () => {
+  // A row from before the trigger, or a branch whose name was blank at the time. "→ "
+  // on the one panel that exists to explain a surprise reads as a fault in the app.
+  const rows = studentTransfers(
+    [move('m1', ['b-1', null], ['b-2', '   '], '2026-07-10T06:00:00Z')],
+    MOVE_LABELS,
+  )
+
+  assert.equal(rows[0].from, 'Another branch')
+  assert.equal(rows[0].to, 'Another branch')
+})
+
+test('moves: who moved it is you, another admin, or not recorded', () => {
+  // Three cases and no fourth: `by` is keyed by TransferActor in both dictionaries, so a
+  // fourth cannot ship without a sentence written for it.
+  const rows = studentTransfers(
+    [
+      move('m1', [null, null], ['b-1', 'Mirpur'], '2026-07-10T06:00:00Z', VIEWER),
+      move('m2', ['b-1', 'Mirpur'], ['b-2', 'Uttara'], '2026-07-09T06:00:00Z', 'u-other'),
+      move('m3', ['b-2', 'Uttara'], [null, null], '2026-07-08T06:00:00Z', null),
+    ],
+    MOVE_LABELS,
+  )
+
+  assert.deepEqual(
+    rows.map((r) => r.by),
+    ['you', 'other', 'unknown'],
+  )
+})
+
+test('moves: newest first, and two moves on one day keep their order', () => {
+  // Sorted on the timestamp rather than the Dhaka date, which is the whole reason the
+  // raw stamp is carried: the first row is where the child is today, and a same-day pair
+  // compared by date alone would let the older one claim it.
+  const rows = studentTransfers(
+    [
+      move('m-early', [null, null], ['b-1', 'Mirpur'], '2026-07-10T04:00:00Z'),
+      move('m-late', ['b-1', 'Mirpur'], ['b-2', 'Uttara'], '2026-07-10T11:00:00Z'),
+    ],
+    MOVE_LABELS,
+  )
+
+  assert.deepEqual(
+    rows.map((r) => r.id),
+    ['m-late', 'm-early'],
+  )
+  assert.equal(rows[0].to, 'Uttara')
+})
+
+test('moves: a move at 1am Dhaka is dated to the Dhaka day', () => {
+  // 19:00 UTC on the 31st is 01:00 on the 1st in Dhaka. Ten characters off the ISO
+  // string would date this move to the previous month, on the panel an owner reads to
+  // explain why a register has a gap in it.
+  const rows = studentTransfers(
+    [move('m1', [null, null], ['b-1', 'Mirpur'], '2026-08-31T19:00:00Z')],
+    MOVE_LABELS,
+  )
+
+  assert.equal(rows[0].on, '2026-09-01')
+})
+
+test('moves: an unreadable stamp is a row with no date, not a throw', () => {
+  // A dateless row still names the two buildings, which is most of what the panel is
+  // for, and it sinks below every row that can be placed in time.
+  const rows = studentTransfers(
+    [
+      move('m-bad', ['b-1', 'Mirpur'], ['b-2', 'Uttara'], 'not a timestamp'),
+      move('m-ok', [null, null], ['b-1', 'Mirpur'], '2026-07-10T06:00:00Z'),
+    ],
+    MOVE_LABELS,
+  )
+
+  assert.deepEqual(
+    rows.map((r) => r.id),
+    ['m-ok', 'm-bad'],
+  )
+  assert.equal(rows[1].on, null)
+  assert.equal(rows[1].from, 'Mirpur')
+})
+
+test('moves: nothing to show is an empty list either way', () => {
+  // The caller passes null for a reader it did not ask on behalf of, and the page tells
+  // those two apart itself — `movesUnreadable` is checked beside the permission.
+  assert.deepEqual(studentTransfers(null, MOVE_LABELS), [])
+  assert.deepEqual(studentTransfers(undefined, MOVE_LABELS), [])
+  assert.deepEqual(studentTransfers([], MOVE_LABELS), [])
 })

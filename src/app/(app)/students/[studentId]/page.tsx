@@ -14,9 +14,11 @@ import {
   attendanceByBatch,
   examMarks,
   feeHistory,
+  studentTransfers,
   PROFILE_ATTENDANCE_DAYS,
   PROFILE_EXAM_LIMIT,
   PROFILE_INVOICE_LIMIT,
+  PROFILE_TRANSFER_LIMIT,
   type EnrolledBatch,
 } from '@/lib/students/profile'
 import { dict, DEFAULT_LOCALE } from '@/lib/i18n'
@@ -103,6 +105,17 @@ export default async function StudentProfilePage({
   const mayEdit = staffAdmin
   const mayReadFlags = staffAdmin
   const mayReadFees = await canReadFees()
+
+  /*
+   * Whether to ask where this child has been.
+   *
+   * `student_transfers` is staff-admin-only in SQL (20260811000042) and the plan check is
+   * the branches screen's own: an organisation on a tier without buildings has no move to
+   * show, so the read is skipped rather than asked and answered with nothing. Neither of
+   * these is the boundary — the policy is — and the panel below only draws when there is
+   * a move, so a student who has never left one building gets nothing.
+   */
+  const mayReadMoves = staffAdmin && has(session.plan, 'multipleBranches')
 
   /*
    * Whether a slip in the fee panel is a link, and whether the thing at the other
@@ -277,7 +290,7 @@ export default async function StudentProfilePage({
   // whose bills did not arrive is refused whole.
   const invoiceIds = (invoices ?? []).map((i) => i.id).filter((id): id is string => !!id)
 
-  const [{ data: marks }, { data: paymentRows }] = await Promise.all([
+  const [{ data: marks }, { data: paymentRows }, { data: moveRows }] = await Promise.all([
     // scoped-by: session ids and enrolment ids, both already filtered to this centre
     // by the queries above — a record can only be reached through one of them.
     sessionIds.length > 0 && enrollmentIds.length > 0
@@ -311,6 +324,30 @@ export default async function StudentProfilePage({
           .eq('coaching_center_id', centerId)
           .in('invoice_id', invoiceIds)
       : { data: null },
+    /*
+     * Where this child has been, which is the half of §7.2 the app did not have.
+     *
+     * The move itself already works — `updateStudent` writes `branch_id` on the one row,
+     * so the enrolments, marks and bills go with them rather than being recreated — and
+     * 20260811000042's trigger has been writing a row here on every one of those saves.
+     * Nothing read it, so "the transfer is auditable" was true of the database and false
+     * of the product, and the first question after a transfer goes wrong is always who
+     * moved this child.
+     *
+     * In the second round rather than a third, because it depends on nothing above: it is
+     * here to share a round trip on a page opened mid-phone-call.
+     */
+    mayReadMoves
+      ? supabase
+          .from('student_transfers')
+          .select(
+            'id, from_branch_id, from_branch_name, to_branch_id, to_branch_name, moved_by, created_at',
+          )
+          .eq('coaching_center_id', centerId)
+          .eq('student_id', studentId)
+          .order('created_at', { ascending: false })
+          .limit(PROFILE_TRANSFER_LIMIT)
+      : { data: null },
   ])
 
   /*
@@ -323,7 +360,7 @@ export default async function StudentProfilePage({
    * null is checked alongside it. A teacher's fee panel says who keeps the fees, and
    * that is an answer rather than a failure.
    *
-   * Five flags and not one, because each denies a different sentence. A single "some of
+   * Six flags and not one, because each denies a different sentence. A single "some of
    * this could not be read" across the lot would be true and would lose the only part
    * that matters: which claim on the screen is not being made.
    */
@@ -331,6 +368,7 @@ export default async function StudentProfilePage({
   const marksUnreadable = results === null
   const feesUnreadable = mayReadFees && invoices === null
   const flagsUnreadable = mayReadFlags && riskRows === null
+  const movesUnreadable = mayReadMoves && moveRows === null
   /*
    * The slips on their own, which is the one case that withholds nothing. `paid` and
    * `remaining` under each bill are the view's own arithmetic and arrive with the
@@ -350,6 +388,13 @@ export default async function StudentProfilePage({
   const fees =
     mayReadFees && !feesUnreadable ? feeHistory(invoices, today, paymentRows) : null
   const risk = studentsAtRisk(riskRows, d.risk.noName)[0] ?? null
+  // Head office and an unnamed building borrow the head-office screen's words rather than
+  // getting their own: two spellings of "head office" in one product is one too many.
+  const moves = studentTransfers(moveRows, {
+    viewerId: session.userId,
+    headOffice: d.hq.headOffice,
+    unnamedBranch: d.hq.unnamedBranch,
+  })
 
   const guardianPhone = student.guardian_phone
   const studentPhone = student.phone
@@ -443,6 +488,53 @@ export default async function StudentProfilePage({
                 {formatBdMobile(studentPhone)}
               </span>
             </a>
+          )}
+        </Card>
+      )}
+
+      {/*
+        Which building, and when it changed — above the panels whose figures have to be
+        read against it. Eight weeks of attendance across a July move is two registers in
+        two buildings, and an owner who does not know the child moved reads the gap as a
+        student who stopped turning up.
+
+        Drawn only when there is something to say. An empty flags panel below is a claim
+        worth printing — nothing is wrong — but "this student has never been moved" is not
+        a sentence anybody opens a screen for, and a panel of it on every profile in a
+        single-building centre would be furniture.
+      */}
+      {mayReadMoves && (movesUnreadable || moves.length > 0) && (
+        <Card>
+          <h2 className="font-semibold text-ink">{t.moves.title}</h2>
+
+          {movesUnreadable ? (
+            <p className="mt-1 text-sm text-ink-soft">{t.moves.unreadable}</p>
+          ) : (
+            <>
+              <ul className="mt-2 flex flex-col gap-2">
+                {moves.map((move) => (
+                  <li
+                    key={move.id}
+                    className="border-t border-line pt-2 first:border-0 first:pt-0"
+                  >
+                    <p className="font-medium text-ink">
+                      {move.from} <span aria-hidden>→</span> {move.to}
+                    </p>
+                    <p className="text-sm text-ink-faint">
+                      {[move.on ? formatDate(move.on, locale) : null, t.moves.by[move.by]]
+                        .filter(Boolean)
+                        .join(' · ')}
+                    </p>
+                  </li>
+                ))}
+              </ul>
+              <p className="mt-2 text-sm text-ink-soft">{t.moves.note}</p>
+              {moves.length >= PROFILE_TRANSFER_LIMIT && (
+                <p className="mt-2 text-xs text-ink-faint">
+                  {t.moves.limitNote(PROFILE_TRANSFER_LIMIT)}
+                </p>
+              )}
+            </>
           )}
         </Card>
       )}

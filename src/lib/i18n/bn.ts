@@ -4177,6 +4177,46 @@ export const bn = {
         'এই বিলগুলোর রসিদ পড়া গেল না, তাই তালিকায় দেখানো হয়নি — উপরের টাকার হিসাব ঠিকই আছে। একটু পরে আবার চেষ্টা করুন।',
       limitNote: (n: number) => `শেষ ${digits(n, 'bn')} মাসের ইনভয়েস দেখানো হচ্ছে।`,
     },
+
+    /**
+     * Which building this child has been in, and who moved them.
+     *
+     * Only drawn when there is a move to show. An empty flags panel is a claim that
+     * nothing is wrong and worth printing; an empty moves panel is a sentence nobody
+     * opened the screen for.
+     *
+     * WHY NOBODY IS NAMED. A browser session can read its own `profiles` row and no
+     * other, so 'আপনি' is the one person this panel can identify. The alternative was
+     * a uuid on the screen, which tells a reader nothing and looks like a fault.
+     */
+    moves: {
+      title: 'শাখা পরিবর্তন',
+      by: {
+        you: 'আপনি সরিয়েছেন',
+        /**
+         * 'আরেকজন' and not a name. The note below bounds who that can be — owner or
+         * manager, nobody else — which is the part an owner actually needs: it turns
+         * "somebody moved my student" into a list of two or three people they can ring.
+         */
+        other: 'আরেকজন অ্যাডমিন সরিয়েছেন',
+        /** A login since deleted, or a move made outside a session. Said, not hidden. */
+        unknown: 'কে সরিয়েছে তা লেখা নেই',
+      },
+      /**
+       * The second sentence is the one that stops a phone call. A transfer looks like a
+       * deletion from the outside — the child vanishes off one branch's lists — and the
+       * first fear is that the money went with them.
+       */
+      note: 'কেবল মালিক বা ম্যানেজার একজন শিক্ষার্থীকে অন্য শাখায় সরাতে পারেন। আগে যা লেখা হয়েছে — হাজিরা, নম্বর, বিল ও জমা — সবই শিক্ষার্থীর সঙ্গে থাকে।',
+      /**
+       * Says which way the silence goes. Without the second half, a panel that failed
+       * to read reads as "this child has never been moved" — on the screen of a child
+       * who moved in July, beside eight weeks of attendance from a different building.
+       */
+      unreadable:
+        'এই শিক্ষার্থীর শাখা পরিবর্তনের হিসাব এখন পড়া গেল না, তাই দেখানো হয়নি। এর মানে এই নয় যে তাকে কখনও সরানো হয়নি — একটু পরে আবার চেষ্টা করুন।',
+      limitNote: (n: number) => `শেষ ${digits(n, 'bn')}টি পরিবর্তন দেখানো হচ্ছে।`,
+    },
   },
 
   /**

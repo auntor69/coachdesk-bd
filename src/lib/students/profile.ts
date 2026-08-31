@@ -81,6 +81,16 @@ export const PROFILE_EXAM_LIMIT = 12
  */
 export const PROFILE_INVOICE_LIMIT = 12
 
+/**
+ * How many branch moves the history panel shows.
+ *
+ * Newest first, so the cut is the oldest move — and a student who has changed
+ * building a dozen times is not a row anybody reads to the bottom of. The one move
+ * that matters is always the most recent, because it is the one the attendance and
+ * fee panels above have to be read against.
+ */
+export const PROFILE_TRANSFER_LIMIT = 12
+
 /** A to-one embed arrives as an object, or an array, or null. All three happen. */
 type Embed<T> = T | T[] | null
 
@@ -565,4 +575,95 @@ export function feeHistory(
   }
 
   return { lines, outstanding, credit, overdueSince }
+}
+
+/**
+ * One move as `student_transfers` returns it.
+ *
+ * Both names are frozen: 20260811000042's trigger copies the branch names into the row
+ * at the moment of the move, and there is no FK on either id — a branch that has been
+ * renamed or deleted since must still read as what it was called on the day. So nothing
+ * below looks a name up, and the ids are here only to tell head office (null) from a
+ * building.
+ */
+export type ProfileTransferRow = {
+  id: string
+  from_branch_id: string | null
+  from_branch_name: string | null
+  to_branch_id: string | null
+  to_branch_name: string | null
+  moved_by: string | null
+  created_at: string
+}
+
+/**
+ * Who moved the student, as far as a browser session can honestly say.
+ *
+ * NOT A NAME, and it cannot become one from here. `profiles` is self-read only
+ * (`profiles_self_read`, 20260811000002), so a session can read its own row and nobody
+ * else's — the uuid in `moved_by` resolves to a person only for the person themselves.
+ * Guessing from `teachers` or `employees` would be worse than saying nothing: a teacher
+ * has no UPDATE on `students` at all, so the mover is almost always an owner, and an
+ * owner appears in neither table.
+ *
+ * `unknown` is a null `moved_by` — a login since deleted (`on delete set null`), or a
+ * write made where `auth.uid()` was null.
+ */
+export type TransferActor = 'you' | 'other' | 'unknown'
+
+export type StudentTransfer = {
+  id: string
+  from: string
+  to: string
+  /** YYYY-MM-DD in Dhaka, converted from the timestamptz rather than sliced off it. */
+  on: string | null
+  by: TransferActor
+}
+
+/**
+ * The branch-history panel, most recent move first.
+ *
+ * §7.2 asks for a transfer to be a move rather than a delete, and the write side of that
+ * has shipped: `updateStudent` sets `branch_id` on the one row, so the child's
+ * enrolments, marks, bills and payments follow them without being recreated. This is the
+ * half that makes it auditable, because the first question after a transfer goes wrong is
+ * always *who moved this child, and when*.
+ *
+ * A NULL BRANCH ID IS HEAD OFFICE and is labelled as such, never left blank. That is
+ * 20260811000053's meaning for the null — `app.branch_ok` reads it as the whole
+ * organisation — and a row reading "→ " would look like a bug in the one panel that
+ * exists to explain a surprise.
+ */
+export function studentTransfers(
+  rows: readonly ProfileTransferRow[] | null | undefined,
+  labels: { viewerId: string; headOffice: string; unnamedBranch: string },
+): StudentTransfer[] {
+  const place = (id: string | null, name: string | null) =>
+    id === null ? labels.headOffice : name?.trim() || labels.unnamedBranch
+
+  // Ordered on the raw timestamp rather than the Dhaka date: two moves on one day
+  // would otherwise lose their order, and the first row is where the child is today.
+  // An unparseable stamp sinks rather than scrambling the rest.
+  const ordered = [...(rows ?? [])].sort((a, b) => {
+    const ta = Date.parse(a.created_at)
+    const tb = Date.parse(b.created_at)
+    if (Number.isNaN(ta) || Number.isNaN(tb)) return Number.isNaN(ta) ? 1 : -1
+    return tb === ta ? a.id.localeCompare(b.id) : tb - ta
+  })
+
+  return ordered.map((row) => {
+    const at = new Date(row.created_at)
+    return {
+      id: row.id,
+      from: place(row.from_branch_id, row.from_branch_name),
+      to: place(row.to_branch_id, row.to_branch_name),
+      on: Number.isNaN(at.getTime()) ? null : todayInDhaka(at),
+      by:
+        row.moved_by === null
+          ? 'unknown'
+          : row.moved_by === labels.viewerId
+            ? 'you'
+            : 'other',
+    } satisfies StudentTransfer
+  })
 }

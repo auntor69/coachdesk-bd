@@ -211,11 +211,12 @@ export async function saveBranch(
  * there is no delete — and the head office's own reports still add it in, because a
  * building that closed in March still took fees in February.
  *
- * There is no guard on the students standing in it, unlike the subject list's. A guard
- * would have to name a repair, and moving a student between branches has no screen yet;
- * fencing the button would leave an owner unable to record the plain fact that a
- * building has shut. The count sits beside the button instead, so the decision is made
- * with the number in view.
+ * There is no guard on the students standing in it, unlike the subject list's. The edit
+ * form does now move a student to another building, so a guard could name the repair —
+ * but it would be a repair to make one child at a time, and fencing the button would
+ * leave an owner unable to record the plain fact that a building has shut until they had
+ * emptied it. The count sits beside the button instead, so the decision is made with the
+ * number in view, and every move is on the student's own profile afterwards.
  */
 export async function setBranchActive(
   _prev: BranchState,

@@ -2545,6 +2545,20 @@ export const en: Dictionary = {
       limitNote: (n: number) =>
         n === 1 ? 'Showing the last month.' : `Showing the last ${n} months.`,
     },
+
+    moves: {
+      title: 'Branch moves',
+      by: {
+        you: 'Moved by you',
+        other: 'Moved by another admin',
+        unknown: 'Who moved this is not recorded',
+      },
+      note: 'Only an owner or a manager can move a student to another branch. Everything already recorded — attendance, marks, bills and payments — stays with the student.',
+      unreadable:
+        'This student’s branch history could not be read just now, so it is not shown. It does not mean they have never been moved — please try again in a moment.',
+      limitNote: (n: number) =>
+        n === 1 ? 'Showing the last move.' : `Showing the last ${n} moves.`,
+    },
   },
 
   progress: {
