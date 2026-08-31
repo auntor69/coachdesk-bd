@@ -2,11 +2,13 @@ import Link from 'next/link'
 
 import { Card } from '@/components/ui'
 import { SearchBox, SearchEmpty } from '@/components/search-box'
-import { pagePermission, getSession } from '@/lib/auth/session'
+import { PlacesWarning } from '@/components/places-warning'
+import { pagePermission, getSession, isStaffAdmin } from '@/lib/auth/session'
 import { createClient } from '@/lib/supabase/server'
 import { pageAll } from '@/lib/supabase/page'
 import { formatBdMobile } from '@/lib/bd/phone'
 import { MAX_IMPORT_ROWS } from '@/lib/bd/roster'
+import { capacityPressure } from '@/lib/plans'
 import { searchTerms, matchesSearch, MAX_QUERY } from '@/lib/search'
 import { dict, DEFAULT_LOCALE } from '@/lib/i18n'
 
@@ -153,6 +155,23 @@ export default async function StudentsPage({
   // paying for: the number belongs to them and this is the screen it belongs on.
   const limit = session.ceiling.ceiling
 
+  /*
+   * And §3.7's warning, which this screen is named for: the roster is where somebody sits
+   * down to add the names, so it is the one place where "nearly full" arrives before the
+   * refusal rather than after it.
+   *
+   * `activeCount` is the whole centre because the read above is centre-scoped and carries
+   * no branch filter — the pool belongs to the organisation, and a branch's own count
+   * against this ceiling would be the per-branch quota §3.6 refuses.
+   *
+   * Staff admins only, and the reason is the door rather than the news: the warning ends
+   * in a link to /settings/plan, which is `pageRole('manager')`, so a teacher who got here
+   * on `can_manage_students` would be sent to a refusal. Their version of this warning is
+   * the student form saying no, which it already does.
+   */
+  const pressure = capacityPressure(session.ceiling, activeCount)
+  const warnPlaces = isStaffAdmin(session)
+
   // The two problem sets, kept as lists rather than counts, because each one is now
   // both a number on a card and the list that card opens. Two predicates written twice
   // would eventually disagree, and the way that failure shows up is a card promising
@@ -234,6 +253,11 @@ export default async function StudentsPage({
           </Link>
         </div>
       </div>
+
+      {/* Above the paste door on purpose: 200 names against 40 places is the import that
+          stops half way, and this is the sentence that gets read first. Null while there
+          is room, and a null child in a gap column takes no room either. */}
+      {warnPlaces && <PlacesWarning pressure={pressure} t={d.dashboard} />}
 
       {/*
         The way a centre actually gets its students in: somebody sits down with

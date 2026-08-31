@@ -614,6 +614,63 @@ export function studentRoom(ceiling: StudentCeiling, activeStudents: number): nu
   return Math.max(0, ceiling.ceiling - Math.floor(activeStudents))
 }
 
+/**
+ * §3.7's thresholds, as constants rather than as literals in three screens.
+ *
+ * A share and not a count, because the same "twelve left" is a comfortable month for a
+ * centre of three hundred and next week's problem for a centre of thirty — and the
+ * screens that say it out loud already print both numbers for that reason.
+ */
+export const CAPACITY_NOTICE_SHARE = 0.2
+export const CAPACITY_URGENT_SHARE = 0.05
+
+/**
+ * How close this organisation is to its ceiling, in one word.
+ *
+ * `full` is the state the database enforces (CD001) and the student form refuses; the
+ * other two are warnings, and they exist because the alternative is finding out at the
+ * admission desk. §3.7: a notice at a fifth left, urgent at a twentieth.
+ *
+ * ORGANISATION-WIDE, ALWAYS. The seat belongs to the institution and not to the branch
+ * that filled it (§3.6), so `activeStudents` is every active student in the centre and
+ * never a branch's own. A branch-scoped count against this ceiling would report a
+ * Chattogram manager as having 1,300 of 2,600 places used, which is the per-branch quota
+ * this product deliberately does not have.
+ *
+ * ON THE EFFECTIVE CEILING — `session.ceiling`, which is what every screen that prints a
+ * place count already shows. A trial of a higher tier moves that ceiling and
+ * `app.student_ceiling` does not follow, since it reads the paid `coaching_centers.plan`
+ * column, so a trialling centre can be refused a student while this still says `fine`.
+ * Which of the two is right is a decision about what a trial grants and belongs to the
+ * trial lifecycle (§4.3–4.5); passing the paid ceiling here instead would only move the
+ * contradiction, and tell an owner to buy the places a founder had just given them.
+ */
+export type CapacityPressure = {
+  level: 'fine' | 'notice' | 'urgent' | 'full'
+  /** Places left, which every level names — see CAPACITY_NOTICE_SHARE. */
+  remaining: number
+  ceiling: number
+}
+
+export function capacityPressure(
+  ceiling: StudentCeiling,
+  activeStudents: number,
+): CapacityPressure {
+  const remaining = studentRoom(ceiling, activeStudents)
+  const total = ceiling.ceiling
+  const at = (level: CapacityPressure['level']) => ({ level, remaining, ceiling: total })
+
+  if (remaining === 0) return at('full')
+  // A ceiling of nought with room left is not a state any plan produces, and dividing by
+  // it would make every share Infinity — which would read as "fine" forever.
+  if (!(total > 0)) return at('urgent')
+
+  const share = remaining / total
+  if (share <= CAPACITY_URGENT_SHARE) return at('urgent')
+  if (share <= CAPACITY_NOTICE_SHARE) return at('notice')
+  return at('fine')
+}
+
 /* -------------------------------------------------------------------------- */
 /* What another student place costs                                           */
 /* -------------------------------------------------------------------------- */

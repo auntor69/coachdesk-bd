@@ -2,6 +2,7 @@ import Link from 'next/link'
 
 import { Card } from '@/components/ui'
 import { greetingFor } from '@/components/app-shell'
+import { PlacesWarning } from '@/components/places-warning'
 import { pageRole, getSession, isStaffAdmin, canReadFees, myTeacherIds } from '@/lib/auth/session'
 import { isHqMember } from '@/lib/branches'
 import { createClient } from '@/lib/supabase/server'
@@ -12,7 +13,7 @@ import {
   addMonths,
   formatDate,
 } from '@/lib/bd/time'
-import { has, studentRoom } from '@/lib/plans'
+import { has, capacityPressure } from '@/lib/plans'
 import { setupSteps } from '@/lib/setup'
 import { countChasesDue } from '@/lib/fees/reminder-schedule'
 import { monthBills, monthMoney, payrollState } from '@/lib/finance/profit'
@@ -647,9 +648,15 @@ export default async function DashboardPage() {
    * feature — the ceiling is nearest on free, where it is thirty — and an owner who
    * finds out about it by being refused at student thirty-one has already had the
    * afternoon this line exists to prevent.
+   *
+   * `capacityPressure` and not `studentRoom`, because the same call now decides how loud
+   * the line is: §3.7's thresholds live in lib/plans.ts, where the other two screens that
+   * print a place count read them from. `remaining` is what `studentRoom` returned. The
+   * count fed in is the centre's own and never this branch's — the pool belongs to the
+   * organisation, which is the rule the whole figure rests on.
    */
-  const placesLeft =
-    studentCount === null ? null : studentRoom(session.ceiling, studentCount)
+  const pressure =
+    studentCount === null ? null : capacityPressure(session.ceiling, studentCount)
 
   return (
     <div className="flex flex-col gap-5">
@@ -769,23 +776,31 @@ export default async function DashboardPage() {
           />
         </div>
 
-        {/* Places remaining, on every plan — see the note on `placesLeft`. One faint
-            line and a door, because it is a fact an owner needs to have seen rather
-            than one they act on today, and the day they do act on it the door is the
-            only thing on this line that matters. */}
-        {isAdmin && placesLeft !== null && (
-          <p className="num mt-2 text-sm text-ink-soft">
-            {placesLeft > 0
-              ? t.placesLeft(placesLeft, session.ceiling.ceiling)
-              : t.placesFull}{' '}
-            <Link
-              href="/settings/plan"
-              className="font-medium text-brand-800 underline"
-            >
-              {t.placesLink} →
-            </Link>
-          </p>
-        )}
+        {/* Places remaining, on every plan — see the note on `pressure`. One faint line
+            and a door while there is room, because it is a fact an owner needs to have
+            seen rather than one they act on today, and the day they do act on it the
+            door is the only thing on this line that matters.
+
+            That day is what `pressure` names. Past a fifth left the faint line has
+            stopped being honest about how close this is, so §3.7's warning takes its
+            place — never both, or the screen says one thing twice in two weights. */}
+        {isAdmin &&
+          pressure !== null &&
+          (pressure.level === 'fine' ? (
+            <p className="num mt-2 text-sm text-ink-soft">
+              {t.placesLeft(pressure.remaining, pressure.ceiling)}{' '}
+              <Link
+                href="/settings/plan"
+                className="font-medium text-brand-800 underline"
+              >
+                {t.placesLink} →
+              </Link>
+            </p>
+          ) : (
+            <div className="mt-3">
+              <PlacesWarning pressure={pressure} t={t} />
+            </div>
+          ))}
       </div>
 
       {/* THE PROFIT LINE — §9.8's box, here because §9.10 puts it on this screen and

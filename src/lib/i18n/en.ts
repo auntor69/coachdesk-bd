@@ -2211,6 +2211,27 @@ export const en: Dictionary = {
      */
     placesFull: 'Every student place on this plan is taken',
     placesLink: 'Plan and places',
+    /**
+     * §3.7's urgent state — a twentieth of the ceiling left, or none.
+     *
+     * A second sentence rather than a colour, because a red line saying the same words
+     * as the black one it replaced is a change only the person who wrote it can see.
+     * The thresholds themselves are in lib/plans.ts; nothing here knows what 5% means.
+     *
+     * "Before your next admission" and not "now": the cost of ignoring this is not
+     * abstract, it is an owner standing in front of a parent who wants to enrol, and
+     * that is the sentence that gets a bill paid this week rather than next month.
+     */
+    placesTight: (left: number, total: number) =>
+      `Only ${left} of ${total} student places are left`,
+    placesTightBody:
+      'Add places before your next admission, so the form opens instead of refusing.',
+    /**
+     * The same box with the ceiling reached, and a different second line because
+     * "before your next admission" is advice for somebody who still has one. Present
+     * tense: the refusal is not a risk any more, it is what the form does today.
+     */
+    placesFullBody: 'The new-student form will refuse until you add places.',
 
     /**
      * THE PROFIT LINE — §9.8's box, on the home screen because §9.10 puts it there.

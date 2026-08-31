@@ -19,6 +19,7 @@ import path from 'node:path'
 
 import {
   PLANS,
+  capacityPressure,
   includedStudents,
   monthlyBillBdt,
   monthlyFloorBdt,
@@ -26,6 +27,8 @@ import {
   studentCeiling,
   studentChargeBdt,
   studentRoom,
+  CAPACITY_NOTICE_SHARE,
+  CAPACITY_URGENT_SHARE,
   CENTER_MONTHLY_FLOOR_BDT,
   INSTITUTION_MONTHLY_FLOOR_BDT,
   type PlanId,
@@ -209,6 +212,64 @@ test('room to add students is never negative', () => {
   assert.equal(studentRoom(centre, 120), 0)
   assert.equal(studentRoom(centre, 900), 0)
   assert.equal(studentRoom(centre, Number.NaN), 0)
+})
+
+test('the warnings fire at a fifth and at a twentieth, and 0 is its own state', () => {
+  // §3.7's thresholds, and the reason they are asserted rather than trusted: three
+  // screens read them, and a fraction typed as 0.5 instead of 0.05 would put every
+  // half-empty centre under an urgent banner — which is how a warning stops being read
+  // at all. Both boundaries are inclusive, so a centre sitting exactly on one is warned
+  // rather than left one student short of it.
+  const centre = studentCeiling(PLANS.center, 200)
+  const level = (used: number) => capacityPressure(centre, used).level
+
+  // The boundaries below are 200's fifth and twentieth, so the ceiling has to be 200 —
+  // it is `greatest(included, purchased)`, and a floor price that ever bought more than
+  // 200 places would move every number in this test without changing a line of it.
+  assert.equal(centre.ceiling, 200)
+  assert.equal(CAPACITY_NOTICE_SHARE, 0.2)
+  assert.equal(CAPACITY_URGENT_SHARE, 0.05)
+
+  assert.equal(level(0), 'fine')
+  assert.equal(level(159), 'fine') // 41 left, a fifth and one
+  assert.equal(level(160), 'notice') // 40 left, exactly a fifth
+  assert.equal(level(189), 'notice') // 11 left, a twentieth and one
+  assert.equal(level(190), 'urgent') // 10 left, exactly a twentieth
+  assert.equal(level(199), 'urgent')
+  assert.equal(level(200), 'full')
+  // Past the ceiling is still full and not something worse: a centre downgraded below
+  // its roster is a real state, and the screens print `remaining` beside the word.
+  assert.equal(level(900), 'full')
+  assert.deepEqual(capacityPressure(centre, 900), {
+    level: 'full',
+    remaining: 0,
+    ceiling: 200,
+  })
+
+  // The free tier's thirty, where the same shares land on much smaller counts — the
+  // whole reason the thresholds are shares and not "warn at 20 left".
+  const free = studentCeiling(PLANS.teacher_free, 0)
+  assert.equal(capacityPressure(free, 23).level, 'fine')
+  assert.equal(capacityPressure(free, 24).level, 'notice')
+  assert.equal(capacityPressure(free, 29).level, 'urgent')
+  assert.equal(capacityPressure(free, 30).level, 'full')
+})
+
+test('a ceiling of nought never reads as comfortable', () => {
+  // The division guard, and it exists because Infinity is not <= 0.2: a share computed
+  // against a ceiling of nought would have every screen reporting "fine" forever on a
+  // centre that cannot add anybody. No plan produces such a ceiling — a plan_allowances
+  // row edited to zero would — and both ways in land on a warning rather than silence.
+  const broken = { kind: 'plan', ceiling: 0 } as const
+
+  // Nothing fits, which is `full` on its own merits and never reaches the share.
+  assert.equal(capacityPressure(broken, 0).level, 'full')
+  assert.equal(capacityPressure(broken, Number.NaN).level, 'full')
+
+  // And the one path that does reach it: a count below zero, which is a column gone
+  // wrong rather than a roster. `remaining` comes out positive against a ceiling of
+  // nought, so the share would be Infinity — urgent instead of fine.
+  assert.equal(capacityPressure(broken, -5).level, 'urgent')
 })
 
 test('the capacity check fires per row, not per statement', () => {

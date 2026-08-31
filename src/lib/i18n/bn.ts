@@ -3704,6 +3704,18 @@ export const bn = {
     /** The ceiling reached. See en.dashboard.placesFull for why it is its own sentence. */
     placesFull: 'এই প্ল্যানে শিক্ষার্থীর সব জায়গা পূরণ হয়ে গেছে',
     placesLink: 'প্ল্যান ও জায়গা',
+    /**
+     * §3.7-এর জরুরি অবস্থা — সীমার এক-বিশ ভাগ বাকি, বা কিছুই বাকি নেই। কেন আলাদা বাক্য,
+     * আর কেন "এখনই" নয় বরং "ভর্তির আগে", তা en.dashboard.placesTight-এ লেখা আছে।
+     *
+     * উপরের নিয়ম মেনে সংখ্যাগুলো ASCII।
+     */
+    placesTight: (left: number, total: number) =>
+      `${total}-এর মধ্যে মাত্র ${left}টি জায়গা বাকি`,
+    placesTightBody:
+      'পরের ভর্তির আগেই জায়গা বাড়িয়ে নিন, নাহলে সেদিন ফর্মটি খুলবে না।',
+    /** সীমা পূরণ। কেন আলাদা বাক্য, দেখুন en.dashboard.placesFullBody। */
+    placesFullBody: 'জায়গা না বাড়ানো পর্যন্ত নতুন শিক্ষার্থীর ফর্ম কাজ করবে না।',
 
     /**
      * THE PROFIT LINE — MASTERPLAN.md §9.8, on the home screen because §9.10 puts it

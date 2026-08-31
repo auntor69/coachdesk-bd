@@ -1,6 +1,7 @@
 import Link from 'next/link'
 
 import { Card } from '@/components/ui'
+import { PlacesWarning } from '@/components/places-warning'
 import { pageRole, getSession } from '@/lib/auth/session'
 import { isHqMember } from '@/lib/branches'
 import { currentPeriodMonth, addMonths, formatMonth } from '@/lib/bd/time'
@@ -11,7 +12,7 @@ import {
 } from '@/lib/finance/branch-money'
 import { dict, DEFAULT_LOCALE } from '@/lib/i18n'
 import { formatTaka } from '@/lib/money'
-import { has, planName, studentRoom, PLANS } from '@/lib/plans'
+import { has, planName, capacityPressure, PLANS } from '@/lib/plans'
 import { createClient } from '@/lib/supabase/server'
 
 /** getSession, not pageRole — see the note on teach/page.tsx's own. */
@@ -264,8 +265,8 @@ export default async function HqPage({
   const gap = payrollGap(rows)
 
   const totalHeads = centerHeads.error ? null : centerHeads.count
-  const placesLeft =
-    totalHeads === null ? null : studentRoom(session.ceiling, totalHeads)
+  const pressure =
+    totalHeads === null ? null : capacityPressure(session.ceiling, totalHeads)
 
   return (
     <Shell home={d.shell.nav.home}>
@@ -371,23 +372,32 @@ export default async function HqPage({
       {/* §8.3 asks for the pool on this screen and §17 says what it is: one allowance for
           the whole organisation, never a quota per building. Which is why it sits under
           the table rather than in it — a column would invite exactly the division the
-          plan forbids. */}
-      {placesLeft !== null && (
-        <section className="rounded-xl border border-line bg-white p-4">
-          <p className="num font-medium text-ink">
-            {placesLeft > 0
-              ? d.dashboard.placesLeft(placesLeft, session.ceiling.ceiling)
-              : d.dashboard.placesFull}
-          </p>
-          <p className="mt-1 text-sm text-ink-soft">{t.poolNote}</p>
-          <Link
-            href="/settings/plan"
-            className="mt-2 inline-flex min-h-tap items-center font-medium text-brand-700"
-          >
-            {d.dashboard.placesLink} →
-          </Link>
-        </section>
-      )}
+          plan forbids.
+
+          §3.7 names this screen for the warning, so past a fifth left the section gives
+          way to the shared one and the pool note travels with it. The card an owner reads
+          calmly and the box telling them next week is a problem are not the same object. */}
+      {pressure !== null &&
+        (pressure.level === 'fine' ? (
+          <section className="rounded-xl border border-line bg-white p-4">
+            <p className="num font-medium text-ink">
+              {d.dashboard.placesLeft(pressure.remaining, pressure.ceiling)}
+            </p>
+            <p className="mt-1 text-sm text-ink-soft">{t.poolNote}</p>
+            <Link
+              href="/settings/plan"
+              className="mt-2 inline-flex min-h-tap items-center font-medium text-brand-700"
+            >
+              {d.dashboard.placesLink} →
+            </Link>
+          </section>
+        ) : (
+          <PlacesWarning
+            pressure={pressure}
+            t={d.dashboard}
+            note={t.poolNote}
+          />
+        ))}
 
       <Link
         href="/settings/branches"
