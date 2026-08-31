@@ -255,6 +255,18 @@ export default async function BranchesPage() {
         </ul>
       )}
 
+      {rows.length > 0 && isHq && (
+        /* §8.3's comparison, from the screen where the buildings are named. Only the
+           head office, and only once there is something to compare: the table itself
+           refuses a pinned manager, and a door into a refusal is worse than no door. */
+        <Link
+          href="/hq"
+          className="inline-flex min-h-tap items-center font-medium text-brand-700"
+        >
+          {d.hq.title} →
+        </Link>
+      )}
+
       {isHq && costLine && (
         <AddBranch
           title={t.addTitle}

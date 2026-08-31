@@ -3,6 +3,7 @@ import Link from 'next/link'
 import { Card } from '@/components/ui'
 import { greetingFor } from '@/components/app-shell'
 import { pageRole, getSession, isStaffAdmin, canReadFees, myTeacherIds } from '@/lib/auth/session'
+import { isHqMember } from '@/lib/branches'
 import { createClient } from '@/lib/supabase/server'
 import { pageAll, pageOrNull, type Paged, worstFailure } from '@/lib/supabase/page'
 import {
@@ -813,6 +814,19 @@ export default async function DashboardPage() {
           salaryEntries={salaryExpenseCount}
           t={t.money}
         />
+      )}
+
+      {/* §8.3's comparison table, and the only way anybody finds it — it has no nav tab,
+          because `NAV` in the shell is explicitly not a plan gate. Under the profit
+          figure it breaks down, and only for the head office: a pinned manager would be
+          shown a comparison of the one building they already read above. */}
+      {showMoney && has(session.plan, 'multipleBranches') && isHqMember(session.active) && (
+        <Link
+          href="/hq"
+          className="inline-flex min-h-tap items-center font-medium text-brand-700"
+        >
+          {t.money.branchLink} →
+        </Link>
       )}
 
       <Card>

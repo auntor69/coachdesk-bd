@@ -3751,6 +3751,8 @@ export const bn = {
         'দুই খাতায় একই টাকা যেন দুইবার ধরা না হয়, তাই বেতনের খাতে লেখা খরচ উপরের হিসাবে ধরা হয়নি। ওই টাকাটা বেতনের খাতায় লিখলেই লাভের হিসাব ঠিক হবে।',
       expensesLink: 'খরচ',
       payrollLink: 'বেতন দিন',
+      /** Institution only, and the only way anybody finds §8.3 — there is no nav tab. */
+      branchLink: 'শাখা ধরে ধরে',
       /** In place of the whole card. Same argument as `outstandingUnreadable` above. */
       unreadable:
         'এ মাসের লাভ কত তা এখন বের করা গেল না, তাই কোনো হিসাব দেখানো হয়নি। আপনার হিসাবে কোনো সমস্যা নেই — একটু পরে আবার চেষ্টা করুন।',
@@ -6019,6 +6021,91 @@ export const bn = {
       wantsSince: 'কবে চেয়েছে',
       wantsNote: 'যা লিখেছে',
     },
+  },
+
+  /**
+   * §8.3's comparison table — the one thing the head office has that a pinned manager
+   * does not, which is the branches next to each other.
+   *
+   * ADDRESSED TO SOMEBODY WHO PAYS FOR SEVERAL BUILDINGS AND SUSPECTS ONE OF THEM. That
+   * is the actual question this screen answers, and the words carry it: 'কোন শাখা
+   * অন্যগুলোকে টানছে' is the sentence an owner says out loud, and it is the reason they
+   * bought the Institution plan.
+   *
+   * TWO MEANINGS OF ONE MONTH SIT ON ONE ROW HERE, which is §9.1's warning at its
+   * sharpest. 'আদায়' is cash that arrived in the month whatever it was billed for;
+   * 'বিল বাকি' and 'বিল আদায়' are about the month's own bills whenever the money came
+   * in. The two will not agree, and an owner who cannot tell why stops trusting both —
+   * so the columns are named differently and `legend` says the difference in one line
+   * rather than leaving it to be discovered.
+   *
+   * THE PAYROLL WARNING IS THE POINT OF THE SCREEN AS MUCH AS THE PROFIT COLUMN IS.
+   * 20260811000055: "entering payroll centrally leaves every branch but head office
+   * looking free". An institution that pays every teacher from one desk reads a table in
+   * which four branches are wildly profitable and head office bleeds, and every one of
+   * those numbers is wrong in the flattering direction. `payrollSome` names the
+   * buildings; the note names the cause, because the fix is where the salary is written
+   * down and not anything on this page.
+   */
+  hq: {
+    title: 'শাখাগুলো পাশাপাশি',
+    subtitle: 'এক মাসে প্রতিটি শাখা কী করল, আর কোনটি অন্যগুলোকে টানছে',
+    /** Word for word the branches screen's, so the two locked cards read as one rule. */
+    lockedTitle: 'শাখা ইনস্টিটিউশন প্ল্যানে আছে',
+    lockedBody: (plan: string, institution: string) =>
+      `${plan}-এ একটি ভবন। ${institution}-এ কয়েকটি — প্রতিটির নিজের ছাত্র, হাজিরা, ফি আর বেতন, আর হেড অফিস একসাথে সবগুলো দেখে বুঝতে পারে কোন শাখা অন্যগুলোকে টানছে।`,
+    /**
+     * A pinned manager, and this is a card instead of a table of one row.
+     *
+     * The policy already hands them their own branch and nothing else, so drawing the
+     * table would work — and would tell somebody who manages one of five buildings that
+     * the organisation has one building. Deliberately different from the branches
+     * screen, which does draw them their own row, because that screen is a list and this
+     * one is a comparison.
+     */
+    pinnedTitle: 'এই পাতাটি হেড অফিসের',
+    pinnedBody:
+      'শাখাগুলো পাশাপাশি মিলিয়ে দেখা হেড অফিসের কাজ। আপনার নিজের শাখার হিসাব আপনার ড্যাশবোর্ডেই আছে।',
+    monthLabel: 'মাস',
+    show: 'দেখান',
+    emptyTitle: 'এখনো কোনো শাখা লেখা হয়নি',
+    emptyBody:
+      'প্রতিষ্ঠান যে ভবনগুলোতে পড়ায় সেগুলো আগে লিখুন। তারপর ছাত্র, ব্যাচ, ফি আর বেতন যার যার শাখার নিচে জমা হবে, আর এই পাতায় শাখাগুলো পাশাপাশি দেখা যাবে।',
+    branchesLink: 'শাখা',
+    /** A null branch. Not every branch — see 20260811000055 and `elsewhere()`. */
+    headOffice: 'হেড অফিস',
+    /**
+     * Money whose branch is not on the list. Named rather than dropped: a row thrown
+     * away here would make the total at the foot smaller than the dashboard's, and that
+     * disagreement is the one thing the whole migration was written to prevent.
+     */
+    unnamedBranch: 'অন্য একটি শাখা',
+    branch: 'শাখা',
+    students: 'ছাত্র',
+    collected: 'আদায়',
+    spending: 'খরচ',
+    salaries: 'বেতন',
+    profit: 'লাভ',
+    owed: 'বিল বাকি',
+    rate: 'বিল আদায়',
+    total: 'সব শাখা মিলে',
+    legend:
+      'আদায় মানে এ মাসে হাতে আসা টাকা, তা যে মাসের বিলেরই হোক। বিল বাকি আর বিল আদায় এ মাসের বিলের হিসাব, টাকা যখনই আসুক — তাই দুই কলাম মিলবে না, আর দুটোই ঠিক।',
+    /** In place of the whole table. Same argument as dashboard.money.unreadable. */
+    unreadable:
+      'শাখাগুলোর হিসাব এখন আনা গেল না, তাই কোনো সংখ্যা দেখানো হয়নি। আপনার হিসাবে কোনো সমস্যা নেই — একটু পরে আবার চেষ্টা করুন।',
+    /** Two columns short, and said so. Zeroes there would mean nothing was billed. */
+    chargesUnreadable:
+      'বিলের দুই কলাম এখন আনা গেল না, তাই সেখানে দাগ দেওয়া আছে। আদায়, খরচ আর লাভের হিসাব ঠিক আছে।',
+    payrollAll: 'এ মাসে কোনো শাখারই বেতনের হিসাব নেই',
+    payrollAllNote:
+      'বেতন না লেখা থাকলে লাভ বেশি দেখায়। বেতনের খাতায় এ মাসের বেতন লিখলে উপরের প্রতিটি লাভের ঘর ঠিক হবে।',
+    payrollSome: (branches: string) => `বেতনের হিসাব নেই: ${branches}`,
+    payrollSomeNote:
+      'বেতন যদি হেড অফিস থেকে একসাথে দেওয়া হয়, তবে বাকি শাখাগুলোর লাভ বেশি দেখাবে। যে শাখার লোকের বেতন, সেই শাখার নামেই লিখলে তুলনাটা ঠিক হবে।',
+    /** §17, on the screen that would otherwise invite per-branch quotas. */
+    poolNote:
+      'জায়গার হিসাব পুরো প্রতিষ্ঠানের জন্য একটাই — সব শাখা এই একই ভাণ্ডার থেকে নেয়, শাখা ধরে ধরে ভাগ করা নেই।',
   },
 } as const
 

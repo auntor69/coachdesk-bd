@@ -2284,6 +2284,8 @@ export const en: Dictionary = {
         'Salary spending is left out of the figures above, so that a centre keeping both books is not charged twice. Record those payments in the salary book instead and the profit is right.',
       expensesLink: 'Spending',
       payrollLink: 'Pay salaries',
+      /** Institution only, and the only way anybody finds §8.3 — there is no nav tab. */
+      branchLink: 'Branch by branch',
       /**
        * In place of the whole card, on the same argument as `outstandingUnreadable`
        * above: four noughts and a profit of ৳0 is a sentence about the centre, and a
@@ -3787,5 +3789,48 @@ export const en: Dictionary = {
       wantsSince: 'Asked on',
       wantsNote: 'What they wrote',
     },
+  },
+
+  /** See the Bangla for why this screen is a comparison and not a list. */
+  hq: {
+    title: 'Branches side by side',
+    subtitle: 'One month, every building, and which one is carrying the others',
+    lockedTitle: 'Branches come with the Institution plan',
+    lockedBody: (plan: string, institution: string) =>
+      `${plan} is one building. ${institution} runs several — each with its own students, registers, fees and payroll, and a head office that reads all of them at once and can see which is carrying the others.`,
+    pinnedTitle: 'This page belongs to the head office',
+    pinnedBody:
+      'Comparing the branches against each other is the head office’s job. Your own branch’s figures are on your dashboard.',
+    monthLabel: 'Month',
+    show: 'Show',
+    emptyTitle: 'No branches written down yet',
+    emptyBody:
+      'Write down each building the organisation teaches in first. Students, batches, fees and salaries are then filed under the one they belong to, and this page can put the branches side by side.',
+    branchesLink: 'Branches',
+    headOffice: 'Head office',
+    unnamedBranch: 'Another branch',
+    branch: 'Branch',
+    students: 'Students',
+    collected: 'Cash in',
+    spending: 'Spending',
+    salaries: 'Salaries',
+    profit: 'Profit',
+    owed: 'Bills unpaid',
+    rate: 'Bills paid',
+    total: 'All branches',
+    legend:
+      'Cash in is money that arrived in the month, whatever it was billed for. Bills unpaid and bills paid are about this month’s own bills, whenever the money came in — so the two sides will not match, and both are right.',
+    unreadable:
+      'The branch figures could not be worked out just now, so none are shown. Nothing is wrong with your records — please try again in a moment.',
+    chargesUnreadable:
+      'The two bill columns could not be read just now, so they are left dashed. Cash in, spending and profit are unaffected.',
+    payrollAll: 'No branch has any salaries recorded this month',
+    payrollAllNote:
+      'Salaries left unrecorded make the profit read high. Write this month’s salaries in the salary book and every profit figure above becomes right.',
+    payrollSome: (branches: string) => `No salaries recorded at: ${branches}`,
+    payrollSomeNote:
+      'If salaries are paid centrally from the head office, every other branch reads more profitable than it is. Record each payment under the branch the person works at and the comparison becomes fair.',
+    poolNote:
+      'Places are one pool for the whole organisation — every branch draws from the same pool, and none has a quota of its own.',
   },
 }

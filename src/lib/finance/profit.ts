@@ -45,8 +45,11 @@
  * that is not a number reads as 0 for the same reason — it cannot happen without the
  * view changing, and `NaN` propagating into a profit figure would print "৳0" from
  * `formatTaka` anyway, three subtractions later and further from the cause.
+ *
+ * Exported for ./branch-money.ts, which reads the same columns one grouping finer. A
+ * second copy would be a second answer to what a numeric column is.
  */
-function figure(value: number | string | null): number {
+export function figure(value: number | string | null): number {
   const n = typeof value === 'string' ? Number(value) : (value ?? 0)
   return Number.isFinite(n) ? n : 0
 }
