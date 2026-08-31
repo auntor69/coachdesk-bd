@@ -1944,6 +1944,30 @@ export const en: Dictionary = {
     /** "are", not "is/are": overRoom needs {room} of at least 1, so {fresh} is 2 or more. */
     overRoom:
       'This plan has room for {room} more, but {fresh} in the list are new.',
+    /**
+     * §3.5's priced shortfall — what overRoom says on a plan that sells places.
+     *
+     * No noun after a count anywhere in this block. The shortfall is 1 when a centre
+     * with no room pastes one name, so "{n} places" would read "1 places"; the counts
+     * that can be proved plural say so where they are written.
+     */
+    shortTitle: 'The list needs {n} more',
+    shortBody:
+      'New on this list: {fresh}. Free places: {room}. Buy the places first, and the whole list goes in together.',
+    shortBand: '{n} at {rate} each',
+    shortTotal: 'Total',
+    shortBuy: 'Buy the places for {taka}',
+    shortBuying: 'Opening…',
+    /** Owner only — see planOwner in settings/plan/actions.ts. */
+    shortAsk: 'Only the owner can buy places. Show them this screen.',
+    shortPlanLink: 'Places and plan',
+    /**
+     * The reference code is not on this screen. It is rendered on the plan page from
+     * the row itself, because an owner leaves for bKash and comes back to a reloaded
+     * screen — a code that only existed in this form's state would be gone.
+     */
+    bought:
+      'The purchase is open. Send the money with the reference code from the plan page — once it reaches us, reload this page and the list goes in.',
     problemsTitle: 'These lines will not be added — fix them and paste again',
     moreProblems: 'And {n} more with a problem.',
     readyTitle: 'Check what was read ({n})',

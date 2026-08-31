@@ -12,8 +12,13 @@
  *
  * The parser is the same module the Server Action re-runs, so the count on the
  * button is the count the database will report.
+ *
+ * AND, WHEN THE LIST DOES NOT FIT, §3.5's price. The shortfall is computed here and
+ * priced from the same bands the server bills from, because a screen that says ৳3,480
+ * and an intent that opens at ৳4,000 is a screen nobody trusts twice. Nothing is
+ * created before the money arrives — see the note on the priced block.
  */
-import { useActionState, useMemo, useState } from 'react'
+import { useActionState, useEffect, useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
 
 import { Alert, Button } from '@/components/ui'
@@ -26,6 +31,10 @@ import {
 } from '@/lib/bd/roster'
 import { fill } from '@/lib/i18n/fill'
 import type { T } from '@/lib/i18n'
+import { mintIdempotencyKey } from '@/lib/idempotency'
+import { formatTaka } from '@/lib/money'
+import { capacityBands, capacityCostBdt } from '@/lib/plans'
+import { buyStudentPlaces, type UpgradeState } from '../../plan/actions'
 import { importStudents, type ActionState } from '../../actions'
 
 type BatchOption = { id: string; label: string }
@@ -47,6 +56,9 @@ export function ImportForm({
   batches,
   existingKeys,
   room,
+  forSale,
+  mayBuy,
+  mayReadPlan,
 }: {
   t: T<'importForm'>
   common: T<'common'>
@@ -61,6 +73,18 @@ export function ImportForm({
    * looked like before `studentCeiling` existed.
    */
   room: number
+  /**
+   * The PAID ceiling, which is where the bands start — and null on a plan that sells no
+   * places at all. See the page for why it is not `session.ceiling`.
+   *
+   * Two facts in one prop deliberately: "can this centre buy places" and "at what
+   * price" are the same question, and a separate boolean could disagree with the number.
+   */
+  forSale: number | null
+  /** Owner only, mirroring requireRole('owner') inside `buyStudentPlaces`. */
+  mayBuy: boolean
+  /** Owner or manager — /settings/plan is pageRole('manager'). */
+  mayReadPlan: boolean
 }) {
   const [text, setText] = useState('')
 
@@ -87,6 +111,35 @@ export function ImportForm({
     null,
   )
 
+  /*
+   * The purchase, in the same <form> as the import.
+   *
+   * A SECOND <form> IS ILLEGAL INSIDE THE FIRST, and a link to /settings/plan would
+   * throw away a five-hundred-line paste to buy the places that paste needs. So the buy
+   * button submits this form to a different action with `formAction`, which is what
+   * useActionState's dispatch is for; `buyStudentPlaces` ignores the roster and the
+   * batch ticks, `importStudents` ignores the two hidden fields.
+   */
+  const [bought, buy, buying] = useActionState<UpgradeState, FormData>(
+    buyStudentPlaces,
+    null,
+  )
+  const keyRef = useRef<HTMLInputElement>(null)
+
+  /*
+   * The replay guard, minted after mount because it reads a random source. Reused for a
+   * retry on purpose — `openIntent` hands back the row it already opened for a key it
+   * has seen, so a second tap after "could not start" is not a second bill.
+   *
+   * One key per mount is safe here only because the buy control goes away on success:
+   * see the priced block. Were it to stay, a bigger paste bought under the same key
+   * would land on the first, smaller intent.
+   */
+  useEffect(() => {
+    const input = keyRef.current
+    if (input && !input.value) input.value = mintIdempotencyKey()
+  }, [])
+
   const rows = useMemo(() => parseRoster(text), [text])
   const known = useMemo(() => new Set(existingKeys ?? []), [existingKeys])
   const preview = useMemo(
@@ -108,6 +161,23 @@ export function ImportForm({
   const newCount = hinting ? ready.length - alreadyThere : ready.length
   const tooMany = rows.length > MAX_IMPORT_ROWS
   const overRoom = newCount > room
+
+  /*
+   * §3.5 STEPS 3 TO 5, in three lines: the places needed, then one marginal price for
+   * the whole block, then the bands that explain it.
+   *
+   * `short` is measured against `room` — the effective ceiling, which is what refuses
+   * the paste — while the price starts at `forSale`, the paid ceiling. Those are the
+   * same number for every centre not on a trial, and the pair is deliberate for one
+   * that is: the trial decides what fits, the paid row decides what a place costs.
+   *
+   * Bounded by the paste, so no clamp is needed here: MAX_IMPORT_ROWS is 500 and
+   * MAX_PLACES is 2000, so the hidden field below can never be cut down to a smaller
+   * purchase than the one shown.
+   */
+  const short = overRoom ? newCount - room : 0
+  const bands = forSale === null || short === 0 ? [] : capacityBands(forSale, forSale + short)
+  const shortCost = forSale === null ? 0 : capacityCostBdt(forSale, forSale + short)
 
   return (
     <form action={formAction} className="flex flex-col gap-4">
@@ -169,11 +239,86 @@ export function ImportForm({
         </Alert>
       )}
 
-      {overRoom && (
-        <Alert tone="warn">
-          {fill(t.overRoom, { room, fresh: newCount })}
-        </Alert>
-      )}
+      {/* NOTHING IS CREATED BEFORE THE MONEY ARRIVES, which is §3.5's last step and the
+          reason this is a price rather than a half-import. The Add button stays disabled
+          while the list is over the ceiling; with the manual provider the founder
+          confirms the transfer minutes or hours later, so the way back in is a reload
+          rather than a queue of half-admitted children sitting in a table.
+
+          Only where places are actually for sale. A teacher tier gets the old sentence:
+          its ceiling is written in the plan and no amount of money moves it. */}
+      {overRoom &&
+        (forSale === null ? (
+          <Alert tone="warn">{fill(t.overRoom, { room, fresh: newCount })}</Alert>
+        ) : (
+          <div className="flex flex-col gap-3 rounded-2xl border-2 border-late/40 bg-late/5 p-4">
+            <div>
+              <p className="num font-semibold text-ink">
+                {fill(t.shortTitle, { n: short })}
+              </p>
+              <p className="num mt-1 text-sm text-ink-soft">
+                {fill(t.shortBody, { room, fresh: newCount })}
+              </p>
+            </div>
+
+            {/* The bands, because a single ৳3,480 invites the suspicion it was
+                invented. Marginal and in order, straight off capacityBands.
+
+                Gone once a purchase is open, and that is not tidiness: this total is
+                recomputed from whatever is in the box now, so a list edited after the
+                buy would price a purchase nobody made. What was actually bought is on
+                the plan page, against the reference. */}
+            {!bought?.ok && (
+              <dl className="flex flex-col gap-1 text-sm">
+                {bands.map((band) => (
+                  <div
+                    key={band.rateBdt}
+                    className="flex items-baseline justify-between gap-3"
+                  >
+                    <dt className="num text-ink-soft">
+                      {fill(t.shortBand, {
+                        n: band.seats,
+                        rate: formatTaka(band.rateBdt),
+                      })}
+                    </dt>
+                    <dd className="num text-ink">{formatTaka(band.costBdt)}</dd>
+                  </div>
+                ))}
+                <div className="flex items-baseline justify-between gap-3 border-t border-late/40 pt-1">
+                  <dt className="font-semibold text-ink">{t.shortTotal}</dt>
+                  <dd className="num font-semibold text-ink">{formatTaka(shortCost)}</dd>
+                </div>
+              </dl>
+            )}
+
+            {bought?.error && <Alert>{bought.error}</Alert>}
+
+            {bought?.ok ? (
+              <p role="status" className="text-sm font-medium text-brand-700">
+                {t.bought}
+              </p>
+            ) : mayBuy ? (
+              <>
+                <input type="hidden" name="idempotencyKey" ref={keyRef} />
+                <input type="hidden" name="places" value={short} readOnly />
+                <Button type="submit" formAction={buy} disabled={buying} full>
+                  {buying ? t.shortBuying : fill(t.shortBuy, { taka: formatTaka(shortCost) })}
+                </Button>
+              </>
+            ) : (
+              <p className="text-sm text-ink-soft">{t.shortAsk}</p>
+            )}
+
+            {mayReadPlan && (
+              <Link
+                href="/settings/plan"
+                className="inline-flex min-h-tap items-center font-medium text-brand-700"
+              >
+                {t.shortPlanLink} →
+              </Link>
+            )}
+          </div>
+        ))}
 
       {problems.length > 0 && (
         <div className="flex flex-col gap-2">

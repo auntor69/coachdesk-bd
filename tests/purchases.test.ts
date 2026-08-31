@@ -8,8 +8,11 @@ import {
   CENTER_TEACHER_SEAT_BDT,
   INSTITUTION_BRANCH_BDT,
   PLANS,
+  capacityBands,
+  capacityCostBdt,
   includedStudents,
   monthlyBillBdt,
+  studentCeiling,
   studentChargeBdt,
 } from '../src/lib/plans.ts'
 
@@ -101,6 +104,57 @@ test('a purchase never disagrees with the monthly bill it produces', () => {
         `${purchased} + ${places}`,
       )
       linesAgree(quote, `${purchased} + ${places}`)
+    }
+  }
+})
+
+test('the price a screen shows is the price the intent opens at', () => {
+  /*
+   * THE DRIFT THIS EXISTS TO CATCH. Two screens quote student places while the owner
+   * types — settings/plan/buy-places.tsx and the import form's priced shortfall — and
+   * neither can call `priceIntent`, which lives behind a server boundary. Both compute
+   * `capacityCostBdt` and `capacityBands` from the paid ceiling instead, and the whole
+   * point of doing it that way is that the two answers are the same answer. A change to
+   * either half that moved a boundary by one seat would show ৳3,480 and bill ৳3,504,
+   * which the customer notices and we do not.
+   *
+   * The ceiling is `studentCeiling(paid plan, paid capacity)` on both sides: the pages
+   * pass it in as a number, `capacity()` in price.ts derives it. That is the one thing
+   * the screens must get right, so it is what this asserts.
+   */
+  for (const plan of [PLANS.center, PLANS.institution]) {
+    for (const purchased of [0, 79, 238, 300, 700]) {
+      const ceiling = studentCeiling(plan, purchased)
+
+      for (const places of [1, 20, 180, 200, 500]) {
+        const quote = priceIntent({
+          purpose: 'student_capacity',
+          plan,
+          purchasedCapacity: purchased,
+          places,
+        })
+        const where = `${plan.id} ${purchased} + ${places}`
+
+        // What the browser adds up.
+        assert.equal(
+          capacityCostBdt(ceiling.ceiling, ceiling.ceiling + places),
+          quote.amountBdt,
+          where,
+        )
+
+        // And the breakdown under it, band for band, in order.
+        assert.deepEqual(
+          capacityBands(ceiling.ceiling, ceiling.ceiling + places).map((band) => ({
+            what: 'places' as const,
+            count: band.seats,
+            rateBdt: band.rateBdt,
+            costBdt: band.costBdt,
+          })),
+          quote.lines,
+          where,
+        )
+        linesAgree(quote, where)
+      }
     }
   }
 })

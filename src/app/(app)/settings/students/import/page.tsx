@@ -1,9 +1,9 @@
 import Link from 'next/link'
 
 import { Card } from '@/components/ui'
-import { pagePermission, getSession } from '@/lib/auth/session'
+import { pagePermission, getSession, isStaffAdmin } from '@/lib/auth/session'
 import { createClient } from '@/lib/supabase/server'
-import { studentRoom, planName } from '@/lib/plans'
+import { studentRoom, studentCeiling, planFor, planName } from '@/lib/plans'
 import { rosterKey } from '@/lib/bd/roster'
 import { slotLabel } from '@/lib/bd/schedule'
 import { dict, localName, DEFAULT_LOCALE } from '@/lib/i18n'
@@ -107,6 +107,20 @@ export default async function ImportStudentsPage() {
   // guard above, so this is the real figure rather than a count that failed.
   const room = studentRoom(session.ceiling, studentCount)
 
+  /*
+   * WHERE THE BANDS START FOR A PASTE THAT DOES NOT FIT, and it is the paid ceiling
+   * rather than `session.ceiling`. ../../plan/actions.ts prices from `session.active`
+   * for the reason written there: a trial moves the effective ceiling while
+   * `settle_payment_intent` reads the paid row, so a quote off the trial is a number
+   * the database refuses after the money has gone.
+   *
+   * Null when this plan grants its ceiling outright. A teacher tier has no places for
+   * sale at any price — `priceIntent` returns an empty quote and the form falls back to
+   * saying so in words.
+   */
+  const paid = studentCeiling(planFor(session.active.plan), session.active.studentCapacity)
+  const forSale = paid.kind === 'purchased' ? paid.ceiling : null
+
   return (
     <div className="flex flex-col gap-5">
       <div>
@@ -120,39 +134,39 @@ export default async function ImportStudentsPage() {
         <p className="mt-1 text-sm text-ink-soft">{t.body}</p>
       </div>
 
-      {room === 0 ? (
+      {/*
+       * FULL AND UNABLE TO BUY ITS WAY OUT is the only state that takes the paste box
+       * away, and it used to be `room === 0` alone. That refused the case §3.5 is
+       * actually about: a centre with no free places pasting two hundred names saw a
+       * dead card and never learned what those places cost. Now the box is drawn, the
+       * shortfall is priced from the bands, and the purchase is offered in place.
+       */}
+      {room === 0 && forSale === null ? (
         <Card>
           {/*
-           * The same refusal the one-at-a-time form gives, in the same words — and
-           * like that form, two sets of words. A teacher plan is full and the way out
-           * is a different plan; a centre has used every place it bought and the way
-           * out is more places. See settings.errors.placesFull for why one sentence
-           * cannot do both jobs.
+           * One set of words now, where there used to be two. The other set —
+           * settings.students.places, "every place you bought is in use" — belongs to a
+           * centre that can buy another, and that centre is no longer sent here: it gets
+           * the paste box and a price. What is left is the tier whose ceiling is written
+           * in the plan, so the plan is what this says.
            */}
-          {session.ceiling.kind === 'purchased' ? (
-            <>
-              <p className="font-medium text-ink">{d.settings.students.placesTitle}</p>
-              <p className="mt-1 text-sm text-ink-soft">
-                {d.settings.students.places(session.ceiling.ceiling)}
-              </p>
-            </>
-          ) : (
-            <>
-              <p className="font-medium text-ink">{d.settings.students.capTitle}</p>
-              <p className="mt-1 text-sm text-ink-soft">
-                {d.settings.students.cap(
-                  planName(session.plan, locale),
-                  session.ceiling.ceiling,
-                )}
-              </p>
-            </>
-          )}
+          <p className="font-medium text-ink">{d.settings.students.capTitle}</p>
+          <p className="mt-1 text-sm text-ink-soft">
+            {d.settings.students.cap(planName(session.plan, locale), session.ceiling.ceiling)}
+          </p>
         </Card>
       ) : (
         <ImportForm
           t={d.importForm}
           common={d.common}
           room={room}
+          forSale={forSale}
+          // The two guards this screen cannot enforce itself, resolved where the session
+          // is: `buyStudentPlaces` is requireRole('owner') and /settings/plan is
+          // pageRole('manager'), while this page is `can_manage_students` — so a teacher
+          // reaches it and must be offered neither the button nor the link.
+          mayBuy={session.active.role === 'owner'}
+          mayReadPlan={isStaffAdmin(session)}
           // Null both for a centre too large to hint and for a roster that did not
           // arrive, because the form treats null as “no hint” and counts every pasted
           // line as new — which is the truthful answer to both. An empty array instead
