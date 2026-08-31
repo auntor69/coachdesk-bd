@@ -1,7 +1,8 @@
 'use server'
 
 /**
- * An owner raising their hand: "I want to change plan, ring me."
+ * An owner raising their hand: "I want to change plan, ring me." And, below that,
+ * buying the student places a paid plan sells by the seat.
  *
  * WHY THIS EXISTS AT ALL, when the screen above it already had a WhatsApp chip and a
  * phone number. Both of those live behind `NEXT_PUBLIC_SALES_PHONE`, and that
@@ -21,6 +22,11 @@
  * the founder moves it in ../../founder/actions.ts. An owner cannot upgrade
  * themselves by asking, which is the whole reason this can be a form with no
  * payment rail behind it.
+ *
+ * NOR DOES `buyStudentPlaces` — the same rule one step down. It writes a quote with a
+ * price and a reference; `student_capacity` moves when the founder confirms the
+ * transfer and `settle_payment_intent` runs. Both exports here are an owner saying
+ * what they want, which is why neither needs a rail we do not have yet.
  */
 
 import { revalidatePath } from 'next/cache'
@@ -31,10 +37,15 @@ import {
   requireRole,
   type CenterSession,
 } from '@/lib/auth/session'
+import { toAsciiDigits } from '@/lib/bd/phone'
+import { openIntent } from '@/lib/billing/intents'
+import { priceIntent } from '@/lib/billing/price'
+import { paymentProvider } from '@/lib/billing/provider'
+import { createAdminClient } from '@/lib/supabase/admin'
 import { createClient } from '@/lib/supabase/server'
 import { dict, DEFAULT_LOCALE } from '@/lib/i18n'
-import { MAX_TEXT, clamp } from '@/lib/limits'
-import type { PlanId } from '@/lib/plans'
+import { MAX_PLACES, MAX_TEXT, clamp } from '@/lib/limits'
+import { planFor, type PlanId } from '@/lib/plans'
 
 export type UpgradeState = {
   error?: string
@@ -191,4 +202,83 @@ export async function withdrawUpgradeRequest(
   revalidatePath('/settings/plan')
 
   return { ok: t.withdrawn }
+}
+
+/**
+ * How many places the owner typed. The twin of `count` in ./calculator.tsx, and it
+ * lives here rather than in ../../../lib/limits.ts because that file imports nothing
+ * on purpose and this needs `toAsciiDigits` — an owner on a Bangla keyboard types ২০.
+ */
+function count(raw: string, max: number): number {
+  const n = Number.parseInt(toAsciiDigits(raw).replace(/[^\d]/g, ''), 10)
+  if (!Number.isFinite(n) || n <= 0) return 0
+  return Math.min(n, max)
+}
+
+/**
+ * Opens a purchase for student places and tells the owner where to send the money.
+ *
+ * PRICED FROM THE PAID PLAN, never `session.plan`. Those two disagree during a trial,
+ * and `settle_payment_intent` reads `app.student_ceiling` off the paid row — so a
+ * teacher-tier centre trialling Centre would be quoted, sent to bKash, and then
+ * refused with 42501 after it had already paid. `session.active` is the paid truth.
+ *
+ * NOTHING HERE GRANTS ANYTHING. The row it writes is a quote with a price and a
+ * reference; the ceiling only moves when the founder confirms the transfer and
+ * `settle_payment_intent` runs. That is why an owner may open one at all, and why the
+ * amount is worked out here from the bands rather than read off the form: a client
+ * that could name its own price could buy a thousand places for a taka.
+ *
+ * No `requireWritable`, for the reason at the top of this file — a suspended centre
+ * paying us is the outcome read-only exists to produce.
+ */
+export async function buyStudentPlaces(
+  _prev: UpgradeState,
+  formData: FormData,
+): Promise<UpgradeState> {
+  const gate = await planOwner()
+  if (!isSession(gate)) return gate
+
+  const session = gate
+  const t = dict(session.locale).settings.plan.places
+
+  const places = count(String(formData.get('places') ?? ''), MAX_PLACES)
+  if (places <= 0) return { error: t.badCount }
+
+  const quote = priceIntent({
+    purpose: 'student_capacity',
+    plan: planFor(session.active.plan),
+    purchasedCapacity: session.active.studentCapacity,
+    places,
+  })
+  // `places` is already above zero, so an empty quote can only mean this plan grants
+  // its ceiling outright and there is nothing to sell.
+  if (quote.quantity <= 0) return { error: t.notOnThisPlan }
+
+  // Service role because `payment_intents` is founder-readable and nobody's browser
+  // may write a price. The owner's own client could not insert this row.
+  const admin = createAdminClient(session.userId)
+
+  const opened = await openIntent(admin, {
+    centerId: session.active.centerId,
+    quote,
+    requestedBy: session.userId,
+    branchId: session.active.branchId,
+    // Raw, because openIntent reads it: a replayed offline submit must land on the
+    // intent it already opened rather than a second one at the same price.
+    idempotencyKey: formData.get('idempotencyKey'),
+  })
+  if (!opened.ok) return { error: t.failed }
+
+  // Moves the row pending -> initiated, which is what the founder's "waiting for
+  // money" badge reads. The instruction itself is rendered by the page from the row,
+  // not returned through here — the owner leaves for bKash and comes back to a
+  // reloaded screen, and a reference that only existed in action state would be gone.
+  const provider = paymentProvider(opened.intent.provider)
+  const told = await provider.createPayment(admin, opened.intent)
+  if (told.kind === 'blocked') return { error: t.closed }
+
+  revalidatePath('/settings/plan')
+
+  return { ok: t.opened }
 }

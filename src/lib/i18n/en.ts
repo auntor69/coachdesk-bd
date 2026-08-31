@@ -2976,6 +2976,52 @@ export const en: Dictionary = {
         sent: 'Got it. We will ring you on the owner’s number.',
         withdrawn: 'Request cancelled.',
       },
+
+      /** See the Bangla for why these four sit outside `places`. */
+      placesLine: (n: number, taka: string) =>
+        `${n} student ${n === 1 ? 'place' : 'places'} — ${taka}`,
+      placesGoodUntil: (date: string) => `This price holds until ${date}`,
+      placesLapsed: (date: string) => `This price ran out on ${date}`,
+      placesSendTo: (phone: string) => `Send the money to ${phone}`,
+      /**
+       * See the Bangla for what this button does and, more to the point, what it does
+       * not: the places arrive when the money does and a human has seen it.
+       *
+       * `quote` says "{n} more" rather than "{n} more places" because it is a template
+       * and cannot pluralise — and the field directly above it is labelled with the
+       * noun, so "1 more places" would be wrong for nothing.
+       */
+      places: {
+        title: 'Buy student places',
+        body: 'Raise the limit as far as you need. We add the places once the money reaches us.',
+        label: 'How many places?',
+        hint: 'The next place costs {taka}.',
+        quote: '{n} more for {taka} — your limit becomes {to}.',
+        submit: 'Buy the places',
+        submitting: 'Buying…',
+        opened:
+          'Done. Send the money as shown below and we will add the places.',
+        waitingTitle: 'Waiting for your transfer',
+        ref: 'Reference code',
+        refHint:
+          'Put this code in the reference when you send the money — without it, matching your transfer to this purchase takes longer.',
+        noContact:
+          'The number is not on this screen yet — we will ring you with it ourselves.',
+        lapsedNote:
+          'This price has run out, so it can no longer be confirmed. Buy again — and if you have already sent the money, ring us.',
+        /**
+         * The mirror of `pendingUnreadable` above, with the opposite advice. That form
+         * upserts, so asking twice is safe; this one opens a row per purchase, so a
+         * second tap on a dropped read is a second bill for the founder to sort out.
+         */
+        unreadable:
+          'Whether you have a purchase waiting could not be read just now. If you opened one and sent the money, ring us rather than buying again.',
+        badCount: 'Say how many places you need.',
+        notOnThisPlan:
+          'Places are not sold separately on this plan. More students means a different plan.',
+        closed: 'This purchase is no longer open. Reload the page.',
+        failed: 'Could not start the purchase. Try again.',
+      },
     },
 
     subjects: {

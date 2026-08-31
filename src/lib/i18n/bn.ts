@@ -4793,6 +4793,58 @@ export const bn = {
         sent: 'পেয়েছি। মালিকের নম্বরে ফোন করা হবে।',
         withdrawn: 'অনুরোধ বাতিল হয়েছে।',
       },
+
+      /**
+       * Buying student places — §3.4, on this screen because this is where
+       * `settings.errors.placesFull` already sends the owner.
+       *
+       * OUTSIDE `places` BELOW, all four of them, for the reason `pendingRequest` gives:
+       * that group crosses to a client component whole and a function in it would not
+       * serialise. These take a value the page has and the browser has not — a formatted
+       * taka figure, a Dhaka calendar date, the sales number.
+       */
+      placesLine: (n: number, taka: string) =>
+        `${digits(n, 'bn')}টি শিক্ষার্থীর জায়গা — ${taka}`,
+      placesGoodUntil: (date: string) => `এই দাম ${date} পর্যন্ত চলবে`,
+      placesLapsed: (date: string) => `${date}-এ দামের সময় শেষ হয়েছে`,
+      placesSendTo: (phone: string) => `টাকা পাঠান ${phone} নম্বরে`,
+      /**
+       * The purchase itself. STRING LEAVES ONLY — see above.
+       *
+       * "কিনুন" and not "চান": unlike the request form above this one, this button really
+       * does open a purchase at a price the server has worked out. What it does not do is
+       * add the places — that waits for the money to arrive and for a human to see it, so
+       * `opened` says so instead of congratulating anybody.
+       */
+      places: {
+        title: 'শিক্ষার্থীর জায়গা কিনুন',
+        body: 'সীমা যত দরকার তত বাড়ানো যায়। টাকা পৌঁছালে আমরা জায়গা যোগ করে দেব।',
+        label: 'কতটি জায়গা?',
+        hint: 'পরের জায়গাটির দাম {taka}।',
+        quote: 'আরও {n}টি জায়গা, দাম {taka} — সীমা হবে {to} জন।',
+        submit: 'জায়গা কিনুন',
+        submitting: 'কেনা হচ্ছে…',
+        opened: 'হয়ে গেছে। নিচে দেখানো নিয়মে টাকা পাঠান, আমরা জায়গা যোগ করে দেব।',
+        waitingTitle: 'টাকার অপেক্ষায়',
+        ref: 'রেফারেন্স কোড',
+        refHint:
+          'টাকা পাঠানোর সময় এই কোডটি রেফারেন্সে লিখে দিন — নাহলে টাকা কোন কেনাকাটার, তা মেলাতে দেরি হবে।',
+        noContact: 'নম্বরটি এখনও এই পর্দায় আসেনি — আমরা নিজেরাই ফোন করে জানাব।',
+        lapsedNote:
+          'এই দামের সময় শেষ, তাই এটি আর নিশ্চিত করা যাবে না। নতুন করে কিনুন — টাকা পাঠিয়ে ফেলে থাকলে আমাদের ফোন করুন।',
+        /**
+         * উপরের `pendingUnreadable`-এর উল্টো পরামর্শ। ওই ফর্ম একই সারিতে বসে, তাই দুবার
+         * পাঠালে ক্ষতি নেই; এটি প্রতিবার নতুন কেনাকাটা খোলে, তাই পড়া না গেলে আবার
+         * চাপলে দুটো বিল দাঁড়িয়ে যায়।
+         */
+        unreadable:
+          'আপনার কোনো কেনাকাটা অপেক্ষায় আছে কি না, তা এখন পড়া যায়নি। কেনাকাটা খুলে টাকা পাঠিয়ে থাকলে আবার না কিনে আমাদের ফোন করুন।',
+        badCount: 'কতটি জায়গা লাগবে লিখুন।',
+        notOnThisPlan:
+          'এই প্ল্যানে জায়গা আলাদা করে কেনা যায় না। বেশি শিক্ষার্থীর জন্য প্ল্যান বদলাতে হবে।',
+        closed: 'কেনাকাটাটা আর খোলা নেই। পর্দাটি আবার লোড করে দেখুন।',
+        failed: 'কেনাকাটা শুরু করা যায়নি। আবার চেষ্টা করুন।',
+      },
     },
 
     subjects: {

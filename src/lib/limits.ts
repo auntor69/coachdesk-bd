@@ -69,6 +69,18 @@ export const MAX_TEXT = 200
 export const MAX_NOTICE = 400
 
 /**
+ * How many student places an owner may buy in one go.
+ *
+ * Not a plan limit — a plan has no ceiling on places, and this one is here for the
+ * same reason as the caps above: the number arrives from a public endpoint and is
+ * multiplied by a taka rate. A stray keystroke turning 20 into 20000 opens a
+ * ৳160,000 quote against a centre with ninety students, and the owner's next screen
+ * is transfer instructions. Two thousand is comfortably past the largest coaching
+ * centre in the country, so no real purchase meets it.
+ */
+export const MAX_PLACES = 2000
+
+/**
  * Cuts an optional field down to its cap instead of refusing the whole write.
  *
  * For the fields a browser already capped, which is all of them: `maxLength`

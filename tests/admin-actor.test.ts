@@ -142,6 +142,7 @@ test('the human-facing modules are all still in the set that names an actor', ()
   assert.deepEqual(named, [
     'src/app/(app)/exams/actions.ts',
     'src/app/(app)/settings/actions.ts',
+    'src/app/(app)/settings/plan/actions.ts',
     'src/app/founder/actions.ts',
   ])
 })

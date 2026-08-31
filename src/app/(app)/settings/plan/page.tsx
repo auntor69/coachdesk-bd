@@ -4,8 +4,9 @@ import { Card } from '@/components/ui'
 import { pageRole, getSession } from '@/lib/auth/session'
 import { createClient } from '@/lib/supabase/server'
 import { formatBdMobile, normalizeBdMobile } from '@/lib/bd/phone'
-import { formatDate, todayInDhaka } from '@/lib/bd/time'
-import { dict, DEFAULT_LOCALE } from '@/lib/i18n'
+import { formatDate, hasPassed, todayInDhaka } from '@/lib/bd/time'
+import { transferReference } from '@/lib/billing/manual'
+import { dict, DEFAULT_LOCALE, type Locale } from '@/lib/i18n'
 import { formatTaka } from '@/lib/money'
 import {
   PLANS,
@@ -15,10 +16,12 @@ import {
   overStaffSeats,
   planFor,
   planName,
+  studentCeiling,
   type FeatureKey,
   type PlanId,
   type PlanLimits,
 } from '@/lib/plans'
+import { BuyPlaces } from './buy-places'
 import { PriceCalculator } from './calculator'
 import { UpgradeRequest } from './upgrade-request'
 
@@ -116,12 +119,27 @@ export default async function PlanPage() {
    */
   const isOwner = session.active.role === 'owner'
 
+  /*
+   * THE PAID CEILING, never `session.ceiling`.
+   *
+   * Two things read off it: whether this tier sells places at all, and the number the
+   * bands are priced from. `settle_payment_intent` recomputes it from the paid row, so
+   * a trial — which moves the effective ceiling and not this one — would have us quote
+   * a price the database then refuses. See ./actions.ts.
+   */
+  const paidCeiling = studentCeiling(
+    planFor(session.active.plan),
+    session.active.studentCapacity,
+  )
+  const sellsPlaces = isOwner && paidCeiling.kind === 'purchased'
+
   const [
     { count: batchCount },
     { count: studentCount },
     { count: subjectCount },
     { count: teacherCount },
     { data: asked, error: askedError },
+    { data: buys, error: buysError },
   ] = await Promise.all([
     supabase
       .from('batches')
@@ -156,6 +174,27 @@ export default async function PlanPage() {
       : // `error: null` so the note below reads off one shape. A manager is not an
         // owner whose pending request failed to load; they have no request to see.
         Promise.resolve({ data: null, error: null }),
+    /*
+     * Purchases this owner has opened and not yet paid for.
+     *
+     * The reference has to survive a reload — the owner leaves for bKash and comes
+     * back — so it is read from the row here rather than carried in the action's
+     * return. Lapsed ones are read too and shown as lapsed: an owner who sent the
+     * money a day late needs to be told the price expired, not shown a screen that
+     * has forgotten the purchase ever happened.
+     *
+     * Five, because more than that on this card is a founder problem, not an owner's.
+     */
+    sellsPlaces
+      ? supabase
+          .from('payment_intents')
+          .select('id, quantity, amount_bdt, expires_at')
+          .eq('coaching_center_id', session.active.centerId)
+          .eq('purpose', 'student_capacity')
+          .in('state', ['pending', 'initiated'])
+          .order('created_at', { ascending: false })
+          .limit(5)
+      : Promise.resolve({ data: null, error: null }),
   ])
 
   /*
@@ -314,6 +353,49 @@ export default async function PlanPage() {
           </p>
         )}
       </Card>
+
+      {/*
+        Directly under the counts, because the row that says "118 / 120 students" is
+        where an owner learns they need this — and drawn only on a tier that sells
+        places, since on the teacher tiers the ceiling moves by changing plan and the
+        card below already says so.
+      */}
+      {sellsPlaces && (
+        <Card>
+          <h2 className="font-semibold text-ink">{t.places.title}</h2>
+          <p className="mt-1 text-sm text-ink-soft">{t.places.body}</p>
+
+          {buysError && (
+            <p className="mt-3 text-sm text-ink-soft">{t.places.unreadable}</p>
+          )}
+
+          {buys && buys.length > 0 && (
+            <div className="mt-4 border-t border-line pt-3">
+              <h3 className="font-medium text-ink">{t.places.waitingTitle}</h3>
+              <div className="mt-2 flex flex-col gap-2">
+                {buys.map((buy) => (
+                  <OpenPurchase
+                    key={buy.id}
+                    id={buy.id}
+                    places={buy.quantity}
+                    amountBdt={Number(buy.amount_bdt)}
+                    expiresAt={buy.expires_at}
+                    salesPhone={salesPhone}
+                    locale={locale}
+                    t={t}
+                  />
+                ))}
+              </div>
+            </div>
+          )}
+
+          <BuyPlaces
+            ceiling={paidCeiling.ceiling}
+            locale={locale}
+            words={t.places}
+          />
+        </Card>
+      )}
 
       <Card>
         <h2 className="font-semibold text-ink">{t.haveTitle}</h2>
@@ -490,4 +572,87 @@ function ladderLine(
     case 'institution':
       return t.addsInstitution
   }
+}
+
+/**
+ * A purchase the owner has opened and not paid for yet.
+ *
+ * THE REFERENCE IS THE ROW'S REASON TO EXIST. The founder matches a bKash transfer to
+ * an intent by it, and a transfer that arrives with an empty reference field is one
+ * somebody has to ring the owner about. `transferReference` is the same function the
+ * founder panel prints, so the code on this screen and the code on theirs cannot drift.
+ *
+ * It stays on screen after the price lapses, because an owner who already sent the
+ * money needs to be able to quote it when they ring. What goes is the instruction to
+ * send more.
+ */
+function OpenPurchase({
+  id,
+  places,
+  amountBdt,
+  expiresAt,
+  salesPhone,
+  locale,
+  t,
+}: {
+  id: string
+  places: number
+  amountBdt: number
+  expiresAt: string | null
+  /** Null until the founder's own number is in the environment, which is every
+   *  deployment so far — hence `noContact` rather than a blank line. */
+  salesPhone: string | null
+  locale: Locale
+  t: ReturnType<typeof dict>['settings']['plan']
+}) {
+  // A moment and not a calendar day — settle_payment_intent refuses `expires_at <=
+  // now()`, so an hour past is past. The date beside it is the Dhaka day the owner
+  // reads, so an expiry at 1am local is not reported as the day before.
+  const lapsed = hasPassed(expiresAt)
+  const day = expiresAt
+    ? formatDate(todayInDhaka(new Date(expiresAt)), locale)
+    : null
+
+  return (
+    <div
+      className={`rounded-xl border p-3 ${
+        lapsed ? 'border-late/40 bg-late/5' : 'border-line bg-surface-alt'
+      }`}
+    >
+      <p className="num font-semibold text-ink">
+        {t.placesLine(places, formatTaka(amountBdt))}
+      </p>
+
+      <div className="mt-2 flex items-baseline justify-between gap-3">
+        <span className="text-sm text-ink-soft">{t.places.ref}</span>
+        <span className="num shrink-0 font-bold text-brand-800">
+          {transferReference(id)}
+        </span>
+      </div>
+
+      {!lapsed && (
+        <>
+          <p className="mt-2 text-sm font-medium text-ink">
+            {salesPhone
+              ? t.placesSendTo(formatBdMobile(salesPhone))
+              : t.places.noContact}
+          </p>
+          <p className="mt-1 text-xs text-ink-faint">{t.places.refHint}</p>
+        </>
+      )}
+
+      {day && (
+        <p
+          className={`mt-2 text-sm ${
+            lapsed ? 'font-medium text-late' : 'text-ink-soft'
+          }`}
+        >
+          {lapsed ? t.placesLapsed(day) : t.placesGoodUntil(day)}
+        </p>
+      )}
+      {lapsed && (
+        <p className="mt-1 text-sm text-ink-soft">{t.places.lapsedNote}</p>
+      )}
+    </div>
+  )
 }
