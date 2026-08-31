@@ -61,6 +61,13 @@ export type TeacherRow = {
    * is a different screen's business. See the note in the add form.
    */
   branchId: string | null
+  /**
+   * Which branch their login may reach, or `undefined` for "do not ask".
+   *
+   * `center_members.branch_id` — a permission and not a filing. Undefined where there is
+   * no membership row to pin: no account, or an account switched off.
+   */
+  accessBranchId?: string | null
   /** The reader's own teacher record, which `trim` refuses to switch off. */
   isSelf: boolean
 }
@@ -70,6 +77,7 @@ export function TeacherList({
   subjects,
   t,
   branchPick,
+  branchAccess,
   branches,
   permissions: labels,
   common,
@@ -79,6 +87,7 @@ export function TeacherList({
   subjects: SubjectOption[]
   t: T<'teacherList'>
   branchPick: T<'branchPick'>
+  branchAccess: T<'branchAccess'>
   /** `null` draws no branch field — see branchChoicesFor. */
   branches: BranchChoice[] | null
   permissions: T<'teacherPermissions'>
@@ -266,6 +275,20 @@ export function TeacherList({
                 current={teacher.branchId}
                 id={`teacher-branch-${teacher.id}`}
               />
+
+              {/* And what that login may reach, which is the other thing a branch means
+                  about a person. Only where there is a membership row to pin — no field
+                  at all otherwise, so the action leaves the column alone rather than
+                  reading a silence as head office. */}
+              {teacher.accessBranchId !== undefined && (
+                <BranchPicker
+                  t={branchAccess}
+                  branches={branches}
+                  current={teacher.accessBranchId}
+                  name="accessBranchId"
+                  id={`teacher-access-${teacher.id}`}
+                />
+              )}
 
               {offered.length > 0 && (
                 <fieldset className="flex flex-col gap-2">

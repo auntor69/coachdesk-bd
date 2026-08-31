@@ -52,39 +52,48 @@ export default async function TeachersPage() {
 
   const supabase = await createClient()
 
-  const [{ data: teachers }, { data: allSubjects }, branches] = await Promise.all([
-    supabase
-      .from('teachers')
-      .select(
-        `id, name, phone, active, user_id, branch_id,
+  const [{ data: teachers }, { data: allSubjects }, branches, { data: members }] =
+    await Promise.all([
+      supabase
+        .from('teachers')
+        .select(
+          `id, name, phone, active, user_id, branch_id,
          teacher_permissions (
            can_manage_students, can_manage_exams, can_send_sms,
            can_view_fees, can_manage_batches
          ),
          teacher_subjects (subjects (id, name, name_bn)),
          batches (id, active)`,
-      )
-      // Scoped as well as governed by RLS, for the reason the roster gives: an
-      // owner of two centres passes is_staff_admin for both, so the policy alone
-      // would list the other centre's teachers here — and their permissions, under
-      // a switcher that says this centre.
-      .eq('coaching_center_id', session.active.centerId)
-      .order('name', { ascending: true }),
-    // The tick list of what each of them teaches. Switched-off subjects are read
-    // too, and not because they are on offer: a link made before a subject was
-    // turned off is still real, and a form that left it out would cut it the next
-    // time the owner saved a name. Each row draws the live ones plus its own.
-    supabase
-      .from('subjects')
-      .select('id, name, name_bn, active')
-      .eq('coaching_center_id', session.active.centerId)
-      .order('name', { ascending: true }),
-    // Which building each of them is based in, for the head office of an organisation
-    // with more than one. `null` for everybody else and no query for them — see
-    // branchChoicesFor. This is `teachers.branch_id` and not the membership's: which
-    // building's list they appear on and whose salary bill pays them, not what they see.
-    branchChoicesFor(supabase, session),
-  ])
+        )
+        // Scoped as well as governed by RLS, for the reason the roster gives: an
+        // owner of two centres passes is_staff_admin for both, so the policy alone
+        // would list the other centre's teachers here — and their permissions, under
+        // a switcher that says this centre.
+        .eq('coaching_center_id', session.active.centerId)
+        .order('name', { ascending: true }),
+      // The tick list of what each of them teaches. Switched-off subjects are read
+      // too, and not because they are on offer: a link made before a subject was
+      // turned off is still real, and a form that left it out would cut it the next
+      // time the owner saved a name. Each row draws the live ones plus its own.
+      supabase
+        .from('subjects')
+        .select('id, name, name_bn, active')
+        .eq('coaching_center_id', session.active.centerId)
+        .order('name', { ascending: true }),
+      // Which building each of them is based in, for the head office of an organisation
+      // with more than one. `null` for everybody else and no query for them — see
+      // branchChoicesFor. This is `teachers.branch_id` and not the membership's: which
+      // building's list they appear on and whose salary bill pays them, not what they see.
+      branchChoicesFor(supabase, session),
+      // And the membership's, which is the other one: what they may reach. Keyed by
+      // user rather than by teacher because that is what a membership is about — the
+      // same person may hold a teacher row here and another at a second centre.
+      supabase
+        .from('center_members')
+        .select('user_id, branch_id')
+        .eq('coaching_center_id', session.active.centerId)
+        .eq('role', 'teacher'),
+    ])
 
   /*
    * BOTH READS, AND THIS SCREEN IS THE ONE WHERE THAT IS NOT A JUDGMENT CALL.
@@ -129,6 +138,17 @@ export default async function TeachersPage() {
     }
   })
 
+  /*
+   * Which branch each account may reach, or nothing at all if that read dropped.
+   *
+   * Nothing at all is the point of the `null`. A missing membership branch drawn as head
+   * office is a select that says "the whole organisation" about somebody pinned to
+   * Mirpur, and saving the panel for an unrelated reason would then grant it. So a failed
+   * read draws no access field, `updateTeacher` sees no `accessBranchId`, and the
+   * membership is left exactly as it is.
+   */
+  const access = members && new Map(members.map((m) => [m.user_id, m.branch_id]))
+
   const rows: TeacherRow[] = teachers.map((teacher) => {
     // PostgREST returns a to-one embed as an object and a to-many as an array,
     // and which one you get depends on whether it can see the unique constraint.
@@ -164,6 +184,18 @@ export default async function TeachersPage() {
       // Filed as it stands, so the panel below can hand it straight back when there
       // is nothing to choose from. Null is head office and a real answer.
       branchId: teacher.branch_id,
+      /*
+       * And what they may reach, which is a different column with a different meaning.
+       *
+       * `undefined` where there is no membership row to pin: no account, or an account
+       * switched off — `toggleTeacherActive` deletes the row on purpose, and that is
+       * what cuts them off. Also `undefined` if the read did not arrive. The panel draws
+       * no field for it and the action leaves the column alone.
+       */
+      accessBranchId:
+        access && teacher.user_id && access.has(teacher.user_id)
+          ? (access.get(teacher.user_id) ?? null)
+          : undefined,
       subjects,
       subjectIds: linked.map((subject) => subject?.id).filter(Boolean) as string[],
       // A finished sentence rather than the number, because the row is a client
@@ -271,6 +303,7 @@ export default async function TeachersPage() {
           permissions={d.teacherPermissions}
           common={d.common}
           branchPick={d.branchPick}
+          branchAccess={d.branchAccess}
           branches={branches}
           trim={!staff}
         />

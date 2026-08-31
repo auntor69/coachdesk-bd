@@ -2005,7 +2005,10 @@ function readPermissions(formData: FormData): Record<PermissionKey, boolean> {
  * .readFailed for what an owner does next. A union keeps the second one from being
  * absorbed silently: there is no shape here that `if (!x)` can swallow.
  */
-type OwnTeacher = { id: string } | { missing: true } | { unreadable: true }
+type OwnTeacher =
+  | { id: string; userId: string | null }
+  | { missing: true }
+  | { unreadable: true }
 
 /**
  * Confirms a teacher belongs to the caller's center, and returns their id.
@@ -2022,12 +2025,12 @@ async function ownTeacher(
   const supabase = await createClient()
   const { data, error } = await supabase
     .from('teachers')
-    .select('id')
+    .select('id, user_id')
     .eq('id', teacherId)
     .eq('coaching_center_id', session.active.centerId)
     .maybeSingle()
   if (error) return { unreadable: true }
-  return data?.id ? { id: data.id } : { missing: true }
+  return data?.id ? { id: data.id, userId: data.user_id } : { missing: true }
 }
 
 /**
@@ -2298,12 +2301,11 @@ export async function createTeacher(
       /*
        * Which building they teach in. Passed through unchecked, per createStudent.
        *
-       * NOT WHAT THEY MAY READ. `app.payee_branch` reads this column to file their
-       * salary under a branch, and the staff list groups by it — but what a colleague
-       * can reach is `center_members.branch_id`, upserted below with no branch on it
-       * and deliberately so. 20260811000054's section 3 is explicit: a permission has
-       * to be typed, because inferring it would confine somebody's new colleague to
-       * one building with nothing on the screen saying it happened.
+       * The same answer is written onto their membership below, which is what they may
+       * read — one question on the add form, because a colleague who teaches at Mirpur
+       * sees Mirpur, and the two can be pulled apart afterwards on the list. What
+       * 20260811000054 refuses is a guess made from the writer's own membership, not an
+       * owner's typed answer applied to both columns it is about.
        */
       branch_id: postedBranchId(formData),
     })
@@ -2338,14 +2340,17 @@ export async function createTeacher(
   }
 
   if (userId) {
-    // The membership is what makes the centre visible to them at all. Unique on
-    // (center, user, role), so a re-linked teacher who is already a member is a
-    // no-op rather than an error.
+    // The membership is what makes the centre visible to them at all, and its branch is
+    // how much of it. Unique on (center, user, role), so a re-linked teacher who is
+    // already a member is a no-op rather than an error — and `ignoreDuplicates` means
+    // their existing access is left where the owner set it rather than reset by a form
+    // that was really about a name.
     await supabase.from('center_members').upsert(
       {
         coaching_center_id: centerId,
         user_id: userId,
         role: 'teacher',
+        branch_id: postedBranchId(formData),
       },
       { onConflict: 'coaching_center_id,user_id,role', ignoreDuplicates: true },
     )
@@ -2413,10 +2418,19 @@ export async function createTeacher(
  * the voucher, so June's payroll stays in the building that paid it and July's follows
  * them across.
  *
- * NOT `center_members.branch_id`, which is the other thing a branch can mean about a
- * person: what they are allowed to see. A teacher pinned there reads one building's
- * roster and nothing else, and that is a permission rather than a filing — it is set
- * on another screen, in a later commit, and this field does not touch it.
+ * AND `center_members.branch_id` BESIDE IT, which is the other thing a branch can mean
+ * about a person: not where their work is filed but what they are allowed to see. A
+ * teacher pinned there reads one building's roster and nothing else. 20260811000054
+ * declines to guess it — "a permission has to be typed" — so the panel asks, and this is
+ * where the answer lands.
+ *
+ * ONLY WHEN THE FIELD IS THERE, and that is the difference from the column above. The
+ * branch a row is filed under is always submitted, because the restrictive policies read
+ * a silence as head office and refuse a pinned manager's own correction. A permission is
+ * the opposite: the membership row already holds an answer, so no field means "not asked"
+ * — no account, an account switched off, or a membership read that dropped — and the
+ * safe reading of that is to leave it exactly as it is. Widening somebody's access is
+ * not a thing that should happen because a query timed out.
  */
 export async function updateTeacher(
   _prev: ActionState,
@@ -2523,6 +2537,26 @@ export async function updateTeacher(
     )
   }
 
+  /*
+   * What their login may reach. Filtered by role as well as by user, because one person
+   * may hold two memberships at this centre — an owner who also teaches — and only the
+   * teacher one is on this screen.
+   *
+   * Not reported when it fails, deliberately. The restrictive policy from
+   * 20260811000053 refuses a pinned manager a branch they cannot reach, which arrives as
+   * a Postgres error; the name and the subjects above are already written, and "could not
+   * save" over a save that happened is worse than a permission that did not move. The
+   * panel redraws with the column's real value either way.
+   */
+  if (found.userId && formData.get('accessBranchId') !== null) {
+    await supabase
+      .from('center_members')
+      .update({ branch_id: postedBranchId(formData, 'accessBranchId') })
+      .eq('coaching_center_id', centerId)
+      .eq('user_id', found.userId)
+      .eq('role', 'teacher')
+  }
+
   revalidatePath('/settings/teachers')
   // The name is what the batch list calls whoever runs each batch, and the
   // dashboard names them too.
@@ -2604,7 +2638,7 @@ export async function toggleTeacherActive(
 
   const { data: teacher, error: teacherError } = await supabase
     .from('teachers')
-    .select('id, user_id')
+    .select('id, user_id, branch_id')
     .eq('id', String(formData.get('teacherId') ?? ''))
     .eq('coaching_center_id', centerId)
     .maybeSingle()
@@ -2659,11 +2693,15 @@ export async function toggleTeacherActive(
 
   if (teacher.user_id) {
     if (active) {
+      // Back on, and back to seeing the building they teach in. Switching off deleted
+      // the row, so there is no pin left to preserve, and null would hand somebody
+      // returning to a Mirpur job the whole organisation. The list can widen it.
       await supabase.from('center_members').upsert(
         {
           coaching_center_id: centerId,
           user_id: teacher.user_id,
           role: 'teacher',
+          branch_id: teacher.branch_id,
         },
         { onConflict: 'coaching_center_id,user_id,role', ignoreDuplicates: true },
       )
@@ -2759,7 +2797,7 @@ export async function giveTeacherLogin(
 
   const { data: teacher, error: teacherError } = await supabase
     .from('teachers')
-    .select('id, name, user_id, active')
+    .select('id, name, user_id, active, branch_id')
     .eq('id', String(formData.get('teacherId') ?? ''))
     .eq('coaching_center_id', centerId)
     .maybeSingle()
@@ -2869,6 +2907,9 @@ export async function giveTeacherLogin(
         coaching_center_id: centerId,
         user_id: userId,
         role: 'teacher',
+        // The building they are already filed under, not head office — a login given in
+        // September should reach what their job reaches. Widened from the list.
+        branch_id: teacher.branch_id,
       },
       { onConflict: 'coaching_center_id,user_id,role', ignoreDuplicates: true },
     )

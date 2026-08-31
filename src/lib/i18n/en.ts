@@ -2111,6 +2111,20 @@ export const en: Dictionary = {
     hq: 'Head office — no branch',
   },
 
+  /**
+   * The same control asking the other question a branch can be about a person.
+   *
+   * `branchPick` is where a row is filed. This is what somebody may reach, which is
+   * `center_members.branch_id` and a permission — 20260811000054 says it has to be typed
+   * rather than guessed, because a guess either confines a new colleague with nothing on
+   * the screen saying so or hands them the whole organisation.
+   */
+  branchAccess: {
+    label: 'Which branch they can see',
+    hint: 'At head office they see the whole organisation. Pinned to one branch, they see only that branch’s students, batches and figures.',
+    hq: 'Head office — every branch',
+  },
+
   centerForm: {
     nameLabel: 'Centre’s name',
     nameHint: 'This name signs every SMS, so a short one is better',

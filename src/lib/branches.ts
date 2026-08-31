@@ -137,9 +137,12 @@ export async function branchChoicesFor(
  * column — and the action's own "could not save" is the honest answer. Turning it into
  * `null` here would file the row at head office instead, which is quiet and wrong where
  * the alternative is loud and missing.
+ *
+ * `field` is for the teacher panel, which asks twice: where they teach, and which
+ * buildings they may read. Everything else takes the default.
  */
-export function postedBranchId(formData: FormData): string | null {
-  const value = formData.get('branchId')
+export function postedBranchId(formData: FormData, field = 'branchId'): string | null {
+  const value = formData.get(field)
   return typeof value === 'string' && value !== '' ? value : null
 }
 

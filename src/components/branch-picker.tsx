@@ -63,7 +63,8 @@ export function BranchPicker({
   t,
   branches,
   current,
-  id = 'branchId',
+  name = 'branchId',
+  id = name,
 }: {
   t: T<'branchPick'>
   /** The open buildings from `branchChoicesFor`, or `null` for "there is nothing to ask". */
@@ -75,13 +76,21 @@ export function BranchPicker({
    */
   current: string | null
   /**
+   * The submitted field name, for the one form that asks twice.
+   *
+   * The teacher panel asks two different questions with this control — which building
+   * they teach in (`teachers.branch_id`) and which they may read (`center_members`) —
+   * and two fields called `branchId` in one form post two values under one key. Read
+   * back with `postedBranchId(formData, name)`.
+   */
+  name?: string
+  /**
    * The element id, where one form on the screen is not enough.
    *
-   * The submitted field is always called `branchId`; this is only what the label points
-   * at. The teacher list and the staff list draw a panel per row, so nine of these are
-   * in one document at once and a shared id would point all nine labels at the first
-   * row's select. Every other caller is the only form on its screen and takes the
-   * default. Field does the same thing for the same reason.
+   * Only what the label points at. The teacher list and the staff list draw a panel per
+   * row, so nine of these are in one document at once and a shared id would point all
+   * nine labels at the first row's select. Every other caller is the only form on its
+   * screen and takes the default. Field does the same thing for the same reason.
    */
   id?: string
 }) {
@@ -98,7 +107,7 @@ export function BranchPicker({
    * happens to be first the moment somebody corrects a phone number.
    */
   if (branches === null || (current !== null && !branches.some((b) => b.id === current))) {
-    return <input type="hidden" name="branchId" value={current ?? ''} />
+    return <input type="hidden" name={name} value={current ?? ''} />
   }
 
   return (
@@ -125,7 +134,7 @@ export function BranchPicker({
       */}
       <select
         id={id}
-        name="branchId"
+        name={name}
         defaultValue={current ?? ''}
         aria-describedby={`${id}-hint`}
         className={SELECT_CLASS}

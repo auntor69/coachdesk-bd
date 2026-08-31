@@ -106,6 +106,22 @@ test('a branch that is not a branch reaches the database', () => {
   assert.equal(postedBranchId(form), 'not-a-uuid')
 })
 
+test('the two branch questions on one form do not read each other', () => {
+  // The teacher panel asks where they teach and what they may see. Both selects are
+  // called something, and reading the wrong one would file a colleague under the access
+  // they were granted or grant them the access their job is filed under.
+  const form = new FormData()
+  form.set('branchId', MIRPUR)
+  form.set('accessBranchId', '')
+
+  assert.equal(postedBranchId(form), MIRPUR)
+  assert.equal(postedBranchId(form, 'accessBranchId'), null)
+
+  // A field that is not there at all is null too, and the action's own `formData.get`
+  // check is what tells that apart from head office — see updateTeacher.
+  assert.equal(postedBranchId(form, 'nothingCalledThis'), null)
+})
+
 test('a row in another building is named, and one in this building is not', () => {
   const rows = [
     { name: 'HSC Physics', branchId: MIRPUR },

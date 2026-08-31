@@ -3571,6 +3571,13 @@ export const bn = {
     hq: 'প্রধান কার্যালয় — কোনো শাখা নয়',
   },
 
+  /** See en.branchAccess — this is what somebody may reach, not where a row is filed. */
+  branchAccess: {
+    label: 'কোন শাখা তিনি দেখতে পাবেন',
+    hint: 'প্রধান কার্যালয়ে থাকলে পুরো প্রতিষ্ঠান দেখতে পাবেন। কোনো এক শাখায় নির্দিষ্ট করলে শুধু সেই শাখার শিক্ষার্থী, ব্যাচ ও হিসাব দেখতে পাবেন।',
+    hq: 'প্রধান কার্যালয় — সব শাখা',
+  },
+
   /**
    * The centre's own name and the number a parent sends fees to.
    *
