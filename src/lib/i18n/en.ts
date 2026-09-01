@@ -151,6 +151,11 @@ export const en: Dictionary = {
       'Nothing new is being saved while the account is cancelled. Nothing has been '
       + 'deleted either — every register, mark and fee is still here and still '
       + 'readable. Ring us to open it again.',
+    /**
+     * Outside `suspendedBody` because it takes an argument, and only shown when the
+     * coverage is what caused this. See the Bangla note.
+     */
+    coveredTo: (date: string) => `The last payment covered you up to ${date}.`,
     callUs: 'Ring us',
     seePlan: 'See the plan',
     refused:

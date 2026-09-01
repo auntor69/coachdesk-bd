@@ -675,7 +675,7 @@ on day 28. It sets no entitlement of its own — a trialling centre is on the Ce
 plan with a status that says nobody has paid yet. Do not merge the two clocks;
 they answer different questions, for different customers, on different timescales.
 
-### 4.4 Subscription lifecycle ⚠️
+### 4.4 Subscription lifecycle ✅
 
 The four statuses, and what each one must actually do:
 
@@ -701,6 +701,16 @@ threat.
 today is past `covers_period_end` the account is in grace; past grace it is
 suspended. Grace is a constant (proposed: **7 days**) and the transition is
 computed from coverage, not from a flag somebody remembered to set.
+
+Built in `20260811000059`: `coaching_centers.paid_through` holds
+`max(payments.covers_period_end)`, maintained by a trigger and unwritable from a
+browser, and `src/lib/entitlement.ts` compares it against today in Dhaka with
+`GRACE_DAYS = 7`. The `status` column never moves on its own — the suspension is
+recomputed on every session, so it arrives on the right day whether or not anybody
+is watching and un-happens the moment a receipt is recorded. `suspended` therefore
+stays what it says in the table above: the one a person set by hand. A centre with
+no recorded coverage is not lapsed, which matters because the first paying customer
+has no row in `payments`.
 
 **No dunning, no auto-charge, no card on file.** With customer counts under fifty
 the monthly bKash conversation is a feature: it is when churn gets caught. What
@@ -1489,8 +1499,9 @@ advisory lock, and the three ways past it (one student, an import, a branch that
 run out) each priced and sold; payment intents behind a provider interface with the
 manual bKash transfer as its first provider and the founder confirming the money
 arrived; the entitlement resolver, with read-only enforced in front of twenty write
-paths; a founder panel that records real money. 892 unit tests and 1,082 RLS
-assertions green across 58 migrations and 41 tables, plus four derived gates and two
+paths, and a subscription that suspends itself seven days after the period it was
+paid for; a founder panel that records real money. 903 unit tests and 1,100 RLS
+assertions green across 59 migrations and 42 tables, plus four derived gates and two
 that ask the live API.
 
 **Partly built ⚠️** — branches (money, staff and the HQ comparison yes, full

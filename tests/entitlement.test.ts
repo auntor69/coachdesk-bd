@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import path from 'node:path'
 
-import { effectiveEntitlement, type OrgBilling } from '../src/lib/entitlement.ts'
+import { effectiveEntitlement, GRACE_DAYS, type OrgBilling } from '../src/lib/entitlement.ts'
 import { PLANS, PLAN_RANK, type PlanId } from '../src/lib/plans.ts'
 
 /**
@@ -16,8 +16,13 @@ import { PLANS, PLAN_RANK, type PlanId } from '../src/lib/plans.ts'
  * database refuses. None of those show up as a crash — each one is a screen that
  * quietly says the wrong number to somebody who is paying.
  *
- * The tests below are grouped that way: access, then the trial, then the ceiling,
- * then the fallbacks that must all point the same way.
+ * §4.4's lapse is the fourth and the only one that acts on its own: nothing was
+ * clicked, a date went by. Both directions are expensive — a week of grace nobody
+ * enforces is a customer who never pays again, and a day of grace miscounted is a
+ * centre frozen mid-register over money that arrived.
+ *
+ * The tests below are grouped that way: access, then the trial, then coverage, then
+ * the ceiling, then the fallbacks that must all point the same way.
  */
 
 const NOW = new Date('2026-08-29T12:00:00Z')
@@ -30,6 +35,10 @@ function org(over: Partial<OrgBilling> = {}): OrgBilling {
     trial_plan: null,
     trial_ends_at: null,
     student_capacity: 0,
+    // Null and not a live date, so every test above the coverage block reads a centre
+    // with no receipts — which is the state that must never suspend anybody, and
+    // therefore the state the rest of this file should be varying one thing away from.
+    paid_through: null,
     ...over,
   }
 }
@@ -225,6 +234,172 @@ test('a trial naming a tier that does not exist is not a trial', () => {
 })
 
 /* -------------------------------------------------------------------------- */
+/* Coverage and the grace window                                              */
+/* -------------------------------------------------------------------------- */
+
+/*
+ * MASTERPLAN.md §4.4: "When today is past `covers_period_end` the account is in grace;
+ * past grace it is suspended ... computed from coverage, not from a flag somebody
+ * remembered to set."
+ *
+ * DATES ARE WRITTEN OUT AND NOT COMPUTED. Every case below names the calendar day it
+ * means rather than calling `addDays(NOW, -8)`, because the arithmetic is the thing
+ * under test: a suite that builds its fixtures with the helper the implementation uses
+ * agrees with an off-by-one instead of catching it. NOW is 29 August 2026, 12:00 UTC,
+ * which is the evening of the 29th in Dhaka.
+ */
+
+test('the grace window is a week', () => {
+  // Pinned, so moving it is a decision somebody makes on purpose. Longer than the
+  // monthly cycle and a customer can be a whole period behind without noticing;
+  // shorter and a receipt entered on Sunday suspends somebody who paid on Friday.
+  assert.equal(GRACE_DAYS, 7)
+})
+
+test('coverage that runs out today is not a lapse', () => {
+  // The date names the last day covered, not the first day uncovered. A monthly
+  // customer paid to the 31st is paying for the 31st.
+  assert.equal(
+    effectiveEntitlement(org({ paid_through: '2026-08-29' }), NOW).access,
+    'full',
+  )
+})
+
+test('the last day of grace still writes, and the next one does not', () => {
+  // 22 August is seven days back, which is the whole window: "past grace" and not "at
+  // the end of it". The 21st is eight and is the first day that stops.
+  assert.equal(
+    effectiveEntitlement(org({ paid_through: '2026-08-22' }), NOW).access,
+    'full',
+  )
+  assert.equal(
+    effectiveEntitlement(org({ paid_through: '2026-08-21' }), NOW).access,
+    'read_only',
+  )
+})
+
+test('coverage still running is not a lapse either', () => {
+  assert.equal(
+    effectiveEntitlement(org({ paid_through: '2026-09-30' }), NOW).access,
+    'full',
+  )
+})
+
+test('no coverage recorded never suspends anybody', () => {
+  // The one that matters most. Every customer who paid before the receipt screen
+  // existed has no payment row, and the first real centre on this product is one of
+  // them: `active`, paying, and with nothing in `payments` to prove it. Reading null as
+  // "ran out in 1970" would freeze the account we can least afford to freeze.
+  assert.equal(effectiveEntitlement(org({ paid_through: null }), NOW).access, 'full')
+})
+
+test('a coverage date that is not a date grants access rather than removing it', () => {
+  // The one fallback in this file that points the loose way, and the reason is that the
+  // two directions are not symmetrical: an unreadable trial date falls back to what the
+  // customer already paid for, while an unreadable coverage date would fall back to
+  // taking the product off somebody who may have paid this morning. A bad string is not
+  // evidence of non-payment. Suspending by hand still works and is unaffected.
+  for (const paid_through of ['', 'yesterday', '2026-13-45', '29/08/2026', 'null']) {
+    assert.equal(
+      effectiveEntitlement(org({ paid_through }), NOW).access,
+      'full',
+      paid_through,
+    )
+  }
+})
+
+test('a free plan has no coverage to lapse', () => {
+  // A teacher who bought a month of Pro two years ago and has since dropped to Free
+  // keeps Free. Coverage is what money bought, and a tier that costs nothing has
+  // nothing to cover — the same rule as §4.5's, applied to standing instead of caps.
+  assert.equal(
+    effectiveEntitlement(org({ plan: 'teacher_free', paid_through: '2024-01-31' }), NOW)
+      .access,
+    'full',
+  )
+})
+
+test('only an active centre lapses', () => {
+  // `trial` is the founder's sales trial, where nobody has paid and the point is that
+  // the centre runs its real term on the product. Coverage there is either null or a
+  // leftover from a previous life, and neither may end the trial early.
+  assert.equal(
+    effectiveEntitlement(org({ status: 'trial', paid_through: '2024-01-31' }), NOW).access,
+    'full',
+  )
+
+  // And the other direction is not a route back: coverage cannot talk a hand-suspended
+  // or cancelled centre into writing, because the lapse only ever removes access.
+  for (const status of ['suspended', 'cancelled']) {
+    assert.equal(
+      effectiveEntitlement(org({ status, paid_through: '2026-12-31' }), NOW).access,
+      'read_only',
+      status,
+    )
+  }
+})
+
+test('a lapse takes the writing and leaves the tier and the ceiling', () => {
+  // §4.5 again, and the same assertion the hand-suspended case makes: a centre of four
+  // hundred students that is a fortnight late is not suddenly thirty over a free-tier
+  // limit, and the fee book it is trying to settle keeps its printed receipts.
+  const lapsed = effectiveEntitlement(
+    org({ plan: 'center', student_capacity: 400, paid_through: '2026-07-01' }),
+    NOW,
+  )
+  const paid = effectiveEntitlement(
+    org({ plan: 'center', student_capacity: 400, paid_through: '2026-09-30' }),
+    NOW,
+  )
+
+  assert.equal(lapsed.access, 'read_only')
+  assert.equal(lapsed.plan.id, paid.plan.id)
+  assert.deepEqual(lapsed.ceiling, paid.ceiling)
+})
+
+test('a trial in force keeps its tier through a lapse', () => {
+  // Two clocks pulling opposite ways, which is a row that has been told two things at
+  // once. The trial can only raise the tier and the lapse can only remove the writing,
+  // so the order they are applied in cannot matter — and the honest reading is the
+  // trialled tier, read-only.
+  const e = effectiveEntitlement(
+    org({
+      plan: 'teacher_free',
+      trial_plan: 'teacher_plus',
+      trial_ends_at: '2027-01-01T00:00:00Z',
+      paid_through: '2026-01-31',
+    }),
+    NOW,
+  )
+
+  // Free is the paid plan, so there is nothing to lapse — the trial does not change
+  // what the customer is buying, which is what makes this case full access.
+  assert.equal(e.plan.id, 'teacher_plus')
+  assert.equal(e.access, 'full')
+})
+
+test('the day is Dhaka’s, not the server’s', () => {
+  // 21 August, 18:30 UTC is half past midnight on the 22nd in Dhaka. Coverage ended on
+  // the 14th, so the Dhaka day is eight days past it and the UTC day is seven — the
+  // difference between a suspended centre and a writing one. The server runs in UTC and
+  // a centre in Dhaka does not.
+  const justAfterMidnightInDhaka = new Date('2026-08-21T18:30:00Z')
+
+  assert.equal(
+    effectiveEntitlement(org({ paid_through: '2026-08-14' }), justAfterMidnightInDhaka)
+      .access,
+    'read_only',
+  )
+
+  // Six hours earlier is still the 21st in Dhaka, and still inside the window.
+  assert.equal(
+    effectiveEntitlement(org({ paid_through: '2026-08-14' }), new Date('2026-08-21T12:30:00Z'))
+      .access,
+    'full',
+  )
+})
+
+/* -------------------------------------------------------------------------- */
 /* The ceiling                                                                */
 /* -------------------------------------------------------------------------- */
 
@@ -334,8 +509,13 @@ test('the rank is a strict order over every tier', () => {
 test('entitlement.ts stays importable from a client component', () => {
   // Same reason capacity.ts has no imports at all: a gate that reads the plan runs in
   // client components too, and pulling the dictionary or a Supabase client in behind
-  // it would ship all of that to a phone on 3G. plans.ts is the whole runtime budget —
-  // the generated types are a type-only import and are erased.
+  // it would ship all of that to a phone on 3G. The generated types are a type-only
+  // import and are erased.
+  //
+  // `bd/time.ts` is on the list as of §4.4's lapse, and it earns its place rather than
+  // being waved through: it imports one type and calls Intl, which every browser that
+  // can run this app already has. The alternative was adding six hours to a UTC date by
+  // hand in here, which is the assumption that module exists to stop anybody making.
   const source = readFileSync(
     path.join(import.meta.dirname, '..', 'src', 'lib', 'entitlement.ts'),
     'utf8',
@@ -343,6 +523,9 @@ test('entitlement.ts stays importable from a client component', () => {
 
   const specifiers = [...source.matchAll(/from '([^']+)'/g)].map((m) => m[1])
 
-  assert.deepEqual([...new Set(specifiers)].sort(), ['./plans.ts', './supabase/types.ts'])
+  assert.deepEqual(
+    [...new Set(specifiers)].sort(),
+    ['./bd/time.ts', './plans.ts', './supabase/types.ts'],
+  )
   assert.match(source, /import type \{ CenterStatus \} from '\.\/supabase\/types\.ts'/)
 })

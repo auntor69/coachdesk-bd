@@ -419,6 +419,16 @@ export const bn = {
       'অ্যাকাউন্ট বাতিল থাকায় নতুন কিছু সেভ হচ্ছে না। তবে আগের হাজিরা, নম্বর আর '
       + 'ফির হিসাব কিছুই মুছে যায়নি — সব এখানেই আছে, দেখা যাবে। আবার চালু করতে '
       + 'আমাদের ফোন দিন।',
+    /**
+     * Outside the two bodies above because it takes the date, and shown only when the
+     * read-only came from coverage running out rather than from a hand-set status.
+     *
+     * The date is what makes the banner arguable, which is the point: an owner who
+     * transferred money last week can hold this sentence next to their own bKash
+     * history and ring us with a TrxID instead of a complaint. A general "your plan
+     * ran out" cannot be checked, so it gets ignored or resented.
+     */
+    coveredTo: (date: string) => `শেষ যে টাকা জমা হয়েছে তাতে ${date} পর্যন্ত চলেছে।`,
     /** On the banner's tel: chip, which appears only where a sales number is set. */
     callUs: 'ফোন দিন',
     /** Owners and managers only — a teacher cannot open the plan screen. */

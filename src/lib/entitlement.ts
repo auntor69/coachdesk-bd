@@ -5,7 +5,7 @@
  * of, and this file is the one that combines three of them into an answer:
  *
  *   plan          which features and caps does a tier have?   -> plans.ts, in code
- *   subscription  which tier is this customer on, and how is that standing?
+ *   subscription  which tier, standing how, paid up to when?
  *   trial         is a temporary better plan in force, until when?
  *   capacity      how many student places have been paid for?
  *   ENTITLEMENT   what is allowed *right now*?                -> here
@@ -34,6 +34,14 @@
  * second source of truth and will eventually disagree with the clock; anything such
  * a job does here is cosmetic.
  *
+ * A LAPSE IS THE SAME COMPARISON, and §4.4 asks for it in those words: the transition
+ * to read-only is "computed from coverage, not from a flag somebody remembered to set".
+ * That is the one part of the monthly bKash conversation that has to be automatic,
+ * because it is the part a founder cannot be trusted to do consistently to a customer
+ * they like. `paid_through` plus `GRACE_DAYS` is read on every session, so it happens
+ * on the right day whether or not anybody is watching, and un-happens the moment a
+ * receipt is recorded — no job to run, and none to forget to run backwards.
+ *
  * NOT THE BOUNDARY. RLS in Postgres decides whose rows these are, and
  * `app.guard_center_billing` and `app.guard_student_capacity` are what a browser
  * cannot talk its way past. This is one layer in: narrower than the boundary, never
@@ -41,6 +49,7 @@
  * come back empty.
  */
 
+import { daysBetween, todayInDhaka } from './bd/time.ts'
 import {
   PLAN_RANK,
   planFor,
@@ -77,6 +86,10 @@ export type Access = 'full' | 'read_only'
  * that one is a plan for a fortnight, this one is a standing with no plan of its own,
  * and merging the two clocks would put a fourteen-day timer on a customer the
  * founder is still selling to.
+ *
+ * THIS IS THE FLOOR AND NOT THE WHOLE ANSWER. `active` earns full access from the
+ * status column and can still lose it to a lapse — see `coverageLapsed`. Nothing goes
+ * the other way: no coverage can talk a `suspended` row into writing.
  */
 const ACCESS_BY_STATUS: Record<CenterStatus, Access> = {
   trial: 'full',
@@ -84,6 +97,22 @@ const ACCESS_BY_STATUS: Record<CenterStatus, Access> = {
   suspended: 'read_only',
   cancelled: 'read_only',
 }
+
+/**
+ * How long after coverage runs out a centre keeps writing. MASTERPLAN.md §4.4's
+ * proposed constant, and the whole of the grace window.
+ *
+ * SEVEN AND NOT THIRTY, because the bill is monthly: a grace window as long as the
+ * cycle means a customer can be a full period behind and never notice, and the
+ * conversation that catches churn never happens. Seven days is a week to get to a
+ * bKash agent, which is the real-world obstacle.
+ *
+ * SEVEN AND NOT ZERO, because `covers_period_end` is a date somebody typed while
+ * looking at a transfer, and the last day of a month is a Friday often enough. A
+ * customer who paid on time should never see this banner because their receipt was
+ * entered on Sunday.
+ */
+export const GRACE_DAYS = 7
 
 /**
  * The columns entitlement is derived from. Exactly these, from
@@ -112,6 +141,16 @@ export type OrgBilling = {
   trial_ends_at: string | Date | null
   /** `coaching_centers.student_capacity` — places bought beyond the plan allowance. */
   student_capacity: number | null
+  /**
+   * `coaching_centers.paid_through` — the furthest date any payment covers, as
+   * YYYY-MM-DD, or null when no payment says what period it bought.
+   *
+   * A `date` and therefore a string, unlike `trial_ends_at`: it names a calendar day
+   * with no time of day, and letting a `Date` in would invite a UTC midnight to be
+   * compared against a Dhaka morning. Maintained by the trigger in
+   * 20260811000059 — never hand-set, and unwritable from a browser.
+   */
+  paid_through: string | null
 }
 
 /** The answer. Three fields, and none of them says how it was arrived at. */
@@ -162,6 +201,45 @@ function trialPlan(org: OrgBilling, paid: PlanLimits, now: Date): PlanLimits | n
 }
 
 /**
+ * Whether this centre's paid coverage ran out more than the grace window ago.
+ *
+ * NULL COVERAGE IS NOT A LAPSE, and it is the line in this file most worth getting the
+ * right way round. A centre with no `paid_through` has no payment row saying what
+ * period it bought — which is the state of every customer who paid before the receipt
+ * screen existed, including the first real one on this product. Reading null as "ran
+ * out in 1970" would put a paying customer into read-only for the crime of being early.
+ *
+ * ONLY `active` LAPSES. `trial` has nothing to lapse and is full access by design;
+ * `suspended` and `cancelled` are already read-only and cannot be made more so. A
+ * status outside the enum never reaches here.
+ *
+ * A FREE PLAN NEVER LAPSES. Coverage is what money bought, and a tier that costs
+ * nothing has nothing to cover — so a teacher who once paid for a month of Pro and has
+ * since dropped to Free keeps Free forever. Read from the PAID plan and not the
+ * resolved one: a trial in force does not change what the customer is buying.
+ *
+ * AND IT FAILS OPEN, DELIBERATELY, WHICH THE REST OF THIS FILE DOES NOT. A date that
+ * will not parse gives `daysBetween` zero, and zero is never past the window, so a
+ * garbled column grants access rather than removing it. That is the opposite of the
+ * trial's fallback, for a reason the trial does not share: an unreadable
+ * `trial_ends_at` falls back to what the customer already paid for, while an
+ * unreadable `paid_through` would fall back to taking the product away from somebody
+ * who may have paid us this morning. A bad string is not evidence of non-payment. The
+ * founder can still suspend by hand, and that path is untouched.
+ */
+function coverageLapsed(org: OrgBilling, paid: PlanLimits, now: Date): boolean {
+  if (org.status !== 'active') return false
+  if (!org.paid_through) return false
+  if (paid.pricing === 'free') return false
+
+  // Calendar days in Dhaka on both sides, because `paid_through` is a `date` with no
+  // time of day to compare an instant against. Coverage runs to the end of the day it
+  // names, so that day is zero days overdue and the window counts from the next one:
+  // strictly greater, so the seventh day of grace is still a day of grace.
+  return daysBetween(org.paid_through, todayInDhaka(now)) > GRACE_DAYS
+}
+
+/**
  * The resolver. MASTERPLAN.md §4.2, in the order it is written there: access from
  * the status, plan from the trial or the subscription, ceiling from the plan and
  * what has been bought.
@@ -181,11 +259,12 @@ function trialPlan(org: OrgBilling, paid: PlanLimits, now: Date): PlanLimits | n
  * side of an expiry without touching the clock, and so a screen resolving a list of
  * centres resolves all of them against one instant instead of one per row.
  *
- * WHAT IS NOT HERE YET. §4.4 has `suspended` computed from payment coverage plus a
- * grace window rather than set by hand; that needs a ledger with the period each
- * payment covers, which does not exist. Until it does, this reads the status it is
- * given and the founder sets it — so the fence is here and correct, and what is
- * missing is the thing that should be leaning on it.
+ * TWO CLOCKS, AND THEY PULL OPPOSITE WAYS. A trial can only raise what is allowed and
+ * a lapse can only lower it, so the order they are applied in cannot matter — which is
+ * why the plan is resolved from the trial and the access from the coverage, with
+ * neither consulting the other's answer. A centre whose trial is live and whose
+ * coverage has lapsed reads the trial's tier in read-only, and that is the correct
+ * reading of a row that has been told two things at once.
  */
 export function effectiveEntitlement(org: OrgBilling | null, now: Date): Entitlement {
   // NO ORGANISATION IN VIEW, which is two situations and needs no third answer: an
@@ -206,10 +285,14 @@ export function effectiveEntitlement(org: OrgBilling | null, now: Date): Entitle
   const paid = planFor(org.plan)
   const plan = trialPlan(org, paid, now) ?? paid
 
+  // A status outside the enum is a row that has gone wrong, not a new kind of customer,
+  // so it reads as read-only.
+  const standing = ACCESS_BY_STATUS[org.status as CenterStatus] ?? 'read_only'
+
   return {
-    // A status outside the enum is a row that has gone wrong, not a new kind of
-    // customer, so it reads as read-only.
-    access: ACCESS_BY_STATUS[org.status as CenterStatus] ?? 'read_only',
+    // The lapse can only take access away, never grant it — see `coverageLapsed`, which
+    // refuses to look at anything but an `active` centre for exactly that reason.
+    access: coverageLapsed(org, paid, now) ? 'read_only' : standing,
     plan,
     // The trial's plan, not the paid one, and that is the point of resolving the plan
     // first: a teacher trialling Pro gets Pro's 150 places for the fortnight, and

@@ -23,6 +23,7 @@ import {
   canManageBatches,
 } from '@/lib/auth/session'
 import { formatBdMobile, normalizeBdMobile } from '@/lib/bd/phone'
+import { formatDate } from '@/lib/bd/time'
 import { dict, type Dictionary } from '@/lib/i18n'
 
 /**
@@ -221,16 +222,25 @@ async function teacherNav(role: MemberRole): Promise<NavItem[]> {
  */
 function ReadOnlyBanner({
   status,
+  coveredTo,
   t,
   canSeePlan,
 }: {
   status: CenterStatus
+  /**
+   * The last day the centre's payments covered, already formatted, or null. Non-null
+   * only when the coverage is *why* this banner is on screen — an `active` centre past
+   * its grace window (MASTERPLAN.md §4.4).
+   */
+  coveredTo: string | null
   t: Dictionary['readOnly']
   canSeePlan: boolean
 }) {
-  // Only `cancelled` and `suspended` reach read-only, and a status outside the enum
-  // reads as suspended: it is the sentence with a fix in it, and "ring us" is the right
-  // answer to a row that has gone wrong as well as to a bill that has lapsed.
+  // `cancelled` gets its own words; everything else gets the sentence with a fix in it.
+  // That covers three cases and not one: `suspended`, an `active` centre whose coverage
+  // lapsed past the grace window, and a status outside the enum — and "the plan has run
+  // out, settle the bill" is the right answer to all three, because a row that has gone
+  // wrong is also best answered by a phone call.
   const cancelled = status === 'cancelled'
 
   // Empty in every deployment until the founder puts their own number in, exactly as
@@ -252,6 +262,14 @@ function ReadOnlyBanner({
       <p className="mt-1 text-sm text-ink-soft">
         {cancelled ? t.cancelledBody : t.suspendedBody}
       </p>
+
+      {/* The one fact that turns a general complaint into something a customer can
+          check against their own bKash history. Only when coverage is the reason: on a
+          hand-suspended centre the date would be answering a question nobody asked, and
+          on a cancelled one it would read as a receipt. */}
+      {coveredTo && (
+        <p className="mt-1 text-sm text-ink-soft">{t.coveredTo(coveredTo)}</p>
+      )}
 
       {(canSeePlan || salesPhone) && (
         <div className="mt-3 flex flex-wrap gap-2">
@@ -324,9 +342,17 @@ export async function AppShell({
    * layout redirects that reader to /onboarding, but Next's own docs are explicit that
    * a layout does not re-run on every navigation, and the shell is not the place to
    * rely on it having.
+   *
+   * THE WHOLE MEMBERSHIP RATHER THAN ITS STATUS, because since §4.4's lapse the status
+   * no longer tells the banner everything: an `active` centre reaches read-only by
+   * running past its grace window, and the date that happened is the sentence worth
+   * reading. `status === 'active'` here IS that derivation and needs no fourth enum
+   * value — nothing else in the app can make an active centre read-only, which is why
+   * `Entitlement` still refuses to carry a reason. Same trick as the trial notice: ask
+   * the row, not the entitlement.
    */
-  const readOnly =
-    session.active && session.access === 'read_only' ? session.active.status : null
+  const readOnly = session.active && session.access === 'read_only' ? session.active : null
+  const lapsed = readOnly?.status === 'active' ? readOnly.paidThrough : null
 
   return (
     <div className="flex min-h-full flex-col">
@@ -395,7 +421,8 @@ export async function AppShell({
       >
         {readOnly && (
           <ReadOnlyBanner
-            status={readOnly}
+            status={readOnly.status}
+            coveredTo={lapsed ? formatDate(lapsed, session.locale) : null}
             t={d.readOnly}
             canSeePlan={atLeast(role, 'manager')}
           />

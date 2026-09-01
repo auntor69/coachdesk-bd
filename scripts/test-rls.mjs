@@ -11530,6 +11530,216 @@ check(
   )) === 0,
 )
 
+// ---------------------------------------------------------------------------
+// Coverage, and the day it runs out (§4.4).
+//
+// The suspension §4.4 asks for is a comparison against one date, so the whole
+// mechanism is only ever as good as that date. 20260811000059 keeps it on
+// `coaching_centers` rather than joining `payments`, because entitlement is
+// resolved for every member of a centre while `payments` is readable by the
+// owner alone: a resolver reading the ledger would hand the teacher full access
+// on the same centre where the owner had just gone read-only.
+//
+// A second copy of a fact is worth keeping only if something notices when the
+// copies disagree, so this section ends by holding the column against
+// platform_centers(), which derives the same number its own way.
+// ---------------------------------------------------------------------------
+
+console.log('\nCoverage (paid_through, and the day it runs out):')
+
+// Compared as text on both sides throughout. A `date` comes back as a JS Date at
+// local midnight, and asserting that against a written-out day is a bug waiting
+// for a machine that is not in Dhaka.
+const coverage = async (center) =>
+  (
+    await db.query(
+      `select to_char(paid_through, 'YYYY-MM-DD') as through from coaching_centers where id = $1`,
+      [center],
+    )
+  ).rows[0].through
+
+check(
+  'a centre that has never paid us has no coverage',
+  (await coverage(centerB)) === null,
+  String(await coverage(centerB)),
+)
+check(
+  'and nor has one whose purchases bought places rather than time',
+  (await coverage(centerC)) === null,
+  String(await coverage(centerC)),
+)
+
+// The production path first: nothing in the app writes this column, so what has to
+// work is the receipt that settle_payment_intent writes on its own.
+const covering = await one(
+  `insert into payment_intents (
+     coaching_center_id, purpose, quantity, amount_bdt,
+     idempotency_key, provider_ref, covers_period_start, covers_period_end
+   )
+   values ($1, 'subscription', 1, 1999, $2, 'TRXCOV1', '2026-03-01', '2026-03-31')
+   returning id`,
+  [centerC, await uuid()],
+)
+await move(covering, 'initiated')
+await settle(covering, null, 'bkash', ownerC)
+check(
+  "settling a subscription puts its coverage on the centre's own row",
+  (await coverage(centerC)) === '2026-03-31',
+  String(await coverage(centerC)),
+)
+
+const covers = (center, from, to, amount = 1999) =>
+  one(
+    `insert into payments
+       (coaching_center_id, amount_bdt, method, covers_period_start, covers_period_end)
+     values ($1, $2, 'bkash', $3, $4) returning id`,
+    [center, amount, from, to],
+  )
+
+// The three ways a second receipt can be wrong about the answer.
+await covers(centerC, '2026-01-01', '2026-01-31')
+check(
+  'a receipt for an earlier period does not shorten it',
+  (await coverage(centerC)) === '2026-03-31',
+  String(await coverage(centerC)),
+)
+
+const april = await covers(centerC, '2026-04-01', '2026-04-30')
+check(
+  'and one for the next period extends it',
+  (await coverage(centerC)) === '2026-04-30',
+  String(await coverage(centerC)),
+)
+
+await covers(centerC, null, null, 500)
+check(
+  'while money that never said what period it bought buys no time at all',
+  (await coverage(centerC)) === '2026-04-30',
+  String(await coverage(centerC)),
+)
+
+// §3.8 corrections, which are the reason the trigger recomputes instead of taking
+// greatest(old, new): both of these have to be able to pull the date back.
+await db.query('delete from payments where id = $1', [april])
+check(
+  'a receipt taken away gives the day back rather than leaving it stranded',
+  (await coverage(centerC)) === '2026-03-31',
+  String(await coverage(centerC)),
+)
+
+const settledPayment = await one('select id from payments where intent_id = $1', [covering])
+await db.query(`update payments set covers_period_end = '2026-06-30' where id = $1`, [
+  settledPayment,
+])
+check(
+  'and a mistyped period corrected moves the date with it',
+  (await coverage(centerC)) === '2026-06-30',
+  String(await coverage(centerC)),
+)
+
+// Both centres on an update, which is the trigger's one branch nothing in the app
+// reaches. A receipt with an intent behind it cannot move — the composite key in
+// 20260811000057 pins it to the centre that bought it — so this is a directly
+// recorded one, the kind the founder panel writes.
+const july = await covers(centerC, '2026-07-01', '2026-07-31')
+check(
+  'the newest window wins while it is there',
+  (await coverage(centerC)) === '2026-07-31',
+  String(await coverage(centerC)),
+)
+
+await db.query('update payments set coaching_center_id = $2 where id = $1', [july, centerB])
+check(
+  'a receipt moved to another centre takes its coverage with it',
+  (await coverage(centerB)) === '2026-07-31',
+  String(await coverage(centerB)),
+)
+check(
+  'and leaves the centre it came from claiming only what it still has',
+  (await coverage(centerC)) === '2026-06-30',
+  String(await coverage(centerC)),
+)
+
+await db.query('delete from payments where id = $1', [july])
+check(
+  'so the quieter centre is left as it was found',
+  (await coverage(centerB)) === null,
+  String(await coverage(centerB)),
+)
+
+// A browser that could set its own coverage to 2099 would have bought itself
+// permanent full access for nothing, so this column is locked the same two ways the
+// plan and the credit balance are: out of 20260811000004's column grants, and behind
+// the guard trigger for the day somebody pastes a blanket grant over the top.
+check(
+  'owner cannot set their own paid-up date',
+  await deniedAsUser(
+    db,
+    ownerC,
+    `update coaching_centers set paid_through = '2099-12-31' where id = $1`,
+    [centerC],
+  ),
+)
+await db.exec('grant update on coaching_centers to authenticated;')
+check(
+  'and the guard trigger still refuses it after a blanket re-grant',
+  await deniedAsUser(
+    db,
+    ownerC,
+    `update coaching_centers set paid_through = '2099-12-31' where id = $1`,
+    [centerC],
+  ),
+)
+check(
+  'the date survived both attempts',
+  (await coverage(centerC)) === '2026-06-30',
+  String(await coverage(centerC)),
+)
+await db.exec(`
+  revoke update on coaching_centers from authenticated;
+  grant update (name, phone, address, bd_area, timezone, payment_wallet, payment_number)
+    on coaching_centers to authenticated;
+`)
+await asUser(db, ownerC, (tx) =>
+  tx.query(`update coaching_centers set bd_area = 'Zindabazar' where id = $1`, [centerC]),
+)
+check(
+  'and the settings screen still works, so the restore put the grants back',
+  (await n(
+    db,
+    `select count(*)::int as n from coaching_centers
+      where id = $1 and bd_area = 'Zindabazar'`,
+    [centerC],
+  )) === 1,
+)
+
+// The cross-check 20260811000059's header promises. platform_centers() was left
+// restating its own max(covers_period_end) rather than reading this column, which is
+// only defensible while something compares the two — a founder ringing a customer off
+// one number and a suspension computed from the other is the failure to catch here.
+const panelCoverage = await asUser(db, ids.founder, (tx) =>
+  tx.query(
+    `select center_id, to_char(paid_through, 'YYYY-MM-DD') as through from platform_centers()`,
+  ),
+)
+const columnCoverage = new Map(
+  (
+    await db.query(`select id, to_char(paid_through, 'YYYY-MM-DD') as through from coaching_centers`)
+  ).rows.map((r) => [r.id, r.through]),
+)
+const disagreed = panelCoverage.rows.filter((r) => columnCoverage.get(r.center_id) !== r.through)
+check(
+  'the column and the founder panel read the same date for every centre',
+  disagreed.length === 0,
+  disagreed
+    .map((r) => `${r.center_id}: panel ${r.through}, column ${columnCoverage.get(r.center_id)}`)
+    .join('; '),
+)
+check(
+  'and at least one of those dates is a date, so that was not two columns of nulls',
+  panelCoverage.rows.some((r) => r.through !== null),
+)
+
 console.log(`\n${passed} passed, ${failed} failed`)
 await db.close()
 process.exit(failed ? 1 : 0)

@@ -65,6 +65,21 @@ export type Membership = {
    * `limitRefusal` counting rows server-side, per §4.5.
    */
   studentCapacity: number
+  /**
+   * The furthest date the centre's payments cover, as YYYY-MM-DD, or null when no
+   * payment has said what period it bought.
+   *
+   * WHY IT IS ON THE MEMBERSHIP AND NOT READ FROM `payments`. It is the same date
+   * `platform_centers()` returns as `paid_through`, but that table is owner-scoped and
+   * SELECT-only (20260811000024), so a teacher's session cannot see it — and
+   * entitlement is resolved for every member, not only for owners. A resolver reading
+   * the ledger would hand the teacher full access and the owner read-only on the same
+   * centre in the same minute. Denormalised onto the centre row by the trigger in
+   * 20260811000059 so that every member reads one answer.
+   *
+   * Null is not lapsed, here as everywhere: see `coverageLapsed`.
+   */
+  paidThrough: string | null
 }
 
 export type Session = {
@@ -224,7 +239,7 @@ export const getSession = cache(async (): Promise<Session | null> => {
       // `'a' + 'b'` widens to `string` and every column on the row comes back as
       // `GenericStringError`. Wrapping this for width costs the whole embed's typing.
       .select(
-        'coaching_center_id, role, branch_id, coaching_centers (name, plan, status, sms_credit_balance, student_capacity, trial_plan, trial_ends_at)',
+        'coaching_center_id, role, branch_id, coaching_centers (name, plan, status, sms_credit_balance, student_capacity, trial_plan, trial_ends_at, paid_through)',
       )
       .eq('user_id', user.id)
       .eq('active', true),
@@ -253,6 +268,7 @@ export const getSession = cache(async (): Promise<Session | null> => {
           trialPlan: center.trial_plan,
           trialEndsAt: center.trial_ends_at,
           studentCapacity: center.student_capacity,
+          paidThrough: center.paid_through,
         }
       })
       .filter((m): m is Membership => m !== null),
@@ -303,6 +319,13 @@ export const getSession = cache(async (): Promise<Session | null> => {
    * guard now runs, and the banner in the app shell. It was deliberately absent until
    * then — a field stored, typed and read by no gate is `can_manage_students` all over
    * again, a protection that exists only in the shape of the data.
+   *
+   * `paid_through` JOINED THE SELECT WITH §4.4's LAPSE, and it is the one column here
+   * that no browser could read for itself: the ledger it is derived from is owner-only,
+   * so a teacher's session gets the centre's coverage through this embed or not at all.
+   * That is the whole reason it is a column on `coaching_centers` — see the note on
+   * `Membership.paidThrough`. A centre with no receipts leaves it null, which grants
+   * full access rather than removing it, and the resolver says at length why.
    */
   const entitlement = effectiveEntitlement(
     active
@@ -312,6 +335,7 @@ export const getSession = cache(async (): Promise<Session | null> => {
           trial_plan: active.trialPlan,
           trial_ends_at: active.trialEndsAt,
           student_capacity: active.studentCapacity,
+          paid_through: active.paidThrough,
         }
       : null,
     new Date(),

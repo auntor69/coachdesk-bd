@@ -592,6 +592,7 @@ export type Database = {
           student_capacity: number
           trial_plan: PlanType | null
           trial_ends_at: string | null
+          paid_through: string | null
         }
         Insert: {
           id?: string
@@ -611,6 +612,7 @@ export type Database = {
           student_capacity?: number
           trial_plan?: PlanType | null
           trial_ends_at?: string | null
+          paid_through?: string | null
         }
         Update: {
           id?: string
@@ -630,6 +632,7 @@ export type Database = {
           student_capacity?: number
           trial_plan?: PlanType | null
           trial_ends_at?: string | null
+          paid_through?: string | null
         }
         Relationships: [
           {
