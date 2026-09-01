@@ -271,6 +271,24 @@ export default async function SettingsPage() {
               ]
             : []),
           /*
+           * Who else administers the centre — §6.2's own screen. Two gates, and both are
+           * copies of a rule that lives elsewhere: `staffManagement` because a plan with
+           * no colleagues has nobody to appoint, and `owner` because 20260811000061 made an
+           * `owner` or `manager` row in `center_members` writable only by `app.is_owner`.
+           * A manager following this row would reach a list of forms the database refuses,
+           * so the page 403s them as well.
+           */
+          ...(has(session.plan, 'staffManagement') && session.active.role === 'owner'
+            ? [
+                {
+                  href: '/settings/managers' as Route,
+                  label: t.managers,
+                  hint: t.managersHint,
+                  count: null,
+                },
+              ]
+            : []),
+          /*
            * The buildings, on the one tier that has more than one. Gated on the plan
            * like the staff row above and hidden rather than shown locked, for the same
            * reason: an owner of a single-building centre has nothing to write down here,

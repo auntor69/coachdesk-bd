@@ -2181,6 +2181,38 @@ export const en: Dictionary = {
     hq: 'Head office — every branch',
   },
 
+  /**
+   * Appointing an administrator, and the two things that can be changed about one.
+   *
+   * Its own top-level group rather than part of `settings.managers`, for the reason
+   * `branchForm` is separate from `settings.branches`: these are the strings a client
+   * component is handed, and `settings.managers` carries the sentences that name a person
+   * — functions, which `T` refuses to send across the wire.
+   */
+  managerForm: {
+    body: 'An administrator is somebody this centre has already written down. They can then do everything you can, apart from appointing other administrators and changing the plan.',
+    whoLabel: 'Who',
+    whoHint: 'Your teachers and staff. Somebody who is not on the list yet has to be written down on their own screen first.',
+    pickPrompt: 'Choose somebody',
+    passwordLabel: 'A password for them',
+    /** They have a number on their row, so the number is the login id. */
+    passwordHintPhone:
+      'They have no login yet. Their mobile number is what they will sign in with — tell them this password, and they can change it later.',
+    /**
+     * And they have not, so §5.2's username is minted instead. Says that the username is
+     * coming rather than showing it: it does not exist until the form is submitted.
+     */
+    passwordHintUsername:
+      'They have no login and no mobile number on their row, so they will sign in with a username. It appears here once you appoint them, and you will need to read it out to them along with this password.',
+    confirmTick: 'Yes, this is the right person',
+    submit: 'Appoint',
+    branchTitle: 'What they can see',
+    removeTitle: 'Take the appointment back',
+    removeButton: 'Remove as administrator',
+    removeHint:
+      'They stay on your staff list, their login keeps working, and a teacher goes back to being a teacher. Only the administrator’s reach goes.',
+  },
+
   centerForm: {
     nameLabel: 'Centre’s name',
     nameHint: 'This name signs every SMS, so a short one is better',
@@ -2944,6 +2976,8 @@ export const en: Dictionary = {
       teachersHint: 'Who is allowed to do what',
       staff: 'Staff & payroll',
       staffHint: 'Who else works here, and what they are paid',
+      managers: 'Administrators',
+      managersHint: 'Who else can run this centre, and which branch they see',
       branches: 'Branches',
       branchesHint: 'The buildings this organisation runs',
       examTypes: 'Exam kinds',
@@ -3659,6 +3693,78 @@ export const en: Dictionary = {
         notFound: 'That branch is not on your list.',
         /** A branch manager, refused. Names who can, because they will have to ask. */
         hqOnly: 'Only the head office can add, rename or close a branch.',
+      },
+    },
+
+    /**
+     * Who else administers this centre (§6.2).
+     *
+     * "Administrator" and not "manager", though `member_role` says `manager` and every
+     * policy resolves through it. A coaching centre already uses the word for the person
+     * who runs a building, and `employees.role` has a `manager` of exactly that kind in it
+     * — so a screen that offered to "make somebody a manager" would read as a job title
+     * rather than as a set of keys. What this grants is the run of the app.
+     *
+     * The client half of the screen is `managerForm`. See there for why the split.
+     */
+    managers: {
+      title: 'Administrators',
+      subtitle: 'Who else can run this centre, and what each of them can see',
+      lockedTitle: 'Administrators come with the Coaching Center plan',
+      lockedBody: (plan: string, center: string) =>
+        `${plan} is one person’s account. ${center} lets you hand the day-to-day running of the centre to somebody you trust, while the plan, the money and this list stay yours.`,
+      /** The two roles this screen draws, in the words the rows use. */
+      owner: 'Owner',
+      manager: 'Administrator',
+      /** The reader’s own row. A Center-plan owner has no teacher row to be named from. */
+      you: 'You',
+      /** Neither list holds this person — see administratorsFrom. */
+      noName: 'A member of this centre',
+      /** What a teacher is employed as, for a list that mixes them with the office. */
+      teacherJob: 'Teacher',
+      /** Pinned to a building that has since been closed. Not the same as head office. */
+      branchClosed: 'A closed branch',
+      appointTitle: 'Appoint an administrator',
+      staffUnreadable:
+        'Your teacher and staff lists could not be read just now, so there is nobody to choose from. Nothing has changed. Please try again in a moment.',
+      nobodyTitle: 'Nobody to appoint yet',
+      nobodyBody:
+        'An administrator has to be somebody this centre has written down — a teacher, or one of the office staff. Write them down first, then come back and appoint them.',
+      saved: 'Saved',
+      removed: 'The appointment has been taken back',
+      /**
+       * The number on this person’s row already belongs to an account, and the owner has
+       * to agree to it before the two are joined.
+       *
+       * Names the account, because that is the whole of the check: an owner who reads back
+       * a name they do not recognise has found a number recorded against the wrong person,
+       * and joining them would hand a stranger the run of the centre.
+       */
+      confirmLink: (name: string) =>
+        `${name} already has an account on this number. Appointing them joins that account to this centre. If that is not the person you mean, correct the number on their own screen first.`,
+      appointed: (name: string) => `${name} can now administer this centre`,
+      /**
+       * And the same with the one thing the owner has to carry away from the screen. §5.2's
+       * username exists nowhere else a reader can find it, so the sentence is the delivery.
+       */
+      appointedUsername: (name: string, username: string) =>
+        `${name} can now administer this centre. They sign in with the username ${username} and the password you just set — write it down and give it to them.`,
+      errors: {
+        ownerOnly: 'Only the centre’s owner can appoint or remove an administrator.',
+        pickSomebody: 'Choose who you are appointing.',
+        notFound: 'That person is not on your list.',
+        /** Switched off, so they left. See candidatesFrom for why they are not offered. */
+        notActive:
+          'That person is switched off, so they cannot be given the run of the centre. Switch them back on first if they have returned.',
+        /** A number on the row that will not make a login id, from an import. */
+        phoneInvalid:
+          'The mobile number on their row is not a valid one, so no login can be made from it. Correct it on their own screen, then appoint them.',
+        numberUnreadable:
+          'Could not check whether that number already has an account, so nothing has changed. Please try again in a moment.',
+        loginFailed: 'Their login could not be created. Please try again.',
+        usernameTaken:
+          'Too many people share this name for a username to be made from it. Write their full name on their own screen, or add their mobile number, and try again.',
+        alreadyAdmin: 'They already administer this centre.',
       },
     },
 

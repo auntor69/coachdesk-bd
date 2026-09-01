@@ -104,6 +104,10 @@ test('the modules that skip the check are exactly the three that should', () => 
     // subscription adding buildings would be a centre growing what it owes us while it
     // is not paying. The head-office check in that module is a separate question.
     'src/app/(app)/settings/branches/actions.ts',
+    // An appointment can mint a login, and a login with a membership behind it is a
+    // person who can reach a lapsed centre's roster and money. Nothing about the centre
+    // owing us fees makes handing out new keys the right write to let through.
+    'src/app/(app)/settings/managers/actions.ts',
     'src/app/(app)/settings/staff/actions.ts',
     'src/app/(app)/teach/[batchId]/actions.ts',
   ])

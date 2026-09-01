@@ -3651,6 +3651,38 @@ export const bn = {
   },
 
   /**
+   * Appointing an administrator, and the two things that can be changed about one.
+   *
+   * Its own top-level group rather than part of `settings.managers`, for the reason
+   * `branchForm` is separate from `settings.branches`: these are the strings a client
+   * component is handed, and `settings.managers` carries the sentences that name a person
+   * -- functions, which `T` refuses to send across the wire.
+   */
+  managerForm: {
+    body: 'পরিচালক হবেন এমন কেউ, যাঁকে এই কেন্দ্র আগেই তালিকায় লিখে রেখেছে। এরপর আপনি যা যা করতে পারেন তিনিও সবই করতে পারবেন — শুধু নতুন পরিচালক নিয়োগ আর প্ল্যান বদল ছাড়া।',
+    whoLabel: 'কাকে',
+    whoHint: 'আপনার শিক্ষক ও কর্মীরা। তালিকায় এখনো নেই এমন কাউকে আগে তাঁর নিজের পাতায় লিখে নিতে হবে।',
+    pickPrompt: 'একজনকে বাছুন',
+    passwordLabel: 'তাঁর জন্য একটি পাসওয়ার্ড',
+    /** They have a number on their row, so the number is the login id. */
+    passwordHintPhone:
+      'তাঁর এখনো কোনো লগইন নেই। তাঁর মোবাইল নম্বর দিয়েই তিনি ঢুকবেন — এই পাসওয়ার্ডটি তাঁকে বলে দিন, পরে তিনি নিজেই বদলে নিতে পারবেন।',
+    /**
+     * And they have not, so §5.2's username is minted instead. Says that the username is
+     * coming rather than showing it: it does not exist until the form is submitted.
+     */
+    passwordHintUsername:
+      'তাঁর কোনো লগইন নেই, আর তাঁর সারিতে মোবাইল নম্বরও নেই — তাই তিনি একটি ইউজারনেম দিয়ে ঢুকবেন। নিয়োগ দেওয়ার পরেই সেটি এখানে দেখাবে, আর এই পাসওয়ার্ডের সঙ্গে সেটিও তাঁকে বলে দিতে হবে।',
+    confirmTick: 'হ্যাঁ, এটি ঠিক মানুষ',
+    submit: 'নিয়োগ দিন',
+    branchTitle: 'তিনি কী দেখতে পাবেন',
+    removeTitle: 'নিয়োগ ফিরিয়ে নিন',
+    removeButton: 'পরিচালক থেকে সরান',
+    removeHint:
+      'তিনি কর্মীর তালিকায় থাকবেন, তাঁর লগইনও চলবে, আর শিক্ষক হলে আবার শিক্ষকই থাকবেন। শুধু পরিচালকের অধিকারটুকু যাবে।',
+  },
+
+  /**
    * The centre's own name and the number a parent sends fees to.
    *
    * Every string here is on one screen, and the screen is unusual: it shows the
@@ -4713,6 +4745,8 @@ export const bn = {
       teachersHint: 'কে কী করতে পারবে',
       staff: 'কর্মী ও বেতন',
       staffHint: 'আর কে কাজ করেন, আর তাঁরা কত পান',
+      managers: 'পরিচালক',
+      managersHint: 'আর কে এই কেন্দ্র চালাতে পারবেন, আর কোন শাখা দেখবেন',
       branches: 'শাখা',
       branchesHint: 'এই প্রতিষ্ঠান যে ভবনগুলো চালায়',
       examTypes: 'পরীক্ষার ধরন',
@@ -5686,6 +5720,49 @@ export const bn = {
         notFound: 'এই শাখা আপনার তালিকায় নেই।',
         /** A branch manager, refused. Names who can, because they will have to ask. */
         hqOnly: 'শাখা যোগ করা, নাম বদলানো বা বন্ধ করা শুধু হেড অফিস করতে পারে।',
+      },
+    },
+
+    /** See en.ts for why the word is "পরিচালক" and not the plan's `manager`. */
+    managers: {
+      title: 'পরিচালক',
+      subtitle: 'আর কে এই কেন্দ্র চালাতে পারবেন, আর কে কী দেখবেন',
+      lockedTitle: 'পরিচালক আছে কোচিং সেন্টার প্ল্যানে',
+      lockedBody: (plan: string, center: string) =>
+        `${plan} একজনের নিজের অ্যাকাউন্ট। ${center}-এ কেন্দ্রের দৈনন্দিন চালানোর ভার আপনি বিশ্বাসী কারও হাতে দিতে পারেন, আর প্ল্যান, টাকা আর এই তালিকা আপনার হাতেই থাকে।`,
+      owner: 'মালিক',
+      manager: 'পরিচালক',
+      you: 'আপনি',
+      noName: 'এই কেন্দ্রের একজন',
+      teacherJob: 'শিক্ষক',
+      branchClosed: 'বন্ধ হয়ে যাওয়া শাখা',
+      appointTitle: 'পরিচালক নিয়োগ করুন',
+      staffUnreadable:
+        'আপনার শিক্ষক আর স্টাফের তালিকা এখন পড়া যায়নি, তাই বেছে নেওয়ার কেউ নেই। কিছু বদলায়নি। একটু পরে আবার চেষ্টা করুন।',
+      nobodyTitle: 'এখনো নিয়োগ করার কেউ নেই',
+      nobodyBody:
+        'পরিচালক হতে হবে এই কেন্দ্রে লেখা আছে এমন কেউ — একজন শিক্ষক, বা অফিসের স্টাফ। আগে তাঁকে লিখে রাখুন, তারপর এসে নিয়োগ করুন।',
+      saved: 'সংরক্ষিত হয়েছে',
+      removed: 'নিয়োগ ফিরিয়ে নেওয়া হয়েছে',
+      confirmLink: (name: string) =>
+        `এই নম্বরে ${name}-এর অ্যাকাউন্ট আগেই আছে। নিয়োগ করলে সেই অ্যাকাউন্টটি এই কেন্দ্রের সাথে জুড়ে যাবে। আপনি যদি এই মানুষটিকে না বোঝান, আগে তাঁর নিজের পাতায় নম্বরটি ঠিক করুন।`,
+      appointed: (name: string) => `${name} এখন এই কেন্দ্র চালাতে পারবেন`,
+      appointedUsername: (name: string, username: string) =>
+        `${name} এখন এই কেন্দ্র চালাতে পারবেন। তিনি ${username} ইউজারনেম আর আপনি যে পাসওয়ার্ডটি দিলেন তা দিয়ে ঢুকবেন — লিখে রেখে তাঁকে দিয়ে দিন।`,
+      errors: {
+        ownerOnly: 'পরিচালক নিয়োগ বা সরানো শুধু কেন্দ্রের মালিক করতে পারেন।',
+        pickSomebody: 'কাকে নিয়োগ করছেন বেছে নিন।',
+        notFound: 'এই মানুষটি আপনার তালিকায় নেই।',
+        notActive:
+          'তিনি বন্ধ করা আছেন, তাই তাঁকে কেন্দ্র চালানোর ভার দেওয়া যাবে না। তিনি ফিরে এসে থাকলে আগে তাঁকে চালু করুন।',
+        phoneInvalid:
+          'তাঁর সারিতে লেখা মোবাইল নম্বরটি সঠিক নয়, তাই এটি দিয়ে কোনো লগইন বানানো যাবে না। তাঁর নিজের পাতায় নম্বরটি ঠিক করে তারপর নিয়োগ করুন।',
+        numberUnreadable:
+          'এই নম্বরে আগেই অ্যাকাউন্ট আছে কিনা তা দেখা যায়নি, কিছু বদলায়নি। একটু পরে আবার চেষ্টা করুন।',
+        loginFailed: 'তাঁর লগইন তৈরি করা যায়নি। আবার চেষ্টা করুন।',
+        usernameTaken:
+          'এই নামে এত জন আছেন যে এটি দিয়ে ইউজারনেম বানানো যাচ্ছে না। তাঁর নিজের পাতায় পুরো নাম লিখুন, বা মোবাইল নম্বর যোগ করুন, তারপর আবার চেষ্টা করুন।',
+        alreadyAdmin: 'তিনি আগেই এই কেন্দ্রের পরিচালক।',
       },
     },
 
