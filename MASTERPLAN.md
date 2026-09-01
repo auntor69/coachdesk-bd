@@ -804,7 +804,7 @@ ceiling and a centre still carrying its signup trial is never admitted Teacher P
 
 ## 5. Identity and authentication
 
-### 5.1 Two things that are not the same thing
+### 5.1 Two things that are not the same thing ✅
 
 A **teacher record** is a row in the register: a name, the subjects they teach,
 the batches they hold, the marks they enter. A **login account** is a credential
@@ -812,15 +812,28 @@ that opens the app.
 
 These are separate on purpose, and the separation is not new — `teachers.user_id`
 has been nullable since the first migration, with the comment *"A teacher row can
-exist before that person ever signs in."* What was missing is the second half:
-a way to give that person an account **afterwards**, without a phone number.
+exist before that person ever signs in."* What was missing was the second half: a
+way to give that person an account **afterwards**, without a phone number. That is
+`giveTeacherLogin`, on the teacher list.
 
 | | |
 |---|---|
-| Manager adds a teacher to the register | no account, no phone needed, works today ✅ |
-| Manager later opens that teacher and taps **Create Login Account** | ❌ not built |
+| Manager adds a teacher to the register | no account, no phone needed ✅ |
+| Manager later opens that teacher and taps **Create Login Account** | ✅ built |
 | Teacher's phone number | **optional**, always |
 | Teacher OTP | **never required** — see 5.5 |
+
+With a number, the action looks for an account that already has it and offers to
+link that person rather than creating a second one — never on the first submit,
+because one mistyped digit would hand a stranger a teacher account inside this
+centre. With the box empty it generates a username by §5.2 and says it back once,
+which is the only time it is shown. Either way the membership row that follows is
+filed under the branch the teacher already works at, and only if they are switched
+on: an inactive teacher has no membership by design, and writing one here would let
+somebody back in through a door an owner has just been given a button for.
+
+The `user_id` arriving on a row that had none is what §10's log calls
+`loginCreated`, so this is the action that arm was written for.
 
 The reason the manager can do this at all is that the organisation vouches for
 the person. A centre creating an account for its own physics teacher is not a
