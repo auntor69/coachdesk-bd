@@ -87,6 +87,21 @@ export type PlatformCenterRow = {
   wants_plan: PlanId | null
   wants_since: string | null
   wants_note: string | null
+  /**
+   * Branches of this centre whose register is full and who have asked for room,
+   * aggregated: how many are waiting, how many places between them, and when the
+   * oldest one asked.
+   *
+   * An aggregate rather than a list, because this screen is one row per centre and
+   * §3.7's question is not which location asked — it is how much room the
+   * organisation is short of and how long it has been short of it. The two counts are
+   * coalesced to zero in the function, so a centre with nothing open reads 0 / 0;
+   * `asks_since` is left null, because "waiting since" has no honest value when
+   * nobody is.
+   */
+  asks_open: number | null
+  asks_places: number | null
+  asks_since: string | null
 }
 
 /**
@@ -252,6 +267,19 @@ export type Customer = {
   wantsSince: string | null
   /** Whatever the owner typed with the request. Usually empty; occasionally the deal. */
   wantsNote: string | null
+  /**
+   * Branches waiting on student places, and the places they want.
+   *
+   * NOT A JOB FOR THE FOUNDER, unlike `wantsPlan` — an owner answers this themselves
+   * on /settings/plan, at a price the app already quotes. It is here because a centre
+   * whose branches are hitting the ceiling is a centre that is growing, and that is
+   * either the easiest call of the week or a customer who has been stuck for a
+   * fortnight and has not said so.
+   */
+  asksOpen: number
+  asksPlaces: number
+  /** When the oldest unanswered branch asked. Null when none is waiting. */
+  asksSince: string | null
 }
 
 function count(value: number | null | undefined): number {
@@ -373,6 +401,9 @@ export function customers(
       // to render a line by asking whether this is null, and a note of three spaces
       // would draw an empty quotation mark under a customer's name.
       wantsNote: row.wants_note?.trim() || null,
+      asksOpen: count(row.asks_open),
+      asksPlaces: count(row.asks_places),
+      asksSince: row.asks_since ?? null,
     })
   }
 
@@ -431,6 +462,15 @@ export type PlatformTotals = {
    */
   asking: number
   /**
+   * Customers with at least one branch waiting on student places.
+   *
+   * Centres and not branches, like `asking` and `owing` beside it: the tile is read as
+   * "how many customers is there something to say to today", and an institution whose
+   * three branches all filled up this week is one phone call, not three. The places
+   * themselves are on the card, where they belong to a centre that can be quoted.
+   */
+  outOfPlaces: number
+  /**
    * Trials inside their last week, plus every trial already past its date.
    *
    * The second to-do on this row rather than a measurement, and the one with a deadline
@@ -462,6 +502,7 @@ export function platformTotals(list: readonly Customer[]): PlatformTotals {
     owing: 0,
     owedBdt: 0,
     asking: 0,
+    outOfPlaces: 0,
     ending: 0,
   }
 
@@ -478,6 +519,9 @@ export function platformTotals(list: readonly Customer[]): PlatformTotals {
     // Counted whatever the status. A trial asking to be put on Centre is the single
     // most valuable row this panel can hold, and a status filter here would drop it.
     if (c.wantsPlan) totals.asking += 1
+    // Whatever the status too, and for a plainer reason: a suspended centre's branch
+    // cannot ask, so anything counted here is a live customer by construction.
+    if (c.asksOpen > 0) totals.outOfPlaces += 1
     // `trialDaysLeft` is null on everything that is not a trial, so no status check is
     // needed here. No lower bound either: a trial that ended three weeks ago still
     // counts, because nothing took it off this list except somebody making the call.
@@ -545,6 +589,9 @@ export type CustomerCsvHeadings = {
   wants: string
   wantsSince: string
   wantsNote: string
+  asks: string
+  asksPlaces: string
+  asksSince: string
 }
 
 export type CustomerCsvWords = {
@@ -610,6 +657,9 @@ export function customersSheet(
     h.wants,
     h.wantsSince,
     h.wantsNote,
+    h.asks,
+    h.asksPlaces,
+    h.asksSince,
   ]
 
   const rows: CsvCell[][] = list.map((c) => [
@@ -656,6 +706,13 @@ export function customersSheet(
     c.wantsPlan ? planName(planFor(c.wantsPlan), 'en') : null,
     c.wantsSince,
     c.wantsNote,
+    // Bare counts, so a founder can sort on the second one and see which customers
+    // are short of the most room. Zero rather than blank, unlike the plan columns
+    // above: nought branches waiting is a fact about a centre, where no plan asked
+    // for is the absence of one.
+    c.asksOpen,
+    c.asksPlaces,
+    c.asksSince,
   ])
 
   return { header, rows }

@@ -5924,6 +5924,18 @@ export const bn = {
        */
       asking: 'প্ল্যান চাইছে',
       /**
+       * Branches that have hit the student ceiling and asked HQ for room.
+       *
+       * "জায়গা শেষ" — the register is full, not the plan. Counts CENTRES and not
+       * branches, like the two tiles beside it: an institution whose three branches
+       * all filled up this week is one owner to ring, not three.
+       *
+       * NOT THE FOUNDER'S JOB TO ANSWER, unlike `asking` — an owner buys the places
+       * themselves at a price the app quotes. It is on this strip because a centre
+       * pressing against the ceiling is a centre that is growing.
+       */
+      outOfPlaces: 'জায়গা শেষ',
+      /**
        * The other job on this strip, and the only one with a date attached.
        *
        * Counts trials in their last week AND trials already past thirty days, because
@@ -6138,6 +6150,23 @@ export const bn = {
       failed: 'করা যায়নি। আবার চেষ্টা করুন।',
     },
     /**
+     * A branch of this centre is full and has asked head office for room.
+     *
+     * PROSE AND NOT A CHIP WITH A BUTTON, unlike `askedFor` above it: there is nothing
+     * for the founder to press. The owner buys the places on their own plan screen at
+     * a price the app quotes, and the only thing this line is for is the phone call
+     * that starts "I see Mirpur has run out".
+     *
+     * Bangla needs no plural form for either count, so one sentence covers both — but
+     * both numbers still go through `digits`, because a prose count in a Bangla
+     * sentence is written in Bangla numerals. Taka figures stay ASCII; these are not
+     * taka.
+     */
+    outOfPlaces: (branches: number, places: number) =>
+      `${digits(branches, 'bn')}টি শাখায় শিক্ষার্থীর জায়গা শেষ — `
+      + `${digits(places, 'bn')}টি জায়গা চেয়েছে`,
+    outOfPlacesSince: (date: string) => `${date} থেকে অপেক্ষায়`,
+    /**
      * Read back after a founder-issued password reset, and the reason it carries a
      * name rather than a tick.
      *
@@ -6235,6 +6264,14 @@ export const bn = {
       wants: 'যে প্ল্যান চেয়েছে',
       wantsSince: 'কবে চেয়েছে',
       wantsNote: 'যা লিখেছে',
+      /**
+       * And the three after them, which are a measurement again — but of pressure
+       * rather than of use. Sort the sheet by the middle one and the centres that are
+       * about to outgrow what they pay for come to the top.
+       */
+      asks: 'যে কয়টি শাখার জায়গা শেষ',
+      asksPlaces: 'যত জায়গা চেয়েছে',
+      asksSince: 'কবে থেকে অপেক্ষায়',
     },
   },
 

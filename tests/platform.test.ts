@@ -71,6 +71,12 @@ function row(over: Partial<PlatformCenterRow> = {}): PlatformCenterRow {
     wants_plan: null,
     wants_since: null,
     wants_note: null,
+    // No branch is waiting either. Both counts are coalesced in the function, so a
+    // centre with nothing open really does arrive as 0 / 0 / null rather than as
+    // three nulls, and the default customer is one whose branches all have room.
+    asks_open: 0,
+    asks_places: 0,
+    asks_since: null,
     ...over,
   }
 }
@@ -515,6 +521,58 @@ test('the asking total counts requests whatever the centre’s status', () => {
 })
 
 /* -------------------------------------------------------------------------- */
+/* Whose branches have run out of places                                      */
+/* -------------------------------------------------------------------------- */
+
+test('the branch asks come through as a count, a sum and the oldest wait', () => {
+  const c = customers(
+    [
+      row({
+        plan: 'institution',
+        asks_open: 2,
+        asks_places: 35,
+        asks_since: '2026-08-20T05:00:00.000Z',
+      }),
+    ],
+    'x',
+    NOW,
+  )[0]
+
+  assert.equal(c.asksOpen, 2)
+  assert.equal(c.asksPlaces, 35)
+  assert.equal(c.asksSince, '2026-08-20T05:00:00.000Z')
+  // Nothing about the asking moves what the centre is entitled to. The places are
+  // bought on the owner's own plan screen and land in center_members.student_capacity;
+  // a shaper that added them here would bill for room nobody has paid for.
+  assert.equal(c.students, 40)
+})
+
+test('a centre whose branches all have room reads zero, not null', () => {
+  const c = customers([row()], 'x', NOW)[0]
+  assert.equal(c.asksOpen, 0)
+  assert.equal(c.asksPlaces, 0)
+  // The one of the three that stays null: "waiting since" has no honest value when
+  // nobody is waiting, and the card asks this rather than the count.
+  assert.equal(c.asksSince, null)
+})
+
+test('the out-of-places total counts customers and not branches', () => {
+  const list = customers(
+    [
+      // Three branches of one institution, all full in the same week. One phone call.
+      row({ center_id: 'a', asks_open: 3, asks_places: 75 }),
+      row({ center_id: 'b', asks_open: 1, asks_places: 25 }),
+      row({ center_id: 'c' }),
+    ],
+    'x',
+    NOW,
+  )
+
+  assert.equal(platformTotals(list).outOfPlaces, 2)
+  assert.equal(platformTotals([]).outOfPlaces, 0)
+})
+
+/* -------------------------------------------------------------------------- */
 /* The trial clock                                                            */
 /* -------------------------------------------------------------------------- */
 
@@ -647,6 +705,9 @@ const HEADINGS = {
   wants: 'যে প্ল্যান চেয়েছে',
   wantsSince: 'কবে চেয়েছে',
   wantsNote: 'যা লিখেছে',
+  asks: 'যে কয়টি শাখার জায়গা শেষ',
+  asksPlaces: 'যত জায়গা চেয়েছে',
+  asksSince: 'কবে থেকে অপেক্ষায়',
 }
 
 const WORDS = {
@@ -779,6 +840,28 @@ test('the request columns are last, and blank for the centres who never asked', 
   assert.equal(at(1, HEADINGS.wants), null)
   assert.equal(at(1, HEADINGS.wantsSince), null)
   assert.equal(at(1, HEADINGS.wantsNote), null)
+})
+
+test('the branch asks leave as numbers a founder can sort and total', () => {
+  const short = customers(
+    [row({ center_id: 'short', asks_open: 2, asks_places: 35, asks_since: '2026-08-20T05:00:00.000Z' })],
+    'x',
+    NOW,
+  )
+  const roomy = customers([row({ center_id: 'roomy' })], 'x', NOW)
+  const { header, rows } = customersSheet([...short, ...roomy], WORDS)
+  const at = (i: number, heading: string) => rows[i][header.indexOf(heading)]
+
+  assert.equal(at(0, HEADINGS.asks), 2)
+  assert.equal(at(0, HEADINGS.asksPlaces), 35)
+  assert.equal(at(0, HEADINGS.asksSince), '2026-08-20T05:00:00.000Z')
+
+  // Zero rather than blank, unlike the plan columns: no branch waiting is a fact
+  // about a centre, where no plan asked for is the absence of one. It also keeps the
+  // column summable, which is why a founder downloads this at all.
+  assert.equal(at(1, HEADINGS.asks), 0)
+  assert.equal(at(1, HEADINGS.asksPlaces), 0)
+  assert.equal(at(1, HEADINGS.asksSince), null)
 })
 
 test('a note a centre owner typed cannot run in the founder’s spreadsheet', () => {

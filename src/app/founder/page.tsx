@@ -220,6 +220,10 @@ export default async function FounderPage() {
                 only one whose useful reading is zero. First row on purpose: a
                 customer waiting to be sold to outranks every figure below it. */}
             <Stat label={t.totals.asking} value={String(totals.asking)} />
+            {/* The third of the same kind, and the one nobody has to answer for
+                the customer: an owner buys places themselves. It is up here
+                because a branch at the ceiling is a centre that is growing. */}
+            <Stat label={t.totals.outOfPlaces} value={String(totals.outOfPlaces)} />
             {/* The other to-do, kept beside it: both tiles mean "ring somebody",
                 and this is the one with a date on it. Trials in their last week
                 and trials already over are counted together on purpose — see the
@@ -264,6 +268,7 @@ export default async function FounderPage() {
             {list.map((c) => {
               const signedUp = dhakaDay(c.createdAt)
               const lastActive = dhakaDay(c.lastActiveAt)
+              const waitingSince = dhakaDay(c.asksSince)
               const open = purchases.get(c.centerId)
 
               return (
@@ -356,6 +361,21 @@ export default async function FounderPage() {
                     <p className="mt-2 text-sm text-ink-soft">
                       {sizeLine(c, locale, t.size)}
                     </p>
+
+                    {/* Under the size line because that is what it is about: this
+                        centre is bigger than what it pays for. A sentence and not a
+                        chip with a button — the owner answers it on their own plan
+                        screen, and there is nothing here for the founder to press. */}
+                    {c.asksOpen > 0 && (
+                      <p className="num mt-1 text-sm font-medium text-amber-800">
+                        {[
+                          t.outOfPlaces(c.asksOpen, c.asksPlaces),
+                          waitingSince && t.outOfPlacesSince(waitingSince),
+                        ]
+                          .filter(Boolean)
+                          .join(' · ')}
+                      </p>
+                    )}
 
                     {/* Above a plan request, because money already sent outranks money
                         somebody is thinking about. Both are the customer waiting on us;

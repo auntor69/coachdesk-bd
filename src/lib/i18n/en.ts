@@ -3805,6 +3805,8 @@ export const en: Dictionary = {
       owed: 'Owed (one month)',
       /** A job, not a measurement, and the one tile you want reading zero. */
       asking: 'Asking to upgrade',
+      /** Branches at the ceiling. Not our job to answer, but our call to make. */
+      outOfPlaces: 'Out of places',
       /** Trials in their last week, and trials already over. See the Bangla note. */
       ending: 'Trials ending',
     },
@@ -3943,6 +3945,15 @@ export const en: Dictionary = {
       handled: 'Taken off the list.',
       failed: 'Could not do it. Try again.',
     },
+    /**
+     * A branch of this centre has filled up and asked for room. Not a job for the
+     * founder — the owner buys these on their own plan screen — so it is a line of
+     * prose rather than a chip with a button. See the Bangla note.
+     */
+    outOfPlaces: (branches: number, places: number) =>
+      `${branches === 1 ? '1 branch is' : `${branches} branches are`} out of student `
+      + `places — ${places} asked for`,
+    outOfPlacesSince: (date: string) => `waiting since ${date}`,
     /** Outside `lockout` because it takes an argument. See the Bangla note. */
     resetDone: (name: string) =>
       `${name} — new password set. Read it out to them now.`,
@@ -4009,6 +4020,10 @@ export const en: Dictionary = {
       wants: 'Plan asked for',
       wantsSince: 'Asked on',
       wantsNote: 'What they wrote',
+      /** Branches at the ceiling. Sort by places and the growing centres group. */
+      asks: 'Branches out of places',
+      asksPlaces: 'Places asked for',
+      asksSince: 'Waiting since',
     },
   },
 
