@@ -2,6 +2,7 @@ import Link from 'next/link'
 
 import { Card } from '@/components/ui'
 import { pagePermission, getSession, isStaffAdmin } from '@/lib/auth/session'
+import { openAsk } from '@/lib/billing/asks'
 import { createClient } from '@/lib/supabase/server'
 import { studentRoom, studentCeiling, planFor, planName } from '@/lib/plans'
 import { rosterKey } from '@/lib/bd/roster'
@@ -121,6 +122,18 @@ export default async function ImportStudentsPage() {
   const paid = studentCeiling(planFor(session.active.plan), session.active.studentCapacity)
   const forSale = paid.kind === 'purchased' ? paid.ceiling : null
 
+  /*
+   * §3.7's fork, resolved here because only the session knows which side of it this
+   * reader is on. Read at all only for the manager of a centre that sells places: an
+   * owner is offered the price, a teacher neither, and a plan with nothing for sale has
+   * no ask to make.
+   */
+  const mayAsk = session.active.role === 'manager'
+  const ask =
+    mayAsk && forSale !== null
+      ? await openAsk(supabase, centerId, session.active.branchId)
+      : null
+
   return (
     <div className="flex flex-col gap-5">
       <div>
@@ -166,6 +179,8 @@ export default async function ImportStudentsPage() {
           // pageRole('manager'), while this page is `can_manage_students` — so a teacher
           // reaches it and must be offered neither the button nor the link.
           mayBuy={session.active.role === 'owner'}
+          mayAsk={mayAsk}
+          asked={ask?.places ?? null}
           mayReadPlan={isStaffAdmin(session)}
           // Null both for a centre too large to hint and for a roster that did not
           // arrive, because the form treats null as “no hint” and counts every pasted

@@ -1,12 +1,14 @@
 import Link from 'next/link'
 
 import { Card } from '@/components/ui'
-import { pagePermission, getSession } from '@/lib/auth/session'
+import { pagePermission, getSession, isStaffAdmin } from '@/lib/auth/session'
+import { openAsk } from '@/lib/billing/asks'
 import { branchChoicesFor } from '@/lib/branches'
 import { createClient } from '@/lib/supabase/server'
-import { studentRoom, planName } from '@/lib/plans'
+import { studentRoom, studentCeiling, planFor, planName, ASK_PLACES } from '@/lib/plans'
 import { slotLabel } from '@/lib/bd/schedule'
 import { dict, localName, DEFAULT_LOCALE } from '@/lib/i18n'
+import { AskPlaces } from './ask-places'
 import { StudentForm } from './student-form'
 
 /** getSession, not pageRole — see the note on teach/page.tsx's own. */
@@ -55,6 +57,27 @@ export default async function NewStudentPage() {
    * somebody away over a number nobody has.
    */
   const atLimit = studentRoom(session.ceiling, studentCount ?? 0) === 0
+
+  /*
+   * §3.7's fork, and it is asked of the PAID plan rather than of `session.ceiling`
+   * above. The card is drawn off the effective ceiling, because that is the number
+   * this reader is actually up against; whether places can be bought at all is a
+   * question about the plan whose money `settle_payment_intent` reads. A trial of a
+   * teacher tier over a paid centre subscription would otherwise hide the ask on the
+   * one centre that could have had the places by the evening.
+   *
+   * Only a manager, exactly — an owner is offered the price on /settings/plan and
+   * `capacity_requests_manager_insert` refuses them anyway. Only when something is
+   * for sale: on a plan whose ceiling is written in the plan table there is nothing
+   * for HQ to buy, and the way out is a different plan.
+   */
+  const sells =
+    studentCeiling(planFor(session.active.plan), session.active.studentCapacity).kind ===
+    'purchased'
+  const mayAsk = atLimit && sells && session.active.role === 'manager'
+  const ask = mayAsk
+    ? await openAsk(supabase, session.active.centerId, session.active.branchId)
+    : null
 
   /*
    * `null` is passed down as `null`, because the form has something to say about a
@@ -117,6 +140,34 @@ export default async function NewStudentPage() {
                 {t.cap(planName(session.plan, locale), session.ceiling.ceiling)}
               </p>
             </>
+          )}
+
+          {/*
+           * §3.4's dead end, closed from both sides. What was above it is true and
+           * useless on its own: the manager reading it cannot pay and the owner reading
+           * it was being told to go and find the screen themselves.
+           *
+           * Finished sentences, not `t` — placesAsk and placesAsked count places, and a
+           * count-dependent string is a function that cannot be serialised into a client
+           * component. See `T` in lib/i18n.
+           */}
+          {mayAsk && (
+            <AskPlaces
+              ask={t.placesAsk(ASK_PLACES)}
+              asking={t.placesAsking}
+              asked={ask ? t.placesAsked(ask.places) : null}
+              withdraw={t.placesAskWithdraw}
+            />
+          )}
+
+          {/* /settings/plan is pageRole('manager'), so a teacher is not sent to it. */}
+          {isStaffAdmin(session) && (
+            <Link
+              href="/settings/plan"
+              className="mt-3 inline-flex min-h-tap items-center font-medium text-brand-700"
+            >
+              {t.placesPlanLink} →
+            </Link>
           )}
         </Card>
       ) : (

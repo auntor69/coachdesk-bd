@@ -1960,6 +1960,18 @@ export const en: Dictionary = {
     shortBuying: 'Opening…',
     /** Owner only — see planOwner in settings/plan/actions.ts. */
     shortAsk: 'Only the owner can buy places. Show them this screen.',
+    /**
+     * §3.7's other half, for the branch manager who reached the same screen. {n} is
+     * ASK_PLACES, and it is fixed — see requestPlaces for why a manager does not
+     * choose it. "HQ" rather than "the owner": on an institution the person who pays
+     * is a head office, and a manager who has never met them still knows what to call
+     * them.
+     */
+    shortAskFor: 'Ask HQ for {n} more places',
+    shortAsking: 'Asking…',
+    shortAsked:
+      'HQ has been asked for {n} more places. They add them by paying for them — once that happens, reload this page and the list goes in.',
+    shortAskWithdraw: 'Cancel the request',
     shortPlanLink: 'Places and plan',
     /**
      * The reference code is not on this screen. It is rendered on the plan page from
@@ -3066,6 +3078,16 @@ export const en: Dictionary = {
           'Places are not sold separately on this plan. More students means a different plan.',
         closed: 'This purchase is no longer open. Reload the page.',
         failed: 'Could not start the purchase. Try again.',
+        /**
+         * §3.7's ask, and the two refusals around it. Both refusals are for a POST that
+         * did not come from a screen — an owner sees the price and a teacher sees
+         * neither — so they say whose button it is rather than apologising.
+         */
+        ownerBuys: 'You can buy the places yourself. Asking is for a manager who cannot.',
+        managerOnly: 'Only a branch manager can ask HQ for more places.',
+        asked: 'HQ has been told. They add the places by paying for them.',
+        askWithdrawn: 'The request has been cancelled.',
+        askFailed: 'Could not send the request. Try again.',
       },
     },
 
@@ -3240,6 +3262,18 @@ export const en: Dictionary = {
       placesTitle: 'There are no student places left',
       places: (places: number) =>
         `This centre has ${places} student ${places === 1 ? 'place' : 'places'} and is using every one. Turn a student off to free one, or ask for more places on the plan screen.`,
+      /**
+       * The same card again, for the branch manager who cannot buy their way out of it
+       * — §3.7. The count is ASK_PLACES; the button is the only way forward this reader
+       * has, so it says what pressing it does rather than naming a screen.
+       */
+      placesAsk: (n: number) => `Ask HQ for ${n} more places`,
+      placesAsking: 'Asking…',
+      placesAsked: (n: number) =>
+        `HQ has been asked for ${n} more places. They add them by paying for them.`,
+      placesAskWithdraw: 'Cancel the request',
+      /** Owner or manager — /settings/plan is pageRole('manager'). */
+      placesPlanLink: 'Places and plan',
       added: 'Student added',
 
       editTitle: 'Fix their details',

@@ -625,6 +625,17 @@ export const CAPACITY_NOTICE_SHARE = 0.2
 export const CAPACITY_URGENT_SHARE = 0.05
 
 /**
+ * How many places a branch manager's ask is worth, from §3.7's own button:
+ * "[ Request 25 more places ]".
+ *
+ * A constant and not a field, because the manager is not the one deciding. They are
+ * telling HQ that the register is full; how much room to buy is priced from the bands
+ * by whoever pays. A box here would invite a manager to type 500 and read the refusal
+ * as HQ saying no to them.
+ */
+export const ASK_PLACES = 25
+
+/**
  * How close this organisation is to its ceiling, in one word.
  *
  * `full` is the state the database enforces (CD001) and the student form refuses; the

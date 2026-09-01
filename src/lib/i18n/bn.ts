@@ -3223,6 +3223,16 @@ export const bn = {
     shortBuy: 'জায়গা কিনুন — {taka}',
     shortBuying: 'শুরু হচ্ছে…',
     shortAsk: 'জায়গা কেবল মালিক কিনতে পারেন। তাঁকে এই স্ক্রিনটি দেখান।',
+    /**
+     * §3.7's fork for a branch manager. "HQ" stays as হেড অফিস — the word a manager
+     * actually uses for the office that pays, and not মালিক, because on an institution
+     * the two are not the same person.
+     */
+    shortAskFor: 'হেড অফিসে আরও {n}টি জায়গার অনুরোধ পাঠান',
+    shortAsking: 'পাঠানো হচ্ছে…',
+    shortAsked:
+      'হেড অফিসে আরও {n}টি জায়গার অনুরোধ গেছে। তাঁরা টাকা দিয়ে জায়গা যোগ করবেন — হয়ে গেলে এই পাতাটি রিলোড করলেই তালিকা যোগ করা যাবে।',
+    shortAskWithdraw: 'অনুরোধ বাতিল করুন',
     shortPlanLink: 'জায়গা ও প্ল্যান',
     bought:
       'কেনা শুরু হয়েছে। প্ল্যান পাতায় দেওয়া রেফারেন্স কোড দিয়ে টাকা পাঠান — টাকা পৌঁছালে এই পাতাটি রিলোড করলেই তালিকা যোগ করা যাবে।',
@@ -4868,6 +4878,12 @@ export const bn = {
           'এই প্ল্যানে জায়গা আলাদা করে কেনা যায় না। বেশি শিক্ষার্থীর জন্য প্ল্যান বদলাতে হবে।',
         closed: 'কেনাকাটাটা আর খোলা নেই। পর্দাটি আবার লোড করে দেখুন।',
         failed: 'কেনাকাটা শুরু করা যায়নি। আবার চেষ্টা করুন।',
+        /** See en.settings.plan.places.ownerBuys for why both refusals name the button. */
+        ownerBuys: 'আপনি নিজেই জায়গা কিনতে পারেন। অনুরোধ পাঠানো ম্যানেজারের জন্য।',
+        managerOnly: 'কেবল ব্রাঞ্চ ম্যানেজার হেড অফিসে জায়গার অনুরোধ পাঠাতে পারেন।',
+        asked: 'হেড অফিসে জানানো হয়েছে। তাঁরা টাকা দিয়ে জায়গা যোগ করবেন।',
+        askWithdrawn: 'অনুরোধ বাতিল হয়েছে।',
+        askFailed: 'অনুরোধ পাঠানো যায়নি। আবার চেষ্টা করুন।',
       },
     },
 
@@ -5095,6 +5111,13 @@ export const bn = {
       placesTitle: 'শিক্ষার্থীর আর জায়গা নেই',
       places: (places: number) =>
         `এই সেন্টারে ${digits(places, 'bn')}টি শিক্ষার্থীর জায়গা, সবই ব্যবহার হচ্ছে। একটি জায়গা খালি করতে কোনো শিক্ষার্থীকে বন্ধ করুন, বা প্ল্যানের পাতা থেকে আরও জায়গা চান।`,
+      /** §3.7 — the same card for a manager, whose only way forward is the button. */
+      placesAsk: (n: number) => `হেড অফিসে আরও ${digits(n, 'bn')}টি জায়গার অনুরোধ পাঠান`,
+      placesAsking: 'পাঠানো হচ্ছে…',
+      placesAsked: (n: number) =>
+        `হেড অফিসে আরও ${digits(n, 'bn')}টি জায়গার অনুরোধ গেছে। তাঁরা টাকা দিয়ে জায়গা যোগ করবেন।`,
+      placesAskWithdraw: 'অনুরোধ বাতিল করুন',
+      placesPlanLink: 'জায়গা ও প্ল্যান',
       added: 'শিক্ষার্থী যোগ হয়েছে',
 
       /**

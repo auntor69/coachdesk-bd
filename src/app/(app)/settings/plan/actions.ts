@@ -27,6 +27,13 @@
  * price and a reference; `student_capacity` moves when the founder confirms the
  * transfer and `settle_payment_intent` runs. Both exports here are an owner saying
  * what they want, which is why neither needs a rail we do not have yet.
+ *
+ * AND `requestPlaces` IS THE SAME SENTENCE FROM A MANAGER, which is §3.7: a branch
+ * manager cannot raise the organisation's monthly cost on their own signature, so at a
+ * full register the fork is a price for whoever pays and an ask for whoever cannot.
+ * That ask is a row for the same reason the upgrade request is — the founder's panel
+ * and the HQ dashboard already know everything about the centre except that somebody
+ * in Mirpur has run out of desks.
  */
 
 import { revalidatePath } from 'next/cache'
@@ -41,11 +48,12 @@ import { toAsciiDigits } from '@/lib/bd/phone'
 import { openIntent } from '@/lib/billing/intents'
 import { priceIntent } from '@/lib/billing/price'
 import { paymentProvider } from '@/lib/billing/provider'
+import { UNIQUE_VIOLATION } from '@/lib/idempotency'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { createClient } from '@/lib/supabase/server'
 import { dict, DEFAULT_LOCALE } from '@/lib/i18n'
 import { MAX_PLACES, MAX_TEXT, clamp } from '@/lib/limits'
-import { planFor, type PlanId } from '@/lib/plans'
+import { ASK_PLACES, planFor, type PlanId } from '@/lib/plans'
 
 export type UpgradeState = {
   error?: string
@@ -99,6 +107,34 @@ async function planOwner(): Promise<CenterSession | UpgradeState> {
 
 function isSession(value: CenterSession | UpgradeState): value is CenterSession {
   return value !== null && 'userId' in value
+}
+
+/**
+ * A manager, and specifically not an owner — the one gate in this app that refuses
+ * upwards.
+ *
+ * `requireRole('manager')` admits an owner, because everywhere else "manager or above"
+ * is what a manager check means. Here it would be wrong twice over. The row it guards
+ * means "somebody who cannot pay needs you to", so an owner filing one is a note to
+ * themselves; and `capacity_requests_manager_insert` draws exactly this line in the
+ * database, so an owner would get a zero-row write and a screen that says the save
+ * failed. Refused here instead, in a sentence that says whose button it is.
+ */
+async function planManager(): Promise<CenterSession | UpgradeState> {
+  try {
+    const session = await requireRole('manager')
+    if (session.active.role !== 'manager') {
+      return { error: dict(session.locale).settings.plan.places.ownerBuys }
+    }
+    return session
+  } catch (err) {
+    if (err instanceof AuthError) {
+      const caller = await getSession()
+      const d = dict(caller?.locale ?? DEFAULT_LOCALE)
+      return { error: d.settings.plan.places.managerOnly }
+    }
+    throw err
+  }
 }
 
 /**
@@ -281,4 +317,91 @@ export async function buyStudentPlaces(
   revalidatePath('/settings/plan')
 
   return { ok: t.opened }
+}
+
+/**
+ * A branch manager telling HQ the register is full.
+ *
+ * HOW MANY IS NOT A PARAMETER. §3.7's button says "Request 25 more places", and
+ * `ASK_PLACES` is that 25 — the manager is reporting a shortage, not pricing a purchase,
+ * and a number arriving from a form is a number somebody can change. What it costs is
+ * worked out from the bands by whoever actually pays.
+ *
+ * NEITHER IS THE BRANCH. 20260811000054's trigger fills `branch_id` from the writer's
+ * own membership, so a Mirpur manager's ask says Mirpur without this form being trusted
+ * to say so — and 20260811000053's restrictive policy refuses an explicit foreign one.
+ *
+ * SAFE TO ARRIVE TWICE, like `requestUpgrade` above and for the same offline replay.
+ * The mechanism is different because the table is: a partial unique index over the open
+ * asks, one per branch, so the second insert is refused rather than upserted. The ask
+ * they already filed is the answer to "did this work", so a unique violation is
+ * success. `.upsert()` cannot be used here — supabase-js has no way to name the
+ * predicate of a partial index — and should not be: a resolved ask is history, and an
+ * upsert would reopen it.
+ */
+export async function requestPlaces(
+  _prev: UpgradeState,
+  _formData: FormData,
+): Promise<UpgradeState> {
+  const gate = await planManager()
+  if (!isSession(gate)) return gate
+
+  const session = gate
+  const t = dict(session.locale).settings.plan.places
+
+  const supabase = await createClient()
+
+  const { error } = await supabase.from('capacity_requests').insert({
+    coaching_center_id: session.active.centerId,
+    places: ASK_PLACES,
+    requested_by: session.userId,
+  })
+
+  if (error && error.code !== UNIQUE_VIOLATION) return { error: t.askFailed }
+
+  // Both screens that offer the button, because either one may have been the one
+  // pressed and both draw the "already asked" line from the same row.
+  revalidatePath('/settings/students/new')
+  revalidatePath('/settings/students/import')
+
+  return { ok: t.asked }
+}
+
+/**
+ * Takes the ask back, for `withdrawUpgradeRequest`'s reason: a pending card with no way
+ * out is a screen that lies about what the reader controls.
+ *
+ * FILTERED BY THE WRITER'S OWN BRANCH, which is not belt and braces. RLS keeps a pinned
+ * manager to their own rows, but a manager with no branch passes `app.branch_ok` for
+ * every row in the centre — so a head-office manager withdrawing "their" ask with only
+ * a centre filter would delete Mirpur's and Uttara's along with it.
+ */
+export async function withdrawPlacesRequest(
+  _prev: UpgradeState,
+  _formData: FormData,
+): Promise<UpgradeState> {
+  const gate = await planManager()
+  if (!isSession(gate)) return gate
+
+  const session = gate
+  const t = dict(session.locale).settings.plan.places
+  const branchId = session.active.branchId
+
+  const supabase = await createClient()
+
+  // scoped-by: coaching_center_id is filtered below. `handled_at is null` keeps this to
+  // the ask nobody has answered, which is also all the policy allows.
+  const { error } = await supabase
+    .from('capacity_requests')
+    .delete()
+    .eq('coaching_center_id', session.active.centerId)
+    .is('handled_at', null)
+    .filter('branch_id', branchId === null ? 'is' : 'eq', branchId)
+
+  if (error) return { error: t.askFailed }
+
+  revalidatePath('/settings/students/new')
+  revalidatePath('/settings/students/import')
+
+  return { ok: t.askWithdrawn }
 }

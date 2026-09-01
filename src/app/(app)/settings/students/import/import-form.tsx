@@ -33,8 +33,13 @@ import { fill } from '@/lib/i18n/fill'
 import type { T } from '@/lib/i18n'
 import { mintIdempotencyKey } from '@/lib/idempotency'
 import { formatTaka } from '@/lib/money'
-import { capacityBands, capacityCostBdt } from '@/lib/plans'
-import { buyStudentPlaces, type UpgradeState } from '../../plan/actions'
+import { ASK_PLACES, capacityBands, capacityCostBdt } from '@/lib/plans'
+import {
+  buyStudentPlaces,
+  requestPlaces,
+  withdrawPlacesRequest,
+  type UpgradeState,
+} from '../../plan/actions'
 import { importStudents, type ActionState } from '../../actions'
 
 type BatchOption = { id: string; label: string }
@@ -58,6 +63,8 @@ export function ImportForm({
   room,
   forSale,
   mayBuy,
+  mayAsk,
+  asked,
   mayReadPlan,
 }: {
   t: T<'importForm'>
@@ -83,6 +90,14 @@ export function ImportForm({
   forSale: number | null
   /** Owner only, mirroring requireRole('owner') inside `buyStudentPlaces`. */
   mayBuy: boolean
+  /**
+   * Manager only, and exactly a manager — §3.7's fork. `planManager` and
+   * `capacity_requests_manager_insert` both refuse an owner, who is offered the price
+   * above instead.
+   */
+  mayAsk: boolean
+  /** How many places this branch has already asked for, or null if they have not. */
+  asked: number | null
   /** Owner or manager — /settings/plan is pageRole('manager'). */
   mayReadPlan: boolean
 }) {
@@ -125,6 +140,24 @@ export function ImportForm({
     null,
   )
   const keyRef = useRef<HTMLInputElement>(null)
+
+  /*
+   * The ask, in the same <form> again and for the same reason — §3.7's manager cannot
+   * buy, and a link away from a five-hundred-line paste is a paste thrown away. Neither
+   * action reads a field of the other's: `requestPlaces` takes nothing off the form at
+   * all, because how many places to ask for is not a manager's to type.
+   */
+  const [askState, ask, asking] = useActionState<UpgradeState, FormData>(
+    requestPlaces,
+    null,
+  )
+  const [withdrawn, withdraw, withdrawing] = useActionState<UpgradeState, FormData>(
+    withdrawPlacesRequest,
+    null,
+  )
+
+  /** What the row says, plus what this screen has done to it since it loaded. */
+  const askOpen = withdrawn?.ok ? null : askState?.ok ? ASK_PLACES : asked
 
   /*
    * The replay guard, minted after mount because it reads a random source. Reused for a
@@ -292,6 +325,9 @@ export function ImportForm({
             )}
 
             {bought?.error && <Alert>{bought.error}</Alert>}
+            {(askState?.error || withdrawn?.error) && (
+              <Alert>{askState?.error ?? withdrawn?.error}</Alert>
+            )}
 
             {bought?.ok ? (
               <p role="status" className="text-sm font-medium text-brand-700">
@@ -305,8 +341,33 @@ export function ImportForm({
                   {buying ? t.shortBuying : fill(t.shortBuy, { taka: formatTaka(shortCost) })}
                 </Button>
               </>
-            ) : (
+            ) : !mayAsk ? (
               <p className="text-sm text-ink-soft">{t.shortAsk}</p>
+            ) : askOpen !== null ? (
+              <div className="flex flex-col gap-1">
+                <p role="status" className="num text-sm font-medium text-brand-700">
+                  {fill(t.shortAsked, { n: askOpen })}
+                </p>
+                <Button
+                  type="submit"
+                  formAction={withdraw}
+                  disabled={withdrawing}
+                  variant="ghost"
+                  className="self-start px-0"
+                >
+                  {t.shortAskWithdraw}
+                </Button>
+              </div>
+            ) : (
+              <Button
+                type="submit"
+                formAction={ask}
+                disabled={asking}
+                variant="secondary"
+                full
+              >
+                {asking ? t.shortAsking : fill(t.shortAskFor, { n: ASK_PLACES })}
+              </Button>
             )}
 
             {mayReadPlan && (
