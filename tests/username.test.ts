@@ -23,6 +23,10 @@ import {
   USERNAME_LOGIN_DOMAIN,
   usernameToLoginEmail,
 } from '../src/lib/bd/username.ts'
+import {
+  createUsernameLogin,
+  isEmailTakenError,
+} from '../src/lib/auth/username-login.ts'
 
 /**
  * The identifier a teacher with no phone number signs in with (MASTERPLAN.md §5.2).
@@ -292,4 +296,127 @@ test('username.ts stays importable from a client component', () => {
   const specifiers = [...source.matchAll(/from '([^']+)'/g)].map((m) => m[1])
 
   assert.deepEqual([...new Set(specifiers)].sort(), ['./phone.ts'])
+})
+
+/* -------------------------------------------------------------------------- */
+/* Minting the account                                                        */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * A GoTrue that hands out one address and refuses the rest.
+ *
+ * `taken` is the set of local parts already spoken for. Every call is recorded, because
+ * what is being tested is which candidates were tried and in what order — the loop's
+ * whole job is to walk them, and a loop that asked for the same one twice or gave up
+ * after the first refusal would still return a plausible answer.
+ */
+function fakeGoTrue(taken: string[], failOn?: string) {
+  const asked: string[] = []
+
+  const admin = {
+    auth: {
+      admin: {
+        createUser({ email }: { email: string }) {
+          const username = email.slice(0, email.indexOf('@'))
+          asked.push(username)
+
+          if (username === failOn) {
+            return Promise.resolve({
+              data: { user: null },
+              error: { code: 'unexpected_failure', message: 'database is down' },
+            })
+          }
+
+          if (taken.includes(username)) {
+            return Promise.resolve({
+              data: { user: null },
+              error: { code: 'email_exists', message: 'Email address already registered' },
+            })
+          }
+
+          return Promise.resolve({ data: { user: { id: `id-${username}` } }, error: null })
+        },
+      },
+    },
+  }
+
+  return { admin: admin as unknown as Parameters<typeof createUsernameLogin>[0], asked }
+}
+
+test('a taken address is read from the code and from the older message', () => {
+  // The whole collision loop rests on this one answer, and it is the difference between
+  // trying `rahim01` and telling the owner their centre's login is broken.
+  assert.equal(isEmailTakenError({ code: 'email_exists', message: '' }), true)
+  assert.equal(isEmailTakenError({ message: 'Email address already registered' }), true)
+  assert.equal(isEmailTakenError({ message: 'A user with this email already exists' }), true)
+  assert.equal(isEmailTakenError({ message: 'user has already been registered' }), true)
+
+  // Anything else is not a collision. A dead network read as one would be a hundred
+  // round trips before the owner saw a message.
+  assert.equal(isEmailTakenError(null), false)
+  assert.equal(isEmailTakenError({ code: 'weak_password', message: 'Password too short' }), false)
+  assert.equal(isEmailTakenError({ message: 'fetch failed' }), false)
+})
+
+test('the first free name is the username, and it is the one that is returned', async () => {
+  // The claim §5.2 actually makes: what the owner reads out is what signs in. The
+  // trigger writes `username` from the metadata and never appends a suffix, so a
+  // returned name that differed from the address would be a login nobody can use.
+  const { admin, asked } = fakeGoTrue(['rahim', 'rahim01'])
+
+  const login = await createUsernameLogin(admin, 'rahim', 'Rahim', 'password123', 'bn')
+
+  assert.deepEqual(login, { userId: 'id-rahim02', username: 'rahim02' })
+  assert.deepEqual(asked, ['rahim', 'rahim01', 'rahim02'])
+})
+
+test('anything that is not a collision stops the walk', async () => {
+  const { admin, asked } = fakeGoTrue([], 'rahim')
+
+  assert.deepEqual(await createUsernameLogin(admin, 'rahim', 'Rahim', 'password123', 'bn'), {
+    refused: 'failed',
+  })
+  assert.deepEqual(asked, ['rahim'])
+})
+
+test('a hundred namesakes is a different answer from a broken signup', async () => {
+  /*
+   * Bounded, and the bound is the reason the two refusals are separate values. `taken`
+   * asks the owner for a different spelling of the name; `failed` asks them to submit
+   * again in a minute. One of those is useless advice for the other's cause.
+   */
+  const all = Array.from({ length: USERNAME_ATTEMPTS }, (_, i) => usernameCandidate('ali', i))
+  const { admin, asked } = fakeGoTrue(all)
+
+  assert.deepEqual(await createUsernameLogin(admin, 'ali', 'Ali', 'password123', 'bn'), {
+    refused: 'taken',
+  })
+  assert.equal(asked.length, USERNAME_ATTEMPTS)
+})
+
+test('the account carries the name and the locale, and no phone', async () => {
+  // No `phone` key is the point of the whole exercise — this person has no number, which
+  // is why they are getting a username. One written here would be a lie in auth.users.
+  const sent: Array<Record<string, unknown>> = []
+  const admin = {
+    auth: {
+      admin: {
+        createUser(args: Record<string, unknown>) {
+          sent.push(args)
+          return Promise.resolve({ data: { user: { id: 'id-1' } }, error: null })
+        },
+      },
+    },
+  } as unknown as Parameters<typeof createUsernameLogin>[0]
+
+  await createUsernameLogin(admin, 'rahim', 'Md. Rahim Uddin', 'password123', 'en')
+
+  assert.equal(sent.length, 1)
+  assert.equal(sent[0].email, usernameToLoginEmail('rahim'))
+  assert.equal(sent[0].email_confirm, true)
+  assert.deepEqual(sent[0].user_metadata, {
+    full_name: 'Md. Rahim Uddin',
+    username: 'rahim',
+    locale: 'en',
+  })
 })
