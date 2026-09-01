@@ -4884,6 +4884,18 @@ export const bn = {
         asked: 'হেড অফিসে জানানো হয়েছে। তাঁরা টাকা দিয়ে জায়গা যোগ করবেন।',
         askWithdrawn: 'অনুরোধ বাতিল হয়েছে।',
         askFailed: 'অনুরোধ পাঠানো যায়নি। আবার চেষ্টা করুন।',
+        /** §3.7's answer — see en.settings.plan.places.asksTitle. */
+        asksTitle: 'একটি ব্রাঞ্চে জায়গা শেষ',
+        asksBody:
+          'জায়গা কিনলেই অনুরোধের জবাব হয়ে যায়। কেনাকাটা খোলার সঙ্গেই অনুরোধ বন্ধ হয়; টাকা আমাদের কাছে পৌঁছালে জায়গা যোগ হয়।',
+        askLine: (where: string, places: number, when: string) =>
+          `${where} ${when} তারিখে আরও ${digits(places, 'bn')}টি জায়গার অনুরোধ করেছে।`,
+        askBuy: (places: number, taka: string) =>
+          `${digits(places, 'bn')}টি জায়গা ${taka} দিয়ে কিনুন`,
+        askDecline: 'এখন নয়',
+        askDeclined: 'কেনাকাটা ছাড়াই বন্ধ হয়েছে। ব্রাঞ্চ আবার অনুরোধ করতে পারবে।',
+        askGone: 'অনুরোধটি আর খোলা নেই। পর্দাটি আবার লোড করে দেখুন।',
+        asksUnreadable: 'কোনো ব্রাঞ্চ জায়গার অপেক্ষায় আছে কিনা এখন পড়া যায়নি।',
       },
     },
 

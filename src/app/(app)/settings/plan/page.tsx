@@ -5,7 +5,9 @@ import { pageRole, getSession } from '@/lib/auth/session'
 import { createClient } from '@/lib/supabase/server'
 import { formatBdMobile, normalizeBdMobile } from '@/lib/bd/phone'
 import { formatDate, hasPassed, todayInDhaka } from '@/lib/bd/time'
+import { openAsks } from '@/lib/billing/asks'
 import { transferReference } from '@/lib/billing/manual'
+import { priceIntent } from '@/lib/billing/price'
 import { dict, DEFAULT_LOCALE, type Locale } from '@/lib/i18n'
 import { formatTaka } from '@/lib/money'
 import {
@@ -21,6 +23,7 @@ import {
   type PlanId,
   type PlanLimits,
 } from '@/lib/plans'
+import { AskRow } from './ask-row'
 import { BuyPlaces } from './buy-places'
 import { PriceCalculator } from './calculator'
 import { UpgradeRequest } from './upgrade-request'
@@ -140,6 +143,7 @@ export default async function PlanPage() {
     { count: teacherCount },
     { data: asked, error: askedError },
     { data: buys, error: buysError },
+    asks,
   ] = await Promise.all([
     supabase
       .from('batches')
@@ -195,6 +199,15 @@ export default async function PlanPage() {
           .order('created_at', { ascending: false })
           .limit(5)
       : Promise.resolve({ data: null, error: null }),
+    /*
+     * §3.7's asks, waiting for the one reader who can end the wait.
+     *
+     * Only where places are sold and only for an owner, which `sellsPlaces` is both of.
+     * A manager reading this screen filed the ask themselves and is shown it on the
+     * screen where they filed it; a teacher tier has nothing to buy, so an ask left over
+     * from before a downgrade is the founder panel's problem rather than this card's.
+     */
+    sellsPlaces ? openAsks(supabase, session.active.centerId) : Promise.resolve(null),
   ])
 
   /*
@@ -297,6 +310,42 @@ export default async function PlanPage() {
       )
     : null
 
+  /*
+   * §3.7's asks, as finished rows — the branch that ran out, how many places it wants,
+   * when it asked, and what answering costs.
+   *
+   * PRICED HERE FROM THE SAME BANDS THE ACTION USES, off the paid ceiling. `answerAsk`
+   * recomputes it rather than reading this figure, so the two must agree by construction:
+   * an owner shown ৳625 who is charged ৳750 has been lied to on the screen where they
+   * decide to trust us with money.
+   *
+   * Each ask priced against the ceiling as it stands, not cumulatively. Answering two
+   * asks is two purchases, and the second is quoted when it is opened — by which time
+   * the first may have raised the ceiling and moved the band.
+   */
+  const branchWords = dict(locale).hq
+  const askRows = (asks ?? []).map((ask) => ({
+    id: ask.id,
+    line: t.places.askLine(
+      ask.branchId === null
+        ? branchWords.headOffice
+        : (ask.branchName ?? branchWords.unnamedBranch),
+      ask.places,
+      formatDate(todayInDhaka(new Date(ask.createdAt)), locale),
+    ),
+    buy: t.places.askBuy(
+      ask.places,
+      formatTaka(
+        priceIntent({
+          purpose: 'student_capacity',
+          plan: planFor(session.active.plan),
+          purchasedCapacity: session.active.studentCapacity,
+          places: ask.places,
+        }).amountBdt,
+      ),
+    ),
+  }))
+
   return (
     <div className="flex flex-col gap-5">
       <Link
@@ -364,6 +413,34 @@ export default async function PlanPage() {
         <Card>
           <h2 className="font-semibold text-ink">{t.places.title}</h2>
           <p className="mt-1 text-sm text-ink-soft">{t.places.body}</p>
+
+          {/*
+            ABOVE THE BUY FORM, because it is the same purchase with the decision already
+            made. An owner who scrolls past this to type a number into the box below has
+            bought the places without closing the ask, and the manager in Mirpur is still
+            being told HQ has been asked.
+          */}
+          {asks === null && (
+            <p className="mt-3 text-sm text-ink-soft">{t.places.asksUnreadable}</p>
+          )}
+
+          {askRows.length > 0 && (
+            <div className="mt-4 border-t border-line pt-3">
+              <h3 className="font-medium text-ink">{t.places.asksTitle}</h3>
+              <p className="mt-1 text-sm text-ink-soft">{t.places.asksBody}</p>
+              <div className="mt-2 flex flex-col gap-2">
+                {askRows.map((row) => (
+                  <AskRow
+                    key={row.id}
+                    id={row.id}
+                    line={row.line}
+                    buy={row.buy}
+                    decline={t.places.askDecline}
+                  />
+                ))}
+              </div>
+            </div>
+          )}
 
           {buysError && (
             <p className="mt-3 text-sm text-ink-soft">{t.places.unreadable}</p>

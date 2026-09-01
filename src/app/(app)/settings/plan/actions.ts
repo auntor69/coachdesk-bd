@@ -34,6 +34,12 @@
  * That ask is a row for the same reason the upgrade request is — the founder's panel
  * and the HQ dashboard already know everything about the centre except that somebody
  * in Mirpur has run out of desks.
+ *
+ * `answerAsk` CLOSES THAT LOOP, and it is the one pair of exports here where the two
+ * halves are not symmetrical. The ask is written by a manager's own client under RLS;
+ * the answer needs the service role, because resolving one writes three columns at once
+ * and no browser has UPDATE on that table. Which is the same rule as everything else in
+ * this file: the customer says what they want, and the money is written by the server.
  */
 
 import { revalidatePath } from 'next/cache'
@@ -404,4 +410,169 @@ export async function withdrawPlacesRequest(
   revalidatePath('/settings/students/import')
 
   return { ok: t.askWithdrawn }
+}
+
+/** A uuid and nothing that merely looks like one, since this arrives from a form. */
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
+/**
+ * The ask an owner is about to answer, or null if there is nothing to answer.
+ *
+ * READ WITH THE OWNER'S OWN CLIENT, deliberately, even though the write below needs the
+ * service role. `capacity_requests_center_read` is what proves this row is theirs; doing
+ * it by hand on an admin client would put that boundary in this file, where a missing
+ * `.eq('coaching_center_id', …)` is a centre reading another centre's asks. The centre
+ * filter is here as well, and it is the belt: RLS is the braces.
+ */
+async function openAskById(
+  session: CenterSession,
+  raw: unknown,
+): Promise<{ id: string; places: number; branchId: string | null } | null> {
+  const id = String(raw ?? '')
+  if (!UUID_RE.test(id)) return null
+
+  const supabase = await createClient()
+
+  // scoped-by: coaching_center_id is filtered below, and RLS refuses another centre's.
+  const { data } = await supabase
+    .from('capacity_requests')
+    .select('id, places, branch_id')
+    .eq('id', id)
+    .eq('coaching_center_id', session.active.centerId)
+    .is('handled_at', null)
+    .maybeSingle()
+
+  if (!data) return null
+
+  return { id: data.id, places: data.places, branchId: data.branch_id }
+}
+
+/**
+ * §3.7's answer: HQ approves an ask by paying for it.
+ *
+ * THE PLACES COME FROM THE ROW, not from the form. The form sends one id; how many
+ * places that ask was for is a column, so an owner cannot be talked into a bigger
+ * purchase than the one on their screen and a tampered POST cannot enlarge somebody
+ * else's ask. Priced from the paid plan for `buyStudentPlaces`'s reason.
+ *
+ * THE ORDER OF THE TWO WRITES IS THE WHOLE DESIGN. The purchase is opened first and the
+ * ask is stamped with it second, so a failure in between leaves an open ask and a real
+ * purchase — the owner sees both on this screen and can answer again. Stamping first
+ * would leave an ask marked handled by a purchase that does not exist, and the manager
+ * waiting on it would have been told it was dealt with.
+ *
+ * NOTHING HERE RAISES THE CEILING. `handled_at` means "answered", not "granted": whether
+ * the places arrive is `payment_intents.state`, which moves when the founder confirms
+ * the transfer and `settle_payment_intent` runs. That is why the record points at the
+ * intent instead of carrying an `approved` boolean of its own.
+ */
+export async function answerAsk(
+  _prev: UpgradeState,
+  formData: FormData,
+): Promise<UpgradeState> {
+  const gate = await planOwner()
+  if (!isSession(gate)) return gate
+
+  const session = gate
+  const t = dict(session.locale).settings.plan.places
+
+  const ask = await openAskById(session, formData.get('ask'))
+  if (!ask) return { error: t.askGone }
+
+  const quote = priceIntent({
+    purpose: 'student_capacity',
+    plan: planFor(session.active.plan),
+    purchasedCapacity: session.active.studentCapacity,
+    places: ask.places,
+  })
+  if (quote.quantity <= 0) return { error: t.notOnThisPlan }
+
+  const admin = createAdminClient(session.userId)
+
+  const opened = await openIntent(admin, {
+    centerId: session.active.centerId,
+    quote,
+    requestedBy: session.userId,
+    // The branch that ran out, not the owner's own. `openIntent` calls this "which
+    // branch asked", and on this path that is a fact rather than an inference — §3.8's
+    // receipt should say Mirpur even though head office paid.
+    branchId: ask.branchId,
+    idempotencyKey: formData.get('idempotencyKey'),
+  })
+  if (!opened.ok) return { error: t.failed }
+
+  const provider = paymentProvider(opened.intent.provider)
+  const told = await provider.createPayment(admin, opened.intent)
+  if (told.kind === 'blocked') return { error: t.closed }
+
+  // Service role because `authenticated` has no UPDATE on this table at all —
+  // 20260811000058 revokes it rather than leaving it unpolicied, since resolving writes
+  // three columns at once and one of them points at money.
+  //
+  // `handled_at is null` again, and not for tidiness: two owners answering the same ask
+  // in the same minute would otherwise have the second purchase quietly overwrite the
+  // first one's link, leaving a paid intent attached to nothing.
+  const { error } = await admin
+    .from('capacity_requests')
+    .update({
+      handled_at: new Date().toISOString(),
+      handled_by: session.userId,
+      intent_id: opened.intent.id,
+    })
+    .eq('id', ask.id)
+    .eq('coaching_center_id', session.active.centerId)
+    .is('handled_at', null)
+
+  // Not an error the owner is shown: the purchase is open and the instruction to pay is
+  // on the screen they land on. What is left behind is an ask that still looks open,
+  // which the next answer resolves — the opposite failure would be a manager told their
+  // shortage was dealt with by a purchase nobody made.
+  if (error) return { ok: t.opened }
+
+  revalidatePath('/settings/plan')
+  revalidatePath('/settings/students/new')
+  revalidatePath('/settings/students/import')
+
+  return { ok: t.opened }
+}
+
+/**
+ * The other answer, which §3.7 allows and 20260811000058 calls "refused and dated": a
+ * date with no intent behind it.
+ *
+ * It exists because the alternative is worse than a no. An ask nobody answers sits on
+ * the manager's screen saying HQ has been told, for a term, while the owner who decided
+ * against it has no way to say so — and the branch keeps turning families away expecting
+ * places that are not coming. A closed ask lets them ask again next month, which is the
+ * conversation that should happen.
+ */
+export async function declineAsk(
+  _prev: UpgradeState,
+  formData: FormData,
+): Promise<UpgradeState> {
+  const gate = await planOwner()
+  if (!isSession(gate)) return gate
+
+  const session = gate
+  const t = dict(session.locale).settings.plan.places
+
+  const ask = await openAskById(session, formData.get('ask'))
+  if (!ask) return { error: t.askGone }
+
+  const admin = createAdminClient(session.userId)
+
+  const { error } = await admin
+    .from('capacity_requests')
+    .update({ handled_at: new Date().toISOString(), handled_by: session.userId })
+    .eq('id', ask.id)
+    .eq('coaching_center_id', session.active.centerId)
+    .is('handled_at', null)
+
+  if (error) return { error: t.askFailed }
+
+  revalidatePath('/settings/plan')
+  revalidatePath('/settings/students/new')
+  revalidatePath('/settings/students/import')
+
+  return { ok: t.askDeclined }
 }

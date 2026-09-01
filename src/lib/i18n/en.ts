@@ -3088,6 +3088,23 @@ export const en: Dictionary = {
         asked: 'HQ has been told. They add the places by paying for them.',
         askWithdrawn: 'The request has been cancelled.',
         askFailed: 'Could not send the request. Try again.',
+        /**
+         * §3.7's answer, on the owner's side of the same fork. "Buying the places is the
+         * answer" is not a turn of phrase — the ask closes on the purchase and carries
+         * its id, so what the manager is waiting for is a payment, not a decision.
+         */
+        asksTitle: 'A branch has run out of places',
+        asksBody:
+          'Buying the places answers the request. It closes as soon as the purchase is open; the places arrive when the money reaches us.',
+        askLine: (where: string, places: number, when: string) =>
+          `${where} asked for ${places} more ${places === 1 ? 'place' : 'places'} on ${when}.`,
+        askBuy: (places: number, taka: string) => `Buy ${places} places for ${taka}`,
+        /** Not "Refuse". The branch may ask again next month, and should. */
+        askDecline: 'Not now',
+        askDeclined: 'Closed without a purchase. The branch can ask again.',
+        askGone: 'That request is no longer open. Reload the page.',
+        asksUnreadable:
+          'Whether a branch is waiting for places could not be read just now.',
       },
     },
 

@@ -3,8 +3,15 @@ import Link from 'next/link'
 import { Card } from '@/components/ui'
 import { PlacesWarning } from '@/components/places-warning'
 import { pageRole, getSession } from '@/lib/auth/session'
+import { openAsks } from '@/lib/billing/asks'
 import { isHqMember } from '@/lib/branches'
-import { currentPeriodMonth, addMonths, formatMonth } from '@/lib/bd/time'
+import {
+  currentPeriodMonth,
+  addMonths,
+  formatMonth,
+  formatDate,
+  todayInDhaka,
+} from '@/lib/bd/time'
 import {
   branchMoneyRows,
   payrollGap,
@@ -111,7 +118,7 @@ export default async function HqPage({
 
   const supabase = await createClient()
 
-  const [money, bills, branchList, centerHeads] = await Promise.all([
+  const [money, bills, branchList, centerHeads, asks] = await Promise.all([
     supabase
       .from('branch_profit_month')
       .select(PROFIT_COLUMNS)
@@ -135,6 +142,11 @@ export default async function HqPage({
       .select('id', { count: 'exact', head: true })
       .eq('coaching_center_id', session.active.centerId)
       .eq('status', 'active'),
+    // §3.7 names this screen for the asks as well as for the warning: "It appears on the
+    // HQ dashboard and in the founder panel." Read for a manager too, who cannot answer
+    // one — a head office reading that Mirpur has been waiting a fortnight is how the
+    // person who can pay hears about it at all.
+    openAsks(supabase, session.active.centerId),
   ])
 
   /*
@@ -398,6 +410,42 @@ export default async function HqPage({
             note={t.poolNote}
           />
         ))}
+
+      {/*
+        §3.7's asks, on the screen it names for them. A LIST AND NOT A CONTROL: the two
+        answers are a purchase and a refusal, both of which belong on the plan screen
+        beside the price and behind `requireRole('owner')`. What this adds is that the
+        head office finds out — a manager who filed an ask has no way to reach the owner
+        that is not this product, and an ask nobody reads is the email we replaced.
+
+        Silent when the read fails. The card below it is a warning about the pool, the
+        table above is the month's money, and a line about a read that did not work
+        belongs to neither; §3.7's own list is on the plan screen, which says so there.
+      */}
+      {asks !== null && asks.length > 0 && (
+        <section className="rounded-xl border border-line bg-white p-4">
+          <h2 className="font-semibold text-ink">{d.settings.plan.places.asksTitle}</h2>
+          <ul className="mt-2 flex flex-col gap-1">
+            {asks.map((ask) => (
+              <li key={ask.id} className="num text-sm text-ink">
+                {d.settings.plan.places.askLine(
+                  ask.branchId === null
+                    ? t.headOffice
+                    : (ask.branchName ?? t.unnamedBranch),
+                  ask.places,
+                  formatDate(todayInDhaka(new Date(ask.createdAt)), locale),
+                )}
+              </li>
+            ))}
+          </ul>
+          <Link
+            href="/settings/plan"
+            className="mt-2 inline-flex min-h-tap items-center font-medium text-brand-700"
+          >
+            {d.settings.plan.places.title} →
+          </Link>
+        </section>
+      )}
 
       <Link
         href="/settings/branches"
