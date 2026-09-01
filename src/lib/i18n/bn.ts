@@ -442,6 +442,46 @@ export const bn = {
   },
 
   /**
+   * The fortnight of Teacher Pro a new signup gets (MASTERPLAN.md §2.2), said out loud.
+   *
+   * A SEPARATE GROUP FROM `readOnly` because nothing is being refused: the centre holds
+   * more than it pays for, and the sentence is a reminder, not a wall. Sharing the
+   * group would eventually share a body string, and "settle the bill" is the wrong
+   * sentence for somebody who has never been billed.
+   *
+   * NAMES THE TIER AND THE DATE IN EVERY STATE. A trial nobody was told about sells
+   * nothing, and a trial that ended without saying so reads as the app breaking:
+   * printed receipts simply stopped working. Both halves are the product here.
+   */
+  trialNotice: {
+    /** Every day of the fortnight but the last. Day 1 too — see the group note. */
+    runningTitle: (plan: string, days: number) =>
+      `ফ্রি ${plan} ট্রায়ালের আরও ${digits(days, 'bn')} দিন বাকি`,
+    /** Nothing left to count, so it says the day instead of "০ দিন বাকি". */
+    lastDayTitle: (plan: string) => `আজই ফ্রি ${plan} ট্রায়ালের শেষ দিন`,
+    /**
+     * The three things §2.2 promises really stop, named in the words the screens that
+     * own them use: রসিদ, ফাইল ডাউনলোড, অগ্রগতি. A body that said "premium features"
+     * would leave an owner to find out which ones by losing them.
+     */
+    runningBody: (plan: string, date: string) =>
+      `রসিদ ছাপা, ফাইল ডাউনলোড আর অগ্রগতির হিসাব — এগুলো ${plan} প্ল্যানের সঙ্গে আসে। ${date} তারিখের পর এগুলো বন্ধ হয়ে যাবে, তবে যা সেভ করা আছে সব থেকে যাবে।`,
+    endedTitle: (plan: string) => `ফ্রি ${plan} ট্রায়ালের মেয়াদ শেষ`,
+    /**
+     * Says what stopped and, just as loudly, what did not. An owner whose receipts
+     * stopped printing assumes the rest is next.
+     */
+    endedBody: (date: string) =>
+      `${date} তারিখে মেয়াদ শেষ হয়েছে, তাই রসিদ ছাপা, ফাইল ডাউনলোড আর অগ্রগতির হিসাব বন্ধ আছে। কিছুই মুছে যায়নি — হাজিরা, নম্বর আর ফির হিসাব সব এখানেই আছে।`,
+    /**
+     * "রাখতে চাই" and not "কিনুন", matching `settings.plan.upgrade.send`: the screen it
+     * opens sends the founder a request, and the tier only moves when the founder
+     * moves it. Owners and managers only, like `readOnly.seePlan`.
+     */
+    keep: (plan: string) => `${plan} রাখতে চাই`,
+  },
+
+  /**
    * The four marks. These are the app's vocabulary, not one screen's: the roster,
    * the rate card, a guardian's history and an SMS all name the same four states,
    * and a centre that calls them different things in two places has two systems.

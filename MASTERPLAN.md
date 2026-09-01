@@ -116,7 +116,7 @@ summary, staff management, SMS credits, centre-wide reporting, branches.
 Free runs *one section*, or one month of one section. It is marketing that
 happens to be a working product, not a free product with a marketing budget.
 
-### 2.2 Teacher Pro trial — a state, not a tier ❌
+### 2.2 Teacher Pro trial — a state, not a tier ✅
 
 A new self-serve signup gets **14 days of Teacher Pro** automatically. No card,
 no payment step, no separate product.
@@ -152,6 +152,22 @@ nothing.
 **Expiry never deletes anything.** See §4.5 — this is the part that has to be
 designed carefully, and it is designed once, for every downgrade, not specially
 for trials.
+
+Built across `20260811000039` and the app shell. `bootstrap_center` stamps
+`trial_plan = 'teacher_plus'` and `trial_ends_at = now() + 14 days` on every new
+centre, so the fortnight starts in SQL and needs no first request to trigger it;
+`effectiveEntitlement` compares that instant on every session, so the trial ends
+on time whether or not anything ran. The fourteen days are granted to every
+signup and not only to a teacher-mode one — a centre that turns out to be a
+centre keeps them, and the tier it converts to is a conversation, not a timer.
+
+And the customer is told, which is the half that sells it: `trialStanding` reads
+the two columns, and a banner in the shell names the tier, the day it ends and
+the days left for the whole fortnight, then explains for a week afterwards which
+three things stopped and that nothing was deleted. It is deliberately not part of
+`Entitlement` — see §4.2 on why nothing downstream learns *why* it may do what it
+may do. The notice stands down while the read-only banner is up: one ask per
+screen, and a bill outranks an upsell.
 
 ### 2.3 Teacher Pro — ৳499/month
 
@@ -651,7 +667,7 @@ unreadable *count* refuses the action rather than treating the count as zero,
 because one failed count would not let one extra student past a cap, it would let
 eighty.
 
-### 4.3 Trial lifecycle ⚠️ (read, never started)
+### 4.3 Trial lifecycle ✅
 
 | Event | What happens |
 |---|---|
@@ -661,6 +677,24 @@ eighty.
 | Day 14 | resolver stops returning the trial plan. **No job has to run** |
 | After | Teacher Free entitlements. All data intact (§4.5) |
 | They pay | founder sets `plan = teacher_plus`; trial fields cleared |
+
+Every row of that table is built. `bootstrap_center` writes the two columns
+(`20260811000039`), `effectiveEntitlement` reads them on every session, and the
+notice is a banner in the app shell fed by `trialStanding` — running for the whole
+fortnight rather than only from day 10, because a trial nobody knew they had sells
+nothing, and for a week after expiry, because "printed receipts stopped working" is
+otherwise indistinguishable from a bug. The last row is `setCenterPlan` on the
+founder panel, which clears both fields when it sets a paid tier — and pointedly does
+not when it sets the free one, so a founder correcting a status typo on a three-day-old
+signup does not take the fortnight off them.
+
+**The notice asks the row, not the entitlement.** `Entitlement` carries no trial
+flag on purpose (§4.2), so the banner reads `trial_plan` and `trial_ends_at` itself —
+and gets the *running* answer from the same helper the resolver uses, so a banner can
+never promise a fortnight of Pro that the feature gates are refusing. A `trial_plan`
+no better than the paid tier is silent in both directions: a stale row left behind
+after a payment must not read as a demotion, or as an ended trial to a customer who
+just bought the tier.
 
 **Expiry is a comparison, not a cron job.** `trial_ends_at > now` is evaluated on
 every session read, so a trial ends on time even if no scheduled task ever runs,
@@ -1500,27 +1534,27 @@ run out) each priced and sold; payment intents behind a provider interface with 
 manual bKash transfer as its first provider and the founder confirming the money
 arrived; the entitlement resolver, with read-only enforced in front of twenty write
 paths, and a subscription that suspends itself seven days after the period it was
-paid for; a founder panel that records real money. 903 unit tests and 1,100 RLS
-assertions green across 59 migrations and 42 tables, plus four derived gates and two
-that ask the live API.
+paid for; a fourteen-day Teacher Pro trial that starts itself at signup, ends on the
+clock, and says so on screen while it runs and for a week after; a founder panel that
+records real money. 913 unit tests and 1,100 RLS assertions green across 59
+migrations and 42 tables, plus four derived gates and two that ask the live API.
 
 **Partly built ⚠️** — branches (money, staff and the HQ comparison yes, full
 isolation no); discounts (fixed only); attendance roles (teacher scoping right,
 manager/teacher indistinguishable in RLS, `/teach` shows admins the whole centre);
 scheduling (weekly recurrence, no clashes or overrides); refunds (representable, no
-UI); the trial (the resolver reads one and expiry is a comparison rather than a job,
-but nothing in the product starts one); plan selection (an owner may ask for a tier
-and buy places, not move themselves between tiers); the audit log (table, no
+UI); plan selection (an owner may ask for a tier and buy places, not move themselves
+between tiers); the audit log (table, no
 writers); dashboards (`/hq` compares the branches; §9.10's own screen is not built).
 
-**Not built ❌** — the Teacher Pro trial; subscriptions as a living thing
+**Not built ❌** — subscriptions as a living thing
 (`subscriptions` still has zero reads and zero writes in the app, and
 `payments.subscription_id` is always null); a customer moving their own centre
-between tiers (`bootstrap_center` hard-codes `teacher_free`, and only a platform
-admin or an owner's request changes it); OTP; capability-based permissions and a way
-to create a manager; revenue categories; §9.10's dashboards; the audit log's
-writers; transfer history; the two new student statuses; percentage discounts;
-rooms and teacher-clash detection.
+between tiers (`bootstrap_center` hard-codes `teacher_free` as the *paid* tier, and
+only a platform admin or an owner's request changes it); OTP; capability-based
+permissions and a way to create a manager; revenue categories; §9.10's dashboards;
+the audit log's writers; transfer history; the two new student statuses; percentage
+discounts; rooms and teacher-clash detection.
 
 **Blocked 🚧** — automated SMS and therefore OTP delivery (BTRC sender ID needs an
 aggregator account which needs an NID); the real bKash integration (credentials

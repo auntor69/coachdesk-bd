@@ -18,13 +18,16 @@ import type { MemberRole, CenterStatus } from '@/lib/supabase/types'
 import type { Session } from '@/lib/auth/session'
 import {
   atLeast,
+  billingOf,
   canReadFees,
   canManageStudents,
   canManageBatches,
 } from '@/lib/auth/session'
+import { TRIAL_NOTICE_DAYS, trialStanding, type TrialStanding } from '@/lib/entitlement'
+import { planName } from '@/lib/plans'
 import { formatBdMobile, normalizeBdMobile } from '@/lib/bd/phone'
 import { formatDate } from '@/lib/bd/time'
-import { dict, type Dictionary } from '@/lib/i18n'
+import { dict, type Dictionary, type Locale } from '@/lib/i18n'
 
 /**
  * `href` is `Route`, not string, so a nav entry pointing at a route that does
@@ -305,6 +308,80 @@ function ReadOnlyBanner({
   )
 }
 
+/**
+ * The fortnight of Teacher Pro a new signup gets, and the week after it ends.
+ * MASTERPLAN.md §2.2.
+ *
+ * A SEPARATE BANNER FROM `ReadOnlyBanner` AND A DIFFERENT COLOUR, because it is a
+ * different kind of fact. Read-only is a bill; this is either a gift with a date on it
+ * or an explanation of why printing a receipt stopped working. Merging them would put
+ * "settle the bill" in front of somebody who has never been billed.
+ *
+ * GREEN WHILE IT RUNS, AMBER ON THE LAST DAY AND AFTER. The colour changes exactly when
+ * the sentence does, so there is one threshold in here and not two.
+ */
+function TrialBanner({
+  standing,
+  locale,
+  t,
+  canSeePlan,
+}: {
+  standing: TrialStanding
+  locale: Locale
+  t: Dictionary['trialNotice']
+  canSeePlan: boolean
+}) {
+  const ending = standing.state === 'ended' || standing.daysLeft === 0
+  const tier = planName(standing.plan, locale)
+  const day = formatDate(
+    standing.state === 'ended' ? standing.endedOn : standing.endsOn,
+    locale,
+  )
+
+  return (
+    <div
+      // `status` for the same reason the read-only banner uses it: this is the state of
+      // the screen as opened, not an event, and `alert` would interrupt a screen reader
+      // on every navigation for a fortnight.
+      role="status"
+      className={`mb-5 rounded-xl border-2 px-4 py-3 print:hidden ${
+        ending ? 'border-late/40 bg-late/5' : 'border-brand-200 bg-brand-50'
+      }`}
+    >
+      <p className={`font-semibold ${ending ? 'text-late' : 'text-brand-800'}`}>
+        {standing.state === 'ended'
+          ? t.endedTitle(tier)
+          : standing.daysLeft === 0
+            ? t.lastDayTitle(tier)
+            : t.runningTitle(tier, standing.daysLeft)}
+      </p>
+      <p className="mt-1 text-sm text-ink-soft">
+        {standing.state === 'ended' ? t.endedBody(day) : t.runningBody(tier, day)}
+      </p>
+
+      {/* Owners and managers only — /settings/plan is pageRole('manager'), and a
+          teacher offered a tab that answers 403 is worse off than one offered nothing.
+          No sales chip here: unlike a lapse, nothing is broken and nobody needs to be
+          rung today. */}
+      {canSeePlan && (
+        <div className="mt-3">
+          <Link
+            href="/settings/plan"
+            // White while the card is green, or the button's fill matches the card it
+            // sits on and all that is left of it is a border.
+            className={`inline-flex min-h-tap items-center rounded-xl border-2
+              border-brand-500 px-4 font-medium text-brand-800 ${
+                ending ? 'bg-brand-50' : 'bg-white'
+              }`}
+          >
+            {t.keep(tier)}
+          </Link>
+        </div>
+      )}
+    </div>
+  )
+}
+
 export async function AppShell({
   session,
   children,
@@ -353,6 +430,28 @@ export async function AppShell({
    */
   const readOnly = session.active && session.access === 'read_only' ? session.active : null
   const lapsed = readOnly?.status === 'active' ? readOnly.paidThrough : null
+
+  /*
+   * The trial notice, asked of the row rather than of the entitlement — `Entitlement`
+   * cannot say a plan came from a trial, on purpose, and `entitlement.ts` explains at
+   * length why this screen is the one exception that gets to ask the question directly.
+   *
+   * NOT WHILE THE READ-ONLY BANNER IS UP. One ask per screen: "keep Teacher Pro" beside
+   * "settle the bill" is two buttons competing for the same phone call, and the bill
+   * wins. Nothing is lost by holding it back — a read-only centre cannot use the
+   * features the trial is selling either way.
+   *
+   * The look-back is `TRIAL_NOTICE_DAYS` and lives in `entitlement.ts` beside the trial
+   * rules, not here: a fortnight-old explanation is history, and a banner that never
+   * leaves is furniture.
+   */
+  const standing = readOnly
+    ? null
+    : trialStanding(session.active ? billingOf(session.active) : null)
+  const trial =
+    standing && (standing.state === 'running' || standing.daysSince <= TRIAL_NOTICE_DAYS)
+      ? standing
+      : null
 
   return (
     <div className="flex min-h-full flex-col">
@@ -424,6 +523,14 @@ export async function AppShell({
             status={readOnly.status}
             coveredTo={lapsed ? formatDate(lapsed, session.locale) : null}
             t={d.readOnly}
+            canSeePlan={atLeast(role, 'manager')}
+          />
+        )}
+        {trial && (
+          <TrialBanner
+            standing={trial}
+            locale={session.locale}
+            t={d.trialNotice}
             canSeePlan={atLeast(role, 'manager')}
           />
         )}

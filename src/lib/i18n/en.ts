@@ -163,6 +163,21 @@ export const en: Dictionary = {
       + 'it is at the top of the screen.',
   },
 
+  trialNotice: {
+    runningTitle: (plan: string, days: number) =>
+      `${days} ${days === 1 ? 'day' : 'days'} left on your free ${plan} trial`,
+    lastDayTitle: (plan: string) => `Today is the last day of your free ${plan} trial`,
+    runningBody: (plan: string, date: string) =>
+      `Printed receipts, file downloads and the progress summary come with ${plan}. `
+      + `They stop after ${date}, and everything you have saved stays either way.`,
+    endedTitle: (plan: string) => `Your free ${plan} trial has ended`,
+    endedBody: (date: string) =>
+      `It ran out on ${date}, so printed receipts, file downloads and the progress `
+      + 'summary have stopped. Nothing was deleted — every register, mark and fee is '
+      + 'still here and still readable.',
+    keep: (plan: string) => `Keep ${plan}`,
+  },
+
   attendance: {
     present: 'Present',
     absent: 'Absent',

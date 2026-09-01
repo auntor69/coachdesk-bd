@@ -20,7 +20,7 @@ import { loginEmailToPhone } from '@/lib/bd/phone'
 import { loginEmailToUsername } from '@/lib/bd/username'
 import { asLocale, dict, DEFAULT_LOCALE, type Dictionary, type Locale } from '@/lib/i18n'
 import type { PermissionKey } from '@/lib/permissions'
-import { effectiveEntitlement, type Access } from '@/lib/entitlement'
+import { effectiveEntitlement, type Access, type OrgBilling } from '@/lib/entitlement'
 import { hasStaff, type PlanLimits, type StudentCeiling } from '@/lib/plans'
 import { ACTIVE_CENTER_COOKIE, pickActive, strongestPerCenter } from '@/lib/auth/active-center'
 import type { CenterStatus, MemberRole, PlanType } from '@/lib/supabase/types'
@@ -80,6 +80,26 @@ export type Membership = {
    * Null is not lapsed, here as everywhere: see `coverageLapsed`.
    */
   paidThrough: string | null
+}
+
+/**
+ * The membership's billing columns, back in the shape entitlement reads them in.
+ *
+ * ONE MAPPING AND NOT TWO. The resolver takes snake_case on purpose — a rename is
+ * where a typo becomes a silent `undefined` and a silently absent `trial_ends_at` is a
+ * trial that never expires — so the rename has to happen somewhere, and it happens
+ * once, here. The shell asks `trialStanding` the same question off the same six fields;
+ * a second literal spelled out in a component is the one that goes stale.
+ */
+export function billingOf(m: Membership): OrgBilling {
+  return {
+    status: m.status,
+    plan: m.plan,
+    trial_plan: m.trialPlan,
+    trial_ends_at: m.trialEndsAt,
+    student_capacity: m.studentCapacity,
+    paid_through: m.paidThrough,
+  }
 }
 
 export type Session = {
@@ -327,19 +347,7 @@ export const getSession = cache(async (): Promise<Session | null> => {
    * `Membership.paidThrough`. A centre with no receipts leaves it null, which grants
    * full access rather than removing it, and the resolver says at length why.
    */
-  const entitlement = effectiveEntitlement(
-    active
-      ? {
-          status: active.status,
-          plan: active.plan,
-          trial_plan: active.trialPlan,
-          trial_ends_at: active.trialEndsAt,
-          student_capacity: active.studentCapacity,
-          paid_through: active.paidThrough,
-        }
-      : null,
-    new Date(),
-  )
+  const entitlement = effectiveEntitlement(active ? billingOf(active) : null, new Date())
 
   return {
     userId: user.id,

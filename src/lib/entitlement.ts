@@ -301,3 +301,69 @@ export function effectiveEntitlement(org: OrgBilling | null, now: Date): Entitle
     ceiling: studentCeiling(plan, org.student_capacity ?? 0),
   }
 }
+
+/**
+ * How long after a trial ends the app keeps saying so, in days.
+ *
+ * A LOOK-BACK AND NOT A LEAD-IN: the running notice shows for the whole fortnight,
+ * because §2.2's trial sells nothing to somebody who never knew they had it. What this
+ * bounds is the other end — the week in which "printed receipts stopped because your
+ * trial ended on the 16th" is still the explanation for what somebody just hit. A
+ * month later it is history, and a banner that never leaves is furniture.
+ */
+export const TRIAL_NOTICE_DAYS = 7
+
+/**
+ * Where a Teacher Pro trial stands, for the one screen that says so out loud.
+ *
+ * THE DIFFERENT QUESTION THIS FILE'S HEADER PROMISES. `Entitlement` deliberately
+ * cannot say a plan came from a trial, because forty gates branching on `isTrial` is a
+ * second plan model. This asks the row instead — when does the trial end, and did it —
+ * and hands back no opinion about what is *allowed*. Anything reaching for this to
+ * decide a permission wants `effectiveEntitlement`.
+ *
+ * THE RUNNING CASE IS `trialPlan`'S OWN ANSWER and not a second expiry test. A banner
+ * that claimed a fortnight of Pro while the gates refused it would be worse than no
+ * banner: the customer rings about a bug, and the bug is that two clocks were written
+ * twice. So this delegates, and the two cannot drift.
+ *
+ * A STALE DOWNGRADE ROW IS SILENT IN BOTH STATES. Same rank rule as `trialPlan`: a
+ * `trial_plan` no better than what the centre already pays for is a data error, and
+ * telling a paying Coaching Center customer that their Teacher Pro trial ended is a
+ * support call about nothing.
+ *
+ * DATES ARE DHAKA CALENDAR DAYS, converted from the instant, because "ends on the
+ * 16th" is what a customer can hold against their own calendar. The instant decides
+ * *whether* it is running; the day is only ever printed.
+ */
+export type TrialStanding =
+  | { state: 'running'; plan: PlanLimits; endsOn: string; daysLeft: number }
+  | { state: 'ended'; plan: PlanLimits; endedOn: string; daysSince: number }
+
+export function trialStanding(
+  org: OrgBilling | null,
+  // Defaulted, unlike `effectiveEntitlement`'s: the caller is a server component, and
+  // the React compiler refuses a clock read in a render body (`react-hooks/purity`).
+  // Reading it in here is the same move `todayInDhaka()` already makes. Tests pass one.
+  now: Date = new Date(),
+): TrialStanding | null {
+  if (!org?.trial_plan || !org.trial_ends_at) return null
+
+  const endsAt =
+    org.trial_ends_at instanceof Date ? org.trial_ends_at : new Date(org.trial_ends_at)
+  // Guarded before `todayInDhaka`, which throws on an invalid Date rather than
+  // returning NaN like the arithmetic elsewhere in this file does.
+  if (!Number.isFinite(endsAt.getTime()) || !Number.isFinite(now.getTime())) return null
+
+  const paid = planFor(org.plan)
+  const trial = planFor(org.trial_plan)
+  if (PLAN_RANK[trial.id] <= PLAN_RANK[paid.id]) return null
+
+  const today = todayInDhaka(now)
+  const day = todayInDhaka(endsAt)
+
+  const running = trialPlan(org, paid, now)
+  return running
+    ? { state: 'running', plan: running, endsOn: day, daysLeft: daysBetween(today, day) }
+    : { state: 'ended', plan: trial, endedOn: day, daysSince: daysBetween(day, today) }
+}

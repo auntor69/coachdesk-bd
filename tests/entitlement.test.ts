@@ -3,7 +3,13 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import path from 'node:path'
 
-import { effectiveEntitlement, GRACE_DAYS, type OrgBilling } from '../src/lib/entitlement.ts'
+import {
+  effectiveEntitlement,
+  GRACE_DAYS,
+  TRIAL_NOTICE_DAYS,
+  trialStanding,
+  type OrgBilling,
+} from '../src/lib/entitlement.ts'
 import { PLANS, PLAN_RANK, type PlanId } from '../src/lib/plans.ts'
 
 /**
@@ -231,6 +237,132 @@ test('a trial naming a tier that does not exist is not a trial', () => {
     ).plan.id,
     'center',
   )
+})
+
+/* -------------------------------------------------------------------------- */
+/* What the trial notice says                                                 */
+/* -------------------------------------------------------------------------- */
+
+/** What migration 39 stamps on a self-serve signup: free tier, Pro for a fortnight. */
+function trialling(trial_ends_at: string | Date): OrgBilling {
+  return org({ plan: 'teacher_free', trial_plan: 'teacher_plus', trial_ends_at })
+}
+
+test('a running trial names the tier, the day it ends and the days left', () => {
+  const s = trialStanding(trialling('2026-09-05T12:00:00Z'), NOW)
+
+  assert.equal(s?.state, 'running')
+  assert.equal(s?.plan.id, 'teacher_plus')
+  assert.equal(s?.state === 'running' && s.endsOn, '2026-09-05')
+  assert.equal(s?.state === 'running' && s.daysLeft, 7)
+})
+
+test('the last day counts zero days left, not one', () => {
+  // 23:00 in Dhaka on the same day NOW falls on: still granting, and nothing left to
+  // count. The banner says "today is the last day" off this, so a fencepost here is a
+  // sentence promising a day that has already gone.
+  const s = trialStanding(trialling('2026-08-29T17:00:00Z'), NOW)
+
+  assert.equal(s?.state, 'running')
+  assert.equal(s?.state === 'running' && s.daysLeft, 0)
+  assert.equal(s?.state === 'running' && s.endsOn, '2026-08-29')
+})
+
+test('an ended trial says which tier stopped and when', () => {
+  const s = trialStanding(trialling('2026-08-27T06:00:00Z'), NOW)
+
+  // The tier that was lost, not the one left behind: the sentence is "your free Teacher
+  // Pro trial has ended", and naming Teacher Free there would explain nothing.
+  assert.equal(s?.plan.id, 'teacher_plus')
+  assert.equal(s?.state === 'ended' && s.endedOn, '2026-08-27')
+  assert.equal(s?.state === 'ended' && s.daysSince, 2)
+})
+
+test('a trial that ran out overnight in Dhaka ended today, and today is zero', () => {
+  // 01:00 Dhaka on the 29th, which is the 28th in UTC. Read in UTC this would print
+  // yesterday's date at a centre that lost Pro this morning, and a negative day count
+  // is one bad subtraction away.
+  const s = trialStanding(trialling('2026-08-28T19:00:00Z'), NOW)
+
+  assert.equal(s?.state, 'ended')
+  assert.equal(s?.state === 'ended' && s.endedOn, '2026-08-29')
+  assert.equal(s?.state === 'ended' && s.daysSince, 0)
+})
+
+test('a Date works here too, as it does for the resolver', () => {
+  // Same reason: a caller holding a parsed instant must not have to re-serialise it.
+  assert.equal(trialStanding(trialling(new Date('2026-09-05T12:00:00Z')), NOW)?.state, 'running')
+})
+
+test('the notice never claims a tier the gates are refusing', () => {
+  // The whole reason `trialStanding` delegates the running case to the same private
+  // helper the resolver uses. Two expiry tests written twice is a banner promising a
+  // fortnight of Pro while every feature on the screen says no, and the customer rings
+  // about a bug that is really two clocks.
+  const around = [
+    '2026-08-20T12:00:00Z',
+    '2026-08-29T11:59:59Z',
+    '2026-08-29T12:00:00Z',
+    '2026-08-29T12:00:01Z',
+    '2026-09-30T12:00:00Z',
+  ]
+
+  for (const trial_ends_at of around) {
+    const row = trialling(trial_ends_at)
+    const s = trialStanding(row, NOW)
+    const granted = effectiveEntitlement(row, NOW).plan.id
+
+    assert.equal(s?.state === 'running' ? s.plan.id : 'teacher_free', granted, trial_ends_at)
+  }
+})
+
+test('a stale trial that would be a downgrade is silent, before and after it ends', () => {
+  // §4.3 has the founder clearing these two columns when a customer pays. A founder who
+  // sets plan = 'center' and forgets leaves a teacher_plus row behind, and telling a
+  // paying Coaching Center customer that their Teacher Pro trial ended is a support
+  // call about nothing at all.
+  for (const trial_ends_at of ['2026-09-30T12:00:00Z', '2026-08-01T12:00:00Z']) {
+    assert.equal(
+      trialStanding(org({ plan: 'center', trial_plan: 'teacher_plus', trial_ends_at }), NOW),
+      null,
+      trial_ends_at,
+    )
+  }
+
+  // Same rule catching a tier nobody recognises, which `planFor` reads as Teacher Free.
+  assert.equal(
+    trialStanding(
+      org({ plan: 'center', trial_plan: 'teacher_ultra', trial_ends_at: '2027-01-01T00:00:00Z' }),
+      NOW,
+    ),
+    null,
+  )
+})
+
+test('a centre with no trial columns, and no centre at all, say nothing', () => {
+  assert.equal(trialStanding(org(), NOW), null)
+  assert.equal(trialStanding(org({ trial_plan: 'institution' }), NOW), null)
+  assert.equal(trialStanding(org({ trial_ends_at: '2026-09-30T12:00:00Z' }), NOW), null)
+  assert.equal(trialStanding(null, NOW), null)
+})
+
+test('an unreadable clock on either side says nothing rather than throwing', () => {
+  // Not the same failure mode as the resolver's: `todayInDhaka` hands an invalid Date
+  // to Intl, which throws, so this cannot lean on NaN comparisons quietly answering
+  // false. A garbled column has to be caught before the formatting.
+  assert.equal(trialStanding(trialling('not a date'), NOW), null)
+  assert.equal(trialStanding(trialling('2026-09-05T12:00:00Z'), new Date('not a time')), null)
+})
+
+test('an old trial still reports, and reports old', () => {
+  // The window is the caller's decision, not this function's: it answers what the row
+  // says, and the shell drops it past TRIAL_NOTICE_DAYS. A month-old trial must
+  // therefore come back non-null with a day count far outside the window, because the
+  // shell's whole test is that number.
+  const s = trialStanding(trialling('2026-07-20T12:00:00Z'), NOW)
+
+  assert.equal(s?.state, 'ended')
+  assert.ok(s?.state === 'ended' && s.daysSince > TRIAL_NOTICE_DAYS, 'outside the notice window')
 })
 
 /* -------------------------------------------------------------------------- */
