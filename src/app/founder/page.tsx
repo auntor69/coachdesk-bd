@@ -357,18 +357,6 @@ export default async function FounderPage() {
                       {sizeLine(c, locale, t.size)}
                     </p>
 
-                    {/* Above a plan request, because money already sent outranks
-                        money offered: somebody has been given a number to send to
-                        and is waiting on us to say it arrived. */}
-                    {open && (
-                      <CenterPurchases
-                        centerId={c.centerId}
-                        items={open}
-                        words={t.purchases}
-                        methods={d.feeRow.methods}
-                      />
-                    )}
-
                     {/* Above a plan request, because money already sent outranks money
                         somebody is thinking about. Both are the customer waiting on us;
                         only one of them has a transfer in our own bKash app with nothing
