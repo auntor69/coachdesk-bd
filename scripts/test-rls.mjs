@@ -6468,6 +6468,11 @@ check('centre A is in the panel', Boolean(rowA))
  * argument for it is that the owner typing it is the only person it can be about,
  * and the alternative was a founder ringing a customer without reading what they
  * had said. Nothing else in this schema is allowed through on that reasoning.
+ *
+ * The three `asks_*` are the second, and they are cheaper than the first: a count,
+ * a sum of places and a timestamp, from rows a manager wrote to their own owner.
+ * No free text at all — `capacity_requests` has no note column, for this reason
+ * among others.
  */
 const PANEL_COLUMNS = [
   'center_id', 'center_name', 'center_phone', 'bd_area', 'status', 'plan',
@@ -6476,6 +6481,7 @@ const PANEL_COLUMNS = [
   'collected_30d', 'taps_30d', 'notes_30d', 'results_30d', 'absences_30d',
   'sms_30d', 'last_active_at', 'paid_bdt',
   'last_paid_at', 'paid_through', 'wants_plan', 'wants_since', 'wants_note',
+  'asks_open', 'asks_places', 'asks_since',
 ]
 const panelColumns = Object.keys(rowA ?? {}).sort()
 check(
@@ -7136,6 +7142,387 @@ check(
 // Back out, so the sections below count the memberships they expect to.
 await db.query('delete from center_members where user_id = $1', [askManager])
 await db.query('delete from auth.users where id = $1', [askManager])
+
+// ---------------------------------------------------------------------------
+// "We have run out of room" — capacity_requests, MASTERPLAN.md §3.7.
+//
+// The gate here is inverted from the block above, and that is the property worth
+// asserting. There a manager is refused because billing is not theirs; here the
+// manager is the only one who may write, because a row written by somebody who
+// could have paid instead is not a request. The owner is not shut out of a
+// feature — they are shut out of a record whose entire meaning is "somebody who
+// cannot buy needs you to".
+//
+// The branch is stamped, not supplied: 20260811000054's trigger fills a null
+// branch_id from the writer's own membership, so a Mirpur manager's ask says
+// Mirpur without the form being trusted to say so, and an explicitly foreign
+// branch is refused by 20260811000053's restrictive policy instead.
+//
+// Resolution is not a browser's to write at all. UPDATE is revoked, so the only
+// caller who can close an ask is our own server settling a purchase — which is
+// what §3.7 means by "HQ approves it by paying".
+// ---------------------------------------------------------------------------
+
+console.log('\nAsking HQ for student places (capacity_requests):')
+
+// Two branches, a manager pinned to one, and a manager who is head office. Same
+// role and same centre: the pin is the only difference between them.
+const capBranch = await one(
+  `insert into branches (coaching_center_id, name) values ($1, 'Mirpur Annexe') returning id`,
+  [centerA],
+)
+const capOther = await one(
+  `insert into branches (coaching_center_id, name) values ($1, 'Uttara Annexe') returning id`,
+  [centerA],
+)
+const capManager = (
+  await db.query('insert into auth.users (id) values (gen_random_uuid()) returning id')
+).rows[0].id
+await addMember(centerA, capManager, 'manager')
+await db.query('update center_members set branch_id = $1 where user_id = $2', [
+  capBranch,
+  capManager,
+])
+const capHqManager = (
+  await db.query('insert into auth.users (id) values (gen_random_uuid()) returning id')
+).rows[0].id
+await addMember(centerA, capHqManager, 'manager')
+
+const ASK = `insert into capacity_requests (coaching_center_id, places, requested_by)
+  values ($1, $2, $3)`
+
+const askRows = async () =>
+  (
+    await db.query(
+      `select id, branch_id, places, requested_by, created_at, handled_at, handled_by, intent_id
+         from capacity_requests order by created_at`,
+    )
+  ).rows
+const askCount = async () =>
+  Number((await db.query('select count(*)::int as n from capacity_requests')).rows[0].n)
+
+// A refusal by name. `refusedByTenantFk` above only knows about the tenant key, and
+// two of the refusals below are CHECK constraints — "the database said no" is far
+// too easy to get by accident to be worth asserting on its own.
+const refusedBy = async (constraint, sql, params = []) => {
+  try {
+    await db.query(sql, params)
+    return { ok: false, why: 'accepted it' }
+  } catch (error) {
+    const why = String(error.message).split('\n')[0]
+    return { ok: why.includes(constraint), why }
+  }
+}
+
+// `rowA` was read before any of this existed, which makes it the zero state: a
+// centre nobody is short of room in has to read 0, not drop off the panel.
+check(
+  'a centre with nothing to ask for reads zero rather than leaving the list',
+  Number(rowA?.asks_open) === 0 &&
+    Number(rowA?.asks_places) === 0 &&
+    rowA?.asks_since === null,
+  `${rowA?.asks_open} / ${rowA?.asks_places} / ${rowA?.asks_since}`,
+)
+
+check(
+  'a teacher cannot ask for student places',
+  await deniedAsUser(db, ids.karim, ASK, [centerA, 25, ids.karim]),
+)
+check(
+  'and neither can the owner, who is meant to buy them instead',
+  await deniedAsUser(db, ids.ownerA, ASK, [centerA, 25, ids.ownerA]),
+)
+check(
+  'nor the founder, whose panel column means a branch asked',
+  await deniedAsUser(db, ids.founder, ASK, [centerA, 25, ids.founder]),
+)
+check(
+  'nor a signed-out caller',
+  await deniedAsUser(db, null, ASK, [centerA, 25, null]),
+)
+
+check(
+  "a manager cannot ask on another centre's behalf",
+  await deniedAsUser(db, capManager, ASK, [centerB, 25, capManager]),
+)
+check('and none of those landed', (await askCount()) === 0)
+
+await asUser(db, capManager, (tx) => tx.query(ASK, [centerA, 25, capManager]))
+const mirpurAsk = (await askRows())[0]
+check(
+  'a branch manager can ask, and the branch fills itself in',
+  mirpurAsk?.branch_id === capBranch &&
+    Number(mirpurAsk.places) === 25 &&
+    mirpurAsk.requested_by === capManager &&
+    mirpurAsk.handled_at === null,
+  `branch ${mirpurAsk?.branch_id} / ${mirpurAsk?.places} places`,
+)
+check(
+  'a pinned manager cannot file the shortage under a branch that is not theirs',
+  await deniedAsUser(
+    db,
+    capManager,
+    'insert into capacity_requests (coaching_center_id, branch_id, places) values ($1, $2, 5)',
+    [centerA, capOther],
+  ),
+)
+// The stamp runs before the index, so a second ask from Mirpur collides with the
+// first rather than queueing behind it. One open ask per branch is the whole point:
+// the owner answers a shortage, not a stream of reminders about one.
+check(
+  'a second open ask from the same branch conflicts instead of queueing',
+  await deniedAsUser(db, capManager, ASK, [centerA, 40, capManager]),
+)
+check('so Mirpur still has exactly one', (await askCount()) === 1)
+
+// Nothing has asked unfiled yet, so this can only be refused by the sanity check on
+// places — which is here because unlike an intent's quantity, this number was typed
+// by a manager on a phone.
+check(
+  'and nobody can ask for twenty thousand seats',
+  await deniedAsUser(db, capHqManager, ASK, [centerA, 20000, capHqManager]),
+)
+
+await asUser(db, capHqManager, (tx) => tx.query(ASK, [centerA, 10, capHqManager]))
+const hqAsk = (await askRows()).find((r) => r.branch_id === null)
+check(
+  'an unpinned manager asks for the organisation, and the ask stays unfiled',
+  hqAsk !== undefined && Number(hqAsk.places) === 10 && hqAsk.requested_by === capHqManager,
+  `branch ${hqAsk?.branch_id} / ${hqAsk?.places} places`,
+)
+check(
+  'head office cannot ask twice either, which is what NULLS NOT DISTINCT buys',
+  await deniedAsUser(db, capHqManager, ASK, [centerA, 10, capHqManager]),
+)
+check('two open asks, one per asking party', (await askCount()) === 2)
+
+const COUNT_ASKS = 'select count(*)::int as n from capacity_requests'
+check(
+  'the pinned manager reads their own branch and not head office’s',
+  (await asUser(db, capManager, (tx) => n(tx, COUNT_ASKS))) === 1,
+)
+check(
+  'the unpinned manager reads both, because head office is the whole organisation',
+  (await asUser(db, capHqManager, (tx) => n(tx, COUNT_ASKS))) === 2,
+)
+check(
+  'the owner reads both, which is the screen that answers them',
+  (await asUser(db, ids.ownerA, (tx) => n(tx, COUNT_ASKS))) === 2,
+)
+check('a teacher reads none of it', (await asUser(db, ids.karim, (tx) => n(tx, COUNT_ASKS))) === 0)
+check(
+  "the other centre's owner reads none of it",
+  (await asUser(db, ids.ownerB, (tx) => n(tx, COUNT_ASKS))) === 0,
+)
+check(
+  'a signed-out caller reads none of it',
+  (await asUser(db, null, (tx) => n(tx, COUNT_ASKS))) === 0,
+)
+
+// The panel wiring. Unlike `wants_*` above, this is a rollup rather than a lookup:
+// two branches short of room have to move two numbers on one card.
+const panelAsks = await asUser(db, ids.founder, (tx) =>
+  tx.query('select * from platform_centers()'),
+)
+const rowAsks = panelAsks.rows.find((r) => r.center_id === centerA)
+check(
+  'the founder sees how many are asking and how much room they are short of, summed',
+  Number(rowAsks?.asks_open) === 2 && Number(rowAsks?.asks_places) === 35,
+  `${rowAsks?.asks_open} asks / ${rowAsks?.asks_places} places`,
+)
+check(
+  'and how long the oldest of them has been waiting',
+  rowAsks?.asks_since instanceof Date &&
+    rowAsks.asks_since.getTime() === new Date(mirpurAsk.created_at).getTime(),
+  `${rowAsks?.asks_since} vs ${mirpurAsk?.created_at}`,
+)
+// The reason the aggregate is a CTE and not a join onto the rows: two asks would
+// otherwise be two cards for one customer, and every total across the top with them.
+check(
+  'without the centre appearing twice because two branches asked',
+  panelAsks.rows.length === centerTotal,
+  `${panelAsks.rows.length} rows for ${centerTotal} centres`,
+)
+check(
+  'and the ceiling they are actually on is untouched by the asking',
+  rowAsks?.plan === rowA?.plan && Number(rowAsks?.students) === Number(rowA?.students),
+  `${rowAsks?.plan} / ${rowAsks?.students}`,
+)
+
+// Closing an ask is not a browser's to write. UPDATE is revoked rather than left
+// unpolicied, so this is a permission error and not a silent no-op — read back
+// anyway, because the two are indistinguishable to the caller and one of them is a
+// hole.
+const RESOLVE = 'update capacity_requests set handled_at = now(), handled_by = $2 where id = $1'
+check(
+  'the owner cannot tick an ask off from a browser',
+  (await deniedAsUser(db, ids.ownerA, RESOLVE, [mirpurAsk.id, ids.ownerA])) ||
+    (await askRows()).every((r) => r.handled_at === null),
+)
+check(
+  'nor can the manager who asked',
+  (await deniedAsUser(db, capManager, RESOLVE, [mirpurAsk.id, capManager])) ||
+    (await askRows()).every((r) => r.handled_at === null),
+)
+check(
+  'nor the founder, whose approval is a payment and not a tick',
+  (await deniedAsUser(db, ids.founder, RESOLVE, [mirpurAsk.id, ids.founder])) ||
+    (await askRows()).every((r) => r.handled_at === null),
+)
+check('and all of them are still open', (await askRows()).every((r) => r.handled_at === null))
+
+// The centre that is about to be closed doubles as the foreign centre for the key
+// below, so its intent and its audit trail leave with it.
+const capDoomed = await one(
+  `insert into coaching_centers (name, plan, status)
+   values ('Asked Then Closed', 'center', 'trial') returning id`,
+)
+const foreignIntent = await one(
+  `insert into payment_intents
+     (coaching_center_id, purpose, quantity, amount_bdt, grants_capacity)
+   values ($1, 'student_capacity', 5, 40, 5) returning id`,
+  [capDoomed],
+)
+const capIntent = await one(
+  `insert into payment_intents
+     (coaching_center_id, purpose, quantity, amount_bdt, grants_capacity, requested_by)
+   values ($1, 'student_capacity', 25, 200, 25, $2) returning id`,
+  [centerA, ids.ownerA],
+)
+
+const stillOpen = await refusedBy(
+  'capacity_requests_intent_needs_handled',
+  'update capacity_requests set intent_id = $2 where id = $1',
+  [mirpurAsk.id, capIntent],
+)
+check(
+  'an open ask cannot point at a purchase, because the purchase is what closes it',
+  stillOpen.ok,
+  stillOpen.why,
+)
+
+const foreignAnswer = await refusedBy(
+  'capacity_requests_intent_fkey',
+  'update capacity_requests set handled_at = now(), intent_id = $2 where id = $1',
+  [mirpurAsk.id, foreignIntent],
+)
+check(
+  "and no ask can be answered by another centre's purchase",
+  foreignAnswer.ok,
+  foreignAnswer.why,
+)
+
+await asService(
+  `update capacity_requests set handled_at = now(), handled_by = $2, intent_id = $3
+    where id = $1`,
+  [mirpurAsk.id, ids.ownerA, capIntent],
+)
+const answered = (await askRows()).find((r) => r.id === mirpurAsk.id)
+check(
+  'the server can answer it, naming who answered and what they bought',
+  answered?.handled_at instanceof Date &&
+    answered.handled_by === ids.ownerA &&
+    answered.intent_id === capIntent,
+  `${answered?.handled_at} / intent ${answered?.intent_id}`,
+)
+// Answered is not yet paid, and the difference is readable without a second column
+// here: the purchase carries its own state, so an ask that was quoted and never
+// settled says so honestly instead of claiming the places arrived.
+const answerState = (
+  await db.query(
+    `select i.state::text as state, i.grants_capacity
+       from capacity_requests q join payment_intents i on i.id = q.intent_id
+      where q.id = $1`,
+    [mirpurAsk.id],
+  )
+).rows[0]
+check(
+  'and approval is that purchase’s own state rather than a boolean of ours',
+  answerState?.state === 'pending' && Number(answerState.grants_capacity) === 25,
+  `${answerState?.state} / grants ${answerState?.grants_capacity}`,
+)
+check(
+  'the branch manager cannot withdraw an ask once it has been answered',
+  (await deniedAsUser(db, capManager, 'delete from capacity_requests where id = $1', [
+    mirpurAsk.id,
+  ])) || (await askCount()) === 2,
+)
+
+const panelPart = await asUser(db, ids.founder, (tx) =>
+  tx.query('select * from platform_centers()'),
+)
+const rowPart = panelPart.rows.find((r) => r.center_id === centerA)
+check(
+  'an answered ask leaves the card while the branch still waiting stays on it',
+  Number(rowPart?.asks_open) === 1 && Number(rowPart?.asks_places) === 10,
+  `${rowPart?.asks_open} asks / ${rowPart?.asks_places} places`,
+)
+
+// Withdrawal is the manager's own, and only while nobody has answered. A teacher has
+// no business in it, and an owner deleting it would be erasing the record that a
+// branch had to ask them.
+check(
+  'a teacher cannot withdraw an ask',
+  (await deniedAsUser(db, ids.karim, 'delete from capacity_requests where id = $1', [
+    hqAsk.id,
+  ])) || (await askCount()) === 2,
+)
+check(
+  'and neither can the owner it was addressed to',
+  (await deniedAsUser(db, ids.ownerA, 'delete from capacity_requests where id = $1', [
+    hqAsk.id,
+  ])) || (await askCount()) === 2,
+)
+check(
+  "nor a manager at another branch, who cannot see head office's anyway",
+  (await deniedAsUser(db, capManager, 'delete from capacity_requests where id = $1', [
+    hqAsk.id,
+  ])) || (await askCount()) === 2,
+)
+await asUser(db, capHqManager, (tx) =>
+  tx.query('delete from capacity_requests where id = $1', [hqAsk.id]),
+)
+check('a manager can withdraw an ask nobody has answered', (await askCount()) === 1)
+
+const panelClear = await asUser(db, ids.founder, (tx) =>
+  tx.query('select * from platform_centers()'),
+)
+const rowClear = panelClear.rows.find((r) => r.center_id === centerA)
+check(
+  'with nothing open the card goes quiet again, though the answered ask remains',
+  Number(rowClear?.asks_open) === 0 &&
+    Number(rowClear?.asks_places) === 0 &&
+    rowClear?.asks_since === null,
+  `${rowClear?.asks_open} / ${rowClear?.asks_places} / ${rowClear?.asks_since}`,
+)
+
+// A closed branch is not a deleted history. `on delete set null (branch_id)` rather
+// than cascade: the places were bought and the money is in the accounts, so the ask
+// that caused it becomes the organisation's rather than disappearing with the room.
+await db.query('delete from branches where id = $1', [capBranch])
+const orphaned = await askRows()
+check(
+  'closing a branch leaves its answered ask behind, unfiled rather than deleted',
+  orphaned.length === 1 && orphaned[0].branch_id === null && orphaned[0].intent_id === capIntent,
+  `${orphaned.length} row(s), branch ${orphaned[0]?.branch_id}`,
+)
+
+// And an ask cannot outlive the customer, for the same reason as the block above: a
+// closed centre still on the founder's list of who needs room is a call to nobody.
+await db.query('insert into capacity_requests (coaching_center_id, places) values ($1, 15)', [
+  capDoomed,
+])
+await db.query('delete from coaching_centers where id = $1', [capDoomed])
+check('a deleted centre takes its asks with it', (await askCount()) === 1)
+
+// Back out, so the sections below count the rows they expect to.
+await db.query('delete from capacity_requests where coaching_center_id = $1', [centerA])
+await db.query('delete from payment_intents where id = $1', [capIntent])
+await db.query('delete from branches where id = $1', [capOther])
+await db.query('delete from center_members where user_id = $1', [capManager])
+await db.query('delete from center_members where user_id = $1', [capHqManager])
+await db.query('delete from auth.users where id = $1', [capManager])
+await db.query('delete from auth.users where id = $1', [capHqManager])
 
 /*
  * THE PROPERTY THE FOUNDER'S RECORD-A-PAYMENT FORM RESTS ON.

@@ -446,6 +446,78 @@ export type Database = {
           },
         ]
       }
+      capacity_requests: {
+        Row: {
+          id: string
+          coaching_center_id: string
+          branch_id: string | null
+          places: number
+          requested_by: string | null
+          created_at: string
+          handled_at: string | null
+          handled_by: string | null
+          intent_id: string | null
+        }
+        Insert: {
+          id?: string
+          coaching_center_id: string
+          branch_id?: string | null
+          places: number
+          requested_by?: string | null
+          created_at?: string
+          handled_at?: string | null
+          handled_by?: string | null
+          intent_id?: string | null
+        }
+        Update: {
+          id?: string
+          coaching_center_id?: string
+          branch_id?: string | null
+          places?: number
+          requested_by?: string | null
+          created_at?: string
+          handled_at?: string | null
+          handled_by?: string | null
+          intent_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'capacity_requests_branch_fkey'
+            columns: ['branch_id', 'coaching_center_id']
+            isOneToOne: true
+            referencedRelation: 'branches'
+            referencedColumns: ['id', 'coaching_center_id']
+          },
+          {
+            foreignKeyName: 'capacity_requests_coaching_center_id_fkey'
+            columns: ['coaching_center_id']
+            isOneToOne: false
+            referencedRelation: 'coaching_centers'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'capacity_requests_handled_by_fkey'
+            columns: ['handled_by']
+            isOneToOne: false
+            referencedRelation: 'users'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'capacity_requests_intent_fkey'
+            columns: ['intent_id', 'coaching_center_id']
+            isOneToOne: false
+            referencedRelation: 'payment_intents'
+            referencedColumns: ['id', 'coaching_center_id']
+          },
+          {
+            foreignKeyName: 'capacity_requests_requested_by_fkey'
+            columns: ['requested_by']
+            isOneToOne: false
+            referencedRelation: 'users'
+            referencedColumns: ['id']
+          },
+        ]
+      }
       center_members: {
         Row: {
           id: string
@@ -2862,7 +2934,7 @@ export type Database = {
       }
       platform_centers: {
         Args: Record<PropertyKey, never>
-        Returns: { center_id: string; center_name: string; center_phone: string; bd_area: string; status: CenterStatus; plan: PlanType; created_at: string; owner_name: string; owner_phone: string; students: number; teachers: number; batches: number; sms_credit_balance: number; attendance_30d: number; exams_30d: number; fee_payments_30d: number; collected_30d: number; taps_30d: number; notes_30d: number; results_30d: number; absences_30d: number; sms_30d: number; last_active_at: string; paid_bdt: number; last_paid_at: string; paid_through: string; wants_plan: PlanType; wants_since: string; wants_note: string }[]
+        Returns: { center_id: string; center_name: string; center_phone: string; bd_area: string; status: CenterStatus; plan: PlanType; created_at: string; owner_name: string; owner_phone: string; students: number; teachers: number; batches: number; sms_credit_balance: number; attendance_30d: number; exams_30d: number; fee_payments_30d: number; collected_30d: number; taps_30d: number; notes_30d: number; results_30d: number; absences_30d: number; sms_30d: number; last_active_at: string; paid_bdt: number; last_paid_at: string; paid_through: string; wants_plan: PlanType; wants_since: string; wants_note: string; asks_open: number; asks_places: number; asks_since: string }[]
       }
       reap_stranded_sms: {
         Args: Record<PropertyKey, never>
