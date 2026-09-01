@@ -10672,26 +10672,33 @@ check(
 )
 
 // 7. Escalation, which is the point of §12. A manager may edit the roster — members_admin_write
-// says so — and the branch on their own membership is the whole of their limit. Unpinning
-// themselves would be the shortest path from one branch to an organisation, so the WITH CHECK
-// on their own row is what has to refuse it.
-check(
-  'a pinned manager cannot unpin themselves',
-  await deniedAsUser(
-    db,
-    pinnedManager,
-    'update center_members set branch_id = null where user_id = $1',
-    [pinnedManager],
-  ),
+// said so — and the branch on their own membership is the whole of their limit. Unpinning
+// themselves would be the shortest path from one branch to an organisation.
+//
+// THE REFUSAL MOVED, and the assertion moved with it. These two used to raise: the write was
+// reachable and 20260811000053's restrictive branch policy threw on the result. Since
+// 20260811000061 a manager's own membership is a manager row, and those are owner-only, so
+// the UPDATE now matches nothing and raises nothing at all — the stronger of the two
+// outcomes and the one §8 below already has an idiom for. Asserting the exception would be
+// asserting which policy said no.
+await asUser(db, pinnedManager, (tx) =>
+  tx.query('update center_members set branch_id = null where user_id = $1', [pinnedManager]),
 )
 check(
-  'nor move themselves to another branch',
-  await deniedAsUser(
-    db,
+  "a pinned manager's attempt to unpin themselves changes nothing",
+  (await one('select branch_id as id from center_members where user_id = $1', [pinnedManager])) ===
+    brMirpur,
+)
+await asUser(db, pinnedManager, (tx) =>
+  tx.query('update center_members set branch_id = $1 where user_id = $2', [
+    brUttara,
     pinnedManager,
-    'update center_members set branch_id = $1 where user_id = $2',
-    [brUttara, pinnedManager],
-  ),
+  ]),
+)
+check(
+  'nor can they move themselves to another branch',
+  (await one('select branch_id as id from center_members where user_id = $1', [pinnedManager])) ===
+    brMirpur,
 )
 check(
   'nor hire somebody into another branch',
@@ -10898,6 +10905,151 @@ await asUser(db, ids.founder, async (tx) => {
     (await n(tx, 'select count(*)::int as n from expenses where id = $1', [mirpur.expenses])) === 1,
   )
 })
+
+// ---------------------------------------------------------------------------
+// Who may hand out a role — members_admin_write, 20260811000002.
+//
+// The section above asked whether a manager can reach another branch. This one asks the
+// shorter question: whether a manager can stop being a manager. `members_admin_write` is
+// `for all` on `app.is_staff_admin(coaching_center_id)`, which admits owner AND manager,
+// and it says nothing about the `role` column either side of the write — so on its face the
+// row that decides a session's power is writable by a session that holds it.
+//
+// The attacker is the HQ manager rather than the pinned one, deliberately. A pinned manager
+// is refused a null-branch row by 20260811000053 for reasons that have nothing to do with
+// roles, so a refusal there would prove branch scoping twice and role scoping never.
+// ---------------------------------------------------------------------------
+
+console.log('\nWho may hand out a role (center_members):')
+
+const rolesOf = async (user) =>
+  (await db.query('select role from center_members where user_id = $1 order by role', [user])).rows
+    .map((r) => r.role)
+    .join(',')
+
+const ownersOf = (center) =>
+  n(
+    db,
+    `select count(*)::int as n from center_members
+      where coaching_center_id = $1 and role = 'owner'`,
+    [center],
+  )
+
+// Read before the attempts, not asserted as a number: centre A has picked up a second owner
+// by this point in the suite, and a test that hard-codes one would fail for a reason that
+// has nothing to do with what a manager may write.
+const ownersBefore = await ownersOf(centerA)
+
+/**
+ * One hostile write, rolled back whether it worked or not.
+ *
+ * EVERY ATTEMPT IS ISOLATED, and that is not tidiness. The first version of this section
+ * used `deniedAsUser`, which commits what it fails to prevent: the self-promotion on line
+ * one succeeded, so every line after it ran as an owner, and the insert that should have
+ * proved the policy was refused by the unique index instead. Six checks, one of them
+ * meaningful. So each attempt starts from the same manager and leaves nothing behind.
+ *
+ * A REFUSAL HAS TO BE THE RIGHT REFUSAL. A blocked INSERT raises about row-level security;
+ * a blocked UPDATE or DELETE raises nothing at all and touches no rows, because a row the
+ * USING clause hides is a row the statement never matched. Anything else — a permission
+ * denied on some table the audit trigger writes to, a unique violation — is this test
+ * passing for a reason that has nothing to do with who may hand out a role, so the message
+ * is asserted rather than swallowed.
+ */
+const roleWrite = async (name, sql, params) => {
+  let detail = null
+  try {
+    await asUser(db, hqManager, async (tx) => {
+      const changed = (await tx.query(sql, params)).affectedRows ?? 0
+      if (changed !== 0) detail = `${changed} row(s) changed`
+      throw new Error('__rollback__')
+    })
+  } catch (error) {
+    if (error.message !== '__rollback__') {
+      detail = /row-level security/.test(error.message) ? null : `refused by: ${error.message}`
+    }
+  }
+  check(name, detail === null, detail ?? '')
+}
+
+await roleWrite(
+  'an HQ manager cannot promote themselves to owner',
+  `update center_members set role = 'owner' where user_id = $1`,
+  [hqManager],
+)
+await roleWrite(
+  'nor file themselves a second membership as owner',
+  `insert into center_members (coaching_center_id, user_id, role) values ($1, $2, 'owner')`,
+  [centerA, hqManager],
+)
+await roleWrite(
+  'nor promote a teacher over the owner who hired them',
+  `update center_members set role = 'owner' where user_id = $1`,
+  [ids.karim],
+)
+await roleWrite(
+  'nor demote the owner to a manager',
+  `update center_members set role = 'manager' where user_id = $1`,
+  [ids.ownerA],
+)
+await roleWrite(
+  "nor delete the owner's membership out from under them",
+  `delete from center_members where user_id = $1 and role = 'owner'`,
+  [ids.ownerA],
+)
+await roleWrite(
+  'nor hand a colleague the manager role',
+  `insert into center_members (coaching_center_id, user_id, role) values ($1, $2, 'manager')`,
+  [centerA, ids.karim],
+)
+
+// The controls. A manager runs the roster, and a rule that closed the escalation by taking
+// that away would have broken the job rather than secured it.
+const hostileHire = (
+  await db.query('insert into auth.users (id) values (gen_random_uuid()) returning id')
+).rows[0].id
+const mayWrite = async (name, user, sql, params) =>
+  check(name, !(await deniedAsUser(db, user, sql, params)))
+
+await mayWrite(
+  'while an HQ manager can still hire a teacher, which is the job',
+  hqManager,
+  `insert into center_members (coaching_center_id, user_id, role) values ($1, $2, 'teacher')`,
+  [centerA, hostileHire],
+)
+await mayWrite(
+  'and can still let a guardian in',
+  hqManager,
+  `insert into center_members (coaching_center_id, user_id, role) values ($1, $2, 'guardian')`,
+  [centerA, hostileHire],
+)
+await mayWrite(
+  'and can still take a departed teacher off the roster',
+  hqManager,
+  `delete from center_members where user_id = $1 and role = 'teacher'`,
+  [hostileHire],
+)
+
+check(
+  'centre A has the owners it started this section with',
+  (await ownersOf(centerA)) === ownersBefore,
+  `${await ownersOf(centerA)} against ${ownersBefore}`,
+)
+check(
+  'and the manager who tried all of that is still only a manager',
+  (await rolesOf(hqManager)) === 'manager',
+  await rolesOf(hqManager),
+)
+
+// The owner's own power is untouched: appointing a manager is theirs to do, and it is what
+// §6.2's screen calls.
+await mayWrite(
+  'an owner can appoint a manager',
+  ids.ownerA,
+  `insert into center_members (coaching_center_id, user_id, role) values ($1, $2, 'manager')`,
+  [centerA, hostileHire],
+)
+await db.query(`delete from center_members where user_id = $1`, [hostileHire])
 
 // ---------------------------------------------------------------------------
 // Filing a new row under the branch that wrote it — 20260811000054.

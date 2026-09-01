@@ -1463,9 +1463,20 @@ too rather than beside them.
 
 Raise its own plan · change its own status · grant itself student capacity · mark a
 payment successful · alter a subscription · edit or delete a financial record ·
-grant itself a permission · read or write another branch · read or write another
-organisation. Each of these gets a test that attempts it as an authenticated
-non-privileged user and asserts the database refuses.
+grant itself a permission · **hand itself a role** · read or write another branch ·
+read or write another organisation. Each of these gets a test that attempts it as an
+authenticated non-privileged user and asserts the database refuses.
+
+The role line was added because it was missing and the gap was real. `center_members`
+carried one write policy, `for all` on `app.is_staff_admin`, which admits owner *and*
+manager and said nothing about the `role` column — so a manager could run
+`update center_members set role = 'owner' where user_id = <self>` from an ordinary
+session, and everything above that reduces to a role check. 20260811000061 makes a
+row carrying `owner` or `manager` owner-only on both sides of the write, which also
+puts a manager's own membership out of their reach; a manager keeps the teacher,
+guardian and student memberships that are the roster work the permission is for.
+Twelve assertions in the RLS suite, six hostile and six controls, each rolled back so
+that a leak on one line cannot flatter the next.
 
 **Existing protections are not to be weakened to make new features convenient.** If
 a new feature needs a locked column, it gets a server path, not a re-grant.
@@ -1589,11 +1600,13 @@ paid for; a fourteen-day Teacher Pro trial that starts itself at signup, ends on
 clock, says so on screen while it runs and for a week after, and grants its places at
 the trigger as well as on the screen; a founder panel that records real money; an
 append-only audit log written by fourteen triggers inside the transaction that made
-the change, named for the reader in one tested module and read by the owner alone.
-939 unit tests and 1,107 RLS assertions green across 60 migrations and 42 tables,
+the change, named for the reader in one tested module and read by the owner alone;
+an admin role that only an owner may hand out.
+1,119 RLS assertions and 939 unit tests green across 61 migrations and 42 tables,
 plus four derived gates and two that ask the live API. One of those gates now refuses
 a query whose table name it cannot read, having discovered it had been counting five
-fewer than existed.
+fewer than existed — and the RLS suite found a manager who could promote themselves
+to owner, which is what a suite is for.
 
 **Partly built ⚠️** — branches (money, staff and the HQ comparison yes, full
 isolation no); discounts (fixed only); attendance roles (teacher scoping right,
