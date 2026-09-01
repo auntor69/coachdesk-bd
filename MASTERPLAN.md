@@ -1478,6 +1478,16 @@ guardian and student memberships that are the roster work the permission is for.
 Twelve assertions in the RLS suite, six hostile and six controls, each rolled back so
 that a leak on one line cannot flatter the next.
 
+Making an admin role owner-only also made the owner the only person who can remove an
+owner, so 20260811000062 closes the state that follows: a centre must keep at least
+one *active* owner. With none, `app.is_owner` is false for everybody and the plan, the
+roster of administrators and the audit log are all beyond reach — a support ticket
+needing our service_role key, reachable by one owner tidying up their own roster. The
+guard is an AFTER trigger so it asks the table rather than the row, counts the active
+rows the policies count, and stays silent while the centre itself is being deleted,
+since a guard that raised during the cascade would make every centre permanent.
+Stepping down is still allowed the moment there is somebody to step down to.
+
 **Existing protections are not to be weakened to make new features convenient.** If
 a new feature needs a locked column, it gets a server path, not a re-grant.
 
@@ -1601,8 +1611,9 @@ clock, says so on screen while it runs and for a week after, and grants its plac
 the trigger as well as on the screen; a founder panel that records real money; an
 append-only audit log written by fourteen triggers inside the transaction that made
 the change, named for the reader in one tested module and read by the owner alone;
-an admin role that only an owner may hand out.
-1,119 RLS assertions and 939 unit tests green across 61 migrations and 42 tables,
+an admin role that only an owner may hand out, and a centre that cannot be left
+without one.
+1,129 RLS assertions and 939 unit tests green across 62 migrations and 42 tables,
 plus four derived gates and two that ask the live API. One of those gates now refuses
 a query whose table name it cannot read, having discovered it had been counting five
 fewer than existed — and the RLS suite found a manager who could promote themselves

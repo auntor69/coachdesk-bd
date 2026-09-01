@@ -11052,6 +11052,102 @@ await mayWrite(
 await db.query(`delete from center_members where user_id = $1`, [hostileHire])
 
 // ---------------------------------------------------------------------------
+// The last owner — 20260811000062.
+//
+// The migration above made an admin membership owner-only, so the only person who can
+// remove an owner is an owner. This section is the other half of that: an owner who
+// steps down as the last one leaves a centre nobody can administer, and no screen
+// inside the product can undo it.
+//
+// A CENTRE OF ITS OWN, created here and deleted at the end. Centre A has two owners by
+// this point, so it cannot answer the question, and centre B is read by two hundred
+// assertions that would notice its owner going missing.
+// ---------------------------------------------------------------------------
+
+console.log('\nThe last owner (center_members):')
+
+const soleOwner = (
+  await db.query('insert into auth.users (id) values (gen_random_uuid()) returning id')
+).rows[0].id
+const soleCenter = await one(
+  `insert into coaching_centers (name, created_by) values ('Bogura Last Owner', $1) returning id`,
+  [soleOwner],
+)
+check(
+  'the claim trigger gave the new centre exactly one owner',
+  (await ownersOf(soleCenter)) === 1,
+)
+
+check(
+  'the only owner cannot demote themselves',
+  await deniedAsUser(
+    db,
+    soleOwner,
+    `update center_members set role = 'manager'
+      where coaching_center_id = $1 and user_id = $2`,
+    [soleCenter, soleOwner],
+  ),
+)
+check(
+  'nor switch their own membership off',
+  await deniedAsUser(
+    db,
+    soleOwner,
+    `update center_members set active = false where coaching_center_id = $1 and user_id = $2`,
+    [soleCenter, soleOwner],
+  ),
+)
+check(
+  'nor delete it',
+  await deniedAsUser(
+    db,
+    soleOwner,
+    'delete from center_members where coaching_center_id = $1 and user_id = $2',
+    [soleCenter, soleOwner],
+  ),
+)
+check('and the centre still has its owner after all three', (await ownersOf(soleCenter)) === 1)
+
+// The way out, which is the point: the guard is about the centre keeping an owner, not
+// about this owner keeping the job.
+const coOwner = (
+  await db.query('insert into auth.users (id) values (gen_random_uuid()) returning id')
+).rows[0].id
+await mayWrite(
+  'an owner may appoint a co-owner',
+  soleOwner,
+  `insert into center_members (coaching_center_id, user_id, role) values ($1, $2, 'owner')`,
+  [soleCenter, coOwner],
+)
+await mayWrite(
+  'and step down once there is somebody to step down to',
+  soleOwner,
+  `update center_members set role = 'manager'
+    where coaching_center_id = $1 and user_id = $2`,
+  [soleCenter, soleOwner],
+)
+check('leaving the centre with one owner, the new one', (await ownersOf(soleCenter)) === 1)
+check(
+  'and the one who stepped down as a manager',
+  (await one(
+    `select id from center_members where coaching_center_id = $1 and user_id = $2
+      and role = 'manager'`,
+    [soleCenter, soleOwner],
+  )) !== undefined,
+)
+
+// And the cascade, which a guard on DELETE could have made impossible. Deleting a centre
+// deletes its owner's membership; the trigger has to stay silent for that one, or every
+// centre in the database becomes permanent.
+await db.query('delete from coaching_centers where id = $1', [soleCenter])
+check(
+  'deleting a centre still takes its memberships with it',
+  (await n(db, 'select count(*)::int as n from center_members where coaching_center_id = $1', [
+    soleCenter,
+  ])) === 0,
+)
+
+// ---------------------------------------------------------------------------
 // Filing a new row under the branch that wrote it — 20260811000054.
 //
 // The section above proved that a pinned manager cannot reach another branch. This one
