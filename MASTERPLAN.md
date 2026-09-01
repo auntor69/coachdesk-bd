@@ -1305,7 +1305,7 @@ of §8.3. HQ never has to open each branch to find out how the group is doing.
 
 ---
 
-## 10. The audit log ❌
+## 10. The audit log ✅
 
 One append-only log of who did what, covering every action where the answer to
 *"who changed this?"* has money or a child's record behind it:
@@ -1322,6 +1322,18 @@ transaction that made the change, so a change cannot exist without its log line.
 The reason this is not optional in a financial product: the first serious support
 conversation with a Center will be *"my manager says he never entered that"*, and
 without a log the founder's answer is a shrug.
+
+**Built** as fourteen triggers over one generic function (`20260811000046`), with the
+actor read off a request header because `set_config` cannot survive a PostgREST
+request boundary (`20260811000056`). The log stores what it can be certain of — table,
+operation, and only the columns that moved; naming the *action* is `src/lib/audit.ts`,
+where it is tested, and the owner reads it at `/settings/activity`. Insert, update,
+delete and truncate are revoked from every browser session, and the read policy is the
+owner alone: the manager is the subject of the question this log answers.
+
+One item on the list above waits on another section. **Attendance overrides are not
+audited yet**, because until §6.3 marks an override as such, a trigger on
+`attendance_records` would log every student on every day.
 
 ---
 
@@ -1562,17 +1574,20 @@ arrived; the entitlement resolver, with read-only enforced in front of twenty wr
 paths, and a subscription that suspends itself seven days after the period it was
 paid for; a fourteen-day Teacher Pro trial that starts itself at signup, ends on the
 clock, says so on screen while it runs and for a week after, and grants its places at
-the trigger as well as on the screen; a founder panel that
-records real money. 916 unit tests and 1,107 RLS assertions green across 60
-migrations and 42 tables, plus four derived gates and two that ask the live API.
+the trigger as well as on the screen; a founder panel that records real money; an
+append-only audit log written by fourteen triggers inside the transaction that made
+the change, named for the reader in one tested module and read by the owner alone.
+930 unit tests and 1,107 RLS assertions green across 60 migrations and 42 tables,
+plus four derived gates and two that ask the live API.
 
 **Partly built ⚠️** — branches (money, staff and the HQ comparison yes, full
 isolation no); discounts (fixed only); attendance roles (teacher scoping right,
 manager/teacher indistinguishable in RLS, `/teach` shows admins the whole centre);
 scheduling (weekly recurrence, no clashes or overrides); refunds (representable, no
 UI); plan selection (an owner may ask for a tier and buy places, not move themselves
-between tiers); the audit log (table, no
-writers); dashboards (`/hq` compares the branches; §9.10's own screen is not built).
+between tiers); the audit log (every table that can be audited today is, attendance
+overrides wait on §6.3); dashboards (`/hq` compares the branches; §9.10's own screen
+is not built).
 
 **Not built ❌** — subscriptions as a living thing
 (`subscriptions` still has zero reads and zero writes in the app, and
@@ -1580,8 +1595,8 @@ writers); dashboards (`/hq` compares the branches; §9.10's own screen is not bu
 between tiers (`bootstrap_center` hard-codes `teacher_free` as the *paid* tier, and
 only a platform admin or an owner's request changes it); OTP; capability-based
 permissions and a way to create a manager; revenue categories; §9.10's dashboards;
-the audit log's writers; transfer history; the two new student statuses; percentage
-discounts; rooms and teacher-clash detection.
+transfer history; the two new student statuses; percentage discounts; rooms and
+teacher-clash detection.
 
 **Blocked 🚧** — automated SMS and therefore OTP delivery (BTRC sender ID needs an
 aggregator account which needs an NID); the real bKash integration (credentials

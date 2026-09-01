@@ -319,6 +319,23 @@ export default async function SettingsPage() {
             count: null,
           },
           /*
+           * §10, and the one row inside this spread that a manager must not see. The
+           * log's whole use is the conversation where a manager says they never entered
+           * something, so the reader has to be the person asking rather than the person
+           * asked — `audit_log_owner_read` says the same thing in SQL, and the screen
+           * behind this row 403s a manager who types the path.
+           */
+          ...(session.active.role === 'owner'
+            ? [
+                {
+                  href: '/settings/activity' as Route,
+                  label: t.activity,
+                  hint: t.activityHint,
+                  count: null,
+                },
+              ]
+            : []),
+          /*
            * The plan, last, and now a row rather than the grey line this page used
            * to end with. The sentence is unchanged — it is still the plan and its
            * batch cap — but it has somewhere to lead. An owner who reads "৫টি ব্যাচ"

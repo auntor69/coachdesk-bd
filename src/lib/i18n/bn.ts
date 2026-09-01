@@ -4728,6 +4728,12 @@ export const bn = {
        */
       exportsLocked: 'শিক্ষক প্রো প্ল্যানে পাওয়া যাবে',
       /**
+       * §10-এর খাতা, শুধু মালিকের। ম্যানেজারের সারিতে এটা থাকে না — যে প্রশ্নের
+       * উত্তর এই খাতা দেয়, ম্যানেজার তার বিষয়।
+       */
+      activity: 'কে কী করেছে',
+      activityHint: 'টাকা, স্টাফ আর ছাত্রের খাতায় প্রতিটি পরিবর্তন',
+      /**
        * The plan the centre is actually on. This line used to read "ফ্রি প্ল্যান:
        * ১টি ব্যাচ" to everybody, including a centre paying for unlimited batches.
        *
@@ -6408,6 +6414,106 @@ export const bn = {
     /** §17, on the screen that would otherwise invite per-branch quotas. */
     poolNote:
       'জায়গার হিসাব পুরো প্রতিষ্ঠানের জন্য একটাই — সব শাখা এই একই ভাণ্ডার থেকে নেয়, শাখা ধরে ধরে ভাগ করা নেই।',
+  },
+
+  /**
+   * §10 — কে কী করেছে।
+   *
+   * নামগুলো টেবিলের নাম নয়, মালিক যে শব্দে জিনিসটা চেনেন সেটাই: `fee_payments` এর
+   * বদলে "ফি জমা"। কোন লাইনের কী নাম হবে সেটা ঠিক করে lib/audit.ts, আর সেখানেই
+   * তার পরীক্ষা আছে; এখানে শুধু শব্দ।
+   */
+  audit: {
+    title: 'কে কী করেছে',
+    subtitle: 'টাকা, স্টাফ আর ছাত্রের খাতায় প্রতিটি পরিবর্তন — কে করেছে আর কখন',
+    filterLabel: 'কী দেখবেন',
+    filterAll: 'সবকিছু',
+    show: 'দেখান',
+    emptyTitle: 'এখনো কিছু লেখা হয়নি',
+    emptyBody:
+      'সেন্টার চালানোর সাথে সাথে এই খাতা নিজেই ভরে — একটা জমা নেওয়া, একটা ফি সংশোধন, একজনের অনুমতি বদল। এখানে হাতে কিছু লেখা যায় না, আর লেখা কোনো লাইন বদলানোও যায় না।',
+    emptyFiltered: 'এই ধরনের কিছু এখনো খাতায় নেই।',
+    unreadable:
+      'খাতাটা এখন পড়া গেল না। আপনার হিসাবে কোনো সমস্যা নেই — একটু পরে আবার দেখুন।',
+    older: 'আরো পুরনো',
+    newest: 'নতুনগুলো দেখান',
+    you: 'আপনি',
+    /** আমরা নিজেদের নাম বলি না — bn.ts সব জায়গায় "আমরা"। */
+    platform: 'আমাদের দল',
+    automatic: 'স্বয়ংক্রিয়',
+    someone: 'এই সেন্টারের একজন',
+    writtenBy:
+      'পরিবর্তনটা যখন হয়, ঠিক সেই মুহূর্তেই ডেটাবেস নিজে এই লাইনগুলো লেখে। ম্যানেজার, মালিক, আমরা — কেউই এখানকার কোনো লাইন বদলাতে বা মুছতে পারে না।',
+    more: (n: number) => `আরো ${n}টি বিষয় বদলেছে`,
+    /** ছাঁকনির তালিকা, AUDITED_TABLES-এর ক্রমেই — সবচেয়ে বেশি যেটা খোঁজা হয় আগে। */
+    entities: {
+      fee_payments: 'ফি জমা',
+      fee_invoices: 'ফির বিল',
+      expenses: 'খরচ',
+      salary_payments: 'বেতন দেওয়া',
+      salary_terms: 'বেতনের চুক্তি',
+      students: 'ছাত্রছাত্রী',
+      guardians: 'অভিভাবক',
+      teachers: 'শিক্ষক',
+      teacher_permissions: 'অনুমতি',
+      employees: 'স্টাফ',
+      center_members: 'লগইন',
+      coaching_centers: 'সেন্টার',
+      payments: 'আমাদের দেওয়া টাকা',
+      subscriptions: 'সাবস্ক্রিপশন',
+    },
+    actions: {
+      planChanged: 'প্ল্যান বদলেছে',
+      placesBought: 'ছাত্রের জায়গা কেনা হয়েছে',
+      placesReduced: 'ছাত্রের জায়গা কমানো হয়েছে',
+      centerStatusChanged: 'সেন্টারের অবস্থা বদলেছে',
+      subscriptionExtended: 'সাবস্ক্রিপশন বাড়ানো হয়েছে',
+      trialChanged: 'ট্রায়াল বদলেছে',
+      paymentNumberChanged: 'টাকা নেওয়ার নম্বর বদলেছে',
+      creditsChanged: 'এসএমএস ব্যালেন্স বদলেছে',
+      roleChanged: 'কার কী দায়িত্ব বদলেছে',
+      memberAdded: 'নতুন লগইন যোগ হয়েছে',
+      memberStopped: 'লগইন বন্ধ করা হয়েছে',
+      memberRestored: 'লগইন আবার চালু হয়েছে',
+      loginCreated: 'শিক্ষকের লগইন তৈরি হয়েছে',
+      teacherAdded: 'শিক্ষক যোগ হয়েছে',
+      teacherStopped: 'শিক্ষককে বন্ধ করা হয়েছে',
+      teacherRestored: 'শিক্ষককে আবার চালু করা হয়েছে',
+      permissionsChanged: 'অনুমতি বদলেছে',
+      employeeAdded: 'স্টাফ যোগ হয়েছে',
+      employeeLeft: 'স্টাফ চলে গেছেন',
+      employeeStopped: 'স্টাফকে বন্ধ করা হয়েছে',
+      studentAdmitted: 'ছাত্র ভর্তি হয়েছে',
+      studentStatusChanged: 'ছাত্রের অবস্থা বদলেছে',
+      studentMoved: 'ছাত্রকে অন্য শাখায় নেওয়া হয়েছে',
+      guardianPhoneChanged: 'অভিভাবকের নম্বর বদলেছে',
+      consentChanged: 'বার্তা পাঠানোর সম্মতি বদলেছে',
+      feeRaised: 'ফির বিল হয়েছে',
+      feeVoided: 'বিল বাতিল হয়েছে',
+      discountGranted: 'ছাড় দেওয়া হয়েছে',
+      discountRemoved: 'ছাড় তুলে নেওয়া হয়েছে',
+      feeAmountChanged: 'ফির অঙ্ক বদলেছে',
+      feeDueDateChanged: 'ফির তারিখ বদলেছে',
+      paymentReceived: 'ফি জমা নেওয়া হয়েছে',
+      salarySet: 'বেতন ঠিক হয়েছে',
+      salaryRetired: 'আগের বেতনের চুক্তি বন্ধ হয়েছে',
+      salaryTermsChanged: 'বেতনের চুক্তি বদলেছে',
+      salaryPaid: 'বেতন দেওয়া হয়েছে',
+      expenseRecorded: 'খরচ লেখা হয়েছে',
+      platformPaymentRecorded: 'আমাদের টাকা দেওয়া হয়েছে',
+      subscriptionStarted: 'সাবস্ক্রিপশন শুরু হয়েছে',
+      /** যে লাইনের জন্য আলাদা নাম লেখা হয়নি — টেবিলের নামটাই পাশে বসে। */
+      rowCreated: 'যোগ হয়েছে',
+      rowUpdated: 'বদলেছে',
+      rowDeleted: 'মুছে ফেলা হয়েছে',
+    },
+    roles: {
+      owner: 'মালিক',
+      manager: 'ম্যানেজার',
+      teacher: 'শিক্ষক',
+      student: 'ছাত্র',
+      guardian: 'অভিভাবক',
+    },
   },
 } as const
 

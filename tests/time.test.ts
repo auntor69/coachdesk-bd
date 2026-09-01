@@ -6,6 +6,7 @@ import {
   addMonths,
   dayName,
   daysBetween,
+  dhakaMoment,
   digits,
   formatDate,
   formatMonth,
@@ -191,4 +192,26 @@ test('a quote that has run out is a moment, not a calendar day', () => {
   // whether to offer an action, and a parse failure must not hide it.
   assert.equal(hasPassed('sometime next week', now), false)
   assert.equal(hasPassed('', now), false)
+})
+
+test('a timestamptz becomes the Dhaka day it happened on, not the UTC one', () => {
+  // 8:31pm UTC on the 1st is 2:31am on the 2nd in Dhaka. `created_at.slice(0, 10)`
+  // reads this as the 1st, which is the defect this function exists to fix: an owner
+  // checking last night's collection would find the payment filed under yesterday.
+  assert.deepEqual(dhakaMoment('2026-09-01T20:31:39.221Z'), {
+    date: '2026-09-02',
+    time: '02:31',
+  })
+  // The six hours where the two disagree, from either end. 17:59Z is the same day in
+  // both; 18:00Z is where Dhaka rolls over.
+  assert.equal(dhakaMoment('2026-09-01T17:59:00Z').date, '2026-09-01')
+  assert.equal(dhakaMoment('2026-09-01T18:00:00Z').date, '2026-09-02')
+  // Midnight in Dhaka is 00:00 and not 24:00 — hourCycle h23, because formatTime reads
+  // the hour as a number and a 24 would render as noon.
+  assert.equal(dhakaMoment('2026-09-01T18:00:00Z').time, '00:00')
+  assert.equal(formatTime(dhakaMoment('2026-09-01T18:00:00Z').time, 'en'), '12:00 am')
+
+  // A string Postgres did not produce. The date half is still worth showing on a screen
+  // that is only reporting history, so this reports rather than throws.
+  assert.deepEqual(dhakaMoment('not a timestamp'), { date: 'not a time', time: '' })
 })

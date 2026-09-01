@@ -214,6 +214,45 @@ export function formatTime(time: string | null, locale: Locale = 'bn'): string {
   return `${digits(h12, locale)}:${digits(String(m).padStart(2, '0'), locale)} ${period}`
 }
 
+/**
+ * A `timestamptz` as the Dhaka calendar day and the clock time inside it.
+ *
+ * `created_at.slice(0, 10)` is the UTC day, and for the first six hours of every
+ * Bangladeshi morning that is yesterday: a payment taken at 1am Dhaka reads as the
+ * previous date, at 7pm. Harmless on a `date` column, which has no instant in it to
+ * convert; wrong on every timestamptz, and worst of all on the audit log, whose whole
+ * job is saying when something happened.
+ *
+ * Returns the two shapes `formatDate` and `formatTime` already take, so the language
+ * and the numerals stay their business.
+ */
+export function dhakaMoment(iso: string): { date: string; time: string } {
+  const at = new Date(iso)
+  // A string Postgres did not produce. The date half of it is still better than an
+  // exception on a screen that is only reporting history.
+  if (Number.isNaN(at.getTime())) return { date: iso.slice(0, 10), time: '' }
+
+  // h23 rather than hour12: false — a 12-hour cycle answers midnight as 24 on some ICU
+  // builds, and `formatTime` reads the hour as a number.
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: DHAKA_TZ,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    hourCycle: 'h23',
+  }).formatToParts(at)
+
+  const part = (type: Intl.DateTimeFormatPartTypes) =>
+    parts.find((p) => p.type === type)?.value ?? '00'
+
+  return {
+    date: `${part('year')}-${part('month')}-${part('day')}`,
+    time: `${part('hour')}:${part('minute')}`,
+  }
+}
+
 const BANGLA_DIGIT_CHARS = ['০', '১', '২', '৩', '৪', '৫', '৬', '৭', '৮', '৯']
 
 /**
