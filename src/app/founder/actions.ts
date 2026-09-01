@@ -431,6 +431,11 @@ export async function setCenterPlan(
    * founder about a centre that has bought the places. The TypeScript side ignores it
    * on the teacher tiers for the same reason the SQL does — those are not priced per
    * student — so the two agree on every plan rather than only on the ones tested.
+   *
+   * A trial is not read here, and the one case where that shows is safe: moving a
+   * centre onto the free tier leaves the trial pair standing (see the update above),
+   * so this can warn about a roster `app.admitted_ceiling` would still admit. An extra
+   * warning is the right direction for a screen whose job is to say "look at this".
    */
   const over =
     (students ?? 0) > studentCeiling(limits, updated.student_capacity).ceiling ||

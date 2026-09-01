@@ -538,7 +538,8 @@ test('the day is Dhaka’s, not the server’s', () => {
 test('the ceiling follows the tier in force, not the one being paid for', () => {
   // The reason the resolver exists as one function rather than two derivations. A
   // teacher trialling Pro whose ceiling came from the paid tier would see every Pro
-  // feature on the screen and be refused at student thirty-one.
+  // feature on the screen and be refused at student thirty-one — which is what the
+  // database did until 20260811000060 taught the trigger this same rule.
   const e = effectiveEntitlement(
     org({
       plan: 'teacher_free',

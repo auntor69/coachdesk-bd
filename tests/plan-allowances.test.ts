@@ -11,6 +11,10 @@
  * So the migration's INSERT is parsed out of the file rather than restated here. A
  * copy of the four numbers in this test would be a third source of truth and would
  * pass while both of the others drifted.
+ *
+ * The same argument brought in 20260811000060, which decides how many places a live
+ * trial admits. Its rank test is native enum comparison, so `PLAN_RANK` and the enum's
+ * declared order are one more pair of numbers living in two places.
  */
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
@@ -19,6 +23,7 @@ import path from 'node:path'
 
 import {
   PLANS,
+  PLAN_RANK,
   capacityPressure,
   includedStudents,
   monthlyBillBdt,
@@ -35,10 +40,12 @@ import {
 } from '../src/lib/plans.ts'
 
 const ROOT = path.join(import.meta.dirname, '..')
-const MIGRATION = readFileSync(
-  path.join(ROOT, 'supabase', 'migrations', '20260811000036_student_capacity.sql'),
-  'utf8',
-)
+const migration = (file: string) =>
+  readFileSync(path.join(ROOT, 'supabase', 'migrations', file), 'utf8')
+
+const MIGRATION = migration('20260811000036_student_capacity.sql')
+const TRIAL_CEILING = migration('20260811000060_trial_ceiling.sql')
+const INIT = migration('20260811000001_init_schema.sql')
 
 /** The allowances the database will hold, read out of the migration that seeds them. */
 function seededAllowances(): Map<string, number> {
@@ -308,4 +315,64 @@ test('the three new columns are locked against a browser session', () => {
   // And the founder's own admin client is still allowed through, or no payment can
   // ever grant the capacity it was taken for.
   assert.match(guard[0], /current_user not in \('service_role', 'postgres', 'supabase_admin'\)/)
+})
+
+/* What a trial grants — 20260811000060 */
+
+test('the capacity guard asks what may be admitted, not what was bought', () => {
+  // The whole of the fix: one line of the trigger. `app.student_ceiling` still prices a
+  // purchase (settle_payment_intent reads it and refuses when the number did not move),
+  // so the two questions had to stop sharing one function.
+  const guard =
+    /create or replace function app\.guard_student_capacity\(\)[\s\S]*?\n\$\$;/i.exec(
+      TRIAL_CEILING,
+    )
+  assert.ok(guard, 'migration 60 no longer replaces the capacity guard')
+  assert.match(guard[0], /ceiling := app\.admitted_ceiling\(new\.coaching_center_id\)/)
+
+  // Replaced wholesale, so the parts that make it a guard have to still be in it: a
+  // rewrite that dropped any of these would read as a comment change.
+  assert.match(guard[0], /pg_catalog\.pg_advisory_xact_lock\(/)
+  assert.match(guard[0], /if ceiling is null then/)
+  assert.match(guard[0], /current_user in \('postgres', 'supabase_admin'\)/)
+
+  // The app's own admin client is NOT on that list and must never be added to it: the
+  // point of the ceiling living in the database is that a Server Action cannot wave it
+  // through. The comment beside the list says `service_role`, so this asks the list.
+  assert.doesNotMatch(guard[0], /current_user in \([^)]*service_role/)
+})
+
+test('a trial raises the ceiling, and only when it outranks what was paid for', () => {
+  const fn = /create or replace function app\.admitted_ceiling\(center uuid\)[\s\S]*?\n\$\$;/i
+    .exec(TRIAL_CEILING)
+  assert.ok(fn, 'migration 60 no longer defines app.admitted_ceiling')
+
+  // `greatest`, so a stale trial_plan left on a row after a payment cannot take places
+  // away — the same silence effectiveEntitlement keeps about one.
+  assert.match(fn[0], /greatest\(/)
+
+  // The rank guard, which is the under-billing one: Teacher Pro includes 150 and a
+  // Coaching Center 79, so a centre still carrying its signup trial would be admitted
+  // 150 students on a plan that includes 79.
+  assert.match(fn[0], /c\.trial_plan > c\.plan/)
+
+  // Strictly greater, matching trialPlan() in entitlement.ts: the instant trial_ends_at
+  // names is when the trial stops granting, not the last instant it grants.
+  assert.match(fn[0], /c\.trial_ends_at > pg_catalog\.now\(\)/)
+})
+
+test('the plan enum sorts cheapest first, which is what > means in SQL', () => {
+  // `trial_plan > plan` is native enum comparison, so the declared order IS the rank.
+  // A fifth tier added in the wrong position would not error anywhere — it would
+  // quietly change which trials grant places. The migration asserts this too, at push
+  // time; this is the half that fails in CI without a database.
+  const declaration = /create type plan_type as enum \(([^)]*)\)/i.exec(INIT)
+  assert.ok(declaration, 'migration 1 no longer declares plan_type')
+
+  const declared = [...declaration[1].matchAll(/'([a-z_]+)'/g)].map((m) => m[1])
+  const ranked = (Object.keys(PLAN_RANK) as PlanId[]).sort(
+    (a, b) => PLAN_RANK[a] - PLAN_RANK[b],
+  )
+
+  assert.deepEqual(declared, ranked)
 })

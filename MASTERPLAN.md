@@ -648,13 +648,18 @@ effectiveEntitlement(org, now):
        otherwise                       →  full
 
   2. plan:
-       trial_ends_at > now             →  trial_plan
-       otherwise                       →  plan
+       trial_ends_at > now
+         and trial_plan outranks plan   →  trial_plan
+       otherwise                        →  plan
 
   3. student ceiling:
-       plan cap is a number            →  { plan, max }
-       plan is capacity-based          →  { capacity, org.student_capacity }
+       plan cap is a number             →  { plan, max }
+       plan is capacity-based           →  { capacity, org.student_capacity }
 ```
+
+The rank test in step 2 is why a trial can only ever raise what is allowed, which is
+what lets the ceiling be resolved from the plan in force without a stale `trial_plan`
+taking places away. `app.admitted_ceiling` applies the same test in SQL (§4.5).
 
 Everything downstream — every feature gate, every cap check, every permission
 helper — reads the *result*. None of them learns whether it was a trial, whether
@@ -686,7 +691,9 @@ nothing, and for a week after expiry, because "printed receipts stopped working"
 otherwise indistinguishable from a bug. The last row is `setCenterPlan` on the
 founder panel, which clears both fields when it sets a paid tier — and pointedly does
 not when it sets the free one, so a founder correcting a status typo on a three-day-old
-signup does not take the fortnight off them.
+signup does not take the fortnight off them. "Every Pro feature works" includes its 150
+student places, which took `app.admitted_ceiling` to be true at the trigger and not only
+on the screen (§4.5).
 
 **The notice asks the row, not the entitlement.** `Entitlement` carries no trial
 flag on purpose (§4.2), so the banner reads `trial_plan` and `trial_ends_at` itself —
@@ -751,7 +758,7 @@ the monthly bKash conversation is a feature: it is when churn gets caught. What
 must be automatic is only the *consequence* of non-payment, because that is the
 part a founder cannot be trusted to do consistently to a customer they like.
 
-### 4.5 Downgrade and expiry — nothing is ever deleted ❌
+### 4.5 Downgrade and expiry — nothing is ever deleted ✅
 
 The rule, in one line: **limits apply to new actions, never retroactively to
 existing records.**
@@ -759,20 +766,39 @@ existing records.**
 A teacher who created 90 students and 4 batches during a Pro trial, and then
 dropped to Free:
 
-| | |
-|---|---|
-| Their 90 students | **all still there**, all still visible, all still editable |
-| Their 4 batches | **all still there**, attendance and marks intact |
-| Adding student 91 | refused |
-| Adding a 5th batch | refused |
-| Printing a receipt | refused — Pro feature |
-| Exporting | refused — Pro feature |
-| Deleting a student to get under the cap | allowed, but never required |
+| | | |
+|---|---|---|
+| Their 90 students | **all still there**, all still visible, all still editable | `students_guard_capacity` fires `before insert or update of status, coaching_center_id` only, so a rename or a phone correction never meets the ceiling |
+| Their 4 batches | **all still there**, attendance and marks intact | nothing deactivates a batch when a plan moves |
+| Adding student 91 | refused | `app.guard_student_capacity` (CD001), with `limitRefusal` saying it in a sentence first |
+| Adding a 5th batch | refused | `batchRoomRefusal`, per branch only where branches were bought (§8.4) |
+| Printing a receipt | refused — Pro feature | `has(plan, 'printedReceipts')` on the receipt sheet and the register |
+| Exporting | refused — Pro feature | `has(plan, 'exportReports')` on the screen **and** inside `/api/export`, because a bookmarked URL is not a screen |
+| Deleting a student to get under the cap | allowed, but never required | a status other than `active` frees the place and keeps the attendance and the marks |
 
 A downgrade is also not allowed to be silent. The account lands on a screen that
 says what is now read-only and what it costs to have it back, because a customer
 who discovers a locked export at 9pm the night before a parents' meeting will not
 read it as a billing state. They will read it as the software breaking.
+
+Which is why every one of those refusals is a screen and not a 403: each names the
+plan the reader is on, the plan the feature needs, and links to `/settings/plan`,
+where the ladder and this centre's own usage are. The two moments the tier actually
+moves say so without being asked — the read-only banner when coverage lapses (§4.4)
+and the trial banner for the fortnight and the week after it (§4.3).
+
+**A trial grants the trial tier's places, and the database agrees.** This was the one
+place the two halves of the product contradicted each other. `app.student_ceiling`
+resolves from the paid `plan` column, so a signup on their free fortnight of Pro was
+shown 150 places by the app and refused at 31 by the trigger — with a hint telling
+them to buy the places they had just been given. 20260811000060 splits the question
+in two: `app.student_ceiling` still says what was bought, which is what prices a
+purchase, and `app.admitted_ceiling` says what may be admitted right now, which is
+what the trigger reads. The rank test is native enum comparison (`trial_plan > plan`,
+the same guard `effectiveEntitlement` applies), so a stale trial cannot lower a
+ceiling and a centre still carrying its signup trial is never admitted Teacher Pro's
+150 students on a plan that includes 79.
+
 
 ---
 
@@ -1535,8 +1561,9 @@ manual bKash transfer as its first provider and the founder confirming the money
 arrived; the entitlement resolver, with read-only enforced in front of twenty write
 paths, and a subscription that suspends itself seven days after the period it was
 paid for; a fourteen-day Teacher Pro trial that starts itself at signup, ends on the
-clock, and says so on screen while it runs and for a week after; a founder panel that
-records real money. 913 unit tests and 1,100 RLS assertions green across 59
+clock, says so on screen while it runs and for a week after, and grants its places at
+the trigger as well as on the screen; a founder panel that
+records real money. 916 unit tests and 1,107 RLS assertions green across 60
 migrations and 42 tables, plus four derived gates and two that ask the live API.
 
 **Partly built ⚠️** — branches (money, staff and the HQ comparison yes, full
@@ -1673,7 +1700,9 @@ unknown plan, unreadable membership. Each asserts an entitlement, not a screen.
 
 **Capacity** — refusal at the ceiling; reactivating an inactive student refused when
 full; **two concurrent inserts at the last seat, exactly one succeeding**; bulk
-import of 500 rolling back to zero students when payment fails.
+import of 500 rolling back to zero students when payment fails; a trialling teacher's
+thirty-first student admitted, the same insert refused the day the trial ends, and the
+thirty-one already on the roster untouched by either.
 
 **Branches** — a branch member cannot read, write, or report on another branch's
 students, batches, payments, expenses or payroll. One case per table, attempted as a

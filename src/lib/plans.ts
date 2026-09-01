@@ -577,9 +577,11 @@ export type StudentCeiling =
 /**
  * The ceiling this organisation is entitled to, from its plan and what it has bought.
  *
- * THE SAME RULE AS `app.student_ceiling`, deliberately duplicated: the trigger is
- * what enforces the ceiling and this is what explains it, and they have to agree or
- * the app promises room the database refuses. `greatest`, not the purchased figure
+ * THE SAME RULE AS `app.student_ceiling`, deliberately duplicated: that function is
+ * what a purchase is priced against and this is what explains it, and they have to
+ * agree or the app promises room the database refuses. (A live trial sits on top of
+ * both — `effectiveEntitlement` here, `app.admitted_ceiling` there, which is what the
+ * capacity trigger reads.) `greatest`, not the purchased figure
  * alone, so a centre is never below its own floor's allowance — a capacity of zero is
  * what every fresh centre looks like before its first top-up, and it must not mean
  * "no students".
@@ -649,12 +651,13 @@ export const ASK_PLACES = 25
  * this product deliberately does not have.
  *
  * ON THE EFFECTIVE CEILING — `session.ceiling`, which is what every screen that prints a
- * place count already shows. A trial of a higher tier moves that ceiling and
- * `app.student_ceiling` does not follow, since it reads the paid `coaching_centers.plan`
- * column, so a trialling centre can be refused a student while this still says `fine`.
- * Which of the two is right is a decision about what a trial grants and belongs to the
- * trial lifecycle (§4.3–4.5); passing the paid ceiling here instead would only move the
- * contradiction, and tell an owner to buy the places a founder had just given them.
+ * place count already shows. A trial of a higher tier moves that ceiling, and it used to
+ * move only this half: `app.student_ceiling` reads the paid `coaching_centers.plan`
+ * column, so a trialling centre was told `fine` here and refused CD001 at the form. What
+ * a trial grants was the open question and 20260811000060 answers it — the trial tier's
+ * places, through `app.admitted_ceiling`, which the capacity trigger now reads. Passing
+ * the paid ceiling here instead would only have moved the contradiction, and told an
+ * owner to buy the places a founder had just given them.
  */
 export type CapacityPressure = {
   level: 'fine' | 'notice' | 'urgent' | 'full'

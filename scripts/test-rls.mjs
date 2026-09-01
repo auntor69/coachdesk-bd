@@ -8163,6 +8163,96 @@ check(
   `trial_plan = ${afterTry?.trial_plan}, days_left = ${afterTry?.days_left}`,
 )
 
+// The places the trial actually grants — 20260811000060, MASTERPLAN.md §4.5.
+//
+// This is where the two halves of the product used to disagree. The app resolves
+// entitlement through the trial and showed this centre 150 places; the trigger read
+// the paid `plan` column and counted 30. The teacher reached their thirty-first
+// student, was refused CD001, and read a hint telling them to buy the places they had
+// just been given.
+const ceilingsOf = async (center) =>
+  (
+    await db.query(
+      `select app.student_ceiling($1)::int as bought,
+              app.admitted_ceiling($1)::int as admitted`,
+      [center],
+    )
+  ).rows[0]
+
+// Superuser, so this seeds past the guard rather than testing it. The thirty-first is
+// the one that matters and it goes in as the owner.
+const seedStudents = (center, count) =>
+  db.query(
+    `insert into students (coaching_center_id, name, guardian_phone)
+     select $1, 'Trial Child ' || g, '0179' || lpad(g::text, 7, '0')
+       from generate_series(1, $2) g`,
+    [center, count],
+  )
+
+const admitStudent = (center, name) =>
+  deniedAsUser(
+    db,
+    joiner,
+    `insert into students (coaching_center_id, name, guardian_phone)
+     values ($1, $2, '01799000031')`,
+    [center, name],
+  )
+
+const trialling = await ceilingsOf(joinedCenter)
+check(
+  'a live trial of a higher tier moves what may be admitted',
+  trialling?.admitted === 150,
+  `admitted ${trialling?.admitted}`,
+)
+check(
+  'while what was bought stays the free plan, which is what prices a purchase',
+  trialling?.bought === 30,
+  `bought ${trialling?.bought}`,
+)
+
+await seedStudents(joinedCenter, 30)
+check(
+  'so the thirty-first student of a trialling teacher goes in',
+  (await admitStudent(joinedCenter, 'Thirty First')) === false,
+)
+
+// Expiry is a comparison, so moving the date is the whole of it — no job runs.
+await db.query(
+  `update coaching_centers set trial_ends_at = now() - interval '1 day' where id = $1`,
+  [joinedCenter],
+)
+check(
+  "the day the trial ends the ceiling is the free plan's again",
+  (await ceilingsOf(joinedCenter))?.admitted === 30,
+)
+check(
+  'and the next student is refused, while the thirty-one already there stay',
+  (await admitStudent(joinedCenter, 'Thirty Second')) === true,
+)
+check(
+  'nothing having been taken away to make the plan fit',
+  (await n(db, 'select count(*)::int as n from students where coaching_center_id = $1', [
+    joinedCenter,
+  ])) === 31,
+)
+
+// A trial that does NOT outrank the paid plan grants nothing, and this is the
+// under-billing case rather than a tidiness one: Teacher Pro includes 150 and a
+// Coaching Center 79, so a centre still carrying its signup trial would otherwise be
+// admitted 150 students on a plan that includes 79.
+await db.query(
+  `update coaching_centers
+      set plan = 'center', trial_ends_at = now() + interval '7 days'
+    where id = $1`,
+  [joinedCenter],
+)
+const outranked = await ceilingsOf(joinedCenter)
+check(
+  'a trial below the paid plan cannot lower or raise what may be admitted',
+  outranked?.admitted === outranked?.bought && outranked?.admitted === 79,
+  `admitted ${outranked?.admitted}, bought ${outranked?.bought}`,
+)
+
 // Taken away again, centre and account both, so the sections below count what they
 // expect and no signup fixture is left sitting in the centre list.
 await db.query('delete from coaching_centers where id = $1', [joinedCenter])

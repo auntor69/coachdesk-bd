@@ -185,7 +185,8 @@ function firstOfMonth(isoDate: string): string | null {
  * Places above the ceiling the centre already has.
  *
  * Measured from `studentCeiling`, which is `greatest(what the floor included, what has
- * been bought)` — the same reading `app.student_ceiling` gives the trigger. Measuring
+ * been bought)` — the same reading `app.student_ceiling` gives a purchase, and
+ * deliberately not the trial-aware one the capacity trigger admits by. Measuring
  * from `student_capacity` alone would sell a fresh centre the 79 places its ৳1,999
  * already paid for.
  *
