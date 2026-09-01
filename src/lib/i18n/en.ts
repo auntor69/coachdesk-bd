@@ -163,6 +163,52 @@ export const en: Dictionary = {
       + 'it is at the top of the screen.',
   },
 
+  /**
+   * What a manager was given and what they were not (MASTERPLAN.md §6.2).
+   *
+   * `refused` is written the way `readOnly.refused` is and for the same reason: the
+   * reader is a manager, so "owners and managers only" is both wrong and unfixable-
+   * looking. The fact they can act on is that somebody chose this, and where.
+   */
+  capabilities: {
+    refused:
+      'This is not part of the job you were given at this centre. Whoever owns it can '
+      + 'add it on the managers screen.',
+    legend: 'What they may do',
+    everything: 'Everything below, including anything added later',
+    custom: 'Chosen one by one',
+    name: {
+      fees: 'Fees and payments',
+      expenses: 'Spending',
+      payroll: 'Salaries',
+      students: 'Students',
+      staff: 'Staff',
+      messages: 'Messages and notices',
+    },
+    hint: {
+      fees: 'See the fee board, take payments, print receipts, chase what is due',
+      expenses: 'See and record what the centre spends',
+      payroll: 'See what staff are paid and pay them',
+      students: 'Admit students, edit them, move them between branches',
+      staff: 'Add and edit teachers and other staff, and what teachers may do',
+      messages: 'Write the reminder wording and post notices',
+    },
+    bundle: {
+      deputy: 'Deputy owner',
+      accountant: 'Accountant',
+      coordinator: 'Coordinator',
+      receptionist: 'Receptionist',
+      observer: 'Observer',
+    },
+    bundleHint: {
+      deputy: 'The whole job, as every manager had before this screen existed',
+      accountant: 'The money, and nothing about students or staff',
+      coordinator: 'Students, staff and messages, and none of the money',
+      receptionist: 'Admits students and sends messages, never sees what anybody paid',
+      observer: 'Reads the centre and changes nothing',
+    },
+  },
+
   trialNotice: {
     runningTitle: (plan: string, days: number) =>
       `${days} ${days === 1 ? 'day' : 'days'} left on your free ${plan} trial`,

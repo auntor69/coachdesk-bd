@@ -29,6 +29,7 @@ import { revalidatePath } from 'next/cache'
 import {
   requireRole,
   requireWritable,
+  requireCapability,
   authRefusal,
   AuthError,
   type CenterSession,
@@ -71,11 +72,16 @@ const EARLIEST_JOIN = '2000-01-01'
  * open this". The plan check is an entitlement, and its sentence names what is missing:
  * `staffNeedsCenter` already exists for it, because the seats side of this line was
  * written first.
+ *
+ * AND `staff` (§6.2), which is the narrowing with the sharpest edge on it: this module
+ * appoints teachers and ticks the boxes that say what a teacher may reach. A manager who
+ * kept it could tick `can_view_fees` on a teacher account they hold themselves and read
+ * back the fee book their owner took away from them. So the veto here is not tidiness.
  */
 async function caller(): Promise<CenterSession | StaffState> {
   let session: CenterSession
   try {
-    session = requireWritable(await requireRole('manager'))
+    session = requireCapability('staff', requireWritable(await requireRole('manager')))
   } catch (err) {
     if (err instanceof AuthError) {
       return { error: await authRefusal(err, (d) => d.settings.errors.forbidden) }

@@ -28,6 +28,7 @@ import { createClient } from '@/lib/supabase/server'
 import {
   requireRole,
   requireWritable,
+  requireCapability,
   authRefusal,
   AuthError,
 } from '@/lib/auth/session'
@@ -59,10 +60,15 @@ const SAME_NOTICE_MS = 2 * 60 * 60 * 1000
  * A read-only centre is the one failure here that does get its own sentence, and must:
  * "you cannot open this" is the wrong thing to tell an owner whose plan simply lapsed,
  * and a notice is the one write in the app that costs us money to deliver.
+ *
+ * Two that do, now: `messages` is the §6.2 word for the centre's voice, and it is the
+ * narrowing with the most obvious reason behind it. A notice goes out over the centre's
+ * name to every guardian on the roster, and an owner may well want the front desk booking
+ * students in without being able to say anything to their parents.
  */
 async function caller(): Promise<CenterSession | NoticeState> {
   try {
-    return requireWritable(await requireRole('manager'))
+    return requireCapability('messages', requireWritable(await requireRole('manager')))
   } catch (err) {
     if (err instanceof AuthError) {
       return { error: await authRefusal(err, (d) => d.denied.title) }

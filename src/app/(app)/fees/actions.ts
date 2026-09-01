@@ -18,6 +18,7 @@ import { pageAll } from '@/lib/supabase/page'
 import {
   requireRole,
   requireWritable,
+  requireCapability,
   authRefusal,
   AuthError,
   type CenterSession,
@@ -82,10 +83,16 @@ const MONTH_RE = /^\d{4}-\d{2}-01$/
  * discounts, refunds, voids and arrears are the centre's money moving, and a centre
  * whose plan has run out does not get to keep running its month on our software. The
  * board itself stays readable — the pages do not come through here.
+ *
+ * AND THE `fees` CAPABILITY, third in the chain and last on purpose (§6.2). Read-only
+ * outranks it because a lapsed centre refuses everybody, and rank outranks it because a
+ * teacher is refused before the question of narrowing arises. What is left is the manager
+ * their owner did not give the money to, and 20260811000063 refuses their every fee query
+ * anyway — this line is what turns an empty board into a sentence.
  */
 async function feeAdmin(): Promise<CenterSession | FeeState> {
   try {
-    return requireWritable(await requireRole('manager'))
+    return requireCapability('fees', requireWritable(await requireRole('manager')))
   } catch (err) {
     if (err instanceof AuthError) {
       return { error: await authRefusal(err, (d) => d.fees.errors.forbidden) }

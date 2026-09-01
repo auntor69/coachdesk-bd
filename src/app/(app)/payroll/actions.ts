@@ -44,6 +44,7 @@ import { revalidatePath } from 'next/cache'
 import {
   requireRole,
   requireWritable,
+  requireCapability,
   authRefusal,
   AuthError,
   type CenterSession,
@@ -85,11 +86,15 @@ const EARLIEST_TERMS = '2000-01-01'
  * the separate one a lapsed subscription gets. The plan check is an entitlement, and its
  * sentence has to name what is missing rather than say "not allowed": an owner on a teacher
  * plan who reached this endpoint is not doing anything wrong.
+ *
+ * Three now, with `payroll` (§6.2). What somebody's salary is happens to be the most
+ * private figure a coaching centre holds about its own people, so it is the narrowing an
+ * owner most often wants and the one this chain has least excuse to get wrong.
  */
 async function caller(): Promise<CenterSession | PayrollState> {
   let session: CenterSession
   try {
-    session = requireWritable(await requireRole('manager'))
+    session = requireCapability('payroll', requireWritable(await requireRole('manager')))
   } catch (err) {
     if (err instanceof AuthError) {
       return { error: await authRefusal(err, (d) => d.denied.title) }

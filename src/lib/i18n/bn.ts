@@ -442,6 +442,56 @@ export const bn = {
   },
 
   /**
+   * কে কী করতে পারবে — a manager narrowed to part of the job (MASTERPLAN.md §6.2).
+   *
+   * `refused` names the person who can undo it, which is the only useful half of the
+   * sentence: the reader is an administrator of this centre, so "you are not allowed"
+   * reads as the app being broken rather than as a decision somebody made.
+   *
+   * THE SIX WORDS ARE THE OWNER'S WORDS, not the schema's. `fees` covers three tables
+   * and `staff` covers four, and an owner ticking a box is thinking "does the front desk
+   * see the money", so the label says that and the hint says what it costs them.
+   */
+  capabilities: {
+    refused:
+      'এই সেন্টারে আপনাকে যে কাজ দেওয়া হয়েছে এটা তার মধ্যে নেই। সেন্টারের মালিক '
+      + 'ম্যানেজার স্ক্রিন থেকে এটা যোগ করে দিতে পারবেন।',
+    legend: 'কী কী করতে পারবেন',
+    everything: 'নিচের সবকিছু, পরে যা যোগ হবে সেটাও',
+    custom: 'একটা একটা করে বেছে নেওয়া',
+    name: {
+      fees: 'ফি ও টাকা জমা',
+      expenses: 'খরচ',
+      payroll: 'বেতন',
+      students: 'শিক্ষার্থী',
+      staff: 'স্টাফ',
+      messages: 'মেসেজ ও নোটিশ',
+    },
+    hint: {
+      fees: 'ফির হিসাব দেখা, টাকা জমা নেওয়া, রসিদ ছাপা, বাকি আদায় করা',
+      expenses: 'সেন্টারের খরচ দেখা ও লেখা',
+      payroll: 'স্টাফের বেতন দেখা ও দেওয়া',
+      students: 'নতুন শিক্ষার্থী ভর্তি, তথ্য বদল, ব্রাঞ্চ বদল',
+      staff: 'শিক্ষক ও অন্য স্টাফ যোগ করা, আর শিক্ষক কী করতে পারবেন তা ঠিক করা',
+      messages: 'রিমাইন্ডারের লেখা ঠিক করা আর নোটিশ দেওয়া',
+    },
+    bundle: {
+      deputy: 'সহকারী মালিক',
+      accountant: 'হিসাবরক্ষক',
+      coordinator: 'কো-অর্ডিনেটর',
+      receptionist: 'রিসেপশন',
+      observer: 'শুধু দেখবেন',
+    },
+    bundleHint: {
+      deputy: 'পুরো কাজ, এই স্ক্রিন আসার আগে সব ম্যানেজারের যা ছিল',
+      accountant: 'টাকার সবকিছু, শিক্ষার্থী বা স্টাফের কিছু নয়',
+      coordinator: 'শিক্ষার্থী, স্টাফ আর মেসেজ — টাকার কিছু নয়',
+      receptionist: 'ভর্তি করা আর মেসেজ পাঠানো, কে কত টাকা দিল তা দেখতে পাবেন না',
+      observer: 'সেন্টার দেখবেন, কিছু বদলাতে পারবেন না',
+    },
+  },
+
+  /**
    * The fortnight of Teacher Pro a new signup gets (MASTERPLAN.md §2.2), said out loud.
    *
    * A SEPARATE GROUP FROM `readOnly` because nothing is being refused: the centre holds

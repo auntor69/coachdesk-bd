@@ -23,6 +23,7 @@ import type { PermissionKey } from '@/lib/permissions'
 import { effectiveEntitlement, type Access, type OrgBilling } from '@/lib/entitlement'
 import { hasStaff, type PlanLimits, type StudentCeiling } from '@/lib/plans'
 import { ACTIVE_CENTER_COOKIE, pickActive, strongestPerCenter } from '@/lib/auth/active-center'
+import { can, narrowingOf, type Capability } from '@/lib/staff/capabilities'
 import type { CenterStatus, MemberRole, PlanType } from '@/lib/supabase/types'
 
 export type Membership = {
@@ -80,6 +81,26 @@ export type Membership = {
    * Null is not lapsed, here as everywhere: see `coverageLapsed`.
    */
   paidThrough: string | null
+  /**
+   * What this person may do at this centre, narrowed one capability at a time
+   * (MASTERPLAN.md §6.2), or null for the whole of the role.
+   *
+   * Null for every owner, every teacher and every manager an owner has not narrowed —
+   * which is every row that existed before 20260811000063 — so nothing about the product
+   * changes by this field appearing. `can` in lib/staff/capabilities reads it.
+   *
+   * THE INTERSECTION OF EVERY MEMBERSHIP AT THE CENTRE, not this row's own column, which
+   * is the one subtle thing about it. `app.member_allows` is a `not exists` over all
+   * active rows, so a second unnarrowed membership cannot lift a veto — and a person who
+   * teaches and administers holds two. `narrowingOf` folds them, so what this field says
+   * is what the policies will actually do.
+   *
+   * A COURTESY, LIKE `studentCapacity`. The fence is the restrictive policies; this is
+   * what lets a screen hide a card instead of drawing an empty one. See §6.2's own note
+   * about the two service-role paths, where the check in the action is the only fence
+   * there is.
+   */
+  capabilities: string[] | null
 }
 
 /**
@@ -259,11 +280,32 @@ export const getSession = cache(async (): Promise<Session | null> => {
       // `'a' + 'b'` widens to `string` and every column on the row comes back as
       // `GenericStringError`. Wrapping this for width costs the whole embed's typing.
       .select(
-        'coaching_center_id, role, branch_id, coaching_centers (name, plan, status, sms_credit_balance, student_capacity, trial_plan, trial_ends_at, paid_through)',
+        'coaching_center_id, role, branch_id, capabilities, coaching_centers (name, plan, status, sms_credit_balance, student_capacity, trial_plan, trial_ends_at, paid_through)',
       )
       .eq('user_id', user.id)
       .eq('active', true),
   ])
+
+  /*
+   * The narrowing per centre, worked out before the rows are folded to one membership each.
+   *
+   * It has to happen here rather than on the picked row, because `strongestPerCenter` keeps
+   * the strongest role and throws the others away — and the veto belongs to all of them. A
+   * teacher-manager's strongest row is the manager one, so reading the column off it would
+   * be right by luck for that shape and wrong for an owner who was also written down as a
+   * narrowed manager by mistake. §6.2's veto is refused by any row; so is this.
+   */
+  const narrowed = new Map<string, string[] | null>()
+  for (const row of rows ?? []) {
+    const id = row.coaching_center_id
+    narrowed.set(
+      id,
+      narrowingOf([
+        { capabilities: narrowed.get(id) ?? null },
+        { capabilities: row.capabilities },
+      ]),
+    )
+  }
 
   // `?? []` stays, and it is safe here only because of the flag returned beside it: a
   // failed read still produces an empty list, but the list is no longer the only thing
@@ -289,6 +331,7 @@ export const getSession = cache(async (): Promise<Session | null> => {
           trialEndsAt: center.trial_ends_at,
           studentCapacity: center.student_capacity,
           paidThrough: center.paid_through,
+          capabilities: narrowed.get(row.coaching_center_id) ?? null,
         }
       })
       .filter((m): m is Membership => m !== null),
@@ -383,6 +426,12 @@ export const getSession = cache(async (): Promise<Session | null> => {
  * module's converter has to be able to reach for a different sentence — "you are not
  * allowed to do this" is wrong and insulting when the truth is "the subscription
  * lapsed", and the second one has a fix the reader can act on.
+ *
+ * `narrowed` is a sixth on the same argument. A refused manager IS allowed here in every
+ * sense they can see — they have the screen, the nav item and the role — and what they
+ * lack is one of the six words their owner ticked. `forbidden`'s sentence would send them
+ * looking for the setting that would let them, and the setting is on somebody else's
+ * screen. Having the code is what lets `authRefusal` say so once for all six modules.
  */
 export class AuthError extends Error {
   constructor(
@@ -391,7 +440,8 @@ export class AuthError extends Error {
       | 'no_center'
       | 'forbidden'
       | 'unreadable'
-      | 'read_only',
+      | 'read_only'
+      | 'narrowed',
     message: string,
   ) {
     super(message)
@@ -492,6 +542,43 @@ export function requireWritable<T extends { access: Access }>(session: T): T {
 }
 
 /**
+ * The capability check, composed onto whatever authorization the caller has already done.
+ *
+ * `requireCapability('fees', requireWritable(await requireRole('manager')))` — the same
+ * shape as `requireWritable` and for the same reason: role, plan, standing and capability
+ * are four different questions and each module asks the ones that apply to it in one place.
+ *
+ * THIS IS NOT THE FENCE for anything RLS can see. 20260811000063 puts restrictive policies
+ * on sixteen tables, and those hold against a hand-posted form whether this line is here or
+ * not. What this adds is a sentence instead of an empty result — a narrowed manager who
+ * posts the fee form would otherwise get "could not be saved", which reads as a bug in the
+ * product rather than as a decision their owner made.
+ *
+ * WHERE IT IS THE ONLY FENCE, and the reason it is exported rather than folded into each
+ * module's local guard: `exams/actions.ts` and `settings/actions.ts` write through
+ * `createAdminClient`, and the service role bypasses every policy in the schema. For those
+ * two paths this function is the whole enforcement, which is why 20260811000063's closing
+ * section names them.
+ *
+ * A CODE OF ITS OWN, for the reason `read_only` has one: the module that catches this has
+ * no way to word it. Its fallback sentence is about rank — "owners and managers only" —
+ * and the reader is a manager, so the one sentence that helps names the six boxes and
+ * whose screen they are on. `authRefusal` reaches for it, once, for all six modules.
+ */
+export function requireCapability<T extends { active: Membership }>(
+  capability: Capability,
+  session: T,
+): T {
+  if (!can(session.active.capabilities, capability)) {
+    throw new AuthError(
+      'narrowed',
+      `This membership was narrowed and does not include ${capability}.`,
+    )
+  }
+  return session
+}
+
+/**
  * The sentence a refused guard shows, in the caller's own language.
  *
  * READ-ONLY OUTRANKS THE CALLER'S OWN MESSAGE, in one place rather than in seven. Every
@@ -500,6 +587,12 @@ export function requireWritable<T extends { access: Access }>(session: T): T {
  * subscription: it tells an owner who has every permission in the product that they
  * personally are not permitted, so they look for the setting that would let them and
  * there is none. The fix is a different fact, not a softer one.
+ *
+ * SO DOES A NARROWED MEMBERSHIP, and it is the same trade in the other direction: the
+ * module's fallback is a sentence about rank, and this reader has the rank. Both codes are
+ * answered here so a module gets them right by having done nothing — `fees/actions.ts`
+ * composes one guard and keeps one fallback, and the two sentences it never writes are the
+ * two it would have got wrong.
  *
  * `fallback` is a function of the dictionary rather than a string, because the caller
  * cannot read its own group until this has resolved which language to read it in.
@@ -514,7 +607,9 @@ export async function authRefusal(
 ): Promise<string> {
   const caller = await getSession()
   const d = dict(caller?.locale ?? DEFAULT_LOCALE)
-  return err.code === 'read_only' ? d.readOnly.refused : fallback(d)
+  if (err.code === 'read_only') return d.readOnly.refused
+  if (err.code === 'narrowed') return d.capabilities.refused
+  return fallback(d)
 }
 
 /** Owners and managers — the two roles that may change a center's setup. */
@@ -748,11 +843,17 @@ export const canManageExams = cache(async (): Promise<boolean> => {
  *
  * Owners and managers always may. They are the ones who bought the credits, and
  * the send screen shows the balance and the exact cost before it spends any.
+ *
+ * UNLESS THE MANAGER WAS NARROWED AWAY FROM `messages` (§6.2), and this is the one of
+ * these five helpers where the veto is a fence rather than a courtesy: the send spends
+ * credits through `createAdminClient`, which bypasses every policy 20260811000063 wrote.
+ * There is no empty result to fall back on here — an unnarrowed check would let a
+ * receptionist their owner silenced spend the centre's money on a send.
  */
 export const canSendSms = cache(async (): Promise<boolean> => {
   const session = await getSession()
   if (!session?.active) return false
-  if (isStaffAdmin(session)) return true
+  if (isStaffAdmin(session)) return can(session.active.capabilities, 'messages')
   if (!hasStaff(session.plan)) return false
   if (session.active.role !== 'teacher') return false
 
@@ -785,11 +886,17 @@ export const canSendSms = cache(async (): Promise<boolean> => {
  * This decides what to *render*. app.can_view_fees in 20260811000012 is the
  * boundary and the thing with tests — if this ever says yes where the policy says
  * no, the screen draws and every query on it comes back empty.
+ *
+ * WHICH IS EXACTLY WHY A NARROWED MANAGER IS NO (§6.2). 20260811000063's fee policies
+ * narrow reads as well as writes, so a manager whose owner unticked `fees` has a fee
+ * board where every figure is zero and every list is empty — a centre that looks like it
+ * has collected nothing and owes nothing. The sentence in that paragraph is about
+ * teachers and applies here word for word.
  */
 export const canReadFees = cache(async (): Promise<boolean> => {
   const session = await getSession()
   if (!session?.active) return false
-  if (isStaffAdmin(session)) return true
+  if (isStaffAdmin(session)) return can(session.active.capabilities, 'fees')
   if (!hasStaff(session.plan)) return false
   if (session.active.role !== 'teacher') return false
 
@@ -961,6 +1068,7 @@ export async function requirePermission(
  * that suits it:
  *
  *   forbidden       -> a 403 screen naming the reader's own home (forbidden.tsx)
+ *   narrowed        -> the same 403, for a capability their owner did not tick
  *   no_center       -> /onboarding, because they have an account and no centre yet
  *   unauthenticated -> /login, which the proxy usually catches first
  *   unreadable      -> app/error.tsx, by rethrowing
@@ -1000,6 +1108,11 @@ async function pageGuard<T>(check: () => Promise<T>): Promise<T> {
       // means a guard was composed wrongly and that is a bug to see, not to render.
       case 'read_only':
         throw err
+      // A 403 and not a rethrow, because this one IS reachable from a page:
+      // pageCapability below exists for the screens a narrowed manager may not open.
+      // forbidden.tsx names the reader's own home, which is where they should be.
+      case 'narrowed':
+        forbidden()
     }
   }
 }
@@ -1024,6 +1137,26 @@ export async function pagePermission(
   permission: RosterPermission,
 ): Promise<CenterSession> {
   return pageGuard(() => requirePermission(permission))
+}
+
+/**
+ * A page a narrowed manager may not open at all: the role first, then the capability.
+ *
+ * `minimum` rather than a fixed `'manager'` because the money screens are owner-and-manager
+ * and the roster screens are not, and a page that asked the capability without the rank
+ * would open the fee board to a teacher — nothing narrows a teacher, so `can` says yes.
+ *
+ * A 403 IS THE SECOND-BEST ANSWER HERE and the nav is the first. A receptionist who never
+ * sees a Fees item never types /fees, and this is for the bookmark, the back button and the
+ * centre switcher — the three ways a reader arrives at a screen nobody offered them. So
+ * hiding the item is not decoration and this is not the fence; between them the reader is
+ * neither misled nor stopped at a door they were shown.
+ */
+export async function pageCapability(
+  capability: Capability,
+  minimum: MemberRole = 'manager',
+): Promise<CenterSession> {
+  return pageGuard(async () => requireCapability(capability, await requireRole(minimum)))
 }
 
 /**

@@ -19,6 +19,7 @@ import {
   requireRole,
   requirePermission,
   requireWritable,
+  requireCapability,
   authRefusal,
   AuthError,
   type CenterSession,
@@ -43,6 +44,7 @@ import {
 import { SLOT_ORDER } from '@/lib/bd/schedule'
 import { MAX_NAME, MAX_LABEL, clamp } from '@/lib/limits'
 import { PERMISSION_KEYS, type PermissionKey } from '@/lib/permissions'
+import type { Capability } from '@/lib/staff/capabilities'
 import { dict } from '@/lib/i18n'
 import { nameTooLong, passwordTooShort } from '@/lib/i18n/messages'
 import { has, studentRoom, wouldExceed, hasStaff, type LimitKey } from '@/lib/plans'
@@ -108,13 +110,23 @@ export type ActionState = {
  * written like the others. Nothing in this file is something a suspended centre must
  * still be able to do; the two things that are (asking to be put on a plan, and an
  * account's own name and password) live in other modules and do not run this.
+ *
+ * `capability` IS OPTIONAL BECAUSE MOST OF THIS FILE IS NOT NARROWED (§6.2). Subjects,
+ * exam types and batches are a centre's shared vocabulary and 20260811000063 leaves them
+ * alone — a narrowing that hid the subject list would be an owner accidentally stopping
+ * their accountant from reading a fee line. The two groups that pass a word are students
+ * and staff, and both matter more here than anywhere: `createTeacher`, `giveTeacherLogin`
+ * and `resetTeacherPassword` write through `createAdminClient`, so for them the argument
+ * to this function is the entire fence and there is no policy behind it.
  */
 async function guard(
   check: () => Promise<CenterSession>,
   message: (d: ReturnType<typeof dict>) => string,
+  capability?: Capability,
 ): Promise<CenterSession | ActionState> {
   try {
-    return requireWritable(await check())
+    const session = requireWritable(await check())
+    return capability === undefined ? session : requireCapability(capability, session)
   } catch (err) {
     if (err instanceof AuthError) {
       return { error: await authRefusal(err, message) }
@@ -131,6 +143,17 @@ async function staffAdmin(): Promise<CenterSession | ActionState> {
   )
 }
 
+/** The same, narrowed to one of the six words an owner may have unticked (§6.2). */
+async function staffAdminWith(
+  capability: Capability,
+): Promise<CenterSession | ActionState> {
+  return guard(
+    () => requireRole('manager'),
+    (d) => d.settings.errors.forbidden,
+    capability,
+  )
+}
+
 /**
  * Owners and managers, or a teacher the owner ticked the box for.
  *
@@ -142,13 +165,19 @@ async function staffAdmin(): Promise<CenterSession | ActionState> {
  * A different sentence when it refuses. `forbidden` says only an owner or a manager
  * may do this, which stopped being true here — a teacher who is refused needs to
  * know the answer is a checkbox on their own row and who owns it.
+ *
+ * `capability` narrows the manager and not the teacher, which is what makes passing both
+ * safe: nothing narrows a teacher, so `requireCapability` is a no-op for the person the
+ * checkbox was ticked for and a veto for the manager whose owner unticked `students`.
  */
 async function mayManage(
   permission: RosterPermission,
+  capability?: Capability,
 ): Promise<CenterSession | ActionState> {
   return guard(
     () => requirePermission(permission),
     (d) => d.settings.errors.notPermitted,
+    capability,
   )
 }
 
@@ -1338,7 +1367,7 @@ export async function createStudent(
   _prev: ActionState,
   formData: FormData,
 ): Promise<ActionState> {
-  const session = await mayManage('can_manage_students')
+  const session = await mayManage('can_manage_students', 'students')
   if (!isSession(session)) return session
 
   const t = dict(session.locale).settings
@@ -1584,7 +1613,7 @@ export async function updateStudent(
   _prev: ActionState,
   formData: FormData,
 ): Promise<ActionState> {
-  const session = await staffAdmin()
+  const session = await staffAdminWith('students')
   if (!isSession(session)) return session
 
   const t = dict(session.locale).settings
@@ -1855,7 +1884,7 @@ export async function importStudents(
   _prev: ActionState,
   formData: FormData,
 ): Promise<ActionState> {
-  const session = await mayManage('can_manage_students')
+  const session = await mayManage('can_manage_students', 'students')
   if (!isSession(session)) return session
 
   const t = dict(session.locale).settings
@@ -1984,7 +2013,7 @@ export async function toggleSmsOptOut(
   _prev: ActionState,
   formData: FormData,
 ): Promise<ActionState> {
-  const session = await staffAdmin()
+  const session = await staffAdminWith('students')
   if (!isSession(session)) return session
 
   const t = dict(session.locale).settings
@@ -2037,7 +2066,7 @@ export async function setPreferredChannel(
   _prev: ActionState,
   formData: FormData,
 ): Promise<ActionState> {
-  const session = await staffAdmin()
+  const session = await staffAdminWith('students')
   if (!isSession(session)) return session
 
   const t = dict(session.locale).settings
@@ -2144,7 +2173,7 @@ export async function createTeacher(
   _prev: ActionState,
   formData: FormData,
 ): Promise<ActionState> {
-  const session = await staffAdmin()
+  const session = await staffAdminWith('staff')
   if (!isSession(session)) return session
 
   const t = dict(session.locale).settings
@@ -2447,7 +2476,7 @@ export async function updateTeacher(
   _prev: ActionState,
   formData: FormData,
 ): Promise<ActionState> {
-  const session = await staffAdmin()
+  const session = await staffAdminWith('staff')
   if (!isSession(session)) return session
 
   const t = dict(session.locale).settings
@@ -2581,7 +2610,7 @@ export async function saveTeacherPermissions(
   _prev: ActionState,
   formData: FormData,
 ): Promise<ActionState> {
-  const session = await staffAdmin()
+  const session = await staffAdminWith('staff')
   if (!isSession(session)) return session
 
   const t = dict(session.locale).settings
@@ -2640,7 +2669,7 @@ export async function toggleTeacherActive(
   _prev: ActionState,
   formData: FormData,
 ): Promise<ActionState> {
-  const session = await staffAdmin()
+  const session = await staffAdminWith('staff')
   if (!isSession(session)) return session
 
   const t = dict(session.locale).settings
@@ -2781,7 +2810,7 @@ export async function giveTeacherLogin(
   _prev: ActionState,
   formData: FormData,
 ): Promise<ActionState> {
-  const session = await staffAdmin()
+  const session = await staffAdminWith('staff')
   if (!isSession(session)) return session
 
   const t = dict(session.locale).settings
@@ -2966,7 +2995,7 @@ export async function resetTeacherPassword(
   _prev: ActionState,
   formData: FormData,
 ): Promise<ActionState> {
-  const session = await staffAdmin()
+  const session = await staffAdminWith('staff')
   if (!isSession(session)) return session
 
   const t = dict(session.locale).settings

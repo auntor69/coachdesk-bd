@@ -37,6 +37,7 @@ import { createClient } from '@/lib/supabase/server'
 import {
   requireRole,
   requireWritable,
+  requireCapability,
   authRefusal,
   AuthError,
 } from '@/lib/auth/session'
@@ -105,11 +106,15 @@ const EARLIEST_SPEND = '2000-01-01'
  * been bought would be writing to the record, and the write is the part nobody can undo:
  * 20260811000045 revoked DELETE. The same flag and the same argument as ../payroll's own
  * caller, which is where the choice of flag is set out at length.
+ *
+ * THEN THE `expenses` CAPABILITY (§6.2), before the plan flag rather than after it, so the
+ * manager who was never given the spending book is told that and not told to upgrade. Both
+ * sentences are true for them; only one names something they can get.
  */
 async function caller(): Promise<CenterSession | ExpenseState> {
   let session: CenterSession
   try {
-    session = requireWritable(await requireRole('manager'))
+    session = requireCapability('expenses', requireWritable(await requireRole('manager')))
   } catch (err) {
     if (err instanceof AuthError) {
       return { error: await authRefusal(err, (d) => d.denied.title) }

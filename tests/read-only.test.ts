@@ -134,16 +134,39 @@ test('the read-only sentence is written in one place', () => {
   assert.match(read('src', 'lib', 'auth', 'session.ts'), /d\.readOnly\.refused/)
 })
 
-test('pageGuard handles the fifth AuthError code', () => {
+test('so is the narrowed-membership sentence, and for the same reason', () => {
+  // The other code `authRefusal` answers itself (MASTERPLAN.md §6.2). A module reaching
+  // for `capabilities.refused` would be a module deciding which of the two refusals wins,
+  // in the seventh place that decision is made.
+  const users = actionModules(APP).filter((file) => /capabilities\.refused/.test(read(file)))
+  assert.deepEqual(users, [])
+  assert.match(read('src', 'lib', 'auth', 'session.ts'), /d\.capabilities\.refused/)
+})
+
+test('pageGuard handles every AuthError code', () => {
   // A page never runs the write check — read-only means the screens stay — but the
   // switch is exhaustive over the code union, and a case dropped from it would compile
   // into a guard that returns undefined for a live error.
   const source = read('src', 'lib', 'auth', 'session.ts')
   const guard = source.slice(source.indexOf('async function pageGuard'))
 
-  for (const code of ['forbidden', 'no_center', 'unauthenticated', 'unreadable', 'read_only']) {
-    assert.match(guard.slice(0, 1400), new RegExp(`case '${code}':`), code)
+  const codes = [
+    'forbidden',
+    'no_center',
+    'unauthenticated',
+    'unreadable',
+    'read_only',
+    'narrowed',
+  ]
+  for (const code of codes) {
+    assert.match(guard.slice(0, 1800), new RegExp(`case '${code}':`), code)
   }
+
+  // And the union has no seventh, because the switch above is only exhaustive against the
+  // list it was written for. Read off the constructor rather than counted.
+  const union = source.slice(source.indexOf('export class AuthError'))
+  const declared = [...union.slice(0, 400).matchAll(/\| '(\w+)'/g)].map((m) => m[1])
+  assert.deepEqual(declared.sort(), [...codes].sort())
 })
 
 test('the banner explains what the refusal only names', () => {

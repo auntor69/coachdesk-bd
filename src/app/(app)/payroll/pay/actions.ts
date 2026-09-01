@@ -46,6 +46,7 @@ import { revalidatePath } from 'next/cache'
 import {
   requireRole,
   requireWritable,
+  requireCapability,
   authRefusal,
   AuthError,
   type CenterSession,
@@ -93,11 +94,15 @@ const EARLIEST_MONTH = '2000-01-01'
  * sentence, including the separate one a lapsed subscription gets. The plan check is an
  * entitlement, and its sentence names what is missing rather than saying "not allowed": an
  * owner on a teacher plan who reached this endpoint is not doing anything wrong.
+ *
+ * `payroll` too (§6.2), the same word as ../actions.ts because it is the same book: that
+ * file agrees what a person is owed and this one hands it over. A narrowing that covered
+ * one and not the other would be a manager who can raise a salary they cannot pay.
  */
 async function caller(): Promise<CenterSession | PayState> {
   let session: CenterSession
   try {
-    session = requireWritable(await requireRole('manager'))
+    session = requireCapability('payroll', requireWritable(await requireRole('manager')))
   } catch (err) {
     if (err instanceof AuthError) {
       return { error: await authRefusal(err, (d) => d.denied.title) }
