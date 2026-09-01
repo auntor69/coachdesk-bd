@@ -348,7 +348,7 @@ the customer nothing extra per month, so charging for those seats would be
 billing twice for the same taka. The derived figure keeps that honest and cannot
 drift, because it is computed from the same bands the bill is.
 
-### 3.3 Student capacity — plan and capacity are separate concepts ❌
+### 3.3 Student capacity — plan and capacity are separate concepts ✅
 
 **This is the central architectural decision of this revision.**
 
@@ -387,7 +387,7 @@ StudentCeiling =
 A call site that forgets to handle `capacity` then fails to compile, instead of
 silently treating a paying centre as unlimited.
 
-### 3.4 Adding one student past capacity ❌
+### 3.4 Adding one student past capacity ✅
 
 The rule: **the customer thinks about adding a student, never about managing
 seats.** Capacity is our accounting concept and must not become their chore.
@@ -427,7 +427,7 @@ bought on the 1st. Deliberate — the amounts are ৳8–25, and a pro-rated lin
 costs more in confusion than it saves in taka. Flagged in §11 as a decision to
 revisit if a customer ever raises it.
 
-### 3.5 Bulk import past capacity ❌
+### 3.5 Bulk import past capacity ✅
 
 Centres load students in bulk — from Excel, from a paper register typed up at
 night, up to about 500 at a time. The import must be billed as one transaction
@@ -469,7 +469,7 @@ Which reads, on screen, as: 180 places at ৳18 = ৳3,240, plus 20 places at �
 ৳240. The bands are shown because a single ৳3,480 invites the suspicion it was
 invented.
 
-### 3.6 Institution: one shared capacity pool ❌
+### 3.6 Institution: one shared capacity pool ✅
 
 **Capacity belongs to the institution, never to a branch.**
 
@@ -503,7 +503,7 @@ Chattogram enrolling 100 more takes the organisation to 2,700 — one capacity
 purchase at HQ level, no reallocation between branches, no conversation about
 whose seats those were. **The seat belongs to the institution, not the branch.**
 
-### 3.7 Institution: branch staff and the billing owner ❌
+### 3.7 Institution: branch staff and the billing owner ✅
 
 Branch staff press **+ Add Student** and should not have to know that billing
 architecture exists. But a branch manager is not the billing owner and must not be
@@ -620,7 +620,7 @@ naming them is that each has exactly one home:
 disagree with the things it was derived from, and a customer whose trial ended is
 either still using Pro or has lost Free — both are worse than a recomputation.
 
-### 4.2 The resolver ❌
+### 4.2 The resolver ✅
 
 One function, one place, consulted by the session and by nothing else:
 
@@ -651,7 +651,7 @@ unreadable *count* refuses the action rather than treating the count as zero,
 because one failed count would not let one extra student past a cap, it would let
 eighty.
 
-### 4.3 Trial lifecycle ❌
+### 4.3 Trial lifecycle ⚠️ (read, never started)
 
 | Event | What happens |
 |---|---|
@@ -757,7 +757,7 @@ the person. A centre creating an account for its own physics teacher is not a
 stranger claiming an identity; it is an employer issuing one. That is why the
 verification burden sits on the owner's signup and not on the teacher's.
 
-### 5.2 Usernames must be memorable ❌
+### 5.2 Usernames must be memorable ✅
 
 A teacher account needs an identifier. It cannot be the phone number, because the
 phone number is optional. So the server generates one from their name:
@@ -786,7 +786,7 @@ Where a Bangla name transliterates to nothing usable — punctuation, an initial
 name typed in a script the map does not cover — the fallback is the centre's own
 short code plus a number, never a random hex string.
 
-### 5.3 Signing in with either one ❌
+### 5.3 Signing in with either one ✅
 
 One field, labelled **"Phone number or username"**. The server decides which it
 received: if it normalises as a BD mobile it is a phone, otherwise it is a
@@ -1145,7 +1145,7 @@ waiver*, *merit 50%*, *hardship* — that a report needs to total separately, be
 "why is our collection rate 82%" has a very different answer depending on whether
 the missing 18% was waived on purpose or simply never paid.
 
-### 9.4 Employees are not teachers ❌
+### 9.4 Employees are not teachers ✅
 
 A centre employs an accountant, a receptionist, a coordinator, a cleaner, a
 security guard. None of them teach, none of them hold a batch, and none of them
@@ -1158,7 +1158,7 @@ active flag and branch. Some employees also get login accounts (the accountant
 does; the cleaner does not), which is the same record-versus-account split as §5.1
 and reuses it rather than reinventing it.
 
-### 9.5 Payroll — two modes, and the simple one is the default ❌
+### 9.5 Payroll — two modes, and the simple one is the default ✅
 
 Full mode:
 
@@ -1186,7 +1186,7 @@ A **salary payment** is a separate record from the salary *terms* — paid on th
 date, for this month, this amount, by this method, recorded by this person — and it
 prints a receipt an employee can sign. Same append-only rule as fees.
 
-### 9.6 Expenses ❌
+### 9.6 Expenses ✅
 
 Every taka that leaves, with a category: rent, electricity, internet, marketing,
 printing, stationery, equipment, maintenance, transport, software, salary,
@@ -1204,7 +1204,7 @@ fees, form fees, and other income. Categorised for the same reason expenses are 
 an owner who wants to know whether admission season carried the year needs those
 separable from monthly tuition.
 
-### 9.8 Profit ❌
+### 9.8 Profit ✅
 
 ```
 Revenue collected        (§9.1, the collected column)
@@ -1273,7 +1273,7 @@ account and API credentials are being arranged; until they exist:
 
 What gets built instead is the layer that will still be correct afterwards.
 
-### 11.2 Payment intents ❌
+### 11.2 Payment intents ✅
 
 Every purchase — a subscription month, a single student place, a bulk-import block,
 an extra branch — creates a **payment intent** on the server before the customer is
@@ -1303,7 +1303,7 @@ it, and the duplicate path reads back the original result rather than erroring. 
 pattern already exists in the codebase — the founder panel's manual payment
 recording does exactly this — so it is a reuse, not an invention.
 
-### 11.3 The provider interface ❌
+### 11.3 The provider interface ✅ (manual only)
 
 One interface, several implementations:
 
@@ -1476,27 +1476,40 @@ document.
 
 **Built and enforced ✅** — the four plan definitions and one pricing engine;
 numeric caps and feature flags checked server-side on every write path, failing
-closed; plan/status/SMS-credit columns tamper-proof at the database; attendance
-including an offline mode; exams and marks; fee invoices, partial payments,
-fixed-taka discounts, voiding, arrears, month close; append-only payments with
-gapless receipt numbers; printable receipts and the collection register; tap-to-send
-messaging; bulk import in one transaction; teacher records that can exist without
-accounts; teacher→batch→student scoping in RLS; tenant-safe composite branch keys;
-a founder panel that records real money; 670 unit tests green across 35 migrations.
+closed; plan/status/SMS-credit/capacity columns tamper-proof at the database;
+attendance including an offline mode; exams and marks; fee invoices, partial
+payments, fixed-taka discounts, voiding, arrears, month close; append-only payments
+with gapless receipt numbers; printable receipts and the collection register;
+tap-to-send messaging; bulk import in one transaction; teacher records that can exist
+without accounts, server-generated usernames and signing in with either one;
+teacher→batch→student scoping in RLS; tenant-safe composite branch keys; employees,
+payroll and expenses; profit; branch money side by side at HQ; student capacity as a
+column of its own, with the ceiling resolved server-side, the race closed by an
+advisory lock, and the three ways past it (one student, an import, a branch that has
+run out) each priced and sold; payment intents behind a provider interface with the
+manual bKash transfer as its first provider and the founder confirming the money
+arrived; the entitlement resolver, with read-only enforced in front of twenty write
+paths; a founder panel that records real money. 892 unit tests and 1,082 RLS
+assertions green across 58 migrations and 41 tables, plus four derived gates and two
+that ask the live API.
 
-**Partly built ⚠️** — branches (schema yes, isolation no); teacher accounts (the
-`wantsLogin` path exists but demands a phone); discounts (fixed only); attendance
-roles (teacher scoping right, manager/teacher indistinguishable in RLS, `/teach`
-shows admins the whole centre); scheduling (weekly recurrence, no clashes or
-overrides); refunds (representable, no UI); `coaching_centers.status` (written,
-never read by any guard, so suspension currently does nothing).
+**Partly built ⚠️** — branches (money, staff and the HQ comparison yes, full
+isolation no); discounts (fixed only); attendance roles (teacher scoping right,
+manager/teacher indistinguishable in RLS, `/teach` shows admins the whole centre);
+scheduling (weekly recurrence, no clashes or overrides); refunds (representable, no
+UI); the trial (the resolver reads one and expiry is a comparison rather than a job,
+but nothing in the product starts one); plan selection (an owner may ask for a tier
+and buy places, not move themselves between tiers); the audit log (table, no
+writers); dashboards (`/hq` compares the branches; §9.10's own screen is not built).
 
-**Not built ❌** — student capacity in any form; the Pro trial; subscriptions as a
-living thing (`subscriptions` has zero reads and zero writes in the app); any
-customer-facing plan selection at all (`bootstrap_center` hard-codes `teacher_free`
-and only a platform admin can change it); usernames; OTP; employees; payroll;
-expenses; revenue categories; profit; financial dashboards; audit log; payment
-intents; branch scoping; transfer history; the two new student statuses.
+**Not built ❌** — the Teacher Pro trial; subscriptions as a living thing
+(`subscriptions` still has zero reads and zero writes in the app, and
+`payments.subscription_id` is always null); a customer moving their own centre
+between tiers (`bootstrap_center` hard-codes `teacher_free`, and only a platform
+admin or an owner's request changes it); OTP; capability-based permissions and a way
+to create a manager; revenue categories; §9.10's dashboards; the audit log's
+writers; transfer history; the two new student statuses; percentage discounts;
+rooms and teacher-clash detection.
 
 **Blocked 🚧** — automated SMS and therefore OTP delivery (BTRC sender ID needs an
 aggregator account which needs an NID); the real bKash integration (credentials
