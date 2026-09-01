@@ -12078,6 +12078,363 @@ check(
   panelCoverage.rows.some((r) => r.through !== null),
 )
 
+// ---------------------------------------------------------------------------
+// A manager narrowed to some of the job (20260811000063).
+//
+// §6.2's capability direction, and the section is mostly about the two ways it could be
+// fake. A veto any second membership can lift is not a veto — the first draft of
+// `app.member_allows` deferred to a teacher row and would have handed a narrowed manager
+// the whole fee book through `app.is_staff_admin`, so the teacher-who-also-keeps-the-books
+// is tested here directly. And a narrowing the narrowed party can undo is not a narrowing,
+// so the last block spends its attempts on the column itself.
+//
+// The control matters as much as the refusals: `capabilities is null` is every manager row
+// that exists today, and if this file cannot show one of those reading everything, the
+// migration broke paying customers rather than narrowing anybody.
+// ---------------------------------------------------------------------------
+
+console.log('\nA manager narrowed to some of the job (capabilities):')
+
+const newMember = () =>
+  one('insert into auth.users (id) values (gen_random_uuid()) returning id')
+
+const bookkeeper = await newMember()
+const receptionist = await newMember()
+const deputy = await newMember()
+
+const appoint = (user, caps) =>
+  db.query(
+    `insert into center_members (coaching_center_id, user_id, role, capabilities)
+     values ($1, $2, 'manager', $3::text[])`,
+    [centerA, user, caps],
+  )
+
+await appoint(bookkeeper, '{fees,expenses}')
+await appoint(receptionist, '{students,messages}')
+await appoint(deputy, null)
+
+/** How many rows of this table the actor can read. */
+const sees = (user, table) =>
+  asUser(db, user, (tx) => n(tx, `select count(*)::int as n from ${table}`))
+
+/**
+ * A write the capability column should refuse, either way it can be refused.
+ *
+ * An INSERT or an UPDATE trips WITH CHECK and throws; a DELETE is filtered by USING and
+ * comes back as nothing changed. Both are the policy working, and a helper that only knew
+ * about the throw would call every refused DELETE a pass without testing it.
+ */
+async function capWrite(name, user, sql, params = []) {
+  let detail = null
+  try {
+    await asUser(db, user, async (tx) => {
+      const changed = (await tx.query(sql, params)).affectedRows ?? 0
+      if (changed !== 0) detail = `${changed} row(s) changed`
+      throw new Error('__rollback__')
+    })
+  } catch (error) {
+    if (error.message !== '__rollback__') {
+      detail = /row-level security/.test(error.message) ? null : `refused by: ${error.message}`
+    }
+  }
+  check(name, detail === null, detail ?? '')
+}
+
+// The control, and the sanity check that makes the refusals below mean something: an
+// unnarrowed manager row is what every centre on the platform already has.
+const wholeJob = [
+  await sees(deputy, 'fee_invoices'),
+  await sees(deputy, 'expenses'),
+  await sees(deputy, 'salary_payments'),
+]
+
+check(
+  'a manager with no capabilities column reads the money, as they did before this migration',
+  wholeJob.every((count) => count > 0),
+  `invoices ${wholeJob[0]}, expenses ${wholeJob[1]}, salaries ${wholeJob[2]}`,
+)
+
+check(
+  'the bookkeeper reads the fee book they were given',
+  (await sees(bookkeeper, 'fee_invoices')) === wholeJob[0],
+  String(await sees(bookkeeper, 'fee_invoices')),
+)
+check(
+  'and the expense book',
+  (await sees(bookkeeper, 'expenses')) === wholeJob[1],
+  String(await sees(bookkeeper, 'expenses')),
+)
+check(
+  'and not one salary, which nobody gave them',
+  (await sees(bookkeeper, 'salary_payments')) === 0,
+  String(await sees(bookkeeper, 'salary_payments')),
+)
+check(
+  'the receptionist cannot read what anybody paid',
+  (await sees(receptionist, 'fee_invoices')) === 0,
+  String(await sees(receptionist, 'fee_invoices')),
+)
+check(
+  'nor what the centre spent',
+  (await sees(receptionist, 'expenses')) === 0,
+  String(await sees(receptionist, 'expenses')),
+)
+check(
+  'nor a payment, which is the row a receipt is printed from',
+  (await sees(receptionist, 'fee_payments')) === 0,
+  String(await sees(receptionist, 'fee_payments')),
+)
+
+// The verb, not the noun. Section 4 of the migration leaves reads open on the roster and the
+// staff list because every other screen joins to them, so what has to be refused is the
+// change — and the first of these proves the reading half really is still there.
+check(
+  'the bookkeeper still sees the children whose bills they are chasing',
+  (await sees(bookkeeper, 'students')) > 0,
+  String(await sees(bookkeeper, 'students')),
+)
+await capWrite(
+  'and cannot admit one, which is the seat an owner pays for',
+  bookkeeper,
+  `insert into students (coaching_center_id, name, guardian_phone)
+   values ($1, 'Walked In', '01799999999')`,
+  [centerA],
+)
+await capWrite(
+  'nor remove one',
+  bookkeeper,
+  'delete from students where id = $1',
+  [stAli],
+)
+await capWrite(
+  'nor rename one',
+  bookkeeper,
+  `update students set name = 'Renamed' where id = $1`,
+  [stAli],
+)
+
+const admitted = await asUser(db, receptionist, (tx) =>
+  tx.query(
+    `insert into students (coaching_center_id, name, guardian_phone)
+     values ($1, 'Walked In', '01799999999') returning id`,
+    [centerA],
+  ),
+)
+check(
+  'the receptionist admits the child at the desk, which is the job they were given',
+  admitted.rows.length === 1,
+)
+
+await capWrite(
+  'and cannot take the money for it',
+  receptionist,
+  `insert into fee_payments (coaching_center_id, student_id, amount_bdt, method, paid_at)
+   values ($1, $2, 500, 'cash', now())`,
+  [centerA, stAli],
+)
+// Cancelling the bill and not editing its amount, because `amount_bdt` is already refused
+// by the column grant 20260811000030 left behind — a pass there would have been the fence
+// in front of the fence, and would have gone on passing with this migration reverted.
+await capWrite(
+  'nor cancel a bill, which is the write-off a browser really can reach',
+  receptionist,
+  `update fee_invoices set voided_at = now(), void_reason = 'waived'
+   where coaching_center_id = $1`,
+  [centerA],
+)
+
+// The escalation this capability exists for. `teacher_permissions.can_view_fees` is a second
+// door into the fee book, and a manager who may hire is a manager who can walk through it.
+await capWrite(
+  'the receptionist cannot hire a teacher',
+  receptionist,
+  `insert into teachers (coaching_center_id, name) values ($1, 'A Friend')`,
+  [centerA],
+)
+await capWrite(
+  'nor tick a teacher into the fee book on their behalf',
+  receptionist,
+  `update teacher_permissions set can_view_fees = true where teacher_id = $1`,
+  [tKarim],
+)
+await capWrite(
+  'nor put somebody on the payroll as an employee',
+  receptionist,
+  `insert into employees (coaching_center_id, name, role) values ($1, 'A Cousin', 'accountant')`,
+  [centerA],
+)
+
+// The centre's voice. One capability for the wording of every reminder and the notice board,
+// because both are the centre speaking to parents in its own name.
+const worded = await asUser(db, receptionist, (tx) =>
+  tx.query(
+    `insert into sms_templates (coaching_center_id, kind, name, body)
+     values ($1, 'fee_reminder', 'Desk reminder', 'বকেয়া আছে') returning id`,
+    [centerA],
+  ),
+)
+check('the receptionist writes the reminder wording', worded.rows.length === 1)
+
+await capWrite(
+  'and the bookkeeper does not, however well they know the debt',
+  bookkeeper,
+  `insert into sms_templates (coaching_center_id, kind, name, body)
+   values ($1, 'fee_reminder', 'Ledger reminder', 'টাকা দিন')`,
+  [centerA],
+)
+await capWrite(
+  'nor post a notice in the centre’s name',
+  bookkeeper,
+  `insert into notices (coaching_center_id, title, body, audience)
+   values ($1, 'Closed', 'Shut tomorrow', 'all')`,
+  [centerA],
+)
+
+// ---------------------------------------------------------------------------
+// The teacher who also keeps the books, which is the ordinary case in a coaching centre and
+// the one that broke the first draft of app.member_allows.
+//
+// Karim teaches Bio Morning and can see his own batch's bills through
+// `fee_invoices_teacher_read` once the owner ticks `can_view_fees`. Appoint him as a manager
+// narrowed to the roster and he must lose that, because the owner has now said no to the fee
+// book more recently and more specifically. The draft that deferred to his teacher membership
+// would have gone the other way and gone much further: `app.is_staff_admin` is satisfied by
+// the manager row, so he would have read every invoice in the centre rather than his own
+// batch's.
+// ---------------------------------------------------------------------------
+
+await db.query('update teacher_permissions set can_view_fees = true where teacher_id = $1', [
+  tKarim,
+])
+const karimSaw = await sees(ids.karim, 'fee_invoices')
+check(
+  "a teacher the owner trusted with fees reads their own batch's bills",
+  karimSaw > 0,
+  String(karimSaw),
+)
+
+await appoint(ids.karim, '{students}')
+check(
+  'appointed to the roster and nothing else, he stops reading them',
+  (await sees(ids.karim, 'fee_invoices')) === 0,
+  String(await sees(ids.karim, 'fee_invoices')),
+)
+check(
+  'and does not gain the whole centre’s fee book on the way through',
+  (await sees(ids.karim, 'fee_payments')) === 0,
+  String(await sees(ids.karim, 'fee_payments')),
+)
+
+// What he must keep. The migration's self exemption is `teachers_self_update`, and losing it
+// would mean a narrowed administrator could not correct their own phone number.
+const ownRow = await asUser(db, ids.karim, (tx) =>
+  tx.query(`update teachers set phone = '01766666666' where user_id = $1`, [ids.karim]),
+)
+check('he still edits his own staff row', (ownRow.affectedRows ?? 0) === 1)
+await capWrite(
+  'and not a colleague’s',
+  ids.karim,
+  `update teachers set phone = '01766666666' where id = $1`,
+  [tNasrin],
+)
+
+// ---------------------------------------------------------------------------
+// The column itself, which is the only part of this that a browser would attack.
+//
+// A narrowing the narrowed party can undo is not a narrowing. 20260811000061 already keeps a
+// manager out of manager rows, so these should all be refused by a policy that predates the
+// column — which is the point: the new column inherited the right lock rather than needing
+// one, and this section is what would notice if that stopped being true.
+// ---------------------------------------------------------------------------
+
+await capWrite(
+  'the bookkeeper cannot hand themselves the rest of the job',
+  bookkeeper,
+  'update center_members set capabilities = null where user_id = $1',
+  [bookkeeper],
+)
+await capWrite(
+  'nor add one capability to their own row',
+  bookkeeper,
+  `update center_members set capabilities = '{fees,expenses,payroll}' where user_id = $1`,
+  [bookkeeper],
+)
+await capWrite(
+  'nor file themselves a second, wider membership',
+  bookkeeper,
+  `insert into center_members (coaching_center_id, user_id, role, capabilities)
+   values ($1, $2, 'manager', null)`,
+  [centerA, bookkeeper],
+)
+await capWrite(
+  'nor narrow the owner who narrowed them',
+  bookkeeper,
+  `update center_members set capabilities = '{}' where user_id = $1`,
+  [ids.ownerA],
+)
+await capWrite(
+  'nor widen a colleague as a favour',
+  bookkeeper,
+  'update center_members set capabilities = null where user_id = $1',
+  [receptionist],
+)
+check(
+  'the column survived every attempt',
+  (await n(
+    db,
+    `select count(*)::int as n from center_members
+      where coaching_center_id = $1 and user_id = $2 and capabilities = '{fees,expenses}'`,
+    [centerA, bookkeeper],
+  )) === 1,
+)
+
+// And the owner can, which is the other half — a lock nobody can open is a broken feature.
+await asUser(db, ids.ownerA, (tx) =>
+  tx.query(`update center_members set capabilities = '{fees,expenses,payroll}' where user_id = $1`, [
+    bookkeeper,
+  ]),
+)
+check(
+  'the owner widens them, and the payroll appears',
+  (await sees(bookkeeper, 'salary_payments')) === wholeJob[2],
+  String(await sees(bookkeeper, 'salary_payments')),
+)
+
+// The empty array, which the migration allows on purpose: somebody the owner wants watching
+// the centre and changing nothing. It is also the shape a null element would have quietly
+// turned into a grant, so the constraint is checked next to it.
+const watcher = await newMember()
+await appoint(watcher, '{}')
+check(
+  'a manager narrowed to nothing still sees the roster they are watching',
+  (await sees(watcher, 'students')) > 0,
+  String(await sees(watcher, 'students')),
+)
+check(
+  'and none of the money',
+  (await sees(watcher, 'fee_invoices')) === 0,
+  String(await sees(watcher, 'fee_invoices')),
+)
+await capWrite(
+  'and changes nothing at all',
+  watcher,
+  `insert into students (coaching_center_id, name, guardian_phone)
+   values ($1, 'Nobody', '01700000001')`,
+  [centerA],
+)
+
+let nullElement = false
+try {
+  await db.query(
+    `update center_members set capabilities = array['fees', null]::text[] where user_id = $1`,
+    [watcher],
+  )
+} catch {
+  nullElement = true
+}
+check('a null inside the array is refused, so the veto cannot read as unknown', nullElement)
+
 console.log(`\n${passed} passed, ${failed} failed`)
 await db.close()
 process.exit(failed ? 1 : 0)
+

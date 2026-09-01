@@ -528,6 +528,7 @@ export type Database = {
           active: boolean
           created_at: string
           updated_at: string
+          capabilities: string[] | null
         }
         Insert: {
           id?: string
@@ -538,6 +539,7 @@ export type Database = {
           active?: boolean
           created_at?: string
           updated_at?: string
+          capabilities?: string[] | null
         }
         Update: {
           id?: string
@@ -548,6 +550,7 @@ export type Database = {
           active?: boolean
           created_at?: string
           updated_at?: string
+          capabilities?: string[] | null
         }
         Relationships: [
           {
