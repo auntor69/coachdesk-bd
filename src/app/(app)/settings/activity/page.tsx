@@ -158,9 +158,10 @@ export default async function ActivityPage({
   const employeeIds = idsFor('employees')
 
   // Spelled out one table at a time rather than through a helper taking the name,
-  // because a `.from` given a variable is invisible to check-scoping: the gate matches a
-  // quoted table name, and a query it cannot see is a query it cannot prove is
-  // centre-scoped. Every read below carries its own `.eq` where the gate can find it.
+  // because a `.from` given a variable is one check-scoping cannot see: the gate
+  // matches a quoted table name, and a query it cannot see is a query it cannot prove
+  // is centre-scoped. It refuses one now — these four are why. Every read below carries
+  // its own `.eq` where the gate can find it.
   const [invoiceLinks, paymentLinks, guardianLinks, employees] = await Promise.all([
     invoiceIds.length === 0
       ? null

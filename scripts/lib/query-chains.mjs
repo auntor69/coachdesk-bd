@@ -78,7 +78,7 @@ export function balancedEnd(src, open) {
 }
 
 /**
- * The whole builder chain starting at a `.from(...)` call.
+ * The whole builder chain starting at a `.from(...)` call, and the methods on it.
  *
  * Walks method calls one at a time, tracking depth so a `.eq('a', foo(bar))`
  * does not end the chain early, and stops as soon as what follows a balanced
@@ -86,22 +86,27 @@ export function balancedEnd(src, open) {
  * than a fixed window of characters — two queries in one `Promise.all` sit a
  * few lines apart, and a window would let the second one's filter vouch for the
  * first.
+ *
+ * `methods` are the names at the top of the chain and nothing nested inside an
+ * argument, which is the difference between "this query reads rows" and "this call
+ * has a `.select(` somewhere in a callback it was handed".
  */
-export function chainFrom(src, start) {
+function walkChain(src, start) {
   let i = start
   const end = src.length
+  const methods = []
 
   while (i < end) {
     // Expect `.name(`, possibly after whitespace and comments.
     while (i < end && /\s/.test(src[i])) i++
     if (src.startsWith('//', i)) {
       i = src.indexOf('\n', i)
-      if (i === -1) return src.slice(start, end)
+      if (i === -1) return { end, methods }
       continue
     }
     if (src.startsWith('/*', i)) {
       const close = src.indexOf('*/', i)
-      if (close === -1) return src.slice(start, end)
+      if (close === -1) return { end, methods }
       i = close + 2
       continue
     }
@@ -109,14 +114,25 @@ export function chainFrom(src, start) {
 
     const open = src.indexOf('(', i)
     if (open === -1) break
-    if (!/^\.\s*\w+\s*$/.test(src.slice(i, open))) break
+    const name = src.slice(i, open)
+    if (!/^\.\s*\w+\s*$/.test(name)) break
 
     const close = balancedEnd(src, open)
     if (close === -1) break
+    methods.push(name.slice(1).trim())
     i = close
   }
 
-  return src.slice(start, i)
+  return { end: i, methods }
+}
+
+export function chainFrom(src, start) {
+  return src.slice(start, walkChain(src, start).end)
+}
+
+/** The top-level method names of a chain `chainFrom` returned. */
+export function chainMethods(chain) {
+  return walkChain(chain, 0).methods
 }
 
 /** 1-based line number of a character offset, for a message a person can act on. */
@@ -134,6 +150,94 @@ export function queriesIn(src) {
       line: lineOf(src, match.index),
       chain: chainFrom(src, match.index),
     })
+  }
+  return out
+}
+
+/**
+ * Comments blanked to spaces, with every offset and line number left where it was.
+ *
+ * For the checks that must not be fooled by prose. `queriesIn` is deliberately not
+ * given this — a `// scoped-by:` note lives inside a chain sometimes, and check-scoping
+ * reads it from the chain text — so this is used only where a comment mentioning a query
+ * would be read as one.
+ */
+export function maskComments(src) {
+  const out = src.split('')
+  let quote = null
+  for (let i = 0; i < src.length; i++) {
+    const c = src[i]
+    if (quote) {
+      if (c === '\\') i++
+      else if (c === quote) quote = null
+      continue
+    }
+    // Outside a string too, because a regex literal escapes its slashes: the raw
+    // `\/\/` of /https?:\/\// is not a comment, and reading it as one would blank the
+    // rest of a real line.
+    if (c === '\\') {
+      i++
+      continue
+    }
+    if (c === "'" || c === '"' || c === '`') {
+      quote = c
+      continue
+    }
+    if (c === '/' && src[i + 1] === '/') {
+      const nl = src.indexOf('\n', i)
+      const end = nl === -1 ? src.length : nl
+      out.fill(' ', i, end)
+      i = end - 1
+      continue
+    }
+    if (c === '/' && src[i + 1] === '*') {
+      const at = src.indexOf('*/', i + 2)
+      const end = at === -1 ? src.length : at + 2
+      for (let j = i; j < end; j++) if (src[j] !== '\n') out[j] = ' '
+      i = end - 1
+      continue
+    }
+  }
+  return out.join('')
+}
+
+/** Reading or writing rows. A chain with none of these is not a query. */
+const ROW_METHODS = new Set(['select', 'insert', 'update', 'upsert', 'delete'])
+
+/**
+ * Every `.from(...)` that reads or writes rows and does not name its relation in quotes.
+ *
+ * The hole this closes: `queriesIn` matches a quoted table name, so a `.from(table)`
+ * with a variable in it is not a query check-scoping got wrong — it is a query
+ * check-scoping never saw, and the gate reported one fewer than it had and said all was
+ * well. Found the honest way, by writing five such queries and noticing the count.
+ *
+ * Two things keep this off code that is not a query at all. The chain must go on to
+ * `.select`/`.insert`/`.update`/`.upsert`/`.delete` at its top level, which is what
+ * `Array.from({ length: 12 }, …).map(…)` and the dictionary's own `t.from(…)` do not do.
+ * And `Array` is refused by name as well, because that call will never be a query and a
+ * future `.select` inside one of its callbacks should not start looking like one.
+ */
+export function dynamicQueriesIn(src) {
+  const out = []
+  for (const match of src.matchAll(/([\w$]*)(\s*\.\s*from\()/g)) {
+    const receiver = match[1]
+    if (receiver === 'Array') continue
+
+    const open = match.index + match[0].length - 1
+    const close = balancedEnd(src, open)
+    if (close === -1) continue
+
+    const argument = src.slice(open + 1, close - 1).trim()
+    // What `queriesIn` can already read. Single quotes only, because that is the
+    // regex it uses, and a double-quoted name would be just as invisible.
+    if (/^'\w+'$/.test(argument)) continue
+
+    const dot = match.index + receiver.length
+    const chain = chainFrom(src, dot)
+    if (!chainMethods(chain).some((method) => ROW_METHODS.has(method))) continue
+
+    out.push({ argument, offset: dot, line: lineOf(src, dot) })
   }
   return out
 }

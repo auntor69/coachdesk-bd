@@ -168,10 +168,11 @@ export default async function MonthClosePage({
     ),
     // The four kinds of message this product puts in front of a guardian, counted
     // one table at a time. Written out four times rather than looped over a list of
-    // table names, and that is not laziness: check-scoping.mjs reads `.from('...')`
-    // as a literal to prove every query in the app is centre-scoped, and a
-    // `.from(table)` with a variable in it would be the first query in the codebase
-    // that the check silently cannot see.
+    // table names, and that is not laziness: check-scoping.mjs finds a query by
+    // matching `.from('...')` as text to prove every one in the app is centre-scoped,
+    // and a `.from(table)` with a variable in it is a query the check cannot see. It
+    // now refuses one rather than skipping it, which is what this comment used to be
+    // standing in for.
     //
     // head:true on all four — the count is the whole answer, and pulling the bodies
     // of a few hundred messages to length an array would be a slow query for a

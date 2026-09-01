@@ -30,6 +30,16 @@
  * The reason is mandatory and it is read by people, not by this script. A hatch
  * with no reason is how the rule stops meaning anything.
  *
+ * THE TABLE NAME MUST BE IN QUOTES, and that is a rule about this script rather
+ * than about PostgREST, which does not care. A query is found here by matching
+ * `.from('students')` as text, so `.from(table)` with a variable in it was never
+ * a query judged wrongly — it was a query never looked at, and the total printed
+ * at the end came out lower with nobody the wiser. Five of them shipped in one
+ * afternoon inside a pair of perfectly reasonable helpers. So a `.from()` that
+ * goes on to select, insert, update, upsert or delete and does not name its
+ * relation in quotes is refused, and the fix is to write the tables out one at a
+ * time with a filter on each.
+ *
  * WHY THIS DOES NOT CHECK `.rpc(...)`, which looks like a hole and is not. There
  * are eight rpc call sites and six distinct functions. Four are the SMS worker's
  * — reap_stranded_sms, cancel_opted_out_sms, claim_sms_batch, finish_sms — which
@@ -60,7 +70,13 @@
 import { readFileSync } from 'node:fs'
 import { join, relative, sep } from 'node:path'
 
-import { balancedEnd, queriesIn, sourceFiles } from './lib/query-chains.mjs'
+import {
+  balancedEnd,
+  dynamicQueriesIn,
+  maskComments,
+  queriesIn,
+  sourceFiles,
+} from './lib/query-chains.mjs'
 
 const ROOT = process.cwd()
 
@@ -224,12 +240,26 @@ for (const file of [
       why: 'no coaching_center_id filter and no scoped-by note',
     })
   }
+
+  /*
+   * And the queries this gate would otherwise never have looked at. Comments masked
+   * first, because half the notes in this codebase discuss `.from(table)` by name and a
+   * gate that reads its own documentation as code is a gate nobody can write about.
+   */
+  for (const { argument, line } of dynamicQueriesIn(maskComments(src))) {
+    problems.push({
+      where,
+      line,
+      relation: argument === '' ? '(no argument)' : argument,
+      why: 'the relation is not a quoted name, so this gate cannot see the query',
+    })
+  }
 }
 
 if (problems.length > 0) {
   console.error(
-    `\n${problems.length} quer${problems.length === 1 ? 'y' : 'ies'} against a `
-      + 'centre-scoped table does not name the centre:\n',
+    `\n${problems.length} quer${problems.length === 1 ? 'y' : 'ies'} this check `
+      + 'cannot vouch for:\n',
   )
   for (const p of problems) {
     console.error(`  ${p.where}:${p.line}  ${p.relation}`)
@@ -238,7 +268,10 @@ if (problems.length > 0) {
   console.error(
     '\nAdd .eq(\'coaching_center_id\', session.active.centerId) — or, if an id in'
       + '\nthe filter was already proved to belong to this centre, say so:'
-      + '\n\n      // scoped-by: examId, verified against this centre above\n',
+      + '\n\n      // scoped-by: examId, verified against this centre above\n'
+      + '\nAnd write the table name out in quotes. A .from(table) taking a variable is'
+      + '\ninvisible here, however correct the query around it looks, and a query this'
+      + '\ncheck cannot see is a query it cannot prove names the centre.\n',
   )
   process.exit(1)
 }

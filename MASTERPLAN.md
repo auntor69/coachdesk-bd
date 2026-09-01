@@ -1577,8 +1577,10 @@ clock, says so on screen while it runs and for a week after, and grants its plac
 the trigger as well as on the screen; a founder panel that records real money; an
 append-only audit log written by fourteen triggers inside the transaction that made
 the change, named for the reader in one tested module and read by the owner alone.
-930 unit tests and 1,107 RLS assertions green across 60 migrations and 42 tables,
-plus four derived gates and two that ask the live API.
+939 unit tests and 1,107 RLS assertions green across 60 migrations and 42 tables,
+plus four derived gates and two that ask the live API. One of those gates now refuses
+a query whose table name it cannot read, having discovered it had been counting five
+fewer than existed.
 
 **Partly built ⚠️** — branches (money, staff and the HQ comparison yes, full
 isolation no); discounts (fixed only); attendance roles (teacher scoping right,
