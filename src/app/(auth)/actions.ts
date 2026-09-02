@@ -10,6 +10,7 @@
  */
 import { redirect } from 'next/navigation'
 import { revalidatePath } from 'next/cache'
+import { headers } from 'next/headers'
 import type { Route } from 'next'
 
 import { createClient } from '@/lib/supabase/server'
@@ -22,7 +23,16 @@ import {
 import { loginEmailFor } from '@/lib/bd/username'
 import { getSession, homePathFor } from '@/lib/auth/session'
 import { MIN_PASSWORD } from '@/lib/auth/password'
+import { OTP_LENGTH } from '@/lib/auth/otp'
+import {
+  checkPhoneCode,
+  phoneGateOn,
+  sendPhoneCode,
+  type CheckCodeResult,
+  type SendCodeResult,
+} from '@/lib/auth/otp-gate'
 import { MAX_NAME } from '@/lib/limits'
+import { digits } from '@/lib/bd/time'
 import { DEFAULT_LOCALE } from '@/lib/i18n'
 import { nameTooLong, passwordTooShort } from '@/lib/i18n/messages'
 
@@ -30,6 +40,27 @@ export type FormState = {
   error?: string
   /** Which input to highlight, so the message lands next to the problem. */
   field?: 'identifier' | 'phone' | 'password' | 'name' | 'center' | 'email'
+} | null
+
+/**
+ * Signup's own state, because signup is the one screen here with two steps.
+ *
+ * Written out rather than widened from `FormState`: sign-in and centre creation have
+ * no code step and should not carry the shape of one. Nothing in it is a claim the
+ * browser can make — `awaitingCode` decides which fields are drawn, never whether a
+ * number was proved, and the account is created in the same call that checks the code.
+ */
+export type SignupState = {
+  error?: string
+  field?: 'phone' | 'password' | 'name' | 'code'
+  /** A code has been sent and the form is waiting for one. */
+  awaitingCode?: boolean
+  /** The number the code went to, formatted for reading. Shown, never resubmitted. */
+  sentTo?: string
+  /** Seconds until the code expires. */
+  expiresIn?: number
+  /** Seconds until a resend is allowed, when the last answer was a cooldown. */
+  wait?: number
 } | null
 
 /**
@@ -57,6 +88,85 @@ function friendlyAuthError(message: string): string {
     return passwordTooShort(DEFAULT_LOCALE)
   }
   return 'কিছু একটা সমস্যা হয়েছে। আবার চেষ্টা করুন।'
+}
+
+/** Why no code was sent, in the voice of the rest of this screen. */
+function sendRefusal(result: Extract<SendCodeResult, { ok: false }>): string {
+  switch (result.reason) {
+    case 'cooldown':
+      return `আরও ${digits(result.wait, 'bn')} সেকেন্ড পর নতুন কোড নিতে পারবেন।`
+    case 'phone_limit':
+      return 'এই নম্বরে এক ঘণ্টায় অনেকবার কোড পাঠানো হয়েছে। পরে আবার চেষ্টা করুন।'
+    case 'ip_limit':
+      return 'এই সংযোগ থেকে অনেকবার চেষ্টা হয়েছে। কিছুক্ষণ পর আবার চেষ্টা করুন।'
+    case 'undelivered':
+      return 'কোড পাঠানো যায়নি। এক মিনিট পর আবার চেষ্টা করুন।'
+    case 'invalid':
+      return 'সঠিক মোবাইল নম্বর দিন (যেমন ০১৭১২৩৪৫৬৭৮)।'
+    default:
+      return 'কোড পাঠানো যায়নি। আবার চেষ্টা করুন।'
+  }
+}
+
+/**
+ * Why a code was refused. Four of the answers are the same sentence on purpose —
+ * never asked, already used, already burned and already swept are one state to a
+ * visitor, and telling them apart would say which numbers are mid-signup.
+ */
+function verifyRefusal(result: Extract<CheckCodeResult, { ok: false }>): string {
+  switch (result.reason) {
+    case 'wrong':
+      return result.left > 0
+        ? `কোড মিলছে না। আর ${digits(result.left, 'bn')} বার চেষ্টা করতে পারবেন।`
+        : 'কোড মিলছে না। নতুন কোড নিন।'
+    case 'malformed':
+      return `${digits(OTP_LENGTH, 'bn')} সংখ্যার কোড দিন।`
+    case 'expired':
+      return 'কোডের সময় শেষ। নতুন কোড নিন।'
+    case 'burned':
+      return 'অনেকবার ভুল হয়েছে। নতুন কোড নিন।'
+    case 'none':
+      return 'কোডটি আর কাজ করছে না। নতুন কোড নিন।'
+    case 'invalid':
+      return 'সঠিক মোবাইল নম্বর দিন (যেমন ০১৭১২৩৪৫৬৭৮)।'
+    default:
+      return 'কিছু একটা সমস্যা হয়েছে। আবার চেষ্টা করুন।'
+  }
+}
+
+/**
+ * The caller's address, for the per-IP hourly ceiling.
+ *
+ * Null when there is no proxy header, which is local development. The SQL skips the
+ * per-IP count on a null rather than filing everyone under one shared 'unknown',
+ * where the first twenty signups of an hour would use up everybody's allowance.
+ */
+async function callerIp(): Promise<string | null> {
+  const forwarded = (await headers()).get('x-forwarded-for')
+  // A proxy chain: the client is the first entry, the rest are Vercel's.
+  return forwarded?.split(',')[0]?.trim() || null
+}
+
+/**
+ * Whether this number already has an account.
+ *
+ * Asked before a code is sent rather than after one is proved, because a send costs a
+ * taka and rings somebody's phone. On a read error this answers "no" and signup goes
+ * on: the number is checked again by `createUser`, which refuses a duplicate, so the
+ * cost of guessing wrong is one message — where refusing would be every signup
+ * blocked by a transient error. This says nothing signup did not already say; the
+ * existing duplicate path returns the same sentence.
+ */
+async function phoneHasAccount(phone: string): Promise<boolean> {
+  // actor-less: nobody is signed in yet, and nothing is written. This reads whether a
+  // number is taken, before a code is sent to it.
+  const { data } = await createAdminClient()
+    .from('profiles')
+    .select('id')
+    .eq('phone', phone)
+    .maybeSingle()
+
+  return data !== null
 }
 
 /**
@@ -124,14 +234,24 @@ export async function signIn(
  * Create an account. Does not create a center — onboarding does that, because
  * the same signup serves an owner opening a centre and a teacher who was
  * invited to one.
+ *
+ * Two steps when a gateway is configured, one step when it is not — see `phoneGateOn`.
+ * The two-step path never hands the browser anything to carry between them: the code
+ * is checked and the account created inside this one call, so there is no verified flag
+ * for a second request to forge. `awaitingCode` in the returned state only decides
+ * which inputs are drawn.
  */
 export async function signUp(
-  _prev: FormState,
+  _prev: SignupState,
   formData: FormData,
-): Promise<FormState> {
+): Promise<SignupState> {
   const rawPhone = String(formData.get('phone') ?? '')
   const password = String(formData.get('password') ?? '')
   const fullName = String(formData.get('name') ?? '').trim()
+  const typedCode = String(formData.get('code') ?? '').trim()
+  // A submit button's own name. It can only ever cause a send, so a browser choosing
+  // it is choosing to be rate-limited, not to skip anything.
+  const resending = String(formData.get('intent') ?? '') === 'resend'
 
   const phone = normalizeBdMobile(rawPhone)
   const loginEmail = phone ? phoneToLoginEmail(phone) : null
@@ -142,10 +262,82 @@ export async function signUp(
   if (!fullName) {
     return { error: 'আপনার নাম লিখুন।', field: 'name' }
   }
+  if (fullName.length > MAX_NAME) {
+    return { error: nameTooLong(DEFAULT_LOCALE), field: 'name' }
+  }
   if (password.length < MIN_PASSWORD) {
     return { error: passwordTooShort(DEFAULT_LOCALE), field: 'password' }
   }
 
+  if (!phoneGateOn()) {
+    return createAccount({ loginEmail, password, fullName, phone })
+  }
+
+  if (await phoneHasAccount(phone)) {
+    return { error: 'এই নম্বরে অ্যাকাউন্ট আছে। লগইন করুন।', field: 'phone' }
+  }
+
+  if (resending || !typedCode) {
+    const sent = await sendPhoneCode({
+      phone,
+      purpose: 'signup',
+      ip: await callerIp(),
+    })
+
+    if (sent.ok) {
+      return {
+        awaitingCode: true,
+        sentTo: formatBdMobile(phone),
+        expiresIn: sent.expiresIn,
+      }
+    }
+
+    // A cooldown means a code sent a moment ago is still live, so the code box is
+    // where the visitor belongs even though this attempt was refused. A resend that
+    // failed for any other reason should not throw away the step they are standing on
+    // either — the code they already have may still work.
+    const stay = sent.reason === 'cooldown' || resending
+    return stay
+      ? {
+          awaitingCode: true,
+          sentTo: formatBdMobile(phone),
+          wait: sent.reason === 'cooldown' ? sent.wait : undefined,
+          error: sendRefusal(sent),
+          field: 'code',
+        }
+      : { error: sendRefusal(sent), field: 'phone' }
+  }
+
+  const checked = await checkPhoneCode({ phone, purpose: 'signup', code: typedCode })
+  if (!checked.ok) {
+    return {
+      awaitingCode: true,
+      sentTo: formatBdMobile(phone),
+      error: verifyRefusal(checked),
+      field: 'code',
+    }
+  }
+
+  return createAccount({ loginEmail, password, fullName, phone })
+}
+
+/**
+ * The account itself, once there is nothing left to prove.
+ *
+ * Reached with a verified number when the gate is on and directly when it is off, so
+ * it makes no assumption about which. Either redirects or returns a refusal.
+ */
+async function createAccount({
+  loginEmail,
+  password,
+  fullName,
+  phone,
+}: {
+  loginEmail: string
+  password: string
+  fullName: string
+  phone: string
+}): Promise<SignupState> {
   const supabase = await createClient()
 
   // Accounts are created through the admin endpoint, never the public signUp

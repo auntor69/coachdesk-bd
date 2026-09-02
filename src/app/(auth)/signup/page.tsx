@@ -2,6 +2,8 @@ import { redirect } from 'next/navigation'
 
 import { getSession, homePathFor } from '@/lib/auth/session'
 import { MIN_PASSWORD } from '@/lib/auth/password'
+import { OTP_COOLDOWN_SECONDS, OTP_LENGTH } from '@/lib/auth/otp'
+import { phoneGateOn } from '@/lib/auth/otp-gate'
 import { PLANS } from '@/lib/plans'
 import { digits } from '@/lib/bd/time'
 import { Card, Logo } from '@/components/ui'
@@ -39,6 +41,11 @@ export default async function SignupPage() {
         <Card>
           <SignupForm
             passwordHint={`কমপক্ষে ${digits(MIN_PASSWORD, 'bn')} অক্ষর`}
+            // Read on the server, where the three gateway variables live. A browser
+            // cannot see them and cannot change the answer by claiming otherwise.
+            codeRequired={phoneGateOn()}
+            codeLength={OTP_LENGTH}
+            resendAfter={OTP_COOLDOWN_SECONDS}
           />
         </Card>
 

@@ -50,7 +50,25 @@ import {
  * change: the aggregator's three variables are the deploy that does it.
  */
 export function phoneGateOn(): boolean {
-  return smsProviderConfigured()
+  return smsProviderConfigured() || devTransportOn()
+}
+
+/**
+ * The other way on: `OTP_DEV_TRANSPORT=1`, outside production only.
+ *
+ * Without this the two-step signup could not be run at all before a sender ID exists,
+ * because the condition that turns the gate on is the same condition that turns the
+ * logging transport off — so the transport section 5.4 asks for would be unreachable
+ * code, and the flow in front of it unreviewable.
+ *
+ * The NODE_ENV clause is what makes the variable safe rather than merely convenient.
+ * Vercel sets NODE_ENV=production for preview and production builds alike, so this
+ * cannot be switched on where a code would go to a log no visitor can read — which
+ * would be signup broken for real owners. And it only ever *adds* a check: there is no
+ * variable anywhere that turns the gate off once a gateway is configured.
+ */
+function devTransportOn(): boolean {
+  return process.env.NODE_ENV !== 'production' && process.env.OTP_DEV_TRANSPORT === '1'
 }
 
 /** Adds the two refusals the transport and the number itself can produce. */
@@ -128,9 +146,10 @@ export async function sendPhoneCode({
  *
  * The development one is what section 5.4 asks for: the code goes to the server log
  * and nowhere else. Never a return value, never a header, never a field on a form
- * state — a code the browser can read is not a code. It runs only while no gateway is
- * configured, which is the same condition `phoneGateOn` reports as the gate being
- * shut, so in production nothing logs a live code.
+ * state — a code the browser can read is not a code. It runs whenever no gateway is
+ * configured, which given `phoneGateOn` means it runs only under `OTP_DEV_TRANSPORT`
+ * outside production. In production either a gateway sends the message or the gate is
+ * shut and nothing is sent at all; nothing logs a live code either way.
  */
 async function deliver(phone: string, code: string): Promise<boolean> {
   if (!smsProviderConfigured()) {

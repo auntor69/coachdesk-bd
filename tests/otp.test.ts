@@ -1,6 +1,8 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { createHash } from 'node:crypto'
+import { readFileSync } from 'node:fs'
+import path from 'node:path'
 
 import {
   OTP_COOLDOWN_SECONDS,
@@ -187,6 +189,33 @@ test('verifying: the tries that are left', () => {
   for (const payload of [null, undefined, 'none', [], {}, { reason: 'nope' }]) {
     assert.deepEqual(readVerifyOutcome(payload), { ok: false, reason: 'unknown' })
   }
+})
+
+/**
+ * The gate itself cannot be imported here — otp-gate.ts is 'server-only' — so it is read
+ * as text. Only one thing about it is worth holding structurally, and this is it.
+ */
+test('the development override cannot be on in production', () => {
+  const gate = readFileSync(
+    path.join(import.meta.dirname, '..', 'src', 'lib', 'auth', 'otp-gate.ts'),
+    'utf8',
+  )
+
+  // OTP_DEV_TRANSPORT turns the gate on without a gateway, which means the code goes to
+  // a server log. On a deployment that is signup broken for a real owner, so the NODE_ENV
+  // clause is the whole safety of the variable. Vercel sets production for previews too.
+  assert.match(gate, /process\.env\.NODE_ENV !== 'production'/)
+  assert.match(gate, /process\.env\.OTP_DEV_TRANSPORT === '1'/)
+
+  // And nothing may turn the gate off. Every path to a false answer has to be the absence
+  // of a transport, never the presence of a variable saying to skip the check.
+  const decision = /export function phoneGateOn\(\): boolean \{([^}]*)\}/.exec(gate)
+  assert.ok(decision, 'phoneGateOn is no longer a one-expression function')
+  assert.equal(
+    decision[1].trim(),
+    'return smsProviderConfigured() || devTransportOn()',
+    'the gate now decides something other than "is there a transport"',
+  )
 })
 
 
