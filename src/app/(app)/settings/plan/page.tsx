@@ -6,8 +6,8 @@ import { createClient } from '@/lib/supabase/server'
 import { formatBdMobile, normalizeBdMobile } from '@/lib/bd/phone'
 import { formatDate, hasPassed, todayInDhaka } from '@/lib/bd/time'
 import { openAsks } from '@/lib/billing/asks'
-import { transferReference } from '@/lib/billing/manual'
 import { priceIntent } from '@/lib/billing/price'
+import { purchaseReceipt, transferReference } from '@/lib/billing/receipt'
 import { dict, DEFAULT_LOCALE, type Locale } from '@/lib/i18n'
 import { formatTaka } from '@/lib/money'
 import {
@@ -144,6 +144,7 @@ export default async function PlanPage() {
     { data: asked, error: askedError },
     { data: buys, error: buysError },
     asks,
+    { data: settled, error: settledError },
   ] = await Promise.all([
     supabase
       .from('batches')
@@ -208,6 +209,31 @@ export default async function PlanPage() {
      * from before a downgrade is the founder panel's problem rather than this card's.
      */
     sellsPlaces ? openAsks(supabase, session.active.centerId) : Promise.resolve(null),
+    /*
+     * What we have already been paid, newest first — the way in to §9.9's last printable.
+     *
+     * Owner-only rather than `sellsPlaces`, because this is not about places: a শিক্ষক প্রো
+     * centre paying monthly has receipts too, and gating them behind a tier that sells
+     * capacity would hide a paying customer's own paperwork. `payments_owner_read` is the
+     * policy either way, so a manager's query would come back empty.
+     *
+     * The intent comes embedded so each line can say what the money bought. Composite
+     * `payments_intent_fkey`, generated `isOneToOne: false`, so the shape is unwrapped
+     * defensively by lib/billing/receipt.ts rather than trusted here.
+     *
+     * Six, because this card is a way to find a receipt and not a ledger. An owner needing
+     * last year's rings us, which is the same answer as for a lapsed purchase.
+     */
+    isOwner
+      ? supabase
+          .from('payments')
+          .select(
+            'id, intent_id, amount_bdt, method, reference, covers_period_start, covers_period_end, note, paid_at, payment_intents (purpose, quantity, grants_capacity, branch_id)',
+          )
+          .eq('coaching_center_id', session.active.centerId)
+          .order('paid_at', { ascending: false })
+          .limit(6)
+      : Promise.resolve({ data: null, error: null }),
   ])
 
   /*
@@ -346,6 +372,33 @@ export default async function PlanPage() {
     ),
   }))
 
+  /*
+   * The receipts, as finished rows.
+   *
+   * Composed through `purchaseReceipt`, the same function the printable itself uses, so the
+   * line an owner taps and the sheet it opens cannot describe the purchase differently — and
+   * so the machine-written note (`student_capacity x40`) is dropped in both places rather
+   * than in one. Nothing is priced here: see that module on why the bands must not be
+   * recomputed after a purchase has already raised the ceiling.
+   */
+  // The printable's own words, not a second copy of them in this group: the list and the
+  // sheet it opens must name a purchase identically.
+  const sheetWords = dict(locale).purchaseReceipt
+  const receipts =
+    settled?.map((row) => {
+      const sheet = purchaseReceipt(row)
+      return {
+        id: row.id,
+        what:
+          sheet.purpose !== null
+            ? sheetWords.bought[sheet.purpose](sheet.quantity)
+            : (sheet.note ?? t.paid.receipt),
+        taka: formatTaka(sheet.amount),
+        day: formatDate(todayInDhaka(new Date(sheet.paidAt)), locale),
+        number: sheet.number?.value ?? t.paid.receipt,
+      }
+    }) ?? null
+
   return (
     <div className="flex flex-col gap-5">
       <Link
@@ -471,6 +524,50 @@ export default async function PlanPage() {
             locale={locale}
             words={t.places}
           />
+        </Card>
+      )}
+
+      {/*
+        Under the places card and not inside it, because it is not about places: the monthly
+        subscription money lands in the same table, so a শিক্ষক প্রো centre has receipts to
+        print without ever buying a single place.
+
+        Drawn only when there is something to draw, or when the read broke. A card headed
+        "what we have received" with nothing under it is the trial centre being told, on the
+        pricing screen, that they have paid us nothing — which they know, and which is the
+        one sentence this screen should not open with.
+      */}
+      {isOwner && (settledError || (receipts !== null && receipts.length > 0)) && (
+        <Card>
+          <h2 className="font-semibold text-ink">{t.paid.title}</h2>
+          {settledError ? (
+            <p className="mt-1 text-sm text-ink-soft">{t.paid.unreadable}</p>
+          ) : (
+            <>
+              <p className="mt-1 text-sm text-ink-soft">{t.paid.body}</p>
+              <div className="mt-3 flex flex-col gap-2">
+                {receipts?.map((r) => (
+                  <Link
+                    key={r.id}
+                    href={`/settings/plan/receipt/${r.id}`}
+                    className="flex min-h-tap flex-col justify-center rounded-xl border
+                      border-line bg-surface-alt p-3"
+                  >
+                    <div className="flex items-baseline justify-between gap-3">
+                      <span className="font-medium text-ink">{r.what}</span>
+                      <span className="num shrink-0 font-bold text-ink">{r.taka}</span>
+                    </div>
+                    <div className="mt-0.5 flex items-baseline justify-between gap-3">
+                      <span className="num text-sm text-ink-soft">{r.day}</span>
+                      <span className="num shrink-0 text-sm text-brand-700 underline">
+                        {r.number}
+                      </span>
+                    </div>
+                  </Link>
+                ))}
+              </div>
+            </>
+          )}
         </Card>
       )}
 

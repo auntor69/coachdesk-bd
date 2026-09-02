@@ -575,8 +575,8 @@ test('a centre ceiling is the greater of what the floor gave and what was bought
 test('purchased places are ignored on a teacher tier', () => {
   // A centre that bought 900 places and dropped to Teacher Pro lands on 150, because
   // limits apply to new actions and the new action is priced by the new plan. The
-  // places are not lost — capacity_purchases keeps the record — so re-upgrading
-  // restores them.
+  // places are not lost: `student_capacity` still holds the number and this is the
+  // function ignoring it, not the column being cleared. So re-upgrading restores them.
   const e = effectiveEntitlement(org({ plan: 'teacher_plus', student_capacity: 900 }), NOW)
 
   assert.deepEqual(e.ceiling, { kind: 'plan', ceiling: PLANS.teacher_plus.maxStudents })

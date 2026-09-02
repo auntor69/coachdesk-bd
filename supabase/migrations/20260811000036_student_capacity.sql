@@ -124,8 +124,9 @@ alter table public.coaching_centers
 -- doing real work rather than being defensive. A centre that bought 900 places
 -- and then downgraded to Teacher Pro must land on 150, not keep 900 — limits
 -- apply to new actions, and the new action is priced by the new plan. The places
--- they paid for are not lost: capacity_purchases (a later migration) keeps the
--- record, so re-upgrading restores them.
+-- they paid for are not lost: this column still holds the number, and the purchase
+-- itself is on the record as a payment_intents row with the settled payments row
+-- pointing back at it (20260811000057). So re-upgrading restores them.
 --
 -- `greatest` rather than plain capacity, so a centre is never below its own
 -- floor's allowance. A capacity of zero on a paid centre is what a fresh signup

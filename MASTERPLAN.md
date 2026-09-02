@@ -1357,13 +1357,12 @@ Revenue collected        (§9.1, the collected column)
 Payroll is inside this, not beside it. A profit figure that excludes salaries is
 the number that convinces an owner to expand into a loss.
 
-### 9.9 Receipts for everything ⚠️
+### 9.9 Receipts for everything ✅
 
-A printable record for a fee payment ✅, a refund ✅, a salary payment ✅ and an
-expense ✅, and — ❌ — for a student-capacity purchase. In Bangladesh a receipt is the
-transaction; a payment without paper did not fully happen. Each one carries the
-centre's letterhead, a number, the date, the amount in figures, and who received
-or paid it.
+A printable record for a fee payment ✅, a refund ✅, a salary payment ✅, an expense ✅
+and a plan purchase ✅. In Bangladesh a receipt is the transaction; a payment without
+paper did not fully happen. Each one carries a letterhead, a number, the date, the
+amount in figures, and who received or paid it.
 
 The refund needs no sheet of its own: it *is* a `fee_payments` row with a negative
 amount (§3.8), so the receipt names itself a refund and prints the figure unsigned.
@@ -1382,6 +1381,26 @@ rent being written down twice. Frozen by voucher number and not by date, because
 `spent_on` is backdatable and a row entered next week must not change what today's
 paper said. `recurring` is deliberately not printed: it is a hint about next month,
 not a record of what happened.
+
+The fifth sheet is the only one whose letterhead is not the centre's. `payments` holds
+money the centre paid *us* — a subscription month or a block of student places — so
+CoachDesk is the issuer and the centre becomes the billed-to block. That makes it the
+simplest of the five: one copy, no cut line, no signature. The other party is us, we
+already hold the row, and the proof is the wallet's transaction number rather than
+anybody's pen. It is the one printable behind no plan gate, because withholding a
+receipt from a customer who has just paid is the worst sentence this product could
+print; `payments_owner_read` is the whole guard.
+
+`payments` has no receipt series — only `fee_payments` got one — so the number is
+chosen rather than read: the `CD-XXXXXXXX` purchase code when there is an intent, since
+that is what the owner quoted in the bKash reference and what the founder panel lists;
+the provider's own transaction number otherwise; and no number at all when there is
+neither, because a code minted off a payment id would look searchable and match
+nothing. What the sheet will not do is work out the rate the places sold at. §3.8 asks
+for it and nothing stores it, and recomputing looks harmless while being wrong twice:
+`student_capacity` has already risen by print time, so the bands would price the *next*
+purchase, and a per-place average matches no published band when one purchase straddles
+two. Recorded as a schema gap in §15, not papered over.
 
 ### 9.10 The dashboards ❌
 
@@ -1686,7 +1705,9 @@ a payslip an employee signs, off the breakdown copied onto the payment row and n
 off the agreement as it reads today; a voucher for money the centre paid out, whose
 office copy comes first because the centre is the paying side, with three signature
 lines and the month's spending in that category frozen at that voucher rather than at
-a backdatable date;
+a backdatable date; a receipt for money the centre paid us, the one sheet on our own
+letterhead and the one behind no plan gate, numbered by the purchase code the owner
+quoted rather than by an identifier invented for the paper;
 tap-to-send messaging; bulk import in one transaction; teacher records that can exist
 without accounts, server-generated usernames and signing in with either one;
 teacher→batch→student scoping in RLS; tenant-safe composite branch keys; employees,
@@ -1717,7 +1738,7 @@ a five-minute life, five tries counted under a row lock, a minute between sends 
 hourly ceiling per number and per IP, checked and spent inside the same call that
 creates the account — which switches itself on the day the aggregator's three variables
 exist, and is off until then (§5.4).
-1,217 RLS assertions and 1,028 unit tests green across 66 migrations and 41 tables in
+1,217 RLS assertions and 1,045 unit tests green across 66 migrations and 41 tables in
 `public` plus one in `app`, and four derived gates and two that ask the live API. One of those gates now refuses
 a query whose table name it cannot read, having discovered it had been counting five
 fewer than existed — and the RLS suite found a manager who could promote themselves
@@ -1725,8 +1746,7 @@ to owner, which is what a suite is for.
 
 **Partly built ⚠️** — branches (money, staff and the HQ comparison yes, full
 isolation no); discounts (fixed only); scheduling (weekly recurrence, no clashes or
-overrides); refunds (representable, no UI); printables (fee receipt, refund slip, payslip and
-expense voucher yes; capacity-purchase receipt no); plan selection (an
+overrides); refunds (representable, no UI); plan selection (an
 owner may ask for a tier and buy places, not move themselves between tiers);
 dashboards (`/hq` compares the branches; §9.10's own screen is not built).
 
@@ -1783,9 +1803,9 @@ expenses, employees, payroll, revenue and profit, the two dashboards, the audit 
 payment intents.
 
 **High priority, straight after:** percentage discounts and named scholarships,
-instalment plans, teacher clash detection, the one printable §9.9 still lacks — a
-capacity-purchase receipt — per-branch capacity
-*reporting* (never per-branch quotas).
+instalment plans, teacher clash detection, per-branch capacity
+*reporting* (never per-branch quotas), and the rate a purchase was priced at stored on
+`payment_intents` so §3.8's record is complete and a receipt can print it.
 
 **Future, documented and not built:** rooms and timetable conflicts, holiday
 calendars, term dates, an admissions pipeline, automated SMS and the parent summary

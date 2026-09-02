@@ -38,21 +38,12 @@ import type {
   PaymentProviderImpl,
   PaymentVerdict,
 } from './provider'
+// The code the customer quotes, from the pure module three screens and a printable share.
+import { transferReference } from './receipt'
 
 const METHODS = new Set<PaymentMethod>(PAYMENT_METHODS)
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
-
-/**
- * What the customer quotes when they tell us they have paid.
- *
- * The intent's own id, shortened. Not a counter: a sequence would need a table and a
- * lock, and this only has to be unique enough for a founder to find one row among the
- * handful open at once — the full uuid is what actually settles it.
- */
-export function transferReference(intentId: string): string {
-  return `CD-${intentId.slice(0, 8).toUpperCase()}`
-}
 
 /** Where to send the money, or null. One line of config, never a constant (§11.1). */
 function salesContact(): string | null {

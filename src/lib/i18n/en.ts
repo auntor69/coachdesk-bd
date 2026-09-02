@@ -3359,6 +3359,15 @@ export const en: Dictionary = {
         asksUnreadable:
           'Whether a branch is waiting for places could not be read just now.',
       },
+
+      /** See the Bangla: the only way in to a receipt, and not only for places. */
+      paid: {
+        title: 'What we have received',
+        body: 'Each one can be printed as a receipt.',
+        /** For a row with no description and for one with no number. */
+        receipt: 'Receipt',
+        unreadable: 'What you have paid before could not be read just now.',
+      },
     },
 
     subjects: {
@@ -4087,6 +4096,40 @@ export const en: Dictionary = {
     bandLast: 'Beyond {from} · {rate} each',
     seatRate: '{n} teachers free, then {rate} each',
     quoteNote: 'This is a calculated figure. The final price is agreed in conversation.',
+  },
+
+  /** See the Bangla for why this is the one printable whose letterhead is ours. */
+  purchaseReceipt: {
+    title: 'Payment receipt',
+    issuerLine: 'Fee and attendance software for coaching centres',
+    billedTo: 'Billed to',
+    purchaseNo: 'Purchase no.',
+    transferNo: 'Transaction no.',
+    date: 'Date paid',
+    what: 'What this paid for',
+    /** Deliberately not shared with the founder panel's own list — see the Bangla. */
+    bought: {
+      subscription: (n: number) => `${n} ${n === 1 ? 'month' : 'months'} of the plan`,
+      student_capacity: (n: number) => `${n} student ${n === 1 ? 'place' : 'places'}`,
+      teacher_seat: (n: number) => `${n} teacher ${n === 1 ? 'seat' : 'seats'}`,
+      branch: (n: number) => `${n} ${n === 1 ? 'branch' : 'branches'}`,
+    },
+    placesAdded: (n: number) => `Your student limit went up by ${n}`,
+    branch: 'Branch',
+    coverage: 'Covers',
+    coverageRange: (from: string, to: string) => `${from} to ${to}`,
+    method: 'How it was paid',
+    reference: 'Transaction no.',
+    note: 'Note',
+    amount: 'Amount received',
+    print: 'Print',
+    backToPlan: 'Back to your plan',
+    footNote:
+      'This is a computer-generated receipt. Please keep it with your accounts as proof that we received this money.',
+    noNumberNote:
+      'This payment has no separate number. Quote the date and the amount if you need to ask us about it.',
+    unreadable:
+      'This receipt could not be read just now, so the paper is not shown. The payment is recorded — please try again in a moment.',
   },
 
   /** See the Bangla for why the founder panel is translated at all. */

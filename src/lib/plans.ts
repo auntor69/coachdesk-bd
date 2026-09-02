@@ -589,8 +589,10 @@ export type StudentCeiling =
  * Purchased capacity is ignored on the teacher tiers for the same reason the SQL
  * ignores it: a centre that bought 900 places and downgraded to Teacher Pro lands on
  * 150, because limits apply to new actions and the new action is priced by the new
- * plan. The places are not lost — capacity_purchases keeps the record, so
- * re-upgrading restores them.
+ * plan. The places are not lost: `student_capacity` still holds the number — this
+ * function ignores it on a teacher tier rather than the column being cleared — and the
+ * purchase itself is on the record as a `payment_intents` row with the settled
+ * `payments` row pointing back at it. So re-upgrading restores them.
  */
 export function studentCeiling(plan: PlanLimits, purchasedCapacity: number): StudentCeiling {
   const included = includedStudents(plan)
