@@ -28,6 +28,7 @@ export function PlacesWarning({
   pressure,
   t,
   note,
+  className,
 }: {
   pressure: CapacityPressure
   /** `Dictionary['dashboard']`, not `T<'dashboard'>`: a server component, so the
@@ -35,6 +36,15 @@ export function PlacesWarning({
   t: Dictionary['dashboard']
   /** One extra sentence for a screen with something of its own to say — HQ's pool note. */
   note?: string
+  /**
+   * Classes for the root, for the one caller whose layout needs the block placed.
+   *
+   * The add-student screen orders its blocks with `order-N` and this one has to draw
+   * above the form on a phone. A wrapper div there would be a flex child of its own and
+   * so would cost a gap on every screen where there is nothing to warn about — which is
+   * most of them, because the component returns null while there is room.
+   */
+  className?: string
 }) {
   if (pressure.level === 'fine') return null
 
@@ -50,7 +60,9 @@ export function PlacesWarning({
   return (
     <div
       className={
-        boxed ? 'rounded-xl border border-late/40 bg-late/5 p-3' : undefined
+        [boxed && 'rounded-xl border border-late/40 bg-late/5 p-3', className]
+          .filter(Boolean)
+          .join(' ') || undefined
       }
     >
       <p className="num font-medium text-ink">{headline}</p>
