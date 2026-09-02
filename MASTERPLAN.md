@@ -1190,12 +1190,19 @@ direction of a hostile client: a branch manager posting another branch's id, ask
 for another branch's student, another branch's payment total, another branch's
 payroll. The RLS suite gets a case per table, not one case for the idea.
 
-### 8.3 What HQ sees ❌
+### 8.3 What HQ sees ✅
 
 The organisation-wide view is the reason somebody buys this tier: revenue and
 expenses per branch, students per branch, collection rate per branch, and the
 shared capacity pool with what is left of it. A branch comparison table where the
 branches are rows, so the owner can see which one is carrying the others.
+
+Built as `/hq`, off `branch_profit_month` and `branch_charges_month`, with the pool
+under the table rather than as a column in it — §17 forbids a per-branch quota and a
+column would invite one. Head office is a row like any branch, because a student filed
+there is a real student in no building. No nav tab, deliberately: it is reached from the
+dashboard's profit block and from the branches screen, both of which already know the
+reader is the head office of an institution.
 
 ### 8.4 What stays per-branch ✅ (decided)
 
@@ -1402,13 +1409,37 @@ for it and nothing stores it, and recomputing looks harmless while being wrong t
 purchase, and a per-place average matches no published band when one purchase straddles
 two. Recorded as a schema gap in §15, not papered over.
 
-### 9.10 The dashboards ❌
+### 9.10 The dashboards ✅
 
 **Center:** this month's collection, outstanding, expenses, payroll, profit; the
 arrears list; places remaining.
 
 **Institution HQ:** the same for the organisation, plus the branch comparison table
 of §8.3. HQ never has to open each branch to find out how the group is doing.
+
+Both are built, and the centre's is `/dashboard` itself rather than a finance screen of
+its own — a second page would print "collected this month" twice in two places, which is
+the discrepancy §9.1 exists to prevent. Outstanding is the largest figure on it because
+it is the number the product is sold on, with the reminder door directly underneath: the
+one thing on an owner's home screen that brings money in rather than reporting on it.
+Collection, spending, payroll and profit come off `center_profit_month` in a single row
+already subtracted by Postgres, never re-added in JavaScript. Places remaining sits on
+every plan, including free, where the ceiling is nearest.
+
+The organisation's copy is the total row of `/hq`'s table, and the pool beneath it. Two
+figures there deliberately do not match their centre-dashboard counterparts and the
+screen says so in a legend: cash in is keyed to when the money arrived while the two bill
+columns are keyed to the month billed for, and the head count in the total row is the
+organisation's own rather than the sum of the column, because a student filed at head
+office is in one and not the other.
+
+What the profit line cannot see, it warns about. A month with no payroll row reads as a
+month with no staff and nothing in the schema can tell those apart, so the card counts
+live agreements and payments filed and says which is missing; a centre paying wages
+through the expense category instead has that money in neither term, and that is counted
+and said too. Every term has to be readable as well — a manager whose owner unticked
+`fees`, `expenses` or `payroll` is shown no profit rather than one that is confidently
+wrong in a direction they cannot see (§6.2).
 
 ---
 
@@ -1711,7 +1742,10 @@ quoted rather than by an identifier invented for the paper;
 tap-to-send messaging; bulk import in one transaction; teacher records that can exist
 without accounts, server-generated usernames and signing in with either one;
 teacher→batch→student scoping in RLS; tenant-safe composite branch keys; employees,
-payroll and expenses; profit; branch money side by side at HQ; student capacity as a
+payroll and expenses; profit; branch money side by side at HQ; the two dashboards, the
+centre's on the home screen so that no figure on it is printed twice anywhere else and
+the organisation's as the total row of the branch comparison, each saying which of its
+own terms it could not read rather than subtracting a missing one; student capacity as a
 column of its own, with the ceiling resolved server-side, the race closed by an
 advisory lock, and the three ways past it (one student, an import, a branch that has
 run out) each priced and sold; payment intents behind a provider interface with the
@@ -1748,14 +1782,15 @@ to owner, which is what a suite is for.
 isolation no); discounts (fixed only); scheduling (weekly recurrence, no clashes or
 overrides); refunds (representable, no UI); plan selection (an
 owner may ask for a tier and buy places, not move themselves between tiers);
-dashboards (`/hq` compares the branches; §9.10's own screen is not built).
+revenue categories (the column, the check that keeps it off the month-close key, and the
+per-category view exist; nothing raises a non-tuition bill and nothing reads the view).
 
 **Not built ❌** — subscriptions as a living thing
 (`subscriptions` still has zero reads and zero writes in the app, and
 `payments.subscription_id` is always null); a customer moving their own centre
 between tiers (`bootstrap_center` hard-codes `teacher_free` as the *paid* tier, and
 only a platform admin or an owner's request changes it); the five
-`teacher_permissions` booleans as capabilities; revenue categories; §9.10's dashboards;
+`teacher_permissions` booleans as capabilities;
 transfer history; the two new student statuses; percentage discounts; rooms and
 teacher-clash detection.
 
