@@ -821,7 +821,7 @@ way to give that person an account **afterwards**, without a phone number. That 
 | Manager adds a teacher to the register | no account, no phone needed ✅ |
 | Manager later opens that teacher and taps **Create Login Account** | ✅ built |
 | Teacher's phone number | **optional**, always |
-| Teacher OTP | **never required** — see 5.5 |
+| Teacher OTP | **never required** — see §5.4 |
 
 With a number, the action looks for an account that already has it and offers to
 link that person rather than creating a second one — never on the first submit,
@@ -883,28 +883,27 @@ real phone auth needs a sender ID we do not have. Usernames extend the same tric
 with a second reserved domain rather than replacing it, so every existing
 password keeps working and nobody is re-signed-up.
 
-### 5.4 Owner and manager signup needs OTP 🚧
+### 5.4 Owner and manager signup needs OTP ✅ (built) 🚧 (off until a gateway exists)
 
-**This is a real security hole in the product as it stands, and it should be
-written down as one.** Today an owner signs up by typing a phone number and a
-password. Nothing checks that the number is theirs. Anyone can register using
-another person's phone number — and since `profiles.phone` is unique across the
-platform, doing so also **denies that number to its actual owner forever**. It is
-not only impersonation; it is a squatting attack on the identifier we use to
+**It was a real security hole and it is worth remembering why.** An owner signed up by
+typing a phone number and a password, and nothing checked that the number was theirs.
+Anyone could register using another person's phone number — and since `profiles.phone`
+is unique across the platform, doing so also **denied that number to its actual owner
+forever**. Not only impersonation: a squatting attack on the identifier we use to
 recognise returning customers.
 
-So: a one-time code, sent to the number, before the account exists.
+So: a one-time code, sent to the number, before the account exists. That is built.
 
-| Control | Requirement |
+| Control | Built as |
 |---|---|
-| Code length | 6 digits |
-| Expiry | short — proposed 5 minutes |
-| Verification | **server-side only.** The browser never learns the code it is checking against |
-| Max attempts | small and counted per code; burn the code when exceeded |
-| Resend cooldown | proposed 60 seconds |
-| Per-number ceiling | a cap per number per hour, and per IP per hour |
-| Storage | hashed, with the attempt count and expiry beside it |
-| Normalisation | the number is canonicalised **before** anything is sent or stored, so `01712…`, `+88017…` and `০১৭১২…` are one number and not three |
+| Code length | 6 digits, `OTP_LENGTH` |
+| Expiry | 5 minutes, `OTP_TTL_SECONDS` |
+| Verification | **server-side only.** The stored hash is `sha256(phone:purpose:code)`, so a row cannot be replayed against another number, and the browser never learns the code it is checked against |
+| Max attempts | 5 per code, counted in SQL under a row lock so parallel guesses queue, and the code is burned when they run out |
+| Resend cooldown | 60 seconds, checked before anything is inserted or sent |
+| Per-number ceiling | 5 per number per hour, 20 per IP per hour; a missing proxy header is skipped rather than filed under one bucket every such visitor would share |
+| Storage | `app.phone_verifications` — hash, expiry, attempt count, and a sweep of everything older than an hour on each insert. No cron, no table that grows for ever |
+| Normalisation | canonicalised in the gate before anything is sent or stored, so `01712…`, `+88017…` and `০১৭১২…` are one number and one ceiling, not three |
 
 **Teachers are exempt, deliberately and permanently.** Their phone is optional, so
 there may be no number to send to; and the account is being issued by their
@@ -914,12 +913,35 @@ whose part-time physics teacher does not want to be in a database. This is
 written here as a rule and not a preference: **teacher account creation must never
 require OTP.**
 
-**Blocked on the same thing everything else is blocked on.** OTP delivery needs an
-SMS route, which needs a BTRC-approved sender ID, which needs an aggregator
-account, which needs an NID. Until that exists the OTP layer is built against a
-provider interface with a development transport that logs the code server-side —
-never displays it in the browser, never returns it in a response body. The
-interface is the deliverable; the SMS provider behind it is one file.
+Where it lives: the numbers and the answer parsers in `src/lib/auth/otp.ts`, the gate
+and both transports in `src/lib/auth/otp-gate.ts`, the table and the two functions in
+migration `20260811000065_phone_verification.sql`, the two-step screen in
+`src/app/(auth)/actions.ts` and `src/app/(auth)/signup-form.tsx`.
+
+**The step is not the security boundary; the code is.** The screen has two steps when
+the gate is on, but the code is checked and the account created inside one Server
+Action call — so there is no verified flag for a browser to carry between requests, and
+`awaitingCode` in the returned state only decides which inputs are drawn. A browser
+that skips the step is asked for a code it does not have.
+
+**On exactly when there is a way to send a code.** `phoneGateOn()` reads the same three
+server-only variables the SMS worker reads before claiming a batch, so the aggregator's
+credentials are the deploy that shuts this hole — for everybody at once, with no code
+change. Until then signup is what it always was and the hole above is still open, which
+is why this section says so rather than claiming otherwise. And nothing turns the gate
+off once those variables are set: every path to a false answer is the absence of a
+transport, never a variable saying to skip the check.
+
+`OTP_DEV_TRANSPORT=1` is the other way on, and it is ignored when `NODE_ENV` is
+production — which is every Vercel build, previews included. Without it the flow could
+not be run at all before a sender ID exists, because the condition that turns the gate
+on is the same condition that turns the logging transport off. With it the code goes to
+the server log and nowhere else: never a return value, never a header, never a field on
+a form state. A code the browser can read is not a code.
+
+**Delivery is the part that is still blocked.** It needs an SMS route, which needs a
+BTRC-approved sender ID, which needs an aggregator account, which needs an NID. The
+interface was the deliverable; the SMS provider behind it is one file, already written.
 
 Provider credentials live in server-only environment variables. They are never
 imported into a client component, never returned from a Server Action, and never
@@ -1662,9 +1684,13 @@ never sees the money, with the narrowing enforced per table as a restrictive pol
 and every screen it would otherwise fill with noughts refusing at the door; and
 attendance that says who took the register rather than only who last touched it,
 so a manager's correction is allowed, logged, and named a correction on the screen
-that makes it (§6.3).
-1,177 RLS assertions and 987 unit tests green across 64 migrations and 41 tables,
-plus four derived gates and two that ask the live API. One of those gates now refuses
+that makes it (§6.3); and a phone gate in front of owner signup — a six-digit code with
+a five-minute life, five tries counted under a row lock, a minute between sends and an
+hourly ceiling per number and per IP, checked and spent inside the same call that
+creates the account — which switches itself on the day the aggregator's three variables
+exist, and is off until then (§5.4).
+1,215 RLS assertions and 997 unit tests green across 65 migrations and 41 tables in
+`public` plus one in `app`, and four derived gates and two that ask the live API. One of those gates now refuses
 a query whose table name it cannot read, having discovered it had been counting five
 fewer than existed — and the RLS suite found a manager who could promote themselves
 to owner, which is what a suite is for.
@@ -1682,14 +1708,15 @@ subject resolver in `src/lib/audit.ts`); dashboards (`/hq` compares the branches
 (`subscriptions` still has zero reads and zero writes in the app, and
 `payments.subscription_id` is always null); a customer moving their own centre
 between tiers (`bootstrap_center` hard-codes `teacher_free` as the *paid* tier, and
-only a platform admin or an owner's request changes it); OTP; the five
+only a platform admin or an owner's request changes it); the five
 `teacher_permissions` booleans as capabilities; revenue categories; §9.10's dashboards;
 transfer history; the two new student statuses; percentage discounts; rooms and
 teacher-clash detection.
 
-**Blocked 🚧** — automated SMS and therefore OTP delivery (BTRC sender ID needs an
-aggregator account which needs an NID); the real bKash integration (credentials
-pending); price validation (needs the design-partner conversations).
+**Blocked 🚧** — automated SMS, and with it the enforcement of a signup phone gate that
+is otherwise built and tested (BTRC sender ID needs an aggregator account which needs an
+NID); the real bKash integration (credentials pending); price validation (needs the
+design-partner conversations).
 
 ---
 
