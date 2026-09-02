@@ -3336,13 +3336,22 @@ check(
 
 // The lock must not catch our own dispatcher. If it did, every SMS send would
 // fail closed — safe, but the product would look broken instead.
+//
+// THE PLAN IT MOVES TO IS 'center' AND HAS TO BE, which is not about this test: centerA
+// keeps whatever this line leaves it on for the ten thousand lines below, and it runs 7
+// batches, 4 teachers, a payroll and two branches down there. On a teacher tier that is a
+// centre over three of its four ceilings, and since 20260811000075 the ceilings are
+// triggers — so every branch-stamp insert came back refused for being full, including
+// `the receptionist cannot hire a teacher`, which would then have passed on the wrong
+// reason forever. The seed above still starts on the free default so the guard test
+// immediately before this one can prove a hostile session moved nothing.
 let dispatcherOk = true
 try {
   await db.transaction(async (tx) => {
     await tx.exec('set local role service_role;')
     await tx.query(
       'update coaching_centers set sms_credit_balance = 50, plan = $2 where id = $1',
-      [centerA, 'teacher_plus'],
+      [centerA, 'center'],
     )
   })
 } catch (error) {
@@ -3352,7 +3361,7 @@ try {
 row = await billing()
 check(
   'service_role can still top up credits and change the plan',
-  dispatcherOk && row.sms_credit_balance === 50 && row.plan === 'teacher_plus',
+  dispatcherOk && row.sms_credit_balance === 50 && row.plan === 'center',
   `plan=${row.plan} balance=${row.sms_credit_balance}`,
 )
 
@@ -14973,6 +14982,488 @@ check(
 
 
 
+
+// ---------------------------------------------------------------------------
+// PLAN CEILINGS — 20260811000075, MASTERPLAN §16 step 20.
+//
+// Until that migration `app.guard_student_capacity` was the only numeric ceiling in the
+// database. Batches, subjects, teachers and seats were counted in Server Actions only,
+// and `batches`/`subjects`/`teachers`/`enrollments` all still grant INSERT to
+// `authenticated` — so an owner's own JWT, posted straight at PostgREST, walked past
+// every limit their plan sold them. Everything below is that hole, from a session.
+// ---------------------------------------------------------------------------
+
+console.log('\nPlan ceilings (batches, subjects, teachers, seats per batch):')
+
+/*
+ * A fresh centre per tier, because centerA is a Coaching Center for the ten thousand
+ * lines above and every ceiling it has is 100 or unlimited. The claim trigger makes each
+ * creator an owner, so these are real owner sessions rather than superuser writes.
+ */
+const ceilUser = async () =>
+  (await db.query('insert into auth.users (id) values (gen_random_uuid()) returning id'))
+    .rows[0].id
+
+const ceilCentre = (name, user) =>
+  one(`insert into coaching_centers (name, created_by) values ($1, $2) returning id`, [
+    name,
+    user,
+  ])
+
+/** What the database said, in the three parts these assertions need. */
+const attempt = async (user, sql, params = []) => {
+  try {
+    await asUser(db, user, (tx) => tx.query(sql, params))
+    return { code: '', limit: '', hint: '', why: '' }
+  } catch (error) {
+    return {
+      code: error.code ?? '',
+      limit: error.detail ?? error.details ?? '',
+      hint: error.hint ?? '',
+      why: String(error.message),
+    }
+  }
+}
+
+const addSubject = (centre, user, name) =>
+  attempt(user, 'insert into subjects (coaching_center_id, name) values ($1, $2)', [
+    centre,
+    name,
+  ])
+
+const addTeacher = (centre, user, name) =>
+  attempt(user, 'insert into teachers (coaching_center_id, name) values ($1, $2)', [
+    centre,
+    name,
+  ])
+
+const addBatch = (centre, user, subj, name, branch = null) =>
+  attempt(
+    user,
+    `insert into batches (coaching_center_id, subject_id, name, slot, monthly_fee_bdt, branch_id)
+     values ($1, $2, $3, 'evening', 800, $4)`,
+    [centre, subj, name, branch],
+  )
+
+const freeOwner = await ceilUser()
+const freeCentre = await ceilCentre('Ceiling Free Coaching', freeOwner)
+
+check(
+  'a new centre starts on the free plan, where these ceilings are one each',
+  (
+    await db.query('select plan::text as plan from coaching_centers where id = $1', [
+      freeCentre,
+    ])
+  ).rows[0].plan === 'teacher_free',
+)
+
+// --- One subject, one teacher, one batch ------------------------------------
+
+const firstSubject = await addSubject(freeCentre, freeOwner, 'Physics')
+check('the free plan\'s one subject goes in as the owner', firstSubject.code === '', firstSubject.why)
+
+const secondSubject = await addSubject(freeCentre, freeOwner, 'Chemistry')
+check(
+  'and the second is refused at the plan ceiling, not by a Server Action',
+  secondSubject.code === 'CD003',
+  `${secondSubject.code} ${secondSubject.why}`,
+)
+check(
+  'the refusal says which ceiling it was, so a screen can name it',
+  secondSubject.limit === 'limit=subjects',
+  secondSubject.limit,
+)
+
+const firstTeacher = await addTeacher(freeCentre, freeOwner, 'Rahim Sir')
+check('the one teacher record goes in', firstTeacher.code === '', firstTeacher.why)
+
+const secondTeacher = await addTeacher(freeCentre, freeOwner, 'Karim Sir')
+check(
+  'and a second is refused',
+  secondTeacher.code === 'CD003' && secondTeacher.limit === 'limit=teachers',
+  `${secondTeacher.code} ${secondTeacher.limit} ${secondTeacher.why}`,
+)
+
+const freeSubject = (
+  await db.query('select id from subjects where coaching_center_id = $1', [freeCentre])
+).rows[0].id
+
+const freeFirstBatch = await addBatch(freeCentre, freeOwner, freeSubject, 'Physics Evening')
+check('the one batch goes in', freeFirstBatch.code === '', freeFirstBatch.why)
+
+const freeSecondBatch = await addBatch(freeCentre, freeOwner, freeSubject, 'Physics Morning')
+check(
+  'and a second is refused',
+  freeSecondBatch.code === 'CD003' && freeSecondBatch.limit === 'limit=batches',
+  `${freeSecondBatch.code} ${freeSecondBatch.limit} ${freeSecondBatch.why}`,
+)
+check(
+  'the refusal tells them what to do about it, which on this plan is not only buying',
+  freeSecondBatch.hint.includes('Retire'),
+  freeSecondBatch.hint,
+)
+
+// --- Retiring one frees the room, and a rename is not a claim ----------------
+
+const freeBatch = (
+  await db.query('select id from batches where coaching_center_id = $1', [freeCentre])
+).rows[0].id
+
+const retired = await attempt(
+  freeOwner,
+  'update batches set active = false where id = $1',
+  [freeBatch],
+)
+check('an owner may retire the batch that finished', retired.code === '', retired.why)
+
+const afterRetiring = await addBatch(freeCentre, freeOwner, freeSubject, 'Physics Next Term')
+check(
+  'and the room it was using is free again — a ceiling counts what is running',
+  afterRetiring.code === '',
+  afterRetiring.why,
+)
+
+/*
+ * The trigger is `of active, coaching_center_id, branch_id`, so editing anything else
+ * never reaches it. Worth an assertion rather than a comment: a guard that fired on
+ * every UPDATE would freeze a full centre's timetable, and it would look like the
+ * ceiling working.
+ */
+const repriced = await attempt(
+  freeOwner,
+  `update batches set name = 'Physics Evening (Room 2)', monthly_fee_bdt = 900
+    where coaching_center_id = $1 and active`,
+  [freeCentre],
+)
+check('a full centre can still rename and reprice the batch it has', repriced.code === '', repriced.why)
+
+// The same row already counted, saved again. `old.active and same centre and branch`
+// returns early — without that, every edit of an active row would count itself.
+const savedAgain = await attempt(
+  freeOwner,
+  'update batches set active = true where coaching_center_id = $1 and active',
+  [freeCentre],
+)
+check('and saving an already-running batch is not a second claim on the room', savedAgain.code === '', savedAgain.why)
+
+const reopenedBatch = await attempt(
+  freeOwner,
+  'update batches set active = true where id = $1',
+  [freeBatch],
+)
+check(
+  'but re-opening the retired one, now the room is taken, is refused',
+  reopenedBatch.code === 'CD003' && reopenedBatch.limit === 'limit=batches',
+  `${reopenedBatch.code} ${reopenedBatch.limit} ${reopenedBatch.why}`,
+)
+
+// --- The worker is not exempt, and neither is anything else with a key -------
+
+/*
+ * ONLY `postgres` AND `supabase_admin` ARE EXEMPT, and `service_role` deliberately is
+ * not. The key is what a Server Action holds; if it walked past the ceiling then every
+ * form on the site did too, and this whole migration would only be stopping the one
+ * caller nobody uses. Migrations and the seed still run as the superuser, which is why
+ * everything above could be seeded past the guard.
+ */
+const asWorker = async (sql, params = []) => {
+  try {
+    await asService(sql, params)
+    return { code: '', limit: '' }
+  } catch (error) {
+    return { code: error.code ?? '', limit: error.detail ?? error.details ?? '' }
+  }
+}
+
+const workerSubject = await asWorker(
+  `insert into subjects (coaching_center_id, name) values ($1, 'Biology')`,
+  [freeCentre],
+)
+check(
+  'the service key is refused the second subject exactly as the browser was',
+  workerSubject.code === 'CD003' && workerSubject.limit === 'limit=subjects',
+  `${workerSubject.code} ${workerSubject.limit}`,
+)
+
+// --- A trial of a higher tier lifts the ceiling while it is live -------------
+
+// §4.5's rule, the same one `app.student_ceiling` follows: the ceiling is the better of
+// the paid plan and a live trial. A teacher on the 14-day Pro trial who could not create
+// their second subject would be reading an advert for something they already have.
+await db.query(
+  `update coaching_centers
+      set trial_plan = 'teacher_plus', trial_ends_at = now() + interval '7 days'
+    where id = $1`,
+  [freeCentre],
+)
+const trialSubject = await addSubject(freeCentre, freeOwner, 'Biology')
+check(
+  'a live Pro trial admits the second subject the free plan refused',
+  trialSubject.code === '',
+  trialSubject.why,
+)
+
+// Expiry is a comparison, so moving the date is the whole of it — no job runs.
+await db.query(
+  `update coaching_centers set trial_ends_at = now() - interval '1 day' where id = $1`,
+  [freeCentre],
+)
+const afterTrial = await addSubject(freeCentre, freeOwner, 'Higher Math')
+check(
+  'and the day it ends the free ceiling is back, with the two already there left alone',
+  afterTrial.code === 'CD003'
+    && (await db.query('select count(*)::int as n from subjects where coaching_center_id = $1', [freeCentre])).rows[0].n === 2,
+  `${afterTrial.code} ${afterTrial.why}`,
+)
+
+// --- A null ceiling is no ceiling, not a ceiling of nothing ------------------
+
+const paidOwner = await ceilUser()
+const paidCentre = await ceilCentre('Ceiling Centre Plan', paidOwner)
+await db.query(`update coaching_centers set plan = 'center' where id = $1`, [paidCentre])
+
+// `max_teachers` is null for a Coaching Center — §5 sells teachers by the head, so there
+// is no number to compare against and the guard returns before it counts. A null read as
+// zero would refuse the first hire on the plan that charges for them.
+const hires = []
+for (const name of ['Rahim Sir', 'Karim Sir', 'Nasrin Madam', 'Sultana Madam']) {
+  hires.push(await addTeacher(paidCentre, paidOwner, name))
+}
+check(
+  'a plan that sells teachers by the head refuses none of them',
+  hires.every((h) => h.code === ''),
+  hires.map((h) => h.why).join(' | '),
+)
+
+// --- Thirty to a batch, which is a teacher-tier rule ------------------------
+
+const seatOwner = await ceilUser()
+const seatCentre = await ceilCentre('Ceiling Seats Coaching', seatOwner)
+await db.query(`update coaching_centers set plan = 'teacher_plus' where id = $1`, [seatCentre])
+
+const seatSubject = await one(
+  `insert into subjects (coaching_center_id, name) values ($1, 'Physics') returning id`,
+  [seatCentre],
+)
+const seatBatch = await one(
+  `insert into batches (coaching_center_id, subject_id, name, slot, monthly_fee_bdt)
+   values ($1, $2, 'Physics Batch A', 'evening', 800) returning id`,
+  [seatCentre, seatSubject],
+)
+
+// Superuser again, so this seeds up to the ceiling rather than testing it. Pro admits 150
+// students to the centre and 30 to a batch, so thirty-one children is well inside the
+// student ceiling — the only thing that can refuse below is the seat count.
+await db.query(
+  `insert into students (coaching_center_id, name, guardian_phone)
+   select $1, 'Seat Child ' || lpad(g::text, 2, '0'), '0178' || lpad(g::text, 7, '0')
+     from generate_series(1, 31) g`,
+  [seatCentre],
+)
+await db.query(
+  `insert into enrollments (coaching_center_id, student_id, subject_id, batch_id)
+   select $1, s.id, $2, $3
+     from (select id from students where coaching_center_id = $1 order by name limit 29) s`,
+  [seatCentre, seatSubject, seatBatch],
+)
+
+const enrolNext = () =>
+  attempt(
+    seatOwner,
+    `insert into enrollments (coaching_center_id, student_id, subject_id, batch_id)
+     select $1, s.id, $2, $3
+       from (select st.id from students st
+              where st.coaching_center_id = $1
+                and not exists (select 1 from enrollments e where e.student_id = st.id)
+              order by st.name limit 1) s`,
+    [seatCentre, seatSubject, seatBatch],
+  )
+
+const thirtieth = await enrolNext()
+check('the thirtieth child in a batch is admitted', thirtieth.code === '', thirtieth.why)
+
+const thirtyFirst = await enrolNext()
+check(
+  'the thirty-first is refused, and the refusal is about the room and not the plan',
+  thirtyFirst.code === 'CD003' && thirtyFirst.limit === 'limit=seats',
+  `${thirtyFirst.code} ${thirtyFirst.limit} ${thirtyFirst.why}`,
+)
+
+// A second batch takes the same child count again — the ceiling is per batch, so it
+// cannot be counted centre-wide by accident.
+const seatBatchB = await one(
+  `insert into batches (coaching_center_id, subject_id, name, slot, monthly_fee_bdt)
+   values ($1, $2, 'Physics Batch B', 'evening', 800) returning id`,
+  [seatCentre, seatSubject],
+)
+const spilled = await attempt(
+  seatOwner,
+  `insert into enrollments (coaching_center_id, student_id, subject_id, batch_id)
+   select $1, s.id, $2, $3
+     from (select st.id from students st
+            where st.coaching_center_id = $1
+              and not exists (select 1 from enrollments e where e.student_id = st.id)
+            order by st.name limit 1) s`,
+  [seatCentre, seatSubject, seatBatchB],
+)
+check('and the same child count starts again in the next batch', spilled.code === '', spilled.why)
+
+// --- A branch is a bucket only where branches were bought -------------------
+
+const orgOwner = await ceilUser()
+const orgCentre = await ceilCentre('Ceiling Institution', orgOwner)
+await db.query(`update coaching_centers set plan = 'institution' where id = $1`, [orgCentre])
+
+const orgSubject = await one(
+  `insert into subjects (coaching_center_id, name) values ($1, 'Physics') returning id`,
+  [orgCentre],
+)
+const branchDhanmondi = await one(
+  `insert into branches (coaching_center_id, name) values ($1, 'Dhanmondi') returning id`,
+  [orgCentre],
+)
+const branchGazipur = await one(
+  `insert into branches (coaching_center_id, name) values ($1, 'Gazipur') returning id`,
+  [orgCentre],
+)
+
+for (const [name, branch] of [
+  ['Dhanmondi Morning', branchDhanmondi],
+  ['Dhanmondi Evening', branchDhanmondi],
+  ['Gazipur Evening', branchGazipur],
+  ['Head Office Evening', null],
+]) {
+  await db.query(
+    `insert into batches (coaching_center_id, subject_id, branch_id, name, slot, monthly_fee_bdt)
+     values ($1, $2, $3, $4, 'evening', 800)`,
+    [orgCentre, orgSubject, branch, name],
+  )
+}
+
+const batchesIn = async (branch, perBranch) =>
+  Number(
+    (
+      await db.query('select app.active_batches($1, $2, $3)::int as n', [
+        orgCentre,
+        branch,
+        perBranch,
+      ])
+    ).rows[0].n,
+  )
+
+check(
+  'counted per branch, a branch sees only its own batches',
+  (await batchesIn(branchDhanmondi, true)) === 2 && (await batchesIn(branchGazipur, true)) === 1,
+)
+// `is not distinct from`, not `=`. Head office is a real place with a null branch_id, and
+// on `=` a null compares to nothing, so its bucket would read as empty for ever.
+check(
+  'head office is its own bucket, not a wildcard and not an empty one',
+  (await batchesIn(null, true)) === 1,
+)
+check(
+  'and counted centre-wide it is the whole organisation',
+  (await batchesIn(branchDhanmondi, false)) === 4 && (await batchesIn(null, false)) === 4,
+)
+
+/*
+ * The enforcement end of the same rule. The real institution ceiling is §6's internal
+ * safety limit of 100 batches, which no fixture is going to reach, so the allowance is
+ * lowered for these two assertions and put back below. Two, so Dhanmondi is full and head
+ * office has room — which is the only shape that can tell per-branch counting from
+ * centre-wide counting.
+ */
+await db.query(`update plan_allowances set max_batches = 2 where plan = 'institution'`)
+
+const thirdInBranch = await addBatch(
+  orgCentre, orgOwner, orgSubject, 'Dhanmondi Night', branchDhanmondi,
+)
+check(
+  'a full branch is refused another batch',
+  thirdInBranch.code === 'CD003' && thirdInBranch.limit === 'limit=batches',
+  `${thirdInBranch.code} ${thirdInBranch.limit} ${thirdInBranch.why}`,
+)
+const roomElsewhere = await addBatch(orgCentre, orgOwner, orgSubject, 'Gazipur Morning', branchGazipur)
+check(
+  'while a branch with room is not held to another branch\'s count',
+  roomElsewhere.code === '',
+  roomElsewhere.why,
+)
+
+await db.query(`update plan_allowances set max_batches = 100 where plan = 'institution'`)
+check(
+  'the institution allowance is back to the hundred §6 sets',
+  Number(
+    (
+      await db.query(
+        `select max_batches from plan_allowances where plan = 'institution'`,
+      )
+    ).rows[0].max_batches,
+  ) === 100,
+)
+
+// --- The fence around the ten functions -------------------------------------
+
+const ceilGuards = [
+  'guard_batch_ceiling', 'guard_subject_ceiling', 'guard_teacher_ceiling', 'guard_batch_seats',
+]
+const ceilHelpers = [
+  'ceiling_plan', 'plan_ceiling', 'active_batches', 'active_subjects', 'active_teachers',
+  'active_seats',
+]
+
+const ceilGrantees = async (names) =>
+  (
+    await db.query(
+      `select p.proname as name, a.grantee::regrole::text as who
+         from pg_proc p
+         join pg_namespace nsp on nsp.oid = p.pronamespace and nsp.nspname = 'app'
+         join aclexplode(p.proacl) a on a.privilege_type = 'EXECUTE'
+        where p.proname = any($1) and a.grantee <> 0
+        order by 1, 2`,
+      [names],
+    )
+  ).rows
+
+const anonReach = (await ceilGrantees([...ceilGuards, ...ceilHelpers])).filter(
+  (r) => r.who === 'anon',
+)
+check(
+  'nothing anonymous can call any of the ten new functions',
+  anonReach.length === 0,
+  anonReach.map((r) => `${r.name}→${r.who}`).join(', '),
+)
+
+// A trigger function's EXECUTE is checked when the trigger is created, never when it
+// fires, so these four are granted to nobody at all — including the role doing the
+// insert. Anything reachable here would be a definer function a session could call
+// directly with arguments of its own choosing.
+const guardReach = (await ceilGrantees(ceilGuards)).filter((r) =>
+  ['authenticated', 'anon', 'service_role', 'public'].includes(r.who),
+)
+check(
+  'and no session role can call the four guards directly',
+  guardReach.length === 0,
+  guardReach.map((r) => `${r.name}→${r.who}`).join(', '),
+)
+
+/*
+ * The helpers ARE granted to `authenticated`, and that is not an oversight. The guards are
+ * SECURITY INVOKER — deliberately, because inside a definer function `current_user` is the
+ * owner and the superuser exemption would then match every caller — so each helper is
+ * called as the manager doing the insert. Revoke this and every insert on four tables
+ * fails permission denied.
+ */
+const helperReach = new Set(
+  (await ceilGrantees(ceilHelpers))
+    .filter((r) => r.who === 'authenticated')
+    .map((r) => r.name),
+)
+check(
+  'while every helper a guard calls is reachable by the session running the insert',
+  ceilHelpers.every((name) => helperReach.has(name)),
+  ceilHelpers.filter((name) => !helperReach.has(name)).join(', '),
+)
 
 console.log(`\n${passed} passed, ${failed} failed`)
 await db.close()

@@ -38,6 +38,7 @@ import {
   INSTITUTION_MONTHLY_FLOOR_BDT,
   type PlanId,
 } from '../src/lib/plans.ts'
+import { PLAN_CEILING_EXCEEDED } from '../src/lib/capacity.ts'
 
 const ROOT = path.join(import.meta.dirname, '..')
 const migration = (file: string) =>
@@ -45,7 +46,29 @@ const migration = (file: string) =>
 
 const MIGRATION = migration('20260811000036_student_capacity.sql')
 const TRIAL_CEILING = migration('20260811000060_trial_ceiling.sql')
+const CEILINGS = migration('20260811000075_plan_ceilings.sql')
 const INIT = migration('20260811000001_init_schema.sql')
+
+/** The four other ceilings, read out of the UPDATE that seeds them. Null stays null. */
+function seededCeilings(): Map<string, (number | null)[]> {
+  const statement = /update\s+public\.plan_allowances\s+set[^;]*;/i.exec(CEILINGS)
+  assert.ok(statement, 'migration 75 no longer seeds the plan ceilings')
+
+  const rows = [
+    ...statement[0].matchAll(
+      /\(\s*'([a-z_]+)'::public\.plan_type\s*,\s*(\d+|null)\s*,\s*(\d+|null)\s*,\s*(\d+|null)\s*,\s*(\d+|null)\s*\)/gi,
+    ),
+  ]
+  assert.ok(rows.length > 0, 'the ceiling seed parsed to nothing')
+
+  return new Map(
+    rows.map((row) => [
+      row[1],
+      row.slice(2, 6).map((cell) => (cell.toLowerCase() === 'null' ? null : Number(cell))),
+    ]),
+  )
+}
+
 
 /** The allowances the database will hold, read out of the migration that seeds them. */
 function seededAllowances(): Map<string, number> {
@@ -376,3 +399,202 @@ test('the plan enum sorts cheapest first, which is what > means in SQL', () => {
 
   assert.deepEqual(declared, ranked)
 })
+
+/* The other four ceilings — 20260811000075 */
+
+test('every plan has all four of its other ceilings seeded', () => {
+  // A missing row here is worse than a missing allowance, because it is silent in the
+  // permissive direction: app.plan_ceiling raises on a plan with no row, so the tier
+  // would be refused outright — but a tier added to the enum and to PLANS and not to
+  // this UPDATE inherits four nulls, and null is read as no ceiling.
+  const seeded = [...seededCeilings().keys()].sort()
+  const known = (Object.keys(PLANS) as PlanId[]).slice().sort()
+
+  assert.deepEqual(seeded, known)
+})
+
+test('the four ceilings in the database are the four in plans.ts', () => {
+  // The point of the migration and the reason this test is the important one in the file
+  // now: until 20260811000075 these numbers existed only in PLANS and were checked only
+  // by a Server Action, so an owner's own token posted at PostgREST wrote the
+  // hundred-and-first batch. There are two copies of each number now, which is the price
+  // of a trigger that cannot import TypeScript, and this is what keeps them equal.
+  const seeded = seededCeilings()
+
+  for (const plan of Object.values(PLANS)) {
+    assert.deepEqual(
+      seeded.get(plan.id),
+      [plan.maxBatches, plan.maxSubjects, plan.maxTeachers, plan.maxStudentsPerBatch],
+      plan.id,
+    )
+  }
+})
+
+test('no ceiling falls as the plan rises', () => {
+  // The migration asserts this at push time against the table; this is the same claim
+  // against PLANS, which is where somebody would actually make the mistake. It matters
+  // because §2.2's trial grants the trialled tier's ceilings and nothing re-checks rows
+  // already written: a tier whose ceiling was lower than the one below it would take a
+  // batch away from a centre that had already made it.
+  const ranked = (Object.keys(PLANS) as PlanId[]).sort((a, b) => PLAN_RANK[a] - PLAN_RANK[b])
+  const uncapped = Number.POSITIVE_INFINITY
+
+  for (const dimension of ['maxBatches', 'maxSubjects', 'maxTeachers', 'maxStudentsPerBatch'] as const) {
+    let previous = 0
+    for (const id of ranked) {
+      const ceiling = PLANS[id][dimension] ?? uncapped
+      assert.ok(ceiling >= previous, `${id}.${dimension} is lower than the plan below it`)
+      previous = ceiling
+    }
+  }
+})
+
+test('each ceiling fires per row, on exactly the columns that claim a slot', () => {
+  // Two ways to get this wrong, both invisible: FOR EACH STATEMENT counts once for a
+  // 500-row import and lets 499 through, and a column missing from the list means the
+  // transition that claims the slot never enters the trigger. `active` is what
+  // reactivates a retired batch; `branch_id` is a batch moving into another building,
+  // which claims a room there; `status` is a paused enrolment coming back.
+  const triggers: [string, string, string][] = [
+    ['batches_guard_ceiling', 'batches', 'active, coaching_center_id, branch_id'],
+    ['subjects_guard_ceiling', 'subjects', 'active, coaching_center_id'],
+    ['teachers_guard_ceiling', 'teachers', 'active, coaching_center_id'],
+    ['enrollments_guard_seats', 'enrollments', 'status, batch_id, coaching_center_id'],
+  ]
+
+  for (const [name, table, columns] of triggers) {
+    assert.match(
+      CEILINGS,
+      new RegExp(
+        `create trigger ${name}\\s+before insert or update of ${columns} on public\\.${table}\\s+for each row execute function app\\.\\w+\\(\\)`,
+        'i',
+      ),
+      name,
+    )
+  }
+})
+
+test('every one of the four guards keeps the parts that make it a guard', () => {
+  // `create or replace`, so a later edit rewrites each of these wholesale and can drop a
+  // line without the diff looking like anything. The lock is the one that fails quietly:
+  // without it two managers adding the hundredth batch both count 99 and both pass.
+  const guards = [
+    'guard_batch_ceiling',
+    'guard_subject_ceiling',
+    'guard_teacher_ceiling',
+    'guard_batch_seats',
+  ]
+
+  for (const name of guards) {
+    const fn = new RegExp(`create or replace function app\\.${name}\\(\\)[\\s\\S]*?\\n\\$\\$;`, 'i')
+      .exec(CEILINGS)
+    assert.ok(fn, `migration 75 no longer defines app.${name}`)
+
+    assert.match(fn[0], /pg_catalog\.pg_advisory_xact_lock\(/, name)
+    assert.match(fn[0], /if ceiling is null then\s+return new;/, name)
+    assert.match(fn[0], /security invoker/, name)
+    assert.match(fn[0], /current_user in \('postgres', 'supabase_admin'\)/, name)
+    // The app's own admin client is deliberately not on that list: a Server Action must
+    // not be able to wave a ceiling through, which is the whole reason this is in SQL.
+    assert.doesNotMatch(fn[0], /current_user in \([^)]*service_role/, name)
+    // And a centre that does not resolve is a failed read, not an absent ceiling.
+    assert.match(fn[0], /errcode = '23503'/, name)
+    assert.match(fn[0], new RegExp(`errcode = '${PLAN_CEILING_EXCEEDED}'`), name)
+  }
+})
+
+test('the refusal says which ceiling it was', () => {
+  // `detail` is the only machine-readable half — the message is a sentence for a log and
+  // the hint is for a person — so a screen that wants to say "batches" rather than
+  // "a limit" reads this. refusedCeiling() in capacity.ts parses exactly these.
+  for (const dimension of ['batches', 'subjects', 'teachers', 'seats']) {
+    assert.match(CEILINGS, new RegExp(`detail\\s+= 'limit=${dimension}'`), dimension)
+  }
+})
+
+test('the ceilings are asked of the plan a live trial grants, not only the paid one', () => {
+  // Same rule as app.admitted_ceiling and for the same reason: a centre row still
+  // carrying the signup's teacher_plus trial would be held to five batches on a plan
+  // that allows a hundred. The rank test is what stops it working the other way.
+  const fn = /create or replace function app\.ceiling_plan\(center uuid\)[\s\S]*?\n\$\$;/i
+    .exec(CEILINGS)
+  assert.ok(fn, 'migration 75 no longer defines app.ceiling_plan')
+
+  assert.match(fn[0], /c\.trial_ends_at > pg_catalog\.now\(\)/)
+  assert.match(fn[0], /c\.trial_plan > c\.plan/)
+
+  for (const guard of ['guard_batch_ceiling', 'guard_subject_ceiling', 'guard_teacher_ceiling', 'guard_batch_seats']) {
+    assert.match(CEILINGS, new RegExp(`${guard}[\\s\\S]*?app\\.ceiling_plan\\(new\\.coaching_center_id\\)`), guard)
+  }
+})
+
+test('the counts are volatile, or a bulk import passes the same ceiling every time', () => {
+  // The subtlest line in the migration. A STABLE function reads the calling statement's
+  // snapshot and cannot see rows that same statement has already written, so a paste of
+  // forty enrolments would count the same thirty-nine chairs forty times. VOLATILE takes
+  // a fresh snapshot per call, which is what makes row 30 see rows 1..29.
+  for (const name of ['active_subjects', 'active_teachers', 'active_batches', 'active_seats']) {
+    const fn = new RegExp(
+      `create or replace function app\\.${name}\\([^)]*\\)[\\s\\S]*?\\n\\$\\$;`,
+      'i',
+    ).exec(CEILINGS)
+    assert.ok(fn, `migration 75 no longer defines app.${name}`)
+
+    assert.match(fn[0], /\nvolatile\n/, name)
+    assert.doesNotMatch(fn[0], /\nstable\n/, name)
+    // Definer, because a teacher may hold rows a teacher cannot see all of and an
+    // invoker-side count would return their handful and pass every check.
+    assert.match(fn[0], /security definer/, name)
+    assert.match(fn[0], /set search_path = ''/, name)
+  }
+})
+
+test('a branch is a bucket in the batch count, and only where branches are bought', () => {
+  // Two claims that have to hold together, both copied from batchRoomRefusal. A batch
+  // filed under no building belongs to head office, and head office has a room of its
+  // own rather than a share of every branch's — `is not distinct from` is what makes null
+  // one of the buckets instead of matching none. And the per-branch split is asked of the
+  // plan, because a centre moved down off institution keeps every branch_id it wrote.
+  const count = /create or replace function app\.active_batches\([^)]*\)[\s\S]*?\n\$\$;/i
+    .exec(CEILINGS)
+  assert.ok(count, 'migration 75 no longer defines app.active_batches')
+  assert.match(count[0], /b\.branch_id is not distinct from branch/)
+
+  const guard = /create or replace function app\.guard_batch_ceiling\(\)[\s\S]*?\n\$\$;/i
+    .exec(CEILINGS)
+  assert.ok(guard, 'migration 75 no longer defines app.guard_batch_ceiling')
+  assert.match(guard[0], /per_branch := target = 'institution'::public\.plan_type/)
+})
+
+test('nothing anonymous may call any of it', () => {
+  // Six helpers that count past RLS and four triggers. The helpers have to be granted to
+  // `authenticated` — the guards are SECURITY INVOKER, so they call these as the manager
+  // who is inserting, and without the grant an ordinary insert fails on permission
+  // instead of on the ceiling — which is exactly why the revoke has to be there too.
+  const helpers = [
+    'app.ceiling_plan(uuid)',
+    'app.plan_ceiling(public.plan_type, text)',
+    'app.active_subjects(uuid)',
+    'app.active_teachers(uuid)',
+    'app.active_batches(uuid, uuid, boolean)',
+    'app.active_seats(uuid, uuid)',
+  ]
+
+  for (const signature of helpers) {
+    const fn = signature.replace(/[.()]/g, (c) => `\\${c}`)
+    assert.match(CEILINGS, new RegExp(`revoke all on function ${fn} from public, anon;`), signature)
+    assert.match(
+      CEILINGS,
+      new RegExp(`grant execute on function ${fn} to authenticated, service_role;`),
+      signature,
+    )
+  }
+
+  // The guards are granted to nobody: a trigger's execute right is checked when it is
+  // created, not when it fires.
+  for (const name of ['guard_batch_ceiling', 'guard_subject_ceiling', 'guard_teacher_ceiling', 'guard_batch_seats']) {
+    assert.match(CEILINGS, new RegExp(`revoke all on function app\\.${name}\\(\\) from public, anon;`), name)
+    assert.doesNotMatch(CEILINGS, new RegExp(`grant execute on function app\\.${name}\\(\\)`), name)
+  }
+})
+

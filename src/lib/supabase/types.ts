@@ -1743,16 +1743,28 @@ export type Database = {
           plan: PlanType
           included_students: number
           updated_at: string
+          max_batches: number | null
+          max_subjects: number | null
+          max_teachers: number | null
+          max_students_per_batch: number | null
         }
         Insert: {
           plan: PlanType
           included_students: number
           updated_at?: string
+          max_batches?: number | null
+          max_subjects?: number | null
+          max_teachers?: number | null
+          max_students_per_batch?: number | null
         }
         Update: {
           plan?: PlanType
           included_students?: number
           updated_at?: string
+          max_batches?: number | null
+          max_subjects?: number | null
+          max_teachers?: number | null
+          max_students_per_batch?: number | null
         }
         Relationships: []
       }

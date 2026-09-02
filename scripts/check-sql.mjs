@@ -105,4 +105,66 @@ for (const file of files) {
   }
 }
 
+/*
+ * ONE RULE PER `CD` CODE, AND EVERY CODE NAMED IN src/lib.
+ *
+ * `CD` is not a class Postgres allocates, so these five characters are ours to hand out
+ * and there is nowhere that records which are taken. 20260811000075 was written raising
+ * `CD002` — already the teacher clash in 20260811000071 — and both halves of that are
+ * real bugs. Two rules on one code means `isPlanCeilingRefusal` is true for a
+ * double-booked teacher, so a screen offers to sell a bigger plan to fix a timetable. A
+ * code raised in SQL and named nowhere in src/lib is the quieter one: the refusal works,
+ * every screen shows it as an unknown error, and nothing fails.
+ *
+ * A RULE IS A MIGRATION, NOT A FUNCTION, and that is the whole subtlety. Four sibling
+ * guards may share a code and 20260811000075's four do — one plan ceiling, four
+ * dimensions, told apart by `detail` — and a later migration replacing a guard wholesale
+ * re-raises its code by definition, which 20260811000060 does to
+ * app.guard_student_capacity. Both are one owner. So each code is traced to the
+ * migrations that first DECLARED the functions raising it, and two of those is the bug.
+ *
+ * A text scan and not the parse tree, because `using errcode = '...'` is a plpgsql
+ * statement inside a string literal that libpg_query hands back whole.
+ */
+const DECLARES = /create\s+(?:or\s+replace\s+)?function\s+([\w.]+)\s*\(/gi
+const RAISED = /errcode\s*=\s*'(CD\d{3})'/gi
+
+/** Every function's first migration. `files` is sorted, so the first sighting is it. */
+const born = new Map()
+const raises = new Map()
+
+for (const file of files) {
+  const sql = readFileSync(`${dir}/${file}`, 'utf8')
+  const declared = [...sql.matchAll(DECLARES)].map((m) => ({ at: m.index, name: m[1] }))
+  for (const { name } of declared) if (!born.has(name)) born.set(name, file)
+
+  for (const raise of sql.matchAll(RAISED)) {
+    const code = raise[1].toUpperCase()
+    // The function it sits inside is the last one declared above it. A raise outside any
+    // function — a `do $$` block — belongs to the file itself.
+    const inside = declared.filter((d) => d.at < raise.index).pop()
+    if (!raises.has(code)) raises.set(code, new Set())
+    raises.get(code).add(inside?.name ?? file)
+  }
+}
+
+const named = readdirSync('src/lib', { recursive: true })
+  .filter((f) => typeof f === 'string' && f.endsWith('.ts'))
+  .map((f) => readFileSync(`src/lib/${f}`, 'utf8'))
+  .join('\n')
+
+for (const [code, from] of [...raises].sort()) {
+  const rules = new Set([...from].map((name) => born.get(name) ?? name))
+
+  if (rules.size > 1) {
+    console.log(`FAIL ${code} is raised by rules from ${rules.size} migrations: ${[...rules].join(', ')}`)
+    failed = true
+  } else if (!named.includes(`'${code}'`)) {
+    console.log(`FAIL ${code} is raised by ${[...rules][0]} and named nowhere in src/lib`)
+    failed = true
+  }
+}
+
+if (!failed) console.log(`OK   ${raises.size} CD code(s), one rule each, all named in src/lib`)
+
 process.exit(failed ? 1 : 0)

@@ -10,8 +10,10 @@
  * a transaction-scoped advisory lock, counts, and refuses — which holds for the form,
  * for the bulk import, and for a write path nobody has written yet.
  *
- * This file is the other end of that refusal: the code the trigger raises, named once
- * so no `if` on a student insert has a bare SQLSTATE in it.
+ * This file is the other end of that refusal: the codes the triggers raise, named once
+ * so no `if` on an insert has a bare SQLSTATE in it. 20260811000075 did the same for the
+ * other four ceilings — batches, subjects, teachers, students in one batch — which is
+ * why there are two codes here and not one.
  *
  * No imports, deliberately. `isCapacityRefusal` is wanted wherever a student insert
  * is handled, including in a client component's error branch, and a file that pulls
@@ -52,3 +54,47 @@ export function isCapacityRefusal(error: unknown): boolean {
   const code = (error as { code?: unknown }).code
   return code === CAPACITY_EXCEEDED
 }
+
+/**
+ * The SQLSTATE the four ceilings in 20260811000075 raise: batches, subjects, teacher
+ * records, and students in one batch.
+ *
+ * `CD003` and not `CD002`, which src/lib/settings/clash.ts already owns for a teacher
+ * booked into two rooms at once. Sharing it would have a screen telling an owner their
+ * plan was full when their physics teacher was double-booked.
+ *
+ * A second code rather than a second use of `CD001`, because the two mean opposite
+ * things to the person reading them. `CD001` means buy more places, and the screen that
+ * handles it opens the purchase. No amount of money buys a hundred-and-first batch on
+ * any tier we sell — the answer is to retire one that finished, or on a teacher plan to
+ * move up — so a handler that treats this as `CD001` would offer to sell something that
+ * does not exist.
+ *
+ * Which ceiling it was rides in the error's `detail` as `limit=batches|subjects|
+ * teachers|seats`. The Server Actions already name the batch or the building in the
+ * owner's own words and keep doing so; this is the floor under them, for the import,
+ * for a race between two managers, and for a request that never went near a form.
+ */
+export const PLAN_CEILING_EXCEEDED = 'CD003'
+
+/** Whether a failed write failed because a plan ceiling is full. See `isCapacityRefusal`. */
+export function isPlanCeilingRefusal(error: unknown): boolean {
+  if (typeof error !== 'object' || error === null) return false
+  const code = (error as { code?: unknown }).code
+  return code === PLAN_CEILING_EXCEEDED
+}
+
+/** Which ceiling refused, when one did. Null when the error is not `CD002` or says nothing. */
+export function refusedCeiling(
+  error: unknown,
+): 'batches' | 'subjects' | 'teachers' | 'seats' | null {
+  if (!isPlanCeilingRefusal(error)) return null
+  const detail = (error as { details?: unknown; detail?: unknown }).details
+    ?? (error as { detail?: unknown }).detail
+  if (typeof detail !== 'string') return null
+  const named = detail.slice('limit='.length)
+  return named === 'batches' || named === 'subjects' || named === 'teachers' || named === 'seats'
+    ? named
+    : null
+}
+
