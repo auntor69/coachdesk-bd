@@ -1659,11 +1659,24 @@ pending → initiated → successful
 | provider, provider transaction id | reconciliation |
 | **idempotency key** | a retry, a double tap, or a webhook delivered twice must land once |
 | what it grants | the capacity or coverage that attaches **only** on `successful` |
+| the tier it moves onto, on a subscription only | so a renewal and a tier move are one purchase, settled one way |
 
 **Idempotency is keyed on the provider transaction id** with a unique index behind
 it, and the duplicate path reads back the original result rather than erroring. This
 pattern already exists in the codebase — the founder panel's manual payment
 recording does exactly this — so it is a reuse, not an invention.
+
+**A subscription may carry a tier** (`target_plan`), and then the settlement moves the
+plan before it raises the ceiling, because the ceiling is read off the plan. Null on
+every renewal, never the free tier, and never on a purchase of places, seats or a
+branch — a tier arriving on one of those would move the plan without anybody having
+paid a month for it. The tier the bill was computed from and the tier being bought must
+be the same tier, checked once as a column constraint and once where the quote is
+priced: quoting the tier a centre is on while asking for a better one is Centre money
+for Institution product. The read-back that answers a reused idempotency key compares
+the tier too, because at 400 students on one branch Centre and Institution bill the
+identical ৳7,300 a month, so purpose, quantity and amount cannot tell those two
+purchases apart.
 
 ### 11.3 The provider interface ✅ (manual only)
 
@@ -1695,11 +1708,17 @@ interface so that switching to the API changes one file.
 ### 11.5 The founder panel is real, not a facade ✅
 
 It records money that actually arrived, write-once, with an idempotency key, and it
-is the only door to plan and status changes — gated behind a platform-admin check
-and a database grant, not a hidden route. It must never grow a button that *says* a
-payment succeeded without one having. Its plan-change function deliberately does no
-limit enforcement and warns instead, because a founder moving a customer down a tier
-is a decision, not a validation error.
+is the only door to a **status** change and to a plan change nobody paid for — gated
+behind a platform-admin check and a database grant, not a hidden route. A plan change
+somebody *did* pay for now arrives the other way, through a settled subscription intent
+carrying its tier (§11.2); both are service-role writes past the billing guard, so the
+fence in §12.2 is unchanged and there are two doors through it rather than one. The
+panel must never grow a button that *says* a payment succeeded without one having. Its
+plan-change function deliberately does no limit enforcement and warns instead, because a
+founder moving a customer down a tier is a decision, not a validation error — and a
+customer moving *themselves* down is not offered at all, for the same reason: it is a
+conversation, since the credit a mid-term downgrade owes cannot be a positive payment
+row (§9.2).
 
 ---
 
@@ -1921,8 +1940,12 @@ went to, counted as students still on the register so the breakdown adds up to t
 figure beside it, and never as a quota (§3.7). And a student moving between branches is
 one row with its `branch_id` changed rather than a new child with no history, with the
 move recorded by a trigger rather than by the code that saved it, so a move nobody
-logged is not a thing the app can produce (§7.2).
-1,371 RLS assertions and 1,146 unit tests green across 72 migrations and 42 tables in
+logged is not a thing the app can produce (§7.2). And an owner can move their own centre
+up a tier without the founder doing it from their laptop: the months are quoted from the
+tier being bought, the purchase carries that tier, and the settlement moves the plan when
+the money lands — the same intent, the same idempotency key and the same service-role
+write as any other purchase (§11.2).
+1,371 RLS assertions and 1,157 unit tests green across 73 migrations and 42 tables in
 `public` plus one in `app`, and four derived gates and two that ask the live API. One of those gates now refuses
 a query whose table name it cannot read, having discovered it had been counting five
 fewer than existed — and the RLS suite found a manager who could promote themselves
@@ -1932,22 +1955,22 @@ to owner, which is what a suite is for.
 breakdown yes, full isolation no); scheduling (weekly recurrence and teacher clashes,
 no rooms or overrides); refunds (a fee payment can be refunded from the register, with
 the counter-entry and the reason on the receipt; a *platform* payment cannot, because
-`payments.amount_bdt` is positive by check); plan selection (an
-owner may ask for a tier and buy places, not move themselves between tiers);
+`payments.amount_bdt` is positive by check); plan selection (an owner may buy a move up
+and buy places; a move down, and a move mid-way through paid coverage, are still a phone
+call — both owe a credit no positive payment row can carry);
 income with no student behind it (hall rent, book sales and the like have a category
 but no row to hang it on — every revenue row is a bill against a child).
 
-**Not built ❌** — subscriptions as a living thing
-(`subscriptions` still has zero reads and zero writes in the app, and
-`payments.subscription_id` is always null); a customer moving their own centre
-between tiers (`bootstrap_center` hard-codes `teacher_free` as the *paid* tier, and
-only a platform admin or an owner's request changes it); the five
+**Not built ❌** — the five
 `teacher_permissions` booleans folded into the capability vocabulary — they work, and
 four `app.can_*` resolvers enforce them in the database, but they are still five
 columns rather than words in a `text[]`, and §6.2 says why that waits;
 an award that applies itself to a
 student's every future bill; rooms, per-date overrides and a holiday
-calendar.
+calendar. The `subscriptions` table is still unread and unwritten and
+`payments.subscription_id` still always null — deliberately, and §17 says why: what a
+member's session needs to know is the one date on the centre, and that date is derived
+from the payments themselves.
 
 **Blocked 🚧** — automated SMS, and with it the enforcement of a signup phone gate that
 is otherwise built and tested (BTRC sender ID needs an aggregator account which needs an
@@ -1993,11 +2016,14 @@ refunds, expenses, employees, payroll, revenue and profit, the two dashboards, t
 audit log, payment intents, teacher clash detection, per-branch capacity *reporting*
 (never per-branch quotas).
 
-**High priority, straight after:** an owner moving their own centre between tiers
-without a founder doing it for them, and the `subscriptions` row that makes a renewal
-something the app knows about rather than something a person remembers. Both are §5's
-plan model becoming a thing a customer can operate, and neither waits on bKash — the
-manual provider already settles a payment.
+**High priority, straight after:** ~~an owner moving their own centre between tiers
+without a founder doing it for them~~ — **done**, and it did not wait on bKash, because
+the manual provider already settles a payment (§11.2). What it exposed instead is where
+the next window opens: one formula shared by the screen and the action, so a lapsed
+centre is billed from this month rather than from the month its coverage stopped. Next in
+its place: the credit a mid-term move or a downgrade owes, which §9.2's positive-only
+`payments.amount_bdt` has nowhere to put, so both are a phone call today and the screen
+says so rather than quoting a number it cannot honour.
 
 **Future, documented and not built:** rooms and room double-booking, holiday
 calendars, term dates, an admissions pipeline, automated SMS and the parent summary
@@ -2035,6 +2061,8 @@ that a good idea has somewhere to live that is not the codebase.
 | Back-to-back classes are not a clash | overlap is half-open; a rule that refused them would be worked around within a week |
 | The growth breakdown counts **active students**, not admissions taken | a branch that admitted fifty and lost forty has not grown, and the active count makes the breakdown add up to the pool figure printed beside it |
 | Views carry Supabase's default `anon` grant, and are protected by `security_invoker` | the privilege is not the fence — the caller's own policies are; and `check-embeds.mjs` can only verify a select shape it is allowed to ask for |
+| `subscriptions` stays empty; coverage is derived from the payments | what every member's session has to know is one date — is this centre paid up — and `coaching_centers.paid_through` is that date, maintained by trigger as `max(payments.covers_period_end)`. A subscription row would be a second answer to the same question, and the two would disagree the first time a payment was recorded out of order. The table's own columns date it: `billed_enrollments`, `unit_price_bdt`, `floor_price_bdt` and `renews_at` encode per-enrollment pricing that renews itself, which §3 replaced with marginal bands and a window bought outright. It is kept, unread, because dropping a table is a migration that cannot be undone and the columns are the record of what was tried |
+| A tier move is a purchase, not a setting | it moves the plan through `settle_payment_intent` like every other paid thing, so the billing guard stays the only fence and no browser is ever nearer the `plan` column than a form that asks |
 | `src/lib/plans.ts` owns the numbers | one pricing engine; this document defers to it |
 
 ---
@@ -2067,7 +2095,10 @@ A requirement without a test is a preference. The suites that keep this honest:
 **Pricing** — every band boundary (100, 101, 300, 301, 600, 601); the floor at 1, 50,
 79, 80; teacher seats at 0, 2, 3; Institution branches at 3 and 4; the top-up delta
 at 50, 120, 300, 600; the bulk delta across a band edge; monotonicity — the bill must
-never fall as students rise.
+never fall as students rise. And what a purchase may claim: a subscription priced at one
+tier and asked for another is not quoted, the free tier is never a target, no other kind
+of purchase carries a tier at all, and the two tiers that bill the same number at 400
+students are told apart before an idempotency key hands one back for the other.
 
 **Entitlement** — trial active, trial expired, paid, lapsed, suspended, cancelled,
 unknown plan, unreadable membership. Each asserts an entitlement, not a screen.
@@ -2111,6 +2142,7 @@ correctly with both rows intact; profit including payroll.
 | 2026-08-11 | First masterplan: positioning, the wedge, three tiers, go-to-market. Stack recorded as React + Vite on Cloudflare Pages. |
 | 2026-08-23 | `docs/PLANS-AND-MESSAGING.md` written: per-tier feature flags, the 150-student Pro ceiling, marginal bands, the SMS reality. |
 | 2026-08-29 | **This revision.** Reconciled with the final product direction: capacity as a purchased quantity separate from plan; the Pro trial as a state; Institution as a genuine multi-branch product with a shared pool; the financial module (employees, payroll, expenses, revenue, profit, dashboards); identity split into record versus account with memorable usernames and phone-or-username sign-in; owner/manager OTP named as a live security gap; the audit log; payment intents with bKash explicitly deferred; the stack corrected to Next.js 16 on Vercel; retired assumptions listed. |
+| 2026-09-02 | §§11, 15, 16, 17 and 19 brought level with the build. A subscription may carry the tier it moves a centre onto, and the settlement moves the plan when the money lands, so the founder panel is no longer the only door to a plan change — it is now the only door to a plan change nobody paid for. `subscriptions` recorded as deliberately empty, with coverage derived from the payments into one date on the centre. The credit a downgrade or a mid-term move owes is named as the next thing the money model cannot yet express, and is a phone call until it can. |
 
 
 
