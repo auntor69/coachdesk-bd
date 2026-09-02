@@ -1,7 +1,7 @@
 import Link from 'next/link'
 
 import { Card } from '@/components/ui'
-import { pageRole, getSession } from '@/lib/auth/session'
+import { pageCapability, getSession } from '@/lib/auth/session'
 import { todayInDhaka } from '@/lib/bd/time'
 import { branchChoicesFor } from '@/lib/branches'
 import { dict, DEFAULT_LOCALE } from '@/lib/i18n'
@@ -10,7 +10,7 @@ import { EMPLOYEE_ROLES } from '@/lib/staff/roles'
 import { createClient } from '@/lib/supabase/server'
 import { EmployeeForm } from './employee-form'
 
-/** getSession, not pageRole — see the note on teach/page.tsx's own. */
+/** getSession, not pageCapability — see the note on teach/page.tsx's own. */
 export async function generateMetadata() {
   const session = await getSession()
   const locale = session?.locale ?? DEFAULT_LOCALE
@@ -29,9 +29,12 @@ export async function generateMetadata() {
  * No count and no cap, unlike the teacher form beside it. Seats are a teacher thing:
  * `staffManagement` is bought or it is not, and a centre that has it may employ as many
  * people as it actually employs. Nothing here is priced per head.
+ *
+ * `staff` (§6.2), like the list behind it. `employees_capability_write` would refuse the
+ * insert on its own; this is so it is refused before the typing.
  */
 export default async function NewStaffPage() {
-  const session = await pageRole('manager')
+  const session = await pageCapability('staff')
   const locale = session.locale
   const d = dict(locale)
   const t = d.settings.staff

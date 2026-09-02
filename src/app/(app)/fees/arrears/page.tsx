@@ -1,8 +1,7 @@
 import Link from 'next/link'
-import { forbidden } from 'next/navigation'
 
 import { Card } from '@/components/ui'
-import { pageCenter, getSession, isStaffAdmin } from '@/lib/auth/session'
+import { pageCapability, getSession } from '@/lib/auth/session'
 import { createClient } from '@/lib/supabase/server'
 import { pageAll, type PageFailure, worstFailure } from '@/lib/supabase/page'
 import { currentPeriodMonth, addMonths, formatMonth } from '@/lib/bd/time'
@@ -10,7 +9,7 @@ import { oldestEnrollments } from '@/lib/fees/arrears'
 import { dict, DEFAULT_LOCALE } from '@/lib/i18n'
 import { ArrearsForm, type ArrearsTaken } from './arrears-form'
 
-/** getSession, not pageCenter — see the note on teach/page.tsx's own. */
+/** getSession, not pageCapability — see the note on teach/page.tsx's own. */
 export async function generateMetadata() {
   const session = await getSession()
   return { title: `${dict(session?.locale ?? DEFAULT_LOCALE).arrears.title} — CoachDesk` }
@@ -47,11 +46,13 @@ export async function generateMetadata() {
  * can sell. The whole argument for this screen is that the number on the fee board
  * should be the number in the owner's head.
  *
- * STAFF ADMIN ONLY. It writes invoices for the entire centre in one press.
+ * STAFF ADMIN ONLY, AND `fees` (§6.2). It writes invoices for the entire centre in one
+ * press, and it reads what each family owes to decide whether to offer the box at all —
+ * both halves are what 20260811000063 takes away from a narrowed manager, and the read half
+ * would come back as a centre where nobody owes anything.
  */
 export default async function ArrearsPage() {
-  const session = await pageCenter()
-  if (!isStaffAdmin(session)) forbidden()
+  const session = await pageCapability('fees')
 
   const locale = session.locale
   const d = dict(locale)

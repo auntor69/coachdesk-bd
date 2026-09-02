@@ -1,8 +1,7 @@
 import Link from 'next/link'
-import { forbidden } from 'next/navigation'
 
 import { Card } from '@/components/ui'
-import { pageCenter, getSession, isStaffAdmin } from '@/lib/auth/session'
+import { pageCapability, getSession } from '@/lib/auth/session'
 import { createClient } from '@/lib/supabase/server'
 import { pageAll, worstFailure } from '@/lib/supabase/page'
 import { addMonths, currentPeriodMonth, digits, formatMonth } from '@/lib/bd/time'
@@ -10,7 +9,7 @@ import { formatTaka } from '@/lib/money'
 import { closeMonths, monthClose, monthMessages } from '@/lib/fees/month-close'
 import { dict, DEFAULT_LOCALE } from '@/lib/i18n'
 
-/** getSession, not pageCenter — see the note on teach/page.tsx's own. */
+/** getSession, not pageCapability — see the note on teach/page.tsx's own. */
 export async function generateMetadata() {
   const session = await getSession()
   return { title: `${dict(session?.locale ?? DEFAULT_LOCALE).close.title} — CoachDesk` }
@@ -59,8 +58,11 @@ const MONTH_RE = /^\d{4}-\d{2}-01$/
  * sales conversation. The precedent is the upgrade-request card, unlocked for the same
  * reason.
  *
- * STAFF ADMIN ONLY, all the same. A teacher's copy of the centre's month is not their
- * number — the same boundary the collection register draws, and for the same reason.
+ * STAFF ADMIN ONLY, all the same, AND `fees` (§6.2). A teacher's copy of the centre's month
+ * is not their number — the same boundary the collection register draws, and for the same
+ * reason. The capability half is sharper here than anywhere: this is the screen the price is
+ * quoted against, and a narrowed manager would read all six figures as nought and conclude
+ * the product is worth nothing.
  *
  * THE FIGURES ARE NOT DRAWN AS A BALANCE SHEET, because they do not close. Credit is
  * never netted against another family's debt, and `collected` counts every taka that
@@ -92,8 +94,7 @@ export default async function MonthClosePage({
   // A Promise in Next 16, and awaiting it is not optional.
   searchParams: Promise<{ month?: string }>
 }) {
-  const session = await pageCenter()
-  if (!isStaffAdmin(session)) forbidden()
+  const session = await pageCapability('fees')
 
   const locale = session.locale
   const d = dict(locale)

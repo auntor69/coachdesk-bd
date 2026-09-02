@@ -1,8 +1,7 @@
 import Link from 'next/link'
-import { forbidden } from 'next/navigation'
 
 import { Card } from '@/components/ui'
-import { getSession, isStaffAdmin, pageCenter } from '@/lib/auth/session'
+import { getSession, pageCapability } from '@/lib/auth/session'
 import {
   addMonths,
   currentPeriodMonth,
@@ -21,7 +20,7 @@ import { pageAll, worstFailure } from '@/lib/supabase/page'
 import { createClient } from '@/lib/supabase/server'
 import { PayRow, type RowFigure } from './pay-row'
 
-/** getSession, not pageCenter — see the note on teach/page.tsx's own. */
+/** getSession, not pageCapability — see the note on teach/page.tsx's own. */
 export async function generateMetadata() {
   const session = await getSession()
   return {
@@ -84,8 +83,7 @@ export default async function PayrollPayPage({
   // A Promise in Next 16, and awaiting it is not optional.
   searchParams: Promise<{ month?: string }>
 }) {
-  const session = await pageCenter()
-  if (!isStaffAdmin(session)) forbidden()
+  const session = await pageCapability('payroll')
 
   const locale = session.locale
   const d = dict(locale)

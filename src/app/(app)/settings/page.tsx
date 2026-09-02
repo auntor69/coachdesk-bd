@@ -14,6 +14,7 @@ import { createClient } from '@/lib/supabase/server'
 import { formatBdMobile } from '@/lib/bd/phone'
 import { dict, DEFAULT_LOCALE } from '@/lib/i18n'
 import { planName, hasStaff, has, overStaffSeats, capIsQuota } from '@/lib/plans'
+import { can } from '@/lib/staff/capabilities'
 
 /** getSession, not pageRole — see the note on teach/page.tsx's own. */
 export async function generateMetadata() {
@@ -112,6 +113,19 @@ export default async function SettingsPage() {
   // a staff-admin, so `staff` here is only carrying the owner who holds neither
   // permission row — which is every owner.
   if (!staff && !mayStudents && !mayBatches) forbidden()
+
+  /*
+   * And whether the two rows about colleagues are this reader's business (§6.2).
+   *
+   * Every write on both screens behind them asks for `staff` — the teacher list, its
+   * permission boxes, the login buttons, and the whole of settings/staff — so a manager
+   * whose owner unticked it would open a page of forms that each refuse. Reads on those
+   * tables are not narrowed, which is why this is a hidden row rather than a 403: nothing
+   * was hidden from them, and there is nothing there for them to do.
+   *
+   * Off the session, and false for a teacher, who never had either row.
+   */
+  const mayStaff = staff && can(session.active.capabilities, 'staff')
 
   const supabase = await createClient()
   const locale = session.locale
@@ -232,9 +246,10 @@ export default async function SettingsPage() {
            * door to the list disappeared. An unread count cannot rule out the state
            * this row exists for, so the row is drawn and the chip is left off.
            */
-          ...(hasStaff(session.plan) ||
-          staffOnly.teacherCount === null ||
-          overStaffSeats(session.plan, staffOnly.teacherCount)
+          ...(mayStaff &&
+          (hasStaff(session.plan) ||
+            staffOnly.teacherCount === null ||
+            overStaffSeats(session.plan, staffOnly.teacherCount))
             ? [
                 {
                   href: '/settings/teachers' as Route,
@@ -257,7 +272,7 @@ export default async function SettingsPage() {
            * down. A row that opens a card saying "not on your plan" is an
            * advertisement, and the plan screen is where we sell.
            */
-          ...(has(session.plan, 'staffManagement')
+          ...(mayStaff && has(session.plan, 'staffManagement')
             ? [
                 {
                   href: '/settings/staff' as Route,

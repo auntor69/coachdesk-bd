@@ -2,7 +2,7 @@ import Link from 'next/link'
 
 import { Card } from '@/components/ui'
 import { SearchBox, SearchEmpty } from '@/components/search-box'
-import { pageRole, getSession } from '@/lib/auth/session'
+import { pageCapability, getSession } from '@/lib/auth/session'
 import { has, planName, PLANS } from '@/lib/plans'
 import { createClient } from '@/lib/supabase/server'
 import { pageAll } from '@/lib/supabase/page'
@@ -19,7 +19,7 @@ import {
 import { dict, DEFAULT_LOCALE } from '@/lib/i18n'
 import { ProgressList, type ProgressRowView } from './progress-list'
 
-/** getSession, not pageRole — see the note on teach/page.tsx's own. */
+/** getSession, not pageCapability — see the note on teach/page.tsx's own. */
 export async function generateMetadata() {
   const session = await getSession()
   return {
@@ -73,6 +73,11 @@ export async function generateMetadata() {
  * gate is `parentSummary`, which is what ৳499 buys — and the Server Action behind
  * the chips checks it again, because a paywall on a page stops nobody who can type
  * a fetch.
+ *
+ * AND A THIRD, `messages` (§6.2). This is the centre speaking to a family under the centre's
+ * name, which is the act that word covers — the notice board and the reminder wording are
+ * the same word. `progress_updates` is not one of the tables 20260811000063 narrows, so this
+ * guard and the one in ./actions.ts are the whole of the fence.
  */
 export default async function ProgressPage({
   searchParams,
@@ -80,7 +85,7 @@ export default async function ProgressPage({
   // A Promise in Next 16, and awaiting it is not optional.
   searchParams: Promise<{ q?: string }>
 }) {
-  const session = await pageRole('manager')
+  const session = await pageCapability('messages')
   const locale = session.locale
   const d = dict(locale)
   const t = d.progress

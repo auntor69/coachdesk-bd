@@ -1,7 +1,7 @@
 import Link from 'next/link'
 
 import { Card } from '@/components/ui'
-import { pageRole, getSession } from '@/lib/auth/session'
+import { pageCapability, getSession } from '@/lib/auth/session'
 import { formatDate, todayInDhaka } from '@/lib/bd/time'
 import { branchChoicesFor } from '@/lib/branches'
 import { dict, DEFAULT_LOCALE } from '@/lib/i18n'
@@ -10,7 +10,7 @@ import { EMPLOYEE_ROLES, jobTitle } from '@/lib/staff/roles'
 import { createClient } from '@/lib/supabase/server'
 import { StaffRow, type StaffMember } from './staff-row'
 
-/** getSession, not pageRole — see the note on teach/page.tsx's own. */
+/** getSession, not pageCapability — see the note on teach/page.tsx's own. */
 export async function generateMetadata() {
   const session = await getSession()
   const locale = session?.locale ?? DEFAULT_LOCALE
@@ -35,9 +35,15 @@ export async function generateMetadata() {
  * STAFF-ADMIN ONLY, matching `employees_staff_admin_all`. There is deliberately no
  * teacher read policy on that table: what a colleague is paid, and when they were
  * hired, is not something a teacher needs from us.
+ *
+ * AND `staff` (§6.2). `employees` sits in 20260811000063's fourth section, so the read stays
+ * open and every write is refused — which is the whole of this screen: a list where each row
+ * opens a form, under an add button. A page of controls that each refuse is a worse way to
+ * learn an owner unticked the word than a 403 at the door, and the hub already leaves the
+ * row out. This is for the bookmark.
  */
 export default async function StaffPage() {
-  const session = await pageRole('manager')
+  const session = await pageCapability('staff')
   const locale = session.locale
   const d = dict(locale)
   const t = d.settings.staff

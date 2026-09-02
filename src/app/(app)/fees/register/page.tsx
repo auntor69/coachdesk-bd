@@ -1,9 +1,8 @@
 import Link from 'next/link'
-import { forbidden } from 'next/navigation'
 
 import { Card } from '@/components/ui'
 import { SearchBox, SearchEmpty } from '@/components/search-box'
-import { pageCenter, getSession, isStaffAdmin } from '@/lib/auth/session'
+import { pageCapability, getSession } from '@/lib/auth/session'
 import { createClient } from '@/lib/supabase/server'
 import { pageAll, worstFailure } from '@/lib/supabase/page'
 import { has, planName, PLANS } from '@/lib/plans'
@@ -19,7 +18,7 @@ import { registerRows, tallyRegister } from '@/lib/fees/register'
 import { dict, DEFAULT_LOCALE } from '@/lib/i18n'
 import { PrintButton } from '../print-button'
 
-/** getSession, not pageCenter — see the note on teach/page.tsx's own. */
+/** getSession, not pageCapability — see the note on teach/page.tsx's own. */
 export async function generateMetadata() {
   const session = await getSession()
   return { title: `${dict(session?.locale ?? DEFAULT_LOCALE).register.title} — CoachDesk` }
@@ -62,8 +61,11 @@ const MONTH_RE = /^\d{4}-\d{2}-01$/
  * to it instead of looking like a fault in the software. The sums are in
  * lib/fees/register.ts, where they are tested; this file draws them.
  *
- * STAFF ADMIN ONLY. A teacher with `can_view_fees` reads their own students'
- * arrears on the board; the centre's takings for the month are not that.
+ * STAFF ADMIN ONLY, AND `fees` (§6.2). A teacher with `can_view_fees` reads their own
+ * students' arrears on the board; the centre's takings for the month are not that. And
+ * 20260811000063 narrows `fee_payments` on the read, so a manager whose owner unticked the
+ * word would get this sheet with no rows and a month's takings of ৳0 — a statement about
+ * the centre's business rather than about their own permissions.
  *
  * THE SEARCH BOX FILTERS THE SHEET AND NOTHING ELSE — not the running column, not
  * the foot, not the breakdown. That is the opposite of what a filter usually means
@@ -88,8 +90,7 @@ export default async function RegisterPage({
   // A Promise in Next 16, and awaiting it is not optional.
   searchParams: Promise<{ month?: string; q?: string }>
 }) {
-  const session = await pageCenter()
-  if (!isStaffAdmin(session)) forbidden()
+  const session = await pageCapability('fees')
 
   const locale = session.locale
   const d = dict(locale)

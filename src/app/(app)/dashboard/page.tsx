@@ -14,6 +14,7 @@ import {
   formatDate,
 } from '@/lib/bd/time'
 import { has, capacityPressure } from '@/lib/plans'
+import { can, canReadMoney } from '@/lib/staff/capabilities'
 import { setupSteps } from '@/lib/setup'
 import { countChasesDue } from '@/lib/fees/reminder-schedule'
 import { monthBills, monthMoney, payrollState } from '@/lib/finance/profit'
@@ -95,6 +96,16 @@ export default async function DashboardPage() {
   const scope = isAdmin ? null : await myTeacherIds()
 
   /*
+   * Whether this reader is one the centre's voice belongs to (§6.2).
+   *
+   * Two doors on this page write in the centre's name — the weekly note to one family and
+   * the notice to all of them — and a manager whose owner unticked `messages` is refused by
+   * both actions. Answered off the session rather than through `canSendSms`, because that
+   * helper is async and this decides a query above the ones it gates.
+   */
+  const seeMessages = isAdmin && can(session.active.capabilities, 'messages')
+
+  /*
    * WHICH IS ONE VALUE ANSWERING TWO QUESTIONS, SO THE FAILURE IS SPLIT OFF HERE.
    *
    * A staff-admin is not filtered, and that is what `null` means on the line above.
@@ -153,7 +164,7 @@ export default async function DashboardPage() {
    * student to render a door they will be shown a paywall behind is work done for
    * nobody. Everything else on this page is available on every plan.
    */
-  const seeProgress = isAdmin && has(session.plan, 'parentSummary')
+  const seeProgress = seeMessages && has(session.plan, 'parentSummary')
 
   // Resolved, not queried, when the door is not being drawn. `{ rows: [] }` rather
   // than a failure, because nothing was asked for and nothing went wrong — and the
@@ -187,8 +198,19 @@ export default async function DashboardPage() {
    * card on the screen an owner opens six times a day is furniture inside a week, and
    * /settings/plan already lists what the centre tiers add. The three tiles above stay
    * on every plan either way, so nobody loses a figure they had.
+   *
+   * AND EVERY TERM OF THE SUBTRACTION HAS TO BE READABLE (§6.2). `center_profit_month` is
+   * `security_invoker`, so a manager whose owner unticked `fees` gets a month that collected
+   * nothing and a profit that is the wage bill in the negative, and one who lost `expenses`
+   * or `payroll` gets a profit higher than it was. All three are confident, printed in the
+   * largest type on the page, and wrong — so the card asks for all three words rather than
+   * any of them. `canReadMoney` is the list, and it is answered off the session, which is
+   * why this can stay a synchronous line ahead of the queries it gates.
    */
-  const showMoney = isAdmin && has(session.plan, 'centerWideReporting')
+  const showMoney =
+    isAdmin &&
+    has(session.plan, 'centerWideReporting') &&
+    canReadMoney(session.active.capabilities)
 
   const [
     { count: studentCount },
@@ -596,6 +618,11 @@ export default async function DashboardPage() {
   // for a teacher it shares `mine`'s query above rather than adding its own.
   const seeFees = await canReadFees()
 
+  // And whether the revenue tile is one of the three. Named because the grid's own column
+  // count has to agree with it — two tiles in a three-column grid is a gap where a figure
+  // was, which reads as a figure that failed rather than as one nobody is owed.
+  const seeCollected = isAdmin && seeFees
+
   // The month the rate card describes and the batches in it, worst first — both
   // decided in one tested place, because both invert without leaving a mark on
   // the screen. See the note on the query for why two months are fetched.
@@ -722,7 +749,7 @@ export default async function DashboardPage() {
           else on the page. This is the one action on the owner's home screen that
           brings money in rather than reporting on it, and on a 375px phone that
           means it has to be reachable without a scroll. */}
-      {isAdmin && (invoices === null || remainders.length > 0) && (
+      {seeFees && isAdmin && (invoices === null || remainders.length > 0) && (
         // The worklist's own words, borrowed rather than restated — a door and the
         // room behind it disagreeing about what is in there is how an owner stops
         // believing the number.
@@ -744,12 +771,14 @@ export default async function DashboardPage() {
           `gap-5` column: that line is counted off the student tile beside it, and a
           full gap between them would read as an unrelated sentence. */}
       <div>
-        <div className={`grid gap-3 ${isAdmin ? 'grid-cols-3' : 'grid-cols-2'}`}>
-          {/* Staff-admin, and not merely `seeFees`. What came in this month is the
-              centre's revenue; a teacher's copy of it would be the takings of their
-              own batches under a label that says the centre's, and unlike arrears it
-              is not a number they can do anything with. Their share of the money is
-              on the fee board, next to the names.
+        <div className={`grid gap-3 ${seeCollected ? 'grid-cols-3' : 'grid-cols-2'}`}>
+          {/* Staff-admin AND `seeFees`, which is not the same as either alone. What came
+              in this month is the centre's revenue; a teacher's copy of it would be the
+              takings of their own batches under a label that says the centre's, and
+              unlike arrears it is not a number they can do anything with. Their share of
+              the money is on the fee board, next to the names. And §6.2's manager without
+              `fees` is filtered out of `center_collection_month` the same way a teacher
+              is, so the tile they would get is ৳0 over a month that took eighty thousand.
 
               Kept on the centre tiers as well, beside the profit card that repeats
               it. Dropping it there would take the figure off the screen entirely the
@@ -760,7 +789,7 @@ export default async function DashboardPage() {
               Collected over a month that took eighty thousand — small type, but the
               same false claim as the card above, and these are the three figures an
               owner takes in at a glance rather than reads. */}
-          {isAdmin && (
+          {seeCollected && (
             <Stat
               label={t.collected}
               value={collected === null ? '—' : taka(collected)}
@@ -904,8 +933,9 @@ export default async function DashboardPage() {
 
           `isAdmin` and no plan gate. `manualMessaging` is true on every tier — the
           centre's own thumb on the centre's own phone is not ours to sell — so unlike
-          the door above it, this one is there on the free plan too. */}
-      {isAdmin && <NoticeEntry t={d.notices} />}
+          the door above it, this one is there on the free plan too. What it does need is
+          §6.2's `messages`, because postNotice refuses a manager who was not given it. */}
+      {seeMessages && <NoticeEntry t={d.notices} />}
 
       {overdue.length > 0 && (
         <div>

@@ -114,6 +114,39 @@ export function parseCapabilities(posted: readonly string[]): Capability[] | nul
 }
 
 /**
+ * The three words a profit figure is made of.
+ *
+ * §9.8 is `collected − expenses − payroll`, one capability per term, and every screen that
+ * prints the answer needs all three. `center_profit_month` and the branch views are
+ * `security_invoker`, so a term the reader may not see does not raise an error — it comes
+ * back as nought, and a nought inside a subtraction is a wrong figure printed confidently.
+ * Lose `fees` and the month collected nothing and the profit is the wage bill in the
+ * negative; lose `expenses` or `payroll` and the profit is higher than it was.
+ *
+ * The same three words as `CAPABILITY_BUNDLES.accountant`, which is not a coincidence to
+ * collapse into one constant: that one is a job an owner appoints, this one is what the
+ * arithmetic is made of, and either could change without the other.
+ */
+export const MONEY_CAPABILITIES = [
+  'fees',
+  'expenses',
+  'payroll',
+] as const satisfies readonly Capability[]
+
+/**
+ * Whether this membership may be shown a profit figure at all.
+ *
+ * All three terms or none of the card, for the reason MONEY_CAPABILITIES gives. Named here
+ * rather than spelt out at each call site so that a fourth term added to the arithmetic
+ * cannot be missed by a screen that prints it.
+ */
+export function canReadMoney(
+  capabilities: readonly string[] | null | undefined,
+): boolean {
+  return MONEY_CAPABILITIES.every((capability) => can(capabilities, capability))
+}
+
+/**
  * A role as a named bundle of capabilities rather than a branch in an `if` — §6.2's own
  * words for what it wants.
  *

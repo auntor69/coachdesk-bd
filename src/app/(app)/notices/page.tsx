@@ -1,7 +1,7 @@
 import Link from 'next/link'
 
 import { Card } from '@/components/ui'
-import { pageRole, getSession } from '@/lib/auth/session'
+import { pageCapability, getSession } from '@/lib/auth/session'
 import { createClient } from '@/lib/supabase/server'
 import { formatDate } from '@/lib/bd/time'
 import { buildNoticeSms } from '@/lib/sms/templates'
@@ -14,7 +14,7 @@ import { NoticeLog, type NoticeRowView } from './notice-log'
 /** How far back the log goes. See the note on it below. */
 const LOG_LIMIT = 20
 
-/** getSession, not pageRole — see the note on teach/page.tsx's own. */
+/** getSession, not pageCapability — see the note on teach/page.tsx's own. */
 export async function generateMetadata() {
   const session = await getSession()
   return {
@@ -49,9 +49,15 @@ export async function generateMetadata() {
  * always will be — a centre's own thumb sending its own message on its own phone is
  * not ours to sell. What ৳499 buys is the message the product *writes* for them, which
  * is /progress.
+ *
+ * `messages` GATES IT (§6.2), and the fence is this app's rather than the database's.
+ * 20260811000063 puts `notices` in its fourth section — writes narrowed, reads left open —
+ * so a manager without the word could read the log and would be refused the insert. Both
+ * halves of this screen are the narrowed half: it exists to write a notice, and to hand the
+ * owner every guardian's number in the centre. The action asks the same question again.
  */
 export default async function NoticesPage() {
-  const session = await pageRole('manager')
+  const session = await pageCapability('messages')
   const locale = session.locale
   const d = dict(locale)
   const t = d.notices

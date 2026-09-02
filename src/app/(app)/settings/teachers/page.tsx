@@ -1,7 +1,7 @@
 import Link from 'next/link'
 
 import { Card } from '@/components/ui'
-import { pageRole, getSession } from '@/lib/auth/session'
+import { pageCapability, getSession } from '@/lib/auth/session'
 import { branchChoicesFor } from '@/lib/branches'
 import { createClient } from '@/lib/supabase/server'
 import { wouldExceed, hasStaff, overStaffSeats, planName, PLANS } from '@/lib/plans'
@@ -9,7 +9,7 @@ import { PERMISSION_DEFAULTS } from '@/lib/permissions'
 import { dict, localName, DEFAULT_LOCALE } from '@/lib/i18n'
 import { TeacherList, type TeacherRow } from './teacher-list'
 
-/** getSession, not pageRole — see the note on teach/page.tsx's own. */
+/** getSession, not pageCapability — see the note on teach/page.tsx's own. */
 export async function generateMetadata() {
   const session = await getSession()
   const locale = session?.locale ?? DEFAULT_LOCALE
@@ -24,9 +24,15 @@ export async function generateMetadata() {
  * only closes on an explicit `can_send_sms === false`. bootstrap_center creates
  * the owner's own teacher row that way on purpose — they made the centre — but
  * every teacher added through the form gets a real row.
+ *
+ * `staff` GATES IT (§6.2), and this is the screen that word was written for.
+ * `teacher_permissions` is narrowed by 20260811000063 for the reason its own comment gives:
+ * without that, a manager who may not read the fee book could tick `can_view_fees` on a
+ * teacher and read it through them. Every control on this page — the boxes, the login
+ * buttons, the password reset — is that write. Reads stay open, so the guard is here.
  */
 export default async function TeachersPage() {
-  const session = await pageRole('manager')
+  const session = await pageCapability('staff')
   const locale = session.locale
   const d = dict(locale)
   const t = d.settings.teachers

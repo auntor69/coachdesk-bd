@@ -1,8 +1,8 @@
 import Link from 'next/link'
-import { forbidden, notFound } from 'next/navigation'
+import { notFound } from 'next/navigation'
 
 import { Card } from '@/components/ui'
-import { pageCenter, getSession, isStaffAdmin } from '@/lib/auth/session'
+import { pageCapability, getSession } from '@/lib/auth/session'
 import { createClient } from '@/lib/supabase/server'
 import { has, planName, PLANS } from '@/lib/plans'
 import { todayInDhaka, formatDate, formatMonth } from '@/lib/bd/time'
@@ -11,7 +11,7 @@ import { dict, DEFAULT_LOCALE, type Dictionary, type Locale } from '@/lib/i18n'
 import type { PaymentMethod } from '@/lib/supabase/types'
 import { PrintButton } from '../../print-button'
 
-/** getSession, not pageCenter — see the note on teach/page.tsx's own. */
+/** getSession, not pageCapability — see the note on teach/page.tsx's own. */
 export async function generateMetadata() {
   const session = await getSession()
   return { title: `${dict(session?.locale ?? DEFAULT_LOCALE).receipt.title} — CoachDesk` }
@@ -38,9 +38,10 @@ export async function generateMetadata() {
  * invoice's net less every payment up to and including this one, in the order the
  * money actually arrived.
  *
- * STAFF ADMIN ONLY, like the collecting half of the board. A teacher holding
- * `can_view_fees` reads what their own students owe; issuing the receipt is the
- * act of the person who took the money, and it is signed by them.
+ * STAFF ADMIN ONLY, like the collecting half of the board, AND `fees` (§6.2). A teacher
+ * holding `can_view_fees` reads what their own students owe; issuing the receipt is the
+ * act of the person who took the money, and it is signed by them. A manager whose owner
+ * unticked the word cannot read `fee_payments` at all, so every id would be a miss.
  *
  * A PAID PLAN ONLY for the sheet, and not for the number. The trigger stamps a
  * receipt number on every payment on every tier, so a free teacher reads it out
@@ -57,9 +58,9 @@ export async function generateMetadata() {
  * already correct. A parent who was given cash back has nothing in writing until this
  * is printed, which is the whole reason it is the same page and not a stub.
  *
- * A miss is notFound() rather than forbidden(), for the reason the exam page gives:
- * RLS decides what is visible, and a 403 on someone else's payment id would confirm
- * that the id exists.
+ * A miss is notFound() rather than a 403, for the reason the exam page gives: RLS decides
+ * what is visible, and refusing someone else's payment id by name would confirm that the id
+ * exists. The guard above is a different question — it is about the reader, not the row.
  */
 export default async function ReceiptPage({
   params,
@@ -68,8 +69,7 @@ export default async function ReceiptPage({
   params: Promise<{ paymentId: string }>
 }) {
   const { paymentId } = await params
-  const session = await pageCenter()
-  if (!isStaffAdmin(session)) forbidden()
+  const session = await pageCapability('fees')
 
   const supabase = await createClient()
   const locale = session.locale

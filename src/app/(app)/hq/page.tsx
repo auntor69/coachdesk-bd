@@ -1,4 +1,5 @@
 import Link from 'next/link'
+import { forbidden } from 'next/navigation'
 
 import { Card } from '@/components/ui'
 import { PlacesWarning } from '@/components/places-warning'
@@ -20,6 +21,7 @@ import {
 import { dict, DEFAULT_LOCALE } from '@/lib/i18n'
 import { formatTaka } from '@/lib/money'
 import { has, planName, capacityPressure, PLANS } from '@/lib/plans'
+import { canReadMoney } from '@/lib/staff/capabilities'
 import { createClient } from '@/lib/supabase/server'
 
 /** getSession, not pageRole — see the note on teach/page.tsx's own. */
@@ -110,6 +112,20 @@ export default async function HqPage({
       </Shell>
     )
   }
+
+  /*
+   * And a narrowed manager (§6.2), which is the dashboard's profit card again with four
+   * columns instead of one. Both views here are `security_invoker`, so a reader without one
+   * of the three money words does not get an error — they get every branch collecting ৳0, or
+   * spending ৳0, and a profit column that is wrong in the same direction for all five
+   * buildings at once. A comparison built out of a missing term ranks the branches, and an
+   * owner acts on the ranking.
+   *
+   * A 403 rather than a table with a column withheld: the whole screen is that arithmetic,
+   * and the row totals have to add up to the dashboard's profit card — which this reader is
+   * not being shown either.
+   */
+  if (!canReadMoney(session.active.capabilities)) forbidden()
 
   const { month: rawMonth } = await searchParams
   // An unparseable month is this month rather than an error, per the expenses screen: the

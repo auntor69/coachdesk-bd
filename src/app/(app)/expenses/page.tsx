@@ -1,8 +1,7 @@
 import Link from 'next/link'
-import { forbidden } from 'next/navigation'
 
 import { Card } from '@/components/ui'
-import { pageCenter, getSession, isStaffAdmin } from '@/lib/auth/session'
+import { pageCapability, getSession } from '@/lib/auth/session'
 import { branchChoicesFor } from '@/lib/branches'
 import { createClient } from '@/lib/supabase/server'
 import { pageAll, worstFailure } from '@/lib/supabase/page'
@@ -19,7 +18,7 @@ import { expenseRows, tallyExpenses } from '@/lib/expenses/tally'
 import { dict, DEFAULT_LOCALE } from '@/lib/i18n'
 import { ExpenseForm } from './expense-form'
 
-/** getSession, not pageCenter — see the note on teach/page.tsx's own. */
+/** getSession, not pageCapability — see the note on teach/page.tsx's own. */
 export async function generateMetadata() {
   const session = await getSession()
   return { title: `${dict(session?.locale ?? DEFAULT_LOCALE).expenses.title} — CoachDesk` }
@@ -74,6 +73,11 @@ const MONTH_RE = /^\d{4}-\d{2}-01$/
  * Not teachers, and deliberately not through §6.5's `can_view_fees`: that permission is
  * about a teacher collecting for their own batch, which is not the same act as reading
  * what the centre pays in rent and what it pays its staff.
+ *
+ * AND `expenses` (§6.2). 20260811000063 narrows the read as well as the write, so a manager
+ * whose owner unticked it would get this screen with no rows and a total of ৳0 — a centre
+ * that spends nothing, which is a claim rather than an absence. `pageCapability` answers
+ * with the same 403 the line below does and makes the two checks one call.
  */
 export default async function ExpensesPage({
   searchParams,
@@ -81,8 +85,7 @@ export default async function ExpensesPage({
   // A Promise in Next 16, and awaiting it is not optional.
   searchParams: Promise<{ month?: string }>
 }) {
-  const session = await pageCenter()
-  if (!isStaffAdmin(session)) forbidden()
+  const session = await pageCapability('expenses')
 
   const locale = session.locale
   const d = dict(locale)

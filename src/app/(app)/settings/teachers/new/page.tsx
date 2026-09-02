@@ -1,22 +1,23 @@
 import Link from 'next/link'
 
 import { Card } from '@/components/ui'
-import { pageRole, getSession } from '@/lib/auth/session'
+import { pageCapability, getSession } from '@/lib/auth/session'
 import { branchChoicesFor } from '@/lib/branches'
 import { createClient } from '@/lib/supabase/server'
 import { wouldExceed, hasStaff, planName, PLANS } from '@/lib/plans'
 import { dict, localName, DEFAULT_LOCALE } from '@/lib/i18n'
 import { TeacherForm } from './teacher-form'
 
-/** getSession, not pageRole — see the note on teach/page.tsx's own. */
+/** getSession, not pageCapability — see the note on teach/page.tsx's own. */
 export async function generateMetadata() {
   const session = await getSession()
   const locale = session?.locale ?? DEFAULT_LOCALE
   return { title: `${dict(locale).settings.teachers.newTitle} — CoachDesk` }
 }
 
+/** `staff` (§6.2), like the list behind it — this is the write that word is about. */
 export default async function NewTeacherPage() {
-  const session = await pageRole('manager')
+  const session = await pageCapability('staff')
   const locale = session.locale
   const d = dict(locale)
   const t = d.settings.teachers

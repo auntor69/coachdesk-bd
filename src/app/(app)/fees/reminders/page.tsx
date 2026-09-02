@@ -1,7 +1,7 @@
 import Link from 'next/link'
 
 import { Card } from '@/components/ui'
-import { pageRole, getSession } from '@/lib/auth/session'
+import { pageCapability, getSession } from '@/lib/auth/session'
 import { createClient } from '@/lib/supabase/server'
 import { pageAll, type PageFailure } from '@/lib/supabase/page'
 import { todayInDhaka, addDays, formatMonth } from '@/lib/bd/time'
@@ -17,7 +17,7 @@ import { dict, DEFAULT_LOCALE } from '@/lib/i18n'
 import { ReminderList, type ChaseGroup, type ChaseRow } from '../reminder-list'
 import type { ReminderCenter } from '../reminder-chips'
 
-/** getSession, not pageRole — see the note on teach/page.tsx's own. */
+/** getSession, not pageCapability — see the note on teach/page.tsx's own. */
 export async function generateMetadata() {
   const session = await getSession()
   return {
@@ -42,7 +42,10 @@ const COLUMNS = 'id, student_name, student_code, remaining_bdt, due_date, period
  * is one they do. Everything else here follows from that: no filters, no bulk
  * select, nothing to configure, and the list gets shorter as they work.
  *
- * Staff-admin only, like the board — RLS enforces it again underneath.
+ * Staff-admin only, like the board — RLS enforces it again underneath — and `fees` rather
+ * than `messages` (§6.2), which is the schema's own answer: `fee_reminders` is one of the
+ * three tables 20260811000063 puts behind the fee word, because a chase says what a family
+ * owes. Without it the list is empty, which reads as a centre where nobody is behind.
  *
  * When a sender ID finally exists, the same schedule runs in a cron worker with
  * the same functions and sends these messages without the owner opening anything.
@@ -50,7 +53,7 @@ const COLUMNS = 'id, student_name, student_code, remaining_bdt, due_date, period
  * nothing and needs nobody's approval.
  */
 export default async function RemindersPage() {
-  const session = await pageRole('manager')
+  const session = await pageCapability('fees')
   const supabase = await createClient()
   const today = todayInDhaka()
   const locale = session.locale

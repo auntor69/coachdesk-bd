@@ -175,19 +175,31 @@ function CenterName({ session, t }: { session: Session; t: Dictionary['shell'] }
 }
 
 /**
- * A teacher's bar, plus whatever their owner has granted them.
+ * A reader's bar: their role's tabs, less what was taken away and plus what was granted.
  *
- * The three permission checks run together rather than in sequence: they share one
- * memoised query behind `myTeacherRows`, so the cost is a single round trip either
- * way, but awaiting them one at a time would make that look like three.
+ * A STAFF ADMIN CAN LOSE THE FEE TAB NOW (§6.2). A manager whose owner unticked `fees` has
+ * a fee board where 20260811000063's policies filter every row out, so the tab leads to a
+ * centre that appears to have collected nothing and to be owed nothing — which is a worse
+ * answer than no tab. `canReadFees` already knows this and costs a staff admin no query:
+ * the narrowing rides along on the session.
+ *
+ * Only that one tab. Attendance, marks and the settings hub are not narrowed by §6.2 at
+ * all, and the hub decides its own rows the way it already does for a teacher.
+ *
+ * The three teacher checks run together rather than in sequence: they share one memoised
+ * query behind `myTeacherRows`, so the cost is a single round trip either way, but awaiting
+ * them one at a time would make that look like three.
  *
  * Settings appears for either roster permission, because the hub itself now decides
  * which rows to draw — a teacher with only `can_manage_batches` gets the tab and one
  * row behind it, and that is the honest thing to show rather than a tab that leads
  * to a page of things they cannot open.
  */
-async function teacherNav(role: MemberRole): Promise<NavItem[]> {
-  if (role !== 'teacher') return NAV[role]
+async function navFor(role: MemberRole): Promise<NavItem[]> {
+  if (role !== 'teacher') {
+    if (role !== 'owner' && role !== 'manager') return NAV[role]
+    return (await canReadFees()) ? NAV[role] : NAV[role].filter((tab) => tab !== FEES_TAB)
+  }
 
   const [fees, students, batches] = await Promise.all([
     canReadFees(),
@@ -403,10 +415,9 @@ export async function AppShell({
   // their positions on the day a permission is granted or taken away, and settings
   // ends up last, where every app on the phone keeps it.
   //
-  // Only for `teacher`. The other three roles' bars are complete — a staff-admin
-  // has both tabs already, and a student or guardian holds no teacher row for a
-  // permission to hang off.
-  const items: NavItem[] = await teacherNav(role)
+  // Only for `teacher` and the two staff-admin roles. A student or guardian holds
+  // neither a teacher row for a permission to hang off nor a capability list.
+  const items: NavItem[] = await navFor(role)
 
   /*
    * A lapsed or cancelled subscription, which the banner below explains and

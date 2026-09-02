@@ -14,7 +14,12 @@
 import { revalidatePath } from 'next/cache'
 
 import { createClient } from '@/lib/supabase/server'
-import { requireRole, requireWritable, AuthError } from '@/lib/auth/session'
+import {
+  requireRole,
+  requireWritable,
+  requireCapability,
+  AuthError,
+} from '@/lib/auth/session'
 import { has } from '@/lib/plans'
 import { normalizeBdMobile } from '@/lib/bd/phone'
 import type { OutreachChannel } from '@/lib/supabase/types'
@@ -65,6 +70,9 @@ export type ProgressLog = {
  * — the paywall on the page in front of it stops nobody who can type a fetch — and
  * `parentSummary` is the line a teacher pays ৳499 for.
  *
+ * And `messages` (§6.2), for the same reason and one more: `progress_updates` is not one of
+ * the tables 20260811000063 narrows, so there is no policy behind this line. It is the fence.
+ *
  * Returns whether the row was written. The caller ticks the row only on true, so
  * the screen never claims a note it has no record of.
  */
@@ -73,7 +81,10 @@ export async function logProgressUpdate(
 ): Promise<{ logged: boolean }> {
   let session
   try {
-    session = requireWritable(await requireRole('manager'))
+    session = requireCapability(
+      'messages',
+      requireWritable(await requireRole('manager')),
+    )
   } catch (err) {
     // Nothing to say to the caller beyond "it did not happen": this is called from
     // a tap handler with no form and no place to put a sentence, so the row it

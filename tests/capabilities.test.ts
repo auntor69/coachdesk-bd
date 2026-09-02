@@ -8,8 +8,10 @@ import {
   BUNDLE_NAMES,
   CAPABILITIES,
   CAPABILITY_BUNDLES,
+  MONEY_CAPABILITIES,
   bundleOf,
   can,
+  canReadMoney,
   isCapability,
   narrowingOf,
   parseCapabilities,
@@ -165,6 +167,40 @@ test('a stored narrowing is described in a word when it matches one', () => {
   // truth; the name is a summary.
   assert.equal(bundleOf(['fees']), null)
   assert.equal(bundleOf(['fees', 'expenses', 'payroll', 'students']), null)
+})
+
+/* -------------------------------------------------------------------------- */
+/* The profit line                                                            */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * §9.8 is `collected - expenses - payroll`, one capability per term, and the views are
+ * `security_invoker` — so a term the reader may not see comes back as nought rather than an
+ * error. Two of three is the shape of the bug this pair exists to stop.
+ */
+
+test('a profit figure needs every term of the subtraction', () => {
+  assert.equal(canReadMoney(null), true)
+  assert.equal(canReadMoney(undefined), true)
+  assert.equal(canReadMoney(['fees', 'expenses', 'payroll']), true)
+  assert.equal(canReadMoney([]), false)
+  assert.equal(canReadMoney(CAPABILITY_BUNDLES.receptionist), false)
+})
+
+test('two of the three words is not two thirds of a figure, it is a wrong one', () => {
+  // The dashboard asked for `fees` and `expenses` and printed a profit overstated by the
+  // whole wage bill. Every one-term-short set has to be false, not just that one.
+  for (const missing of MONEY_CAPABILITIES) {
+    const short = MONEY_CAPABILITIES.filter((capability) => capability !== missing)
+    assert.equal(canReadMoney(short), false, missing)
+  }
+})
+
+test('the terms are the three money words and are all real capabilities', () => {
+  // Spelt out rather than derived, so adding a fourth term is a deliberate edit here too.
+  assert.deepEqual([...MONEY_CAPABILITIES], ['fees', 'expenses', 'payroll'])
+  assert.ok(MONEY_CAPABILITIES.every(isCapability))
+  assert.equal(new Set(MONEY_CAPABILITIES).size, MONEY_CAPABILITIES.length)
 })
 
 /* -------------------------------------------------------------------------- */

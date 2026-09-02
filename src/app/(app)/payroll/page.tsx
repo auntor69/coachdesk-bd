@@ -1,8 +1,7 @@
 import Link from 'next/link'
-import { forbidden } from 'next/navigation'
 
 import { Card } from '@/components/ui'
-import { getSession, isStaffAdmin, pageCenter } from '@/lib/auth/session'
+import { getSession, pageCapability } from '@/lib/auth/session'
 import { formatDate, todayInDhaka } from '@/lib/bd/time'
 import { dict, DEFAULT_LOCALE } from '@/lib/i18n'
 import { formatTaka } from '@/lib/money'
@@ -14,7 +13,7 @@ import { createClient } from '@/lib/supabase/server'
 import { TermsForm } from './terms-form'
 import { TermsRow } from './terms-row'
 
-/** getSession, not pageCenter — see the note on teach/page.tsx's own. */
+/** getSession, not pageCapability — see the note on teach/page.tsx's own. */
 export async function generateMetadata() {
   const session = await getSession()
   return { title: `${dict(session?.locale ?? DEFAULT_LOCALE).payroll.title} — CoachDesk` }
@@ -59,10 +58,13 @@ const TERMS_COLUMNS =
  * teacher policy on that table at all, not even for their own row: what a colleague is paid
  * is not something we hand a teacher, and their own figure needs a payslip screen to open a
  * policy for.
+ *
+ * AND `payroll` (§6.2), which the read is narrowed by as well as the write — so a manager
+ * whose owner unticked it would get an empty list, and an empty list here means a centre
+ * that pays nobody. `pageCapability` is the same 403 the rank check was, one call.
  */
 export default async function PayrollPage() {
-  const session = await pageCenter()
-  if (!isStaffAdmin(session)) forbidden()
+  const session = await pageCapability('payroll')
 
   const locale = session.locale
   const d = dict(locale)
