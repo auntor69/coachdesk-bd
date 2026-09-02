@@ -7,6 +7,7 @@ import {
   isDateString,
   lastClassDate,
   markHistory,
+  registerAct,
 } from '../src/lib/attendance/window.ts'
 import { dayOfWeekOn } from '../src/lib/bd/time.ts'
 
@@ -159,4 +160,14 @@ test('a revision the trigger could not have written still reads as untouched', (
   assert.equal(markHistory({ revision: -1, markedBy: OWNER, calledBy: RAHIM }), 'asCalled')
   // And a support session past the budget is still an override, not a fourth state.
   assert.equal(markHistory({ revision: 4, markedBy: OWNER, calledBy: RAHIM }), 'overridden')
+})
+
+test('only writing over somebody else’s register is a correction', () => {
+  // The four rows of section 6.3's table, in its order.
+  assert.equal(registerAct({ taken: false, ownBatch: true }), 'attendance')
+  assert.equal(registerAct({ taken: true, ownBatch: true }), 'attendance')
+  assert.equal(registerAct({ taken: true, ownBatch: false }), 'correction')
+  // The manager standing in for an ill teacher is taking attendance, not correcting
+  // one: there is nothing on the day to write over.
+  assert.equal(registerAct({ taken: false, ownBatch: false }), 'attendance')
 })

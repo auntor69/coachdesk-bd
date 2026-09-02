@@ -69,6 +69,32 @@ export function markHistory(mark: {
 }
 
 /**
+ * 'attendance'  — taking a register. The teacher's normal path, and also the manager
+ *                 standing in for one who is ill: nobody has written this day yet.
+ * 'correction'  — changing a register somebody else already took. Allowed, and the
+ *                 word §6.3 asks the screen to use instead of "attendance".
+ */
+export type RegisterAct = 'attendance' | 'correction'
+
+/**
+ * Which of the two a reader is about to do, from the register rather than the role.
+ *
+ * The same rule the trigger uses and the same rule `markHistory` reads back: an insert
+ * is a call, a change to somebody else's call is an override. So a manager taking a
+ * register from scratch is taking attendance — §6.3's fourth row, the teacher is ill and
+ * the class still happened — and only writing over an existing one is a correction.
+ *
+ * `ownBatch` is whether the reader holds this batch's `teacher_id`, never whether they
+ * outrank anybody. An owner who also teaches gets the normal path on their own batch.
+ */
+export function registerAct(register: {
+  taken: boolean
+  ownBatch: boolean
+}): RegisterAct {
+  return register.taken && !register.ownBatch ? 'correction' : 'attendance'
+}
+
+/**
  * 'open'   — today, or the batch's last class: take it, correct it once.
  * 'future' — a class that has not happened. Refused for everybody.
  * 'closed' — a real class, long enough ago that changing it is bookkeeping.

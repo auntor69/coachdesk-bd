@@ -15,6 +15,7 @@ import { useOffline } from 'next/offline'
 import { Alert, Button } from '@/components/ui'
 import { clearDraft, useSavedDraft, writeDraft } from '@/lib/drafts'
 import { MAX_TEXT } from '@/lib/limits'
+import type { MarkHistory } from '@/lib/attendance/window'
 import type { T } from '@/lib/i18n'
 import type { AttendanceStatus } from '@/lib/supabase/types'
 import { saveAttendance, type SaveState } from './actions'
@@ -32,6 +33,17 @@ export type RosterStudent = {
    * reason ATTENDANCE_MAX_REVISION is mirrored on this side of the wire.
    */
   locked: boolean
+  /**
+   * Whether this mark is still as it was called, and if not, by whom — the teacher
+   * who took it, or somebody else. Section 6.3 asks for an override to be visible,
+   * and the row it happened to is the place it cannot be missed.
+   *
+   * A word rather than the two uuids the register actually holds: those stay on the
+   * server. See the page's `previous` map.
+   */
+  history: MarkHistory
+  /** When it was changed, already formatted. Null unless `history` says it was. */
+  changedOn: string | null
 }
 
 /**
@@ -262,6 +274,21 @@ export function AttendanceRoster({
                 {student.studentCode && (
                   <p className="num truncate text-xs text-ink-faint">
                     {student.studentCode}
+                  </p>
+                )}
+                {/* Under the name and not beside the status, because it is a fact
+                    about this child's mark rather than about the mark's value — and
+                    the right-hand side of a settled row is already spoken for. */}
+                {student.history !== 'asCalled' && (
+                  <p
+                    className={`truncate text-xs ${
+                      student.history === 'overridden' ? 'text-late' : 'text-ink-faint'
+                    }`}
+                  >
+                    {student.history === 'overridden' ? t.wasOverridden : t.wasCorrected}
+                    {student.changedOn && (
+                      <span className="num"> · {student.changedOn}</span>
+                    )}
                   </p>
                 )}
               </div>

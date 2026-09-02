@@ -561,6 +561,16 @@ export const bn = {
     pending: (n: number) => `আজ ${n}টি ব্যাচের হাজিরা বাকি`,
     allTaken: 'আজকের সব হাজিরা নেওয়া হয়েছে',
     /**
+     * The same tally to a staff admin, who does not take these registers.
+     *
+     * §6.3 asks for a review rather than a to-do list: "আজ ২টি ব্যাচের হাজিরা বাকি"
+     * reads as work the owner is behind on, and the work is somebody else's. So the
+     * sentence counts what is not in yet instead of what is left to do, and the rows
+     * below say whose it is.
+     */
+    reviewPending: (n: number) => `আজকের ${n}টি হাজিরা এখনও জমা পড়েনি`,
+    reviewAllTaken: 'আজকের সব হাজিরা জমা পড়েছে',
+    /**
      * Today has batches and not one of them has a student in it. Said separately
      * because `allTaken` here would claim attendance that was never taken — which is
      * exactly what a centre in its first week saw.
@@ -595,6 +605,13 @@ export const bn = {
      * taken — and the row is the only place that can say which batch is empty.
      */
     emptyBatch: 'কেউ নেই',
+    /**
+     * Whose register the review is waiting on. The batch's own teacher, not whoever
+     * last wrote in the register — the row knows the batch and nothing more, and
+     * "নিয়েছেন" is a claim only `marked_by` can make.
+     */
+    notSubmitted: (name: string) => `${name} এখনও জমা দেননি`,
+    noTeacherYet: 'এই ব্যাচে কোনো শিক্ষক নেই',
     otherBatches: 'আজ ক্লাস নেই এমন ব্যাচ',
 
     /**
@@ -655,6 +672,19 @@ export const bn = {
       'আজকের ক্লাস আর শেষ ক্লাসের হাজিরা নেওয়া বা ঠিক করা যায়। এর চেয়ে পুরোনো হাজিরা বদলাতে মালিককে বলুন।',
     closedAdmin:
       'এটি পুরোনো তারিখ। মালিক হিসেবে আপনি এখনও এখানে হাজিরা লিখতে পারবেন, তবে প্রতিটি নাম একবারই বদলানো যাবে।',
+    /**
+     * The banner over a register somebody else took. §6.3 names the word itself —
+     * সংশোধন, not হাজিরা — and the body says the thing that makes the word honest:
+     * the change is written down against the reader's own name, and the teacher who
+     * took the register stays on the row beside them.
+     *
+     * Deliberately not a refusal and deliberately not alarming. The access stays,
+     * because an override nobody can make is one a centre makes by borrowing the
+     * teacher's password, and then the row says the teacher did it.
+     */
+    correctionTitle: 'এটি সংশোধন, নতুন হাজিরা নয়',
+    correctionBody:
+      'এই ক্লাসের হাজিরা আগেই নেওয়া হয়েছে। আপনি যা বদলাবেন তা আপনার নাম আর সময় সহ লেখা থাকবে — যিনি হাজিরা নিয়েছিলেন, তাঁর নামও পাশে থেকে যাবে।',
     takeToday: 'আজকের হাজিরা নিন',
 
     /**
@@ -680,6 +710,8 @@ export const bn = {
      * batches in a morning needs to know which register they are about to write.
      */
     saveFor: (batch: string) => `${batch} — হাজিরা সেভ করুন`,
+    /** The same button on somebody else's register, named for what it will be recorded as. */
+    correctFor: (batch: string) => `${batch} — সংশোধন সেভ করুন`,
     /**
      * The link to the other register still open. The date is already formatted by
      * the page — Bangla numerals and a Bangla month, because this one is a date and
@@ -755,6 +787,13 @@ export const bn = {
     tapFreely: 'যত খুশি ট্যাপ করুন — সেভ না চাপলে কিছুই জমা হয় না।',
     /** Read out for a row whose buttons are gone, where sighted readers see a chip. */
     lockedRow: 'একবার বদলানো হয়েছে, আর বদলানো যাবে না',
+    /**
+     * Which of the two a settled mark is, from `markHistory` — the register's own copy
+     * of what the log records. Nobody is named: the row carries two user ids and no
+     * names, and a word next to the wrong name is worse than a word next to none.
+     */
+    wasCorrected: 'যিনি হাজিরা নিয়েছিলেন, তিনিই ঠিক করেছেন',
+    wasOverridden: 'অন্যজন বদলেছেন',
     note: 'নোট',
     notePlaceholder: 'যেমন: ছুটির কারণে ক্লাস তাড়াতাড়ি শেষ',
   },

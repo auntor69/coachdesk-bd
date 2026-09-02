@@ -237,6 +237,18 @@ export const en: Dictionary = {
       `${n} ${n === 1 ? 'batch' : 'batches'} still to mark today`,
     allTaken: 'All of today’s attendance is taken',
     /**
+     * The same tally to a staff admin, who is not the person who marks these.
+     *
+     * §6.3: a manager opening attendance sees a review — what was taken, what is
+     * missing, who has not submitted. "2 batches still to mark today" makes the
+     * centre's registers their own to-do list, which is the reading the plan says the
+     * product should stop encouraging: somebody copying a paper sheet into a computer
+     * an hour later is the job this app deletes.
+     */
+    reviewPending: (n: number) =>
+      `${n} of today’s ${n === 1 ? 'register is' : 'registers are'} not in yet`,
+    reviewAllTaken: 'Every register is in for today',
+    /**
      * Today's classes exist and not one of them has anybody in it.
      *
      * Without this the screen said "all of today's attendance is taken", which is
@@ -280,6 +292,14 @@ export const en: Dictionary = {
      * says which batch is the problem — the count above cannot.
      */
     emptyBatch: 'Nobody in it',
+    /**
+     * Who the review is waiting on, on the row rather than in the tally above it.
+     *
+     * The batch's assigned teacher, not whoever last touched the register: the row has
+     * the batch and nothing else, and "taken by" is a claim only `marked_by` can make.
+     */
+    notSubmitted: (name: string) => `${name} has not submitted`,
+    noTeacherYet: 'No teacher on this batch',
     otherBatches: 'Batches with no class today',
 
     /**
@@ -338,6 +358,18 @@ export const en: Dictionary = {
       'Today’s class and your last class can be marked or corrected. To change anything older than that, ask the owner.',
     closedAdmin:
       'This is an older date. As an owner you can still write attendance here, but each name can only be changed once.',
+    /**
+     * The banner over somebody else's register. §6.3: "The word for it in the UI is
+     * *correction*, not *attendance*" — and the body says the part that makes the word
+     * true, which is that the change is written down against the reader's own name.
+     *
+     * Not a warning colour and not a refusal. The manager's access is deliberately
+     * intact; an override that is impossible is one a centre works around by sharing
+     * the teacher's password, and then nobody knows who marked what.
+     */
+    correctionTitle: 'This is a correction, not attendance',
+    correctionBody:
+      'This register has already been taken. Anything you change is recorded as an override, with your name and the time — the teacher who took it stays on the record beside you.',
     takeToday: 'Mark today',
 
     saved: (n: number) =>
@@ -346,6 +378,8 @@ export const en: Dictionary = {
       `Attendance saved. ${n} ${n === 1 ? 'mark had' : 'marks had'} already been corrected once, so ${n === 1 ? 'it' : 'they'} did not change.`,
     rowLabel: (name: string) => `${name} — attendance`,
     saveFor: (batch: string) => `${batch} — Save attendance`,
+    /** The same button on somebody else's register, saying what it will be recorded as. */
+    correctFor: (batch: string) => `${batch} — Save correction`,
     lastClass: (date: string) => `Attendance for the last class — ${date}`,
 
     /** Worded exactly as `exams.toldOn` — see the note there. */
@@ -374,6 +408,17 @@ export const en: Dictionary = {
     finalEdit: 'Each name can be changed once more.',
     tapFreely: 'Tap as often as you like — nothing is sent until you press save.',
     lockedRow: 'already corrected once, cannot change again',
+    /**
+     * Which of the two a settled mark is, from `markHistory`. The register's own copy
+     * of what the audit log records: the teacher who took it fixing their own tick, or
+     * somebody else writing over it.
+     *
+     * The person is not named. The row has two user ids and no names, and a word beside
+     * the wrong name is worse than a word beside none — the correction review is where
+     * the names belong.
+     */
+    wasCorrected: 'Corrected by the teacher who took it',
+    wasOverridden: 'Changed by somebody else',
     note: 'Note',
     notePlaceholder: 'e.g. class ended early for a holiday',
   },

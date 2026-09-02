@@ -12,12 +12,14 @@ import {
 } from '@/lib/auth/session'
 import { createClient } from '@/lib/supabase/server'
 import { BatchSlot } from '@/lib/bd/schedule'
-import { todayInDhaka, formatDate } from '@/lib/bd/time'
+import { todayInDhaka, formatDate, formatTime, dhakaMoment } from '@/lib/bd/time'
 import {
   ATTENDANCE_MAX_REVISION,
   attendanceVerdict,
   isDateString,
   lastClassDate,
+  markHistory,
+  registerAct,
 } from '@/lib/attendance/window'
 import { planAbsenceNotices } from '@/lib/sms/absence-dispatch'
 import { dict, localName, DEFAULT_LOCALE } from '@/lib/i18n'
@@ -120,7 +122,21 @@ export default async function AttendancePage({
   // /teach may well have listed it to them last month, so there is nothing left to
   // hide — and the 403 screen says the one useful thing, which is that the owner
   // decides who teaches what.
-  const scope = isStaffAdmin(session) ? null : await myTeacherIds()
+  const isAdmin = isStaffAdmin(session)
+
+  /*
+   * The reader's own teacher rows, now asked of everybody and read two ways — the same
+   * widening /teach just had.
+   *
+   * For a teacher it is the guard below: which batches are theirs.
+   *
+   * For everybody it also answers whether *this* batch is their own, which is what
+   * decides whether opening it is attendance or a correction (section 6.3). An admin's
+   * unreadable list therefore costs them a banner and never the page.
+   */
+  const scope = await myTeacherIds()
+  const unreadable = 'unreadable' in scope
+  const ownIds = 'ids' in scope ? scope.ids : []
 
   /*
    * AND A CHECK THAT COULD NOT BE MADE IS NOT A CHECK THAT PASSED.
@@ -136,7 +152,7 @@ export default async function AttendancePage({
    * So the register is not drawn. Not the 403 either, which would say the owner
    * decides who teaches what — true, and not what happened.
    */
-  if (scope !== null && 'unreadable' in scope) {
+  if (!isAdmin && unreadable) {
     return (
       <div className="flex flex-col gap-4">
         <Link
@@ -153,8 +169,17 @@ export default async function AttendancePage({
     )
   }
 
-  const mine = scope !== null && 'ids' in scope ? scope.ids : null
+  // Safe as a plain fork because the return above already caught the one case the two
+  // nulls used to share: a teacher whose staff list did not arrive never gets here.
+  const mine = isAdmin ? null : ownIds
   if (mine && (!batch.teacher_id || !mine.includes(batch.teacher_id))) forbidden()
+
+  /**
+   * Whether this batch is the reader's own, by the `teacher_id` on it and never by rank.
+   * Always true for a teacher who got past the guard; the question is really about an
+   * owner or manager, who may be standing in for a colleague or taking their own class.
+   */
+  const ownBatch = batch.teacher_id !== null && ownIds.includes(batch.teacher_id)
 
   const [
     { data: enrollments },
@@ -170,7 +195,12 @@ export default async function AttendancePage({
         .eq('status', 'active'),
       supabase
         .from('attendance_sessions')
-        .select('id, note, attendance_records (enrollment_id, status, revision)')
+        .select(
+          `id, note,
+           attendance_records (
+             enrollment_id, status, revision, marked_by, called_by, marked_at
+           )`,
+        )
         .eq('coaching_center_id', session.active.centerId)
         .eq('batch_id', batchId)
         .eq('session_date', sessionDate)
@@ -253,15 +283,45 @@ export default async function AttendancePage({
   const verdict = attendanceVerdict(sessionDate, today, lastClass)
   // An owner or manager may still write into a closed day, and is told that is
   // what they are doing. A teacher gets the card below instead of a form.
-  const writable = verdict === 'open' || (verdict === 'closed' && isStaffAdmin(session))
+  const writable = verdict === 'open' || (verdict === 'closed' && isAdmin)
 
-  const previous = new Map<string, { status: AttendanceStatus; revision: number }>()
+  /**
+   * The saved register, by enrolment.
+   *
+   * `marked_at` and the two uuids are read for `markHistory` only, and none of them
+   * cross into the client component: what goes over the wire is the word for what
+   * happened and a formatted time. A colleague's auth id is not something a roster
+   * needs in the browser.
+   */
+  const previous = new Map<
+    string,
+    {
+      status: AttendanceStatus
+      revision: number
+      markedBy: string | null
+      calledBy: string | null
+      markedAt: string | null
+    }
+  >()
   for (const record of existingSession?.attendance_records ?? []) {
     previous.set(record.enrollment_id, {
       status: record.status,
       revision: record.revision,
+      markedBy: record.marked_by,
+      calledBy: record.called_by,
+      markedAt: record.marked_at,
     })
   }
+
+  /**
+   * Attendance or a correction, for the banner and the save button.
+   *
+   * From the register, not the role — the same rule the trigger and `markHistory` use.
+   * So a manager taking a register nobody has filed is taking attendance (section 6.3's
+   * fourth row: the teacher is ill and the class still happened), and only writing over
+   * somebody else's existing register is a correction.
+   */
+  const act = registerAct({ taken: Boolean(existingSession), ownBatch })
 
   const students: RosterStudent[] = enrollments
     .map((enrollment) => {
@@ -270,6 +330,17 @@ export default async function AttendancePage({
         : enrollment.students
       if (!student) return null
       const before = previous.get(enrollment.id)
+      const history = before
+        ? markHistory({
+            revision: before.revision,
+            markedBy: before.markedBy,
+            calledBy: before.calledBy,
+          })
+        : 'asCalled'
+      // Only worth a timestamp if something was written over. `dhakaMoment` degrades
+      // to a date and an empty time rather than throwing on a string it cannot read.
+      const changed =
+        history !== 'asCalled' && before?.markedAt ? dhakaMoment(before.markedAt) : null
       return {
         enrollmentId: enrollment.id,
         name: student.name,
@@ -285,6 +356,12 @@ export default async function AttendancePage({
         // another. Drawn as a settled row rather than as three buttons that would
         // fail, which is the whole reason the constant is mirrored in TypeScript.
         locked: (before?.revision ?? 0) >= ATTENDANCE_MAX_REVISION,
+        history,
+        changedOn: changed
+          ? `${formatDate(changed.date, locale)}${
+              changed.time ? ` ${formatTime(changed.time, locale)}` : ''
+            }`
+          : null,
       }
     })
     .filter((s): s is RosterStudent => s !== null)
@@ -493,6 +570,19 @@ export default async function AttendancePage({
         </Card>
       ) : (
         <>
+          {/* Section 6.3: the manager's access is not removed, and it is visibly not
+              the default. Above the register rather than beside the button, because it
+              has to be read before the first tap and not after forty of them — and
+              above the closed-day notice too, which is about *which* day this is
+              rather than about whose register it is. It carries a heading so the two
+              do not read as one amber box repeated. */}
+          {act === 'correction' && (
+            <div className="rounded-xl border-2 border-amber-300 bg-amber-50 px-4 py-3">
+              <h2 className="font-semibold text-amber-900">{t.correctionTitle}</h2>
+              <p className="mt-1 text-sm text-amber-900">{t.correctionBody}</p>
+            </div>
+          )}
+
           {verdict === 'closed' && (
             <div className="rounded-xl border-2 border-amber-300 bg-amber-50 px-4 py-3">
               <p className="text-sm text-amber-900">{t.closedAdmin}</p>
@@ -501,7 +591,9 @@ export default async function AttendancePage({
 
           <AttendanceRoster
             batchId={batch.id}
-            saveLabel={t.saveFor(batch.name)}
+            saveLabel={
+              act === 'correction' ? t.correctFor(batch.name) : t.saveFor(batch.name)
+            }
             sessionDate={sessionDate}
             students={students}
             note={existingSession?.note ?? ''}

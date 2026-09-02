@@ -982,7 +982,7 @@ means four SQL resolvers and around seventy policy references, and it buys
 expressiveness the manager side already has — so it waits until something needs
 it.
 
-### 6.3 Attendance belongs to teachers ⚠️
+### 6.3 Attendance belongs to teachers ✅
 
 **The teacher is the normal person who takes attendance.** They are in the room.
 They know who is absent. A manager sitting in an office does not, and a product
@@ -990,15 +990,10 @@ that presents the manager as the attendance-taker is describing a workflow where
 somebody copies a paper sheet into a computer an hour later — which is the exact
 job this app is supposed to delete.
 
-What exists today: teachers can take attendance for batches they are assigned to,
-enforced in the database by `app.teaches_batch()`. That part is right.
+Teachers take attendance for the batches they are assigned to, enforced in the
+database by `app.teaches_batch()`.
 
-What is wrong: a staff admin opening `/teach` sees the whole centre rather than
-their own timetable, and in RLS the manager and the teacher hold **identical**
-write power over attendance — same policy shape, same `FOR ALL`, no distinction
-between taking a register and correcting one.
-
-The fix is presentation and accounting, not removal:
+The fix was presentation and accounting, not removal:
 
 | | |
 |---|---|
@@ -1011,6 +1006,27 @@ The fix is presentation and accounting, not removal:
 override a centre works around by sharing the teacher's password, and then nobody
 knows who marked what. Better that it exists, is logged, and is visibly not the
 default. The word for it in the UI is *correction*, not *attendance*.
+
+How the four rows are actually decided, since none of them may read a rank —
+§6.2 forbids that, and a manager who also teaches is a normal teacher on their own
+batch:
+
+- `attendance_records.called_by` and `called_at` hold the first writer and are
+  frozen for ever; `marked_by` and `marked_at` move to the latest one. So
+  `marked_by <> called_by` **is** an override, and the trigger that fires on it
+  writes the audit line — inside the transaction that made the change.
+- `registerAct({taken, ownBatch})` decides the word for the screen from the same
+  two facts: a register nobody has filed yet is attendance whoever opens it, and
+  only writing over somebody else's is a correction. That is row four working by
+  construction rather than by a special case.
+- `markHistory()` reads a saved mark back the same way, so a corrected row says
+  who changed it — the teacher who took it, or somebody else — with the time,
+  beside the child's name. It is deliberately softer than the trigger on a row
+  whose `called_by` predates the column: nobody is named an overrider on evidence
+  the row does not hold.
+
+RLS still gives a manager and a teacher the same write power, which is the
+decision above rather than a gap. What a manager may not do is do it quietly.
 
 ### 6.4 Money belongs to owners and managers ✅
 
@@ -1355,7 +1371,7 @@ The reason this is not optional in a financial product: the first serious suppor
 conversation with a Center will be *"my manager says he never entered that"*, and
 without a log the founder's answer is a shrug.
 
-**Built** as fourteen triggers over one generic function (`20260811000046`), with the
+**Built** as sixteen triggers over one generic function (`20260811000046`), with the
 actor read off a request header because `set_config` cannot survive a PostgREST
 request boundary (`20260811000056`). The log stores what it can be certain of — table,
 operation, and only the columns that moved; naming the *action* is `src/lib/audit.ts`,
@@ -1363,9 +1379,18 @@ where it is tested, and the owner reads it at `/settings/activity`. Insert, upda
 delete and truncate are revoked from every browser session, and the read policy is the
 owner alone: the manager is the subject of the question this log answers.
 
-One item on the list above waits on another section. **Attendance overrides are not
-audited yet**, because until §6.3 marks an override as such, a trigger on
-`attendance_records` would log every student on every day.
+Attendance overrides are the last item on that list to arrive, and they only could
+once §6.3 gave the register a way to tell an override from a mark
+(`20260811000064`). The trigger's condition is that condition and nothing looser —
+`new.status is distinct from old.status and new.marked_by is distinct from
+new.called_by` — because a trigger on `attendance_records` that fired on any change
+would log every student on every day, and a log that long is a log nobody opens.
+A teacher fixing their own tick five minutes later is therefore not in it.
+
+What that line cannot yet say is *whose* mark it was: `attendance_records` has no
+subject resolver in `src/lib/audit.ts`, so the entry names the batch and the day and
+leaves the child unnamed. The batch's own register is where a name belongs, and it
+now carries one.
 
 ---
 
@@ -1628,27 +1653,30 @@ paths, and a subscription that suspends itself seven days after the period it wa
 paid for; a fourteen-day Teacher Pro trial that starts itself at signup, ends on the
 clock, says so on screen while it runs and for a week after, and grants its places at
 the trigger as well as on the screen; a founder panel that records real money; an
-append-only audit log written by fourteen triggers inside the transaction that made
+append-only audit log written by sixteen triggers inside the transaction that made
 the change, named for the reader in one tested module and read by the owner alone;
 an admin role that only an owner may hand out, and a centre that cannot be left
 without one; capabilities as a `text[]` on the membership rather than an enum, so an
 owner can appoint an accountant who never sees the roster or a receptionist who
 never sees the money, with the narrowing enforced per table as a restrictive policy
-and every screen it would otherwise fill with noughts refusing at the door.
-1,165 RLS assertions and 980 unit tests green across 63 migrations and 41 tables,
+and every screen it would otherwise fill with noughts refusing at the door; and
+attendance that says who took the register rather than only who last touched it,
+so a manager's correction is allowed, logged, and named a correction on the screen
+that makes it (§6.3).
+1,177 RLS assertions and 987 unit tests green across 64 migrations and 41 tables,
 plus four derived gates and two that ask the live API. One of those gates now refuses
 a query whose table name it cannot read, having discovered it had been counting five
 fewer than existed — and the RLS suite found a manager who could promote themselves
 to owner, which is what a suite is for.
 
 **Partly built ⚠️** — branches (money, staff and the HQ comparison yes, full
-isolation no); discounts (fixed only); attendance roles (teacher scoping right,
-manager/teacher indistinguishable in RLS, `/teach` shows admins the whole centre);
-scheduling (weekly recurrence, no clashes or overrides); refunds (representable, no
-UI); plan selection (an owner may ask for a tier and buy places, not move themselves
-between tiers); the audit log (every table that can be audited today is, attendance
-overrides wait on §6.3); dashboards (`/hq` compares the branches; §9.10's own screen
-is not built).
+isolation no); discounts (fixed only); scheduling (weekly recurrence, no clashes or
+overrides); refunds (representable, no UI); plan selection (an owner may ask for a
+tier and buy places, not move themselves between tiers); the audit log (every table
+that can be audited today is, attendance overrides included, but an override line
+names the batch and the day and not yet the child — `attendance_records` has no
+subject resolver in `src/lib/audit.ts`); dashboards (`/hq` compares the branches;
+§9.10's own screen is not built).
 
 **Not built ❌** — subscriptions as a living thing
 (`subscriptions` still has zero reads and zero writes in the app, and

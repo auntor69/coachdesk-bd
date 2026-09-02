@@ -67,24 +67,39 @@ export default async function TeachPage() {
   // day rather than their own timetable, and bootstrap_center gives them a teachers
   // row that no batch need point at — filtering them would empty their own screen.
   const isAdmin = isStaffAdmin(session)
-  const scope = isAdmin ? null : await myTeacherIds()
+
+  /*
+   * The reader's own teacher rows, now asked of everybody and read two different ways.
+   *
+   * For a teacher it is the filter: which batches are theirs is the whole question this
+   * screen answers, and a list that did not arrive is a refusal rather than a wide
+   * answer — see below.
+   *
+   * For a staff-admin it filters nothing and answers only which of the centre's batches
+   * they teach themselves, which is what decides whether opening one is attendance or a
+   * correction (§6.3). So an unreadable list costs them a word on a row and never the
+   * page: every batch simply reads as somebody else's, which is the safe direction.
+   */
+  const scope = await myTeacherIds()
+  const unreadable = 'unreadable' in scope
+  const ownIds = unreadable ? [] : scope.ids
 
   /*
    * Two nulls that mean opposite things, kept apart before either is used.
    *
-   * `null` on the line above is a staff-admin, and it means "do not filter" — every
-   * batch in the centre, which is what an owner opened this to see. A staff list that
-   * did not arrive would have meant exactly the same thing to the query below, and it
-   * would have been the widest answer the screen can give to the reader who least
-   * wants it: a teacher at a nine-batch centre shown all nine, with a register on each
-   * one they would not be allowed to save. Which is the bug the filter was added to
-   * fix, coming back in through the failure path.
+   * `null` below is a staff-admin, and it means "do not filter" — every batch in the
+   * centre, which is what an owner opened this to see. A staff list that did not
+   * arrive would have meant exactly the same thing to the query below, and it would
+   * have been the widest answer the screen can give to the reader who least wants it:
+   * a teacher at a nine-batch centre shown all nine, with a register on each one they
+   * would not be allowed to save. Which is the bug the filter was added to fix, coming
+   * back in through the failure path.
    *
    * So the read is not sent at all. `batchesUnreadable` below is already the sentence
    * for it, and this is the third way of reaching it.
    */
-  const scopeUnreadable = scope !== null && 'unreadable' in scope
-  const mine = scope !== null && 'ids' in scope ? scope.ids : null
+  const scopeUnreadable = !isAdmin && unreadable
+  const mine = isAdmin || unreadable ? null : ownIds
 
   // Two steps rather than one chain: supabase-js's `.order()` returns a builder
   // with the filter methods already dropped off it, so a conditional filter has to
@@ -92,8 +107,9 @@ export default async function TeachPage() {
   let batchQuery = supabase
     .from('batches')
     .select(
-      `id, name, slot, start_time, end_time,
+      `id, name, slot, start_time, end_time, teacher_id,
        subjects (name, name_bn),
+       teachers (name),
        batch_schedules (day_of_week, start_time, end_time),
        enrollments (id, status)`,
     )
@@ -181,6 +197,18 @@ export default async function TeachPage() {
       schedules.length === 0 || schedules.some((s) => s.day_of_week === dow)
     const todaySchedule = schedules.find((s) => s.day_of_week === dow)
     const subject = Array.isArray(batch.subjects) ? batch.subjects[0] : batch.subjects
+    const teacher = Array.isArray(batch.teachers) ? batch.teachers[0] : batch.teachers
+
+    const studentCount = (batch.enrollments ?? []).filter(
+      (e) => e.status === 'active',
+    ).length
+    const taken = takenBatchIds?.has(batch.id) ?? false
+    /**
+     * Whether this is the reader's own batch, by the `teacher_id` on it and never by
+     * rank — the same rule `registerAct` and the trigger read. A teacher sees only
+     * these, and an owner who also teaches gets §6.3's unchanged normal path on theirs.
+     */
+    const ownBatch = batch.teacher_id !== null && ownIds.includes(batch.teacher_id)
 
     return {
       id: batch.id,
@@ -189,10 +217,19 @@ export default async function TeachPage() {
       slot: batch.slot,
       startTime: todaySchedule?.start_time ?? batch.start_time,
       endTime: todaySchedule?.end_time ?? batch.end_time,
-      studentCount: (batch.enrollments ?? []).filter((e) => e.status === 'active')
-        .length,
-      taken: takenBatchIds?.has(batch.id) ?? false,
+      studentCount,
+      taken,
       meetsToday,
+      /** Whose batch this is — nothing to say about the reader's own. */
+      teacherName: ownBatch ? null : teacher?.name ?? null,
+      /**
+       * Who the review is waiting on, drawn in place of that name.
+       *
+       * Admin-only and never on their own batch, and withheld when the marked-registers
+       * read failed: "has not submitted" drawn from a blank is an accusation against a
+       * teacher who may well have filed it an hour ago, on the screen their owner reads.
+       */
+      waiting: isAdmin && !ownBatch && !markingUnknown && !taken && studentCount > 0,
     }
   })
 
@@ -220,24 +257,34 @@ export default async function TeachPage() {
    */
   const markable = todayRows.some((r) => r.studentCount > 0)
 
+  /*
+   * Ordered so the honest answer wins over the arithmetic. No classes today is true
+   * whatever the register read did; after that, a tally nobody can stand behind is not
+   * printed as a number.
+   *
+   * The last fork is §6.3: the same two counts, worded as a review for a staff-admin,
+   * because these are not their registers to file. See `reviewPending`.
+   */
+  const summary =
+    todayRows.length === 0
+      ? t.noClassToday
+      : markingUnknown
+        ? t.markedUnknown
+        : pending.length > 0
+          ? isAdmin
+            ? t.reviewPending(pending.length)
+            : t.pending(pending.length)
+          : markable
+            ? isAdmin
+              ? t.reviewAllTaken
+              : t.allTaken
+            : t.emptyToday
+
   return (
     <div className="flex flex-col gap-5">
       <div>
         <h1 className="text-xl font-bold text-ink">{greetingFor(session)}</h1>
-        {/* Ordered so the honest answer wins over the arithmetic. No classes today is
-            true whatever the register read did; after that, a tally nobody can stand
-            behind is not printed as a number. */}
-        <p className="mt-1 text-ink-soft">
-          {todayRows.length === 0
-            ? t.noClassToday
-            : markingUnknown
-              ? t.markedUnknown
-              : pending.length > 0
-                ? t.pending(pending.length)
-                : markable
-                  ? t.allTaken
-                  : t.emptyToday}
-        </p>
+        <p className="mt-1 text-ink-soft">{summary}</p>
       </div>
 
       {rows.length === 0 &&
@@ -298,6 +345,23 @@ export default async function TeachPage() {
                   <p className="num mt-0.5 text-sm text-ink-faint">
                     {t.students(row.studentCount)}
                   </p>
+                  {/* §6.3's review line: whose register this is, or who it is waiting
+                      on. Only ever on somebody else's batch — a teacher reading their
+                      own name here learns nothing, and an owner who teaches gets the
+                      unchanged path on the batches they take themselves. */}
+                  {row.waiting ? (
+                    <p className="mt-0.5 truncate text-sm font-medium text-late">
+                      {row.teacherName
+                        ? t.notSubmitted(row.teacherName)
+                        : t.noTeacherYet}
+                    </p>
+                  ) : (
+                    row.teacherName && (
+                      <p className="mt-0.5 truncate text-sm text-ink-faint">
+                        {row.teacherName}
+                      </p>
+                    )
+                  )}
                 </div>
 
                 {row.taken ? (
