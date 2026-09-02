@@ -13999,6 +13999,170 @@ check(
   )) === 1,
 )
 
+// ---------------------------------------------------------------------------
+// A credit, which is a payment the other way round (20260811000074).
+//
+// Written as service_role, because that is the only role that can write this table at
+// all and the floor trigger deliberately does not exempt it. Against centre C, whose
+// coverage assertions above read a date and never a sum, so the netted total is free to
+// move here.
+// ---------------------------------------------------------------------------
+const credit = (center, amount, note = 'moved down a tier mid-coverage') =>
+  asService(
+    `insert into payments (coaching_center_id, amount_bdt, method, note)
+     values ($1, $2, 'bkash', $3)`,
+    [center, -amount, note],
+  )
+
+check(
+  'a credit is refused with no coverage window and no reason given',
+  await deniedAsService(
+    `insert into payments (coaching_center_id, amount_bdt, method) values ($1, -500, 'bkash')`,
+    [centerC],
+  ),
+)
+check(
+  'and a blank reason is the same as none',
+  await deniedAsService(
+    `insert into payments (coaching_center_id, amount_bdt, method, note)
+     values ($1, -500, 'bkash', '   ')`,
+    [centerC],
+  ),
+)
+// The hole this constraint exists for: max(covers_period_end) cannot tell a refund from
+// a purchase, so a -৳1 row dated 2099 would buy permanent full access for nothing.
+check(
+  'a credit cannot name a period, which is what stops it buying coverage',
+  await deniedAsService(
+    `insert into payments
+       (coaching_center_id, amount_bdt, method, note, covers_period_start, covers_period_end)
+     values ($1, -500, 'bkash', 'refund', '2099-01-01', '2099-12-31')`,
+    [centerC],
+  ),
+)
+check(
+  'nor half of one',
+  await deniedAsService(
+    `insert into payments
+       (coaching_center_id, amount_bdt, method, note, covers_period_end)
+     values ($1, -500, 'bkash', 'refund', '2099-12-31')`,
+    [centerC],
+  ),
+)
+check(
+  'a credit cannot point at the purchase it answers',
+  await deniedAsService(
+    `insert into payments (coaching_center_id, amount_bdt, method, note, intent_id)
+     values ($1, -500, 'bkash', 'refund', $2)`,
+    [centerC, covering],
+  ),
+)
+check(
+  'and nothing at all can be recorded as zero',
+  await deniedAsService(
+    `insert into payments (coaching_center_id, amount_bdt, method, note)
+     values ($1, 0, 'bkash', 'nothing happened')`,
+    [centerC],
+  ),
+)
+
+const netted = async (center) =>
+  Number(
+    (
+      await db.query(
+        'select coalesce(sum(amount_bdt), 0) as total from payments where coaching_center_id = $1',
+        [center],
+      )
+    ).rows[0].total,
+  )
+
+// Read rather than written down. Every section above this one is free to record another
+// receipt against centre C, and a floor test that hard-coded the total would fail as a
+// broken floor the first time somebody did.
+const base = await netted(centerC)
+check('the receipts above left something to credit against', base > 1000, String(base))
+
+await credit(centerC, 750)
+check(
+  'a credit with a reason behind it is recorded',
+  (await netted(centerC)) === base - 750,
+  String(await netted(centerC)),
+)
+check(
+  'and it takes no coverage away, because it never carried any',
+  (await coverage(centerC)) === '2026-06-30',
+  String(await coverage(centerC)),
+)
+check(
+  'the founder panel reads the netted figure, so a credit shows up as money not received',
+  Number(
+    (
+      await asUser(db, ids.founder, (tx) =>
+        tx.query('select paid_bdt from platform_centers() where center_id = $1', [centerC]),
+      )
+    ).rows[0].paid_bdt,
+  ) === base - 750,
+)
+
+// 20260811000029's floor, on our own books: this table revokes UPDATE and DELETE, so a
+// credit larger than the receipts is permanent and reads forever as if the centre paid
+// us money it never paid.
+check(
+  'a credit larger than everything the centre has paid is refused',
+  await deniedAsService(
+    `insert into payments (coaching_center_id, amount_bdt, method, note)
+     values ($1, $2, 'bkash', 'more than they ever gave us')`,
+    [centerC, -(base - 749)],
+  ),
+)
+check(
+  'the refused credit left the total alone',
+  (await netted(centerC)) === base - 750,
+  String(await netted(centerC)),
+)
+// Per centre and not per anything wider: centre B has paid nothing, so its floor is at
+// nought however healthy the centre next door looks.
+check(
+  "and the floor is the centre's own, not the platform's",
+  await deniedAsService(
+    `insert into payments (coaching_center_id, amount_bdt, method, note)
+     values ($1, -1, 'bkash', 'a centre that has never paid us')`,
+    [centerB],
+  ),
+)
+// Down to the last taka is allowed: a customer who cancels in their first month is owed
+// everything they sent, and a floor that refused the exact figure would make the one
+// case it was written for the one case it blocks.
+await credit(centerC, base - 750, 'cancelled in the first month')
+check(
+  'a credit down to nought is allowed, which is the whole-refund case',
+  (await netted(centerC)) === 0,
+  String(await netted(centerC)),
+)
+check(
+  'and one taka past it is not',
+  await deniedAsService(
+    `insert into payments (coaching_center_id, amount_bdt, method, note)
+     values ($1, -1, 'bkash', 'one taka past nothing')`,
+    [centerC],
+  ),
+)
+check(
+  'a refunded centre still keeps the coverage it was sold',
+  (await coverage(centerC)) === '2026-06-30',
+  String(await coverage(centerC)),
+)
+check(
+  'and an owner cannot write a credit to their own centre either',
+  await deniedAsUser(
+    db,
+    ownerC,
+    `insert into payments (coaching_center_id, amount_bdt, method, note)
+     values ($1, -500, 'bkash', 'we would like our money back')`,
+    [centerC],
+  ),
+)
+
 // The cross-check 20260811000059's header promises. platform_centers() was left
 // restating its own max(covers_period_end) rather than reading this column, which is
 // only defensible while something compares the two — a founder ringing a customer off
