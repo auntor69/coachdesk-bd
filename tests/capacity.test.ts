@@ -3,7 +3,15 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import path from 'node:path'
 
-import { CAPACITY_EXCEEDED, isCapacityRefusal } from '../src/lib/capacity.ts'
+import {
+  CAPACITY_EXCEEDED,
+  PLAN_CEILING_EXCEEDED,
+  isCapacityRefusal,
+  isPlanCeilingRefusal,
+  refusedCeiling,
+} from '../src/lib/capacity.ts'
+import { bn } from '../src/lib/i18n/bn.ts'
+import { en } from '../src/lib/i18n/en.ts'
 
 /**
  * The five characters that turn a database refusal into a sentence an owner can act on.
@@ -105,4 +113,120 @@ test('capacity.ts stays importable from a client component', () => {
   const source = readFileSync(path.join(ROOT, 'src', 'lib', 'capacity.ts'), 'utf8')
 
   assert.doesNotMatch(source, /^\s*import\s/m)
+})
+
+/**
+ * The second code, and the four ceilings behind it.
+ *
+ * 20260811000075 raises `CD003` from four sibling guards and says which one in the
+ * error detail, because a batch limit and a per-batch seat limit want different
+ * sentences and one code cannot carry both. The tests below hold three things to the
+ * same list: the migration, `refusedCeiling`, and the dictionary group the Server
+ * Actions look the sentence up in. Any one of them growing a fifth ceiling on its own
+ * is the drift that has a refused write reaching a screen as nothing at all.
+ */
+
+const CEILINGS = readFileSync(
+  path.join(ROOT, 'supabase', 'migrations', '20260811000075_plan_ceilings.sql'),
+  'utf8',
+)
+
+/** Every dimension the migration puts in a refusal's detail, parsed rather than restated. */
+const DIMENSIONS = [
+  ...new Set([...CEILINGS.matchAll(/detail\s*=\s*'limit=(\w+)'/g)].map((m) => m[1])),
+].sort()
+
+test('the ceiling code the app looks for is the code those four guards raise', () => {
+  const raised = new Set([...CEILINGS.matchAll(/errcode\s*=\s*'([A-Z0-9]{5})'/g)].map((m) => m[1]))
+
+  assert.ok(raised.has(PLAN_CEILING_EXCEEDED), `migration 75 raises ${[...raised].join(', ')}`)
+  // 23503 is in there too, for a ceiling row that is missing entirely. It is a real
+  // Postgres code on purpose and must not be the one the ceiling handler answers.
+  assert.ok(raised.has('23503'))
+})
+
+test('the two CD codes are never each other', () => {
+  // They arrive at neighbouring `if`s in the same error branch and mean opposite things:
+  // CD001 opens a purchase screen, CD003 says no amount of money buys this. Swapped,
+  // a full free plan is offered student places it cannot use.
+  assert.notEqual(PLAN_CEILING_EXCEEDED, CAPACITY_EXCEEDED)
+  assert.match(PLAN_CEILING_EXCEEDED, /^CD\d{3}$/)
+
+  assert.equal(isCapacityRefusal({ code: PLAN_CEILING_EXCEEDED }), false)
+  assert.equal(isPlanCeilingRefusal({ code: CAPACITY_EXCEEDED }), false)
+  // CD002 belongs to the teacher clash in src/lib/settings/clash.ts.
+  assert.equal(isPlanCeilingRefusal({ code: 'CD002' }), false)
+})
+
+test('every ceiling the migration can refuse is one the app can name', () => {
+  assert.deepEqual(DIMENSIONS, ['batches', 'seats', 'subjects', 'teachers'])
+
+  for (const limit of DIMENSIONS) {
+    assert.equal(
+      refusedCeiling({ code: PLAN_CEILING_EXCEEDED, details: `limit=${limit}` }),
+      limit,
+    )
+    // `detail` as well, because node-postgres spells it that way and the RLS suite
+    // reads the error through it.
+    assert.equal(
+      refusedCeiling({ code: PLAN_CEILING_EXCEEDED, detail: `limit=${limit}` }),
+      limit,
+    )
+  }
+})
+
+test('a ceiling refusal nobody can name is null rather than a guess', () => {
+  // Null sends the caller to its own message. A wrong dimension would send it to a
+  // sentence about the wrong thing, which is worse than the generic one.
+  for (const detail of ['limit=rooms', 'limit=', 'limit', '', 'seats', 'limit=SEATS', 'x=seats']) {
+    assert.equal(refusedCeiling({ code: PLAN_CEILING_EXCEEDED, details: detail }), null, detail)
+  }
+
+  // No detail at all, and a detail that is not a string: both reachable, because the
+  // 23503 branch above raises without one.
+  for (const details of [undefined, null, 1, {}, ['limit=seats']]) {
+    assert.equal(refusedCeiling({ code: PLAN_CEILING_EXCEEDED, details }), null, String(details))
+  }
+
+  // And the code is checked first, so a detail on somebody else's error is ignored.
+  for (const code of ['23505', '42501', 'P0001', 'CD001', 'CD002', '', 'cd003']) {
+    assert.equal(refusedCeiling({ code, details: 'limit=seats' }), null, code)
+  }
+
+  for (const junk of [null, undefined, '', 'CD003', 0, true, [], NaN]) {
+    assert.equal(refusedCeiling(junk), null, String(junk))
+    assert.equal(isPlanCeilingRefusal(junk), false, String(junk))
+  }
+})
+
+test('every ceiling has a race sentence in both languages', () => {
+  // The group `ceilingRefusal` indexes with exactly the value `refusedCeiling` returns.
+  // A missing key is `undefined` handed to a screen as an error message, which renders
+  // as an empty red box — a refused write that looks like nothing happened.
+  for (const limit of DIMENSIONS) {
+    for (const [lang, d] of [['en', en], ['bn', bn]] as const) {
+      const sentence = d.settings.errors.ceilingRace[limit as keyof typeof d.settings.errors.ceilingRace]
+      assert.equal(typeof sentence, 'string', `${lang}.${limit}`)
+      assert.ok(sentence.length > 0, `${lang}.${limit}`)
+    }
+  }
+
+  // And no sentence the migration cannot produce, so the group cannot quietly outgrow
+  // the SQL either.
+  assert.deepEqual(Object.keys(en.settings.errors.ceilingRace).sort(), DIMENSIONS)
+  assert.deepEqual(Object.keys(bn.settings.errors.ceilingRace).sort(), DIMENSIONS)
+})
+
+test('a student saved without their batches says so in both languages', () => {
+  // The student row is written before the enrolments, with no transaction around the
+  // two, so this pair is the only place on that screen where a failure has to name what
+  // survived. Both must tell the owner not to re-submit: the instinct on seeing an error
+  // is to press the button again, and that puts the same child on the roster twice.
+  for (const [lang, d] of [['en', en], ['bn', bn]] as const) {
+    for (const key of ['enrolFailed', 'enrolBatchFull'] as const) {
+      const sentence = d.settings.students.errors[key]
+      assert.equal(typeof sentence, 'string', `${lang}.${key}`)
+      assert.notEqual(sentence, d.settings.errors.ceilingRace.seats, `${lang}.${key}`)
+    }
+  }
 })

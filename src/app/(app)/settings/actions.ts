@@ -29,7 +29,7 @@ import { normalizeBdMobile, phoneToLoginEmail } from '@/lib/bd/phone'
 import { elsewhere, mayChooseBranch, postedBranchId } from '@/lib/branches'
 import { usernameBaseFor } from '@/lib/bd/username'
 import { createUsernameLogin } from '@/lib/auth/username-login'
-import { isCapacityRefusal } from '@/lib/capacity'
+import { isCapacityRefusal, refusedCeiling } from '@/lib/capacity'
 import {
   MAX_IMPORT_ROWS,
   parseRoster,
@@ -214,6 +214,49 @@ function noRoomForStudent(session: CenterSession): string {
 }
 
 /**
+ * The database's own refusal, turned back into a sentence.
+ *
+ * 20260811000075 put the four plan ceilings below into triggers, so from now on a write
+ * can be refused by the database after `limitRefusal` or `batchRoomRefusal` has already
+ * counted and found room — which is a race between two managers, or a write nobody
+ * routed through a form. That refusal arrives as a SQLSTATE, and a SQLSTATE reaching a
+ * screen is a bug report rather than a limit.
+ *
+ * The pre-checks stay exactly where they are. They are what produces the useful message
+ * — the batch's name, the building, the number — and the trigger cannot know any of
+ * that. This is the floor under them, and it says the one thing the pre-checks cannot:
+ * that nothing was saved and the count the reader was looking at has moved.
+ *
+ * Null when the error is anything else, so a caller keeps its own error path.
+ */
+function ceilingRefusal(session: CenterSession, error: unknown): ActionState | null {
+  const which = refusedCeiling(error)
+  if (!which) return null
+  return { error: dict(session.locale).settings.errors.ceilingRace[which] }
+}
+
+/**
+ * The same refusal, for the three writes that happen after the student row is already
+ * in — so the sentence has to say so.
+ *
+ * `createStudent` and `updateStudent` write the student, then the guardian, then the
+ * batches, and there is no transaction around the three. Until 20260811000075 the last
+ * of those could realistically only fail if the request itself was broken, so its error
+ * was dropped and the action reported a clean success. The seats ceiling makes it fail
+ * for an ordinary reason — somebody else took the last chair — and a silent drop there
+ * is a child who is on the roster and in no batch, with nothing on screen saying so.
+ *
+ * Null when the write succeeded, so the caller carries on to its own `ok`.
+ */
+function enrolmentRefusal(session: CenterSession, error: unknown): ActionState | null {
+  if (!error) return null
+  const t = dict(session.locale).settings.students.errors
+  return {
+    error: refusedCeiling(error) === 'seats' ? t.enrolBatchFull : t.enrolFailed,
+  }
+}
+
+/**
  * Counts the rows that a plan limit applies to, then returns the refusal to send
  * back — or null when there is room for one more. `active`/`status` filters matter:
  * a retired subject should not hold a slot hostage on a plan that caps them.
@@ -225,10 +268,12 @@ function noRoomForStudent(session: CenterSession): string {
  * IT HANDS BACK THE MESSAGE RATHER THAN A BOOLEAN, and that is the whole point of
  * the shape. It used to answer true or false, and a count that came back as no
  * answer at all was read as zero rows — so a failed read said "this centre has
- * nothing yet", which is the one answer that opens the gate. Nothing else enforces
- * these caps: there is no trigger behind them, this function is the limit. A
- * boolean has nowhere to put "could not tell", and the caller that has to decide
- * what to do with a third state is the caller that gets it wrong.
+ * nothing yet", which is the one answer that opens the gate. 20260811000075 now puts
+ * a trigger behind these caps as well, and it counts the same rows this does, but a
+ * trigger cannot name the plan or the number — so this function is still the message
+ * and the trigger is only the floor. A boolean has nowhere to put "could not tell",
+ * and the caller that has to decide what to do with a third state is the caller that
+ * gets it wrong.
  *
  * `count: 'exact', head: true` is typed `number | null` and null means the query
  * failed. It is not zero, and the difference is a free plan quietly taking a second
@@ -320,8 +365,10 @@ async function limitRefusal(
  * membership when nothing was posted.
  *
  * Hands back the message rather than a boolean, and treats an unreadable count as
- * unanswered, for the reasons `limitRefusal` sets out at length. There is no trigger
- * behind this cap either: these two calls are the limit.
+ * unanswered, for the reasons `limitRefusal` sets out at length. 20260811000075's
+ * `batches_guard_ceiling` counts the same rows, per branch on the same condition, so
+ * these two calls are no longer the only thing standing there — but they are the only
+ * thing that can say which building is full and how many it holds.
  */
 async function batchRoomRefusal(
   session: CenterSession,
@@ -618,7 +665,7 @@ export async function createSubject(
     // The unique index on (center, name) is the only realistic failure, and
     // "you already have this" is more useful than a database string.
     if (error.code === '23505') return { error: t.subjects.errors.duplicate }
-    return { error: t.errors.addFailed }
+    return ceilingRefusal(session, error) ?? { error: t.errors.addFailed }
   }
 
   revalidatePath('/settings/subjects')
@@ -803,7 +850,7 @@ export async function setSubjectActive(
     .select('id')
 
   if (error || !saved || saved.length === 0) {
-    return { error: t.errors.changeFailed }
+    return ceilingRefusal(session, error) ?? { error: t.errors.changeFailed }
   }
 
   revalidatePath('/settings/subjects')
@@ -1157,7 +1204,7 @@ export async function createBatch(
 
   if (error || !batch) {
     if (error?.code === '23505') return { error: t.batches.errors.duplicate }
-    return { error: t.errors.createFailed }
+    return ceilingRefusal(session, error) ?? { error: t.errors.createFailed }
   }
 
   // Which days this batch meets, validated above.
@@ -1455,7 +1502,7 @@ export async function updateBatch(
 
   if (saveError) {
     if (saveError.code === '23505') return { error: t.batches.errors.duplicate }
-    return { error: t.batches.errors.saveFailed }
+    return ceilingRefusal(session, saveError) ?? { error: t.batches.errors.saveFailed }
   }
 
   // enrollments.subject_id is a copy taken from the batch when the student was
@@ -1665,8 +1712,11 @@ export async function createStudent(
     is_primary: true,
   })
 
+  // Captured, not dropped: see `enrolmentRefusal`. The revalidations below still have
+  // to run either way, because the student is on the roster whatever happened here.
+  let enrolFailure: unknown = null
   if (chosen.length > 0) {
-    await supabase.from('enrollments').insert(
+    const { error: enrolError } = await supabase.from('enrollments').insert(
       chosen.map((b) => ({
         coaching_center_id: session.active.centerId,
         student_id: student.id,
@@ -1674,12 +1724,13 @@ export async function createStudent(
         batch_id: b.id,
       })),
     )
+    enrolFailure = enrolError
   }
 
   revalidatePath('/settings/students')
   revalidatePath('/teach')
   revalidatePath('/dashboard')
-  return { ok: t.students.added }
+  return enrolmentRefusal(session, enrolFailure) ?? { ok: t.students.added }
 }
 
 /**
@@ -1961,6 +2012,8 @@ export async function updateStudent(
     })
   }
 
+  let enrolFailure: unknown = null
+
   if (toEnd.length > 0) {
     // ended_at as well as the status, because a status on its own cannot say when.
     // The invoices already raised for these months are left alone: the student was
@@ -1980,7 +2033,9 @@ export async function updateStudent(
   }
 
   if (toRevive.length > 0) {
-    await supabase
+    // The one update on this screen the seats trigger can refuse: a place given back
+    // can have been taken by somebody else in the meantime.
+    const { error: reviveError } = await supabase
       .from('enrollments')
       .update({ status: 'active', ended_at: null })
       .eq('coaching_center_id', session.active.centerId)
@@ -1988,6 +2043,7 @@ export async function updateStudent(
         'id',
         toRevive.map((e) => e.id),
       )
+    if (reviveError) enrolFailure = enrolFailure ?? reviveError
   }
 
   if (toInsert.length > 0) {
@@ -2000,7 +2056,7 @@ export async function updateStudent(
       .in('id', toInsert)
 
     if (batches && batches.length > 0) {
-      await supabase.from('enrollments').insert(
+      const { error: insertError } = await supabase.from('enrollments').insert(
         batches.map((b) => ({
           coaching_center_id: session.active.centerId,
           student_id: studentId,
@@ -2008,6 +2064,7 @@ export async function updateStudent(
           batch_id: b.id,
         })),
       )
+      if (insertError) enrolFailure = enrolFailure ?? insertError
     }
   }
 
@@ -2018,7 +2075,7 @@ export async function updateStudent(
   // worklist behind it, and the at-risk list, which names the parent to call.
   revalidatePath('/fees')
   revalidatePath('/at-risk')
-  return { ok: t.students.saved }
+  return enrolmentRefusal(session, enrolFailure) ?? { ok: t.students.saved }
 }
 
 /**
@@ -2137,6 +2194,12 @@ export async function importStudents(
   // stale page. The whole import is one statement, so a refusal on line 200 leaves
   // nothing behind, which is what this sentence tells the owner.
   if (isCapacityRefusal(error)) return { error: noRoomForStudent(session) }
+  // And the per-batch ceiling, which an import can hit without the roster being full:
+  // 40 pasted names all going into one batch that has room for 12. The RPC is one
+  // statement and `security invoker`, so the trigger sees the import as it sees a form
+  // and a refusal rolls back all 40 — which is what `ceilingRace.seats` says.
+  const ceiling = ceilingRefusal(session, error)
+  if (ceiling) return ceiling
   if (error || !data) return { error: t.import.errors.failed }
 
   revalidatePath('/settings/students')
@@ -2509,7 +2572,7 @@ export async function createTeacher(
   // is recoverable rather than orphaned: retrying the form finds it through the
   // lookup above and links it instead of failing on the unique phone.
   if (error || !teacher) {
-    return { error: t.errors.addFailed }
+    return ceilingRefusal(session, error) ?? { error: t.errors.addFailed }
   }
 
   // Written even when every box is unticked, because a missing permissions row
@@ -2882,7 +2945,7 @@ export async function toggleTeacherActive(
     .eq('id', teacher.id)
     .eq('coaching_center_id', centerId)
 
-  if (error) return { error: t.errors.changeFailed }
+  if (error) return ceilingRefusal(session, error) ?? { error: t.errors.changeFailed }
 
   if (teacher.user_id) {
     if (active) {

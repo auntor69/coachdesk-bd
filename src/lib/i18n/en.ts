@@ -3288,6 +3288,27 @@ export const en: Dictionary = {
        */
       planLimit: 'This plan is full. Changing plan makes room.',
       /**
+       * The same four limits, refused by the database after the form had already
+       * counted and found room — so a colleague took the last place in the seconds
+       * between. Sibling of `batches.errors.teacherBusy` and written for the same
+       * reason: it is the one refusal that is not the reader's mistake, and telling
+       * somebody their plan is full when they have just been looking at a screen with
+       * room on it reads as a bug rather than as a limit.
+       *
+       * Four sentences because the thing to do about it differs. Only `seats` has a
+       * next step that is not "look again".
+       */
+      ceilingRace: {
+        batches:
+          'Somebody started another batch while you were filling this in, and the plan is now full. Nothing was added — reload to see what is running.',
+        subjects:
+          'Somebody added another subject while you were filling this in, and the plan is now full. Nothing was added — reload to see the list.',
+        teachers:
+          'Somebody added another teacher while you were filling this in, and the plan is now full. Nothing was added — reload to see the list.',
+        seats:
+          'That batch filled up while you were filling this in. Nothing was added — put them in a batch that still has room.',
+      },
+      /**
        * planLimit's per-branch sibling, and a different sentence because the answer
        * is different. §8.4: "Batches: 100 per branch, not 100 for the organisation.
        * Rooms and timetables are physical and do not pool." An institution whose
@@ -3908,6 +3929,18 @@ export const en: Dictionary = {
         duplicateCode: 'A student with this ID already exists.',
         notFound: 'Student not found.',
         saveFailed: 'Could not save those details.',
+
+        /**
+         * The student row is written before the batches are, so these two are the
+         * only messages on this screen that have to say what survived. Both end by
+         * telling the owner not to add the student again, because the instinct on
+         * seeing an error is to re-submit the form, and re-submitting this one
+         * leaves two of the same child on the roster.
+         */
+        enrolFailed:
+          'The student was saved, but could not be put in the batches you picked. Open their record and add the batches — do not add the student again.',
+        enrolBatchFull:
+          'The student was saved, but a batch you picked filled up while you were filling this in. Open their record and pick a batch that still has room — do not add the student again.',
       },
     },
 

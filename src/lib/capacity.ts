@@ -84,14 +84,16 @@ export function isPlanCeilingRefusal(error: unknown): boolean {
   return code === PLAN_CEILING_EXCEEDED
 }
 
-/** Which ceiling refused, when one did. Null when the error is not `CD002` or says nothing. */
+/** Which ceiling refused, when one did. Null when the error is not `CD003` or says nothing. */
 export function refusedCeiling(
   error: unknown,
 ): 'batches' | 'subjects' | 'teachers' | 'seats' | null {
   if (!isPlanCeilingRefusal(error)) return null
+  // `details` is what the supabase-js client calls it and `detail` is what node-postgres
+  // does; the RLS suite reads the second, every Server Action the first.
   const detail = (error as { details?: unknown; detail?: unknown }).details
     ?? (error as { detail?: unknown }).detail
-  if (typeof detail !== 'string') return null
+  if (typeof detail !== 'string' || !detail.startsWith('limit=')) return null
   const named = detail.slice('limit='.length)
   return named === 'batches' || named === 'subjects' || named === 'teachers' || named === 'seats'
     ? named
