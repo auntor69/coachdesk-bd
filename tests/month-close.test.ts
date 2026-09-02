@@ -37,6 +37,8 @@
  */
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
+import { readFileSync } from 'node:fs'
+import path from 'node:path'
 
 import {
   closeMonths,
@@ -511,4 +513,139 @@ test('a count that could not be a count is treated as none', () => {
 
   assert.equal(sent.total, 2)
   assert.deepEqual(sent.lines, [{ kind: 'results', n: 2 }])
+})
+
+/**
+ * And the screen's own shape.
+ *
+ * §20.8 step 6, sixth screen — and the one the business is built on: it is read out loud
+ * across a table on about day 28 and screenshotted afterwards. What was wrong was the
+ * shape, not the sums. Four cards stacked in a 700px column meant the figure and the three
+ * that make it mean something could not be seen in one glance on the laptop it is shown
+ * on, with half the screen empty beside them.
+ *
+ * Read off the source because there is no renderer here. What these catch is the drift a
+ * screenshot does not show: the ledger sliding back under the collected figure, the
+ * message tally being lost on a month whose money could not be added up (those four counts
+ * are their own reads and did not fail), and — the one that would cost real money — a plan
+ * gate appearing on the one screen that deliberately has none.
+ */
+const PAGE = readFileSync(
+  path.join(import.meta.dirname, '..', 'src', 'app', '(app)', 'fees', 'close', 'page.tsx'),
+  'utf8',
+)
+
+/**
+ * The render begins at the grid root, anchored on a newline-free substring: the working
+ * tree may be CRLF and a pattern spanning a line break would find nothing here.
+ */
+const SHEET = PAGE.slice(PAGE.indexOf('<div className="flex flex-col gap-4 lg:grid'))
+
+/**
+ * See plan-page.test.ts: the lookbehind keeps `border-2` and `lg:col-span-N` out. The
+ * backtick is in the class because the message card's span depends on whether there is a
+ * ledger beside it, so its `order-5` opens a template literal rather than a quoted string.
+ */
+function ordersIn(source: string): string[] {
+  return [...source.matchAll(/(?<=["\s`])order-(\d+|last)\b/g)].map((m) => m[1])
+}
+
+test('shape: the month takes seven columns and the figures beside it five', () => {
+  assert.ok(SHEET.length > 500, 'the render is not where this test expects it')
+  assert.match(SHEET, /lg:grid lg:grid-cols-12 lg:items-start lg:gap-6/)
+
+  // The collected figure and the ledger, side by side from lg and stacked below it. Seven
+  // and five rather than six and six: the big number is the one in the largest type.
+  assert.match(SHEET, /<Card className="order-3 border-brand-200 bg-brand-50 lg:col-span-7">/)
+  assert.match(SHEET, /<Card className="order-4 lg:col-span-5">/)
+
+  // And the two next questions sit beside the message tally on the row under them, rather
+  // than at the bottom of a column of their own.
+  assert.match(SHEET, /<nav className="order-6 flex flex-col gap-1 lg:col-span-5">/)
+})
+
+test('shape: every block has a place in the phone order', () => {
+  // Three 3s and they are one place: the failed read, the quiet month and the collected
+  // figure are three exclusive drawings of the same block, so they share a number on
+  // purpose. Everything after them ascends.
+  assert.deepEqual(ordersIn(SHEET), ['1', '2', '3', '3', '3', '4', '5', '6'])
+})
+
+test('shape: the figure and the ledger are drawn once each, from the tested function', () => {
+  // One derived answer. Nothing in the page does arithmetic — every figure comes from
+  // `monthClose`, and a second rendering of one of them is one that can disagree.
+  assert.equal(SHEET.split('formatTaka(m.collected)').length - 1, 1)
+  assert.match(SHEET, /<Figure label=\{t\.opening\} amount=\{m\.opening\} \/>/)
+  assert.match(SHEET, /<Figure label=\{t\.billed\} amount=\{m\.billed\} \/>/)
+  assert.match(SHEET, /<Figure label=\{t\.closing\} amount=\{m\.closing\} strong \/>/)
+
+  // The credit line and its explanation only when there is credit, because it is the one
+  // reason the four figures above will not add up.
+  assert.match(SHEET, /\{m\.credit > 0 && \(/)
+  assert.match(SHEET, /\{t\.creditNote\}/)
+
+  // Money paid ahead, under the figure it is part of rather than at the foot of the card.
+  assert.match(SHEET, /\{m\.advance > 0 && \(/)
+})
+
+test('shape: the message tally survives a month whose money could not be added up', () => {
+  // The four counts are their own reads and did not fail. On the screen whose job is to say
+  // what the product did, ninety messages sent is still true on a day when the ledger
+  // cannot be. And it is drawn once now, not copied into three branches.
+  assert.match(PAGE, /const showLedger = ledgerProblem === null && !nothingHappened/)
+  assert.match(PAGE, /const showMessages = sent\.total > 0 \|\| showLedger/)
+  assert.equal(SHEET.split('t.messagesSent(sent.total)').length - 1, 1)
+
+  // A quiet month says one thing, not two: "nothing was billed" followed by "no messages
+  // went out" is the same sentence twice, which is what `sent.total > 0` keeps out.
+  assert.match(SHEET, /\{showMessages && \(/)
+  assert.match(SHEET, /\{sent\.lines\.length > 1 && \(/)
+
+  // The two next questions belong to a month that added up. Pointing an owner at the
+  // register for a month this screen has just refused to total is pointing them at a
+  // second screen to be confused by.
+  assert.match(SHEET, /\{showLedger && \(/)
+})
+
+test('shape: the letterhead says whose month it is, and what the screen is', () => {
+  // It gets screenshotted and sent to somebody who was not in the conversation. The centre
+  // name is the heading; the fallback is the session's own copy of it.
+  assert.match(SHEET, /\{center\?\.name \?\? session\.active\.centerName\}/)
+  assert.match(SHEET, /\{t\.title\} · \{formatMonth\(month, locale\)\}/)
+  assert.match(SHEET, /\{t\.subtitle\}/, 'the line that says what the figures are went')
+
+  // A plain GET form, so the month is in a URL that can be shared. The submit button is
+  // load-bearing: Android Chrome fires no navigation on a bare <select> change.
+  assert.match(SHEET, /<form\r?\n\s+method="get"/)
+  assert.match(SHEET, /name="month"\r?\n\s+defaultValue=\{month\}/)
+  assert.match(SHEET, /<button\r?\n\s+type="submit"/)
+})
+
+test('shape: nothing about who may read this has moved', () => {
+  // §38. This was a layout change.
+  assert.match(PAGE, /const session = await pageCapability\('fees'\)/)
+
+  // NO PLAN GATE, and this is the assertion that would cost the most if it failed: the
+  // screen is the pitch, not the work. A free teacher reading ৳47,000 collected against a
+  // ৳499 price is the most valuable person in the product, and locking it would be
+  // charging admission to our own sales conversation.
+  assert.doesNotMatch(PAGE, /has\(session\.plan/, 'a plan gate appeared on the pitch screen')
+
+  // Six reads, every one scoped on the centre as well as on RLS, plus the letterhead by id.
+  assert.equal(PAGE.split(".eq('coaching_center_id', session.active.centerId)").length - 1, 6)
+  assert.match(PAGE, /\.eq\('id', session\.active\.centerId\)/)
+
+  // Dhaka calendar boundaries on every one of them. Compared against a bare date the
+  // cutoff lands at 6am Dhaka, and every payment taken before breakfast on the 1st is
+  // counted into a month the owner has already been shown and has already agreed with.
+  assert.equal(PAGE.split('T00:00:00+06:00').length - 1, 9)
+
+  // Both ledger reads paged: a month read one page deep balances perfectly and is short by
+  // two hundred invoices, which is a wrong total in a screenshot that adds up.
+  assert.equal(PAGE.split('pageAll((from, to) =>').length - 1, 2)
+  assert.match(PAGE, /const ledgerProblem = worstFailure\(balances, payments\)/)
+
+  // And the figures come from the tested module, both of them.
+  assert.match(PAGE, /const m = monthClose\(\{/)
+  assert.match(PAGE, /const sent = monthMessages\(\{ reminders, notes, results, absences \}\)/)
 })

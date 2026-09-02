@@ -87,6 +87,15 @@ const MONTH_RE = /^\d{4}-\d{2}-01$/
  * quoted back against a price. The tally is monthMessages in lib/fees/month-close.ts,
  * and its four keys are required rather than optional so a fifth kind of message
  * cannot ship reading zero here.
+ *
+ * FOUR BLOCKS AND NOT ONE COLUMN. This is the screen that gets read out loud across a
+ * table and screenshotted afterwards, and a 700px column of stacked cards with half a
+ * laptop empty beside it is the wrong shape for both: the figure and the three that make
+ * it mean something belong in one glance. So from lg the collected figure takes seven
+ * columns beside five of the ledger, with the message tally and the two next questions on
+ * the row under them. On a phone it is the same four blocks in the same order, stacked.
+ * No `contents` wrapper anywhere — nothing has to interleave, so the source order is the
+ * phone order and each block carries its own `order-N`.
  */
 export default async function MonthClosePage({
   searchParams,
@@ -268,118 +277,104 @@ export default async function MonthClosePage({
       && m.credit === 0
 
   /*
-   * The work the product did, counted and not characterised. See the note at the head
-   * of this file for why it says no more than this.
+   * Which of the three months this is, asked once because the answer now places four
+   * separate blocks rather than picking one branch of one ternary.
    *
-   * Four kinds and a total, because the total on its own is the number that gets
-   * doubted: "ninety-one messages" invites "ninety-one of what", and the four answers
-   * are four different reasons this product is worth paying for. The breakdown is
-   * drawn only when more than one kind happened — with one kind it is the total
-   * written twice.
-   *
-   * Held in a variable because it belongs on both sides of the branch below, and
-   * copying twenty lines of markup is how the two copies end up saying different
-   * things.
+   * The message tally is drawn beside a month that added up either way, and on a month
+   * that could not be read or had nothing in it only when there is something to report.
+   * Those four counts are their own reads: on the screen whose job is to say what the
+   * product did, ninety messages sent is still true on a day when the money cannot be
+   * added up. But "nothing was billed this month" followed by "no messages went out" is
+   * the same sentence twice, and a centre that has done neither does not need both.
    */
-  const messagesCard = (
-    <Card>
-      <p className="text-ink">
-        {sent.total > 0 ? t.messagesSent(sent.total) : t.messagesNone}
-      </p>
-      {sent.lines.length > 1 && (
-        <dl className="mt-2 flex flex-col gap-1 border-t border-line pt-2 text-sm">
-          {sent.lines.map((line) => (
-            <div key={line.kind} className="flex items-baseline justify-between gap-4">
-              <dt className="text-ink-soft">{t.messageKinds[line.kind]}</dt>
-              <dd className="num font-semibold text-ink">{digits(line.n, locale)}</dd>
-            </div>
-          ))}
-        </dl>
-      )}
-    </Card>
-  )
+  const showLedger = ledgerProblem === null && !nothingHappened
+  const showMessages = sent.total > 0 || showLedger
 
   return (
-    <div className="flex flex-col gap-4">
-      <Link
-        href="/fees"
-        className="inline-flex min-h-tap items-center font-medium text-brand-700"
+    // One column on a phone; from lg the month itself is seven columns wide beside five of
+    // the figures that make it mean something, with what the product did and where to go
+    // next on the row under them. Four grid items and no `contents` wrapper: nothing here
+    // has to interleave with anything, so the phone order is the source order.
+    <div className="flex flex-col gap-4 lg:grid lg:grid-cols-12 lg:items-start lg:gap-6">
+      {/* The way back and the month being read, on one row — every finance screen's shape.
+          A plain GET form: no client component, no JavaScript, and the month ends up in a
+          URL that can be bookmarked or shared. The submit button is not decoration —
+          Android Chrome fires no navigation on a bare <select> change. */}
+      <div
+        className="order-1 flex flex-wrap items-end justify-between gap-x-4 gap-y-2
+          lg:col-span-12"
       >
-        ← {t.backToFees}
-      </Link>
-
-      {/* A plain GET form, the register's exactly: no client component, no
-          JavaScript, and the month ends up in the URL where it can be bookmarked or
-          shared. The submit button is not decoration — Android Chrome does not fire a
-          navigation on a bare <select> change. */}
-      <form method="get" className="flex items-end gap-2">
-        <label className="flex min-w-0 flex-1 flex-col gap-1.5">
-          <span className="font-medium text-ink">{t.month}</span>
-          <select
-            name="month"
-            defaultValue={month}
-            className="min-h-tap w-full rounded-xl border-2 border-line bg-white px-3
-              font-medium text-ink"
-          >
-            {months.map((option) => (
-              <option key={option.value} value={option.value}>
-                {option.label}
-              </option>
-            ))}
-          </select>
-        </label>
-        <button
-          type="submit"
-          className="inline-flex min-h-tap shrink-0 items-center rounded-xl border-2
-            border-brand-500 bg-brand-50 px-4 font-medium text-brand-800"
+        <Link
+          href="/fees"
+          className="inline-flex min-h-tap items-center font-medium text-brand-700"
         >
-          {t.show}
-        </button>
-      </form>
+          ← {t.backToFees}
+        </Link>
 
-      <header>
-        <h1 className="text-xl font-bold text-ink">
+        <form
+          method="get"
+          className="flex w-full min-w-0 items-end justify-end gap-2 sm:w-auto sm:flex-1"
+        >
+          <label className="flex min-w-0 flex-1 flex-col gap-1.5 sm:w-56 sm:flex-none">
+            <span className="font-medium text-ink">{t.month}</span>
+            <select
+              name="month"
+              defaultValue={month}
+              className="min-h-tap w-full rounded-xl border-2 border-line bg-white px-3
+                font-medium text-ink"
+            >
+              {months.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </label>
+          <button
+            type="submit"
+            className="inline-flex min-h-tap shrink-0 items-center rounded-xl border-2
+              border-brand-500 bg-brand-50 px-4 font-medium text-brand-800"
+          >
+            {t.show}
+          </button>
+        </form>
+      </div>
+
+      {/* The letterhead, and it now says what the screen is as well as whose month it is:
+          this page gets sent to somebody who was not in the conversation more often than
+          any other, and the subtitle was written for it and never drawn. */}
+      <header className="order-2 lg:col-span-12">
+        <h1 className="text-xl font-bold text-ink lg:text-2xl">
           {center?.name ?? session.active.centerName}
         </h1>
         <p className="font-medium text-ink-soft">
           {t.title} · {formatMonth(month, locale)}
         </p>
+        <p className="text-sm text-ink-faint">{t.subtitle}</p>
       </header>
 
       {ledgerProblem !== null ? (
         /* No figures at all rather than the ones that happen to have arrived. Half a
-           ledger is not a cautious version of a ledger — it is a wrong one, and this
-           is the screen whose numbers get quoted back at us across a table.
-
-           The message tally is still drawn. Those four counts are their own reads and
-           did not fail, and on the screen whose job is to say what the product did,
-           ninety messages sent is still true on a day when the money cannot be added
-           up. */
-        <>
-          <Card className="border-late/30 bg-late/5">
-            <p className="font-medium text-ink">
-              {ledgerProblem === 'tooLarge' ? t.tooLarge : t.unreadable}
-            </p>
-          </Card>
-          {sent.total > 0 && messagesCard}
-        </>
+           ledger is not a cautious version of a ledger — it is a wrong one, and this is
+           the screen whose numbers get quoted back at us across a table. Full width,
+           because there is nothing to put beside a sentence saying the month cannot be
+           added up. */
+        <Card className="order-3 border-late/30 bg-late/5 lg:col-span-12">
+          <p className="font-medium text-ink">
+            {ledgerProblem === 'tooLarge' ? t.tooLarge : t.unreadable}
+          </p>
+        </Card>
       ) : nothingHappened ? (
-        <>
-          <Card>
-            <p className="text-ink-soft">{t.empty}</p>
-          </Card>
-          {/* Only when there is something to report. "Nothing was billed" followed by
-              "no messages were sent" is the same sentence twice, and a centre that has
-              done neither does not need to be told so in two cards. */}
-          {sent.total > 0 && messagesCard}
-        </>
+        <Card className="order-3 lg:col-span-12">
+          <p className="text-ink-soft">{t.empty}</p>
+        </Card>
       ) : (
         <>
           {/* The figure the conversation turns on, in the largest type on the screen.
               Money in ASCII in both languages — it gets checked against a bKash
               statement, and a total in Bangla numerals is one the owner has to
               translate before they can compare it. */}
-          <Card className="border-brand-200 bg-brand-50">
+          <Card className="order-3 border-brand-200 bg-brand-50 lg:col-span-7">
             <p className="text-sm font-medium text-brand-800">{t.collected}</p>
             <p className="num mt-1 text-4xl font-bold text-brand-900">
               {formatTaka(m.collected)}
@@ -403,8 +398,9 @@ export default async function MonthClosePage({
           </Card>
 
           {/* The three that make the big one mean something. A ৳47,000 month is a
-              different story depending on whether ৳60,000 was owed at the start. */}
-          <Card>
+              different story depending on whether ৳60,000 was owed at the start — so
+              they are beside the figure on a laptop and not somewhere under it. */}
+          <Card className="order-4 lg:col-span-5">
             <dl className="flex flex-col gap-2">
               <Figure label={t.opening} amount={m.opening} />
               <Figure label={t.billed} amount={m.billed} />
@@ -421,31 +417,55 @@ export default async function MonthClosePage({
               </div>
             )}
           </Card>
-
-          {messagesCard}
-
-          {/* Where the two obvious next questions go. "Where did that come from" is
-              the register, which is the same month by the same +06:00 boundary, so the
-              two pages cannot disagree about what July was. "What does this cost" is
-              the plan page, and an owner who has just read their own month is the one
-              person for whom that page is worth opening. */}
-          <nav className="flex flex-col gap-1">
-            <Link
-              href={`/fees/register?month=${month}`}
-              className="inline-flex min-h-tap items-center font-medium text-brand-700
-                underline"
-            >
-              {t.registerLink} →
-            </Link>
-            <Link
-              href="/settings/plan"
-              className="inline-flex min-h-tap items-center font-medium text-brand-700
-                underline"
-            >
-              {t.planLink} →
-            </Link>
-          </nav>
         </>
+      )}
+
+      {/* The work the product did, counted and not characterised — see the note at the head
+          of this file for why it says no more than this. Four kinds and a total, because the
+          total on its own is the number that gets doubted: "ninety-one messages" invites
+          "ninety-one of what", and the four answers are four different reasons this product
+          is worth paying for. The breakdown only when more than one kind happened; with one
+          kind it is the total written twice. */}
+      {showMessages && (
+        <Card className={`order-5 ${showLedger ? 'lg:col-span-7' : 'lg:col-span-12'}`}>
+          <p className="text-ink">
+            {sent.total > 0 ? t.messagesSent(sent.total) : t.messagesNone}
+          </p>
+          {sent.lines.length > 1 && (
+            <dl className="mt-2 flex flex-col gap-1 border-t border-line pt-2 text-sm">
+              {sent.lines.map((line) => (
+                <div key={line.kind} className="flex items-baseline justify-between gap-4">
+                  <dt className="text-ink-soft">{t.messageKinds[line.kind]}</dt>
+                  <dd className="num font-semibold text-ink">{digits(line.n, locale)}</dd>
+                </div>
+              ))}
+            </dl>
+          )}
+        </Card>
+      )}
+
+      {/* Where the two obvious next questions go, beside the messages rather than under
+          everything: "where did that come from" is the register, the same month by the same
+          +06:00 boundary so the two pages cannot disagree about what July was, and "what
+          does this cost" is the plan page — which an owner who has just read their own month
+          is the one person in this product for whom it is worth opening. */}
+      {showLedger && (
+        <nav className="order-6 flex flex-col gap-1 lg:col-span-5">
+          <Link
+            href={`/fees/register?month=${month}`}
+            className="inline-flex min-h-tap items-center font-medium text-brand-700
+              underline"
+          >
+            {t.registerLink} →
+          </Link>
+          <Link
+            href="/settings/plan"
+            className="inline-flex min-h-tap items-center font-medium text-brand-700
+              underline"
+          >
+            {t.planLink} →
+          </Link>
+        </nav>
       )}
     </div>
   )
