@@ -12,9 +12,14 @@
  * arrives as a string and stops adding.
  *
  * Relative imports with extensions — `node --test` on TS, no tsconfig paths.
+ *
+ * The last section reads the page's own source and guards the screen's shape; see the
+ * comment above it.
  */
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
+import { readFileSync } from 'node:fs'
+import path from 'node:path'
 
 import {
   expenseRows,
@@ -277,6 +282,182 @@ test('nothing spent is an empty list and a set of zeroes, not a crash', () => {
     assert.equal(tally.counted, 0)
     assert.equal(tally.deferredToPayroll, 0)
   }
+})
+
+/**
+ * And the screen's own shape.
+ *
+ * §20.8 step 6, third screen. The sums above were already right; what was wrong was where
+ * they were printed and how much of a laptop the page wasted getting to them. The
+ * by-category breakdown — the only part of this page that answers a question an owner
+ * arrives with — was under the table, so a month with sixty vouchers put two screens of
+ * evidence in front of the summary of it. It is above the rows now, in even columns with
+ * each category's voucher count, and the month's total is one figure drawn once rather
+ * than one in a table foot and another in a list below it. The form moved into a rail
+ * beside the month from `xl`.
+ *
+ * Read off the page's source because there is no renderer here. What these catch is the
+ * drift a screenshot does not show: the summary sliding back under the table, the split
+ * dropping to `lg` where the table does not fit, a category figure losing the count behind
+ * it, and the three answers (a read that failed, a month with nothing in it, a month with
+ * spending) collapsing into fewer.
+ */
+const PAGE = readFileSync(
+  path.join(import.meta.dirname, '..', 'src', 'app', '(app)', 'expenses', 'page.tsx'),
+  'utf8',
+)
+
+/**
+ * The render begins at the grid root. Anchored on a newline-free substring that includes
+ * `xl:grid`, which the plan wall's own `flex flex-col gap-4` root does not have — the
+ * working tree is CRLF and a pattern spanning a line break would find nothing here and
+ * everything on a Linux checkout.
+ */
+const SHEET = PAGE.slice(PAGE.indexOf('<div className="flex flex-col gap-4 xl:grid'))
+const RAIL_AT = SHEET.indexOf('<div className="contents xl:order-3 xl:col-span-4')
+const MAIN_AT = SHEET.indexOf('<div className="contents xl:order-2 xl:col-span-8')
+const HEAD = SHEET.slice(0, RAIL_AT)
+const RAIL = SHEET.slice(RAIL_AT, MAIN_AT)
+const MAIN = SHEET.slice(MAIN_AT)
+
+/** See plan-page.test.ts: the lookbehind keeps `border-2` and `xl:order-N` out. */
+function ordersIn(source: string): string[] {
+  return [...source.matchAll(/(?<=["\s])order-(\d+|last)\b/g)].map((m) => m[1])
+}
+
+test('shape: one column on a phone, twelve from xl, and the month gets eight', () => {
+  assert.ok(SHEET.length > 500, 'the render is not where this test expects it')
+  assert.ok(RAIL_AT > 0 && MAIN_AT > RAIL_AT, 'the two columns are gone or swapped')
+
+  assert.match(SHEET, /xl:grid xl:grid-cols-12 xl:items-start xl:gap-6/)
+
+  // Both wrappers are `contents` below xl, so every block inside them is a direct child of
+  // the phone's flex column and its own `order-N` is what places it.
+  assert.match(RAIL, /^<div className="contents xl:order-3 xl:col-span-4 xl:flex/)
+  assert.match(MAIN, /^<div className="contents xl:order-2 xl:col-span-8 xl:flex/)
+
+  // `xl` and not `lg`, and this is the arithmetic: the table asks for 36rem = 576px, and
+  // eight of twelve columns is 469px at `lg` against 640px at `xl`. A split at `lg` would
+  // hand a laptop a horizontal scrollbar it does not have today.
+  assert.match(MAIN, /min-w-\[36rem\]/)
+  assert.doesNotMatch(SHEET, /lg:col-span-|lg:grid-cols-/, 'the split dropped to lg')
+})
+
+test('shape: every block has a place in the phone order, and no two share one', () => {
+  // Two full-width rows, then one block in each column. Per column the numbers must
+  // ascend in source order or the phone and the laptop disagree about what follows what.
+  assert.equal(ordersIn(HEAD).join(), '1,2')
+  assert.equal(ordersIn(RAIL).join(), '3')
+  assert.equal(ordersIn(MAIN).join(), '4')
+
+  const all = ordersIn(SHEET)
+  assert.equal(new Set(all).size, all.length, 'two blocks are fighting over one place')
+  assert.deepEqual(
+    all.map(Number),
+    [...all.map(Number)].sort((a, b) => a - b),
+  )
+})
+
+test('shape: the figures are above the rows, and the total is drawn once', () => {
+  const summary = MAIN.indexOf('{t.byCategory}')
+  const table = MAIN.indexOf('<table')
+  assert.ok(summary > 0, 'the breakdown by category is gone')
+  assert.ok(table > summary, 'the table is above the summary of it')
+
+  // The headline, and the count of vouchers it is made of.
+  assert.match(MAIN, /num text-3xl font-bold text-ink">\{formatTaka\(tally\.total\)\}/)
+  assert.match(MAIN, /\{t\.entries\(tally\.entries\)\}/)
+
+  // One rendering of one figure. It used to be printed in the table's foot and again in
+  // the list below it, and two renderings of one sum is one that can disagree with itself.
+  assert.equal((MAIN.match(/formatTaka\(tally\.total\)/g) ?? []).length, 1)
+  assert.doesNotMatch(MAIN, /<tfoot/, 'the total came back to the table foot')
+})
+
+test('shape: every category carries its count, in even columns and not in tiles', () => {
+  const band = MAIN.slice(MAIN.indexOf('{t.byCategory}'), MAIN.indexOf('<div className="-mx-4'))
+
+  assert.match(band, /tally\.byCategory\.map\(\(c\) =>/)
+  assert.match(band, /\{t\.categories\[c\.category\]\}/, 'the categories lost their names')
+  assert.match(band, /\{formatTaka\(c\.amount\)\}/)
+  assert.match(band, /\{t\.entries\(c\.entries\)\}/, 'a category figure with no count behind it')
+
+  // A grid and not the register's wrapped band: twelve names as long as "printing and
+  // photocopying" wrap into a ragged block, where a grid puts them in even columns.
+  assert.match(band, /<dl className="mt-2 grid grid-cols-2 gap-x-5 gap-y-3 sm:grid-cols-3/)
+
+  // And no boxes inside the box (§20.7). A bordered tile in a bordered section is the
+  // nested container the directive names, and there would be up to twelve of them.
+  const tile = band.slice(band.indexOf('tally.byCategory.map'))
+  assert.doesNotMatch(tile, /rounded-|border-2|border border-/, 'the categories became tiles')
+})
+
+test('shape: the salary caveat appears once, beside the lines it explains', () => {
+  // One guard around both the two addends and the sentence about them, so a month with no
+  // salary row in it gets neither. "৳0 left to payroll" is a figure an owner would stop
+  // and check for nothing.
+  assert.equal((MAIN.match(/\{tally\.deferredToPayroll !== 0 && \(/g) ?? []).length, 1)
+
+  const counted = MAIN.indexOf('formatTaka(tally.counted)')
+  const deferred = MAIN.indexOf('formatTaka(tally.deferredToPayroll)')
+  const note = MAIN.indexOf('t.deferredNote(')
+  const categories = MAIN.indexOf('{t.byCategory}')
+  assert.ok(counted > 0 && deferred > counted, 'what the profit line takes off comes first')
+  assert.ok(note > deferred, 'the sentence is above the lines it is about')
+  assert.ok(note < categories, 'the caveat drifted below the breakdown')
+})
+
+test('shape: the three answers are still three, and the form is still gated', () => {
+  // A read that failed and a month with nothing in it are different sentences, and the
+  // second one is a statement about the centre's business. Printing it because a query
+  // failed would be the page claiming the centre spent nothing.
+  assert.match(MAIN, /\{problem === 'tooLarge' \? t\.tooLarge : t\.unreadable\}/)
+  assert.match(MAIN, /rows\.length === 0 \?[\s\S]{0,160}\{t\.empty\}/)
+
+  // And no figures are drawn on either of the first two.
+  const problem = MAIN.indexOf('problem !== null ?')
+  assert.ok(problem > 0 && problem < MAIN.indexOf('{t.byCategory}'))
+
+  // A read-only centre keeps the list and loses the form.
+  assert.match(RAIL, /\{session\.access === 'full' && \(/)
+  assert.match(RAIL, /<ExpenseForm/)
+})
+
+test('shape: the month picker is still a plain GET form, and says the month once', () => {
+  assert.match(HEAD, /<form\r?\n\s+method="get"/, 'the month picker is no longer a GET form')
+  assert.match(HEAD, /name="month"\r?\n\s+defaultValue=\{month\}/)
+
+  // The submit button is load-bearing and looks like decoration: Android Chrome fires no
+  // navigation on a bare <select> change.
+  assert.match(HEAD, /<button\r?\n\s+type="submit"/)
+
+  // `w-full` below `sm` so the controls take a line of their own rather than squeezing the
+  // month down to eighty pixels beside the way back.
+  assert.match(HEAD, /w-full min-w-0 items-end justify-end gap-2 sm:w-auto sm:flex-1/)
+
+  // And the month is named once. The select already reads "August 2026" in the reader's
+  // own script, so the sentence that used to sit under it was the same fact twice.
+  assert.doesNotMatch(SHEET, /\{formatMonth\(month, locale\)\}/)
+})
+
+test('shape: nothing about who may read or write this has moved', () => {
+  // §38. This was a layout change. Staff admin and `expenses`, a Center plan only, and the
+  // plan wall still returns before the month is read.
+  assert.match(PAGE, /const session = await pageCapability\('expenses'\)/)
+  assert.match(PAGE, /if \(!has\(session\.plan, 'centerWideReporting'\)\) \{/)
+  const wall = PAGE.indexOf("if (!has(session.plan, 'centerWideReporting'))")
+  assert.ok(wall > 0 && wall < PAGE.indexOf('const supabase = await createClient()'))
+
+  // One centre's month, half-open on plain dates, and paged so a long month cannot foot
+  // correctly while being short.
+  assert.match(PAGE, /\.eq\('coaching_center_id', session\.active\.centerId\)/)
+  assert.match(PAGE, /\.gte\('spent_on', month\)/)
+  assert.match(PAGE, /\.lt\('spent_on', nextMonth\)/)
+  assert.match(PAGE, /pageAll\(\(from, to\) =>/)
+  assert.match(PAGE, /const problem = worstFailure\(spending\)/)
+
+  // The branch picker is asked for only where the form is drawn at all.
+  assert.match(PAGE, /session\.access === 'full' \? branchChoicesFor\(supabase, session\) : null/)
 })
 
 
