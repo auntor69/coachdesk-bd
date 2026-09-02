@@ -44,12 +44,9 @@ export async function generateMetadata() {
  * ৳750 a month, so the add form carries the price instead of a quota line. See
  * `nextBranchCostBdt` for why the figure is a difference rather than the constant.
  *
- * KNOWN AND NOT FIXED HERE: the founder panel bills every centre as though it had one
- * building. `platform_centers` does not count branch rows, so `lib/platform/centers.ts`
- * calls `monthlyBillBdt` without an `activeBranches` argument and an institution with six
- * buildings reads as ৳2,250 a month cheaper than it is. The figures on this screen are
- * right; the founder's are low. Fixing it needs the count inside the SQL function, which
- * is a migration and not this commit.
+ * THE SAME COUNT REACHES THE FOUNDER, since 20260811000066: `platform_centers` returns
+ * active branch rows aggregated, so the panel's bill and this screen's price come from
+ * one number. They disagreed for six migrations, and the one that under-charged was ours.
  */
 export default async function BranchesPage() {
   const session = await pageRole('manager')

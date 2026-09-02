@@ -4046,6 +4046,8 @@ export const en: Dictionary = {
       students: 'students',
       batches: 'batches',
       teachers: 'teachers',
+      /** Only drawn past the first; see sizeLine. */
+      branches: 'branches',
     },
     usage: {
       attendance: 'Attendance',
@@ -4228,6 +4230,8 @@ export const en: Dictionary = {
       students: 'Students',
       teachers: 'Teachers',
       batches: 'Batches',
+      /** Active buildings. What the Institution bill charges for past the third. */
+      branches: 'Branches',
       signedUp: 'Signed up',
       /** Blank unless the centre is on trial. See the Bangla note. */
       trialEnds: 'Trial ends',

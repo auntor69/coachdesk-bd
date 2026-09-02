@@ -1676,7 +1676,9 @@ arrived; the entitlement resolver, with read-only enforced in front of twenty wr
 paths, and a subscription that suspends itself seven days after the period it was
 paid for; a fourteen-day Teacher Pro trial that starts itself at signup, ends on the
 clock, says so on screen while it runs and for a week after, and grants its places at
-the trigger as well as on the screen; a founder panel that records real money; an
+the trigger as well as on the screen; a founder panel that records real money and
+bills each customer for the buildings they actually run, from the same count the
+owner's own branches screen prices; an
 append-only audit log written by sixteen triggers inside the transaction that made
 the change, named for the reader in one tested module, resolved to the person each
 line is about even where the stored snapshot cannot say, and read by the owner alone;
@@ -1692,7 +1694,7 @@ a five-minute life, five tries counted under a row lock, a minute between sends 
 hourly ceiling per number and per IP, checked and spent inside the same call that
 creates the account — which switches itself on the day the aggregator's three variables
 exist, and is off until then (§5.4).
-1,215 RLS assertions and 997 unit tests green across 65 migrations and 41 tables in
+1,217 RLS assertions and 1,000 unit tests green across 66 migrations and 41 tables in
 `public` plus one in `app`, and four derived gates and two that ask the live API. One of those gates now refuses
 a query whose table name it cannot read, having discovered it had been counting five
 fewer than existed — and the RLS suite found a manager who could promote themselves

@@ -6614,6 +6614,10 @@ check('centre A is in the panel', Boolean(rowA))
  * a sum of places and a timestamp, from rows a manager wrote to their own owner.
  * No free text at all — `capacity_requests` has no note column, for this reason
  * among others.
+ *
+ * `branches` is the third and the narrowest: one integer, and the only reason it is
+ * here is that the bill is computed from it. A platform admin still cannot read
+ * `public.branches`, so no name, address or phone of a building leaves through this.
  */
 const PANEL_COLUMNS = [
   'center_id', 'center_name', 'center_phone', 'bd_area', 'status', 'plan',
@@ -6622,7 +6626,7 @@ const PANEL_COLUMNS = [
   'collected_30d', 'taps_30d', 'notes_30d', 'results_30d', 'absences_30d',
   'sms_30d', 'last_active_at', 'paid_bdt',
   'last_paid_at', 'paid_through', 'wants_plan', 'wants_since', 'wants_note',
-  'asks_open', 'asks_places', 'asks_since',
+  'asks_open', 'asks_places', 'asks_since', 'branches',
 ]
 const panelColumns = Object.keys(rowA ?? {}).sort()
 check(
@@ -6669,6 +6673,43 @@ check(
   'counts active teachers',
   Number(rowA?.teachers) === expectedTeachers,
   `${rowA?.teachers} vs ${expectedTeachers}`,
+)
+
+/*
+ * The fourth size, and the only one of the four that changes what a customer owes:
+ * buildings. Institution bills 750 taka a month past the third, so a function that
+ * did not return this had `lib/platform/centers.ts` billing every institution as a
+ * single site — which is what 20260811000066 was written to fix.
+ *
+ * Seeded here rather than read off the existing fixture because the rule under test
+ * is `where br.active`: three rooms, one shut, and the count must be two. A closed
+ * branch is not a building anybody teaches in, and billing for it would be charging
+ * a customer for shutting one down.
+ */
+const billBranches = await db.query(
+  `insert into branches (coaching_center_id, name, active) values
+     ($1, 'Panel Bill Mirpur', true),
+     ($1, 'Panel Bill Uttara', true),
+     ($1, 'Panel Bill Closed', false)
+   returning id`,
+  [centerA],
+)
+const panelSites = await asUser(db, ids.founder, (tx) =>
+  tx.query('select branches from platform_centers() where center_id = $1', [centerA]),
+)
+check(
+  'counts the buildings the bill is charged for',
+  Number(panelSites.rows[0]?.branches) === 2,
+  `${panelSites.rows[0]?.branches} of 3 rows, one closed`,
+)
+await db.query('delete from branches where id = any($1)', [
+  billBranches.rows.map((r) => r.id),
+])
+check(
+  'and the centre is back to none afterwards',
+  (await n(db, 'select count(*)::int as n from branches where coaching_center_id = $1', [
+    centerA,
+  ])) === 0,
 )
 
 // The money column, against the same window read the same way. These two

@@ -6175,6 +6175,8 @@ export const bn = {
       students: 'শিক্ষার্থী',
       batches: 'ব্যাচ',
       teachers: 'শিক্ষক',
+      /** শাখা, only drawn past the first; see sizeLine. */
+      branches: 'শাখা',
     },
     usage: {
       attendance: 'হাজিরা',
@@ -6462,6 +6464,8 @@ export const bn = {
       students: 'শিক্ষার্থী',
       teachers: 'শিক্ষক',
       batches: 'ব্যাচ',
+      /** Active buildings. What the Institution bill charges for past the third. */
+      branches: 'শাখা',
       signedUp: 'যোগ দিয়েছে',
       /** Blank unless the centre is on trial. See the note in lib/platform/centers. */
       trialEnds: 'ট্রায়াল শেষ',

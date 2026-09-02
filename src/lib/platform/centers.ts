@@ -102,6 +102,15 @@ export type PlatformCenterRow = {
   asks_open: number | null
   asks_places: number | null
   asks_since: string | null
+  /**
+   * Active branches, because the Institution bill charges for them past the third.
+   *
+   * Counted in the function rather than read here: a platform admin cannot select
+   * from public.branches and should not be able to. Zero for a centre that has never
+   * opened the branches screen, which the bill floors at one — a single-building
+   * centre pays for a building either way.
+   */
+  branches: number | null
 }
 
 /**
@@ -280,6 +289,15 @@ export type Customer = {
   asksPlaces: number
   /** When the oldest unanswered branch asked. Null when none is waiting. */
   asksSince: string | null
+  /**
+   * Buildings this centre teaches in, at least one.
+   *
+   * Floored at one because the bill is per building and every centre has one, whether
+   * or not it has ever named it on /settings/branches. Only the Institution tier is
+   * charged past the third, so on every other plan this is a fact about the customer
+   * and not a figure in `billBdt`.
+   */
+  branches: number
 }
 
 function count(value: number | null | undefined): number {
@@ -327,6 +345,11 @@ export function customers(
 
     const students = count(row.students)
     const teachers = count(row.teachers)
+    // At least one building, because every centre teaches somewhere. The function
+    // returns 0 for a centre that has never named a branch, and monthlyBillBdt's
+    // three included places mean nothing on this tier turns on the difference — but
+    // "0 buildings" would still be a wrong sentence on the card.
+    const branches = Math.max(1, count(row.branches))
     const plan = row.plan ?? 'teacher_free'
     const status = row.status ?? 'trial'
 
@@ -336,7 +359,7 @@ export function customers(
       ? Math.max(0, Math.floor((now.getTime() - lastActiveMs) / MS_PER_DAY))
       : null
 
-    const billBdt = monthlyBillBdt(planFor(plan), students, teachers)
+    const billBdt = monthlyBillBdt(planFor(plan), students, teachers, branches)
     const paidThrough = row.paid_through ?? null
 
     /*
@@ -404,6 +427,7 @@ export function customers(
       asksOpen: count(row.asks_open),
       asksPlaces: count(row.asks_places),
       asksSince: row.asks_since ?? null,
+      branches,
     })
   }
 
@@ -568,6 +592,7 @@ export type CustomerCsvHeadings = {
   students: string
   teachers: string
   batches: string
+  branches: string
   signedUp: string
   trialEnds: string
   attendance: string
@@ -636,6 +661,7 @@ export function customersSheet(
     h.students,
     h.teachers,
     h.batches,
+    h.branches,
     h.signedUp,
     h.trialEnds,
     h.attendance,
@@ -676,6 +702,10 @@ export function customersSheet(
     c.students,
     c.teachers,
     c.batches,
+    // Beside the other three sizes rather than beside the bill, even though this is
+    // the only one of the four that changes what a customer owes: a founder checking
+    // a figure reads the sizes together, and the bill column is already two away.
+    c.branches,
     c.createdAt,
     // Blank on everybody who is not on trial, so sorting this column gathers the
     // customers with a deadline at one end. A plain YYYY-MM-DD, which a spreadsheet
@@ -740,17 +770,23 @@ export function customersFileName(now: Date = new Date()): string {
  * render Bangla in Bangla, while `formatTaka` keeps every taka figure in ASCII.
  * The same two rules the rest of the product follows, applied in one place the
  * screen cannot forget.
+ *
+ * The buildings are named only when there is more than one. Every centre has a
+ * building; saying so on the eleven single-site customers would push the counts that
+ * differ off the end of a 375px line to repeat a fact about all of them.
  */
 export function sizeLine(
   c: Customer,
   locale: Locale,
-  words: { students: string; batches: string; teachers: string },
+  words: { students: string; batches: string; teachers: string; branches: string },
 ): string {
-  return [
+  const parts = [
     `${digits(c.students, locale)} ${words.students}`,
     `${digits(c.batches, locale)} ${words.batches}`,
     `${digits(c.teachers, locale)} ${words.teachers}`,
-  ].join(' · ')
+  ]
+  if (c.branches > 1) parts.push(`${digits(c.branches, locale)} ${words.branches}`)
+  return parts.join(' · ')
 }
 
 /** The bill as the founder reads it: ASCII taka, like every other money figure. */

@@ -12,7 +12,12 @@ import {
   TRIAL_ENDING_SOON_DAYS,
   type PlatformCenterRow,
 } from '../src/lib/platform/centers.ts'
-import { CENTER_MONTHLY_FLOOR_BDT, PLANS } from '../src/lib/plans.ts'
+import {
+  CENTER_MONTHLY_FLOOR_BDT,
+  INSTITUTION_BRANCH_BDT,
+  INSTITUTION_INCLUDED_BRANCHES,
+  PLANS,
+} from '../src/lib/plans.ts'
 import { csvCell } from '../src/lib/csv.ts'
 
 /**
@@ -77,6 +82,10 @@ function row(over: Partial<PlatformCenterRow> = {}): PlatformCenterRow {
     asks_open: 0,
     asks_places: 0,
     asks_since: null,
+    // One building, which is what most customers are. Zero would be the honest
+    // reading for a centre that has never named a branch, and `customers()` floors
+    // it — every branch test below opts into a bigger number.
+    branches: 1,
     ...over,
   }
 }
@@ -111,6 +120,46 @@ test('the bill comes from plans.ts, at the count the RPC reported', () => {
 
   const free = customers([row({ plan: 'teacher_free', students: 30 })], 'No name', NOW)
   assert.equal(free[0].billBdt, 0)
+})
+
+test('an institution is billed for its buildings past the third', () => {
+  /*
+   * The bug 20260811000066 was written for: `platform_centers()` returned three of
+   * the four numbers `monthlyBillBdt` takes, so this panel fell back to the default
+   * of one building and every multi-site institution read cheaper than it is. At six
+   * buildings that is ৳2,250 a month, on the only screen that says what a customer
+   * owes — while /settings/branches, which the customer reads, had it right.
+   *
+   * A difference rather than a total, so the assertion says what the branches cost
+   * and does not restate the student bands.
+   */
+  const at = (branches: number) =>
+    customers([row({ plan: 'institution', students: 300, branches })], 'x', NOW)[0].billBdt
+
+  assert.equal(at(6) - at(1), 3 * INSTITUTION_BRANCH_BDT)
+  // The first three are included, so nothing moves until the fourth.
+  assert.equal(at(INSTITUTION_INCLUDED_BRANCHES), at(1))
+  assert.equal(at(INSTITUTION_INCLUDED_BRANCHES + 1) - at(1), INSTITUTION_BRANCH_BDT)
+
+  // A tier without multipleBranches is never charged for one, whatever the rows say —
+  // a downgraded institution keeps its branch rows and must not keep the bill.
+  const centre = (branches: number) =>
+    customers([row({ plan: 'center', students: 300, branches })], 'x', NOW)[0].billBdt
+  assert.equal(centre(6), centre(1))
+})
+
+test('a centre with no branch rows still bills as one building', () => {
+  // The function returns 0 for a centre that has never opened /settings/branches,
+  // which is most of them. Zero buildings is not a thing a coaching centre is.
+  const list = customers([row({ plan: 'institution', students: 300, branches: 0 })], 'x', NOW)
+  assert.equal(list[0].branches, 1)
+  assert.equal(
+    list[0].billBdt,
+    customers([row({ plan: 'institution', students: 300, branches: 1 })], 'x', NOW)[0].billBdt,
+  )
+
+  // Null is the same answer, for a row that arrived before the column existed.
+  assert.equal(customers([row({ branches: null })], 'x', NOW)[0].branches, 1)
 })
 
 test('an unknown plan bills as the free tier rather than crashing', () => {
@@ -684,6 +733,7 @@ const HEADINGS = {
   students: 'শিক্ষার্থী',
   teachers: 'শিক্ষক',
   batches: 'ব্যাচ',
+  branches: 'শাখা',
   signedUp: 'যোগ দিয়েছে',
   trialEnds: 'ট্রায়াল শেষ',
   attendance: 'হাজিরা',
@@ -753,6 +803,18 @@ test('money and counts leave as bare numbers a spreadsheet can total', () => {
   assert.equal(at(HEADINGS.notes), 9)
   assert.equal(at(HEADINGS.results), 14)
   assert.equal(at(HEADINGS.absences), 88)
+})
+
+test('the sheet carries the building count beside the other three sizes', () => {
+  // Floored the same way the card is, so the two never disagree about a customer who
+  // has never named a branch — and a bare number, because it is one of the figures
+  // the bill column is computed from and a founder checks by hand.
+  const list = customers([row({ plan: 'institution', students: 300, branches: 6 })], 'x', NOW)
+  const { header, rows } = customersSheet(list, WORDS)
+  assert.equal(rows[0][header.indexOf(HEADINGS.branches)], 6)
+
+  const none = customers([row({ branches: 0 })], 'x', NOW)
+  assert.equal(customersSheet(none, WORDS).rows[0][header.indexOf(HEADINGS.branches)], 1)
 })
 
 test('dates leave as ISO timestamps, which sort and subtract', () => {
@@ -896,11 +958,25 @@ test('the filename carries the day and is ASCII', () => {
 test('the size line uses Bangla numerals in Bangla and ASCII in English', () => {
   // Prose counts follow the reader; money never does. Both rules in one line.
   const c = customers([row({ students: 40, batches: 6, teachers: 3 })], 'x', NOW)[0]
-  const words = { students: 'শিক্ষার্থী', batches: 'ব্যাচ', teachers: 'শিক্ষক' }
+  const words = {
+    students: 'শিক্ষার্থী',
+    batches: 'ব্যাচ',
+    teachers: 'শিক্ষক',
+    branches: 'শাখা',
+  }
+  const en = {
+    students: 'students',
+    batches: 'batches',
+    teachers: 'teachers',
+    branches: 'branches',
+  }
 
   assert.equal(sizeLine(c, 'bn', words), '৪০ শিক্ষার্থী · ৬ ব্যাচ · ৩ শিক্ষক')
-  assert.equal(
-    sizeLine(c, 'en', { students: 'students', batches: 'batches', teachers: 'teachers' }),
-    '40 students · 6 batches · 3 teachers',
-  )
+  assert.equal(sizeLine(c, 'en', en), '40 students · 6 batches · 3 teachers')
+
+  // The buildings appear only past the first, because every centre has one and
+  // saying so on all of them would push the counts that differ off a 375px line.
+  const many = customers([row({ students: 40, batches: 6, teachers: 3, branches: 4 })], 'x', NOW)[0]
+  assert.equal(sizeLine(many, 'bn', words), '৪০ শিক্ষার্থী · ৬ ব্যাচ · ৩ শিক্ষক · ৪ শাখা')
+  assert.equal(sizeLine(many, 'en', en), '40 students · 6 batches · 3 teachers · 4 branches')
 })
