@@ -7024,10 +7024,12 @@ export const bn = {
     quotedOn: (date: string) => `${date}-এ দাম বলা হয়েছে`,
     quoteGood: (date: string) => `${date} পর্যন্ত চলবে`,
     quoteLapsed: (date: string) => `${date}-এ সময় শেষ`,
+    boughtMovesTo: (plan: string) => `এবং তাদের ${plan}-এ নিয়ে যাবে`,
     /** Composed by the Server Action once the receipt is written, like `paymentSaved`. */
     purchaseConfirmed: (amount: string) => `${amount} নিশ্চিত করা হয়েছে।`,
     purchaseHolds: (places: number) =>
       `এই সেন্টারে এখন ${digits(places, 'bn')} জন শিক্ষার্থী রাখা যাবে।`,
+    purchaseMovedTo: (plan: string) => `তারা এখন ${plan}-এ আছে।`,
     /**
      * The purchases a customer has started and not paid for.
      *

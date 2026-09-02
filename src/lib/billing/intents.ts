@@ -18,6 +18,7 @@ import 'server-only'
 import type { SupabaseClient } from '@supabase/supabase-js'
 
 import { UNIQUE_VIOLATION, readIdempotencyKey } from '@/lib/idempotency'
+import type { PlanId } from '@/lib/plans'
 import type { Database, PaymentProvider } from '@/lib/supabase/types'
 import type { PayableIntent } from './provider'
 import { pricedLines, type Quote } from './price'
@@ -28,7 +29,7 @@ const INTENT_COLUMNS =
 
 /**
  * The same list plus the tier, for the read-back that decides whether a reused request
- * key describes the same purchase.
+ * key describes the same purchase — and for `readIntent`, whose caller is confirming one.
  *
  * IT HAS TO BE COMPARED, and this is the one place it is not obvious why: at 400 students
  * on one branch, Centre and Institution bill the identical ৳7,300 a month — the student
@@ -136,11 +137,17 @@ export async function openIntent(
 }
 
 /**
- * One intent, as a provider is allowed to see it.
+ * One intent, as a provider is allowed to see it, plus the tier for whoever is confirming.
  *
  * Scoped to the centre as well as the id, so an id from one card cannot be confirmed
- * against another customer's row. The column list is `INTENT_COLUMNS` rather than a
+ * against another customer's row. The column list is `REPLAY_COLUMNS` rather than a
  * second copy, which is why this lives beside `openIntent` instead of in the caller.
+ *
+ * THE TIER IS ON THE RETURN AND NOT ON `PayableIntent`. A provider is told what to
+ * charge; the founder holding the phone is the one who needs to know that confirming
+ * this transfer also puts the centre on Institution, and they are reading the same row.
+ * Widening here rather than there costs nothing — a provider handed the extra column
+ * still cannot see it through the type it is declared against.
  *
  * `grants_capacity` is deliberately not read: `payment_intents_grant_matches_purpose`
  * makes it `quantity` on a capacity purchase and 0 on everything else, so a caller that
@@ -150,11 +157,11 @@ export async function readIntent(
   supabase: SupabaseClient<Database>,
   centerId: string,
   intentId: string,
-): Promise<PayableIntent | null> {
+): Promise<(PayableIntent & { target_plan: PlanId | null }) | null> {
   // scoped-by: coaching_center_id is filtered below, beside the id.
   const { data } = await supabase
     .from('payment_intents')
-    .select(INTENT_COLUMNS)
+    .select(REPLAY_COLUMNS)
     .eq('id', intentId)
     .eq('coaching_center_id', centerId)
     .maybeSingle()

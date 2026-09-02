@@ -99,7 +99,7 @@ export default async function FounderPage() {
     supabase
       .from('payment_intents')
       .select(
-        'id, coaching_center_id, purpose, quantity, amount_bdt, state, provider, created_at, expires_at',
+        'id, coaching_center_id, purpose, quantity, amount_bdt, state, provider, created_at, expires_at, target_plan',
       )
       .in('state', ['pending', 'initiated'])
       .order('created_at', { ascending: false })
@@ -122,6 +122,11 @@ export default async function FounderPage() {
    * migration says why — so `state` alone would have the founder confirming a purchase
    * `settle_payment_intent` is about to refuse.
    *
+   * `target_plan` is in the line and not the meta, because it is not detail about the
+   * purchase — it is the other half of what confirming it does. The settlement moves the
+   * plan, and a founder checking a bKash transfer against an amount needs to know they
+   * are also putting this centre on Institution.
+   *
    * `transferReference` is read as a pure function, not asked of the provider:
    * `createPayment` is what hands a customer their reference and it writes a state
    * transition, which a page rendering a list must not do.
@@ -132,11 +137,14 @@ export default async function FounderPage() {
     const lapsed = hasPassed(intent.expires_at)
     const quoted = dhakaDay(intent.created_at)
     const until = dhakaDay(intent.expires_at)
+    const moves = intent.target_plan
+      ? ` ${t.boughtMovesTo(planName(planFor(intent.target_plan), locale))}`
+      : ''
 
     const open = purchases.get(intent.coaching_center_id) ?? []
     open.push({
       id: intent.id,
-      line: `${t.bought[intent.purpose](intent.quantity)} — ${formatTaka(intent.amount_bdt)}`,
+      line: `${t.bought[intent.purpose](intent.quantity)}${moves} — ${formatTaka(intent.amount_bdt)}`,
       meta: [
         quoted && t.quotedOn(quoted),
         until && (lapsed ? t.quoteLapsed(until) : t.quoteGood(until)),

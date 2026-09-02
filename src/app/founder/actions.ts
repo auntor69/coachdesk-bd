@@ -541,12 +541,21 @@ export async function confirmCenterPurchase(
 
     const confirmed = t.purchaseConfirmed(formatTaka(settled.chargedBdt))
 
-    // The ceiling is the half of this the founder can be asked about tomorrow, so it is
-    // said out loud — and only for the purchase that moves it.
+    // The two halves of this the founder can be asked about tomorrow — the ceiling and the
+    // tier — said out loud, and each only for the purchase that moves it. The tier is read
+    // off the intent rather than off the centre because that is the value the settlement
+    // used; a plan read back afterwards would also be right, and would cost a round trip
+    // to say the same thing.
     return {
-      ok: grantsPlaces
-        ? `${confirmed} ${t.purchaseHolds(settled.capacityAfter)}`
-        : confirmed,
+      ok: [
+        confirmed,
+        grantsPlaces ? t.purchaseHolds(settled.capacityAfter) : null,
+        intent.target_plan
+          ? t.purchaseMovedTo(planName(planFor(intent.target_plan), session.locale))
+          : null,
+      ]
+        .filter(Boolean)
+        .join(' '),
     }
   } catch {
     // `paymentProvider` throws for a provider with no module behind it (§11.1). A

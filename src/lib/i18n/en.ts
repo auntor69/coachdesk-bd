@@ -4587,9 +4587,16 @@ export const en: Dictionary = {
     quotedOn: (date: string) => `Quoted ${date}`,
     quoteGood: (date: string) => `good until ${date}`,
     quoteLapsed: (date: string) => `ran out ${date}`,
+    /**
+     * Said out loud on the card, because confirming this purchase changes the tier the
+     * centre is on and everything it is billed from then on. A founder who reads only
+     * "3 months — ৳21,900" has not been told that.
+     */
+    boughtMovesTo: (plan: string) => `and moves them to ${plan}`,
     /** Composed by the Server Action, after the receipt is written. */
     purchaseConfirmed: (amount: string) => `Confirmed ${amount}.`,
     purchaseHolds: (places: number) => `This centre now holds ${places} students.`,
+    purchaseMovedTo: (plan: string) => `They are now on ${plan}.`,
     /** String leaves only — this group is handed to a client component. */
     purchases: {
       title: 'Waiting on us',
