@@ -49,17 +49,20 @@ const MONTH_RE = /^\d{4}-\d{2}-01$/
  * possible if every row carries the total up to it. A single figure at the bottom
  * tells them the answer is wrong and nothing about where.
  *
- * THE BREAKDOWN BY METHOD is the other half of the same job. A bKash statement does
- * not know about the cash in the drawer, so "৳48,000 collected" cannot be checked
- * against anything; "৳31,500 through bKash" can be checked against exactly one
- * thing, and what is left has to be in the box.
+ * THE BREAKDOWN BY METHOD is the other half of the same job, and it is above the rows
+ * rather than under them. A bKash statement does not know about the cash in the drawer,
+ * so "৳48,000 collected" cannot be checked against anything; "৳31,500 through bKash,
+ * eighty payments" can be checked against exactly one thing, and it is the first thing
+ * the reader needs — not the thing they reach after working down two hundred lines. It
+ * reads across the sheet and not down it, so seven methods cost one band of height
+ * instead of most of a phone screen.
  *
  * A REFUND IS A ROW THAT SAYS SO. It reaches this page as a negative payment, which
  * is the product's only way of handing money back, and the arithmetic needs no
  * special case for it — but the sheet does. The row is labelled in words, and the
- * foot of the page carries what came in and what went back out above the total, so a
- * collection smaller than the reader was expecting has its subtraction printed next
- * to it instead of looking like a fault in the software. The sums are in
+ * summary carries what came in and what went back out directly under the total they
+ * make, so a collection smaller than the reader was expecting has its subtraction
+ * printed next to it instead of looking like a fault in the software. The sums are in
  * lib/fees/register.ts, where they are tested; this file draws them.
  *
  * STAFF ADMIN ONLY, AND `fees` (§6.2). A teacher with `can_view_fees` reads their own
@@ -209,51 +212,60 @@ export default async function RegisterPage({
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="flex items-start justify-between gap-3 print:hidden">
+      {/* One row of furniture, not two. The way back, the month being read and the two
+          buttons are four small controls that were taking two stacked rows and a fifth
+          of a laptop screen before the sheet started. They wrap back to two rows below
+          `sm`, which is the shape they were designed in. */}
+      <div className="flex flex-wrap items-end justify-between gap-3 print:hidden">
         <Link
           href="/fees"
           className="inline-flex min-h-tap items-center font-medium text-brand-700"
         >
           ← {t.backToFees}
         </Link>
-        <PrintButton label={t.print} />
+
+        {/* `w-full` below `sm` so it takes a line of its own rather than squeezing the
+            month down to eighty pixels beside the way back. Two rows on a phone either
+            way; from `sm` it is one. */}
+        <div className="flex w-full min-w-0 items-end justify-end gap-2 sm:w-auto sm:flex-1">
+          {/* A plain GET form: no client component, no JavaScript, and the chosen month
+              ends up in the URL where it can be bookmarked, shared, or printed from
+              again next year. The submit button is not decoration — Android Chrome does
+              not fire a navigation on a bare <select> change, so a form that relied on
+              onChange would need JavaScript to do what a button does for free. */}
+          <form method="get" className="flex min-w-0 flex-1 items-end gap-2 sm:flex-none">
+            {/* Carries the search across a change of month, because "the same family,
+                last month" is the commonest second question an owner asks here. */}
+            {query && <input type="hidden" name="q" value={query} />}
+            <label className="flex min-w-0 flex-1 flex-col gap-1.5 sm:w-56 sm:flex-none">
+              <span className="font-medium text-ink">{t.month}</span>
+              <select
+                name="month"
+                defaultValue={month}
+                className="min-h-tap w-full rounded-xl border-2 border-line bg-white px-3
+                  font-medium text-ink"
+              >
+                {months.map((m) => (
+                  <option key={m.value} value={m.value}>
+                    {m.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <button
+              type="submit"
+              className="inline-flex min-h-tap shrink-0 items-center rounded-xl border-2
+                border-brand-500 bg-brand-50 px-4 font-medium text-brand-800"
+            >
+              {t.show}
+            </button>
+          </form>
+          <PrintButton label={t.print} />
+        </div>
       </div>
 
-      {/* A plain GET form: no client component, no JavaScript, and the chosen month
-          ends up in the URL where it can be bookmarked, shared, or printed from
-          again next year. The submit button is not decoration — Android Chrome does
-          not fire a navigation on a bare <select> change, so a form that relied on
-          onChange would need JavaScript to do what a button does for free. */}
-      <form method="get" className="flex items-end gap-2 print:hidden">
-        {/* Carries the search across a change of month, because "the same family,
-            last month" is the commonest second question an owner asks here. */}
-        {query && <input type="hidden" name="q" value={query} />}
-        <label className="flex min-w-0 flex-1 flex-col gap-1.5">
-          <span className="font-medium text-ink">{t.month}</span>
-          <select
-            name="month"
-            defaultValue={month}
-            className="min-h-tap w-full rounded-xl border-2 border-line bg-white px-3
-              font-medium text-ink"
-          >
-            {months.map((m) => (
-              <option key={m.value} value={m.value}>
-                {m.label}
-              </option>
-            ))}
-          </select>
-        </label>
-        <button
-          type="submit"
-          className="inline-flex min-h-tap shrink-0 items-center rounded-xl border-2
-            border-brand-500 bg-brand-50 px-4 font-medium text-brand-800"
-        >
-          {t.show}
-        </button>
-      </form>
-
       <header>
-        <h1 className="text-xl font-bold text-ink">
+        <h1 className="text-xl font-bold text-ink lg:text-2xl">
           {center?.name ?? session.active.centerName}
         </h1>
         <p className="font-medium text-ink-soft">
@@ -278,9 +290,60 @@ export default async function RegisterPage({
         </Card>
       ) : (
         <>
-          {/* Between the letterhead and the table, so the printed sheet reads
-              "CENTRE / register / August / showing 5 of 120" in that order — the
-              caveat lands before the rows it applies to rather than after them. */}
+          {/* The half that can actually be checked against something, and above the rows
+              rather than under them. A reader holding a wallet statement wants the figure
+              the statement has to agree with before they start working down two hundred
+              lines, and a filed sheet whose total is on page three is one somebody has to
+              hunt through next year. break-inside-avoid so it is never itself split. */}
+          <section className="break-inside-avoid rounded-xl border border-line bg-white p-4">
+            <div className="flex flex-wrap items-baseline justify-between gap-x-5 gap-y-1">
+              <h2 className="font-medium text-ink-soft">{t.total}</h2>
+              <p className="num text-3xl font-bold text-ink">{formatTaka(tally.total)}</p>
+            </div>
+            <p className="text-sm text-ink-faint">{t.entries(tally.entries)}</p>
+
+            {/* What came in and what went back, directly under the sum they make and only
+                in a month that had a refund in it, so a total smaller than the reader
+                expected explains itself where it is read. A month with no refunds gets
+                neither line: "ফেরত ৳০" is a figure an owner would stop and check, and
+                there is no month in which that is time well spent. */}
+            {tally.refunded !== 0 && (
+              <dl className="mt-2 flex flex-wrap gap-x-5 gap-y-1 border-t border-line pt-2 text-sm">
+                <div className="flex items-baseline gap-2">
+                  <dt className="text-ink-soft">{t.grossIn}</dt>
+                  <dd className="num font-semibold text-ink">{formatTaka(tally.grossIn)}</dd>
+                </div>
+                <div className="flex items-baseline gap-2">
+                  <dt className="text-ink-soft">{t.refunded}</dt>
+                  <dd className="num font-semibold text-ink">{formatTaka(tally.refunded)}</dd>
+                </div>
+              </dl>
+            )}
+
+            <h3 className="mt-3 border-t border-line pt-3 font-medium text-ink">
+              {t.byMethod}
+            </h3>
+            {/* Across the sheet rather than down it, and no boxes: seven methods stacked
+                in a column was most of a phone screen and a laptop's width left empty,
+                and a bordered tile inside a bordered card is the nested container §20.7
+                says to avoid. Each method carries its own count as well as its figure,
+                because the line an owner checks is "eighty payments, ৳31,500" — the count
+                is what tells them whether a disagreement is one payment or many. */}
+            <dl className="mt-2 flex flex-wrap gap-x-8 gap-y-3">
+              {tally.byMethod.map((m) => (
+                <div key={m.method} className="min-w-24">
+                  <dt className="text-sm text-ink-soft">{d.feeRow.methods[m.method]}</dt>
+                  <dd className="num font-semibold text-ink">{formatTaka(m.amount)}</dd>
+                  <dd className="text-xs text-ink-faint">{t.entries(m.entries)}</dd>
+                </div>
+              ))}
+            </dl>
+          </section>
+
+          {/* Between the summary and the table, so the printed sheet reads
+              "CENTRE / register / August / what came in / showing 5 of 120" in that
+              order — the caveat lands before the rows it applies to rather than after
+              them, and after the figures it does not narrow. */}
           <SearchBox
             q={query}
             t={d.search}
@@ -380,44 +443,6 @@ export default async function RegisterPage({
             </table>
           </div>
           )}
-          {/* The half that can actually be checked against something. Kept out of
-              the table's foot so it survives the table breaking across sheets. */}
-          <section className="break-inside-avoid rounded-xl border border-line bg-white p-4">
-            <h2 className="font-medium text-ink">{t.byMethod}</h2>
-            <dl className="mt-2 flex flex-col gap-1.5">
-              {tally.byMethod.map((m) => (
-                <div key={m.method} className="flex items-baseline justify-between gap-4">
-                  <dt className="text-ink-soft">{d.feeRow.methods[m.method]}</dt>
-                  <dd className="num font-semibold text-ink">{formatTaka(m.amount)}</dd>
-                </div>
-              ))}
-              {/* What came in and what went back, above the total and only in a month
-                  that had a refund in it. Two addends and their sum, in that order, so
-                  a total smaller than the reader expected explains itself where it is
-                  read. A month with no refunds gets neither line: "ফেরত ৳০" is a figure
-                  an owner would stop and check, and there is no month in which that is
-                  time well spent. */}
-              {tally.refunded !== 0 && (
-                <>
-                  <div className="mt-1 flex items-baseline justify-between gap-4 border-t border-line pt-2">
-                    <dt className="text-ink-soft">{t.grossIn}</dt>
-                    <dd className="num font-semibold text-ink">{formatTaka(tally.grossIn)}</dd>
-                  </div>
-                  <div className="flex items-baseline justify-between gap-4">
-                    <dt className="text-ink-soft">{t.refunded}</dt>
-                    <dd className="num font-semibold text-ink">{formatTaka(tally.refunded)}</dd>
-                  </div>
-                </>
-              )}
-              <div
-                className="mt-1 flex items-baseline justify-between gap-4 border-t
-                  border-line pt-2"
-              >
-                <dt className="font-medium text-ink">{t.total}</dt>
-                <dd className="num font-bold text-ink">{formatTaka(tally.total)}</dd>
-              </div>
-            </dl>
-          </section>
         </>
       )}
     </div>

@@ -10,9 +10,14 @@
  * without saying so, and a numeric column that arrives as a string and stops adding.
  *
  * Relative imports with extensions — `node --test` on TS, no tsconfig paths.
+ *
+ * The last section reads the page's own source and guards the sheet's shape; see the
+ * comment above it.
  */
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
+import { readFileSync } from 'node:fs'
+import path from 'node:path'
 
 import {
   registerRows,
@@ -295,14 +300,6 @@ test('every method the enum has gets a line', () => {
   assert.ok(REGISTER_METHODS.includes('card'))
 })
 
-test('every method the enum has gets a line', () => {
-  // The runtime half of ALL_METHODS_LISTED, which is a compile-time check and so proves
-  // nothing about a `node --test` run. Belt and braces on the same drift: a register that
-  // silently drops one method's line is a wrong document, not a missing feature.
-  assert.deepEqual([...REGISTER_METHODS], [...PAYMENT_METHODS])
-  assert.ok(REGISTER_METHODS.includes('card'))
-})
-
 test('entries counts payments and not students, refunds included', () => {
   // One family can pay twice in a month, and a refund is a line on the sheet like any
   // other — the count under the total is a count of lines.
@@ -310,4 +307,145 @@ test('entries counts payments and not students, refunds included', () => {
     registerRows([pay('p1', 500), pay('p2', 500), pay('p3', -200)], UNKNOWN),
   )
   assert.equal(tally.entries, 3)
+})
+
+/**
+ * And the sheet's own shape.
+ *
+ * §20.8 step 6, second screen. The sums above were already right; what was wrong was
+ * where they were printed. The breakdown by method — the only half of this page that can
+ * be held against a wallet statement — was under the table, so on a month with two
+ * hundred payments the reader met it after three sheets of paper and a laptop's worth of
+ * scrolling. It is above the rows now, reading across the page rather than down it, and
+ * the total is one figure rather than a line in a list.
+ *
+ * Read off the page's source because there is no renderer here. What these catch is the
+ * drift a screenshot does not show: the summary sliding back under the table, the
+ * per-method figures losing their counts, the three answers (a read that failed, a month
+ * with nothing in it, a search that matched nothing) collapsing into one.
+ */
+const REGISTER_PAGE = readFileSync(
+  path.join(import.meta.dirname, '..', 'src', 'app', '(app)', 'fees', 'register', 'page.tsx'),
+  'utf8',
+)
+
+/**
+ * The sheet begins at the last of the two `flex flex-col gap-4` roots — the first is the
+ * plan wall, which returns before any of this. `lastIndexOf` on a string with no newline
+ * in it, because the working tree is CRLF and a pattern spanning a line break would find
+ * nothing here and everything on a Linux checkout.
+ */
+const SHEET = REGISTER_PAGE.slice(
+  REGISTER_PAGE.lastIndexOf('<div className="flex flex-col gap-4">'),
+)
+
+test('sheet: the summary is above the rows, not under them', () => {
+  assert.ok(SHEET.length > 500, 'the render is not where this test expects it')
+
+  const summary = SHEET.indexOf('{t.byMethod}')
+  const search = SHEET.indexOf('<SearchBox')
+  const table = SHEET.indexOf('<table')
+  assert.ok(summary > 0, 'the breakdown by method is gone')
+  assert.ok(search > summary, 'the search box is above the summary it does not narrow')
+  assert.ok(table > search, 'the table is above the caveat that applies to it')
+
+  // One section, not two. The month's collection used to be printed twice — once in the
+  // table's foot and once at the bottom of the page — and two renderings of one figure is
+  // one that can disagree with itself.
+  assert.equal((SHEET.match(/\{t\.byMethod\}/g) ?? []).length, 1)
+
+  // Still out of the table, so it survives the table breaking across sheets, and still
+  // whole on whichever sheet it lands on.
+  const at = SHEET.indexOf('<section className="break-inside-avoid')
+  assert.ok(at > 0 && at < table, 'the summary is inside the table or below it')
+})
+
+test('sheet: the total is one figure and the addends sit under it', () => {
+  const section = SHEET.slice(
+    SHEET.indexOf('<section className="break-inside-avoid'),
+    SHEET.indexOf('<SearchBox'),
+  )
+
+  // The headline, and the count of lines it is made of.
+  assert.match(section, /text-3xl font-bold text-ink">\{formatTaka\(tally\.total\)\}/)
+  assert.match(section, /\{t\.entries\(tally\.entries\)\}/)
+
+  // Two addends, in a month that had a refund, below the sum they make.
+  const total = section.indexOf('formatTaka(tally.total)')
+  const gross = section.indexOf('formatTaka(tally.grossIn)')
+  assert.match(section, /\{tally\.refunded !== 0 && \(/, 'the refund lines are unconditional')
+  assert.ok(gross > total, 'the addends are printed above their own sum')
+  assert.ok(section.indexOf('formatTaka(tally.refunded)') > gross)
+
+  // The grand total is not also printed at the foot of the section — see the test above
+  // for why one figure is drawn once.
+  assert.equal((section.match(/formatTaka\(tally\.total\)/g) ?? []).length, 1)
+})
+
+test('sheet: every method carries its count as well as its figure', () => {
+  const band = SHEET.slice(SHEET.indexOf('{t.byMethod}'), SHEET.indexOf('<SearchBox'))
+
+  assert.match(band, /tally\.byMethod\.map\(\(m\) =>/)
+  assert.match(band, /\{d\.feeRow\.methods\[m\.method\]\}/, 'the methods lost their names')
+  assert.match(band, /\{formatTaka\(m\.amount\)\}/)
+  assert.match(band, /\{t\.entries\(m\.entries\)\}/, 'a method figure with no count behind it')
+
+  // Across the page and not down it: `flex-wrap`, so seven methods cost one band of
+  // height on a laptop and two on a phone rather than seven rows of either.
+  assert.match(band, /<dl className="mt-2 flex flex-wrap/)
+
+  // And no boxes inside the box (§20.7). A bordered tile in a bordered section is the
+  // nested container the directive names, and there would be up to seven of them.
+  const tile = band.slice(band.indexOf('tally.byMethod.map'))
+  assert.doesNotMatch(tile, /rounded-|border-2|border border-/, 'the methods became tiles')
+})
+
+test('sheet: the three empty answers are still three', () => {
+  // A read that failed, a month with nothing in it, and a search that matched nothing are
+  // different sentences, and the middle one is a statement about the centre's business.
+  // Printing it because somebody mistyped a transaction ID would be the sheet
+  // contradicting its own total.
+  assert.match(SHEET, /\{registerProblem === 'tooLarge' \? t\.tooLarge : t\.unreadable\}/)
+  assert.match(SHEET, /rows\.length === 0 \?[\s\S]{0,120}\{t\.empty\}/)
+  assert.match(SHEET, /shown\.length === 0 \?[\s\S]{0,400}<SearchEmpty/)
+
+  // The summary is drawn on none of the first two: nothing was read, or nothing came in.
+  const problem = SHEET.indexOf('registerProblem !== null ?')
+  assert.ok(problem > 0 && problem < SHEET.indexOf('<section className="break-inside-avoid'))
+})
+
+test('sheet: one row of furniture, and the month still ends up in the URL', () => {
+  const bar = SHEET.slice(0, SHEET.indexOf('<header>'))
+
+  // Back, the month, Show and Print on one row from `sm`, and none of it on paper.
+  assert.match(bar, /print:hidden/)
+  assert.match(bar, /<form method="get"/, 'the month picker is no longer a plain GET form')
+  assert.match(bar, /<PrintButton label=\{t\.print\}/)
+  assert.match(bar, /sm:w-auto sm:flex-1/, 'the controls no longer wrap on a phone')
+
+  // Both of these are load-bearing and neither is visible: the hidden field is what keeps
+  // a search alive across a change of month, and the submit button is what makes the
+  // select work on Android Chrome, which fires no navigation on a bare change.
+  assert.match(bar, /\{query && <input type="hidden" name="q" value=\{query\} \/>\}/)
+  assert.match(bar, /<button\s+type="submit"/)
+})
+
+test('sheet: nothing about who may read this has moved', () => {
+  // §38. This was a layout change. Staff admin and `fees`, a paid plan only, and the
+  // plan wall still returns before the month is read.
+  assert.match(REGISTER_PAGE, /const session = await pageCapability\('fees'\)/)
+  assert.match(REGISTER_PAGE, /if \(!has\(session\.plan, 'printedReceipts'\)\) \{/)
+  const wall = REGISTER_PAGE.indexOf("if (!has(session.plan, 'printedReceipts'))")
+  assert.ok(wall > 0 && wall < REGISTER_PAGE.indexOf('const supabase = await createClient()'))
+
+  // One centre's month, half-open on Dhaka boundaries, and paged so a long month cannot
+  // foot correctly while being short.
+  assert.match(REGISTER_PAGE, /\.eq\('coaching_center_id', session\.active\.centerId\)/)
+  assert.match(REGISTER_PAGE, /\.gte\('paid_at', `\$\{month\}T00:00:00\+06:00`\)/)
+  assert.match(REGISTER_PAGE, /\.lt\('paid_at', `\$\{nextMonth\}T00:00:00\+06:00`\)/)
+  assert.match(REGISTER_PAGE, /pageAll\(\(from, to\) =>/)
+
+  // And every figure is still the month's, not the search's.
+  assert.match(REGISTER_PAGE, /const tally = tallyRegister\(rows\)/)
+  assert.match(REGISTER_PAGE, /const shown = terms\.length === 0/)
 })
