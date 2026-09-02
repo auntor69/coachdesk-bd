@@ -2,6 +2,7 @@ import Link from 'next/link'
 
 import { Card } from '@/components/ui'
 import { SearchBox, SearchEmpty } from '@/components/search-box'
+import { Th, Td } from '@/components/table'
 import { pageCapability, getSession } from '@/lib/auth/session'
 import { createClient } from '@/lib/supabase/server'
 import { pageAll, worstFailure } from '@/lib/supabase/page'
@@ -420,44 +421,5 @@ export default async function RegisterPage({
         </>
       )}
     </div>
-  )
-}
-
-function Th({
-  children,
-  num = false,
-  right = false,
-}: {
-  children: React.ReactNode
-  num?: boolean
-  right?: boolean
-}) {
-  return (
-    <th
-      scope="col"
-      className={`px-2 pb-2 font-medium text-ink-soft ${num ? 'num' : ''} ${
-        right ? 'text-right' : ''
-      }`}
-    >
-      {children}
-    </th>
-  )
-}
-
-function Td({
-  children,
-  num = false,
-  right = false,
-}: {
-  children: React.ReactNode
-  num?: boolean
-  right?: boolean
-}) {
-  return (
-    <td
-      className={`px-2 py-2 text-ink ${num ? 'num' : ''} ${right ? 'text-right' : ''}`}
-    >
-      {children}
-    </td>
   )
 }

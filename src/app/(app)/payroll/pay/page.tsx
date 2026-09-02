@@ -1,6 +1,7 @@
 import Link from 'next/link'
 
 import { Card } from '@/components/ui'
+import { Th, Td } from '@/components/table'
 import { getSession, pageCapability } from '@/lib/auth/session'
 import {
   addMonths,
@@ -520,44 +521,5 @@ function BackToTerms({ label }: { label: string }) {
     >
       ← {label}
     </Link>
-  )
-}
-
-function Th({
-  children,
-  num = false,
-  right = false,
-}: {
-  children: React.ReactNode
-  num?: boolean
-  right?: boolean
-}) {
-  return (
-    <th
-      scope="col"
-      className={`px-2 pb-2 font-medium text-ink-soft ${num ? 'num' : ''} ${
-        right ? 'text-right' : ''
-      }`}
-    >
-      {children}
-    </th>
-  )
-}
-
-function Td({
-  children,
-  num = false,
-  right = false,
-}: {
-  children: React.ReactNode
-  num?: boolean
-  right?: boolean
-}) {
-  return (
-    <td
-      className={`px-2 py-2 text-ink ${num ? 'num' : ''} ${right ? 'text-right' : ''}`}
-    >
-      {children}
-    </td>
   )
 }

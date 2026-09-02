@@ -3,6 +3,7 @@ import { forbidden } from 'next/navigation'
 
 import { Card } from '@/components/ui'
 import { PlacesWarning } from '@/components/places-warning'
+import { Th, Td } from '@/components/table'
 import { pageRole, getSession } from '@/lib/auth/session'
 import { openAsks } from '@/lib/billing/asks'
 import { growingBranches, recentIntake } from '@/lib/billing/growth'
@@ -566,42 +567,5 @@ function Shell({
       {title && <h1 className="text-xl font-bold text-ink">{title}</h1>}
       {children}
     </div>
-  )
-}
-
-function Th({
-  children,
-  num = false,
-  right = false,
-}: {
-  children: React.ReactNode
-  num?: boolean
-  right?: boolean
-}) {
-  return (
-    <th
-      scope="col"
-      className={`px-2 pb-2 font-medium text-ink-soft ${num ? 'num' : ''} ${
-        right ? 'text-right' : ''
-      }`}
-    >
-      {children}
-    </th>
-  )
-}
-
-function Td({
-  children,
-  num = false,
-  right = false,
-}: {
-  children: React.ReactNode
-  num?: boolean
-  right?: boolean
-}) {
-  return (
-    <td className={`px-2 py-2 text-ink ${num ? 'num' : ''} ${right ? 'text-right' : ''}`}>
-      {children}
-    </td>
   )
 }
