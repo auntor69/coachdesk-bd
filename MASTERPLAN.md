@@ -2019,9 +2019,10 @@ but nothing on the owner's own screen works out what their unused coverage is wo
 income with no student behind it (hall rent, book sales and the like have a category
 but no row to hang it on — every revenue row is a bill against a child);
 the interface (the frame §20 describes is built — sidebar, wide workspace, a real
-navigation — and the pages inside it are not: every screen still stacks for the single
-column it was written in, so a laptop shows a correct shell around a phone-shaped page.
-§20.8 step 1 of 9).
+navigation — and the dashboard is the first page to use it, two regions rather than one
+column. The other eight screens still stack for the single column they were written in, so
+on most of the product a laptop shows a correct shell around a phone-shaped page. No page
+has the header bar §20.1 asks for. §20.8 steps 1 and 2 of 9).
 
 **Not built ❌** — the five
 `teacher_permissions` booleans folded into the capability vocabulary — they work, and
@@ -2246,10 +2247,11 @@ reads before paying us — shaped like a long form.
 What follows is the contract for fixing it. Architecture first, layout second, styling
 last. Colours and corner radii are not the problem, and changing them is not the work.
 
-**The frame is now built** (§20.1, §20.2, §20.3 — all ✅). The pages inside it are not: they
-still stack for a single column, so a wide screen currently shows a correct sidebar beside
-a workspace that has not yet been given anything to do with the room. That is §20.8's list,
-and it starts at its step 2.
+**The frame is now built** (§20.1, §20.2, §20.3 — all ✅), and the first screen inside it now
+uses the room: the centre dashboard is two columns from `lg` up (§20.8 step 2 ✅). The other
+eight screens are not. They still stack for a single column, so on a wide screen most of the
+product is a correct sidebar beside a 1,280px ribbon of cards. That is §20.8's list, and it
+is now at its step 3.
 
 ### 20.1 Desktop is not a large phone ✅ (frame only)
 
@@ -2278,10 +2280,13 @@ nothing about the old frame changed. Two deliberate departures:
   no JavaScript, which on a 3G connection is the first ten seconds, and it reuses the
   sidebar's own row component so a row cannot be worded or styled differently in the two
   places.
-- **Per-region widths are not done.** The shell stopped being the thing that caps content;
-  the pages have not yet started being it. Every screen still inherits one column and
-  stacks in it. Until §20.8's steps land, "uses the width it is given" is true of the frame
-  and not yet of what is inside it.
+- **Per-region widths are one screen in, not done.** The shell stopped being the thing that
+  caps content, and the dashboard is the first page to take that up: two regions from `lg`
+  up rather than one column, and a real table where the data is tabular. The other eight
+  screens still inherit one column and stack in it. And the page furniture — the title and
+  the primary action in a bar that does not scroll away — is not built anywhere yet, on the
+  dashboard or elsewhere; the heading scrolls with the content. Until §20.8's remaining
+  steps land, "uses the width it is given" is true of the frame and of one screen.
 
 **Printables keep their own frame.** The five sheets in §9.9 are `print:` layouts with the
 shell `print:hidden` around them. Nothing here touches them, and no redesign may put the
@@ -2485,7 +2490,7 @@ rewrite, and nothing in §15's built list may stop working because a screen move
 | # | Area | Why here |
 |---|---|---|
 | 1 ✅ | The shell: sidebar, workspace, header bar, responsive frame | every other screen inherits it, so it cannot be second |
-| 2 | The centre dashboard | the first thing anyone sees, and today the thinnest use of the width |
+| 2 ✅ | The centre dashboard | the first thing anyone sees, and until now the thinnest use of the width |
 | 3 | Plan and billing (§20.4) | the screen a customer reads before paying us |
 | 4 | Add student, including the capacity step (§20.5) | the most-used write path in the product |
 | 5 | Student management: list, filters, one student's record | the register is the reason they bought it |
@@ -2494,9 +2499,41 @@ rewrite, and nothing in §15's built list may stop working because a screen move
 | 8 | Organisation and branches (§20.6) | needs 2 and 6 to have settled first |
 | 9 | Settings, once everything that is a workflow has left it | what remains is small, and it should be |
 
-Step 1 is done: the frame, the navigation, and the six screens that were in no menu. The
-dashboard is next and it is now a different job than it was — it no longer has to be the
-menu, because there is one.
+Step 1 is done: the frame, the navigation, and the six screens that were in no menu.
+
+**Step 2 is done, and what it did was split the page by errand rather than by size.** The
+dashboard was one column at every width, so widening the workspace in step 1 made it worse
+on a laptop: thirteen blocks stretched to 1,280px, a ৳ figure at 4xl with nine hundred
+pixels of white beside it, and the month's profit two screens below the tiles it explains.
+It is now a twelve-column grid from `lg` up — eight columns of *today* (what is owed, the
+door that chases it, whether the registers are in, who is drifting, and who owes since
+when) beside four columns of *the centre* (the three counts, the places left, the month's
+profit, the branch comparison, and the two doors that tell families how the term went).
+That is §20.7's one primary action made structural: chasing money is in the wide column and
+everything quieter is beside it.
+
+Three things worth recording, because they are decisions and not consequences:
+
+- **The phone did not change, at all.** Not "was preserved" — the same thirteen blocks in
+  the same order. Each carries an `order-N` matching the sequence the page has always drawn
+  them in, and the two column wrappers are `display: contents` below `lg`, so on a phone
+  they generate no box and every block is a direct child of the one column again. From `lg`
+  the wrappers become the columns and each child's order still ascends inside its own, so
+  one number does both jobs and there is no second ordering to keep in step. The phone
+  layout was never the mistake (§20.1).
+- **The overdue list is a real table now, and shows eight rows rather than five.** §20.7
+  asks for a table where the data is tabular and density where density helps; five names
+  was a sample, eight is a morning's work, and the room came free when the rail took the
+  other half of the page. One `<table>` at both widths rather than a list on a phone and a
+  table on a laptop — three columns fit 375px — with the head hidden below `sm` where
+  stacked rows explain themselves, and present for a screen reader either way.
+- **No data layer was touched.** Every query, every capability gate, every null-means-a-dash
+  rule is the one that was there. §38: a bad layout is not a reason to delete working
+  behaviour. The reason the counts below did not move is that this was a layout change and
+  nothing else, held by the 1,195 tests that already covered the page's rules.
+
+Step 3 is the plan and billing screen — §20.4's six questions, answered without printing the
+bands that answer them (§33).
 
 ### 20.9 The rule that outranks everything above
 
@@ -2533,13 +2570,4 @@ truths start.
 | 2026-09-02 | **§20 added: the interface.** The masterplan now owns the information architecture as well as the rules — the sidebar-and-workspace frame in place of a phone layout drawn at every width, navigation named after jobs rather than screens and shaped by role without ever being a control, the six questions the plan page has to answer without exposing the pricing bands that answer them, buying at the point of need, organisation level held visibly apart from branch level, the house rules, and the order the screens get rebuilt in. §0 says why it is the same document. Version history moved to §21. The credit is struck off §16 as built: a platform payment may be negative, the floor is held by a trigger under an advisory lock, and it prints as a credit note — what is left of that thread is an owner being able to ask for one themselves. Counts: 1,388 RLS assertions, 1,166 unit tests, 74 migrations. |
 | 2026-09-02 | **§12.1 rewritten: the caps are Layer 1.** 20260811000075 puts the four ceilings a plan sells besides student places — batches, subjects, teacher records, children in one batch — into triggers, because the tables they count still grant `insert` to `authenticated` and an owner's own token could be posted straight at the API. They mirror the Server Actions' counts exactly, resolve the ceiling through the same live trial, name which limit refused so Layer 2 keeps its own wording, treat a null allowance as no ceiling rather than none allowed, and exempt the migration runner but not the service key. §12.4's ❌ becomes ✅ — five ceilings, five advisory locks, and the counting helpers volatile on purpose so a bulk paste cannot pass one ceiling five hundred times. Feature flags are now the only cap left in Layer 2 alone, and §12.1 says why that stays. §16 records all twenty steps of the build order as landed. Counts: 1,418 RLS assertions, 1,176 unit tests, 75 migrations. |
 | 2026-09-02 | **§20.8 step 1 is built, and §§20–20.3 now record what shipped rather than what was wanted.** A `w-64` sidebar from `lg` up, the workspace ceiling off `max-w-3xl` and onto `max-w-7xl`, and — the actual defect — the six finished screens that were in no menu anywhere: spending, salaries, drifting away, notices, the week and the head office, reachable until now only from a dashboard card, which is how the dashboard became the menu. Eleven destinations do not fit a 375px bar, so the phone keeps its four daily tabs and the rest sit behind a `<details>` sheet that opens with no JavaScript — a sheet, not the drawer §20.1 asked for, and §20.1 now says why. Four groups rather than §20.2's eight, because the other four have no pages behind them yet. §20.3's hide-versus-lock sentence is now a rule in code: a capability hides a row, a plan greys it and leaves it there badged *Upgrade*, since that row is the only place a free-plan owner ever learns this product does payroll — and locked rows are kept out of the phone's four tabs, where a quarter of the screen is too much to give an advertisement. Held by `tests/navigation.test.ts`, which asserts each row against its own page's source in both directions and was itself negative-tested against five mutations. All of it decided from the session already in hand: no round trip per row. Counts: 1,418 RLS assertions, 1,195 unit tests, 75 migrations. |
-
-
-
-
-
-
-
-
-
-
+| 2026-09-02 | **§20.8 step 2 is built: the centre dashboard is a workspace rather than a column.** Step 1 widened the shell, which made this screen worse — thirteen blocks stretched to 1,280px, a 4xl ৳ figure with nine hundred pixels of white beside it, the month's profit two screens below the tiles it explains. It is now twelve columns from `lg` up, split by errand: eight columns of today's work (what is owed, the door that chases it, today's registers, the batch rates, who is drifting, and a real table of who owes since when) beside four of the centre's state (the three counts, the places left, the profit working, the branch comparison, and the two doors that tell families how the term went). §20.7's one primary action, made structural. The phone did not change at all — the same thirteen blocks in the same order, because each carries an `order-N` matching what it always was and the two column wrappers are `display: contents` below `lg`, so one number serves both shapes and there is no second ordering to drift. The overdue list became a `<table>` showing eight rows instead of five, three columns that fit 375px, head hidden below `sm` and present for a screen reader either way; the three glance tiles are boxes across on a phone and one card of ruled rows in the rail. No query, capability gate or null-means-a-dash rule was touched (§38), which is why the counts are unchanged: 1,418 RLS assertions, 1,195 unit tests, 75 migrations. Next is step 3, the plan and billing screen. |

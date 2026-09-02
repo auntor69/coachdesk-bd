@@ -4528,6 +4528,18 @@ export const bn = {
     batchesTaken: (done: number, total: number) => `${done}/${total} ব্যাচ নেওয়া হয়েছে`,
 
     overdueTitle: 'সময় পেরোনো ফি',
+    /**
+     * শিক্ষার্থী, not নাম. The column holds a person, and the two other heads name a
+     * date and an amount — "নাম" beside them reads as the name *of* something on the
+     * row rather than the row itself.
+     *
+     * বাকি for the money, which is the word a centre says out loud, and তারিখ ছিল for
+     * the date: the deadline has already gone, and তারিখ on its own would read as the
+     * day the money is coming.
+     */
+    overdueName: 'শিক্ষার্থী',
+    overdueDue: 'তারিখ ছিল',
+    overdueAmount: 'বাকি',
 
     /**
      * THE CARD THAT DECIDES WHETHER A CENTRE EVER SEES THE PRODUCT WORK.

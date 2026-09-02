@@ -711,288 +711,395 @@ export default async function DashboardPage() {
     studentCount === null ? null : capacityPressure(session.ceiling, studentCount)
 
   return (
-    <div className="flex flex-col gap-5">
-      <div>
-        <h1 className="text-xl font-bold text-ink">{greetingFor(session)}</h1>
+    /*
+     * ONE COLUMN ON A PHONE, TWO ON A LAPTOP, AND THE PHONE'S ORDER IS UNCHANGED.
+     *
+     * Until the shell grew a sidebar this page was a single column at every width, which
+     * at `lg:max-w-7xl` became a 1,280px-wide stack of cards: a ৳ figure set at 4xl with
+     * nine hundred pixels of white beside it, and the month's profit two screens below
+     * the thing it explains. §20.8 step 2, and §20.7's "two columns of white space around
+     * one column of content".
+     *
+     * The split is by errand, not by size. The wide column is the day: what is owed, the
+     * door that chases it, whether today's registers are in, and who is drifting. The
+     * narrow one is the state of the centre — its counts, its month, its branches, and
+     * the two doors that tell families about it. That is also §20.7's one primary action:
+     * chasing money is in the main column, and everything quieter is beside it.
+     *
+     * HOW THE ORDER SURVIVES THE SPLIT. Each block carries an `order-N` matching the
+     * order this page has always drawn them in, and the two wrappers are `contents` below
+     * `lg` — no box, so on a phone all thirteen blocks are flex items of this one column
+     * in exactly the sequence they were before, tiles above the profit and both above
+     * today's attendance. From `lg` the wrappers become the two columns and each child's
+     * order still ascends inside its own, so one number does both jobs and there is no
+     * second list to keep in step. The comments below say "under" where the phone still
+     * reads it that way and "beside" where the laptop does not.
+     */
+    <div className="flex flex-col gap-5 lg:grid lg:grid-cols-12 lg:items-start lg:gap-6">
+      <div className="order-1 lg:col-span-12">
+        <h1 className="text-xl font-bold text-ink lg:text-2xl">{greetingFor(session)}</h1>
         <p className="mt-1 text-ink-soft">{session.active.centerName}</p>
       </div>
 
-      {/* ABOVE THE MONEY, and only ever for a centre that is not running yet. Every
-          figure below this is honestly zero for such a centre — ৳0 outstanding, no
-          batches marked, nobody at risk — and a screen full of true zeros with no
-          explanation is how an owner concludes the app is broken rather than empty.
-          So while there is a step left, the instruction sits on top of the numbers it
-          explains; the moment the four are done this returns null and the outstanding
+      {/* ABOVE THE MONEY AND ACROSS BOTH COLUMNS, and only ever for a centre that is not
+          running yet. Every figure below this is honestly zero for such a centre — ৳0
+          outstanding, no batches marked, nobody at risk — and a screen full of true zeros
+          with no explanation is how an owner concludes the app is broken rather than
+          empty. So while there is a step left, the instruction sits on top of the numbers
+          it explains; the moment the four are done this returns null and the outstanding
           card is the first thing on the page again, for good. */}
-      {setup && <SetupCard steps={setup} t={t.setup} />}
-
-      {/* The money could not be read, so the money is not drawn. Two blocks rather
-          than one ternary, like the fee worklist's own pair: the figure comes off the
-          rows and the card off the reason, and neither decides for the other.
-
-          Amber and not the brand card, because the brand card is where good news
-          lives on this screen. An owner glancing at a green panel takes the number in
-          it as the state of their centre, and this one is not a number. */}
-      {seeFees && moneyProblem !== null && (
-        <Card className="border-late/30 bg-late/5">
-          <p className="font-medium text-ink">
-            {moneyProblem === 'tooLarge'
-              ? t.outstandingTooLarge
-              : t.outstandingUnreadable}
-          </p>
-        </Card>
-      )}
-
-      {seeFees && moneyProblem === null && (
-        <Card className="border-brand-200 bg-brand-50">
-          <p className="text-sm font-medium text-brand-800">{t.outstanding}</p>
-          <p className="num mt-1 text-4xl font-bold text-brand-900">
-            {taka(outstanding)}
-          </p>
-          {/* The fee board's own caption, borrowed rather than restated. A
-              teacher's copy of this figure covers their own batches and no others,
-              because fee_invoice_balances inner-joins students under
-              security_invoker — and the two screens must describe that same
-              boundary in the same words. */}
-          {!isAdmin && (
-            <p className="mt-1 text-sm font-medium text-brand-700">
-              {d.fees.yoursOnly}
-            </p>
-          )}
-          {/* `.num` on the paragraph rather than a span around the count, the same
-              way the fee board carries this sentence. It is only tabular figures,
-              so it does nothing to the Bangla words and everything to the digit. */}
-          <p className="num mt-2 text-sm text-brand-800">
-            {overdue.length > 0
-              ? d.fees.overdueCount(overdue.length)
-              : t.nobodyOverdue}
-          </p>
-        </Card>
-      )}
-
-      {/* Directly under the number it exists to reduce, and above everything
-          else on the page. This is the one action on the owner's home screen that
-          brings money in rather than reporting on it, and on a 375px phone that
-          means it has to be reachable without a scroll. */}
-      {seeFees && isAdmin && (invoices === null || remainders.length > 0) && (
-        // The worklist's own words, borrowed rather than restated — a door and the
-        // room behind it disagreeing about what is in there is how an owner stops
-        // believing the number.
-        //
-        // Drawn when the invoices did not arrive as well as when money is owed. The
-        // count is what usually decides, and a day's chasing that loses its door
-        // because a query dropped loses the one errand on this screen that brings
-        // money in — so the door stays and carries no number, which is what
-        // `dueToday` being null means to it.
-        <ReminderEntry dueToday={dueToday} t={d.reminders} />
-      )}
-
-      {/* Two or three, and the column count follows, because a two-item row in a
-          three-column grid leaves a gap that reads as a stat that failed to load.
-          Both class names are written out rather than interpolated from a number,
-          so Tailwind's scanner can still see them.
-
-          Wrapped with the places line below, so the two are one item in the page's
-          `gap-5` column: that line is counted off the student tile beside it, and a
-          full gap between them would read as an unrelated sentence. */}
-      <div>
-        <div className={`grid gap-3 ${seeCollected ? 'grid-cols-3' : 'grid-cols-2'}`}>
-          {/* Staff-admin AND `seeFees`, which is not the same as either alone. What came
-              in this month is the centre's revenue; a teacher's copy of it would be the
-              takings of their own batches under a label that says the centre's, and
-              unlike arrears it is not a number they can do anything with. Their share of
-              the money is on the fee board, next to the names. And §6.2's manager without
-              `fees` is filtered out of `center_collection_month` the same way a teacher
-              is, so the tile they would get is ৳0 over a month that took eighty thousand.
-
-              Kept on the centre tiers as well, beside the profit card that repeats
-              it. Dropping it there would take the figure off the screen entirely the
-              first time the profit read failed, and both come out of the same view,
-              so they cannot disagree: the tile is the glance and the card is the sum. */}
-          {/* A dash, not a nought, for whichever of the three could not be counted.
-              `?? 0` put “0” under Students on a centre of three hundred and ৳0 under
-              Collected over a month that took eighty thousand — small type, but the
-              same false claim as the card above, and these are the three figures an
-              owner takes in at a glance rather than reads. */}
-          {seeCollected && (
-            <Stat
-              label={t.collected}
-              value={collected === null ? '—' : taka(collected)}
-            />
-          )}
-          <Stat
-            label={t.students}
-            value={studentCount === null ? '—' : String(studentCount)}
-          />
-          <Stat
-            label={t.batches}
-            value={batchCount === null ? '—' : String(batchCount)}
-          />
+      {setup && (
+        <div className="order-2 lg:col-span-12">
+          <SetupCard steps={setup} t={t.setup} />
         </div>
+      )}
 
-        {/* Places remaining, on every plan — see the note on `pressure`. One faint line
-            and a door while there is room, because it is a fact an owner needs to have
-            seen rather than one they act on today, and the day they do act on it the
-            door is the only thing on this line that matters.
+      {/* THE DAY'S WORK. `contents` on a phone, the left column from `lg` — see the note
+          at the top of this return. */}
+      <div className="contents lg:order-3 lg:col-span-8 lg:flex lg:flex-col lg:gap-5">
+        {/* The money could not be read, so the money is not drawn. Two blocks rather
+            than one ternary, like the fee worklist's own pair: the figure comes off the
+            rows and the card off the reason, and neither decides for the other.
 
-            That day is what `pressure` names. Past a fifth left the faint line has
-            stopped being honest about how close this is, so §3.7's warning takes its
-            place — never both, or the screen says one thing twice in two weights. */}
-        {isAdmin &&
-          pressure !== null &&
-          (pressure.level === 'fine' ? (
-            <p className="num mt-2 text-sm text-ink-soft">
-              {t.placesLeft(pressure.remaining, pressure.ceiling)}{' '}
-              <Link
-                href="/settings/plan"
-                className="font-medium text-brand-800 underline"
-              >
-                {t.placesLink} →
-              </Link>
+            Amber and not the brand card, because the brand card is where good news
+            lives on this screen. An owner glancing at a green panel takes the number in
+            it as the state of their centre, and this one is not a number. */}
+        {seeFees && moneyProblem !== null && (
+          <Card className="order-3 border-late/30 bg-late/5">
+            <p className="font-medium text-ink">
+              {moneyProblem === 'tooLarge'
+                ? t.outstandingTooLarge
+                : t.outstandingUnreadable}
             </p>
-          ) : (
-            <div className="mt-3">
-              <PlacesWarning pressure={pressure} t={t} />
-            </div>
-          ))}
-      </div>
+          </Card>
+        )}
 
-      {/* THE PROFIT LINE — §9.8's box, here because §9.10 puts it on this screen and
-          not on one of its own. A separate finance page would print "collected this
-          month" twice in two places, which is the discrepancy this file's own header
-          refuses; the tiles above are the glance and this is the working.
-
-          Under the tiles rather than over them: the outstanding card at the top is what
-          the product is sold on and what an owner opens the app to check, and the sum
-          below is what they read once a month with the shutter down. Above today's
-          attendance, though — everything past that card is about the teaching. */}
-      {showMoney && money === null && (
-        <Card className="border-late/30 bg-late/5">
-          <p className="font-medium text-ink">{t.money.title}</p>
-          <p className="mt-1 text-sm text-ink-soft">{t.money.unreadable}</p>
-        </Card>
-      )}
-
-      {showMoney && money !== null && (
-        <ProfitCard
-          month={period}
-          locale={locale}
-          money={money}
-          bills={bills}
-          billedFor={billedFor}
-          categories={d.fees.categories}
-          payroll={payroll}
-          salaryEntries={salaryExpenseCount}
-          t={t.money}
-        />
-      )}
-
-      {/* §8.3's comparison table, and the only way anybody finds it — it has no nav tab,
-          because `NAV` in the shell is explicitly not a plan gate. Under the profit
-          figure it breaks down, and only for the head office: a pinned manager would be
-          shown a comparison of the one building they already read above. */}
-      {showMoney && has(session.plan, 'multipleBranches') && isHqMember(session.active) && (
-        <Link
-          href="/hq"
-          className="inline-flex min-h-tap items-center font-medium text-brand-700"
-        >
-          {t.money.branchLink} →
-        </Link>
-      )}
-
-      <Card>
-        <div className="flex items-center justify-between gap-3">
-          <div>
-            <p className="font-semibold text-ink">{t.todayAttendance}</p>
-            {/* Left off rather than guessed when the batch list did not arrive. The
-                heading and the door below still work, and a card that says one true
-                thing beats one that adds a fraction it cannot stand behind. */}
-            {batchCount !== null && markedToday !== null && (
-              <p className="num mt-0.5 text-sm text-ink-soft">
-                {t.batchesTaken(markedToday, batchCount)}
+        {seeFees && moneyProblem === null && (
+          <Card className="order-3 border-brand-200 bg-brand-50">
+            <p className="text-sm font-medium text-brand-800">{t.outstanding}</p>
+            <p className="num mt-1 text-4xl font-bold text-brand-900">
+              {taka(outstanding)}
+            </p>
+            {/* The fee board's own caption, borrowed rather than restated. A
+                teacher's copy of this figure covers their own batches and no others,
+                because fee_invoice_balances inner-joins students under
+                security_invoker — and the two screens must describe that same
+                boundary in the same words. */}
+            {!isAdmin && (
+              <p className="mt-1 text-sm font-medium text-brand-700">
+                {d.fees.yoursOnly}
               </p>
             )}
+            {/* `.num` on the paragraph rather than a span around the count, the same
+                way the fee board carries this sentence. It is only tabular figures,
+                so it does nothing to the Bangla words and everything to the digit. */}
+            <p className="num mt-2 text-sm text-brand-800">
+              {overdue.length > 0
+                ? d.fees.overdueCount(overdue.length)
+                : t.nobodyOverdue}
+            </p>
+          </Card>
+        )}
+
+        {/* Directly under the number it exists to reduce, and above everything
+            else in this column. This is the one action on the owner's home screen that
+            brings money in rather than reporting on it, and on a 375px phone that
+            means it has to be reachable without a scroll. */}
+        {seeFees && isAdmin && (invoices === null || remainders.length > 0) && (
+          // The worklist's own words, borrowed rather than restated — a door and the
+          // room behind it disagreeing about what is in there is how an owner stops
+          // believing the number.
+          //
+          // Drawn when the invoices did not arrive as well as when money is owed. The
+          // count is what usually decides, and a day's chasing that loses its door
+          // because a query dropped loses the one errand on this screen that brings
+          // money in — so the door stays and carries no number, which is what
+          // `dueToday` being null means to it.
+          <div className="order-4">
+            <ReminderEntry dueToday={dueToday} t={d.reminders} />
           </div>
-          <Link
-            href="/teach"
-            className="shrink-0 rounded-lg px-3 py-2 font-medium text-brand-700
-              hover:bg-brand-50"
-          >
-            {d.common.view} →
-          </Link>
-        </div>
-      </Card>
+        )}
 
-      {/* Directly under the card that counts today's registers, because this is
-          what they add up to. A centre that has never taken attendance gets no
-          card at all rather than one explaining its own emptiness — the line
-          above already says nothing has been taken. */}
-      {isAdmin && batchRates.length > 0 && (
-        <AttendanceRates
-          month={rateMonth}
-          rows={batchRates}
-          isCurrentMonth={rateMonth === period}
-          locale={locale}
-          t={t}
-        />
-      )}
-
-      {/* Under the rate card, because that one is the aggregate and this one is the
-          individuals inside it — the same reading order as the outstanding figure
-          above the list of who owes it. Only when somebody is flagged; see the note
-          on the card for why an empty version of it would be worse than none. */}
-      {atRisk.length > 0 && (
-        <AtRiskCard students={atRisk} view={d.common.view} t={d.risk} />
-      )}
-
-      {/* Directly under the two cards about how the term is going, because it is
-          what an owner does with them: the rates and the drifting names are what
-          the centre knows, and this is the door to telling the families. Below the
-          fee worklist rather than beside it — the money is what keeps the centre
-          open, and one screen cannot have two most-important errands. */}
-      {seeProgress && <ProgressEntry toTell={toTell} t={d.progress} />}
-
-      {/* Directly under the weekly note, because they are the same errand seen from two
-          sides: that one is the message the product writes about one child, this one is
-          the message the centre writes to everybody. An owner who has just told forty
-          families how their week went is the one who remembers that Thursday is a
-          holiday.
-
-          `isAdmin` and no plan gate. `manualMessaging` is true on every tier — the
-          centre's own thumb on the centre's own phone is not ours to sell — so unlike
-          the door above it, this one is there on the free plan too. What it does need is
-          §6.2's `messages`, because postNotice refuses a manager who was not given it. */}
-      {seeMessages && <NoticeEntry t={d.notices} />}
-
-      {overdue.length > 0 && (
-        <div>
-          <div className="mb-2 flex items-baseline justify-between gap-3">
-            <h2 className="font-semibold text-ink">{t.overdueTitle}</h2>
-            <Link href="/fees" className="text-sm font-medium text-brand-700">
-              {d.common.seeAll}
+        <Card className="order-8">
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <p className="font-semibold text-ink">{t.todayAttendance}</p>
+              {/* Left off rather than guessed when the batch list did not arrive. The
+                  heading and the door below still work, and a card that says one true
+                  thing beats one that adds a fraction it cannot stand behind. */}
+              {batchCount !== null && markedToday !== null && (
+                <p className="num mt-0.5 text-sm text-ink-soft">
+                  {t.batchesTaken(markedToday, batchCount)}
+                </p>
+              )}
+            </div>
+            <Link
+              href="/teach"
+              className="shrink-0 rounded-lg px-3 py-2 font-medium text-brand-700
+                hover:bg-brand-50"
+            >
+              {d.common.view} →
             </Link>
           </div>
-          <ul className="flex flex-col gap-2">
-            {overdue.slice(0, 5).map((row, i) => (
-              <li
-                key={i}
-                className="flex items-center justify-between gap-3 rounded-xl
-                  border border-line bg-white px-4 py-3"
-              >
-                <div className="min-w-0">
-                  <p className="truncate font-medium text-ink">{row.name}</p>
-                  <p className="text-sm text-ink-faint">
-                    {formatDate(row.dueDate, locale)}
-                  </p>
-                </div>
-                <span className="num shrink-0 font-semibold text-absent">
-                  {taka(row.amount)}
-                </span>
-              </li>
+        </Card>
+
+        {/* Directly under the card that counts today's registers, because this is
+            what they add up to. A centre that has never taken attendance gets no
+            card at all rather than one explaining its own emptiness — the line
+            above already says nothing has been taken. */}
+        {isAdmin && batchRates.length > 0 && (
+          <div className="order-9">
+            <AttendanceRates
+              month={rateMonth}
+              rows={batchRates}
+              isCurrentMonth={rateMonth === period}
+              locale={locale}
+              t={t}
+            />
+          </div>
+        )}
+
+        {/* Under the rate card, because that one is the aggregate and this one is the
+            individuals inside it — the same reading order as the outstanding figure
+            above the list of who owes it. Only when somebody is flagged; see the note
+            on the card for why an empty version of it would be worse than none. */}
+        {atRisk.length > 0 && (
+          <div className="order-10">
+            <AtRiskCard students={atRisk} view={d.common.view} t={d.risk} />
+          </div>
+        )}
+
+        {/* WHO OWES, AND SINCE WHEN — the names behind the figure at the top of this
+            column, and the last block in it because it is the only one an owner reads
+            row by row rather than at a glance.
+
+            A table from `sm` up and stacked rows below it. Eight names rather than the
+            five it showed while this page was a phone layout at every width: the laptop
+            has the height for them beside a four-block rail, and eight is the difference
+            between a sample and a morning's work. `/fees` is still where the rest are —
+            this is the top of a list, not the list. */}
+        {overdue.length > 0 && (
+          <div className="order-last">
+            <div className="mb-2 flex items-baseline justify-between gap-3">
+              <h2 className="font-semibold text-ink">{t.overdueTitle}</h2>
+              <Link href="/fees" className="text-sm font-medium text-brand-700">
+                {d.common.seeAll}
+              </Link>
+            </div>
+
+            {/* One `<table>` at both widths rather than a list on a phone and a table on
+                a laptop: two renderings of the same eight rows is two things to keep in
+                step, and this is three columns, which fits 375px once the date is the
+                short form `formatDate` already returns.
+
+                `hidden sm:table-header-group` on the head, not no head at all: three
+                stacked rows of name/date/৳ explain themselves at a phone's width and the
+                header would cost a line of chrome, but a screen reader gets the labels
+                either way. */}
+            <table className="w-full border-separate border-spacing-y-2">
+              <thead className="hidden sm:table-header-group">
+                <tr className="text-left text-xs font-medium uppercase
+                  tracking-wide text-ink-faint">
+                  <th scope="col" className="px-4 pb-1">{t.overdueName}</th>
+                  <th scope="col" className="px-4 pb-1">{t.overdueDue}</th>
+                  <th scope="col" className="px-4 pb-1 text-right">
+                    {t.overdueAmount}
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {overdue.slice(0, 8).map((row, i) => (
+                  <tr key={i} className="bg-white">
+                    {/* The borders go on the cells, not the row: a `<tr>` cannot carry
+                        one in any browser we ship to, so the rounding sits on the first
+                        and last cell of each row and the middle cell keeps only the
+                        rules above and below. */}
+                    <th
+                      scope="row"
+                      className="max-w-[12rem] truncate rounded-l-xl border border-r-0
+                        border-line px-4 py-3 text-left font-medium text-ink"
+                    >
+                      {row.name}
+                    </th>
+                    <td className="num whitespace-nowrap border-y border-line px-4 py-3
+                      text-sm text-ink-faint">
+                      {formatDate(row.dueDate, locale)}
+                    </td>
+                    <td className="num rounded-r-xl border border-l-0 border-line px-4
+                      py-3 text-right font-semibold text-absent">
+                      {taka(row.amount)}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
+      {/* THE STATE OF THE CENTRE. `contents` on a phone, the right-hand column from
+          `lg` — see the note at the top of this return. Nothing in here is today's
+          errand: it is the counts, the month, the other branches, and the two doors
+          that tell families how the term is going. */}
+      <div className="contents lg:order-4 lg:col-span-4 lg:flex lg:flex-col lg:gap-5">
+        {/* Two or three, and the column count follows, because a two-item row in a
+            three-column grid leaves a gap that reads as a stat that failed to load.
+            Both class names are written out rather than interpolated from a number,
+            so Tailwind's scanner can still see them.
+
+            Three tiles across on a phone, one card of three ruled rows in the rail:
+            at a quarter of the width three boxes would put "৳1,24,000" on two lines,
+            and a stacked figure beside its label is the denser read anyway. Same
+            markup, different arrangement — the borders move from each tile to the
+            container at `lg`, which is also §20.7's typography over boxes.
+
+            Wrapped with the places line below, so the two are one item in the column's
+            `gap-5`: that line is counted off the student tile beside it, and a full gap
+            between them would read as an unrelated sentence. */}
+        <div className="order-5">
+          <div
+            className={`grid gap-3 ${seeCollected ? 'grid-cols-3' : 'grid-cols-2'}
+              lg:grid-cols-1 lg:gap-0 lg:divide-y lg:divide-line lg:rounded-xl
+              lg:border lg:border-line lg:bg-white`}
+          >
+            {/* Staff-admin AND `seeFees`, which is not the same as either alone. What came
+                in this month is the centre's revenue; a teacher's copy of it would be the
+                takings of their own batches under a label that says the centre's, and
+                unlike arrears it is not a number they can do anything with. Their share of
+                the money is on the fee board, next to the names. And §6.2's manager without
+                `fees` is filtered out of `center_collection_month` the same way a teacher
+                is, so the tile they would get is ৳0 over a month that took eighty thousand.
+
+                Kept on the centre tiers as well, above the profit card that repeats
+                it. Dropping it there would take the figure off the screen entirely the
+                first time the profit read failed, and both come out of the same view,
+                so they cannot disagree: the tile is the glance and the card is the sum. */}
+            {/* A dash, not a nought, for whichever of the three could not be counted.
+                `?? 0` put “0” under Students on a centre of three hundred and ৳0 under
+                Collected over a month that took eighty thousand — small type, but the
+                same false claim as the card above, and these are the three figures an
+                owner takes in at a glance rather than reads. */}
+            {seeCollected && (
+              <Stat
+                label={t.collected}
+                value={collected === null ? '—' : taka(collected)}
+              />
+            )}
+            <Stat
+              label={t.students}
+              value={studentCount === null ? '—' : String(studentCount)}
+            />
+            <Stat
+              label={t.batches}
+              value={batchCount === null ? '—' : String(batchCount)}
+            />
+          </div>
+
+          {/* Places remaining, on every plan — see the note on `pressure`. One faint line
+              and a door while there is room, because it is a fact an owner needs to have
+              seen rather than one they act on today, and the day they do act on it the
+              door is the only thing on this line that matters.
+
+              That day is what `pressure` names. Past a fifth left the faint line has
+              stopped being honest about how close this is, so §3.7's warning takes its
+              place — never both, or the screen says one thing twice in two weights. */}
+          {isAdmin &&
+            pressure !== null &&
+            (pressure.level === 'fine' ? (
+              <p className="num mt-2 text-sm text-ink-soft">
+                {t.placesLeft(pressure.remaining, pressure.ceiling)}{' '}
+                <Link
+                  href="/settings/plan"
+                  className="font-medium text-brand-800 underline"
+                >
+                  {t.placesLink} →
+                </Link>
+              </p>
+            ) : (
+              <div className="mt-3">
+                <PlacesWarning pressure={pressure} t={t} />
+              </div>
             ))}
-          </ul>
         </div>
-      )}
+
+        {/* THE PROFIT LINE — §9.8's box, here because §9.10 puts it on this screen and
+            not on one of its own. A separate finance page would print "collected this
+            month" twice in two places, which is the discrepancy this file's own header
+            refuses; the tiles above are the glance and this is the working.
+
+            In the rail and not under the outstanding card: this is the figure an owner
+            reads once a month with the shutter down, and the wide column is for the
+            money that is still out there. Under the tiles either way, whichever shape
+            the page is in — it is their working. */}
+        {showMoney && money === null && (
+          <Card className="order-6 border-late/30 bg-late/5">
+            <p className="font-medium text-ink">{t.money.title}</p>
+            <p className="mt-1 text-sm text-ink-soft">{t.money.unreadable}</p>
+          </Card>
+        )}
+
+        {showMoney && money !== null && (
+          <div className="order-6">
+            <ProfitCard
+              month={period}
+              locale={locale}
+              money={money}
+              bills={bills}
+              billedFor={billedFor}
+              categories={d.fees.categories}
+              payroll={payroll}
+              salaryEntries={salaryExpenseCount}
+              t={t.money}
+            />
+          </div>
+        )}
+
+        {/* §8.3's comparison table. Under the profit figure it breaks down, and only for
+            the head office: a pinned manager would be shown a comparison of the one
+            building they already read above.
+
+            No longer the only way anybody finds it — the shell now carries an
+            Organisation group with a /hq row in it, greyed with an Upgrade badge on the
+            tiers that do not include branches. This link is the one a reader arrives at
+            with the month's profit in front of them, which is when the comparison is
+            worth opening, so it stays. */}
+        {showMoney && has(session.plan, 'multipleBranches') && isHqMember(session.active) && (
+          <Link
+            href="/hq"
+            className="order-7 inline-flex min-h-tap items-center font-medium
+              text-brand-700"
+          >
+            {t.money.branchLink} →
+          </Link>
+        )}
+
+        {/* Under the two cards about how the term is going on a phone, beside them on a
+            laptop, because it is what an owner does with them: the rates and the drifting
+            names are what the centre knows, and this is the door to telling the families.
+            In the rail rather than the wide column — the money is what keeps the centre
+            open, and one screen cannot have two most-important errands. */}
+        {seeProgress && (
+          <div className="order-11">
+            <ProgressEntry toTell={toTell} t={d.progress} />
+          </div>
+        )}
+
+        {/* Directly under the weekly note, because they are the same errand seen from two
+            sides: that one is the message the product writes about one child, this one is
+            the message the centre writes to everybody. An owner who has just told forty
+            families how their week went is the one who remembers that Thursday is a
+            holiday.
+
+            `isAdmin` and no plan gate. `manualMessaging` is true on every tier — the
+            centre's own thumb on the centre's own phone is not ours to sell — so unlike
+            the door above it, this one is there on the free plan too. What it does need is
+            §6.2's `messages`, because postNotice refuses a manager who was not given it. */}
+        {seeMessages && (
+          <div className="order-12">
+            <NoticeEntry t={d.notices} />
+          </div>
+        )}
+      </div>
 
       {/* The empty-roster card that used to live here is gone: SetupCard at the top of
           the page covers it, and covers the three states after it that nothing covered
@@ -1003,11 +1110,25 @@ export default async function DashboardPage() {
   )
 }
 
+/**
+ * One of the three glance figures: a bordered box on a phone, a ruled row in the rail.
+ *
+ * Same markup either way, with the border and the background moving to the container at
+ * `lg` (see the grid above). The figure is written first because it is the point and
+ * because on a phone it is on top; `lg:order-*` swaps it to the right of its label, where
+ * three of them stack into a column of figures that can be scanned down.
+ */
 function Stat({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-xl border border-line bg-white px-3 py-3 text-center">
-      <p className="num text-lg font-bold text-ink">{value}</p>
-      <p className="mt-0.5 text-xs text-ink-soft">{label}</p>
+    <div
+      className="rounded-xl border border-line bg-white px-3 py-3 text-center
+        lg:flex lg:items-baseline lg:justify-between lg:gap-3 lg:rounded-none
+        lg:border-0 lg:bg-transparent lg:px-4 lg:text-left"
+    >
+      <p className="num text-lg font-bold text-ink lg:order-2">{value}</p>
+      <p className="mt-0.5 text-xs text-ink-soft lg:order-1 lg:mt-0 lg:text-sm">
+        {label}
+      </p>
     </div>
   )
 }

@@ -2847,6 +2847,19 @@ export const en: Dictionary = {
       `${done}/${total} ${total === 1 ? 'batch' : 'batches'} taken`,
 
     overdueTitle: 'Past the deadline',
+    /**
+     * The three column heads on that table, drawn from `sm` up only — on a phone the
+     * rows stack and a name, a date and a ৳ figure need no telling apart. Still in the
+     * markup at every width, because a screen reader reads the head whether it is
+     * painted or not.
+     *
+     * "Was due" and not "Due": the whole table is money that is already late, and a
+     * column called Due over a date in the past reads as a date something is going to
+     * happen on.
+     */
+    overdueName: 'Student',
+    overdueDue: 'Was due',
+    overdueAmount: 'Owed',
 
     setup: {
       title: 'Nearly there',
