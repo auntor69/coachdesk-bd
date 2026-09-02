@@ -1,5 +1,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
+import { readFileSync } from 'node:fs'
+import path from 'node:path'
 
 import {
   chaseDecision,
@@ -387,3 +389,166 @@ function addDay(isoDate: string, delta: number): string {
     .toISOString()
     .slice(0, 10)
 }
+
+/* -------------------------------------------------------------------------- */
+/* And the screen's own shape                                                 */
+/* -------------------------------------------------------------------------- */
+
+const ROOT = path.join(import.meta.dirname, '..')
+const read = (...parts: string[]) => readFileSync(path.join(ROOT, ...parts), 'utf8')
+
+const PAGE = read('src', 'app', '(app)', 'fees', 'reminders', 'page.tsx')
+const LIST = read('src', 'app', '(app)', 'fees', 'reminder-list.tsx')
+
+/** Each anchor is an assertion: a changed span makes its `indexOf` -1. */
+const GRID_AT = PAGE.indexOf(
+  '<div className="flex flex-col gap-5 lg:grid lg:grid-cols-12 lg:items-start lg:gap-6">',
+)
+const EMPTY_AT = PAGE.indexOf('if (emptyReason !== null) {')
+
+const RENDER = PAGE.slice(GRID_AT)
+const EMPTY = PAGE.slice(EMPTY_AT, GRID_AT)
+
+const HEAD_AT = RENDER.indexOf(
+  '<div className="order-1 flex flex-col gap-4 lg:col-span-12">{header}</div>',
+)
+const RAIL_AT = RENDER.indexOf(
+  'className="contents lg:sticky lg:top-8 lg:order-3 lg:col-span-4 lg:flex',
+)
+const WORK_AT = RENDER.indexOf(
+  '<div className="order-3 flex flex-col gap-3 lg:order-2 lg:col-span-8">',
+)
+
+const RAIL = RENDER.slice(RAIL_AT, WORK_AT)
+const WORK = RENDER.slice(WORK_AT)
+
+/** See plan-page.test.ts: the lookbehind keeps `border-2` and `lg:col-span-N` out. */
+function ordersIn(source: string): string[] {
+  return [...source.matchAll(/(?<=["\s`])order-(\d+|last)\b/g)].map((m) => m[1])
+}
+
+test('the worklist takes eight columns and what is at stake four beside it', () => {
+  // Eight and not seven, measured: the English desktop chip trio — copy the message,
+  // WhatsApp, copy the number — is about 409px, which wraps inside span-7's 401px at
+  // the `lg` boundary and fits span-8's 461px. The rail's figure is a bare count.
+  assert.ok(GRID_AT > 0, 'the grid is not the shape it was')
+  assert.ok(HEAD_AT > 0, 'the letterhead does not span twelve')
+  assert.ok(RAIL_AT > HEAD_AT, 'the rail is not written after the letterhead')
+  assert.ok(WORK_AT > RAIL_AT, 'the rail is not written before the list')
+
+  assert.match(RAIL, /lg:col-span-4/)
+  assert.match(WORK, /lg:col-span-8/)
+})
+
+test('the rail is written first and drawn second, so a keyboard reaches it in three tabs', () => {
+  // `order` moves nothing for a keyboard or a screen reader — the DOM does. Written
+  // after the list, "add numbers" would be a hundred and twenty chips of tabbing away.
+  assert.match(RAIL, /lg:order-3/)
+  assert.match(WORK, /lg:order-2/)
+  assert.deepEqual(ordersIn(RENDER), ['1', '2', '3'])
+})
+
+test('the rail sticks, and nothing sticks on a phone', () => {
+  // `lg:top-8` lines up with main's own `lg:py-8`, and the mobile header that would
+  // occlude it is `lg:hidden`. A second sticky thing on a phone fights the fixed nav.
+  assert.match(RAIL, /lg:sticky lg:top-8/)
+  assert.doesNotMatch(RENDER, /(?<!lg:)sticky/, 'something sticks on a phone')
+})
+
+test('the rail is `contents` on a phone, so its blocks interleave with the list', () => {
+  // Below `lg` the wrapper generates no box, so the hero lands above the first row and
+  // the two asides below the last one — the phone order, out of the same DOM.
+  assert.match(RAIL, /className="contents lg:sticky/)
+  assert.equal(PAGE.split('className="order-4 num text-sm text-ink-faint"').length - 1, 1)
+  assert.equal(PAGE.split('<Card className="order-5">').length - 1, 1)
+
+  // Drawn from the shared consts, so the empty screen and this one cannot disagree.
+  for (const block of ['{counted}', '{missing}']) {
+    assert.ok(RAIL.includes(block), `${block} is not in the rail`)
+    assert.ok(!WORK.includes(block), `${block} is drawn beside the rows`)
+  }
+})
+
+test('what is at stake is drawn once, in the rail, and never beside the rows', () => {
+  // The fault the rail fixes: an owner working down forty families had the count and
+  // the amount scroll away above the list, and the amount is what decides whether the
+  // next twenty minutes are worth it.
+  assert.match(RAIL, /className="num text-4xl font-bold">\{due\}/)
+  assert.match(RAIL, /\{formatTaka\(atStake\)\} \{t\.atStake\}/)
+  assert.equal(PAGE.split('{t.dueTitle}').length - 1, 1)
+  assert.doesNotMatch(WORK, /t\.dueTitle|atStake|heldCount|unreachableTitle/)
+})
+
+test('the note about the missing payment number sits with the rows, once, above them', () => {
+  // Every tap sends a real message from the owner's own handset, so this is a thing to
+  // know before the first one — and in the list's own column, not the rail's.
+  assert.ok(WORK.includes('d.chase.payUnreadable'))
+  assert.equal(PAGE.split('d.chase.payUnreadable').length - 1, 1)
+  assert.ok(WORK.indexOf('payUnreadable') < WORK.indexOf('<ReminderList'))
+
+  // The early return below guarantees rows, so the old `groups.length > 0` guards are
+  // gone: a note with no list under it is no longer reachable.
+  assert.doesNotMatch(RENDER, /groups\.length > 0/)
+})
+
+test('the day with nobody to remind is its own capped screen, not an empty rail', () => {
+  // An 8/4 split with one sentence in it is most of a laptop saying nothing, and
+  // `chaseEmptyReason` is null exactly when `due` is — so past this return there are rows.
+  assert.ok(EMPTY_AT > 0 && EMPTY_AT < GRID_AT, 'the empty screen is not before the grid')
+  assert.match(EMPTY, /className="flex flex-col gap-4 lg:max-w-2xl"/)
+  assert.match(EMPTY, /\{t\.noneBecause\[emptyReason\]\}/)
+  assert.equal(PAGE.split('{t.noneBecause[emptyReason]}').length - 1, 1)
+  assert.doesNotMatch(RENDER, /noneBecause/, 'a reason to stop is drawn inside the grid')
+
+  // Both counted blocks come back, from the same consts the rail draws.
+  assert.ok(EMPTY.includes('{counted}') && EMPTY.includes('{missing}'))
+
+  // Two one-sentence screens, both capped: this one and the read that failed.
+  assert.equal(PAGE.split('lg:max-w-2xl').length - 1, 2)
+})
+
+test('the letterhead is written once and the way out is at the top of all three screens', () => {
+  // It was the last element on the page, which on a centre with forty families to chase
+  // put the only way back below forty rows.
+  assert.equal(PAGE.split('{t.backToBoard}').length - 1, 1)
+  assert.equal(PAGE.split('{t.subtitle}').length - 1, 1)
+  assert.equal(PAGE.split('{header}').length - 1, 3)
+  assert.ok(PAGE.indexOf('{t.backToBoard}') < PAGE.indexOf('{t.title}'))
+  assert.match(PAGE, /className="text-xl font-bold text-ink lg:text-2xl">\{t\.title\}/)
+})
+
+test('the list is still frozen on mount, and rows dim instead of vanishing', () => {
+  // What the layout must not undo: `logFeeReminder` revalidates the fee board, so fresh
+  // props would delete the row under the thumb and pull the next family into its place.
+  assert.match(LIST, /const \[shown\] = useState\(groups\)/)
+  assert.match(LIST, /opacity-60/)
+  assert.match(LIST, /role="status"/)
+
+  // It takes no `className`, which is why the worklist column is a plain grid item
+  // rather than a `contents` wrapper like the rail.
+  assert.deepEqual(ordersIn(LIST), [])
+})
+
+test('§38: the gate, both reads and every figure are the ones that were there', () => {
+  assert.match(PAGE, /pageCapability\('fees'\)/)
+  assert.equal(PAGE.split(".eq('coaching_center_id', session.active.centerId)").length - 1, 2)
+  assert.match(PAGE, /\.is\('voided_at', null\)/)
+  assert.match(PAGE, /\.gt\('remaining_bdt', 0\)/)
+  assert.match(PAGE, /\.gte\('created_at', `\$\{earliest\}T00:00:00\+06:00`\)/)
+
+  // Both paged: a chase lost past PostgREST's silent thousand would not hide a reminder,
+  // it would send a second one to a family messaged this morning.
+  assert.equal(PAGE.split('pageAll((from, to) =>').length - 1, 2)
+  assert.equal(PAGE.split('return refusal(').length - 1, 2)
+  assert.match(PAGE, /if \(!\('rows' in owing\)\) return refusal\(owing\.failed\)/)
+  assert.match(PAGE, /if \(!\('rows' in chases\)\) return refusal\(chases\.failed\)/)
+
+  assert.match(PAGE, /addDays\(invoices\[0\]\?\.due_date \?\? today, -3\)/)
+  assert.match(PAGE, /todayInDhaka\(new Date\(row\.created_at\)\)/)
+  assert.match(PAGE, /chaseDecision\(/)
+  assert.match(PAGE, /chaseEmptyReason\(\{/)
+  assert.match(PAGE, /STAGE_ORDER\.flatMap/)
+  assert.match(PAGE, /normalizeBdMobile\(invoice\.guardian_phone\)/)
+  assert.match(PAGE, /b\.daysLate - a\.daysLate \|\| b\.remaining - a\.remaining/)
+  assert.match(PAGE, /sumTaka\(groups\.flatMap/)
+})

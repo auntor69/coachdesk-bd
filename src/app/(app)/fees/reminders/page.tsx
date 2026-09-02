@@ -88,6 +88,30 @@ export default async function RemindersPage() {
   ])
 
   /**
+   * The letterhead and the way out, written once for all three of this page's screens.
+   *
+   * The link is at the top now. It was the last thing on the page, which on a centre
+   * with forty families to chase put the only way back below forty rows — and the fee
+   * board it returns to needs neither of the reads below, so it is a real place to be
+   * sent from a screen that failed rather than a dead end.
+   */
+  const header = (
+    <>
+      <Link
+        href="/fees"
+        className="inline-flex min-h-tap items-center font-medium text-brand-700"
+      >
+        ← {t.backToBoard}
+      </Link>
+
+      <div>
+        <h1 className="text-xl font-bold text-ink lg:text-2xl">{t.title}</h1>
+        <p className="mt-1 text-ink-soft">{t.subtitle}</p>
+      </div>
+    </>
+  )
+
+  /**
    * The screen when it could not work out today's list.
    *
    * A function because there are two ways to get here and one card to show, and
@@ -95,26 +119,17 @@ export default async function RemindersPage() {
    * folded into it. Every figure on this page is a claim about who to message, and
    * there is no honest version of that claim built on a read that did not arrive.
    *
-   * The back link stays: the fee board says who owes money without needing either of
-   * these reads, so it is a real place to be sent rather than a dead end.
+   * Capped and one column: an 8/4 split with an empty rail beside one sentence is
+   * most of a laptop screen saying nothing.
    */
   const refusal = (problem: PageFailure) => (
-    <div className="flex flex-col gap-5">
-      <div>
-        <h1 className="text-xl font-bold text-ink">{t.title}</h1>
-        <p className="mt-1 text-ink-soft">{t.subtitle}</p>
-      </div>
+    <div className="flex flex-col gap-4 lg:max-w-2xl">
+      {header}
       <Card className="border-late/30 bg-late/5">
         <p className="font-medium text-ink">
           {problem === 'tooLarge' ? t.tooLarge : t.unreadable}
         </p>
       </Card>
-      <Link
-        href="/fees"
-        className="inline-flex min-h-tap items-center font-medium text-brand-700"
-      >
-        ← {t.backToBoard}
-      </Link>
     </div>
   )
 
@@ -288,15 +303,83 @@ export default async function RemindersPage() {
     unreachable: unreachable.length,
   })
 
-  return (
-    <div className="flex flex-col gap-5">
-      <div>
-        <h1 className="text-xl font-bold text-ink">{t.title}</h1>
-        <p className="mt-1 text-ink-soft">{t.subtitle}</p>
-      </div>
+  /**
+   * Counted, not listed. These are rows the owner has already dealt with or does not
+   * have to yet, and the only thing worth saying about them is that they were not
+   * forgotten — a count of families is what accounts for the rest of the register.
+   */
+  const counted = (held > 0 || waiting > 0) && (
+    <p className="order-4 num text-sm text-ink-faint">
+      {held > 0 && t.heldCount(held)}
+      {held > 0 && waiting > 0 && ' · '}
+      {waiting > 0 && t.waitingCount(waiting)}
+    </p>
+  )
 
-      {due > 0 && (
-        <Card className="border-brand-200 bg-brand-50">
+  /** Owed, due, and impossible to message — a data problem, with the door to its fix. */
+  const missing = unreachable.length > 0 && (
+    <Card className="order-5">
+      <p className="num font-medium text-ink">
+        {t.unreachableTitle(unreachable.length)}
+      </p>
+      <p className="mt-1 text-sm text-ink-soft">
+        {t.unreachableBody(unreachable.map((r) => r.name).join(', '))}
+      </p>
+      <Link
+        href="/settings/students"
+        className="mt-3 inline-flex min-h-tap items-center font-medium text-brand-700"
+      >
+        {t.addNumbers} →
+      </Link>
+    </Card>
+  )
+
+  /*
+   * The day with nobody to remind, which is its own screen rather than a gap in the
+   * one below: no worklist means no rail to put beside it, and `emptyReason` is null
+   * exactly when `due` is, so reaching past here is reaching a list with rows in it.
+   *
+   * Both counted blocks keep the rail's `order-N` — in one column they sort to where
+   * they were written anyway, and one definition cannot drift from the other.
+   */
+  if (emptyReason !== null) {
+    return (
+      <div className="flex flex-col gap-4 lg:max-w-2xl">
+        {header}
+        <Card>
+          <p className="font-medium text-ink">{t.noneTitle}</p>
+          <p className="mt-1 text-sm text-ink-soft">{t.noneBecause[emptyReason]}</p>
+        </Card>
+        {counted}
+        {missing}
+      </div>
+    )
+  }
+
+  return (
+    /*
+     * TWO LAYOUTS OUT OF ONE DOM, the arrangement steps 2 to 5 of §20.8 use: each block
+     * carries an `order-N` matching the sequence a phone draws it in, and the rail is
+     * `display: contents` below `lg`, so on a phone it generates no box and every block
+     * is a direct child of the one column again.
+     *
+     * Eight columns of work beside four of what is at stake, and the rail sticks. The
+     * fault it fixes: an owner working down forty families had the count, the amount and
+     * the families with no number on file scroll away above and below the list — and the
+     * amount is the thing that decides whether the next twenty minutes are worth it.
+     *
+     * The rail is written FIRST and drawn second, which is not a contradiction: `order`
+     * moves nothing for a keyboard or a screen reader. Written last, the way to reach
+     * "add numbers" would be a hundred and twenty chips of tabbing.
+     */
+    <div className="flex flex-col gap-5 lg:grid lg:grid-cols-12 lg:items-start lg:gap-6">
+      <div className="order-1 flex flex-col gap-4 lg:col-span-12">{header}</div>
+
+      <div
+        className="contents lg:sticky lg:top-8 lg:order-3 lg:col-span-4 lg:flex
+          lg:flex-col lg:gap-5"
+      >
+        <Card className="order-2 border-brand-200 bg-brand-50">
           <p className="text-sm font-medium text-brand-800">{t.dueTitle}</p>
           {/* Still two nodes: the count is the largest thing on the screen and the
               word beside it is not, so this one sentence keeps its markup where
@@ -310,26 +393,21 @@ export default async function RemindersPage() {
             {formatTaka(atStake)} {t.atStake}
           </p>
         </Card>
-      )}
 
-      {emptyReason && (
-        <Card>
-          <p className="font-medium text-ink">{t.noneTitle}</p>
-          <p className="mt-1 text-sm text-ink-soft">{t.noneBecause[emptyReason]}</p>
-        </Card>
-      )}
+        {counted}
+        {missing}
+      </div>
 
-      {/* Above the list rather than under it, because it is a thing to know before
-          the first tap and every tap sends a real message from the owner's own
-          handset. Grey and not amber, on the rule the fee board's chase note
-          follows: the worklist is right, the amounts are right, and this is the one
-          part of what goes out that is missing. See chase.payUnreadable for why it
-          does not say "set your number" — that may already be done. */}
-      {centerError && groups.length > 0 && (
-        <p className="text-sm text-ink-soft">{d.chase.payUnreadable}</p>
-      )}
+      {/* The list and the one sentence about what its messages will be missing, in one
+          block so the note cannot end up in a column away from the rows it is about.
+          Unconditional on `groups` now, because the return above took the empty case. */}
+      <div className="order-3 flex flex-col gap-3 lg:order-2 lg:col-span-8">
+        {/* Before the first tap, because every tap sends a real message from the owner's
+            own handset. Grey and not amber, on the rule the fee board's chase note
+            follows: the worklist is right, the amounts are right, and this is the one
+            part of what goes out that is missing. */}
+        {centerError && <p className="text-sm text-ink-soft">{d.chase.payUnreadable}</p>}
 
-      {groups.length > 0 && (
         <ReminderList
           groups={groups}
           center={center}
@@ -341,41 +419,7 @@ export default async function RemindersPage() {
             common: d.common,
           }}
         />
-      )}
-
-      {/* Counted, not listed. These are rows the owner has already dealt with, and
-          the only thing worth saying about them is that they were not forgotten. */}
-      {(held > 0 || waiting > 0) && (
-        <p className="num text-sm text-ink-faint">
-          {held > 0 && t.heldCount(held)}
-          {held > 0 && waiting > 0 && ' · '}
-          {waiting > 0 && t.waitingCount(waiting)}
-        </p>
-      )}
-
-      {unreachable.length > 0 && (
-        <Card>
-          <p className="num font-medium text-ink">
-            {t.unreachableTitle(unreachable.length)}
-          </p>
-          <p className="mt-1 text-sm text-ink-soft">
-            {t.unreachableBody(unreachable.map((r) => r.name).join(', '))}
-          </p>
-          <Link
-            href="/settings/students"
-            className="mt-3 inline-flex min-h-tap items-center font-medium text-brand-700"
-          >
-            {t.addNumbers} →
-          </Link>
-        </Card>
-      )}
-
-      <Link
-        href="/fees"
-        className="inline-flex min-h-tap items-center font-medium text-brand-700"
-      >
-        ← {t.backToBoard}
-      </Link>
+      </div>
     </div>
   )
 }
