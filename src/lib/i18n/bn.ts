@@ -6004,6 +6004,17 @@ export const bn = {
        * ব্যাচে নেই" over three hundred names is a fact nobody can act on.
        */
       showThese: 'এদের দেখান',
+      /**
+       * Names the list that stays, not the rows that go — "চলে যাওয়া লুকান" describes
+       * our filter, this describes what the owner wanted to look at.
+       */
+      showCurrent: 'বর্তমান শিক্ষার্থী',
+      /** The five headings of the wide sheet, in its column order. */
+      colName: 'নাম',
+      colBatches: 'ব্যাচ',
+      colClass: 'শ্রেণি · স্কুল',
+      colPhone: 'অভিভাবকের নম্বর',
+      colCode: 'আইডি',
       emptyTitle: 'এখনও কোনো শিক্ষার্থী নেই',
       emptyBody:
         'শিক্ষার্থী যোগ করলে হাজিরা, পরীক্ষার নম্বর আর ফি — সব এখানে আসবে।',

@@ -3909,6 +3909,18 @@ export const en: Dictionary = {
        * to keep in agreement.
        */
       showThese: 'Show these',
+      /**
+       * The scope control, and the wording is doing one job: saying what stays rather
+       * than what goes. "Hide leavers" describes our filter; "Current students" names
+       * the list an owner wanted in the first place.
+       */
+      showCurrent: 'Current students',
+      /** The five headings of the wide sheet, in its column order. */
+      colName: 'Name',
+      colBatches: 'Batches',
+      colClass: 'Class · school',
+      colPhone: 'Guardian’s number',
+      colCode: 'ID',
       emptyTitle: 'No students yet',
       emptyBody:
         'Add students and attendance, exam marks and fees all start landing here.',
