@@ -4,15 +4,23 @@ import { Card } from '@/components/ui'
 import { pageRole, getSession } from '@/lib/auth/session'
 import { createClient } from '@/lib/supabase/server'
 import { formatBdMobile, normalizeBdMobile } from '@/lib/bd/phone'
-import { formatDate, hasPassed, todayInDhaka } from '@/lib/bd/time'
+import {
+  currentPeriodMonth,
+  digits,
+  formatDate,
+  hasPassed,
+  todayInDhaka,
+} from '@/lib/bd/time'
 import { openAsks } from '@/lib/billing/asks'
 import { priceIntent } from '@/lib/billing/price'
 import { purchaseReceipt, transferReference } from '@/lib/billing/receipt'
 import { dict, DEFAULT_LOCALE, type Locale } from '@/lib/i18n'
 import { formatTaka } from '@/lib/money'
+import { MONTHS_COVERED, coverageStart } from '@/lib/platform/billing'
 import {
   PLANS,
   CENTER_MONTHLY_FLOOR_BDT,
+  PLAN_RANK,
   has,
   hasStaff,
   overStaffSeats,
@@ -25,6 +33,12 @@ import {
 } from '@/lib/plans'
 import { AskRow } from './ask-row'
 import { BuyPlaces } from './buy-places'
+import {
+  BuySubscription,
+  type MonthChoice,
+  type SubscribeChoice,
+} from './buy-subscription'
+import { CancelPurchase } from './cancel-purchase'
 import { PriceCalculator } from './calculator'
 import { UpgradeRequest } from './upgrade-request'
 
@@ -141,8 +155,10 @@ export default async function PlanPage() {
     { count: studentCount },
     { count: subjectCount },
     { count: teacherCount },
+    { count: branchCount },
     { data: asked, error: askedError },
     { data: buys, error: buysError },
+    { data: subs, error: subsError },
     asks,
     { data: settled, error: settledError },
   ] = await Promise.all([
@@ -163,6 +179,15 @@ export default async function PlanPage() {
       .eq('active', true),
     supabase
       .from('teachers')
+      .select('id', { count: 'exact', head: true })
+      .eq('coaching_center_id', session.active.centerId)
+      .eq('active', true),
+    // Not in the usage table — no tier caps branches — but the monthly bill counts them
+    // beyond the three an Institution includes, so the card below cannot price a
+    // renewal without it. `max(1, …)` where it is used: a centre with no branch row is
+    // still one place.
+    supabase
+      .from('branches')
       .select('id', { count: 'exact', head: true })
       .eq('coaching_center_id', session.active.centerId)
       .eq('active', true),
@@ -199,6 +224,30 @@ export default async function PlanPage() {
           .in('state', ['pending', 'initiated'])
           .order('created_at', { ascending: false })
           .limit(5)
+      : Promise.resolve({ data: null, error: null }),
+    /*
+     * The one open subscription, if there is one.
+     *
+     * `limit(1)` and not five, because ./actions.ts allows exactly one: coverage is
+     * worked out from `paid_through` when the intent opens, so two opened the same
+     * afternoon would cover the same months and settling both would take the money
+     * twice for one window. A lapsed one is read too and still blocks — which is why
+     * the row carries a cancel button.
+     *
+     * `target_plan` comes with it so the row can say what the money moves them onto;
+     * the period columns are the window the founder will read back off the receipt.
+     */
+    isOwner
+      ? supabase
+          .from('payment_intents')
+          .select(
+            'id, quantity, amount_bdt, expires_at, target_plan, covers_period_end',
+          )
+          .eq('coaching_center_id', session.active.centerId)
+          .eq('purpose', 'subscription')
+          .in('state', ['pending', 'initiated'])
+          .order('created_at', { ascending: false })
+          .limit(1)
       : Promise.resolve({ data: null, error: null }),
     /*
      * §3.7's asks, waiting for the one reader who can end the wait.
@@ -325,6 +374,69 @@ export default async function PlanPage() {
   const suggested =
     askable.find((tier) => rung(tier.id) > rung(plan.id))?.id
     ?? askable[askable.length - 1].id
+
+  /*
+   * WHERE THE NEXT SUBSCRIPTION WINDOW OPENS, and it is `coverageStart` rather than
+   * arithmetic written twice: ./actions.ts bills the month this returns, so a second
+   * formula here would draw a window the receipt then contradicts.
+   *
+   * A move is only offered while that window is this month. Coverage running past it
+   * means the tier change is mid-term, which needs a credit the schema cannot hold —
+   * `buySubscription` refuses it, so the dropdown does not offer it.
+   */
+  const now = new Date()
+  const from = coverageStart(session.active.paidThrough, now)
+  const canMove = from === currentPeriodMonth(now)
+
+  /*
+   * What this owner may pay for: staying where they are, and — upwards only — where
+   * they could go.
+   *
+   * Priced in the label like the request dropdown, because a line reading "Institution"
+   * asks somebody to remember a figure from four cards up the page. A free tier gets no
+   * renewal option: there is nothing to renew, and an option quoting ৳0 on the screen
+   * where somebody has decided to start paying is a dead end.
+   */
+  const subChoices: SubscribeChoice[] = [
+    ...(plan.pricing === 'free'
+      ? []
+      : [{ value: '' as const, label: t.subscribe.renewOption }]),
+    ...(canMove
+      ? askable
+          .filter((tier) => PLAN_RANK[tier.id] > PLAN_RANK[plan.id])
+          .map((tier) => ({
+            value: tier.id,
+            label: `${planName(tier, locale)} · ${priceLine(tier, t)}`,
+          }))
+      : []),
+  ]
+
+  // The closed list, labelled by the dictionary so "1 month" is not "1 months" and the
+  // numerals are Bangla in Bangla.
+  const monthChoices: MonthChoice[] = MONTHS_COVERED.map((n) => ({
+    value: n,
+    label: t.subscribe.monthsOption(n),
+  }))
+
+  const open = subs?.[0] ?? null
+  /*
+   * The three counts the bill is worked out from, or null if any of them would not read.
+   *
+   * A nought here is not a smaller bill, it is a wrong one — and this figure becomes a
+   * receipt. So the form goes away and says so, which is the same rule the usage table
+   * above follows when it prints `—` instead of a zero.
+   */
+  const counts =
+    studentCount !== null && teacherCount !== null && branchCount !== null
+      ? {
+          students: studentCount,
+          teachers: teacherCount,
+          // A centre with no branch row is still one place, which is what the bill
+          // charges for: `branchChargeBdt` counts branches beyond the included three.
+          branches: Math.max(1, branchCount),
+        }
+      : null
+  const subscribes = isOwner && subChoices.length > 0
 
   // Composed here rather than in the client component, and not inside `t.upgrade`
   // either: the group below is handed across the server/client boundary whole, so a
@@ -509,8 +621,8 @@ export default async function PlanPage() {
                   <OpenPurchase
                     key={buy.id}
                     id={buy.id}
-                    places={buy.quantity}
-                    amountBdt={Number(buy.amount_bdt)}
+                    line={t.placesLine(buy.quantity, formatTaka(Number(buy.amount_bdt)))}
+                    note={null}
                     expiresAt={buy.expires_at}
                     salesPhone={salesPhone}
                     locale={locale}
@@ -526,6 +638,95 @@ export default async function PlanPage() {
             locale={locale}
             words={t.places}
           />
+        </Card>
+      )}
+
+      {/*
+        WHERE THE PLAN ITSELF IS PAID FOR — and, for a trial centre, the one control on
+        this page that ends the trial without the founder having to ring back. Under the
+        places card because places are the more frequent errand for a centre already
+        paying; above the receipts because this is the money going out, not the paperwork
+        coming back.
+
+        Drawn only when there is something to sell: a free tier with no upward move left
+        (coverage still running, so a move would be mid-term) has nothing here, and a
+        card offering a ৳0 renewal would be worse than no card.
+      */}
+      {subscribes && (
+        <Card>
+          <h2 className="font-semibold text-ink">{t.subscribe.title}</h2>
+          <p className="mt-1 text-sm text-ink-soft">{t.subscribe.body}</p>
+
+          {/* The one fact an owner comes to this card for. `paid_through` is the last
+              day covered, so it is printed as a day and not a month. */}
+          <p className="mt-2 text-sm font-medium text-ink">
+            {session.active.paidThrough
+              ? t.subscribe.coveredUntil(
+                  formatDate(session.active.paidThrough, locale),
+                )
+              : t.subscribe.notCovered}
+          </p>
+
+          {subsError && (
+            <p className="mt-3 text-sm text-ink-soft">{t.subscribe.unreadable}</p>
+          )}
+
+          {open && (
+            <div className="mt-4 border-t border-line pt-3">
+              <h3 className="font-medium text-ink">{t.subscribe.waitingTitle}</h3>
+              <div className="mt-2">
+                <OpenPurchase
+                  id={open.id}
+                  line={t.subscribe.waitingLine(
+                    digits(open.quantity, locale),
+                    formatTaka(Number(open.amount_bdt)),
+                    open.covers_period_end
+                      ? formatDate(open.covers_period_end, locale)
+                      : '—',
+                  )}
+                  note={
+                    open.target_plan
+                      ? t.subscribe.waitingPlan(
+                          planName(planFor(open.target_plan), locale),
+                        )
+                      : null
+                  }
+                  expiresAt={open.expires_at}
+                  salesPhone={salesPhone}
+                  locale={locale}
+                  t={t}
+                />
+              </div>
+            </div>
+          )}
+
+          {/* No form while one is open, because the action refuses a second one — and a
+              form that exists only to be rejected is a worse answer than the row above
+              it and the cancel button under that. */}
+          {!subsError && !open && counts && (
+            <BuySubscription
+              plan={plan.id}
+              plans={subChoices}
+              months={monthChoices}
+              students={counts.students}
+              teachers={counts.teachers}
+              branches={counts.branches}
+              from={from}
+              locale={locale}
+              words={{
+                planLabel: t.subscribe.planLabel,
+                monthsLabel: t.subscribe.monthsLabel,
+                quote: t.subscribe.quote,
+                submit: t.subscribe.submit,
+                submitting: t.subscribe.submitting,
+              }}
+            />
+          )}
+          {!subsError && !open && !counts && (
+            <p className="mt-3 text-sm text-ink-soft">
+              {t.subscribe.priceUnreadable}
+            </p>
+          )}
         </Card>
       )}
 
@@ -761,19 +962,25 @@ function ladderLine(
  * It stays on screen after the price lapses, because an owner who already sent the
  * money needs to be able to quote it when they ring. What goes is the instruction to
  * send more.
+ *
+ * `line` AND `note` ARE COMPOSED BY THE CALLER, because the two cards that use this
+ * describe different purchases — "40 more places" and "3 months at ৳7,300, moves you to
+ * Institution" — and everything below the first line is identical for both.
  */
 function OpenPurchase({
   id,
-  places,
-  amountBdt,
+  line,
+  note,
   expiresAt,
   salesPhone,
   locale,
   t,
 }: {
   id: string
-  places: number
-  amountBdt: number
+  /** What was bought, priced. */
+  line: string
+  /** A second sentence, or null — the tier a subscription moves them onto. */
+  note: string | null
   expiresAt: string | null
   /** Null until the founder's own number is in the environment, which is every
    *  deployment so far — hence `noContact` rather than a blank line. */
@@ -795,9 +1002,8 @@ function OpenPurchase({
         lapsed ? 'border-late/40 bg-late/5' : 'border-line bg-surface-alt'
       }`}
     >
-      <p className="num font-semibold text-ink">
-        {t.placesLine(places, formatTaka(amountBdt))}
-      </p>
+      <p className="num font-semibold text-ink">{line}</p>
+      {note && <p className="mt-0.5 text-sm text-ink-soft">{note}</p>}
 
       <div className="mt-2 flex items-baseline justify-between gap-3">
         <span className="text-sm text-ink-soft">{t.places.ref}</span>
@@ -829,6 +1035,16 @@ function OpenPurchase({
       {lapsed && (
         <p className="mt-1 text-sm text-ink-soft">{t.places.lapsedNote}</p>
       )}
+
+      {/*
+        On a lapsed row as well as a live one, and that is the case that matters: a
+        subscription intent blocks the next purchase whether or not its price still
+        stands, so without this an owner who mistyped twelve months waits a week.
+      */}
+      <CancelPurchase
+        id={id}
+        words={{ cancel: t.subscribe.cancel, cancelling: t.subscribe.cancelling }}
+      />
     </div>
   )
 }

@@ -27,6 +27,7 @@ import {
   monthlyBillBdt,
   studentCeiling,
   teacherChargeBdt,
+  type PlanId,
   type PlanLimits,
 } from '../plans.ts'
 import type { PaymentPurpose } from '../supabase/types.ts'
@@ -58,6 +59,12 @@ export type Quote = {
   amountBdt: number
   /** Places this adds to the ceiling, and only ever on a capacity purchase. */
   grantsCapacity: number
+  /**
+   * The tier this purchase moves the centre onto, or null for a renewal on the tier it
+   * is already on. Only ever set on a subscription, because only months of coverage can
+   * carry a tier (20260811000073).
+   */
+  targetPlan: PlanId | null
   coversPeriodStart: string | null
   coversPeriodEnd: string | null
   lines: QuoteLine[]
@@ -73,6 +80,15 @@ export type PurchaseRequest =
       months: number
       /** First day of the first month covered, `YYYY-MM-DD`. */
       from: string
+      /**
+       * The tier being bought, when this is a move rather than a renewal.
+       *
+       * REDUNDANT WITH `plan` ON PURPOSE, and the redundancy is the check: `plan` is what
+       * the bill is computed from, so a caller that prices at the centre's current tier
+       * and asks for a better one is describing a customer paying ৳1,999 for ৳4,999 of
+       * product. They have to agree or there is no quote.
+       */
+      targetPlan?: PlanId | null
     }
   | {
       purpose: 'student_capacity'
@@ -100,6 +116,7 @@ function none(purpose: PaymentPurpose): Quote {
     quantity: 0,
     amountBdt: 0,
     grantsCapacity: 0,
+    targetPlan: null,
     coversPeriodStart: null,
     coversPeriodEnd: null,
     lines: [],
@@ -149,6 +166,13 @@ function subscription(
   const months = whole(request.months)
   if (!isMonthsCovered(months)) return none('subscription')
 
+  // A move has to be a move onto the tier that priced it, and never onto the free one:
+  // both are check constraints on the column (20260811000073), and both are worth
+  // refusing here as well, where the answer is a zero quantity instead of a stack trace.
+  const targetPlan = request.targetPlan ?? null
+  if (targetPlan !== null && targetPlan !== request.plan.id) return none('subscription')
+  if (targetPlan === 'teacher_free') return none('subscription')
+
   const perMonth = monthlyBillBdt(
     request.plan,
     request.activeStudents,
@@ -167,6 +191,7 @@ function subscription(
     quantity: months,
     amountBdt: perMonth * months,
     grantsCapacity: 0,
+    targetPlan,
     coversPeriodStart: from,
     coversPeriodEnd: coverageEnd(from, months as MonthsCovered),
     lines: [{ what: 'months', count: months, rateBdt: perMonth, costBdt: perMonth * months }],
@@ -214,6 +239,7 @@ function capacity(
     quantity: places,
     amountBdt: capacityCostBdt(ceiling.ceiling, to),
     grantsCapacity: places,
+    targetPlan: null,
     coversPeriodStart: null,
     coversPeriodEnd: null,
     lines: capacityBands(ceiling.ceiling, to).map((band) => ({
@@ -245,6 +271,7 @@ function seats(request: Extract<PurchaseRequest, { purpose: 'teacher_seat' }>): 
     quantity: wanted,
     amountBdt: cost,
     grantsCapacity: 0,
+    targetPlan: null,
     coversPeriodStart: null,
     coversPeriodEnd: null,
     lines:
@@ -282,6 +309,7 @@ function branches(request: Extract<PurchaseRequest, { purpose: 'branch' }>): Quo
     quantity: wanted,
     amountBdt: cost,
     grantsCapacity: 0,
+    targetPlan: null,
     coversPeriodStart: null,
     coversPeriodEnd: null,
     lines:

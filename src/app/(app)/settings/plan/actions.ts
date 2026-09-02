@@ -12,16 +12,16 @@
  * calculator and decided to buy reached the bottom of the page and found nothing.
  * The sale ended there, silently, and nobody ever learned it had happened.
  *
- * A row instead of a mailto, because the founder panel already carries this centre's
+ * A ROW INSTEAD OF A MAILTO, because the founder panel already carries this centre's
  * name, its owner's name, a `tel:` link, the student and teacher counts and the exact
  * monthly bill. The only fact missing from that card was that the customer wants to
  * talk, so that is the only fact this writes.
  *
- * IT CHANGES NO ENTITLEMENT. `coaching_centers.plan` is locked by the trigger in
- * 20260811000004 and stays locked; a request is a note, and the tier only moves when
- * the founder moves it in ../../founder/actions.ts. An owner cannot upgrade
- * themselves by asking, which is the whole reason this can be a form with no
- * payment rail behind it.
+ * NO FORM HERE GRANTS ANYTHING. `coaching_centers.plan` is locked by the trigger in
+ * 20260811000004 and stays locked: `requestUpgrade` writes a note, and `buySubscription`
+ * writes a quote with a tier on it that `settle_payment_intent` reads once the money is
+ * real (20260811000073). An owner still cannot move their own tier by asking — what
+ * changed is that paying for it no longer needs a person to finish the job.
  *
  * NOR DOES `buyStudentPlaces` — the same rule one step down. It writes a quote with a
  * price and a reference; `student_capacity` moves when the founder confirms the
@@ -51,6 +51,7 @@ import {
   type CenterSession,
 } from '@/lib/auth/session'
 import { toAsciiDigits } from '@/lib/bd/phone'
+import { currentPeriodMonth } from '@/lib/bd/time'
 import { openIntent } from '@/lib/billing/intents'
 import { priceIntent } from '@/lib/billing/price'
 import { paymentProvider } from '@/lib/billing/provider'
@@ -59,7 +60,13 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { createClient } from '@/lib/supabase/server'
 import { dict, DEFAULT_LOCALE } from '@/lib/i18n'
 import { MAX_PLACES, MAX_TEXT, clamp } from '@/lib/limits'
-import { ASK_PLACES, planFor, type PlanId } from '@/lib/plans'
+import { formatTaka } from '@/lib/money'
+import {
+  MAX_CENTER_PAYMENT_BDT,
+  coverageStart,
+  isMonthsCovered,
+} from '@/lib/platform/billing'
+import { ASK_PLACES, PLAN_RANK, planFor, type PlanId } from '@/lib/plans'
 
 export type UpgradeState = {
   error?: string
@@ -575,4 +582,216 @@ export async function declineAsk(
   revalidatePath('/settings/students/import')
 
   return { ok: t.askDeclined }
+}
+
+/**
+ * Months of the plan, bought by the owner — and, when they are not on it yet, the tier
+ * itself. MASTERPLAN §16's "an owner moving their own centre between tiers without a
+ * founder doing it for them".
+ *
+ * THE TIER MOVES WHEN THE MONEY DOES, not here: `target_plan` on the intent is read by
+ * `settle_payment_intent` (20260811000073), which is service-role-only and the one writer
+ * 20260811000004's guard admits. So this is still the rule the rest of the file follows —
+ * the customer says what they want and the server writes the money — with the difference
+ * that the answer no longer needs a person.
+ *
+ * UPGRADES AND RENEWALS ONLY. A move is allowed when it raises `PLAN_RANK`; anything
+ * downwards is `requestUpgrade`'s conversation, for the reason written over `ASKABLE`. The
+ * schema agrees about the floor of that: `target_plan` may never be `teacher_free`.
+ *
+ * WHERE THE COVERAGE STARTS IS NOT A PARAMETER. It is this month, or the month after the
+ * one already paid for, whichever is later. Both halves matter: billing from today would
+ * charge a centre twice for months it has, and billing from the end of old coverage would
+ * bill a lapsed centre for the months it spent suspended. A `paid_through` that stops
+ * mid-month rounds up to the next one, which errs by at most one month and errs in the
+ * customer's favour.
+ *
+ * A TIER MOVE IS REFUSED WHILE COVERAGE IS STILL LIVE, and this is the one thing an owner
+ * may want that this cannot do. Starting the new tier's window after the old coverage
+ * while moving the plan today would sell twelve months of Institution for one month's
+ * price; starting it today would charge twice for the overlap. The honest answer is the
+ * other button on the same card and a founder who can pro-rate by hand.
+ *
+ * ONE OPEN SUBSCRIPTION AT A TIME, unlike places, which are additive and can queue.
+ * Coverage is computed from `paid_through` when the intent opens, so two intents opened
+ * the same afternoon would cover the same months and settling both would take the money
+ * twice for one window. `cancelPurchase` is how an owner who mistyped gets out of it
+ * without waiting seven days for the quote to lapse.
+ */
+export async function buySubscription(
+  _prev: UpgradeState,
+  formData: FormData,
+): Promise<UpgradeState> {
+  const gate = await planOwner()
+  if (!isSession(gate)) return gate
+
+  const session = gate
+  const t = dict(session.locale).settings.plan.subscribe
+
+  // Not `count`, which clamps: clamping a posted 99 to 12 would turn a nonsense request
+  // into the largest purchase on the card. `MONTHS_COVERED` is the whole filter.
+  const months = Number.parseInt(
+    toAsciiDigits(String(formData.get('months') ?? '')).replace(/[^\d]/g, ''),
+    10,
+  )
+  if (!isMonthsCovered(months)) return { error: t.badMonths }
+
+  const current = planFor(session.active.plan)
+  // Cast at the read like `requestUpgrade` above, so the two checks below need none: the
+  // string is whatever a caller posted, and `ASKABLE` is what makes it a tier.
+  const asked = String(formData.get('plan') ?? '') as '' | PlanId
+
+  // An empty select, or the tier they are already on, is a renewal. Anything else has to
+  // be a real tier and has to be a step up.
+  const targetPlan = asked === '' || asked === current.id ? null : asked
+  if (targetPlan !== null && !ASKABLE.has(targetPlan)) return { error: t.badPlan }
+  if (targetPlan !== null && PLAN_RANK[targetPlan] <= PLAN_RANK[current.id]) {
+    return { error: t.downgradeIsACall }
+  }
+
+  const buying = targetPlan === null ? current : planFor(targetPlan)
+
+  const now = new Date()
+  const thisMonth = currentPeriodMonth(now)
+  const from = coverageStart(session.active.paidThrough, now)
+
+  // A tier move has to start this month, and one is refused when coverage runs past it.
+  // Starting the new tier after the old coverage while moving `plan` today would sell a
+  // year of Institution for a month of it; starting it today would charge twice for the
+  // overlap. A real pro-rate needs a credit `payments.amount_bdt > 0` cannot hold, so
+  // the honest answer is the request form and a founder settling it by hand.
+  if (targetPlan !== null && from !== thisMonth) return { error: t.midTermIsACall }
+
+  const supabase = await createClient()
+
+  const [{ count: students }, { count: teachers }, { count: branches }, { data: open }] =
+    await Promise.all([
+      // scoped-by: coaching_center_id is filtered below.
+      supabase
+        .from('students')
+        .select('id', { count: 'exact', head: true })
+        .eq('coaching_center_id', session.active.centerId)
+        .eq('status', 'active'),
+      // scoped-by: coaching_center_id is filtered below.
+      supabase
+        .from('teachers')
+        .select('id', { count: 'exact', head: true })
+        .eq('coaching_center_id', session.active.centerId)
+        .eq('active', true),
+      // scoped-by: coaching_center_id is filtered below.
+      supabase
+        .from('branches')
+        .select('id', { count: 'exact', head: true })
+        .eq('coaching_center_id', session.active.centerId)
+        .eq('active', true),
+      // scoped-by: coaching_center_id is filtered below.
+      supabase
+        .from('payment_intents')
+        .select('id')
+        .eq('coaching_center_id', session.active.centerId)
+        .eq('purpose', 'subscription')
+        .in('state', ['pending', 'initiated'])
+        .limit(1),
+    ])
+
+  // A count that would not read is refused rather than treated as zero, which is the rule
+  // ../../../lib/entitlement.ts writes down: a missing roster does not make the bill
+  // smaller, it makes the bill wrong, and this one becomes a receipt.
+  if (students === null || teachers === null || branches === null) return { error: t.failed }
+  if (open === null) return { error: t.failed }
+  if (open.length > 0) return { error: t.alreadyOpen }
+
+  const quote = priceIntent({
+    purpose: 'subscription',
+    plan: buying,
+    activeStudents: students,
+    activeTeachers: teachers,
+    // At least one building, the same floor ../../../lib/platform/centers.ts applies: a
+    // centre that has never named a branch still teaches somewhere.
+    activeBranches: Math.max(1, branches),
+    months,
+    from,
+    targetPlan,
+  })
+  // Zero can only mean the tier being bought costs nothing, which is the free one — and
+  // a free tier has no months to sell.
+  if (quote.quantity <= 0 || quote.amountBdt <= 0) return { error: t.notOnThisPlan }
+
+  // The same ceiling ../../founder/actions.ts refuses a hand-recorded payment above. An
+  // organisation whose year costs more than this is a conversation, not a form, and the
+  // two paths agreeing is what keeps a purchase settleable.
+  if (quote.amountBdt > MAX_CENTER_PAYMENT_BDT) {
+    return { error: t.tooMuch(formatTaka(MAX_CENTER_PAYMENT_BDT)) }
+  }
+
+  const admin = createAdminClient(session.userId)
+
+  const opened = await openIntent(admin, {
+    centerId: session.active.centerId,
+    quote,
+    requestedBy: session.userId,
+    branchId: session.active.branchId,
+    idempotencyKey: formData.get('idempotencyKey'),
+  })
+  if (!opened.ok) return { error: t.failed }
+
+  const provider = paymentProvider(opened.intent.provider)
+  const told = await provider.createPayment(admin, opened.intent)
+  if (told.kind === 'blocked') return { error: t.closed }
+
+  revalidatePath('/settings/plan')
+
+  return { ok: t.opened }
+}
+
+/**
+ * Calling off a purchase the owner has not paid for.
+ *
+ * WHY THIS HAS TO EXIST, and why it also closes the same gap on the places card: a quote
+ * lives seven days, and until now a mistyped one sat on the screen for all seven with a
+ * reference the owner was invited to send money against. Nothing forced them to pay it, but
+ * "cancel" is the control every payment screen has, and its absence reads as a purchase
+ * they are committed to. `buySubscription` makes it load-bearing rather than merely kind —
+ * one open subscription at a time means a wrong twelve months would block the right one.
+ *
+ * `pending -> cancelled` and `initiated -> cancelled` are both §11.2 transitions, so the
+ * guard in 20260811000073 lets this through and refuses it the moment money has settled.
+ * The state filter here is belt to that braces: without it a `successful` row would reach
+ * the trigger and come back as a 42501 the owner reads as a bug.
+ *
+ * SERVICE ROLE BECAUSE NOTHING ELSE CAN. `authenticated` has no UPDATE on
+ * `payment_intents` at all (20260811000057), so the gate is `planOwner` plus the centre
+ * filter below, and both of them are this function's own doing.
+ */
+export async function cancelPurchase(
+  _prev: UpgradeState,
+  formData: FormData,
+): Promise<UpgradeState> {
+  const gate = await planOwner()
+  if (!isSession(gate)) return gate
+
+  const session = gate
+  const t = dict(session.locale).settings.plan.subscribe
+
+  const intent = String(formData.get('intent') ?? '')
+  if (!UUID_RE.test(intent)) return { error: t.gone }
+
+  const admin = createAdminClient(session.userId)
+
+  // scoped-by: coaching_center_id is filtered below, so an id copied from another
+  // customer's screen matches nothing.
+  const { data, error } = await admin
+    .from('payment_intents')
+    .update({ state: 'cancelled' })
+    .eq('id', intent)
+    .eq('coaching_center_id', session.active.centerId)
+    .in('state', ['pending', 'initiated'])
+    .select('id')
+
+  if (error) return { error: t.failed }
+  if (!data || data.length === 0) return { error: t.gone }
+
+  revalidatePath('/settings/plan')
+
+  return { ok: t.cancelled }
 }

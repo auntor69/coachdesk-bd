@@ -74,6 +74,29 @@ export function coverageEnd(from: string, months: MonthsCovered): string {
   return addDays(addMonths(from, months), -1)
 }
 
+/**
+ * The first month a centre's next subscription payment covers.
+ *
+ * Two wrong answers this exists to rule out. Billing from today would charge a centre
+ * again for months it has already paid for. Billing from the end of old coverage would
+ * bill a centre that lapsed in June for July and August, months it spent locked out —
+ * so a `paid_through` in the past is ignored and the window opens this month.
+ *
+ * A `paid_through` that stops mid-month rounds up to the first of the next one, because
+ * every window this product sells is whole months. That errs by at most one month and
+ * it errs in the customer's favour.
+ *
+ * SHARED WITH THE FORM ON PURPOSE. /settings/plan draws the window this returns and
+ * `buySubscription` bills it; the same call in both is why the screen cannot promise
+ * coverage the receipt then contradicts.
+ */
+export function coverageStart(paidThrough: string | null, now: Date = new Date()): string {
+  const thisMonth = currentPeriodMonth(now)
+  if (!paidThrough) return thisMonth
+  const next = addMonths(paidThrough, 1)
+  return next > thisMonth ? next : thisMonth
+}
+
 /** Months back from today the form offers. Two catches a centre paying late. */
 export const PERIODS_BACK = 2
 

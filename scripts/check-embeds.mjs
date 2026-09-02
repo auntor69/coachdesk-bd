@@ -71,7 +71,7 @@
 import { readFileSync } from 'node:fs'
 import { join, relative, sep } from 'node:path'
 
-import { literalSelect, queriesIn, selectArg, sourceFiles } from './lib/query-chains.mjs'
+import { literalSelect, normalizeSelect, queriesIn, selectArg, sourceFiles } from './lib/query-chains.mjs'
 
 const ROOT = process.cwd()
 
@@ -117,19 +117,63 @@ function readLiteral(src, at) {
 }
 
 /**
+ * A list written as one list plus a column: `` const B = `${A}, extra` ``.
+ *
+ * `literalSelect` refuses a template with a hole in it, and is right to — a list built
+ * from a value at run time is not a list this script can ask about. A hole that is
+ * itself a module-level column list is the exception worth resolving, because writing
+ * the second list as the first plus a column is what stops the two drifting: the replay
+ * read-back in lib/billing/intents.ts is the intent columns plus `target_plan`, and
+ * typing them out again would be the drift this gate exists to catch.
+ *
+ * Every hole must land. One that does not makes the whole list null, so it is reported
+ * unresolved rather than asked as a half-filled string PostgREST would reject for the
+ * wrong reason.
+ */
+function composedLiteral(src, raw, seen) {
+  if (!raw || raw[0] !== '`') return null
+
+  let out = ''
+  let at = 1
+  const body = raw.slice(0, -1)
+
+  while (at < body.length) {
+    const hole = body.indexOf('${', at)
+    if (hole === -1) {
+      out += body.slice(at)
+      break
+    }
+    const close = body.indexOf('}', hole)
+    if (close === -1) return null
+
+    const name = body.slice(hole + 2, close).trim()
+    if (!/^[A-Za-z_$][\w$]*$/.test(name)) return null
+    const filled = resolveIdent(name, src, seen)
+    if (filled === null) return null
+
+    out += body.slice(at, hole) + filled
+    at = close + 1
+  }
+
+  return normalizeSelect(out)
+}
+
+/**
  * The column list a `const NAME = '…'` holds, or null.
  *
- * Only a declaration whose value is a bare string literal. `const COLUMNS = pick(x)`
- * returns null and the caller reports it unresolved, which is the honest answer — a
- * list assembled at run time is not a list this script can ask about.
+ * Only a declaration whose value is a string literal, or a template composed of other
+ * such declarations. `const COLUMNS = pick(x)` returns null and the caller reports it
+ * unresolved, which is the honest answer — a list assembled at run time is not a list
+ * this script can ask about.
  */
-function constLiteral(src, name, { exported = false } = {}) {
+function constLiteral(src, name, { exported = false, seen } = {}) {
   const decl = new RegExp(
     `(?:^|\\n)\\s*${exported ? 'export\\s+' : '(?:export\\s+)?'}const\\s+${name}\\s*(?::[^=\\n]+)?=\\s*`,
     'g',
   )
   for (const match of src.matchAll(decl)) {
-    const found = literalSelect(readLiteral(src, match.index + match[0].length))
+    const raw = readLiteral(src, match.index + match[0].length)
+    const found = literalSelect(raw) ?? composedLiteral(src, raw, seen)
     if (found !== null) return found
   }
   return null
@@ -142,12 +186,19 @@ function constLiteral(src, name, { exported = false } = {}) {
  * `const COLUMNS` over three different relations, and resolving one of them against
  * another file's would be the drift this script exists to catch, committed by the
  * script itself.
+ *
+ * `seen` is what stops a list written in terms of itself spinning here forever.
  */
-function resolveIdent(name, src) {
-  const local = constLiteral(src, name)
+function resolveIdent(name, src, seen = new Set()) {
+  if (seen.has(name)) return null
+  // A copy, not an addition: two holes filled by the same list are fine, a list that
+  // fills its own hole is not.
+  const next = new Set(seen).add(name)
+
+  const local = constLiteral(src, name, { seen: next })
   if (local !== null) return local
   for (const file of files) {
-    const found = constLiteral(read(file), name, { exported: true })
+    const found = constLiteral(read(file), name, { exported: true, seen: next })
     if (found !== null) return found
   }
   return null

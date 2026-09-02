@@ -1569,6 +1569,7 @@ export type Database = {
           expires_at: string
           updated_at: string
           priced_lines: Json
+          target_plan: PlanType | null
         }
         Insert: {
           id?: string
@@ -1596,6 +1597,7 @@ export type Database = {
           expires_at?: string
           updated_at?: string
           priced_lines: Json
+          target_plan?: PlanType | null
         }
         Update: {
           id?: string
@@ -1623,6 +1625,7 @@ export type Database = {
           expires_at?: string
           updated_at?: string
           priced_lines?: Json
+          target_plan?: PlanType | null
         }
         Relationships: [
           {

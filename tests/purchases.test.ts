@@ -367,6 +367,124 @@ test('only a capacity purchase grants places, and only a subscription covers a p
   assert.equal(capacity.coversPeriodStart, null)
 })
 
+test('a tier move is priced at the tier being bought, and carries it', () => {
+  // The move an owner makes from /settings/plan: Centre to Institution, priced from the
+  // tier they are moving onto rather than the one they are leaving.
+  const months = 3
+  const quote = priceIntent({
+    purpose: 'subscription',
+    plan: PLANS.institution,
+    activeStudents: 300,
+    activeTeachers: 4,
+    activeBranches: 4,
+    months,
+    from: '2026-09-01',
+    targetPlan: 'institution',
+  })
+
+  assert.equal(quote.targetPlan, 'institution')
+  assert.equal(quote.amountBdt, monthlyBillBdt(PLANS.institution, 300, 4, 4) * months)
+  // Not the tier they are on: four branches and a bigger floor make it a different bill.
+  assert.notEqual(quote.amountBdt, monthlyBillBdt(PLANS.center, 300, 4, 4) * months)
+  linesAgree(quote, 'tier move')
+
+  // And a renewal carries no tier, which is what keeps `target_plan` null on the row.
+  const renewal = priceIntent({
+    purpose: 'subscription',
+    plan: PLANS.center,
+    activeStudents: 300,
+    activeTeachers: 4,
+    activeBranches: 1,
+    months,
+    from: '2026-09-01',
+  })
+  assert.equal(renewal.targetPlan, null)
+})
+
+test('a target that disagrees with the plan that priced it is not quoted', () => {
+  // THE MISPRICING THIS REFUSES. `plan` is what the bill is computed from, so a caller
+  // quoting the current tier and asking for a better one is a customer paying Centre
+  // money for Institution product. The column checks the same thing; here it is a zero
+  // quantity rather than a failed insert.
+  const cheap = priceIntent({
+    purpose: 'subscription',
+    plan: PLANS.center,
+    activeStudents: 400,
+    activeTeachers: 0,
+    activeBranches: 1,
+    months: 3,
+    from: '2026-09-01',
+    targetPlan: 'institution',
+  })
+
+  assert.equal(cheap.quantity, 0)
+  assert.equal(cheap.amountBdt, 0)
+  assert.equal(cheap.targetPlan, null)
+
+  // And why intents.ts compares the tier on a replayed key instead of trusting purpose,
+  // quantity and amount: at 400 students on one branch these two bills are the same
+  // number, so those three columns cannot tell the purchases apart.
+  assert.equal(
+    monthlyBillBdt(PLANS.center, 400, 0, 1),
+    monthlyBillBdt(PLANS.institution, 400, 0, 1),
+  )
+})
+
+test('nobody is sold a move onto the free tier', () => {
+  // A downgrade is not a purchase — there is no amount to charge and nothing to settle —
+  // so the free tier is not a target even when it is the tier that priced the quote.
+  const quote = priceIntent({
+    purpose: 'subscription',
+    plan: PLANS.teacher_free,
+    activeStudents: 20,
+    activeTeachers: 0,
+    activeBranches: 1,
+    months: 1,
+    from: '2026-09-01',
+    targetPlan: 'teacher_free',
+  })
+
+  assert.equal(quote.quantity, 0)
+  assert.equal(quote.targetPlan, null)
+})
+
+test('only months of coverage can carry a tier', () => {
+  // 20260811000073 says so as a check constraint, because a tier arriving on a purchase
+  // of places or seats would move the plan without anybody having paid a month for it.
+  const others = [
+    priceIntent({
+      purpose: 'student_capacity',
+      plan: PLANS.center,
+      purchasedCapacity: 120,
+      places: 40,
+    }),
+    priceIntent({ purpose: 'teacher_seat', activeTeachers: 6, seats: 2 }),
+    priceIntent({
+      purpose: 'branch',
+      plan: PLANS.institution,
+      activeBranches: 3,
+      branches: 1,
+    }),
+  ]
+
+  for (const quote of others) {
+    assert.equal(quote.targetPlan, null, quote.purpose)
+  }
+})
+
+test('the tier is written from the quote, and read back before a key is reused', () => {
+  // Two halves of the same rule, neither visible in the generated types: the column is
+  // filled from the quote's own field, and the replay comparison includes it. Drop the
+  // second and a request key reused across the two identically-billed tiers hands back
+  // the cheaper intent, which then settles onto the dearer tier's row.
+  const intents = source('intents.ts')
+
+  assert.match(intents, /target_plan: quote\.targetPlan/)
+  assert.match(intents, /existing\.target_plan !== quote\.targetPlan/)
+  assert.match(intents, /REPLAY_COLUMNS = `\$\{INTENT_COLUMNS\}, target_plan`/)
+  assert.match(intents, /\.select\(REPLAY_COLUMNS\)/)
+})
+
 test('bKash is refused rather than guessed at', () => {
   // §11.1: no invented request bodies, no guessed endpoints, no credentials. The enum
   // has the value so a column can grow into it; there is no module behind it, and the

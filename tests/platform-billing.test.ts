@@ -3,6 +3,7 @@ import assert from 'node:assert/strict'
 
 import {
   coverageEnd,
+  coverageStart,
   isMonthsCovered,
   isPeriodChoice,
   periodChoices,
@@ -138,6 +139,67 @@ test('the current month is Dhaka’s, not UTC’s', () => {
 
   // Two hours earlier it is still August there.
   assert.equal(periodChoices(new Date('2026-08-31T17:00:00.000Z'))[2], '2026-08-01')
+})
+
+/* -------------------------------------------------------------------------- */
+/* Where the next window opens                                                */
+/* -------------------------------------------------------------------------- */
+
+test('a centre that has never paid is billed from this month', () => {
+  assert.equal(coverageStart(null, NOW), '2026-08-01')
+})
+
+test('a centre already covered is billed from the month after its coverage', () => {
+  // The double-charge this exists to stop: paid through November, so a payment made in
+  // August covers December onwards and not August again.
+  assert.equal(coverageStart('2026-11-30', NOW), '2026-12-01')
+  assert.equal(coverageStart('2026-08-31', NOW), '2026-09-01')
+
+  // Across the year boundary, where addMonths is doing the work.
+  assert.equal(coverageStart('2026-12-31', NOW), '2027-01-01')
+})
+
+test('coverage that has already run out reopens this month, not where it stopped', () => {
+  // A centre that lapsed in April and comes back in August is billed for August. The
+  // alternative — resuming at May — bills them for four months they spent locked out,
+  // which is the one thing a returning customer will not forgive.
+  assert.equal(coverageStart('2026-04-30', NOW), '2026-08-01')
+  assert.equal(coverageStart('2025-12-31', NOW), '2026-08-01')
+
+  // The edge: coverage that ends this month. Next month, because today is inside it.
+  assert.equal(coverageStart('2026-08-31', NOW), '2026-09-01')
+  // And coverage that ended last month, which is the first month that is not still
+  // running: this month, because that is the month now going unpaid.
+  assert.equal(coverageStart('2026-07-31', NOW), '2026-08-01')
+})
+
+test('a coverage end mid-month rounds up, and so errs the customer’s way', () => {
+  // Every window this product sells is whole months — `coverageEnd` subtracts a day
+  // from a month boundary — so a `paid_through` on the 15th cannot be resumed from the
+  // 16th. The next window opens on the 1st of the following month and the fortnight
+  // between is not billed.
+  assert.equal(coverageStart('2026-09-15', NOW), '2026-10-01')
+  assert.equal(coverageStart('2026-08-15', NOW), '2026-09-01')
+})
+
+test('the month a purchase opens in is Dhaka’s', () => {
+  // 1am on the 1st of September in Dhaka, which is still August in UTC. An owner
+  // paying at that moment is paying for September.
+  const midnightish = new Date('2026-08-31T19:00:00.000Z')
+  assert.equal(coverageStart(null, midnightish), '2026-09-01')
+  assert.equal(coverageStart(null, new Date('2026-08-31T17:00:00.000Z')), '2026-08-01')
+})
+
+test('the window a form draws is the window the action bills', () => {
+  // The pair /settings/plan shows and `buySubscription` charges for. Both call these
+  // two functions, and the point of the test is that the answer is one window: twelve
+  // months from the end of existing coverage, ending the day before the anniversary.
+  const from = coverageStart('2026-11-30', NOW)
+  assert.equal(from, '2026-12-01')
+  assert.equal(coverageEnd(from, 12), '2027-11-30')
+
+  // And that consecutive purchases touch: paying again once that lands leaves no gap.
+  assert.equal(coverageStart(coverageEnd(from, 12), NOW), '2027-12-01')
 })
 
 /* -------------------------------------------------------------------------- */

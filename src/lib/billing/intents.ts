@@ -26,6 +26,22 @@ import { pricedLines, type Quote } from './price'
 const INTENT_COLUMNS =
   'id, coaching_center_id, purpose, quantity, amount_bdt, provider, provider_ref, state, expires_at'
 
+/**
+ * The same list plus the tier, for the read-back that decides whether a reused request
+ * key describes the same purchase.
+ *
+ * IT HAS TO BE COMPARED, and this is the one place it is not obvious why: at 400 students
+ * on one branch, Centre and Institution bill the identical ৳7,300 a month — the student
+ * bands clear both floors and the first three branches are free — so purpose, quantity and
+ * amount cannot tell the two purchases apart. Without the tier here, a key reused across
+ * them would hand back the wrong one, and it would be the cheaper tier's intent settling
+ * onto the dearer tier's row.
+ *
+ * Built from `INTENT_COLUMNS` rather than typed out again, so the two lists cannot drift.
+ * Not on `PayableIntent`: a provider is told what to charge, not what it buys.
+ */
+const REPLAY_COLUMNS = `${INTENT_COLUMNS}, target_plan` as const
+
 export type OpenIntentInput = {
   centerId: string
   quote: Quote
@@ -77,6 +93,9 @@ export async function openIntent(
       // once `settle_payment_intent` has raised the ceiling it was priced from.
       priced_lines: pricedLines(quote.lines),
       grants_capacity: quote.grantsCapacity,
+      // Null for every renewal, and only ever a paid tier: the column's own checks refuse
+      // anything else, and ./price.ts refuses to quote a tier it did not price.
+      target_plan: quote.targetPlan,
       covers_period_start: quote.coversPeriodStart,
       covers_period_end: quote.coversPeriodEnd,
       branch_id: input.branchId ?? null,
@@ -96,7 +115,7 @@ export async function openIntent(
 
   const { data: existing } = await supabase
     .from('payment_intents')
-    .select(INTENT_COLUMNS)
+    .select(REPLAY_COLUMNS)
     .eq('coaching_center_id', input.centerId)
     .eq('idempotency_key', key)
     .maybeSingle()
@@ -108,6 +127,7 @@ export async function openIntent(
     || existing.purpose !== quote.purpose
     || existing.quantity !== quote.quantity
     || Number(existing.amount_bdt) !== quote.amountBdt
+    || existing.target_plan !== quote.targetPlan
   ) {
     return { ok: false, reason: 'failed' }
   }
