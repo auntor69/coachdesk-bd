@@ -42,6 +42,11 @@ Nothing in here may be marked ✅ on the strength of a screen. A disabled button
 is not enforcement. If the only thing stopping an action is the frontend, the
 status is ⚠️ and the missing server check is named.
 
+§§1–19 are the product: what it sells, what it charges, what it refuses. §20 is the
+interface — the information architecture, the frame, and the redesign the current screens
+need. They are one document deliberately: a screen is designed from the rule it presents,
+and a rule that cannot be presented well is a rule worth re-reading.
+
 ---
 
 ## 1. Product overview
@@ -1944,8 +1949,15 @@ logged is not a thing the app can produce (§7.2). And an owner can move their o
 up a tier without the founder doing it from their laptop: the months are quoted from the
 tier being bought, the purchase carries that tier, and the settlement moves the plan when
 the money lands — the same intent, the same idempotency key and the same service-role
-write as any other purchase (§11.2).
-1,371 RLS assertions and 1,157 unit tests green across 73 migrations and 42 tables in
+write as any other purchase (§11.2). And money can now go back the other way: a platform
+payment may be negative, so the credit a mid-term move or a downgrade owes has a row to
+live on instead of a phone call — no coverage window and no intent on it, because
+`paid_through` is a `max()` of the windows and a minus sign dated 2099 would buy permanent
+access; a reason required at the table, because there is no UPDATE path to add one later; a
+floor held by a trigger under an advisory lock, so no centre can be credited past what it
+has paid; and the sheet it prints is headed as a credit note rather than as a receipt for
+minus money, off one function the list and the printable both read (§9.2).
+1,388 RLS assertions and 1,166 unit tests green across 74 migrations and 42 tables in
 `public` plus one in `app`, and four derived gates and two that ask the live API. One of those gates now refuses
 a query whose table name it cannot read, having discovered it had been counting five
 fewer than existed — and the RLS suite found a manager who could promote themselves
@@ -1953,13 +1965,13 @@ to owner, which is what a suite is for.
 
 **Partly built ⚠️** — branches (money, staff, the HQ comparison and the growth
 breakdown yes, full isolation no); scheduling (weekly recurrence and teacher clashes,
-no rooms or overrides); refunds (a fee payment can be refunded from the register, with
-the counter-entry and the reason on the receipt; a *platform* payment cannot, because
-`payments.amount_bdt` is positive by check); plan selection (an owner may buy a move up
-and buy places; a move down, and a move mid-way through paid coverage, are still a phone
-call — both owe a credit no positive payment row can carry);
+no rooms or overrides); plan selection (an owner may buy a move up and buy places; a move
+*down* is still a conversation — the credit it owes has a row and the founder can write it,
+but nothing on the owner's own screen works out what their unused coverage is worth);
 income with no student behind it (hall rent, book sales and the like have a category
-but no row to hang it on — every revenue row is a bill against a child).
+but no row to hang it on — every revenue row is a bill against a child);
+the interface (§20 is written, and the shell it describes is not built — every screen is
+still the centred column with the phone tab bar).
 
 **Not built ❌** — the five
 `teacher_permissions` booleans folded into the capability vocabulary — they work, and
@@ -2020,10 +2032,19 @@ audit log, payment intents, teacher clash detection, per-branch capacity *report
 without a founder doing it for them~~ — **done**, and it did not wait on bKash, because
 the manual provider already settles a payment (§11.2). What it exposed instead is where
 the next window opens: one formula shared by the screen and the action, so a lapsed
-centre is billed from this month rather than from the month its coverage stopped. Next in
-its place: the credit a mid-term move or a downgrade owes, which §9.2's positive-only
-`payments.amount_bdt` has nowhere to put, so both are a phone call today and the screen
-says so rather than quoting a number it cannot honour.
+centre is billed from this month rather than from the month its coverage stopped. ~~And
+after that, the credit a mid-term move or a downgrade owes, which §9.2's positive-only
+`payments.amount_bdt` had nowhere to put~~ — **done** as well: a platform payment may now
+be negative, the founder writes one against a floor the database holds under a lock, and
+it prints as a credit note rather than as a receipt for minus money. What remains of that
+thread is the owner's half — a move *down* still needs somebody to work out what the
+unused coverage is worth, so the credit is a conversation with a row at the end of it
+rather than a refund an owner can ask for themselves.
+
+**Ahead of both of those now: the interface (§20).** It is the widest gap between what
+this product does and what it appears to be, its own order of work is §20.8, and it is a
+refactor of screens over rules that already hold rather than a single new rule — which is
+why it can be the priority without anything in §15 stopping working.
 
 **Future, documented and not built:** rooms and room double-booking, holiday
 calendars, term dates, an admissions pipeline, automated SMS and the parent summary
@@ -2133,9 +2154,226 @@ one back allowed, because that is how a batch is edited.
 **Finance** — charged vs collected vs outstanding on part payments; a refund netting
 correctly with both rows intact; profit including payroll.
 
+**The interface** — what can be tested about a screen without a browser, and it is more
+than nothing: that the printables are one function the list and the sheet both read and
+neither tests the sign itself; that a dictionary group handed to a client component has
+string leaves only; that every navigable route exists, which `Route` types already force
+at build time; and that a page hiding an action sits over a server that refuses it —
+asserted against the action, never against the markup. A layout is judged by eye. What a
+layout *claims* is judged by §12.2.
+
 ---
 
-## 20. Version history
+## 20. The interface
+
+The app was built page by page and it shows. Every screen renders inside a centred
+`max-w-3xl` column with a fixed row of tabs across the bottom of it
+(`src/components/app-shell.tsx`), which is a phone layout drawn at every width. On a
+1,440px monitor two thirds of the glass is empty, the work happens in a 768px ribbon down
+the middle, and a manager who wants a batch and its fees in one view scrolls instead.
+Most of the rest follows from that one decision: cards stacked because there is a single
+column to stack them in, headings sized for a thumb, Settings grown into the drawer where
+anything without an obvious home was put, and the plan page — the last thing a customer
+reads before paying us — shaped like a long form.
+
+What follows is the contract for fixing it. Architecture first, layout second, styling
+last. Colours and corner radii are not the problem, and changing them is not the work.
+
+### 20.1 Desktop is not a large phone
+
+Two frames, one product.
+
+**Wide screen**: a persistent left sidebar carrying the navigation, and a workspace that
+uses the width it is given. The page's furniture — its title, its one primary action, its
+filters — sits in a bar that does not scroll away. Content gets a maximum width **per
+region, not per page**: a table may run the full width because columns are what it is
+for; prose is capped near 70ch because a 1,400px line cannot be read; a form is capped
+near 40rem because a text input as wide as a desk is harder to fill in, not easier. No
+single number is right for all three, which is why one `max-w-3xl` on the shell was wrong.
+
+**Phone**: the sidebar becomes a drawer and the bottom tab bar stays — it is correct
+there, and it is what most teachers will use. The tab bar was never the mistake. Showing
+it at 1,440px, and building every page to suit it, was.
+
+**Printables keep their own frame.** The five sheets in §9.9 are `print:` layouts with the
+shell `print:hidden` around them. Nothing here touches them, and no redesign may put the
+navigation on a receipt.
+
+### 20.2 Navigation follows the work, not the tables
+
+The tabs today are named after screens. The replacement is named after jobs, and the
+grouping is the point: money in one place, people in another, so nobody has to guess
+whether chasing arrears lives under Students or under Fees.
+
+| Group | Holds | Why together |
+|---|---|---|
+| Dashboard | today's collection, absences, arrears, what needs deciding | the only screen opened with no question already in mind |
+| Students | the roster, admission, one student's whole record, transfers, import | the register is one thing, not four |
+| Academic | batches, the routine, attendance, exams, marks | what a teacher owns (§6.3) |
+| Finance | invoices, collection, waivers, expenses, payroll, profit | every figure that has to reconcile against another |
+| People | teachers, employees, accounts, capabilities | a person's record and their access, side by side (§5.1) |
+| Reports | the registers, the month, the audit log | reading, never writing |
+| Organisation | branches, the HQ comparison, consolidated finance | Institution only; absent entirely elsewhere (§8.3) |
+| Billing | the plan, capacity, purchases, receipts, credits | the one group that is about us rather than about the centre |
+
+**Settings stops being a drawer.** What stays is configuration: the centre's own record,
+the locale, the messaging templates. Anything that *does* something moves to the group
+that owns it — capacity to Billing, staff accounts to People, the routine to Academic.
+
+**Two levels and no more**: a group, and the pages inside it. A third level is where
+discoverability dies, and every screen this product has fits in two.
+
+### 20.3 The navigation is shaped by the reader, and controls nothing
+
+Four things shape it: role, the capabilities on the membership (§6.2), the plan, and
+whether the centre runs branches.
+
+| Reader | Sees |
+|---|---|
+| Teacher | Dashboard, their batches, attendance, exams and marks, the students in those batches, their own profile |
+| A narrowed membership (accountant, receptionist, observer) | what their capabilities allow, and not a screen rendered as a row of noughts |
+| Manager | everything about the centre |
+| Owner | the above, plus Billing and the audit log |
+| Owner of an Institution | the above, plus Organisation |
+| Platform admin | the founder panel, which is a different shell |
+
+**Hiding a group is a courtesy, never a control.** Every page behind it already refuses at
+the server and again at the database (§12.1), and the navigation is a third layer that is
+not trustworthy and is not asked to be. A teacher who types `/payroll` must meet
+`pageRole()`, not a missing tab. Nothing in this redesign may become the only thing
+between somebody and a screen they may not have.
+
+A group empty for its reader is not drawn. A group their **plan** does not include is
+drawn, and says what would unlock it — the one place a locked door beats a hidden one,
+because that door is also the upgrade path.
+
+### 20.4 Plan and billing: six questions, in this order
+
+Currently the worst screen in the product. It is a form; it should be an answer. It has to
+say, without being scrolled or clicked:
+
+1. **What am I on** — Teacher Pro, ৳499/month, renews 14 October 2026.
+2. **What am I using** — Students 87/150, Batches 3/5, Subjects 4/5, as figures against
+   their ceilings rather than as prose.
+3. **What do I have** — the features, not the flags.
+4. **What changes if I move up** — the difference, not two feature lists to diff by eye.
+5. **What will that cost** — one number.
+6. **What should I do next** — one primary action, and the rest visibly secondary.
+
+**Do not expose the billing engine.** §3.1's marginal bands are how we compute; they are
+not how a customer thinks. "First band 100 at ৳25, next band 200 at ৳18, rate each,
+teacher seat calculation" is our arithmetic showing through the glass. What the screen
+says is:
+
+> 120 students → estimated **৳3,060/month**. Includes 2 teacher accounts.
+> Additional teacher ৳100/month. `[View pricing details]`
+
+The bands live behind that disclosure, in full, for the owner who wants to check the
+figure — and the disclosure is the same engine, never a second copy of the numbers. One
+pricing module answers the public calculator, the owner's screen and the founder's
+billing, because three places that each know the bands will disagree inside a month.
+
+**Center billing reads Students → Cost → Usage → Add capacity → Payment**, with
+`[Add students]` and `[Add teacher]` as the primary actions. Not a plan grid: a centre
+already paying us has chosen its plan and is now managing its size.
+
+### 20.5 Buying happens where the need is met
+
+§3.4 and §3.5 already specify this and it is already built: the ceiling is met inside
+`[+ Add Student]` and inside the import, priced there, paid there, and the interrupted work
+continues by itself afterwards. What §20 adds is the interface obligation that makes it
+true rather than merely intended:
+
+- **The work in hand is not lost.** Whatever the manager had already typed survives the
+  payment step and is still on the screen when it returns. A flow that clears the form has
+  moved the friction rather than removed it.
+- **The refusal names the price, not the constraint.** "You have used all 120 places. One
+  more costs ৳18." Never "capacity exceeded", which is our word for our problem.
+- **The dialog is a step, not a destination.** No navigation away, no new tab, nothing that
+  loses the thread. Settings → Plans → calculate → purchase → back → find the button again
+  is the specific experience this exists to prevent.
+- **Zero is said out loud.** Below the floor's covered seats the next place is ৳0 (§3.4);
+  the step says the place is already paid for and opens the form. A dialog asking for ৳0 is
+  worse than no dialog.
+- **The import is all or nothing.** 500 rows short on capacity buy the shortfall in one
+  purchase, then the whole file lands. Partially created students are the failure mode this
+  is designed against, and the database enforces it in a single transaction.
+
+### 20.6 Organisation level and branch level are visibly different places
+
+An Institution's first screen is the organisation, not a centre that happens to have
+branches. A table with a row per branch — Students, Teachers, Revenue, Expenses, Profit —
+with the organisation's own total as the last row rather than a separate card, and a click
+into any branch drilling down to that branch's own workspace (§8.3).
+
+The reader must never be in doubt which level they are reading. Same figures at two levels
+is how somebody reports a branch's profit as the organisation's. The level is stated in the
+page's header bar, and the branch context persists visibly while they are inside it.
+
+Nothing here asks the owner to recalculate anything. A branch gaining a student changes the
+organisation's figures because the pool is one pool (§3.6) and the reporting is derived, not
+maintained by hand.
+
+### 20.7 House rules
+
+**Avoid**: a card around everything; nested rounded containers; a heading larger than the
+figure beneath it; giant vertical gaps; decorative icons that label nothing; charts that
+carry less information than the sentence they replaced; two columns of white space around
+one column of content; a form dressed as a dashboard; tab bars on desktop.
+
+**Prefer**: a real table when the data is tabular, with alignment that lets a column be
+scanned; figures set in tabular numerals (`num`, already in the sheet); typographic
+hierarchy in place of borders; contextual actions on the row they act on; progressive
+disclosure for the detail a minority wants; one unambiguous primary action per screen and
+everything else quieter; search and filters wherever a list can outgrow a screen; empty
+states that say what to do next rather than that there is nothing; and density where
+density helps — a manager reconciling a month wants forty rows visible, not eight.
+
+**Dense enough to be useful, clean enough never to feel overwhelming.** The two ambitions
+are not opposed; they are resolved by hierarchy, which is why hierarchy is the work.
+
+### 20.8 Order of work
+
+Worst first, and each step has to leave the app working — the redesign is a refactor, not a
+rewrite, and nothing in §15's built list may stop working because a screen moved.
+
+| # | Area | Why here |
+|---|---|---|
+| 1 | The shell: sidebar, workspace, header bar, responsive frame | every other screen inherits it, so it cannot be second |
+| 2 | The centre dashboard | the first thing anyone sees, and today the thinnest use of the width |
+| 3 | Plan and billing (§20.4) | the screen a customer reads before paying us |
+| 4 | Add student, including the capacity step (§20.5) | the most-used write path in the product |
+| 5 | Student management: list, filters, one student's record | the register is the reason they bought it |
+| 6 | Finance: invoices, collection, expenses, payroll, profit | the most figures per screen, so the most to gain from a table |
+| 7 | Teachers, employees, accounts, capabilities | one person's record and access in one place (§5.1, §6.2) |
+| 8 | Organisation and branches (§20.6) | needs 2 and 6 to have settled first |
+| 9 | Settings, once everything that is a workflow has left it | what remains is small, and it should be |
+
+### 20.9 The rule that outranks everything above
+
+**No interface may be built on business logic that is wrong, and no business logic may be
+built that the interface contradicts.** A beautiful screen over a rule that does not hold is
+worse than the current screen, because it is convincing. If the two disagree, the database
+is right and the screen is a bug — but only after checking that the rule in the database is
+the rule this document specifies.
+
+Two obligations follow, and they are testable rather than aspirational:
+
+- **Every redesigned screen is exercised against the real entitlement system.** A trialling
+  teacher, a lapsed centre in read-only, a narrowed accountant, a branch-pinned manager. A
+  layout that only works for an owner with everything enabled has not been tested.
+- **A screen that hides an action must be over a server that refuses it.** §12.2 is the list;
+  the interface is not on it. Where a redesign needs a capability that does not exist yet,
+  the capability is built first — server-side and tested — and the screen follows.
+
+And where a decision in this document turns out to produce a bad experience, the decision is
+what gets revisited. Documenting a rule does not make it good. But it is revisited *here*,
+in this file, and then in the code — never worked around in one screen, which is how two
+truths start.
+
+---
+
+## 21. Version history
 
 | Date | Change |
 |---|---|
@@ -2143,6 +2381,7 @@ correctly with both rows intact; profit including payroll.
 | 2026-08-23 | `docs/PLANS-AND-MESSAGING.md` written: per-tier feature flags, the 150-student Pro ceiling, marginal bands, the SMS reality. |
 | 2026-08-29 | **This revision.** Reconciled with the final product direction: capacity as a purchased quantity separate from plan; the Pro trial as a state; Institution as a genuine multi-branch product with a shared pool; the financial module (employees, payroll, expenses, revenue, profit, dashboards); identity split into record versus account with memorable usernames and phone-or-username sign-in; owner/manager OTP named as a live security gap; the audit log; payment intents with bKash explicitly deferred; the stack corrected to Next.js 16 on Vercel; retired assumptions listed. |
 | 2026-09-02 | §§11, 15, 16, 17 and 19 brought level with the build. A subscription may carry the tier it moves a centre onto, and the settlement moves the plan when the money lands, so the founder panel is no longer the only door to a plan change — it is now the only door to a plan change nobody paid for. `subscriptions` recorded as deliberately empty, with coverage derived from the payments into one date on the centre. The credit a downgrade or a mid-term move owes is named as the next thing the money model cannot yet express, and is a phone call until it can. |
+| 2026-09-02 | **§20 added: the interface.** The masterplan now owns the information architecture as well as the rules — the sidebar-and-workspace frame in place of a phone layout drawn at every width, navigation named after jobs rather than screens and shaped by role without ever being a control, the six questions the plan page has to answer without exposing the pricing bands that answer them, buying at the point of need, organisation level held visibly apart from branch level, the house rules, and the order the screens get rebuilt in. §0 says why it is the same document. Version history moved to §21. The credit is struck off §16 as built: a platform payment may be negative, the floor is held by a trigger under an advisory lock, and it prints as a credit note — what is left of that thread is an owner being able to ask for one themselves. Counts: 1,388 RLS assertions, 1,166 unit tests, 74 migrations. |
 
 
 
