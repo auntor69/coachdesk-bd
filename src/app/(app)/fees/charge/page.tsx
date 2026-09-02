@@ -148,40 +148,47 @@ export default async function ChargePage({
       </Link>
 
       <div>
-        <h1 className="text-xl font-semibold text-ink">{t.title}</h1>
+        <h1 className="text-xl font-semibold text-ink lg:text-2xl">{t.title}</h1>
         <p className="mt-1 text-sm text-ink-soft">{t.subtitle}</p>
       </div>
 
       {/* A plain GET, so the chosen batch is in the URL and the roster below is what the
           server read for it. Its own form element: this cannot be nested inside the
-          charge form, and it must not submit it either. */}
-      <Card>
-        <form method="get" className="flex flex-col gap-1.5">
-          <label htmlFor="batch" className="font-medium text-ink">
-            {t.who}
-          </label>
-          <span className="text-sm text-ink-soft">{t.whoHint}</span>
-          <select
-            id="batch"
-            name="batch"
-            defaultValue={chosen ?? ''}
-            className={SELECT_CLASS}
-          >
-            <option value={EVERY_BATCH}>{t.everyone}</option>
-            {(batches ?? []).map((b) => (
-              <option key={b.id} value={b.id}>
-                {b.name}
-              </option>
-            ))}
-          </select>
-          {batches !== null && batches.length === 0 && (
-            <span className="text-sm text-ink-soft">{t.noBatches}</span>
-          )}
-          <div className="mt-3">
-            <Button type="submit" variant="secondary">
-              {t.show}
-            </Button>
+          charge form, and it must not submit it either. Capped, because one select and
+          one button stretched across a laptop is a card that looks like a mistake. */}
+      <Card className="lg:max-w-2xl">
+        <form
+          method="get"
+          className="flex flex-col gap-1.5 sm:flex-row sm:items-end sm:gap-3"
+        >
+          <div className="flex min-w-0 flex-1 flex-col gap-1.5">
+            <label htmlFor="batch" className="font-medium text-ink">
+              {t.who}
+            </label>
+            <span className="text-sm text-ink-soft">{t.whoHint}</span>
+            <select
+              id="batch"
+              name="batch"
+              defaultValue={chosen ?? ''}
+              className={SELECT_CLASS}
+            >
+              <option value={EVERY_BATCH}>{t.everyone}</option>
+              {(batches ?? []).map((b) => (
+                <option key={b.id} value={b.id}>
+                  {b.name}
+                </option>
+              ))}
+            </select>
+            {batches !== null && batches.length === 0 && (
+              <span className="text-sm text-ink-soft">{t.noBatches}</span>
+            )}
           </div>
+          {/* Beside the select from `sm`, where it reads as the one thing to do with it.
+              Full width on a phone, because a half-width button next to nothing is a
+              button somebody misses. */}
+          <Button type="submit" variant="secondary" className="mt-3 w-full sm:mt-0 sm:w-auto">
+            {t.show}
+          </Button>
         </form>
       </Card>
     </>
@@ -189,9 +196,9 @@ export default async function ChargePage({
 
   /** The screen with no form on it. See arrears/page.tsx's own for why a read failing takes it away. */
   const refusal = (problem: PageFailure) => (
-    <div className="flex flex-col gap-4">
+    <div className="flex flex-col gap-4 lg:gap-6">
       {header}
-      <Card className="border-late/30 bg-late/5">
+      <Card className="border-late/30 bg-late/5 lg:max-w-2xl">
         <p className="font-medium text-ink">
           {problem === 'tooLarge' ? t.tooLarge : t.unreadable}
         </p>
@@ -202,15 +209,15 @@ export default async function ChargePage({
   if (roster !== null && 'failed' in roster) return refusal(roster.failed)
 
   return (
-    <div className="flex flex-col gap-4">
+    <div className="flex flex-col gap-4 lg:gap-6">
       {header}
 
       {roster === null ? (
-        <Card>
+        <Card className="lg:max-w-2xl">
           <p className="text-sm text-ink-soft">{t.pickFirst}</p>
         </Card>
       ) : roster.rows.length === 0 ? (
-        <Card>
+        <Card className="lg:max-w-2xl">
           <h2 className="font-semibold text-ink">{t.emptyTitle}</h2>
           <p className="mt-1 text-sm text-ink-soft">{t.emptyBody}</p>
         </Card>

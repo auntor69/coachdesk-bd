@@ -17,6 +17,14 @@
  * THE TOTAL IS THE SAFETY CHECK. Nothing here can tell ৳300 meant for ৳3,000 apart, so
  * the figure an owner reads before pressing is `ticked × amount` — the number they can
  * compare against what they expected to raise.
+ *
+ * TWO COLUMNS FROM `lg`, AND THE LIST STOPS PUSHING THE BUTTON OFF THE SCREEN. The fee
+ * takes seven of twelve columns and the roster five beside it, capped at 70vh with its
+ * own scroll, so the press and the figure that guards it sit under the fields an owner
+ * just filled in rather than below two hundred and fifty names. The list keeps its full
+ * length on a phone, where a scrolling panel inside a scrolling page is worse than a
+ * long list. Source order is the phone order and the tab order — fields, ticks, submit
+ * — so there is no `order-N` in this file.
  */
 import { memo, useActionState, useEffect, useRef, useState } from 'react'
 
@@ -146,19 +154,11 @@ export function ChargeForm({
       ref={form}
       action={formAction}
       onChange={(e) => recount(e.currentTarget)}
-      className="flex flex-col gap-4"
+      className="flex flex-col gap-4 lg:grid lg:grid-cols-12 lg:items-start lg:gap-6"
     >
       <input type="hidden" name="idempotencyKey" ref={keyRef} />
 
-      {state?.error && <Alert>{state.error}</Alert>}
-      {state?.warn && <Alert tone="warn">{state.warn}</Alert>}
-      {state?.ok && (
-        <p role="status" className="font-medium text-brand-700">
-          {state.ok}
-        </p>
-      )}
-
-      <Card>
+      <Card className="lg:col-span-7">
         <p className="text-sm text-ink-soft">{t.howTo}</p>
 
         <div className="mt-4 flex flex-col gap-3">
@@ -261,9 +261,12 @@ export function ChargeForm({
            * Hidden until there is an amount to divide, because a schedule of ৳0 answers
            * nothing. Shown as "too small" rather than blank when the fee will not divide
            * that many ways, which is the same refusal the action would give.
+           *
+           * A tinted band bled to the card's edges rather than a bordered tile inside it,
+           * which §20.7 does not allow and which read as a second card besides.
            */}
           {tally.parts > 1 && tally.each > 0 && (
-            <div className="rounded-xl border border-line bg-surface-alt px-4 py-3">
+            <div className="-mx-5 bg-surface-alt px-5 py-3">
               {tally.plan.length === 0 ? (
                 <p className="text-sm text-ink-soft">{t.scheduleTooSmall}</p>
               ) : (
@@ -309,7 +312,10 @@ export function ChargeForm({
         </div>
       </Card>
 
-      <div className="overflow-hidden rounded-2xl border border-line bg-white">
+      <div
+        className="overflow-hidden rounded-2xl border border-line bg-white
+          lg:col-span-5"
+      >
         <div className="flex items-center gap-3 border-b border-line bg-surface-alt px-4 py-2">
           <span className="min-w-0 flex-1 text-sm font-medium text-ink-soft">
             {t.colStudent}
@@ -330,36 +336,48 @@ export function ChargeForm({
             {t.tickNone}
           </button>
         </div>
-        <ChargeRows students={students} />
+        {/* The panel scrolls, not the page — but only where there are two columns to keep
+            level. The two buttons above stay out of it so they are reachable at row 200. */}
+        <div className="lg:max-h-[70vh] lg:overflow-y-auto">
+          <ChargeRows students={students} />
+        </div>
       </div>
 
-      <Card>
-        <div className="flex items-baseline justify-between gap-3">
-          <span className="text-sm text-ink-soft">
-            {fill(t.tickedCount, { n: digits(tally.ticked, locale) })}
-          </span>
-          <span className="text-right">
-            <span className="block text-sm text-ink-soft">{t.total}</span>
-            <span className="block text-xl font-semibold text-ink">
-              {formatTaka(tally.total)}
+      {/* The press, and what came back from it: under the fields it was filled in from,
+          not under the list. */}
+      <div className="flex flex-col gap-4 lg:col-span-7">
+        {state?.error && <Alert>{state.error}</Alert>}
+        {state?.warn && <Alert tone="warn">{state.warn}</Alert>}
+        {state?.ok && (
+          <p role="status" className="font-medium text-brand-700">
+            {state.ok}
+          </p>
+        )}
+
+        <Card>
+          <div className="flex items-baseline justify-between gap-3">
+            <span className="text-sm text-ink-soft">{t.total}</span>
+            <span className="text-sm text-ink-faint">
+              {fill(t.tickedCount, { n: digits(tally.ticked, locale) })}
             </span>
-          </span>
-        </div>
+          </div>
+          <p className="num text-3xl font-bold text-ink">{formatTaka(tally.total)}</p>
 
-        <div className="mt-4">
-          <Button type="submit" disabled={pending} full>
-            {pending ? common.creating : t.submit}
-          </Button>
-        </div>
+          <div className="mt-4">
+            <Button type="submit" disabled={pending} full>
+              {pending ? common.creating : t.submit}
+            </Button>
+          </div>
 
-        <p className="mt-3 text-sm text-ink-faint">{t.safeToRepeat}</p>
-      </Card>
+          <p className="mt-3 text-sm text-ink-faint">{t.safeToRepeat}</p>
+        </Card>
+      </div>
     </form>
   )
 }
 
 /**
- * The column, memoised away from the total that ticks above it.
+ * The column, memoised away from the total that ticks with each tap.
  *
  * Every prop is stable — the roster comes from the server — so this bails out of every
  * re-render a keystroke in the amount box causes. No `aria-label`: the name is the
