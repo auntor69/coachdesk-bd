@@ -9,9 +9,14 @@
  * wrong sentence said to a parent.
  *
  * Relative imports with extensions — `node --test` on TS, no tsconfig paths.
+ *
+ * The last section reads the page's own source and guards its two layouts; see the
+ * comment above it.
  */
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
+import { readFileSync } from 'node:fs'
+import path from 'node:path'
 
 import {
   attendanceByBatch,
@@ -819,4 +824,125 @@ test('moves: nothing to show is an empty list either way', () => {
   assert.deepEqual(studentTransfers(null, MOVE_LABELS), [])
   assert.deepEqual(studentTransfers(undefined, MOVE_LABELS), [])
   assert.deepEqual(studentTransfers([], MOVE_LABELS), [])
+})
+
+/*
+ * ─── THE LAYOUT ────────────────────────────────────────────────────────────────────
+ *
+ * Everything above is arithmetic. What follows guards the shape of the page it is drawn
+ * on, the same way dashboard.test.ts and add-student.test.ts guard theirs: `order-N` per
+ * block, two wrappers that are `display: contents` below `lg`, and the DOM order kept
+ * equal to the phone's reading order because `order` moves nothing for a keyboard.
+ *
+ * The failure this catches is specific. The phone order here is not a preference — it is
+ * what shipped, and an owner who has learned that the numbers to ring are two swipes down
+ * does not want them somewhere else after a redesign. So the numbers are asserted to be
+ * 1 to 8 with nothing missing and nothing shared, and each column to ascend in source
+ * order, which is what makes a laptop draw what the phone reads.
+ */
+
+const PROFILE = readFileSync(
+  path.join(import.meta.dirname, '..', 'src', 'app', '(app)', 'students', '[studentId]', 'page.tsx'),
+  'utf8',
+)
+
+const RENDER = PROFILE.slice(PROFILE.indexOf('<div className="flex flex-col gap-5 lg:grid'))
+const RAIL_AT = RENDER.indexOf('<div className="contents lg:order-3 lg:col-span-5')
+const MAIN_AT = RENDER.indexOf('<div className="contents lg:order-2 lg:col-span-7')
+
+/** See plan-page.test.ts: the lookbehind keeps `border-line` and `lg:order-N` out. */
+function ordersIn(source: string): string[] {
+  return [...source.matchAll(/(?<=["\s])order-(\d+|last)\b/g)].map((m) => m[1])
+}
+
+test('layout: one column on a phone, seven and five from lg', () => {
+  assert.match(
+    RENDER,
+    /^<div className="flex flex-col gap-5 lg:grid lg:grid-cols-12 lg:items-start lg:gap-6">/,
+  )
+  assert.match(RENDER, /className="order-1 lg:col-span-12"/, 'the header does not span the grid')
+
+  assert.ok(RAIL_AT > 0, 'the five-column rail is not where this test expects it')
+  assert.ok(MAIN_AT > RAIL_AT, 'the rail must be written before the panels')
+
+  for (const wrapper of ['lg:order-3 lg:col-span-5', 'lg:order-2 lg:col-span-7']) {
+    const at = RENDER.indexOf(wrapper)
+    const decl = RENDER.slice(at - 40, at + 120)
+    assert.match(decl, /contents/, `${wrapper} is not contents on a phone`)
+    assert.match(decl, /lg:flex lg:flex-col/, `${wrapper} never becomes a column`)
+  }
+
+  // Exactly the two, because a grid item with no `lg:order` is 0 and draws above the
+  // header — the one place nothing may go.
+  assert.equal([...RENDER.matchAll(/lg:order-[23]\b/g)].length, 2)
+})
+
+test('layout: the phone order is 1 to 8, unchanged, and no two blocks share a place', () => {
+  const counts = new Map<string, number>()
+  for (const value of ordersIn(RENDER)) counts.set(value, (counts.get(value) ?? 0) + 1)
+
+  for (const [value, n] of counts) assert.equal(n, 1, `order-${value} is used ${n} times`)
+  for (let n = 1; n <= 8; n += 1) {
+    assert.ok([...counts.keys()].includes(String(n)), `no block is order-${n}`)
+  }
+  assert.equal(counts.size, 8, `${counts.size} distinct positions, expected 8`)
+
+  // Header, teacher note, contact, moves, flags, attendance, marks, fees — in that order,
+  // which is the order the page shipped in.
+  const rail = RENDER.slice(RAIL_AT, MAIN_AT)
+  const main = RENDER.slice(MAIN_AT)
+  assert.equal(ordersIn(rail).join(), '2,3,4,5', 'the rail no longer holds the four short facts')
+  assert.equal(ordersIn(main).join(), '6,7,8', 'the panels with rows in them have moved')
+})
+
+test('layout: each column draws in the order it is written', () => {
+  for (const [name, source] of [
+    ['rail', RENDER.slice(RAIL_AT, MAIN_AT)],
+    ['panels', RENDER.slice(MAIN_AT)],
+  ] as const) {
+    const numeric = ordersIn(source).map(Number)
+    assert.deepEqual([...numeric].sort((a, b) => a - b), numeric,
+      `${name} draws in a different order than it is written`)
+  }
+})
+
+test('layout: the rail holds what is read while talking, the panels hold the rows', () => {
+  const rail = RENDER.slice(RAIL_AT, MAIN_AT)
+  const main = RENDER.slice(MAIN_AT)
+
+  // The guardian's number is the reason half the readers opened the page, and on a
+  // laptop it now stays put instead of scrolling away above the fee list.
+  assert.match(rail, /href=\{`tel:\$\{guardianPhone\}`\}/, 'the numbers to ring left the rail')
+  assert.match(rail, /t\.teacherScope/, 'the scope note left the rail')
+  assert.match(rail, /t\.moves\.title/, 'the moves left the rail')
+  assert.match(rail, /t\.flags\.title/, 'the flags left the rail')
+
+  for (const key of ['t.attendance.title', 't.marks.title', 't.fees.title']) {
+    assert.ok(main.includes(key), `${key} is not in the seven-column column`)
+    assert.ok(!rail.includes(key), `${key} is in the rail, which is five columns wide`)
+  }
+
+  // §38: the redesign moved blocks, not permissions. Each panel is still gated where it
+  // was, and the fee panel still keeps its three separate answers apart — a read that
+  // failed, a reader who may not see fees, and a student nobody has invoiced.
+  assert.match(RENDER, /\{mayReadMoves && \(movesUnreadable \|\| moves\.length > 0\) && \(/)
+  assert.match(RENDER, /\{mayReadFlags && \(/)
+  assert.match(
+    main,
+    /\{feesUnreadable \? \([\s\S]{0,200}t\.fees\.unreadable[\s\S]{0,200}: !fees \? \([\s\S]{0,200}t\.fees\.hidden/,
+    'the fee panel has stopped telling its three empties apart',
+  )
+  assert.match(rail, /\{!staffAdmin && \(/, 'the scope note is no longer gated on the reader')
+})
+
+test('layout: a read that failed is one capped column, not an empty rail', () => {
+  const wall = PROFILE.slice(
+    PROFILE.indexOf('if (studentError) {'),
+    PROFILE.indexOf('<div className="flex flex-col gap-5 lg:grid'),
+  )
+  assert.ok(wall.length > 100, 'the failed-read return is not where this test expects it')
+  assert.match(wall, /<div className="flex max-w-2xl flex-col gap-5">/)
+  assert.doesNotMatch(wall, /lg:grid-cols-12/, 'the failure is not a twelve-column grid')
+  // The back link stays, so the reader is not stranded on it.
+  assert.match(wall, /href="\/settings\/students"/)
 })
