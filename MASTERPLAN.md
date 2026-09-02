@@ -1409,10 +1409,12 @@ new.called_by` — because a trigger on `attendance_records` that fired on any c
 would log every student on every day, and a log that long is a log nobody opens.
 A teacher fixing their own tick five minutes later is therefore not in it.
 
-What that line cannot yet say is *whose* mark it was: `attendance_records` has no
-subject resolver in `src/lib/audit.ts`, so the entry names the batch and the day and
-leaves the child unnamed. The batch's own register is where a name belongs, and it
-now carries one.
+That line names the child, though not from the snapshot: `enrollment_id` does not move
+on a correction, so it is not among the columns stored and `src/lib/audit.ts` cannot
+reach it. The reader resolves it instead — mark to enrolment to student, one embed
+inside the round trip that already names an invoice's student and a payment's. A record
+since deleted comes back with nothing and the line keeps its action and its from-to,
+which is the same fallback every other subject on the screen has.
 
 ---
 
@@ -1676,7 +1678,8 @@ paid for; a fourteen-day Teacher Pro trial that starts itself at signup, ends on
 clock, says so on screen while it runs and for a week after, and grants its places at
 the trigger as well as on the screen; a founder panel that records real money; an
 append-only audit log written by sixteen triggers inside the transaction that made
-the change, named for the reader in one tested module and read by the owner alone;
+the change, named for the reader in one tested module, resolved to the person each
+line is about even where the stored snapshot cannot say, and read by the owner alone;
 an admin role that only an owner may hand out, and a centre that cannot be left
 without one; capabilities as a `text[]` on the membership rather than an enum, so an
 owner can appoint an accountant who never sees the roster or a receptionist who
@@ -1698,11 +1701,8 @@ to owner, which is what a suite is for.
 **Partly built ⚠️** — branches (money, staff and the HQ comparison yes, full
 isolation no); discounts (fixed only); scheduling (weekly recurrence, no clashes or
 overrides); refunds (representable, no UI); plan selection (an owner may ask for a
-tier and buy places, not move themselves between tiers); the audit log (every table
-that can be audited today is, attendance overrides included, but an override line
-names the batch and the day and not yet the child — `attendance_records` has no
-subject resolver in `src/lib/audit.ts`); dashboards (`/hq` compares the branches;
-§9.10's own screen is not built).
+tier and buy places, not move themselves between tiers); dashboards (`/hq` compares
+the branches; §9.10's own screen is not built).
 
 **Not built ❌** — subscriptions as a living thing
 (`subscriptions` still has zero reads and zero writes in the app, and

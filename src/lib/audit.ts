@@ -278,11 +278,11 @@ const RULES: Record<AuditedTable, Rule[]> = {
   // attaches its trigger with a WHEN clause, so the only line that can reach here is a
   // status changed by somebody other than the teacher who called the mark.
   //
-  // No SUBJECT entry, and it is a real gap rather than an oversight. `enrollment_id` does
-  // not move on a correction, so it is not in the snapshot, and `entity_id` is the mark
-  // itself — there is nothing on the line to resolve to a child's name. The screen that
-  // names children is the correction review, which reads the table and can embed the
-  // student; this log is the copy nobody can edit.
+  // No SUBJECT entry, and there cannot be one. `enrollment_id` does not move on a
+  // correction, so it is not in the snapshot, and `entity_id` is the mark itself — nothing
+  // on the line resolves to a child without a read this module does not do. The activity
+  // screen does it instead, following the mark to its enrolment to its student the way it
+  // already follows an invoice.
   attendance_records: [
     { column: 'status', action: 'attendanceOverridden', shift: 'attendanceStatus' },
   ],

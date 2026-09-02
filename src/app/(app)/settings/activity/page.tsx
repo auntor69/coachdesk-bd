@@ -136,12 +136,18 @@ export default async function ActivityPage({
    * row's own id into the name an owner searches by. A row since deleted comes back with
    * nothing, and the line keeps its action and its figures.
    *
+   * An attendance mark is the same detour with one more hop: the record holds an
+   * enrolment, and the enrolment holds the student. Taken as an embed rather than two
+   * reads, because the second would have to wait for the first. This is the line §10
+   * exists for — "my manager says he never marked her absent" — and until it named the
+   * child it was a log entry about a day rather than about a person.
+   *
    * Not extended to salary_terms and salary_payments on purpose: their updates are the
    * automatic retirement of an agreement, which sits in the list directly beside the
    * `salarySet` line that replaced it — and that one is a create, so it carries the
    * teacher already.
    */
-  const linkIds = (entity: 'fee_invoices' | 'fee_payments' | 'guardians') => [
+  const linkIds = (entity: 'fee_invoices' | 'fee_payments' | 'guardians' | 'attendance_records') => [
     ...new Set(
       entries.flatMap((e) =>
         e.subject === null && e.entity === entity && e.entityId !== null ? [e.entityId] : [],
@@ -151,6 +157,7 @@ export default async function ActivityPage({
   const invoiceIds = linkIds('fee_invoices')
   const paymentIds = linkIds('fee_payments')
   const guardianIds = linkIds('guardians')
+  const markIds = linkIds('attendance_records')
 
   const idsFor = (table: 'students' | 'employees') => [
     ...new Set(entries.flatMap((e) => (e.subject?.table === table ? [e.subject.id] : []))),
@@ -160,9 +167,9 @@ export default async function ActivityPage({
   // Spelled out one table at a time rather than through a helper taking the name,
   // because a `.from` given a variable is one check-scoping cannot see: the gate
   // matches a quoted table name, and a query it cannot see is a query it cannot prove
-  // is centre-scoped. It refuses one now — these four are why. Every read below carries
+  // is centre-scoped. It refuses one now — these five are why. Every read below carries
   // its own `.eq` where the gate can find it.
-  const [invoiceLinks, paymentLinks, guardianLinks, employees] = await Promise.all([
+  const [invoiceLinks, paymentLinks, guardianLinks, markLinks, employees] = await Promise.all([
     invoiceIds.length === 0
       ? null
       : supabase
@@ -184,6 +191,13 @@ export default async function ActivityPage({
           .select('id, student_id')
           .eq('coaching_center_id', session.active.centerId)
           .in('id', guardianIds),
+    markIds.length === 0
+      ? null
+      : supabase
+          .from('attendance_records')
+          .select('id, enrollments (student_id)')
+          .eq('coaching_center_id', session.active.centerId)
+          .in('id', markIds),
     employeeIds.length === 0
       ? null
       : supabase
@@ -197,6 +211,14 @@ export default async function ActivityPage({
   const linkedStudent = new Map<string, string>()
   for (const result of [invoiceLinks, paymentLinks, guardianLinks]) {
     for (const link of result?.data ?? []) linkedStudent.set(link.id, link.student_id)
+  }
+
+  // The mark's own row does not carry a student, so its enrolment is asked for it. Array
+  // or object depending on how sharp the generated type is about a composite foreign key,
+  // the way the absence notices read the same embed.
+  for (const mark of markLinks?.data ?? []) {
+    const enrollment = Array.isArray(mark.enrollments) ? mark.enrollments[0] : mark.enrollments
+    if (enrollment) linkedStudent.set(mark.id, enrollment.student_id)
   }
 
   const studentIds = [...new Set([...idsFor('students'), ...linkedStudent.values()])]
