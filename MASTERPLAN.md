@@ -1743,12 +1743,32 @@ public HTTP endpoint** and a route guard protects a page, not a function.
 The honest statement of where the product stands: plan, status and SMS credits are
 tamper-proof at Layer 1 today — `UPDATE` is revoked on `coaching_centers`,
 re-granted column by column, and a trigger raises `42501` if a session tries to
-write the billing columns. But **the numeric caps and the feature flags live only in
-Layer 2.** No trigger, no CHECK and no policy enforces a batch limit or a feature
-flag. A caller who could reach the table directly could exceed every cap.
+write the billing columns. **The numeric caps are Layer 1 too, as of
+20260811000075.** Student places had been since 20260811000036; batches, subjects,
+teacher records and children in one batch were counted only by the Server Actions
+until now, and `batches`, `subjects`, `teachers` and `enrollments` all still grant
+`insert` to `authenticated` — so an owner's own token, posted at PostgREST, walked
+past every limit their plan sold them. Five ceilings, five triggers, one advisory
+lock each.
 
-That is the gap capacity enforcement closes, and it should close it for the caps
-too rather than beside them.
+The trigger and the action must never be able to refuse different things, which is
+the whole design constraint: the counts mirror `limitRefusal`, `batchRoomRefusal` and
+`fullBatches` column for column, the ceiling is read from `plan_allowances` through
+the same live-trial resolution the screens use, and the refusal carries which of the
+four it was — `limit=batches|subjects|teachers|seats` — so Layer 2 can still answer in
+the owner's own words instead of relaying a SQLSTATE. A null allowance is no ceiling
+rather than a ceiling of nothing, because a Coaching Center buys teachers by the head.
+
+The exemption list is `postgres` and `supabase_admin`, and deliberately **not**
+`service_role`: the service key is what every Server Action holds, so a fence that
+let it through would be guarding only the caller nobody uses.
+
+**What is still Layer 2 only: the feature flags.** No trigger enforces one. A flag
+gates a screen and a write path rather than a row shape, so the analogue of a count
+does not exist for it — the closest thing is the read-only enforcement the
+entitlement resolver puts in front of twenty write paths, and that is an application
+check. This is written down as a known limit and not as a plan; closing it would mean
+teaching the database what each flag means, which is duplicating the resolver in SQL.
 
 ### 12.2 What a browser must never be able to do
 
@@ -1794,7 +1814,7 @@ the purchase rather than granting the seat.
 permissions. A plan without staff answers false to all five staff permission
 helpers.
 
-### 12.4 Concurrency is a security property here ❌
+### 12.4 Concurrency is a security property here ✅
 
 Two managers adding the last available student place at the same moment must not
 both succeed. Reading a count and then inserting is not enough — the gap between the
@@ -1807,6 +1827,14 @@ Capacity enforcement does the same thing — lock the organisation row, count th
 active students, compare against paid capacity, insert or raise — inside a **BEFORE
 INSERT trigger** so it holds no matter which code path inserts the student, including
 the bulk-import function and any future one.
+
+Built, and now five times over: students on their own lock, then batches, subjects,
+teacher records and seats in a batch each on theirs, keyed on the centre except seats,
+which are keyed on the batch so two managers filling two different batches do not
+queue behind each other. The counting helpers are deliberately **volatile**, which
+looks like a missed optimisation and is not: a stable function reads the snapshot the
+statement began with and cannot see the rows that same statement is inserting, so a
+five-hundred-row paste would pass one ceiling five hundred times.
 
 This is also what makes bulk import all-or-nothing: it is already a single
 transaction, so a capacity check inside it either passes for the whole batch or
@@ -1957,11 +1985,23 @@ access; a reason required at the table, because there is no UPDATE path to add o
 floor held by a trigger under an advisory lock, so no centre can be credited past what it
 has paid; and the sheet it prints is headed as a credit note rather than as a receipt for
 minus money, off one function the list and the printable both read (§9.2).
-1,388 RLS assertions and 1,166 unit tests green across 74 migrations and 42 tables in
+And the four ceilings a plan sells besides student places — batches, subjects, teacher
+records and children in one batch — are counted by the database now and not only by the
+Server Actions, which is the last of §12.1's Layer 1 work: those four tables still grant
+`insert` to `authenticated`, so an owner's own token posted straight at the API walked past
+every limit they had been sold. The triggers count exactly what the actions count, resolve
+the ceiling through the same live trial, say in the error which of the four refused so a
+screen can answer it in the owner's own words, and exempt the migration runner but not the
+service key — a key every form holds, so exempting it would have left the fence guarding
+only the caller nobody uses. A branch is a bucket in that count solely on an institution
+plan, where head office is a place of its own rather than a wildcard (§8, §16 step 20).
+1,418 RLS assertions and 1,176 unit tests green across 75 migrations and 42 tables in
 `public` plus one in `app`, and four derived gates and two that ask the live API. One of those gates now refuses
 a query whose table name it cannot read, having discovered it had been counting five
 fewer than existed — and the RLS suite found a manager who could promote themselves
-to owner, which is what a suite is for.
+to owner, which is what a suite is for. The SQL gate now also hands out our own
+`CD` SQLSTATEs: one rule per code, every code named in `src/lib`, which caught a plan
+ceiling about to be raised on the code the teacher clash already owned.
 
 **Partly built ⚠️** — branches (money, staff, the HQ comparison and the growth
 breakdown yes, full isolation no); scheduling (weekly recurrence and teacher clashes,
@@ -2019,6 +2059,10 @@ money, money before reporting.
 | 18 | Audit log wired into every step above | written with each change, not bolted on |
 | 19 | Payment intents + manual provider | real, and bKash-shaped |
 | 20 | Cap and feature-flag enforcement pushed into Layer 1 | finishes what capacity started |
+
+All twenty have landed. That is not the same as finished — §15 says what each one left
+partly built — but no step of the order is now waiting on another, which is why the work
+below it can be taken in the order of what the product most visibly lacks.
 
 **Core, and nothing beyond it:** the four plans, the trial, entitlement, capacity
 with atomic enforcement, single and bulk top-up, branch isolation, the shared pool,
@@ -2382,6 +2426,7 @@ truths start.
 | 2026-08-29 | **This revision.** Reconciled with the final product direction: capacity as a purchased quantity separate from plan; the Pro trial as a state; Institution as a genuine multi-branch product with a shared pool; the financial module (employees, payroll, expenses, revenue, profit, dashboards); identity split into record versus account with memorable usernames and phone-or-username sign-in; owner/manager OTP named as a live security gap; the audit log; payment intents with bKash explicitly deferred; the stack corrected to Next.js 16 on Vercel; retired assumptions listed. |
 | 2026-09-02 | §§11, 15, 16, 17 and 19 brought level with the build. A subscription may carry the tier it moves a centre onto, and the settlement moves the plan when the money lands, so the founder panel is no longer the only door to a plan change — it is now the only door to a plan change nobody paid for. `subscriptions` recorded as deliberately empty, with coverage derived from the payments into one date on the centre. The credit a downgrade or a mid-term move owes is named as the next thing the money model cannot yet express, and is a phone call until it can. |
 | 2026-09-02 | **§20 added: the interface.** The masterplan now owns the information architecture as well as the rules — the sidebar-and-workspace frame in place of a phone layout drawn at every width, navigation named after jobs rather than screens and shaped by role without ever being a control, the six questions the plan page has to answer without exposing the pricing bands that answer them, buying at the point of need, organisation level held visibly apart from branch level, the house rules, and the order the screens get rebuilt in. §0 says why it is the same document. Version history moved to §21. The credit is struck off §16 as built: a platform payment may be negative, the floor is held by a trigger under an advisory lock, and it prints as a credit note — what is left of that thread is an owner being able to ask for one themselves. Counts: 1,388 RLS assertions, 1,166 unit tests, 74 migrations. |
+| 2026-09-02 | **§12.1 rewritten: the caps are Layer 1.** 20260811000075 puts the four ceilings a plan sells besides student places — batches, subjects, teacher records, children in one batch — into triggers, because the tables they count still grant `insert` to `authenticated` and an owner's own token could be posted straight at the API. They mirror the Server Actions' counts exactly, resolve the ceiling through the same live trial, name which limit refused so Layer 2 keeps its own wording, treat a null allowance as no ceiling rather than none allowed, and exempt the migration runner but not the service key. §12.4's ❌ becomes ✅ — five ceilings, five advisory locks, and the counting helpers volatile on purpose so a bulk paste cannot pass one ceiling five hundred times. Feature flags are now the only cap left in Layer 2 alone, and §12.1 says why that stays. §16 records all twenty steps of the build order as landed. Counts: 1,418 RLS assertions, 1,176 unit tests, 75 migrations. |
 
 
 
