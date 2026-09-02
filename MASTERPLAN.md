@@ -1120,12 +1120,39 @@ rather than built now:
 | | |
 |---|---|
 | Rooms | ❌ no room entity, so no room double-booking check |
-| Teacher clash detection | ❌ nothing stops one teacher being scheduled in two places |
+| Teacher clash detection | ✅ one teacher cannot be in two rooms at four o'clock |
 | One-off changes | ❌ no per-date override, no cancellation, no holiday calendar |
 | Term dates | ❌ a schedule is open-ended |
 
-Clash detection is the one worth doing first, and it is cheap: the data to detect
-it is already in the table.
+Clash detection was the one worth doing first, and it was cheap: the data to detect
+it was already in the table. It is built, and where it is built is the whole of the
+decision.
+
+A batch's routine is written across two tables in three separate transactions —
+`batches`, then a delete of the old day rows, then the new ones — because supabase-js
+cannot wrap them in one. So any check that reads `batches` reads a half-written
+routine: on create the batch exists before its days do, and on edit the new teacher is
+in place while the old days are still there. Checking at either of those moments
+refuses saves that are perfectly legal two statements later.
+
+The day rows are written **last** in both paths. That is the one moment the picture is
+whole, so `batch_schedules` is where the trigger fires and nowhere else
+(`20260811000071`, SQLSTATE `CD002`). Every clash between two batches that name their
+days is caught there, by a rule a race cannot get past, with no false refusal anywhere.
+
+The one case the trigger cannot see is a batch that names no days, because "no day
+rows" means "meets every day" and such a batch writes no row to fire on. That case
+belongs to the form (`src/lib/settings/clash.ts`), which is also the only place that
+can name the batch, the day and the hour in the reader's own language instead of
+raising. Both halves are asserted against the same cases —
+`tests/clash.test.ts` for the sentence, thirty assertions in `scripts/test-rls.mjs`
+for the refusal.
+
+Overlap is half-open (`start < other.end and other.start < end`), so a class that
+begins as another ends is legal. Back-to-back batches are how a coaching centre
+actually runs; a rule that refused them would be worked around within a week and would
+then be protecting nothing. A switched-off batch holds no hours, and reopening one is
+checked when its week is written back.
 
 ### 7.4 Admission and enrolment ✅
 
@@ -1843,15 +1870,19 @@ that makes it (§6.3); and a phone gate in front of owner signup — a six-digit
 a five-minute life, five tries counted under a row lock, a minute between sends and an
 hourly ceiling per number and per IP, checked and spent inside the same call that
 creates the account — which switches itself on the day the aggregator's three variables
-exist, and is off until then (§5.4).
-1,330 RLS assertions and 1,113 unit tests green across 70 migrations and 42 tables in
+exist, and is off until then (§5.4). And one teacher can no longer be in two rooms at
+four o'clock: the rule is enforced on the day rows, which are the last thing a save
+writes and so the only moment a batch's routine is whole, and stated a second time in
+the form so the refusal can name the batch, the day and the hour instead of raising
+(§7.3).
+1,360 RLS assertions and 1,134 unit tests green across 71 migrations and 43 tables in
 `public` plus one in `app`, and four derived gates and two that ask the live API. One of those gates now refuses
 a query whose table name it cannot read, having discovered it had been counting five
 fewer than existed — and the RLS suite found a manager who could promote themselves
 to owner, which is what a suite is for.
 
 **Partly built ⚠️** — branches (money, staff and the HQ comparison yes, full
-isolation no); scheduling (weekly recurrence, no clashes or
+isolation no); scheduling (weekly recurrence and teacher clashes, no rooms or
 overrides); refunds (representable, no UI); plan selection (an
 owner may ask for a tier and buy places, not move themselves between tiers);
 income with no student behind it (hall rent, book sales and the like have a category
@@ -1864,8 +1895,8 @@ between tiers (`bootstrap_center` hard-codes `teacher_free` as the *paid* tier, 
 only a platform admin or an owner's request changes it); the five
 `teacher_permissions` booleans as capabilities;
 transfer history; the two new student statuses; an award that applies itself to a
-student's every future bill; rooms and
-teacher-clash detection.
+student's every future bill; rooms, per-date overrides and a holiday
+calendar.
 
 **Blocked 🚧** — automated SMS, and with it the enforcement of a signup phone gate that
 is otherwise built and tested (BTRC sender ID needs an aggregator account which needs an
@@ -1908,13 +1939,12 @@ with atomic enforcement, single and bulk top-up, branch isolation, the shared po
 teacher accounts and usernames, phone-or-username sign-in, owner OTP,
 teacher-centric attendance, fees with part payments, discounts and instalment plans,
 refunds, expenses, employees, payroll, revenue and profit, the two dashboards, the
-audit log, payment intents.
+audit log, payment intents, teacher clash detection.
 
-**High priority, straight after:**
-teacher clash detection, and per-branch capacity *reporting*
+**High priority, straight after:** per-branch capacity *reporting*
 (never per-branch quotas).
 
-**Future, documented and not built:** rooms and timetable conflicts, holiday
+**Future, documented and not built:** rooms and room double-booking, holiday
 calendars, term dates, an admissions pipeline, automated SMS and the parent summary
 as a scheduled job, a student or guardian panel *(decided against, not deferred)*,
 multi-currency, accounting-package export, biometric attendance, per-operator SMS
@@ -1946,6 +1976,8 @@ that a good idea has somewhere to live that is not the codebase.
 | Teachers never need a phone or an OTP | the part-time teacher who will not be in a database is a customer's constraint, not ours |
 | Usernames are memorable and server-generated | they are read aloud across a staffroom |
 | Zero SMS credits on every tier | correct behaviour while no gateway exists; a counter decrementing against nothing is a lie |
+| Teacher clashes are refused on the **day rows**, not on `batches` | the routine is written across two tables in three transactions, and the day rows are the last of them — checking anywhere earlier refuses saves that are legal two statements later |
+| Back-to-back classes are not a clash | overlap is half-open; a rule that refused them would be worked around within a week |
 | `src/lib/plans.ts` owns the numbers | one pricing engine; this document defers to it |
 
 ---
@@ -1999,6 +2031,13 @@ teacher account creation succeeding with **no phone and no OTP**; username colli
 producing `rahim01` under concurrency.
 
 **Security** — every row of §12.2, each asserting a database-level refusal.
+
+**Scheduling** — one teacher, two rooms, four o'clock: the same hour on the same day
+refused *by its SQLSTATE*; back-to-back written; one minute of overlap and a class
+wholly inside another both refused; a batch that names no days treated as every day at
+its own hours and free at every other; a switched-off batch holding nothing, and
+reopening it caught when its week is written back; clearing a week and writing the same
+one back allowed, because that is how a batch is edited.
 
 **Finance** — charged vs collected vs outstanding on part payments; a refund netting
 correctly with both rows intact; profit including payroll.

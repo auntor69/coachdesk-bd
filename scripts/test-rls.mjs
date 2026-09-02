@@ -7193,6 +7193,371 @@ await db.query('delete from center_members where user_id = $1', [managerUser])
 await db.query('delete from auth.users where id = $1', [managerUser])
 
 // ---------------------------------------------------------------------------
+// One teacher, two rooms, four o'clock (20260811000071).
+//
+// §7.3 said "nothing stops one teacher being scheduled in two places" and this is the
+// section that stops it. The rule is stated twice — in SQL for the refusal a race cannot
+// get past, and in src/lib/settings/clash.ts for the sentence an owner reads — so this
+// section is also the record of what the two halves have to agree about, and
+// tests/clash.test.ts asserts the same cases against the other one.
+//
+// EVERY REFUSAL IS ASSERTED BY ITS SQLSTATE, not by "the database said no". These rows
+// are legal in every other respect: the day is in range, the end is after the start, and
+// nothing is duplicated. A refusal satisfied by any error would keep passing after the
+// guard it names was dropped, because the unique index on (batch, day, start) is sitting
+// right behind it and refuses several of these too.
+//
+// THE FIXTURE BATCHES CARRY NO HOURS OF THEIR OWN, deliberately, except the two that are
+// meant to mean "every day". A batch with hours and no day rows *is* an every-day booking,
+// so seeding one of those as a probe target would make the first day row written anywhere
+// near it a real clash, and the section would be testing its own fixture.
+// ---------------------------------------------------------------------------
+
+console.log('\nTeacher clash detection (one teacher, two rooms):')
+
+const centreTeacher = (name) =>
+  one(`insert into teachers (coaching_center_id, name) values ($1, $2) returning id`, [
+    centerA,
+    name,
+  ])
+
+const tRoutine = await centreTeacher('Shafiq Sir')
+const tSecond = await centreTeacher('Mahfuz Sir')
+const tEvery = await centreTeacher('Sumaiya Miss')
+const tSlot = await centreTeacher('Bashir Sir')
+
+// Hours on the row itself, which the seed's own `batch` helper leaves null. Only the two
+// every-day batches need them: for everything else the day rows are the hours.
+const timedBatch = (subj, teacher, name, from, to) =>
+  one(
+    `insert into batches (coaching_center_id, subject_id, teacher_id, name, slot,
+                          start_time, end_time, monthly_fee_bdt)
+     values ($1, $2, $3, $4, 'evening', $5::time, $6::time, 800) returning id`,
+    [centerA, subj, teacher, name, from, to],
+  )
+
+const bRoutine = await batch(centerA, sChem, tRoutine, 'Routine Chemistry', 'evening')
+const bRival = await batch(centerA, sBio, tRoutine, 'Rival Biology', 'evening')
+const bSecond = await batch(centerA, sChem, tSecond, 'Second Teacher Chemistry', 'evening')
+const bNoOne = await batch(centerA, sBio, null, 'Nobody Teaches This', 'evening')
+const bEvery = await timedBatch(sBio, tEvery, 'Every Day Biology', '16:00', '18:00')
+const bDaily = await batch(centerA, sChem, tEvery, 'Against Every Day', 'evening')
+const bSlotless = await batch(centerA, sBio, tSlot, 'Evening Sometime', 'evening')
+const bBooked = await batch(centerA, sChem, tSlot, 'Against A Slot', 'evening')
+
+/**
+ * A day row written by somebody, and what the database said about it.
+ *
+ * The SQLSTATE and the message both, because the assertions want different halves: CD002
+ * is the guard, and the message is what proves the refusal names the class an owner has to
+ * go and look at.
+ */
+const dayRow = async (row) => {
+  try {
+    await asUser(db, row.by ?? ids.ownerA, (tx) =>
+      tx.query(
+        `insert into batch_schedules
+           (coaching_center_id, batch_id, day_of_week, start_time, end_time)
+         values ($1, $2, $3, $4::time, $5::time)`,
+        [row.centre ?? centerA, row.batch, row.day, row.from, row.to],
+      ),
+    )
+    return { code: '', why: '' }
+  } catch (error) {
+    return { code: error.code ?? '', why: String(error.message) }
+  }
+}
+
+const dowOf = async (batchId) =>
+  (
+    await db.query(
+      `select day_of_week, to_char(start_time, 'HH24:MI') as from_at
+         from batch_schedules where batch_id = $1 order by day_of_week, start_time`,
+      [batchId],
+    )
+  ).rows
+    .map((r) => `${r.day_of_week}@${r.from_at}`)
+    .join(' ')
+
+const wrote = await dayRow({ batch: bRoutine, day: 0, from: '16:00', to: '18:00' })
+const alsoWrote = await dayRow({ batch: bRoutine, day: 2, from: '16:00', to: '18:00' })
+check(
+  'an owner writes the two days a class meets',
+  wrote.code === '' && alsoWrote.code === '' && (await dowOf(bRoutine)) === '0@16:00 2@16:00',
+  `${wrote.why} | ${alsoWrote.why}`,
+)
+
+const doubled = await dayRow({ batch: bRival, day: 0, from: '16:00', to: '18:00' })
+check(
+  'the same teacher at the same hour on another class is refused',
+  doubled.code === 'CD002',
+  `${doubled.code} ${doubled.why}`,
+)
+check(
+  'and the refusal names the class it collides with, not just the fact of it',
+  doubled.why.includes('Routine Chemistry'),
+  doubled.why,
+)
+
+const after = await dayRow({ batch: bRival, day: 0, from: '18:00', to: '20:00' })
+check(
+  'a class that starts as the other one ends is written — back-to-back is how a centre runs',
+  after.code === '',
+  after.why,
+)
+
+const freeDay = await dayRow({ batch: bRival, day: 1, from: '16:00', to: '18:00' })
+check('the same hour on a day the teacher is free is written', freeDay.code === '', freeDay.why)
+
+const oneMinute = await dayRow({ batch: bRival, day: 2, from: '17:59', to: '19:30' })
+check('one minute over the end of the other class is refused', oneMinute.code === 'CD002', oneMinute.why)
+
+const inside = await dayRow({ batch: bRival, day: 2, from: '16:30', to: '17:00' })
+check(
+  'and a class wholly inside another is refused, where neither edge lines up',
+  inside.code === 'CD002',
+  inside.why,
+)
+
+const otherTeacher = await dayRow({ batch: bSecond, day: 0, from: '16:00', to: '18:00' })
+check(
+  'another teacher at the same hour is written — the rule is about a person, not a clock',
+  otherTeacher.code === '',
+  otherTeacher.why,
+)
+
+const nobody = await dayRow({ batch: bNoOne, day: 0, from: '16:00', to: '18:00' })
+check(
+  'a batch with nobody teaching it yet is not checked at all',
+  nobody.code === '',
+  nobody.why,
+)
+
+// "No day rows" means every day — the form says so, the teacher panel reads it that way,
+// and the attendance window agrees. bEvery has hours and no day rows, so it is a booking
+// on all seven.
+const everyDayHit = await dayRow({ batch: bDaily, day: 4, from: '17:00', to: '19:00' })
+check(
+  'a class that meets every day is occupied at its own hours, on a day it has no row for',
+  everyDayHit.code === 'CD002' && everyDayHit.why.includes('Every Day Biology'),
+  `${everyDayHit.code} ${everyDayHit.why}`,
+)
+const everyDayMorning = await dayRow({ batch: bDaily, day: 4, from: '08:00', to: '10:00' })
+check(
+  'and free at every other hour — every day, not every hour',
+  everyDayMorning.code === '',
+  everyDayMorning.why,
+)
+
+const slotOnly = await dayRow({ batch: bBooked, day: 0, from: '16:00', to: '18:00' })
+check(
+  'a batch carrying only a slot and no hours occupies nothing',
+  slotOnly.code === '',
+  slotOnly.why,
+)
+
+const ownDay = await dayRow({ batch: bRoutine, day: 4, from: '16:00', to: '18:00' })
+check(
+  "a batch's own other days are not its rivals",
+  ownDay.code === '',
+  ownDay.why,
+)
+
+// updateBatch clears the week and writes it back, in that order and in separate
+// transactions. If clearing did not free the hours, correcting a typo in a batch name
+// would be refused on the way back in and no routine could ever be edited again.
+await asUser(db, ids.ownerA, (tx) =>
+  tx.query('delete from batch_schedules where batch_id = $1', [bRoutine]),
+)
+const weekBack = await dayRow({ batch: bRoutine, day: 0, from: '16:00', to: '18:00' })
+const weekBackToo = await dayRow({ batch: bRoutine, day: 2, from: '16:00', to: '18:00' })
+check(
+  'clearing a week and writing the same one back is how a batch is edited, so it is allowed',
+  weekBack.code === '' && weekBackToo.code === '',
+  `${weekBack.why} | ${weekBackToo.why}`,
+)
+
+// Moving an existing row, which is an UPDATE and not covered by anything the INSERT arm
+// proved. bRival still holds Sunday 18:00 and Monday 16:00 from earlier.
+const moveOnto = await (async () => {
+  try {
+    await asUser(db, ids.ownerA, (tx) =>
+      tx.query(
+        `update batch_schedules set start_time = '16:00'::time, end_time = '18:00'::time
+          where batch_id = $1 and day_of_week = 0`,
+        [bRival],
+      ),
+    )
+    return { code: '', why: '' }
+  } catch (error) {
+    return { code: error.code ?? '', why: String(error.message) }
+  }
+})()
+check('moving a day row onto an hour the teacher already teaches is refused', moveOnto.code === 'CD002', moveOnto.why)
+check(
+  'and the row that could not move is still where it was',
+  (await dowOf(bRival)).startsWith('0@18:00'),
+  await dowOf(bRival),
+)
+
+const moveFree = await (async () => {
+  try {
+    await asUser(db, ids.ownerA, (tx) =>
+      tx.query(
+        `update batch_schedules set start_time = '19:00'::time, end_time = '21:00'::time
+          where batch_id = $1 and day_of_week = 0`,
+        [bRival],
+      ),
+    )
+    return { code: '', why: '' }
+  } catch (error) {
+    return { code: error.code ?? '', why: String(error.message) }
+  }
+})()
+check('and moving it to an hour the teacher is free is written', moveFree.code === '', moveFree.why)
+
+await asUser(db, ids.ownerA, (tx) =>
+  tx.query('delete from batch_schedules where batch_id = $1 and day_of_week = 1', [bRival]),
+)
+check(
+  'a day row can always be dropped — the guard never stands between an owner and a delete',
+  !(await dowOf(bRival)).includes('1@'),
+  await dowOf(bRival),
+)
+
+// A batch that is switched off is not being taught, so it holds no hours. Reopening it is
+// where the collision has to surface, and that happens when the week is written back.
+const bClosed = await batch(centerA, sBio, tSecond, 'Closed For Now', 'evening')
+await db.query('update batches set active = false where id = $1', [bClosed])
+await asUser(db, ids.ownerA, (tx) =>
+  tx.query(
+    `insert into batch_schedules (coaching_center_id, batch_id, day_of_week, start_time, end_time)
+     values ($1, $2, 3, '16:00'::time, '18:00'::time)`,
+    [centerA, bClosed],
+  ),
+)
+const pastClosed = await dayRow({ batch: bSecond, day: 3, from: '16:00', to: '18:00' })
+check(
+  'a switched-off class occupies nobody, so the hour it used to hold can be given away',
+  pastClosed.code === '',
+  pastClosed.why,
+)
+await db.query('update batches set active = true where id = $1', [bClosed])
+const reopened = await (async () => {
+  try {
+    await asUser(db, ids.ownerA, (tx) =>
+      tx.query(
+        `update batch_schedules set start_time = '16:00'::time
+          where batch_id = $1 and day_of_week = 3`,
+        [bClosed],
+      ),
+    )
+    return { code: '', why: '' }
+  } catch (error) {
+    return { code: error.code ?? '', why: String(error.message) }
+  }
+})()
+check(
+  'and reopening it is caught the moment its week is written back',
+  reopened.code === 'CD002' && reopened.why.includes('Second Teacher Chemistry'),
+  `${reopened.code} ${reopened.why}`,
+)
+
+// Centre B keeps its own timetable at the same hour. Two centres cannot share a teacher
+// row, so this is the honest form of the join's centre condition: an identical routine next
+// door is not a collision, and centre A's refusal still names centre A's class.
+const bRoutineB = await batch(centerB, sPhy, tRahim, 'Physics Next Door', 'evening')
+const nextDoor = await dayRow({
+  batch: bRoutineB,
+  day: 2,
+  from: '16:00',
+  to: '18:00',
+  by: ids.ownerB,
+  centre: centerB,
+})
+check("another centre's identical routine at the identical hour is written", nextDoor.code === '', nextDoor.why)
+const stillOurs = await dayRow({ batch: bRival, day: 2, from: '16:00', to: '18:00' })
+check(
+  "and this centre's refusal still names this centre's class",
+  stillOurs.code === 'CD002' && stillOurs.why.includes('Routine Chemistry'),
+  `${stillOurs.code} ${stillOurs.why}`,
+)
+
+// The guard exempts `postgres` and `supabase_admin`, which is why every seed insert in this
+// file lands. That list is deliberately short: the service-role client arrives as
+// `service_role`, not as either of these, so the importer is checked like anybody else.
+const asMigration = await (async () => {
+  try {
+    await db.query(
+      `insert into batch_schedules (coaching_center_id, batch_id, day_of_week, start_time, end_time)
+       values ($1, $2, 2, '16:00'::time, '18:00'::time)`,
+      [centerA, bRival],
+    )
+    return ''
+  } catch (error) {
+    return String(error.message)
+  }
+})()
+check('a migration writing as the superuser is not stopped by the guard', asMigration === '', asMigration)
+check(
+  'and service_role is not on that list, so the importer is checked like anybody else',
+  (
+    await db.query(
+      `select 1 from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+        where n.nspname = 'app' and p.proname = 'guard_teacher_clash'
+          and pg_get_functiondef(p.oid) not like '%service_role%'`,
+    )
+  ).rows.length === 1,
+  'guard_teacher_clash exempts service_role',
+)
+await db.query('delete from batch_schedules where batch_id = $1 and day_of_week = 2', [bRival])
+
+// The helpers read past RLS, so they are the same shape of thing as app.active_students:
+// revoked from anon, granted to the app's own role. Both halves asserted, because losing
+// the grant would refuse every routine save and gaining anon would answer "what does this
+// teacher teach" to a signed-out stranger holding a batch uuid.
+const mayExecute = async (role, fn) =>
+  (await db.query(`select has_function_privilege($1, $2, 'execute') as ok`, [role, fn])).rows[0].ok
+
+for (const fn of [
+  'app.batch_bookings(uuid)',
+  'app.teacher_clash(uuid, smallint, time, time)',
+  'app.guard_teacher_clash()',
+]) {
+  check(`anon may not ask ${fn.split('(')[0]}`, (await mayExecute('anon', fn)) === false, fn)
+}
+for (const fn of ['app.batch_bookings(uuid)', 'app.teacher_clash(uuid, smallint, time, time)']) {
+  check(
+    `and the app's own role may — ${fn.split('(')[0]}`,
+    (await mayExecute('authenticated', fn)) === true,
+    fn,
+  )
+}
+
+check(
+  'the finding carries the day and the hour, so a refusal can say when',
+  (await (async () => {
+    const hit = (
+      await db.query(
+        `select batch_name, day_of_week, to_char(start_time, 'HH24:MI') as from_at
+           from app.teacher_clash($1, 2::smallint, '16:00'::time, '18:00'::time)`,
+        [bRival],
+      )
+    ).rows[0]
+    return hit && `${hit.batch_name} ${hit.day_of_week} ${hit.from_at}`
+  })()) === 'Routine Chemistry 2 16:00',
+  'app.teacher_clash returned the wrong shape',
+)
+
+await db.query('delete from batch_schedules where batch_id = any($1)', [
+  [bRoutine, bRival, bSecond, bNoOne, bEvery, bDaily, bSlotless, bBooked, bClosed, bRoutineB],
+])
+await db.query('delete from batches where id = any($1)', [
+  [bRoutine, bRival, bSecond, bNoOne, bEvery, bDaily, bSlotless, bBooked, bClosed, bRoutineB],
+])
+await db.query('delete from teachers where id = any($1)', [[tRoutine, tSecond, tEvery, tSlot]])
+
+// ---------------------------------------------------------------------------
 // The SMS delivery worker — claim, settle, cancel, reap.
 //
 // This is the first code in the product that spends and un-spends credits

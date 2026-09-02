@@ -5804,6 +5804,23 @@ export const bn = {
          */
         scheduleSaveFailed:
           'ব্যাচ সেভ হয়েছে, কিন্তু ক্লাসের দিন সেভ হয়নি। দিনগুলো আবার বাছুন।',
+        /**
+         * The double-booked teacher, §7.3. Names the other class and the hour, because
+         * "there is a clash" sends an owner through eleven batches looking for it.
+         *
+         * Two ways out, both offered: the routine is wrong or the teacher is, and which
+         * one is not ours to guess.
+         */
+        teacherClash: (batch: string, when: string) =>
+          `এই শিক্ষক ${when} ${batch}-এ ক্লাস নেন। সময় বা দিন বদলান, নয়তো এই ব্যাচে অন্য শিক্ষক দিন।`,
+        /**
+         * The same clash, found by the database after the form had already checked and
+         * been satisfied — so somebody else booked the teacher in the seconds between.
+         * Its own sentence because it is the one refusal that is not the reader's
+         * mistake.
+         */
+        teacherBusy:
+          'আপনি ফর্মটি পূরণ করার মধ্যেই অন্য কেউ এই শিক্ষককে ওই সময়ে আরেকটি ক্লাসে দিয়েছেন। অন্য দিন বা সময় বাছুন, নয়তো অন্য শিক্ষক দিন।',
       },
     },
 

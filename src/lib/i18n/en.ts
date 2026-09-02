@@ -3715,6 +3715,25 @@ export const en: Dictionary = {
           'The batch was created, but its class days were not saved. Fix that from settings.',
         scheduleSaveFailed:
           'The batch saved, but its class days did not. Choose the days again.',
+        /**
+         * The double-booked teacher, §7.3. Names the other class and the hour, because
+         * "there is a clash" sends an owner through eleven batches looking for it.
+         *
+         * Two ways out, both offered: the routine is wrong or the teacher is. Which one
+         * is not ours to guess, and an owner who is told only to change the time will
+         * change the time even when the real answer was that Karim sir teaches this one.
+         */
+        teacherClash: (batch: string, when: string) =>
+          `That teacher already teaches ${batch} — ${when}. Change the time or the days, or put a different teacher on this batch.`,
+        /**
+         * The same clash, found by the database after the form had already checked and
+         * been satisfied — so somebody else booked the teacher in the seconds between.
+         * Worth its own sentence: it is the one refusal that is not the reader's mistake,
+         * and a message telling them to fix what they just looked at and found clear
+         * reads as a bug in the product.
+         */
+        teacherBusy:
+          'Somebody booked that teacher for another class at this time while you were filling this in. Choose different days or times, or a different teacher.',
       },
     },
 

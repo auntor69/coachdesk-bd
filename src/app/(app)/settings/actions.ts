@@ -42,6 +42,7 @@ import {
   type Membership,
 } from '@/lib/auth/reset'
 import { SLOT_ORDER } from '@/lib/bd/schedule'
+import { dayName, formatTime } from '@/lib/bd/time'
 import { MAX_NAME, MAX_LABEL, clamp } from '@/lib/limits'
 import { PERMISSION_KEYS, type PermissionKey } from '@/lib/permissions'
 import type { Capability } from '@/lib/staff/capabilities'
@@ -53,6 +54,12 @@ import {
   subjectDeleteVerdict,
   subjectOffVerdict,
 } from '@/lib/settings/retire'
+import {
+  firstClash,
+  isClashRefusal,
+  proposedHours,
+  type Booking,
+} from '@/lib/settings/clash'
 import { readExamTypeUse, readSubjectUse } from '@/lib/settings/usage'
 import { asPreferredChannel } from '@/lib/students/channel'
 import { STUDENT_STATUSES } from '@/lib/students/status'
@@ -351,6 +358,105 @@ async function batchRoomRefusal(
       ? t.branchBatchesFull(session.plan.maxBatches ?? count)
       : t.planLimit,
   }
+}
+
+/**
+ * Whether this batch would put its teacher in two rooms at once. §7.3.
+ *
+ * The refusal an owner actually reads. 20260811000071 enforces the rule on the day rows,
+ * where the picture is whole, and that trigger is the thing a race cannot get past — but
+ * it fires one row at a time and hands back a SQLSTATE, and neither is any use to the
+ * person who has just filled in a form. This asks the same question over the whole
+ * proposal before a word of it is written, and names the class, the day and the hour.
+ *
+ * IT IS ALSO THE ONLY CHECK ON A BATCH WITH NO CHOSEN DAYS. Such a batch meets every day
+ * and writes no day row, so nothing fires behind it; see `src/lib/settings/clash.ts`.
+ *
+ * Nothing to ask when there is no teacher or no hours, and both are common: a batch is
+ * routinely opened before anybody has decided who teaches it, and plenty carry only a
+ * slot. Returning early keeps those saves at the cost they were.
+ *
+ * `except` is the batch being saved, so its own timetable is not read as a rival. Null
+ * when creating, because there is nothing yet to exclude.
+ *
+ * An unreadable answer refuses the save, the same direction `batchRoomRefusal` and the
+ * branch-move check take: a routine written on a guess is discovered by students sitting
+ * in a room with no teacher.
+ */
+async function teacherClashRefusal(
+  session: CenterSession,
+  teacherId: string | null,
+  except: string | null,
+  days: number[],
+  startTime: string | null,
+  endTime: string | null,
+): Promise<ActionState | null> {
+  const hours = proposedHours(days, startTime, endTime)
+  if (!teacherId || hours.length === 0) return null
+
+  const t = dict(session.locale).settings
+  const supabase = await createClient()
+
+  // The teacher's other running classes. Switched-off ones occupy nobody, which is the
+  // same line `app.teacher_clash` draws.
+  let others = supabase
+    .from('batches')
+    .select('id, name, start_time, end_time')
+    .eq('coaching_center_id', session.active.centerId)
+    .eq('teacher_id', teacherId)
+    .eq('active', true)
+
+  if (except) others = others.neq('id', except)
+
+  const { data: rivals, error: rivalError } = await others
+  if (rivalError) return { error: t.errors.readFailed }
+  if (!rivals || rivals.length === 0) return null
+
+  const { data: booked, error: bookedError } = await supabase
+    .from('batch_schedules')
+    .select('batch_id, day_of_week, start_time, end_time')
+    .eq('coaching_center_id', session.active.centerId)
+    .in(
+      'batch_id',
+      rivals.map((row) => row.id),
+    )
+
+  if (bookedError || !booked) return { error: t.errors.readFailed }
+
+  // One booking per chosen day, and for a batch that chose none, one on every day —
+  // which is the row `proposedHours` builds for this batch's own side too.
+  const busy: Booking[] = rivals.flatMap((rival): Booking[] => {
+    const theirs = booked.filter((row) => row.batch_id === rival.id)
+    if (theirs.length > 0) {
+      return theirs.map((row) => ({
+        batchId: rival.id,
+        name: rival.name,
+        day: row.day_of_week,
+        start: row.start_time,
+        end: row.end_time,
+      }))
+    }
+    if (!rival.start_time || !rival.end_time) return []
+    return [
+      {
+        batchId: rival.id,
+        name: rival.name,
+        day: null,
+        start: rival.start_time,
+        end: rival.end_time,
+      },
+    ]
+  })
+
+  const hit = firstClash(hours, busy)
+  if (!hit) return null
+
+  const when = [
+    hit.day === null ? t.batches.everyDay : dayName(hit.day, session.locale),
+    `${formatTime(hit.start, session.locale)}–${formatTime(hit.end, session.locale)}`,
+  ].join(', ')
+
+  return { error: t.batches.errors.teacherClash(hit.name, when) }
 }
 
 /**
@@ -1010,6 +1116,19 @@ export async function createBatch(
   )
   if (batchLimit) return batchLimit
 
+  // Whether this puts the teacher in two rooms at once. Before the insert, so a refused
+  // routine leaves no batch behind — the days are written in a second statement, and a
+  // batch created and then refused its own timetable is worse than one never created.
+  const clash = await teacherClashRefusal(
+    session,
+    teacherId || null,
+    null,
+    days,
+    startTime,
+    endTime,
+  )
+  if (clash) return clash
+
   const slot = SLOTS.has(rawSlot as BatchSlot) ? (rawSlot as BatchSlot) : null
 
   const supabase = await createClient()
@@ -1055,7 +1174,13 @@ export async function createBatch(
 
     // The batch exists either way. Say so rather than reporting a clean success
     // the teacher would only disprove tomorrow, when the batch fails to appear.
+    //
+    // Unless the day row was refused for double-booking the teacher, which the check
+    // above already asked and was told no — so somebody booked them in between. That is
+    // its own sentence, because "fix the days from settings" would send an owner to
+    // re-enter exactly what they just entered.
     if (scheduleError) {
+      if (isClashRefusal(scheduleError)) return { error: t.batches.errors.teacherBusy }
       return { error: t.batches.errors.scheduleFailed }
     }
   }
@@ -1287,6 +1412,29 @@ export async function updateBatch(
     if (away.length > 0) return { error: t.errors.studentsOtherBranch(away.join(', ')) }
   }
 
+  /*
+   * The teacher in two rooms at once, asked over the save as a whole before any of it is
+   * written. It has to be asked here and not left to the trigger: this function writes
+   * the batch, then clears its days, then writes them, each in its own transaction, so
+   * for a moment the row on `batches` says one thing and the day rows say another. A
+   * refusal reaching us at the last of the three would leave a batch carrying a new
+   * teacher and no timetable at all.
+   *
+   * Only when the batch will be running. Switching one off frees its teacher rather than
+   * booking them, and refusing that save would leave a clash with no way out of it.
+   */
+  if (active) {
+    const clash = await teacherClashRefusal(
+      session,
+      teacher,
+      batchId,
+      days,
+      startTime,
+      endTime,
+    )
+    if (clash) return clash
+  }
+
   const { error: saveError } = await supabase
     .from('batches')
     .update({
@@ -1350,8 +1498,13 @@ export async function updateBatch(
     )
 
     // The batch itself saved. Say which half did not rather than reporting a clean
-    // success the teacher would disprove tomorrow morning.
-    if (scheduleError) return { error: t.batches.errors.scheduleSaveFailed }
+    // success the teacher would disprove tomorrow morning — and say it differently when
+    // the day row was refused for double-booking, which the check above had already
+    // asked and been told no.
+    if (scheduleError) {
+      if (isClashRefusal(scheduleError)) return { error: t.batches.errors.teacherBusy }
+      return { error: t.batches.errors.scheduleSaveFailed }
+    }
   }
 
   revalidatePath('/settings/batches')
