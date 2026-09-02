@@ -26,6 +26,7 @@ export function InvoiceGenerator({
   locale,
   t,
   common,
+  className = '',
 }: {
   months: { value: string; label: string }[]
   defaultMonth: string
@@ -34,6 +35,8 @@ export function InvoiceGenerator({
   locale: Locale
   t: T<'invoices'>
   common: T<'common'>
+  /** The board's `order-N`, since this is the block and there is no wrapper. */
+  className?: string
 }) {
   const [state, formAction, pending] = useActionState<FeeState, FormData>(
     generateInvoices,
@@ -43,7 +46,7 @@ export function InvoiceGenerator({
   return (
     <details
       open={openByDefault}
-      className="rounded-2xl border border-line bg-white px-5 py-4"
+      className={`rounded-2xl border border-line bg-white px-5 py-4 ${className}`}
     >
       <summary className="cursor-pointer list-none font-semibold text-brand-700">
         {t.open}

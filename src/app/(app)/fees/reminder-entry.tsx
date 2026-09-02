@@ -35,15 +35,18 @@ import type { Dictionary } from '@/lib/i18n'
 export function ReminderEntry({
   dueToday,
   t,
+  className = '',
 }: {
   dueToday: number | null
   t: Dictionary['reminders']
+  /** The fee board's `order-N`. The dashboard passes nothing and keeps its own. */
+  className?: string
 }) {
   return (
     <Link
       href="/fees/reminders"
-      className="flex min-h-tap items-center justify-between gap-3 rounded-xl
-        border border-line bg-white px-4 py-3"
+      className={`flex min-h-tap items-center justify-between gap-3 rounded-xl
+        border border-line bg-white px-4 py-3 ${className}`}
     >
       <span>
         <span className="font-medium text-ink">{t.title}</span>

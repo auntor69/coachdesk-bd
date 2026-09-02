@@ -977,10 +977,16 @@ export const bn = {
     payrollLink: 'বেতনের হিসাব',
 
     /**
-     * The way onto the old-dues screen, under the invoice generator rather than in
-     * the total card. It is a setup job done once, not a reading of the month — but
-     * it sits directly above the empty board, which is exactly where an owner whose
-     * outstanding total says ৳০ will be looking.
+     * The heading over the three doors. "যে বিল জেনারেটর তোলে না" — the bills the
+     * generator does not raise, which is what old dues, a one-off charge and a waiver
+     * have in common. Said as a heading rather than a sentence so it can sit over
+     * three links without reading as an instruction.
+     */
+    otherBillsTitle: 'যে বিল জেনারেটর তোলে না',
+
+    /**
+     * The way onto the old-dues screen, in the card of three below the board rather
+     * than in the total card. It is a setup job done once, not a reading of the month.
      */
     arrearsLink: 'আগের বাকি তুলে দিন',
 

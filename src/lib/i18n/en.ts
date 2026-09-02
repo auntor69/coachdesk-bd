@@ -563,6 +563,15 @@ export const en: Dictionary = {
     /** The way onto the wage bill. See the Bangla note. */
     payrollLink: 'The wage bill',
 
+    /**
+     * The heading over the three doors below. They were three bare links stacked
+     * between the generator and the board, which on a phone is a hundred and fifty
+     * pixels of monthly errands in front of the list an owner opened the screen for.
+     * One card, under the board, and this says what the three have in common: none of
+     * them is the monthly bill the generator raises.
+     */
+    otherBillsTitle: 'Bills the generator does not raise',
+
     /** The way onto the old-dues screen. See the Bangla note. */
     arrearsLink: 'Load the old dues',
 
