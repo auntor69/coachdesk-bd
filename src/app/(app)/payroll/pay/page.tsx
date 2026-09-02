@@ -77,6 +77,14 @@ const MONTH_RE = /^\d{4}-\d{2}-01$/
  * STAFF ADMIN ONLY, matching `salary_payments_staff_admin_read` and the write policy beside
  * it. There is deliberately no teacher policy on this table at all, not even for their own
  * rows: their own figure needs a payslip screen, which would be the reason to open one.
+ *
+ * THREE BLOCKS AND NOT ONE COLUMN. A phone reads what the month came to, then the people,
+ * then the register. A laptop puts the people in eight columns beside the figures in four,
+ * with the register full width under both — it is 36rem before it wraps and eight of twelve
+ * columns is 461px at `lg`. Neither column needs /payroll's `contents` wrapper: each holds
+ * exactly one block, so its own `order-N lg:order-N` is enough. The figures are written
+ * before the people because `order` moves neither the keyboard nor a screen reader, and
+ * every control on this screen is in the people column.
  */
 export default async function PayrollPayPage({
   searchParams,
@@ -233,206 +241,260 @@ export default async function PayrollPayPage({
    */
   const canWrite = session.access === 'full'
 
-  return (
-    <div className="flex flex-col gap-4">
-      <BackToTerms label={t.backToTerms} />
+  /**
+   * Whether there is a month to draw at all, asked once because the answer now places three
+   * separate blocks rather than one branch of one ternary: the figures in the rail, the
+   * people in the column beside them, and the voucher register under both.
+   */
+  const showMonth = problem === null && rows.length > 0
 
-      <header>
-        <h1 className="text-xl font-bold text-ink">{t.title}</h1>
+  return (
+    // One column on a phone, then eight of the people beside four of what the month comes
+    // to, with the register full width under both — it is 36rem before it wraps and eight
+    // of twelve columns is 461px at `lg`. Neither column needs the `contents` trick the
+    // bill uses: each holds exactly one block, so its own `order` is enough to place it.
+    <div className="flex flex-col gap-4 lg:grid lg:grid-cols-12 lg:items-start lg:gap-6">
+      {/* The way back and the month being read, on one row — the spending screen's shape.
+          The month used to be a form of its own with `formatMonth` printed again
+          underneath, and the select already says "August 2026" in the reader's script. */}
+      <div
+        className="order-1 flex flex-wrap items-end justify-between gap-x-4 gap-y-2
+          lg:col-span-12"
+      >
+        <BackToTerms label={t.backToTerms} />
+
+        {/* A plain GET form, like the register's: no client component, and the month ends
+            up in a URL that can be bookmarked or shared. The button is not decoration —
+            Android Chrome fires no navigation on a bare <select> change. */}
+        <form
+          method="get"
+          className="flex w-full min-w-0 items-end justify-end gap-2 sm:w-auto sm:flex-1"
+        >
+          <label className="flex min-w-0 flex-1 flex-col gap-1.5 sm:w-56 sm:flex-none">
+            <span className="font-medium text-ink">{t.month}</span>
+            <select
+              name="month"
+              defaultValue={month}
+              className="min-h-tap w-full rounded-xl border-2 border-line bg-white px-3
+                font-medium text-ink"
+            >
+              {months.map((m) => (
+                <option key={m.value} value={m.value}>
+                  {m.label}
+                </option>
+              ))}
+            </select>
+          </label>
+          <button
+            type="submit"
+            className="inline-flex min-h-tap shrink-0 items-center rounded-xl border-2
+              border-brand-500 bg-brand-50 px-4 font-medium text-brand-800"
+          >
+            {t.show}
+          </button>
+        </form>
+      </div>
+
+      <header className="order-2 lg:col-span-12">
+        <h1 className="text-xl font-bold text-ink lg:text-2xl">{t.title}</h1>
         <p className="text-sm text-ink-soft">{t.subtitle}</p>
       </header>
 
-      {/* A plain GET form, like the register's: no client component, and the month ends up
-          in a URL that can be bookmarked or shared. The button is not decoration — Android
-          Chrome fires no navigation on a bare <select> change. */}
-      <form method="get" className="flex items-end gap-2">
-        <label className="flex min-w-0 flex-1 flex-col gap-1.5">
-          <span className="font-medium text-ink">{t.month}</span>
-          <select
-            name="month"
-            defaultValue={month}
-            className="min-h-tap w-full rounded-xl border-2 border-line bg-white px-3
-              font-medium text-ink"
-          >
-            {months.map((m) => (
-              <option key={m.value} value={m.value}>
-                {m.label}
-              </option>
-            ))}
-          </select>
-        </label>
-        <button
-          type="submit"
-          className="inline-flex min-h-tap shrink-0 items-center rounded-xl border-2
-            border-brand-500 bg-brand-50 px-4 font-medium text-brand-800"
+      {/*
+        THE FIGURES ABOVE THE PEOPLE ON A PHONE AND BESIDE THEM ON A LAPTOP, which is the
+        change on this screen: they used to be under the last card, so an owner scrolled past
+        fourteen settled names to learn whether the month was finished. Written before the
+        people in the DOM and moved to the right by `order`, the rule the bill follows too —
+        and nothing in here is focusable, so the DOM order costs a keyboard nothing.
+
+        Every figure is either what the total covers or what it does not. `tallyMonth`
+        returns nine numbers instead of one because a month can be over its agreed figure and
+        still have somebody unpaid.
+      */}
+      {showMonth && (
+        <section
+          className="order-3 rounded-xl border border-line bg-white p-4 lg:order-4
+            lg:col-span-4"
         >
-          {t.show}
-        </button>
-      </form>
+          <h2 className="font-medium text-ink-soft">{t.paidTotal}</h2>
+          <p className="num text-3xl font-bold text-ink">{formatTaka(tally.paid)}</p>
+          <p className="text-sm text-ink-faint">{t.entries(tally.payments)}</p>
 
-      <p className="font-medium text-ink-soft">{formatMonth(month, locale)}</p>
-
-      {problem !== null ? (
-        /* Nothing drawn, not even a zero: every figure below would be a claim about what
-           the centre has paid its people, and we did not read it. */
-        <Card className="border-late/30 bg-late/5">
-          <p className="font-medium text-ink">
-            {problem === 'tooLarge' ? t.tooLarge : t.unreadable}
-          </p>
-        </Card>
-      ) : rows.length === 0 ? (
-        <Card>
-          <p className="text-ink-soft">{t.empty}</p>
-        </Card>
-      ) : (
-        <>
-          <h2 className="font-medium text-ink">{t.peopleTitle}</h2>
-
-          <ul className="flex flex-col gap-2">
-            {rows.map((row) => {
-              const perClass = row.terms?.basis === PER_CLASS_BASIS
-
-              /*
-               * The three figures, built here because two of the three take an argument
-               * and `T` maps a function leaf to `never`. A per-class row's "agreed" is a
-               * rate and says so in words: ৳350 printed where the row above prints
-               * ৳13,000 is a teacher who looks very cheap. A row with no live agreement
-               * gets no agreed figure at all rather than a zero, and `hint` says why.
-               */
-              const figures: RowFigure[] = []
-              if (row.terms !== null) {
-                figures.push({
-                  label: t.agreedLabel,
-                  value: perClass
-                    ? row.terms.perClass === null
-                      ? '—'
-                      : t.perClassRate(formatTaka(row.terms.perClass))
-                    : formatTaka(row.terms.net),
-                })
-              }
-              figures.push({ label: t.paidLabel, value: formatTaka(row.paid) })
-              if (row.remaining !== null) {
-                figures.push({ label: t.leftLabel, value: formatTaka(row.remaining) })
-              }
-
-              /*
-               * The short line under the figures, joined here. Nothing paid is the state
-               * that needs saying out loud; past that, an overpayment and a settled month
-               * are different words for a remainder that is not positive, and how many
-               * rows the money came in is the fact that stops a third payment.
-               */
-              const flags: string[] = []
-              if (row.payments === 0) {
-                flags.push(t.notPaidYet)
-              } else {
-                if (row.remaining !== null && row.remaining < 0) {
-                  flags.push(t.overpaid(formatTaka(-row.remaining)))
-                } else if (row.remaining === 0) {
-                  flags.push(t.settled)
-                }
-                if (row.payments > 1) flags.push(t.paidTimes(row.payments))
-              }
-
-              return (
-                <PayRow
-                  key={payeeValue(row.payeeKind, row.payeeId)}
-                  payee={payeeValue(row.payeeKind, row.payeeId)}
-                  forMonth={month}
-                  // `unknownName` and not `common.unknown`, which is what /payroll's row
-                  // uses: the register below prints the same person, and two different
-                  // words for one missing name on one screen is worse than this screen
-                  // differing from its sibling.
-                  name={row.name ?? t.unknownName}
-                  job={row.job ?? d.payroll.teacherJob}
-                  gone={row.gone}
-                  offLabel={d.payroll.inactive}
-                  figures={figures}
-                  // Why there is no "left" figure on this row, which is the one thing a
-                  // reader would otherwise take for a rendering fault.
-                  hint={row.terms === null ? t.noTermsHint : perClass ? t.perClassLine : null}
-                  flag={flags.length > 0 ? flags.join(' · ') : null}
-                  // Four boxes only where there is a monthly agreement to prefill them
-                  // from. A per-class teacher gets one, because what the month cost is not
-                  // knowable from here and four empty boxes are four questions.
-                  parts={row.terms !== null && !perClass ? row.terms.parts : null}
-                  canWrite={canWrite}
-                  methods={d.feeRow.methods}
-                  t={d.salaryPayForm}
-                  common={d.common}
-                />
-              )
-            })}
-          </ul>
-
-          {/*
-            The figures at the foot, and every one is either what the total covers or what
-            it does not. `tallyMonth` returns nine numbers instead of one because a month
-            can be over its agreed figure and still have somebody unpaid.
-          */}
-          <section className="rounded-xl border border-line bg-white p-4">
-            <dl className="flex flex-col gap-1.5">
-              {tally.monthlyCount > 0 && (
-                <div className="flex items-baseline justify-between gap-4">
-                  <dt className="text-ink-soft">{t.agreedTotal}</dt>
-                  <dd className="num font-semibold text-ink">{formatTaka(tally.agreed)}</dd>
-                </div>
-              )}
-              <div className="flex items-baseline justify-between gap-4">
-                <dt className="font-medium text-ink">{t.paidTotal}</dt>
-                <dd className="num font-bold text-ink">{formatTaka(tally.paid)}</dd>
-              </div>
-              {/* Shortfalls only, never `agreed − paid`: a teacher overpaid by ৳2,000
-                  would otherwise cancel a cook who has had nothing, and the screen would
-                  say the month is settled while somebody is still waiting. */}
-              {tally.outstanding > 0 && (
-                <div
-                  className="flex items-baseline justify-between gap-4 border-t border-line
-                    pt-2"
-                >
-                  <dt className="font-medium text-ink">{t.outstandingTotal}</dt>
-                  <dd className="num font-bold text-ink">
+          {tally.pendingCount > 0 ? (
+            <div className="mt-3 border-t border-line pt-3">
+              {/* Shortfalls only, never `agreed − paid`: a teacher overpaid by ৳2,000 would
+                  otherwise cancel a cook who has had nothing, and the screen would say the
+                  month is settled while somebody is still waiting for their salary. */}
+              {tally.outstanding > 0 ? (
+                <>
+                  <h3 className="font-medium text-ink-soft">{t.outstandingTotal}</h3>
+                  <p className="num text-xl font-bold text-ink">
                     {formatTaka(tally.outstanding)}
-                  </dd>
-                </div>
-              )}
-            </dl>
-
-            {/* Who the total does not cover, said out loud rather than folded in. Only
-                when there is any: in a month with no per-class teachers these would be
-                zeroes and a paragraph about nothing. */}
-            <div className="mt-3 flex flex-col gap-1 border-t border-line pt-3 text-sm">
-              <p className="font-medium text-ink">
-                {tally.pendingCount > 0 ? t.pendingCount(tally.pendingCount) : t.allPaid}
-              </p>
-              {tally.perClassCount > 0 && (
-                <p className="text-ink-soft">{t.perClassCount(tally.perClassCount)}</p>
-              )}
-              {tally.unagreedCount > 0 && (
-                <p className="text-ink-soft">{t.unagreedCount(tally.unagreedCount)}</p>
+                  </p>
+                  <p className="text-sm text-ink-soft">
+                    {t.pendingCount(tally.pendingCount)}
+                  </p>
+                </>
+              ) : (
+                /* Somebody is waiting and no figure can be put on it: every row still owed
+                   something is per-class, or has no agreement behind it at all. */
+                <p className="font-medium text-ink">{t.pendingCount(tally.pendingCount)}</p>
               )}
             </div>
+          ) : (
+            <p className="mt-3 border-t border-line pt-3 font-medium text-ink">{t.allPaid}</p>
+          )}
 
-            {/* Not a warning: nothing is wrong. What it prevents is an owner wondering why
-                the dashboard's profit for this month moved when they paid a salary for
-                last month, and writing the next one against the wrong month to make the
-                figures agree. */}
-            <p className="mt-3 text-sm text-ink-soft">{t.profitNote}</p>
-          </section>
+          {/* What the total does not cover, said out loud rather than folded in, and each
+              line only when there is any of it: in a month with no per-class teachers these
+              would be zeroes and a sentence about nothing. */}
+          <div className="mt-3 flex flex-col gap-1 border-t border-line pt-3 text-sm">
+            {tally.monthlyCount > 0 && (
+              <p className="text-ink-soft">
+                {t.agreedTotal}{' '}
+                <span className="num font-semibold text-ink">
+                  {formatTaka(tally.agreed)}
+                </span>
+              </p>
+            )}
+            {tally.perClassCount > 0 && (
+              <p className="text-ink-soft">{t.perClassCount(tally.perClassCount)}</p>
+            )}
+            {tally.unagreedCount > 0 && (
+              <p className="text-ink-soft">{t.unagreedCount(tally.unagreedCount)}</p>
+            )}
+          </div>
 
-          {/*
-            THE REGISTER, which is the other half of the guard against paying twice: a row
-            printing "paid ৳13,000" does not say when, how, or under which voucher, and an
-            owner checking whether they have already paid somebody wants the slip number.
-            A table and not cards, like the spending screen's — six facts, no verb.
-          */}
-          <h2 className="mt-2 font-medium text-ink">{t.registerTitle}</h2>
+          {/* Not a warning: nothing is wrong. What it prevents is an owner wondering why the
+              dashboard's profit for this month moved when they paid a salary for last month,
+              and writing the next one against the wrong month to make the figures agree. */}
+          <p className="mt-3 text-sm text-ink-soft">{t.profitNote}</p>
+        </section>
+      )}
+
+      <div className="order-4 flex flex-col gap-3 lg:order-3 lg:col-span-8">
+        {problem !== null ? (
+          /* Nothing drawn, not even a zero: every figure in the rail would be a claim about
+             what the centre has paid its people, and we did not read it. */
+          <Card className="border-late/30 bg-late/5">
+            <p className="font-medium text-ink">
+              {problem === 'tooLarge' ? t.tooLarge : t.unreadable}
+            </p>
+          </Card>
+        ) : rows.length === 0 ? (
+          <Card>
+            <p className="text-ink-soft">{t.empty}</p>
+          </Card>
+        ) : (
+          <>
+            <h2 className="font-medium text-ink">{t.peopleTitle}</h2>
+
+            {/* One card to a row and never two abreast, unlike the bill's: this card carries
+                three labelled figures and, behind a tap, a form with four money boxes in it.
+                Half of eight columns is 219px at `lg`, narrower than the phone that form was
+                drawn for. */}
+            <ul className="flex flex-col gap-2">
+              {rows.map((row) => {
+                const perClass = row.terms?.basis === PER_CLASS_BASIS
+
+                /*
+                 * The three figures, built here because two of the three take an argument
+                 * and `T` maps a function leaf to `never`. A per-class row's "agreed" is a
+                 * rate and says so in words: ৳350 printed where the row above prints
+                 * ৳13,000 is a teacher who looks very cheap. A row with no live agreement
+                 * gets no agreed figure at all rather than a zero, and `hint` says why.
+                 */
+                const figures: RowFigure[] = []
+                if (row.terms !== null) {
+                  figures.push({
+                    label: t.agreedLabel,
+                    value: perClass
+                      ? row.terms.perClass === null
+                        ? '—'
+                        : t.perClassRate(formatTaka(row.terms.perClass))
+                      : formatTaka(row.terms.net),
+                  })
+                }
+                figures.push({ label: t.paidLabel, value: formatTaka(row.paid) })
+                if (row.remaining !== null) {
+                  figures.push({ label: t.leftLabel, value: formatTaka(row.remaining) })
+                }
+
+                /*
+                 * The short line under the figures, joined here. Nothing paid is the state
+                 * that needs saying out loud; past that, an overpayment and a settled month
+                 * are different words for a remainder that is not positive, and how many
+                 * rows the money came in is the fact that stops a third payment.
+                 */
+                const flags: string[] = []
+                if (row.payments === 0) {
+                  flags.push(t.notPaidYet)
+                } else {
+                  if (row.remaining !== null && row.remaining < 0) {
+                    flags.push(t.overpaid(formatTaka(-row.remaining)))
+                  } else if (row.remaining === 0) {
+                    flags.push(t.settled)
+                  }
+                  if (row.payments > 1) flags.push(t.paidTimes(row.payments))
+                }
+
+                return (
+                  <PayRow
+                    key={payeeValue(row.payeeKind, row.payeeId)}
+                    payee={payeeValue(row.payeeKind, row.payeeId)}
+                    forMonth={month}
+                    // `unknownName` and not `common.unknown`, which is what /payroll's row
+                    // uses: the register below prints the same person, and two different
+                    // words for one missing name on one screen is worse than this screen
+                    // differing from its sibling.
+                    name={row.name ?? t.unknownName}
+                    job={row.job ?? d.payroll.teacherJob}
+                    gone={row.gone}
+                    offLabel={d.payroll.inactive}
+                    figures={figures}
+                    // Why there is no "left" figure on this row, which is the one thing a
+                    // reader would otherwise take for a rendering fault.
+                    hint={
+                      row.terms === null ? t.noTermsHint : perClass ? t.perClassLine : null
+                    }
+                    flag={flags.length > 0 ? flags.join(' · ') : null}
+                    // Four boxes only where there is a monthly agreement to prefill them
+                    // from. A per-class teacher gets one, because what the month cost is
+                    // not knowable from here and four empty boxes are four questions.
+                    parts={row.terms !== null && !perClass ? row.terms.parts : null}
+                    canWrite={canWrite}
+                    methods={d.feeRow.methods}
+                    t={d.salaryPayForm}
+                    common={d.common}
+                  />
+                )
+              })}
+            </ul>
+          </>
+        )}
+      </div>
+
+      {/*
+        THE REGISTER, which is the other half of the guard against paying twice: a row
+        printing "paid ৳13,000" does not say when, how, or under which voucher, and an owner
+        checking whether they have already paid somebody wants the slip number. A table and
+        not cards, like the spending screen's — six facts, no verb.
+
+        FULL WIDTH AND UNDER BOTH COLUMNS, because it is 36rem before it wraps and eight of
+        twelve columns is 461px at `lg`. Its foot no longer repeats what the month has cost:
+        that figure is in the rail now, and two renderings of one number is one that can
+        disagree with itself.
+      */}
+      {showMonth && (
+        <div className="order-5 flex flex-col gap-3 lg:col-span-12">
+          <h2 className="font-medium text-ink">{t.registerTitle}</h2>
 
           {vouchers.length === 0 ? (
             <Card>
               <p className="text-ink-soft">{t.registerEmpty}</p>
             </Card>
           ) : (
-            <div className="-mx-4 overflow-x-auto px-4">
+            <div className="-mx-4 overflow-x-auto px-4 lg:mx-0 lg:px-0">
               <table className="w-full min-w-[36rem] border-collapse text-sm">
                 <thead>
                   <tr className="border-b-2 border-line text-left align-bottom">
@@ -493,20 +555,10 @@ export default async function PayrollPayPage({
                     </tr>
                   ))}
                 </tbody>
-                <tfoot>
-                  <tr className="bg-brand-50 font-bold text-brand-900">
-                    <td className="px-2 py-2" colSpan={4}>
-                      {t.paidTotal} · {t.entries(tally.payments)}
-                    </td>
-                    <td className="num px-2 py-2 text-right" colSpan={2}>
-                      {formatTaka(tally.paid)}
-                    </td>
-                  </tr>
-                </tfoot>
               </table>
             </div>
           )}
-        </>
+        </div>
       )}
     </div>
   )
