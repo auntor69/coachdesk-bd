@@ -15,9 +15,14 @@
  * cook's salary to a teacher the first time the two collide.
  *
  * Relative imports with extensions — `node --test` on TS, no tsconfig paths.
+ *
+ * The last section reads the page's own source and guards the screen's shape; see the
+ * comment above it.
  */
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
+import { readFileSync } from 'node:fs'
+import path from 'node:path'
 
 import {
   billRows,
@@ -412,4 +417,160 @@ test('both bases the picker offers are the two the bill knows how to draw', () =
   assert.ok(SALARY_BASES.includes(MONTHLY_BASIS))
   assert.ok(SALARY_BASES.includes(PER_CLASS_BASIS))
   assert.equal(SALARY_BASES.length, 2)
+})
+
+/**
+ * And the screen's own shape.
+ *
+ * §20.8 step 6, fourth screen. The sums above were already right; what was wrong was that
+ * the page printed them last. What the centre's agreements come to every month sat under
+ * every card, so twenty agreements meant scrolling all twenty to reach the figure — and
+ * "who have we missed", the question a centre actually opens this screen with, sat under
+ * that. Both are in a rail beside the bill now, and the cards go two abreast wherever two
+ * fit, because a card holding a name and a figure wastes two thirds of a laptop row.
+ *
+ * Read off the page's source because there is no renderer here. What these catch is the
+ * drift a screenshot does not show: the total sliding back under the cards, the rail being
+ * written after the column it labels (which would move it for a keyboard even though
+ * `order` moves nothing), the ৳0 total coming back on an all-per-class bill, and the
+ * warning that somebody has left losing its colour or its words.
+ */
+const PAGE = readFileSync(
+  path.join(import.meta.dirname, '..', 'src', 'app', '(app)', 'payroll', 'page.tsx'),
+  'utf8',
+)
+
+/**
+ * The render begins at the grid root. Anchored on a newline-free substring including
+ * `lg:grid`, which neither the plan wall's nor the failed-read branch's own
+ * `flex flex-col gap-4` root has — the working tree is CRLF and a pattern spanning a line
+ * break would find nothing here and everything on a Linux checkout.
+ */
+const SHEET = PAGE.slice(PAGE.indexOf('<div className="flex flex-col gap-4 lg:grid'))
+const RAIL_AT = SHEET.indexOf('<div className="contents lg:order-3 lg:col-span-5')
+const MAIN_AT = SHEET.indexOf('<div className="contents lg:order-2 lg:col-span-7')
+const HEAD = SHEET.slice(0, RAIL_AT)
+const RAIL = SHEET.slice(RAIL_AT, MAIN_AT)
+const MAIN = SHEET.slice(MAIN_AT)
+
+/** See plan-page.test.ts: the lookbehind keeps `border-2` and `lg:order-N` out. */
+function ordersIn(source: string): string[] {
+  return [...source.matchAll(/(?<=["\s])order-(\d+|last)\b/g)].map((m) => m[1])
+}
+
+test('shape: one column on a phone, twelve from lg, and the bill gets seven', () => {
+  assert.ok(SHEET.length > 500, 'the render is not where this test expects it')
+  assert.ok(RAIL_AT > 0 && MAIN_AT > RAIL_AT, 'the two columns are gone or swapped')
+
+  assert.match(SHEET, /lg:grid lg:grid-cols-12 lg:items-start lg:gap-6/)
+
+  // Both wrappers are `contents` below lg, so every block inside them is a direct child of
+  // the phone's flex column and its own `order-N` is what places it.
+  assert.match(RAIL, /^<div className="contents lg:order-3 lg:col-span-5 lg:flex/)
+  assert.match(MAIN, /^<div className="contents lg:order-2 lg:col-span-7 lg:flex/)
+
+  // THE RAIL IS WRITTEN FIRST, and this is the assertion that matters most on this screen:
+  // it holds the form, `order` moves nothing for a keyboard or a screen reader, and the DOM
+  // is what a tab key follows. A rail written second reads correctly and tabs backwards.
+  assert.ok(RAIL.includes('<TermsForm'), 'the form left the rail')
+  assert.ok(!MAIN.includes('<TermsForm'), 'the form is in the column it should be beside')
+})
+
+test('shape: every block has a place in the phone order, and no two share one', () => {
+  // Two full-width rows, three blocks in the rail, one in the main column. Per column the
+  // numbers must ascend in source order or the phone and the laptop disagree.
+  assert.equal(ordersIn(HEAD).join(), '1,2')
+  assert.equal(ordersIn(RAIL).join(), '3,4,6')
+  assert.equal(ordersIn(MAIN).join(), '5')
+
+  const all = ordersIn(SHEET)
+  assert.equal(new Set(all).size, all.length, 'two blocks are fighting over one place')
+})
+
+test('shape: the wage bill total is beside the cards, not under them', () => {
+  // The figure and the count of agreements behind it, as a headline rather than a line in a
+  // list. On a phone it is above the cards; from lg it is the top of the rail.
+  assert.match(RAIL, /<h2 className="font-medium text-ink-soft">\{t\.monthlyTotal\}/)
+  assert.match(RAIL, /num text-3xl font-bold text-ink">\{formatTaka\(tally\.monthly\)\}/)
+  assert.match(RAIL, /\{t\.monthlyCount\(tally\.monthlyCount\)\}/)
+
+  // And it is not also drawn beside the cards it is a total of.
+  assert.doesNotMatch(MAIN, /formatTaka\(tally\.monthly\)/, 'the total is printed twice')
+
+  // `rows.length` is tested in both columns, because a ternary cannot span two of them.
+  assert.match(RAIL, /\{rows\.length > 0 && \(/)
+  assert.match(MAIN, /\{rows\.length === 0 \?/)
+})
+
+test('shape: an all-per-class bill still refuses to print a zero', () => {
+  // Every row per-class means the monthly total is genuinely nothing, and ৳0 over teachers
+  // who are certainly paid something is a figure an owner would stop and check for nothing.
+  const summary = RAIL.slice(RAIL.indexOf('{rows.length > 0 && ('), RAIL.indexOf('{canWrite'))
+  assert.match(summary, /\{tally\.monthlyCount > 0 \? \(/)
+  assert.match(summary, /\{t\.noMonthly\}/)
+
+  // The two per-class lines only exist in a bill that has some.
+  assert.match(summary, /\{tally\.perClassCount > 0 && \(/)
+  assert.match(summary, /\{t\.perClassNote\}/)
+})
+
+test('shape: somebody who left keeps the warning colour, the words, and no box', () => {
+  const summary = RAIL.slice(RAIL.indexOf('{rows.length > 0 && ('), RAIL.indexOf('{canWrite'))
+  const at = summary.indexOf('{tally.goneCount > 0 && (')
+  assert.ok(at > 0, 'the page stopped flagging a live agreement for somebody who has left')
+
+  const warning = summary.slice(at)
+  // A rule and coloured words, not a tinted panel: a bordered box inside a bordered section
+  // is the nested container §20.7 forbids.
+  assert.match(warning, /border-t border-late\/40/)
+  assert.match(warning, /font-medium text-late">\{t\.goneCount\(tally\.goneCount\)\}/)
+  assert.match(warning, /\{t\.goneNote\}/, 'the colour is carrying the meaning on its own')
+  assert.doesNotMatch(warning, /rounded-|bg-late/, 'the warning became a box again')
+})
+
+test('shape: the cards go two abreast wherever two fit, and one where they do not', () => {
+  // From lg this column is 401px and half of that is narrower than the phone the card was
+  // drawn for, so the middle step back to one column is load-bearing arithmetic.
+  assert.match(MAIN, /<ul className="grid gap-2 sm:grid-cols-2 lg:grid-cols-1 xl:grid-cols-2">/)
+  assert.match(MAIN, /<TermsRow/)
+  assert.match(MAIN, /\{t\.billTitle\}/)
+})
+
+test('shape: the way on is a door, and who has been missed is still asked', () => {
+  // A bordered link and not an underlined line of text. Paying a salary is the monthly
+  // errand and agreeing one is the twice-a-year errand, so this is the one with the button.
+  assert.match(HEAD, /href="\/payroll\/pay"/)
+  assert.match(HEAD, /rounded-xl border-2 border-brand-500/)
+  assert.match(HEAD, /\{t\.payLink\} →/)
+
+  // Not gated on canWrite: a read-only centre can read the month, and the figures are part
+  // of what they need to decide whether to renew. The whole row and not the door onwards —
+  // a gate is written in front of what it gates, so a slice starting at the href misses it.
+  const row = HEAD.slice(HEAD.indexOf('<BackToFees'), HEAD.indexOf('<header'))
+  assert.doesNotMatch(row, /canWrite/, 'the way to the month got gated on writing')
+
+  // And the list of people with no agreement is still drawn, last.
+  assert.match(RAIL, /\{missing\.length > 0 && \(/)
+  assert.match(RAIL, /\{t\.missingTitle\}/)
+})
+
+test('shape: nothing about who may read or write this has moved', () => {
+  // §38. This was a layout change. Staff admin and `payroll`, a Center plan only, and the
+  // plan wall still returns before anything is read.
+  assert.match(PAGE, /const session = await pageCapability\('payroll'\)/)
+  assert.match(PAGE, /if \(!has\(session\.plan, 'centerWideReporting'\)\) \{/)
+  const wall = PAGE.indexOf("if (!has(session.plan, 'centerWideReporting'))")
+  assert.ok(wall > 0 && wall < PAGE.indexOf('const supabase = await createClient()'))
+
+  // Three reads, all three scoped on the centre as well as governed by RLS, live agreements
+  // only, and any one of them failing draws none of the bill.
+  assert.equal((PAGE.match(/\.eq\('coaching_center_id', centerId\)/g) ?? []).length, 3)
+  assert.match(PAGE, /\.eq\('active', true\)/)
+  assert.match(PAGE, /if \(terms === null \|\| employees === null \|\| teachers === null\) \{/)
+
+  // The picker offers only people who are still here, and the write gate is one flag read
+  // once for the form and for every row's stop verb.
+  assert.match(PAGE, /const pickable = people\r?\n\s+\.filter\(\(p\) => p\.active\)/)
+  assert.match(PAGE, /const canWrite = session\.access === 'full'/)
+  assert.match(RAIL, /\{canWrite && \(/)
 })

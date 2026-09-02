@@ -77,7 +77,7 @@ export function TermsRow({
             <span className="truncate">{name}</span>
             {/* The warning colour and not the staff list's grey. There, somebody switched
                 off is history; here their agreement is still live and still in the total
-                at the foot, which makes the badge a fault rather than a fact. */}
+                the rail prints, which makes the badge a fault rather than a fact. */}
             {gone && (
               <span
                 className="shrink-0 rounded-full bg-late/5 px-2 py-0.5 text-xs
@@ -101,9 +101,9 @@ export function TermsRow({
           rather than as "there was nothing to say". */}
       {note && <p className="mt-2 text-sm text-ink-soft">{note}</p>}
 
-      {/* On the row as well as at the foot, and deliberately not the same sentence. The
-          count downstairs says how many there are; this says what this one is, next to the
-          verb that answers it. */}
+      {/* On the row as well as in the rail, and deliberately not the same sentence. The
+          count beside the bill says how many there are; this says what this one is, next to
+          the verb that answers it. */}
       {gone && (
         <p
           className="mt-2 rounded-lg border border-late/30 bg-late/5 px-3 py-2 text-sm
@@ -167,5 +167,3 @@ export function TermsRow({
     </li>
   )
 }
-
-
