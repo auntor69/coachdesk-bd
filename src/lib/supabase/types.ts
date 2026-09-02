@@ -2951,6 +2951,19 @@ export type Database = {
         }
         Returns: { added: number; already_there: number; enrolled: number }[]
       }
+      issue_phone_code: {
+        Args: {
+          p_phone: string | null
+          p_purpose: string | null
+          p_code_hash: string | null
+          p_ip: string | null
+          p_ttl_seconds: number | null
+          p_cooldown_seconds: number | null
+          p_phone_per_hour: number | null
+          p_ip_per_hour: number | null
+        }
+        Returns: Json
+      }
       platform_centers: {
         Args: Record<PropertyKey, never>
         Returns: { center_id: string; center_name: string; center_phone: string; bd_area: string; status: CenterStatus; plan: PlanType; created_at: string; owner_name: string; owner_phone: string; students: number; teachers: number; batches: number; sms_credit_balance: number; attendance_30d: number; exams_30d: number; fee_payments_30d: number; collected_30d: number; taps_30d: number; notes_30d: number; results_30d: number; absences_30d: number; sms_30d: number; last_active_at: string; paid_bdt: number; last_paid_at: string; paid_through: string; wants_plan: PlanType; wants_since: string; wants_note: string; asks_open: number; asks_places: number; asks_since: string }[]
@@ -2968,6 +2981,15 @@ export type Database = {
           p_note?: string | null
         }
         Returns: { intent_id: string; payment_id: string; intent_state: PaymentIntentState; charged_bdt: number; capacity_after: number; already: boolean }[]
+      }
+      verify_phone_code: {
+        Args: {
+          p_phone: string | null
+          p_purpose: string | null
+          p_code_hash: string | null
+          p_max_attempts: number | null
+        }
+        Returns: Json
       }
     }
     Enums: {

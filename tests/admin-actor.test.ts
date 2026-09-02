@@ -91,10 +91,10 @@ function adminCalls(): Call[] {
 }
 
 /**
- * The two calls that write with no human behind them, and why each has to.
+ * The calls that write with no human behind them, and why each has to.
  *
- * Not a list to shorten: naming somebody at either of these would be a lie about who did
- * it. A third entry means a third genuine machine, and writing the reason down is the
+ * Not a list to shorten: naming somebody at any of these would be a lie about who did
+ * it. A fourth entry means a fourth genuine machine, and writing the reason down is the
  * price of adding one.
  */
 const ACTOR_LESS = [
@@ -104,6 +104,9 @@ const ACTOR_LESS = [
   // audited is written: the trigger behind this writes `profiles`, which migration 46
   // does not watch.
   'src/app/(auth)/actions.ts',
+  // The phone gate in front of signup, for the same reason and one step earlier: a code is
+  // issued to prove a number belongs to somebody who has no account yet.
+  'src/lib/auth/otp-gate.ts',
 ].sort()
 
 test('every service-role client either names its actor or explains itself', () => {
@@ -128,7 +131,7 @@ test('every service-role client either names its actor or explains itself', () =
   }
 })
 
-test('the calls that name nobody are exactly the two machines', () => {
+test('the calls that name nobody are exactly the known machines', () => {
   const anonymous = [...new Set(adminCalls().filter((c) => !c.named).map((c) => c.file))].sort()
   assert.deepEqual(anonymous, ACTOR_LESS)
 })
