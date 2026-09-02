@@ -219,7 +219,9 @@ export default async function PlanPage() {
      *
      * The intent comes embedded so each line can say what the money bought. Composite
      * `payments_intent_fkey`, generated `isOneToOne: false`, so the shape is unwrapped
-     * defensively by lib/billing/receipt.ts rather than trusted here.
+     * defensively by lib/billing/receipt.ts rather than trusted here. `priced_lines` comes
+     * with it and this card never prints it: the column is required by the shared reader on
+     * purpose, so that the printable cannot be the one caller that forgets §3.8's rate.
      *
      * Six, because this card is a way to find a receipt and not a ledger. An owner needing
      * last year's rings us, which is the same answer as for a lapsed purchase.
@@ -228,7 +230,7 @@ export default async function PlanPage() {
       ? supabase
           .from('payments')
           .select(
-            'id, intent_id, amount_bdt, method, reference, covers_period_start, covers_period_end, note, paid_at, payment_intents (purpose, quantity, grants_capacity, branch_id)',
+            'id, intent_id, amount_bdt, method, reference, covers_period_start, covers_period_end, note, paid_at, payment_intents (purpose, quantity, grants_capacity, branch_id, priced_lines)',
           )
           .eq('coaching_center_id', session.active.centerId)
           .order('paid_at', { ascending: false })

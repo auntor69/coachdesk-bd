@@ -4222,6 +4222,17 @@ export const en: Dictionary = {
     method: 'How it was paid',
     reference: 'Transaction no.',
     note: 'Note',
+    rateApplied: 'Rate applied',
+    ratedLine: {
+      places: (n: number, rate: string) =>
+        `${n} student ${n === 1 ? 'place' : 'places'} at ${rate} each`,
+      seats: (n: number, rate: string) =>
+        `${n} teacher ${n === 1 ? 'seat' : 'seats'} at ${rate} each`,
+      branches: (n: number, rate: string) =>
+        `${n} ${n === 1 ? 'branch' : 'branches'} at ${rate} each`,
+      months: (n: number, rate: string) =>
+        `${n} ${n === 1 ? 'month' : 'months'} at ${rate} a month`,
+    },
     amount: 'Amount received',
     print: 'Print',
     backToPlan: 'Back to your plan',

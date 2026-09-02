@@ -20,7 +20,7 @@ export async function generateMetadata() {
 
 /** One line, not a concatenation — see the fee board's own COLUMNS on type inference. */
 const RECEIPT_COLUMNS =
-  'intent_id, amount_bdt, method, reference, covers_period_start, covers_period_end, note, paid_at, payment_intents (purpose, quantity, grants_capacity, branch_id)'
+  'intent_id, amount_bdt, method, reference, covers_period_start, covers_period_end, note, paid_at, payment_intents (purpose, quantity, grants_capacity, branch_id, priced_lines)'
 
 /**
  * What the centre paid us, as a piece of paper. §9.9's fifth and last printable.
@@ -56,10 +56,11 @@ const RECEIPT_COLUMNS =
  * it would hand back the day before. This is a timestamptz, so money taken at 1am Dhaka
  * dates to the previous day unless it is converted. Same rule as the payslip.
  *
- * WHAT IS NOT ON IT is the rate the places were sold at. §3.8 asks for it and
- * `payment_intents` does not store it; recomputing the bands here would price the *next*
- * purchase, because `settle_payment_intent` has already raised `student_capacity` by the time
- * anybody prints this. Recorded as a schema gap in §15, and pinned by tests/purchase-receipt.
+ * WHAT IT WAS PRICED AT is on it, above the amount, since 20260811000068 gave
+ * `payment_intents` a `priced_lines` column — §3.8's "rate applied", which is the one field of
+ * the record that has to be stored because it cannot be worked out again: recomputing the bands
+ * here would price the *next* purchase, `settle_payment_intent` having already raised
+ * `student_capacity` by the time anybody prints this. Read, never re-derived.
  *
  * A miss is notFound() rather than a 403: RLS decides what is visible, and refusing another
  * centre's payment id by name would confirm the id exists.
@@ -213,6 +214,37 @@ export default async function PurchaseReceiptPage({
           )}
           {sheet.note !== null && <Line label={t.note} value={sheet.note} />}
         </dl>
+
+        {/*
+          HOW THE AMOUNT WAS ARRIVED AT — §3.8's "rate applied", read off the intent rather
+          than recomputed. Printed even when it is a single line, unlike the dashboard's
+          category breakdown: one line here says the RATE, which is the field being recorded
+          and is nowhere else on the sheet. Empty only where there is no intent or the stored
+          document is not the shape it should be, and then the sheet simply says less.
+        */}
+        {sheet.lines.length > 0 && (
+          <div className="mt-3 border-t border-line pt-3">
+            <p className="text-sm text-ink-soft">{t.rateApplied}</p>
+            <dl className="mt-1 flex flex-col gap-1">
+              {sheet.lines.map((line, index) => (
+                <div
+                  // The document is a frozen list, not a keyed set: two bands can price the
+                  // same count at the same rate on different tiers, so the position is the
+                  // only thing that is unique. Nothing reorders it.
+                  key={`${line.what}-${index}`}
+                  className="flex items-baseline justify-between gap-4"
+                >
+                  <dt className="num min-w-0 text-sm text-ink-soft">
+                    {t.ratedLine[line.what](line.count, formatTaka(line.rateBdt))}
+                  </dt>
+                  <dd className="num shrink-0 text-sm font-medium text-ink">
+                    {formatTaka(line.costBdt)}
+                  </dd>
+                </div>
+              ))}
+            </dl>
+          </div>
+        )}
 
         {/* The figure the sheet is for. Neutral rather than the fee receipt's green: that
             green means money the centre received, and this is money it sent. */}

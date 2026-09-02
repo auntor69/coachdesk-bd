@@ -7559,17 +7559,31 @@ const capDoomed = await one(
   `insert into coaching_centers (name, plan, status)
    values ('Asked Then Closed', 'center', 'trial') returning id`,
 )
+
+/**
+ * A `priced_lines` document for a fixture — MASTERPLAN §3.8's "rate applied", which
+ * 20260811000068 made a `not null` column checked against `amount_bdt`.
+ *
+ * Every intent in this file is priced at one flat rate, so one line is the whole
+ * breakdown, and every fixture amount divides exactly by its count. It HAS to add up:
+ * `deniedAsUser` cannot tell a constraint from a missing grant, so a fixture whose
+ * breakdown was wrong would make a permission assertion pass for the wrong reason.
+ */
+const pricedDoc = (what, count, amount) =>
+  JSON.stringify([{ what, count, rate_bdt: amount / count, cost_bdt: amount }])
+
 const foreignIntent = await one(
   `insert into payment_intents
-     (coaching_center_id, purpose, quantity, amount_bdt, grants_capacity)
-   values ($1, 'student_capacity', 5, 40, 5) returning id`,
-  [capDoomed],
+     (coaching_center_id, purpose, quantity, amount_bdt, grants_capacity, priced_lines)
+   values ($1, 'student_capacity', 5, 40, 5, $2) returning id`,
+  [capDoomed, pricedDoc('places', 5, 40)],
 )
 const capIntent = await one(
   `insert into payment_intents
-     (coaching_center_id, purpose, quantity, amount_bdt, grants_capacity, requested_by)
-   values ($1, 'student_capacity', 25, 200, 25, $2) returning id`,
-  [centerA, ids.ownerA],
+     (coaching_center_id, purpose, quantity, amount_bdt, grants_capacity, requested_by,
+      priced_lines)
+   values ($1, 'student_capacity', 25, 200, 25, $2, $3) returning id`,
+  [centerA, ids.ownerA, pricedDoc('places', 25, 200)],
 )
 
 const stillOpen = await refusedBy(
@@ -11601,13 +11615,22 @@ check(
 
 // One intent, with everything the caller does not care about defaulted. `grants` follows
 // the purpose the way the table's check constraint demands, so a test that wants them to
-// disagree has to say so.
+// disagree has to say so. `lines` likewise follows the purpose and the amount: every
+// default here divides exactly, so the breakdown the constraint checks always adds up.
+const UNIT_OF = {
+  subscription: 'months',
+  student_capacity: 'places',
+  teacher_seat: 'seats',
+  branch: 'branches',
+}
+
 const newIntent = async (center, fields = {}) => {
   const {
     purpose = 'student_capacity',
     quantity = 41,
     amount = 738,
     grants = purpose === 'student_capacity' ? quantity : 0,
+    lines = pricedDoc(UNIT_OF[purpose], quantity, amount),
     key = null,
     branch = null,
     provider = 'manual',
@@ -11618,15 +11641,15 @@ const newIntent = async (center, fields = {}) => {
 
   return one(
     `insert into payment_intents (
-       coaching_center_id, purpose, quantity, amount_bdt, grants_capacity,
+       coaching_center_id, purpose, quantity, amount_bdt, grants_capacity, priced_lines,
        idempotency_key, branch_id, provider, provider_ref,
        created_at, expires_at
      )
-     values ($1, $2, $3, $4, $5, $6, $7, $8, $9,
-             coalesce($10::timestamptz, now()),
-             coalesce($11::timestamptz, now() + interval '7 days'))
+     values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10,
+             coalesce($11::timestamptz, now()),
+             coalesce($12::timestamptz, now() + interval '7 days'))
      returning id`,
-    [center, purpose, quantity, amount, grants, key, branch, provider, ref, created, expires],
+    [center, purpose, quantity, amount, grants, lines, key, branch, provider, ref, created, expires],
   )
 }
 
@@ -11680,14 +11703,19 @@ check(
 // §11.4, as three absent grants. The owner is the one person allowed to see this row and
 // still cannot open one, which is the whole design: naming your own price is not a
 // validation somebody remembered to write, it is a privilege nobody has.
+//
+// The breakdown is a valid one on purpose. `deniedAsUser` catches any error, so an insert
+// missing a `not null` column would be refused for a reason that has nothing to do with
+// the grant, and this assertion would go on passing after the grant was handed out.
 check(
   'an owner cannot open an intent at a price of their own',
   await deniedAsUser(
     db,
     ownerC,
-    `insert into payment_intents (coaching_center_id, purpose, quantity, amount_bdt)
-     values ($1, 'student_capacity', 500, 1)`,
-    [centerC],
+    `insert into payment_intents
+       (coaching_center_id, purpose, quantity, amount_bdt, priced_lines)
+     values ($1, 'student_capacity', 500, 1, $2)`,
+    [centerC, pricedDoc('places', 500, 1)],
   ),
 )
 check(
@@ -11994,44 +12022,116 @@ check(
   await refusedInsert(centerC, { purpose: 'branch', quantity: 1, amount: 750, grants: 3 }),
 )
 check('nothing is sold for nothing', await refusedInsert(centerC, { amount: 0 }))
-check('and no purchase is of nothing', await refusedInsert(centerC, { quantity: 0, grants: 0 }))
+// The breakdown is spelled out here because `pricedDoc` would divide 738 by nothing and hand
+// the column a null rate, and then this assertion would be about the wrong constraint. The
+// document is checked against the amount and not against the quantity, so a valid one over
+// a quantity of zero is exactly what leaves `quantity > 0` as the only thing left to fire.
+check(
+  'and no purchase is of nothing',
+  await refusedInsert(centerC, {
+    quantity: 0,
+    grants: 0,
+    lines: pricedDoc('places', 41, 738),
+  }),
+)
 
-const refusedSql = async (sql, params = []) => {
-  try {
-    await db.query(sql, params)
-    return false
-  } catch {
-    return true
-  }
-}
-
+// The three shape constraints on a quote, each named rather than merely "it threw". A
+// bare try/catch here used to be enough; it stopped being enough the moment
+// 20260811000068 added a `not null` column, because then an insert that forgot a field
+// would be refused for a reason that has nothing to do with the rule under test and the
+// assertion would pass forever. So each one says which constraint it expects, and each
+// carries a breakdown that adds up.
+const coverageOnPlaces = await refusedBy(
+  'payment_intents_coverage_purpose',
+  `insert into payment_intents
+     (coaching_center_id, purpose, quantity, amount_bdt, priced_lines,
+      covers_period_start, covers_period_end)
+   values ($1, 'student_capacity', 1, 18, $2, '2026-01-01', '2026-01-31')`,
+  [centerC, pricedDoc('places', 1, 18)],
+)
 check(
   'only a subscription payment covers a period',
-  await refusedSql(
-    `insert into payment_intents
-       (coaching_center_id, purpose, quantity, amount_bdt, covers_period_start, covers_period_end)
-     values ($1, 'student_capacity', 1, 18, '2026-01-01', '2026-01-31')`,
-    [centerC],
-  ),
+  coverageOnPlaces.ok,
+  coverageOnPlaces.why,
 )
-check(
-  'and a coverage period has both ends or neither',
-  await refusedSql(
-    `insert into payment_intents
-       (coaching_center_id, purpose, quantity, amount_bdt, covers_period_start)
-     values ($1, 'subscription', 1, 1999, '2026-01-01')`,
-    [centerC],
-  ),
+
+const halfPeriod = await refusedBy(
+  'payment_intents_coverage_pair',
+  `insert into payment_intents
+     (coaching_center_id, purpose, quantity, amount_bdt, priced_lines, covers_period_start)
+   values ($1, 'subscription', 1, 1999, $2, '2026-01-01')`,
+  [centerC, pricedDoc('months', 1, 1999)],
 )
-check(
-  'a quote cannot expire before it was given',
-  await refusedSql(
-    `insert into payment_intents
-       (coaching_center_id, purpose, quantity, amount_bdt, expires_at)
-     values ($1, 'subscription', 1, 1999, now() - interval '1 day')`,
-    [centerC],
-  ),
+check('and a coverage period has both ends or neither', halfPeriod.ok, halfPeriod.why)
+
+const alreadyStale = await refusedBy(
+  'payment_intents_expires_after_created',
+  `insert into payment_intents
+     (coaching_center_id, purpose, quantity, amount_bdt, priced_lines, expires_at)
+   values ($1, 'subscription', 1, 1999, $2, now() - interval '1 day')`,
+  [centerC, pricedDoc('months', 1, 1999)],
 )
+check('a quote cannot expire before it was given', alreadyStale.ok, alreadyStale.why)
+
+// And the column 20260811000068 added, from both ends. A breakdown is only worth storing
+// if it explains the amount beside it, so the constraint is what makes it evidence rather
+// than decoration.
+const badSum = await refusedBy(
+  'payment_intents_priced_lines_explain',
+  `insert into payment_intents
+     (coaching_center_id, purpose, quantity, amount_bdt, priced_lines)
+   values ($1, 'subscription', 1, 1999, $2)`,
+  [centerC, pricedDoc('months', 1, 1000)],
+)
+check('a breakdown that does not add up to the amount is refused', badSum.ok, badSum.why)
+
+const badUnit = await refusedBy(
+  'payment_intents_priced_lines_explain',
+  `insert into payment_intents
+     (coaching_center_id, purpose, quantity, amount_bdt, priced_lines)
+   values ($1, 'subscription', 1, 1999, $2)`,
+  [centerC, JSON.stringify([{ what: 'hours', count: 1, rate_bdt: 1999, cost_bdt: 1999 }])],
+)
+check('and so is one counting in a unit no price list has', badUnit.ok, badUnit.why)
+
+const badLine = await refusedBy(
+  'payment_intents_priced_lines_explain',
+  `insert into payment_intents
+     (coaching_center_id, purpose, quantity, amount_bdt, priced_lines)
+   values ($1, 'subscription', 2, 2000, $2)`,
+  [
+    centerC,
+    JSON.stringify([
+      { what: 'months', count: 1, rate_bdt: 1000, cost_bdt: 1000 },
+      // Adds up across the document and lies about its own rate. One bad line refuses
+      // the whole thing, which is why the constraint counts survivors.
+      { what: 'months', count: 1, rate_bdt: 1, cost_bdt: 1000 },
+    ]),
+  ],
+)
+check('and one whose own line does not multiply out', badLine.ok, badLine.why)
+
+const noLines = await refusedBy(
+  'payment_intents_priced_lines_explain',
+  `insert into payment_intents
+     (coaching_center_id, purpose, quantity, amount_bdt, priced_lines)
+   values ($1, 'subscription', 1, 1999, '[]'::jsonb)`,
+  [centerC],
+)
+check('and an empty breakdown, which explains nothing', noLines.ok, noLines.why)
+
+// The other half of it: fixed once written, in the same list as the amount. A receipt
+// that could be re-priced after the fact is the thing storing the rate was meant to stop.
+//
+// A DIFFERENT document, and one that still adds up to 738: `is distinct from` on jsonb
+// normalises, so re-writing the same breakdown would slip past the guard and this would
+// pass without the guard existing. What is stored is 41 places at ৳18; this is 738 at ৳1.
+const rewritten = await refusedBy(
+  'is already quoted at',
+  'update payment_intents set priced_lines = $2 where id = $1',
+  [intentC, pricedDoc('places', 738, 738)],
+)
+check('nobody can rewrite the breakdown of a quote already given', rewritten.ok, rewritten.why)
 
 // Every purchase is logged with a name on it, which is 20260811000046's whole point: §10
 // asks for an actor on capacity purchases by name.
@@ -12093,12 +12193,12 @@ check(
 // work is the receipt that settle_payment_intent writes on its own.
 const covering = await one(
   `insert into payment_intents (
-     coaching_center_id, purpose, quantity, amount_bdt,
+     coaching_center_id, purpose, quantity, amount_bdt, priced_lines,
      idempotency_key, provider_ref, covers_period_start, covers_period_end
    )
-   values ($1, 'subscription', 1, 1999, $2, 'TRXCOV1', '2026-03-01', '2026-03-31')
+   values ($1, 'subscription', 1, 1999, $2, $3, 'TRXCOV1', '2026-03-01', '2026-03-31')
    returning id`,
-  [centerC, await uuid()],
+  [centerC, pricedDoc('months', 1, 1999), await uuid()],
 )
 await move(covering, 'initiated')
 await settle(covering, null, 'bkash', ownerC)

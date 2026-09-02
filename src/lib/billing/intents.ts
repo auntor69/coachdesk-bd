@@ -20,7 +20,7 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import { UNIQUE_VIOLATION, readIdempotencyKey } from '@/lib/idempotency'
 import type { Database, PaymentProvider } from '@/lib/supabase/types'
 import type { PayableIntent } from './provider'
-import type { Quote } from './price'
+import { pricedLines, type Quote } from './price'
 
 /** Exactly `PayableIntent`, so a column added to that type fails to compile here. */
 const INTENT_COLUMNS =
@@ -72,6 +72,10 @@ export async function openIntent(
       purpose: quote.purpose,
       quantity: quote.quantity,
       amount_bdt: quote.amountBdt,
+      // §3.8's "rate applied". Required by the column and so by the generated `Insert`
+      // type, because it is the one field of the record that cannot be worked out again
+      // once `settle_payment_intent` has raised the ceiling it was priced from.
+      priced_lines: pricedLines(quote.lines),
       grants_capacity: quote.grantsCapacity,
       covers_period_start: quote.coversPeriodStart,
       covers_period_end: quote.coversPeriodEnd,

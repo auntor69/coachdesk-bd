@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import path from 'node:path'
 
-import { priceIntent } from '../src/lib/billing/price.ts'
+import { priceIntent, pricedLines, readPricedLines } from '../src/lib/billing/price.ts'
 import {
   CENTER_TEACHER_SEAT_BDT,
   INSTITUTION_BRANCH_BDT,
@@ -415,4 +415,74 @@ test('an amount is never a parameter of opening a purchase', () => {
   assert.match(intents, /amount_bdt: quote\.amountBdt/)
   // The zero quote is refused before the insert, not by the check constraint.
   assert.match(intents, /nothing_to_buy/)
+})
+
+test('a quote survives the trip through the jsonb column unchanged', () => {
+  // MASTERPLAN §3.8's "rate applied", stored by 20260811000068 because it cannot be
+  // recomputed: `settle_payment_intent` raises the ceiling the places were priced from
+  // before anybody prints the receipt. So the document has to come back exactly as it
+  // went in — a lossy round trip here is a receipt quoting a rate nobody charged.
+  const quotes = [
+    priceIntent({
+      purpose: 'student_capacity',
+      plan: PLANS.center,
+      purchasedCapacity: 120,
+      places: 200,
+    }),
+    priceIntent({
+      purpose: 'subscription',
+      plan: PLANS.center,
+      activeStudents: 120,
+      activeTeachers: 3,
+      activeBranches: 1,
+      months: 6,
+      from: '2026-09-01',
+    }),
+    priceIntent({ purpose: 'teacher_seat', activeTeachers: 2, seats: 3 }),
+    priceIntent({
+      purpose: 'branch',
+      plan: PLANS.institution,
+      activeBranches: 3,
+      branches: 2,
+    }),
+  ]
+
+  for (const quote of quotes) {
+    assert.ok(quote.lines.length > 0, quote.purpose)
+    linesAgree(quote, quote.purpose)
+
+    // What Postgres does to it: serialised on the way in, parsed on the way out.
+    const stored = JSON.parse(JSON.stringify(pricedLines(quote.lines)))
+    assert.deepEqual(readPricedLines(stored), quote.lines, quote.purpose)
+
+    // And the shape the check constraint reads, in the constraint's own spelling. A
+    // camelCase key would pass `tsc` and fail every insert.
+    for (const line of stored) {
+      assert.deepEqual(Object.keys(line).sort(), ['cost_bdt', 'count', 'rate_bdt', 'what'])
+    }
+  }
+})
+
+test('a document the column would refuse is a breakdown the reader drops', () => {
+  // The TypeScript twin of `app.priced_lines_explain`. Not the same code, deliberately —
+  // the constraint is what decides — but the same answer, so a bad document never
+  // reaches paper looking like a good one.
+  for (const bad of [
+    undefined,
+    [{ what: 'places', count: 1, rate_bdt: 1, cost_bdt: Number.NaN }],
+    [{ what: 'places', count: Number.POSITIVE_INFINITY, rate_bdt: 1, cost_bdt: 1 }],
+    [{ what: 'Places', count: 1, rate_bdt: 1, cost_bdt: 1 }],
+  ]) {
+    assert.deepEqual(readPricedLines(bad), [], JSON.stringify(bad ?? null))
+  }
+})
+
+test('the breakdown is written from the quote and nowhere else', () => {
+  // The column is `not null`, so the generated Insert type already refuses an intent
+  // opened without one. What that cannot say is where the value came from: this pins it
+  // to the quote's own lines rather than anything assembled at the call site.
+  const intents = source('intents.ts')
+
+  assert.match(intents, /priced_lines: pricedLines\(quote\.lines\)/)
+  assert.doesNotMatch(intents, /rate_bdt/)
 })

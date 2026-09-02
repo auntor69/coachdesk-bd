@@ -39,8 +39,13 @@ import type { PaymentPurpose } from '../supabase/types.ts'
  * branch and paying for none of it, and a line saying "1 branch at ৳0" is a clearer
  * answer than a total of zero with nothing above it.
  */
+/** The four units a line may count in, as one list so the reader and the labels agree. */
+export const QUOTE_UNITS = ['places', 'seats', 'branches', 'months'] as const
+
+export type QuoteUnit = (typeof QUOTE_UNITS)[number]
+
 export type QuoteLine = {
-  what: 'places' | 'seats' | 'branches' | 'months'
+  what: QuoteUnit
   count: number
   rateBdt: number
   costBdt: number
@@ -291,4 +296,68 @@ function branches(request: Extract<PurchaseRequest, { purpose: 'branch' }>): Quo
           ]
         : [],
   }
+}
+
+/**
+ * The same lines as `payment_intents.priced_lines` holds them — MASTERPLAN §3.8's "rate
+ * applied", which 20260811000068 made a column because it cannot be recomputed later.
+ *
+ * SNAKE_CASE BECAUSE A CHECK CONSTRAINT READS THESE NAMES. `app.priced_lines_explain`
+ * looks for `cost_bdt` in SQL, so the keys are part of the schema and follow the schema's
+ * spelling. That costs the two functions below and buys a document whose field names mean
+ * the same thing in a psql session as in the generated types.
+ */
+export type PricedLine = {
+  what: QuoteUnit
+  count: number
+  rate_bdt: number
+  cost_bdt: number
+}
+
+/** A quote's breakdown, ready to store. */
+export function pricedLines(lines: readonly QuoteLine[]): PricedLine[] {
+  return lines.map((line) => ({
+    what: line.what,
+    count: line.count,
+    rate_bdt: line.rateBdt,
+    cost_bdt: line.costBdt,
+  }))
+}
+
+/**
+ * A stored breakdown, read back. `unknown` in, because a `jsonb` column is `Json` in the
+ * generated types and that is not the same promise as this shape.
+ *
+ * ALL OR NOTHING, like the constraint: one malformed line refuses the document. A receipt
+ * printing three of four bands would total less than the amount beside it, and a customer
+ * doing that subtraction gets a wrong answer about their own money.
+ *
+ * THE ARITHMETIC IS NOT RE-CHECKED HERE, only the shape. That the lines add up is
+ * `payment_intents_priced_lines_explain`'s promise, enforced on the way in against the
+ * amount the constraint could see; re-testing it here in floats against the amount on the
+ * `payments` row would eventually hide a true breakdown behind a paisa. What this does
+ * guard is what SQL cannot: that no field arrives as a string or a `NaN` and reaches
+ * `formatTaka`, which prints those as "৳0" and is three call sites from the cause.
+ */
+export function readPricedLines(value: unknown): QuoteLine[] {
+  if (!Array.isArray(value) || value.length === 0) return []
+
+  const lines: QuoteLine[] = []
+  for (const raw of value) {
+    if (typeof raw !== 'object' || raw === null) return []
+    const line = raw as Record<string, unknown>
+
+    const what = line.what
+    const count = line.count
+    const rateBdt = line.rate_bdt
+    const costBdt = line.cost_bdt
+    if (!QUOTE_UNITS.some((unit) => unit === what)) return []
+    if (typeof count !== 'number' || !Number.isFinite(count) || count <= 0) return []
+    if (typeof rateBdt !== 'number' || !Number.isFinite(rateBdt) || rateBdt < 0) return []
+    if (typeof costBdt !== 'number' || !Number.isFinite(costBdt) || costBdt < 0) return []
+
+    lines.push({ what: what as QuoteUnit, count, rateBdt, costBdt })
+  }
+
+  return lines
 }

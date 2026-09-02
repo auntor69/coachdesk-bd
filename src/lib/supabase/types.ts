@@ -1508,6 +1508,7 @@ export type Database = {
           refunded_at: string | null
           expires_at: string
           updated_at: string
+          priced_lines: Json
         }
         Insert: {
           id?: string
@@ -1534,6 +1535,7 @@ export type Database = {
           refunded_at?: string | null
           expires_at?: string
           updated_at?: string
+          priced_lines: Json
         }
         Update: {
           id?: string
@@ -1560,6 +1562,7 @@ export type Database = {
           refunded_at?: string | null
           expires_at?: string
           updated_at?: string
+          priced_lines?: Json
         }
         Relationships: [
           {

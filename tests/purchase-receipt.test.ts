@@ -9,6 +9,7 @@ import {
   transferReference,
   type ReceiptPaymentRow,
 } from '../src/lib/billing/receipt.ts'
+import { QUOTE_UNITS } from '../src/lib/billing/price.ts'
 import { bn } from '../src/lib/i18n/bn.ts'
 import { en } from '../src/lib/i18n/en.ts'
 
@@ -28,17 +29,24 @@ import { en } from '../src/lib/i18n/en.ts'
  * "student_capacity x40" — a column name and a multiplication sign, on the one sheet that
  * says what our software cost.
  *
- * WHAT IT REFUSES TO WORK OUT. §3.8 wants the rate the places were sold at, and it is not
- * stored anywhere. The last test reads the page's source to prove it does not guess, because
- * the guess would look right: `capacityBands` would happily price *the next* purchase, since
- * `student_capacity` has already gone up by the time the sheet is printed.
+ * WHAT IT READS RATHER THAN WORKS OUT. §3.8 wants the rate the places were sold at, and
+ * since 20260811000068 `payment_intents.priced_lines` holds it. The last two tests keep it
+ * that way: one reads the page's source to prove it does not derive the figure, because the
+ * derivation would look right — `capacityBands` would happily price *the next* purchase,
+ * since `student_capacity` has already gone up by the time the sheet is printed — and one
+ * checks that a document which is not the shape it should be prints nothing at all.
  */
 
 const ROOT = path.join(import.meta.dirname, '..')
 
 const INTENT_ID = '3f2a91bc-7d40-4c11-9e88-0b5c1d6a2f77'
 
-/** A capacity purchase as `settle_payment_intent` leaves it. */
+/**
+ * A capacity purchase as `settle_payment_intent` leaves it.
+ *
+ * Two bands rather than one, because a purchase that straddles two is the case the column
+ * exists for: 40 places for ৳720 averages ৳18, which is not either rate charged.
+ */
 function settled(over: Partial<ReceiptPaymentRow> = {}): ReceiptPaymentRow {
   return {
     intent_id: INTENT_ID,
@@ -54,6 +62,10 @@ function settled(over: Partial<ReceiptPaymentRow> = {}): ReceiptPaymentRow {
       quantity: 40,
       grants_capacity: 40,
       branch_id: null,
+      priced_lines: [
+        { what: 'places', count: 20, rate_bdt: 20, cost_bdt: 400 },
+        { what: 'places', count: 20, rate_bdt: 16, cost_bdt: 320 },
+      ],
     },
     ...over,
   }
@@ -118,6 +130,7 @@ test('an empty embed is the same as none, and does not throw', () => {
     assert.equal(sheet.purpose, null)
     assert.equal(sheet.quantity, 0)
     assert.equal(sheet.placesAdded, 0)
+    assert.deepEqual(sheet.lines, [])
   }
 })
 
@@ -166,6 +179,7 @@ test('places added is the grant, and is zero on every other purpose', () => {
         quantity: 12,
         grants_capacity: 0,
         branch_id: null,
+        priced_lines: [{ what: 'months', count: 12, rate_bdt: 60, cost_bdt: 720 }],
       },
     }),
   )
@@ -220,13 +234,90 @@ test('every purpose the database allows has a label on the paper', () => {
   }
 })
 
-test('the sheet does not recompute what the places cost', () => {
-  // §3.8 wants the rate applied on the record and `payment_intents` does not store it. The
-  // trap is that recomputing looks harmless: by the time this sheet is printed
-  // `settle_payment_intent` has already raised `student_capacity`, so the bands would price
-  // the *next* purchase — and a per-place average matches no published band whenever one
-  // purchase straddles two. So the sheet prints the amount charged and nothing derived, and
-  // the missing figure is recorded as a schema gap rather than guessed at on paper.
+test('the rate applied comes off the record, band by band', () => {
+  // The point of 20260811000068: 40 places for ৳720 was 20 at ৳20 and 20 at ৳16, and no
+  // arithmetic on the amount recovers that. Ascending rate order is not asserted here —
+  // `capacityBands` produces it and the document is stored as it came — but the lines are
+  // carried through in the order they were written, which is what makes them readable.
+  const sheet = purchaseReceipt(settled())
+  assert.deepEqual(sheet.lines, [
+    { what: 'places', count: 20, rateBdt: 20, costBdt: 400 },
+    { what: 'places', count: 20, rateBdt: 16, costBdt: 320 },
+  ])
+  // And they still explain the amount beside them, which the check constraint enforces on
+  // the way in and this repeats on the way out.
+  assert.equal(
+    sheet.lines.reduce((total, line) => total + line.costBdt, 0),
+    sheet.amount,
+  )
+})
+
+test('a stored breakdown that is not the shape it should be prints nothing', () => {
+  // ALL OR NOTHING, like the constraint. Three of four bands on a sheet totals less than
+  // the amount printed under them, and a customer doing that subtraction gets a wrong
+  // answer about their own money — so a document with one bad line is no document.
+  const bad: unknown[] = [
+    null,
+    'places',
+    {},
+    [],
+    [{ what: 'hours', count: 1, rate_bdt: 1, cost_bdt: 1 }],
+    [{ what: 'places', count: 0, rate_bdt: 1, cost_bdt: 0 }],
+    [{ what: 'places', count: 1, rate_bdt: -1, cost_bdt: 1 }],
+    [{ what: 'places', count: '20', rate_bdt: 20, cost_bdt: 400 }],
+    [{ what: 'places', count: 20, rate_bdt: 20 }],
+    [{ count: 20, rate_bdt: 20, cost_bdt: 400 }],
+    // One good line and one bad one: the good one does not get printed on its own.
+    [
+      { what: 'places', count: 20, rate_bdt: 20, cost_bdt: 400 },
+      { what: 'places', count: 20, rate_bdt: 'sixteen', cost_bdt: 320 },
+    ],
+  ]
+
+  for (const priced_lines of bad) {
+    const sheet = purchaseReceipt(
+      settled({
+        payment_intents: {
+          purpose: 'student_capacity',
+          quantity: 40,
+          grants_capacity: 40,
+          branch_id: null,
+          priced_lines,
+        },
+      }),
+    )
+    assert.deepEqual(sheet.lines, [], JSON.stringify(priced_lines))
+    // Everything else on the sheet survives it. A breakdown nobody can read is a line
+    // missing from a receipt, not a receipt withheld.
+    assert.equal(sheet.amount, 720)
+    assert.equal(sheet.placesAdded, 40)
+  }
+})
+
+test('every unit a line can count in has a label on the paper', () => {
+  // Same fence as the purposes above, one row finer. A band whose unit had no label would
+  // render an empty left-hand column against a real amount — the only thing worse than no
+  // breakdown is one that names no units.
+  for (const unit of QUOTE_UNITS) {
+    for (const d of [bn, en]) {
+      const label = d.purchaseReceipt.ratedLine[unit]
+      assert.equal(typeof label, 'function', unit)
+      for (const n of [1, 20]) {
+        assert.ok(label(n, 'x').trim().length > 0, `${unit} x${n}`)
+        // The rate has to actually appear: a line reading "20 places" with the price left
+        // out is the field §3.8 asked for, missing.
+        assert.match(label(n, 'RATE'), /RATE/, `${unit} x${n}`)
+      }
+    }
+  }
+})
+
+test('the sheet reads what the places cost and does not recompute it', () => {
+  // §3.8's rate is a column now, and the trap it replaced is still open: by the time this
+  // sheet is printed `settle_payment_intent` has already raised `student_capacity`, so the
+  // bands would price the *next* purchase, and a per-place average matches no published
+  // band whenever one purchase straddles two. So the page may print `priced_lines` and may
+  // not reach for the price list.
   const page = readFileSync(
     path.join(ROOT, 'src', 'app', '(app)', 'settings', 'plan', 'receipt', '[paymentId]', 'page.tsx'),
     'utf8',
@@ -234,4 +325,8 @@ test('the sheet does not recompute what the places cost', () => {
   for (const banned of ['capacityBands', 'priceIntent', 'capacityCostBdt', 'studentCeiling']) {
     assert.doesNotMatch(page, new RegExp(banned), banned)
   }
+  // And it does read the stored one, so this test cannot pass by the page having dropped
+  // the breakdown altogether.
+  assert.match(page, /priced_lines/)
+  assert.match(page, /ratedLine/)
 })

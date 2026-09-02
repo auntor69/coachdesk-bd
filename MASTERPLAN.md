@@ -576,6 +576,14 @@ reads it.
 | recorded by | which account entered it |
 | status | recorded, and whether it has been voided by a counter-entry |
 
+**Every field above is stored.** The last of them, the rate applied, is
+`payment_intents.priced_lines` — the quote's own lines, one per band, frozen with the
+amount they explain and checked against it, because it is the one field that cannot be
+worked out afterwards: places are priced marginally from the ceiling the centre had at
+the time, and settling the purchase raises that ceiling before anybody prints the
+receipt. What is *not* built is the last row's second half: a platform payment cannot yet
+be voided by a counter-entry, because `payments.amount_bdt` is positive by check.
+
 **Payments are immutable.** No edit path, no delete path, from any browser
 session. A mistake is corrected by a *negative counter-entry* that references the
 original, never by changing history. This is already true of fee payments and
@@ -1758,7 +1766,9 @@ office copy comes first because the centre is the paying side, with three signat
 lines and the month's spending in that category frozen at that voucher rather than at
 a backdatable date; a receipt for money the centre paid us, the one sheet on our own
 letterhead and the one behind no plan gate, numbered by the purchase code the owner
-quoted rather than by an identifier invented for the paper;
+quoted rather than by an identifier invented for the paper, and showing the rate each
+band of places was sold at, read off the quote it was sold from rather than averaged
+out of the total;
 tap-to-send messaging; bulk import in one transaction; teacher records that can exist
 without accounts, server-generated usernames and signing in with either one;
 teacher→batch→student scoping in RLS; tenant-safe composite branch keys; employees,
@@ -1792,7 +1802,7 @@ a five-minute life, five tries counted under a row lock, a minute between sends 
 hourly ceiling per number and per IP, checked and spent inside the same call that
 creates the account — which switches itself on the day the aggregator's three variables
 exist, and is off until then (§5.4).
-1,217 RLS assertions and 1,068 unit tests green across 67 migrations and 41 tables in
+1,222 RLS assertions and 1,074 unit tests green across 68 migrations and 41 tables in
 `public` plus one in `app`, and four derived gates and two that ask the live API. One of those gates now refuses
 a query whose table name it cannot read, having discovered it had been counting five
 fewer than existed — and the RLS suite found a manager who could promote themselves
@@ -1858,9 +1868,8 @@ expenses, employees, payroll, revenue and profit, the two dashboards, the audit 
 payment intents.
 
 **High priority, straight after:** percentage discounts and named scholarships,
-instalment plans, teacher clash detection, per-branch capacity
-*reporting* (never per-branch quotas), and the rate a purchase was priced at stored on
-`payment_intents` so §3.8's record is complete and a receipt can print it.
+instalment plans, teacher clash detection, and per-branch capacity *reporting*
+(never per-branch quotas).
 
 **Future, documented and not built:** rooms and timetable conflicts, holiday
 calendars, term dates, an admissions pipeline, automated SMS and the parent summary

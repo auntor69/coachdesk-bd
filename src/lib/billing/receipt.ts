@@ -31,19 +31,20 @@
  * a sentence. When the intent is there the sheet has the enum and the quantity and can say it
  * in the reader's language, so that string is dropped. A note somebody typed by hand is kept.
  *
- * WHAT IT DELIBERATELY DOES NOT COMPUTE is the rate the places were sold at. §3.8 wants
- * "which band(s) priced them, at what rate" on the record, and recomputing it here would be
- * wrong twice over: `student_capacity` has already risen by the time this sheet is printed,
- * so `capacityBands` would price the *next* purchase, and a per-place average matches no
- * published band whenever a purchase straddles two. The rate applied is not stored on
- * `payment_intents` — that is a gap in the schema, recorded as one, and not something paper
- * should paper over.
+ * AND WHAT IT WAS PRICED AT, which since 20260811000068 is read rather than missing. §3.8
+ * wants "which band(s) priced them, at what rate" on the record, and the record now has it:
+ * `payment_intents.priced_lines` is the quote's own breakdown, frozen by the guard alongside
+ * the amount. It could never have been recomputed here — `student_capacity` has already risen
+ * by the time this sheet is printed, so `capacityBands` would price the *next* purchase, and a
+ * per-place average matches no published band whenever a purchase straddles two. So this reads
+ * the document and prints nothing at all if it is not the shape it should be.
  *
  * Pure, and importable by `node --test`: nothing here reaches a database. Relative imports
  * with the extension, like every other unit-tested module.
  */
 
 import type { PaymentMethod, PaymentPurpose } from '../supabase/types.ts'
+import { readPricedLines, type QuoteLine } from './price.ts'
 
 /**
  * Every purpose a platform payment can have, in the order 20260811000057 declares them.
@@ -89,6 +90,8 @@ export type ReceiptIntentRow = {
   quantity: number
   grants_capacity: number
   branch_id: string | null
+  /** `jsonb`, so `unknown` and not the shape: `readPricedLines` is what turns it into one. */
+  priced_lines: unknown
 } | null
 
 /**
@@ -130,6 +133,12 @@ export type PurchaseReceipt = {
   quantity: number
   /** Places this purchase added to the ceiling. Zero on every other purpose, by check. */
   placesAdded: number
+  /**
+   * §3.8's "rate applied": one line per band, ascending, as the server priced it. Empty
+   * where there is no intent, or where the stored document is not the shape it should be —
+   * a sheet with no breakdown is honest, and a partial one is not.
+   */
+  lines: QuoteLine[]
   branchId: string | null
   /** Both ends or neither: half a period is not a period. */
   coverage: { from: string; to: string } | null
@@ -174,6 +183,7 @@ export function purchaseReceipt(row: ReceiptPaymentRow): PurchaseReceipt {
     purpose: intent?.purpose ?? null,
     quantity: intent?.quantity ?? 0,
     placesAdded: intent?.grants_capacity ?? 0,
+    lines: intent === null ? [] : readPricedLines(intent.priced_lines),
     branchId: intent?.branch_id ?? null,
     coverage:
       row.covers_period_start !== null && row.covers_period_end !== null
