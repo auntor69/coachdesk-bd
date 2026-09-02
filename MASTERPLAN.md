@@ -547,11 +547,31 @@ Remaining            220   (5%)
 | Remaining | Behaviour |
 |---|---|
 | ≤ 20% | notice on the HQ dashboard and on the students screen |
-| ≤ 5% | urgent — persistent banner, HQ told which branches are growing |
+| ≤ 5% | urgent — persistent banner, HQ told which branches are growing ✅ |
 | 0 | new student creation blocked; **[ Add capacity ]** is the only way forward |
 
 Thresholds are constants, not literals sprinkled through screens, so they can be
 tuned without hunting.
+
+**Which branches are growing** is `branch_admissions_month` (20260811000072), drawn on
+`/hq` under the boxed warning and only there — the ≤ 20% row asks for a notice, and a box
+naming buildings under a notice would make the two levels read the same.
+
+It counts **still-active students grouped by the month they were admitted**, not admissions
+taken. A branch that admitted fifty in August and lost forty of them has not grown, and the
+view that counted admissions would put it top of the list. Counting the active ones buys the
+invariant that matters on this screen: every row added together is exactly the organisation's
+active head count, which is the pool figure printed beside it, so the two can never disagree.
+The cost is that the past is not fixed — a student admitted in March who leaves in October
+takes their row out of March — which is right for "where did the places we are using now go"
+and wrong for "how many families walked in in March", a question the roster answers.
+
+The window is the last three months **from today**, not from the month picker above it: the
+pool is a live count, and a historical intake under it would invite the subtraction. Head
+office is a row, never a wildcard. Naming comes from the money table's own rows, so a branch
+is called the same thing in both places. A failed read says so — "nothing is growing" and
+"we could not tell you" are opposite advice, and the box is attached to a warning an owner is
+acting on this week.
 
 ### 3.8 The payment model ❌ (partly ✅)
 
@@ -1874,8 +1894,10 @@ exist, and is off until then (§5.4). And one teacher can no longer be in two ro
 four o'clock: the rule is enforced on the day rows, which are the last thing a save
 writes and so the only moment a batch's routine is whole, and stated a second time in
 the form so the refusal can name the batch, the day and the hour instead of raising
-(§7.3).
-1,360 RLS assertions and 1,134 unit tests green across 71 migrations and 43 tables in
+(§7.3). And an owner five per cent from full is told which of their buildings the places
+went to, counted as students still on the register so the breakdown adds up to the pool
+figure beside it, and never as a quota (§3.7).
+1,371 RLS assertions and 1,144 unit tests green across 72 migrations and 42 tables in
 `public` plus one in `app`, and four derived gates and two that ask the live API. One of those gates now refuses
 a query whose table name it cannot read, having discovered it had been counting five
 fewer than existed — and the RLS suite found a manager who could promote themselves
@@ -1939,10 +1961,11 @@ with atomic enforcement, single and bulk top-up, branch isolation, the shared po
 teacher accounts and usernames, phone-or-username sign-in, owner OTP,
 teacher-centric attendance, fees with part payments, discounts and instalment plans,
 refunds, expenses, employees, payroll, revenue and profit, the two dashboards, the
-audit log, payment intents, teacher clash detection.
-
-**High priority, straight after:** per-branch capacity *reporting*
+audit log, payment intents, teacher clash detection, per-branch capacity *reporting*
 (never per-branch quotas).
+
+**High priority, straight after:** transfer history and the two remaining student
+statuses, which are the last of §7.1 still on paper.
 
 **Future, documented and not built:** rooms and room double-booking, holiday
 calendars, term dates, an admissions pipeline, automated SMS and the parent summary
@@ -1978,6 +2001,8 @@ that a good idea has somewhere to live that is not the codebase.
 | Zero SMS credits on every tier | correct behaviour while no gateway exists; a counter decrementing against nothing is a lie |
 | Teacher clashes are refused on the **day rows**, not on `batches` | the routine is written across two tables in three transactions, and the day rows are the last of them — checking anywhere earlier refuses saves that are legal two statements later |
 | Back-to-back classes are not a clash | overlap is half-open; a rule that refused them would be worked around within a week |
+| The growth breakdown counts **active students**, not admissions taken | a branch that admitted fifty and lost forty has not grown, and the active count makes the breakdown add up to the pool figure printed beside it |
+| Views carry Supabase's default `anon` grant, and are protected by `security_invoker` | the privilege is not the fence — the caller's own policies are; and `check-embeds.mjs` can only verify a select shape it is allowed to ask for |
 | `src/lib/plans.ts` owns the numbers | one pricing engine; this document defers to it |
 
 ---
@@ -2023,7 +2048,10 @@ thirty-one already on the roster untouched by either.
 
 **Branches** — a branch member cannot read, write, or report on another branch's
 students, batches, payments, expenses or payroll. One case per table, attempted as a
-hostile authenticated client.
+hostile authenticated client. And the growth breakdown: a row per branch with head
+office among them, a student who has left removed from the month they were admitted in,
+a pinned manager reading their own branch and no other, and every row added together
+equalling the organisation's active head count — the pool figure printed beside it.
 
 **Auth** — phone login still works; username login works; OTP expiry, attempt
 ceiling, resend cooldown, and the same number in three formats resolving to one;

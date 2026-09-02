@@ -2824,6 +2824,15 @@ export type Database = {
         }
         Relationships: []
       }
+      branch_admissions_month: {
+        Row: {
+          coaching_center_id: string | null
+          branch_id: string | null
+          period_month: string | null
+          admitted: number | null
+        }
+        Relationships: []
+      }
       branch_charges_month: {
         Row: {
           coaching_center_id: string | null

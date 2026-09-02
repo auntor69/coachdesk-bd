@@ -12565,6 +12565,165 @@ check(
     (await branchRows('branch_profit_month', ids.founder)).length === 0,
 )
 
+// 9c. Which branch is filling up — 20260811000072, for §3.7's urgent row. Not money and not
+// a quota: the pool stays at the organisation and this only says where the places went.
+//
+// THE FIXTURE MONTHS ARE IN THE PAST AND WRITTEN OUT IN FULL. `admitted_on` defaults to
+// today in Dhaka, so every other student in this suite lands in whatever month it happens to
+// be run — which is fine for them and useless here, where the assertion is about a figure
+// per month. Two named months nobody's default can reach keeps the counts stable, and keeps
+// this section out of the 2026-12-01 fixtures' eventual rewrite.
+const admittedMonth = '2025-05-01'
+const laterMonth = '2025-06-01'
+
+const growthChild = (branch, on, status = 'active', center = centerA) =>
+  one(
+    `insert into students (coaching_center_id, branch_id, name, guardian_phone, admitted_on, status)
+     values ($1, $2, $3, '01799000009', $4::date, $5) returning id`,
+    [center, branch, `Intake ${on} ${branch ?? 'hq'} ${status}`, on, status],
+  )
+
+// Three at Mirpur, two at Uttara, one under no branch at all, one at Uttara a month later,
+// and one at Mirpur who has since left. Written out one per line: a loop would read as an
+// import, and PGlite serialises anyway.
+await growthChild(brMirpur, admittedMonth)
+await growthChild(brMirpur, admittedMonth)
+await growthChild(brMirpur, admittedMonth)
+await growthChild(brUttara, admittedMonth)
+await growthChild(brUttara, admittedMonth)
+await growthChild(brUttara, laterMonth)
+await growthChild(null, admittedMonth)
+const growthLeaver = await growthChild(brMirpur, admittedMonth, 'graduated')
+await growthChild(null, admittedMonth, 'active', centerB)
+
+const growthRows = (user, month = admittedMonth) =>
+  asUser(db, user, (tx) =>
+    tx
+      .query(
+        `select branch_id, admitted from branch_admissions_month
+          where coaching_center_id = $1 and period_month = $2::date
+          order by branch_id nulls first`,
+        [centerA, month],
+      )
+      .then((r) => r.rows),
+  )
+
+const growthHq = await growthRows(hqManager)
+const growthOf = (id) => growthHq.find((r) => r.branch_id === id)?.admitted ?? null
+check(
+  'HQ reads one intake row per branch, with head office among them',
+  growthHq.length === 3 && growthHq[0].branch_id === null && growthHq[0].admitted === 1,
+  JSON.stringify(growthHq),
+)
+check(
+  'and each row counts its own admissions',
+  growthOf(brMirpur) === 3 && growthOf(brUttara) === 2,
+  JSON.stringify(growthHq),
+)
+
+// The reason the view counts active students rather than every admission ever: a branch that
+// admitted four and lost one has three of the organisation's places, and an owner deciding
+// where the next block should go needs the three. The cost is stated in the migration — a
+// past month's figure falls as students leave — and it is the right way round, because the
+// figure beside it on the screen is the pool, which falls too.
+check(
+  'a student who has left is not in their branch’s intake',
+  growthOf(brMirpur) === 3 &&
+    (await n(db, `select count(*)::int as n from students where id = $1`, [growthLeaver])) === 1,
+)
+
+// The month is the month a student was admitted, not the month of the reading. Two rows for
+// one branch, and a screen asking for a window gets both to add up itself.
+check(
+  'a later admission is a later row, not an addition to the first',
+  (await growthRows(hqManager, laterMonth)).length === 1 &&
+    (await growthRows(hqManager, laterMonth))[0].branch_id === brUttara,
+  JSON.stringify(await growthRows(hqManager, laterMonth)),
+)
+
+const growthMirpur = await growthRows(pinnedManager)
+check(
+  'a pinned manager reads their own branch and no other',
+  growthMirpur.length === 1 &&
+    growthMirpur[0].branch_id === brMirpur &&
+    growthMirpur[0].admitted === 3,
+  JSON.stringify(growthMirpur),
+)
+check(
+  'and not the head-office row, which a null branch is rather than a wildcard',
+  growthMirpur.every((r) => r.branch_id !== null),
+)
+
+// The assertion this view exists to keep true. Every row added together is exactly the
+// organisation's active head count, which is the figure the same screen prints as the pool —
+// so an owner comparing the two never finds them disagreeing. Over every month, because a
+// window is the caller's choice and the sum is not.
+const activeHeads = await n(
+  db,
+  `select count(*)::int as n from students
+    where coaching_center_id = $1 and status = 'active'`,
+  [centerA],
+)
+const growthSum = (
+  await asUser(db, hqManager, (tx) =>
+    tx.query(
+      `select coalesce(sum(admitted), 0)::int as n from branch_admissions_month
+        where coaching_center_id = $1`,
+      [centerA],
+    ),
+  )
+).rows[0].n
+check(
+  "the intake rows add up to the organisation's active head count",
+  growthSum === activeHeads,
+  `${growthSum} rows against ${activeHeads} students`,
+)
+
+check(
+  "another centre's owner reads none of this centre's intake",
+  (await growthRows(ids.ownerB)).length === 0,
+)
+
+// A view is not a policy, so the protection is asserted where it actually lives.
+// `security_invoker` puts 20260811000053's branch policies and the students policies in front
+// of every read, which is why the anon grant Supabase hands a new view at creation is not a
+// hole: no session, no rows. Asserted through a real anon request rather than inferred from
+// the grant list — and the grant list is checked for PUBLIC, which would reach roles nobody
+// has created yet.
+const growthGrants = (
+  await db.query(
+    `select a.grantee::regrole::text as who from pg_class c
+       join pg_namespace nsp on nsp.oid = c.relnamespace and nsp.nspname = 'public'
+       join aclexplode(c.relacl) a on true
+      where c.relname = 'branch_admissions_month' and a.privilege_type = 'SELECT'
+      order by 1`,
+  )
+).rows.map((r) => r.who)
+check(
+  'the intake view is readable by a signed-in session and by no role in general',
+  growthGrants.includes('authenticated') && !growthGrants.includes('-'),
+  growthGrants.join(', '),
+)
+check(
+  'and it is security_invoker, so it can never say more than students says',
+  (
+    await db.query(
+      `select count(*)::int as n from pg_class c
+         join pg_namespace nsp on nsp.oid = c.relnamespace and nsp.nspname = 'public'
+        where c.relname = 'branch_admissions_month'
+          and 'security_invoker=true' = any(c.reloptions)`,
+    )
+  ).rows[0].n === 1,
+)
+check(
+  'so a request with no session reads every branch of nothing at all',
+  (
+    await asUser(db, null, (tx) =>
+      tx.query('select count(*)::int as n from branch_admissions_month'),
+    )
+  ).rows[0].n === 0,
+)
+
 // 10. And none of it opened a door between centres. A branch is a subdivision of one
 // organisation; centre B is a different organisation, and the restrictive policy returns
 // true for a caller who holds no membership here precisely so that the permissive policies

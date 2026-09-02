@@ -4692,6 +4692,18 @@ export const en: Dictionary = {
       'If salaries are paid centrally from the head office, every other branch reads more profitable than it is. Record each payment under the branch the person works at and the comparison becomes fair.',
     poolNote:
       'Places are one pool for the whole organisation — every branch draws from the same pool, and none has a quota of its own.',
+    growingTitle: 'Where the places have been going',
+    /** A branch and its figure. The line below names what the figure counts, once. */
+    growingBranch: (branch: string, students: number) => `${branch} ${students}`,
+    growingLine: (branches: string) => `New students in the last three months: ${branches}.`,
+    growingOthers: (count: number) =>
+      count === 1 ? 'And one other branch took some.' : `And ${count} other branches took some.`,
+    growingNote:
+      'Buying more places adds them to the one pool, so whichever branch fills next can use them. This is only to show where the growth is.',
+    growingNone:
+      'No branch has taken a new student in the last three months, so the register is full of students already on it rather than of new arrivals.',
+    growingUnreadable:
+      'Where the recent admissions went could not be read just now. Nothing is wrong with your records — the figures above are unaffected.',
   },
 
   /** See the Bangla: the names are what an owner calls the thing, not the table. */

@@ -5,6 +5,7 @@ import { Card } from '@/components/ui'
 import { PlacesWarning } from '@/components/places-warning'
 import { pageRole, getSession } from '@/lib/auth/session'
 import { openAsks } from '@/lib/billing/asks'
+import { growingBranches, recentIntake } from '@/lib/billing/growth'
 import { isHqMember } from '@/lib/branches'
 import {
   currentPeriodMonth,
@@ -296,6 +297,38 @@ export default async function HqPage({
   const pressure =
     totalHeads === null ? null : capacityPressure(session.ceiling, totalHeads)
 
+  /*
+   * §3.7's urgent row, and only that row: "≤ 5% — urgent, HQ told which branches are
+   * growing". At ≤ 20% the plan asks for a notice and nothing more, and a box naming
+   * buildings under a notice would make the two levels read the same — which is the
+   * failure places-warning.tsx spends a paragraph avoiding.
+   *
+   * THE WINDOW IS THE LAST THREE MONTHS FROM TODAY, NOT FROM THE MONTH PICKER. The pool
+   * this decorates is a live count — every active student, no month in the query — so an
+   * intake keyed to a month an owner is browsing would put last February's admissions
+   * under today's remaining places and invite the subtraction. The month picker moves the
+   * money table; this box is about now.
+   */
+  const urgent =
+    pressure !== null && (pressure.level === 'urgent' || pressure.level === 'full')
+  const intake = urgent
+    ? await recentIntake(
+        supabase,
+        session.active.centerId,
+        addMonths(currentPeriodMonth(), -2),
+        currentPeriodMonth(),
+      )
+    : null
+
+  /*
+   * Named off the table's own rows rather than the branch list, so a building is called the
+   * same thing in both places — including the ones `branchMoneyRows` had to name itself: head
+   * office, and a branch whose row an RLS policy withheld.
+   */
+  const named = new Map(rows.map((row) => [row.branchId, row.name]))
+  const grew =
+    intake === null ? null : growingBranches(intake, (id) => named.get(id) ?? t.unnamedBranch)
+
   return (
     <Shell home={d.shell.nav.home}>
       {header}
@@ -426,6 +459,40 @@ export default async function HqPage({
             note={t.poolNote}
           />
         ))}
+
+      {/*
+        §3.7's other half of the urgent row: the owner is told which branches are growing.
+        Under the boxed warning and never under the calm card, because the plan puts this on
+        the ≤ 5% row alone.
+
+        A FAILED READ MUST NOT READ AS "NOTHING IS GROWING". The two are opposite advice —
+        one says buy places for Sylhet, the other says the register filled with students who
+        were already on it — so `null` gets its own sentence rather than falling into the
+        empty case. This is also why the box does not simply vanish on a failed read: it is
+        attached to a warning an owner is acting on this week.
+      */}
+      {urgent && (
+        <section className="rounded-xl border border-line bg-white p-4">
+          <h2 className="font-semibold text-ink">{t.growingTitle}</h2>
+          {grew === null ? (
+            <p className="mt-1 text-sm text-ink-soft">{t.growingUnreadable}</p>
+          ) : grew.top.length === 0 ? (
+            <p className="mt-1 text-sm text-ink-soft">{t.growingNone}</p>
+          ) : (
+            <>
+              <p className="num mt-1 text-ink">
+                {t.growingLine(
+                  grew.top.map((b) => t.growingBranch(b.name, b.admitted)).join(', '),
+                )}
+              </p>
+              {grew.others > 0 && (
+                <p className="mt-1 text-sm text-ink-soft">{t.growingOthers(grew.others)}</p>
+              )}
+            </>
+          )}
+          <p className="mt-1 text-sm text-ink-soft">{t.growingNote}</p>
+        </section>
+      )}
 
       {/*
         §3.7's asks, on the screen it names for them. A LIST AND NOT A CONTROL: the two
