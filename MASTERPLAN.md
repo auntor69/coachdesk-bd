@@ -1995,13 +1995,21 @@ screen can answer it in the owner's own words, and exempt the migration runner b
 service key — a key every form holds, so exempting it would have left the fence guarding
 only the caller nobody uses. A branch is a bucket in that count solely on an institution
 plan, where head office is a place of its own rather than a wildcard (§8, §16 step 20).
-1,418 RLS assertions and 1,176 unit tests green across 75 migrations and 42 tables in
+1,418 RLS assertions and 1,195 unit tests green across 75 migrations and 42 tables in
 `public` plus one in `app`, and four derived gates and two that ask the live API. One of those gates now refuses
 a query whose table name it cannot read, having discovered it had been counting five
 fewer than existed — and the RLS suite found a manager who could promote themselves
 to owner, which is what a suite is for. The SQL gate now also hands out our own
 `CD` SQLSTATEs: one rule per code, every code named in `src/lib`, which caught a plan
 ceiling about to be raised on the code the teacher clash already owned.
+And the app has a menu at last: a sidebar on a laptop, the phone's four daily tabs with a
+no-JavaScript sheet behind them, and in it the six screens — spending, salaries, drifting
+away, notices, the week, the head office — that had been built, guarded and tested for
+weeks while being reachable only from a card on the dashboard. Each row asks exactly what
+its own page asks, from the session the layout already holds and so at no cost in queries; a
+capability the owner unticked removes a row, and a plan the centre has not bought greys one
+and leaves it there, because that row is the only place the product mentions the tier
+(§20.1–20.3).
 
 **Partly built ⚠️** — branches (money, staff, the HQ comparison and the growth
 breakdown yes, full isolation no); scheduling (weekly recurrence and teacher clashes,
@@ -2010,8 +2018,10 @@ no rooms or overrides); plan selection (an owner may buy a move up and buy place
 but nothing on the owner's own screen works out what their unused coverage is worth);
 income with no student behind it (hall rent, book sales and the like have a category
 but no row to hang it on — every revenue row is a bill against a child);
-the interface (§20 is written, and the shell it describes is not built — every screen is
-still the centred column with the phone tab bar).
+the interface (the frame §20 describes is built — sidebar, wide workspace, a real
+navigation — and the pages inside it are not: every screen still stacks for the single
+column it was written in, so a laptop shows a correct shell around a phone-shaped page.
+§20.8 step 1 of 9).
 
 **Not built ❌** — the five
 `teacher_permissions` booleans folded into the capability vocabulary — they work, and
@@ -2206,15 +2216,28 @@ at build time; and that a page hiding an action sits over a server that refuses 
 asserted against the action, never against the markup. A layout is judged by eye. What a
 layout *claims* is judged by §12.2.
 
+**The navigation** — the one part of the interface where two files hold halves of the same
+rule, so it gets its own suite (`tests/navigation.test.ts`, 13 tests). Every row points at a
+page that exists under `(app)`; each gated row asks *the same call its page guards itself
+with*, read out of the page's own source, in both directions — a page that grows a gate the
+menu does not know about fails, and so does a menu row asking for something its page no
+longer checks. A capability hides a row and a plan feature greys it, and neither may be
+written as the other (§20.3). No gate may contain an `await`. The phone's first four tabs
+are named, so reordering the table is a decision rather than an accident, and no locked row
+may take one of them. Every label and group heading exists in both dictionaries, no heading
+is unused, and the sheet and the sidebar draw a row through one component so an active row
+cannot look different in the two. The suite was negative-tested: five mutations applied to
+the shell, five caught.
+
 ---
 
 ## 20. The interface
 
-The app was built page by page and it shows. Every screen renders inside a centred
+The app was built page by page and it shows. Every screen rendered inside a centred
 `max-w-3xl` column with a fixed row of tabs across the bottom of it
 (`src/components/app-shell.tsx`), which is a phone layout drawn at every width. On a
-1,440px monitor two thirds of the glass is empty, the work happens in a 768px ribbon down
-the middle, and a manager who wants a batch and its fees in one view scrolls instead.
+1,440px monitor two thirds of the glass was empty, the work happened in a 768px ribbon down
+the middle, and a manager who wanted a batch and its fees in one view scrolled instead.
 Most of the rest follows from that one decision: cards stacked because there is a single
 column to stack them in, headings sized for a thumb, Settings grown into the drawer where
 anything without an obvious home was put, and the plan page — the last thing a customer
@@ -2223,7 +2246,12 @@ reads before paying us — shaped like a long form.
 What follows is the contract for fixing it. Architecture first, layout second, styling
 last. Colours and corner radii are not the problem, and changing them is not the work.
 
-### 20.1 Desktop is not a large phone
+**The frame is now built** (§20.1, §20.2, §20.3 — all ✅). The pages inside it are not: they
+still stack for a single column, so a wide screen currently shows a correct sidebar beside
+a workspace that has not yet been given anything to do with the room. That is §20.8's list,
+and it starts at its step 2.
+
+### 20.1 Desktop is not a large phone ✅ (frame only)
 
 Two frames, one product.
 
@@ -2235,15 +2263,31 @@ for; prose is capped near 70ch because a 1,400px line cannot be read; a form is 
 near 40rem because a text input as wide as a desk is harder to fill in, not easier. No
 single number is right for all three, which is why one `max-w-3xl` on the shell was wrong.
 
-**Phone**: the sidebar becomes a drawer and the bottom tab bar stays — it is correct
-there, and it is what most teachers will use. The tab bar was never the mistake. Showing
-it at 1,440px, and building every page to suit it, was.
+**Phone**: the bottom tab bar stays — it is correct there, and it is what most teachers
+will use. The tab bar was never the mistake. Showing it at 1,440px, and building every page
+to suit it, was.
+
+**What shipped, and where it differs from the paragraphs above.** The shell now draws a
+`w-64` sidebar from `lg` up and the workspace ceiling moves to `max-w-7xl`; below `lg`
+nothing about the old frame changed. Two deliberate departures:
+
+- **The phone got a sheet, not a drawer.** A drawer duplicates the sidebar behind a
+  hamburger and needs client state to open. Eleven destinations do not fit in a bar at
+  375px, so the bar keeps the four a centre touches daily — dashboard, register, marks,
+  money — and the rest sit behind a fifth "More" tab that is a `<details>`. It opens with
+  no JavaScript, which on a 3G connection is the first ten seconds, and it reuses the
+  sidebar's own row component so a row cannot be worded or styled differently in the two
+  places.
+- **Per-region widths are not done.** The shell stopped being the thing that caps content;
+  the pages have not yet started being it. Every screen still inherits one column and
+  stacks in it. Until §20.8's steps land, "uses the width it is given" is true of the frame
+  and not yet of what is inside it.
 
 **Printables keep their own frame.** The five sheets in §9.9 are `print:` layouts with the
 shell `print:hidden` around them. Nothing here touches them, and no redesign may put the
 navigation on a receipt.
 
-### 20.2 Navigation follows the work, not the tables
+### 20.2 Navigation follows the work, not the tables ✅ (four groups of the eight)
 
 The tabs today are named after screens. The replacement is named after jobs, and the
 grouping is the point: money in one place, people in another, so nobody has to guess
@@ -2267,7 +2311,33 @@ that owns it — capacity to Billing, staff accounts to People, the routine to A
 **Two levels and no more**: a group, and the pages inside it. A third level is where
 discoverability dies, and every screen this product has fits in two.
 
-### 20.3 The navigation is shaped by the reader, and controls nothing
+**What shipped, and why it is four groups rather than eight.** The table above describes
+groups over pages that do not all exist yet: there is no roster index at all
+(`(app)/students` has only `[studentId]`), no reports section, and billing is one page
+inside Settings. Eight headings over eleven destinations would have been eight headings
+with one row under most of them. So the shipped grouping is the same idea at the size the
+product actually is:
+
+| Shipped group | Rows |
+|---|---|
+| *(no heading)* | Home, Attendance, Exams |
+| Money | Fees, Spending, Salaries |
+| Families | Drifting away, Notices, The week |
+| Organisation | Head office, Settings |
+
+The eight-group table stays as written, because it is the destination and each of its rows
+arrives with the pages behind it. Money is Finance under a shorter name; Families is the
+parent-facing half of Reports; the first group is unheaded because a heading over Home is a
+heading over the whole app.
+
+**The defect this actually fixed.** Six screens — spending, salaries, drifting away,
+notices, the week, the head office — had been built, tested and guarded for weeks and were
+in no menu anywhere. The only route to any of them was a card on the dashboard, which is
+how the dashboard became the product's menu and how recording an expense became two hops
+through a summary of something else. That is what step 1 of §20.8 was really about; the
+sidebar was the frame it needed.
+
+### 20.3 The navigation is shaped by the reader, and controls nothing ✅
 
 Four things shape it: role, the capabilities on the membership (§6.2), the plan, and
 whether the centre runs branches.
@@ -2290,6 +2360,37 @@ between somebody and a screen they may not have.
 A group empty for its reader is not drawn. A group their **plan** does not include is
 drawn, and says what would unlock it — the one place a locked door beats a hidden one,
 because that door is also the upgrade path.
+
+**How the two paragraphs above are held apart in code.** Every row in the table carries the
+same check its own page makes, and which of the two fields it goes in is the whole rule:
+
+- `when` — a capability or a membership fact. **Hides the row.** A manager whose owner
+  unticked `fees` would otherwise get a fee board that 20260811000063's policies filter
+  down to nothing, which reads as a centre that has collected nothing and is owed nothing:
+  a worse answer than no row. Same for spending, salaries, notices and the week. A manager
+  pinned to one branch loses Head office for the same reason and not as a secret.
+- `needs` — a plan feature. **Greys the row and leaves it there**, badged *Upgrade* in both
+  languages, still a link, because the screen behind it refuses nobody and already draws
+  the card naming the tier that has it. Four rows are like this: spending, salaries, the
+  week, the head office.
+
+Swapping one for the other type-checks perfectly and is silent either way — a plan check in
+`when` costs us the only place the product ever mentions payroll to a free-plan owner, and a
+capability in `needs` advertises a colleague's job to somebody the owner deliberately
+narrowed. So `tests/navigation.test.ts` asserts both directions per row, against the page's
+own source: 13 tests, and five deliberate mutations were each confirmed to fail them.
+
+**A locked row never takes one of the phone's four tabs.** The first four are unlocked in
+the table's order, but that order is not fixed — a manager who has lost `fees` drops to
+three and spending slides into the fourth slot, locked. One tab in four of a 375px screen is
+too much room to give an advertisement, so the split skips locked rows into More.
+
+**None of it costs a query.** `can`, `has`, `isHqMember` and `canReadMoney` are pure
+functions of the session the layout already holds, so eleven rows and their gates are
+decided from data already in hand. Only a teacher pays, for the two grants that live on a
+teacher row rather than on the membership, and those three checks share one memoised query.
+A gate that needed an `await` would put a round trip per row on the critical path of every
+screen in the product, which is why the test asserts there is not one.
 
 ### 20.4 Plan and billing: six questions, in this order
 
@@ -2383,7 +2484,7 @@ rewrite, and nothing in §15's built list may stop working because a screen move
 
 | # | Area | Why here |
 |---|---|---|
-| 1 | The shell: sidebar, workspace, header bar, responsive frame | every other screen inherits it, so it cannot be second |
+| 1 ✅ | The shell: sidebar, workspace, header bar, responsive frame | every other screen inherits it, so it cannot be second |
 | 2 | The centre dashboard | the first thing anyone sees, and today the thinnest use of the width |
 | 3 | Plan and billing (§20.4) | the screen a customer reads before paying us |
 | 4 | Add student, including the capacity step (§20.5) | the most-used write path in the product |
@@ -2392,6 +2493,10 @@ rewrite, and nothing in §15's built list may stop working because a screen move
 | 7 | Teachers, employees, accounts, capabilities | one person's record and access in one place (§5.1, §6.2) |
 | 8 | Organisation and branches (§20.6) | needs 2 and 6 to have settled first |
 | 9 | Settings, once everything that is a workflow has left it | what remains is small, and it should be |
+
+Step 1 is done: the frame, the navigation, and the six screens that were in no menu. The
+dashboard is next and it is now a different job than it was — it no longer has to be the
+menu, because there is one.
 
 ### 20.9 The rule that outranks everything above
 
@@ -2427,6 +2532,7 @@ truths start.
 | 2026-09-02 | §§11, 15, 16, 17 and 19 brought level with the build. A subscription may carry the tier it moves a centre onto, and the settlement moves the plan when the money lands, so the founder panel is no longer the only door to a plan change — it is now the only door to a plan change nobody paid for. `subscriptions` recorded as deliberately empty, with coverage derived from the payments into one date on the centre. The credit a downgrade or a mid-term move owes is named as the next thing the money model cannot yet express, and is a phone call until it can. |
 | 2026-09-02 | **§20 added: the interface.** The masterplan now owns the information architecture as well as the rules — the sidebar-and-workspace frame in place of a phone layout drawn at every width, navigation named after jobs rather than screens and shaped by role without ever being a control, the six questions the plan page has to answer without exposing the pricing bands that answer them, buying at the point of need, organisation level held visibly apart from branch level, the house rules, and the order the screens get rebuilt in. §0 says why it is the same document. Version history moved to §21. The credit is struck off §16 as built: a platform payment may be negative, the floor is held by a trigger under an advisory lock, and it prints as a credit note — what is left of that thread is an owner being able to ask for one themselves. Counts: 1,388 RLS assertions, 1,166 unit tests, 74 migrations. |
 | 2026-09-02 | **§12.1 rewritten: the caps are Layer 1.** 20260811000075 puts the four ceilings a plan sells besides student places — batches, subjects, teacher records, children in one batch — into triggers, because the tables they count still grant `insert` to `authenticated` and an owner's own token could be posted straight at the API. They mirror the Server Actions' counts exactly, resolve the ceiling through the same live trial, name which limit refused so Layer 2 keeps its own wording, treat a null allowance as no ceiling rather than none allowed, and exempt the migration runner but not the service key. §12.4's ❌ becomes ✅ — five ceilings, five advisory locks, and the counting helpers volatile on purpose so a bulk paste cannot pass one ceiling five hundred times. Feature flags are now the only cap left in Layer 2 alone, and §12.1 says why that stays. §16 records all twenty steps of the build order as landed. Counts: 1,418 RLS assertions, 1,176 unit tests, 75 migrations. |
+| 2026-09-02 | **§20.8 step 1 is built, and §§20–20.3 now record what shipped rather than what was wanted.** A `w-64` sidebar from `lg` up, the workspace ceiling off `max-w-3xl` and onto `max-w-7xl`, and — the actual defect — the six finished screens that were in no menu anywhere: spending, salaries, drifting away, notices, the week and the head office, reachable until now only from a dashboard card, which is how the dashboard became the menu. Eleven destinations do not fit a 375px bar, so the phone keeps its four daily tabs and the rest sit behind a `<details>` sheet that opens with no JavaScript — a sheet, not the drawer §20.1 asked for, and §20.1 now says why. Four groups rather than §20.2's eight, because the other four have no pages behind them yet. §20.3's hide-versus-lock sentence is now a rule in code: a capability hides a row, a plan greys it and leaves it there badged *Upgrade*, since that row is the only place a free-plan owner ever learns this product does payroll — and locked rows are kept out of the phone's four tabs, where a quarter of the screen is too much to give an advertisement. Held by `tests/navigation.test.ts`, which asserts each row against its own page's source in both directions and was itself negative-tested against five mutations. All of it decided from the session already in hand: no round trip per row. Counts: 1,418 RLS assertions, 1,195 unit tests, 75 migrations. |
 
 
 
