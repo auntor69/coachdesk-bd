@@ -77,14 +77,14 @@ export default async function ArrearsPage() {
 
   /** The screen with no form on it. See the guard below for why all three refuse. */
   const refusal = (problem: PageFailure) => (
-    <div className="flex flex-col gap-4">
+    <div className="flex flex-col gap-4 lg:max-w-2xl">
       <Link
         href="/fees"
         className="inline-flex min-h-tap items-center font-medium text-brand-700"
       >
         ← {t.backToFees}
       </Link>
-      <h1 className="text-xl font-semibold text-ink">{t.title}</h1>
+      <h1 className="text-xl font-semibold text-ink lg:text-2xl">{t.title}</h1>
       <Card className="border-late/30 bg-late/5">
         <p className="font-medium text-ink">
           {problem === 'tooLarge' ? t.tooLarge : t.unreadable}
@@ -212,7 +212,7 @@ export default async function ArrearsPage() {
   }
 
   return (
-    <div className="flex flex-col gap-4">
+    <div className="flex flex-col gap-4 lg:gap-6">
       <Link
         href="/fees"
         className="inline-flex min-h-tap items-center font-medium text-brand-700"
@@ -221,12 +221,14 @@ export default async function ArrearsPage() {
       </Link>
 
       <div>
-        <h1 className="text-xl font-semibold text-ink">{t.title}</h1>
+        <h1 className="text-xl font-semibold text-ink lg:text-2xl">{t.title}</h1>
         <p className="mt-1 text-sm text-ink-soft">{t.subtitle}</p>
       </div>
 
       {rows.length === 0 ? (
-        <Card>
+        // Capped, like the at-limit shape of the add-student screen: one sentence
+        // stretched across a laptop is a card that looks like a mistake.
+        <Card className="lg:max-w-2xl">
           <h2 className="font-semibold text-ink">{t.emptyTitle}</h2>
           <p className="mt-1 text-sm text-ink-soft">{t.emptyBody}</p>
         </Card>

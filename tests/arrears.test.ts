@@ -1,5 +1,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
+import { readFileSync } from 'node:fs'
+import path from 'node:path'
 
 import {
   arrearsPlan,
@@ -281,3 +283,156 @@ test('a typo the plan will refuse is still shown in the total', () => {
 test('nothing typed is a zero total, not an empty box on the screen', () => {
   assert.deepEqual(arrearsTyped([]), { filled: 0, total: 0 })
 })
+
+/* -------------------------------------------------------------------------- */
+/* And the screen's own shape                                                 */
+/* -------------------------------------------------------------------------- */
+
+const ROOT = path.join(import.meta.dirname, '..')
+const read = (...parts: string[]) => readFileSync(path.join(ROOT, ...parts), 'utf8')
+
+const PAGE = read('src', 'app', '(app)', 'fees', 'arrears', 'page.tsx')
+const FORM = read('src', 'app', '(app)', 'fees', 'arrears', 'arrears-form.tsx')
+
+/** From the form's own tag, so `border-2` in the two class consts is out of reach. */
+const RENDER = FORM.slice(FORM.indexOf('<form'))
+
+const SETTINGS_AT = RENDER.indexOf('<Card className="lg:col-span-12">')
+const LIST_AT = RENDER.indexOf('overflow-hidden rounded-2xl')
+/**
+ * Anchored on the whole `className="`, not on the class name: `ordersIn` and every span
+ * check below read from the quote, and a slice that begins at `lg:sticky` has already
+ * thrown away the four classes in front of it.
+ */
+const RAIL_AT = RENDER.indexOf(
+  '<div className="flex flex-col gap-4 lg:sticky lg:top-8 lg:col-span-4">',
+)
+const ROWS_AT = RENDER.indexOf('const ArrearsRows = memo(')
+
+const SETTINGS = RENDER.slice(SETTINGS_AT, LIST_AT)
+const LIST = RENDER.slice(LIST_AT, RAIL_AT)
+const RAIL = RENDER.slice(RAIL_AT, ROWS_AT)
+const ROWS = RENDER.slice(ROWS_AT)
+
+/** See plan-page.test.ts: the lookbehind keeps `border-2` and `lg:col-span-N` out. */
+function ordersIn(source: string): string[] {
+  return [...source.matchAll(/(?<=["\s`])order-(\d+|last)\b/g)].map((m) => m[1])
+}
+
+test('the boxes take eight columns and the figure four, and the figure stays put', () => {
+  assert.ok(SETTINGS_AT > 0, 'the month and the deadline are not one full-width card')
+  assert.ok(LIST_AT > SETTINGS_AT, 'the column of boxes is not written after them')
+  assert.ok(RAIL_AT > LIST_AT, 'the total is not written after the column')
+
+  assert.match(RENDER, /lg:grid lg:grid-cols-12 lg:items-start lg:gap-6/)
+  assert.match(LIST, /border border-line bg-white\s+lg:col-span-8/)
+  assert.match(RAIL, /flex flex-col gap-4 lg:sticky lg:top-8 lg:col-span-4/)
+
+  // The month and the deadline are two selects set once before any typing starts, so
+  // they go side by side rather than taking two lines of a full-width card.
+  assert.match(SETTINGS, /mt-4 grid gap-3 sm:grid-cols-2/)
+  assert.match(SETTINGS, /id="periodMonth"/)
+  assert.match(SETTINGS, /id="dueDay"/)
+
+  // Sticky from `lg` and not before it. A phone already has the shell's nav fixed to
+  // the bottom of the screen, and the figure is next to the button there anyway.
+  assert.doesNotMatch(RENDER, /(?<!lg:)sticky/)
+})
+
+test('no block is moved, because the source order is the order somebody types in', () => {
+  // The month, then the three hundred boxes, then the total and the button: that is the
+  // reading order, the tab order and the phone order all at once, so there is nothing
+  // for `order-N` to do. `order` moves neither a keyboard nor a screen reader, and this
+  // is the one screen in the product somebody sits and types into for twenty minutes.
+  assert.deepEqual(ordersIn(RENDER), [])
+  assert.doesNotMatch(RENDER, /lg:order-/)
+})
+
+test('the total is drawn once, beside the button, and is the tested arithmetic', () => {
+  assert.equal(RENDER.split('formatTaka(tally.total)').length - 1, 1)
+  assert.match(RAIL, /className="num text-3xl font-bold text-ink">\{formatTaka\(tally\.total\)\}/)
+  assert.match(RAIL, /\{fill\(t\.filledCount, \{ n: digits\(tally\.filled, locale\) \}\)\}/)
+  assert.match(RAIL, /type="submit"/)
+
+  // Read out of the DOM by the module the action's own plan comes from, so the figure
+  // checked before the press and the figure written by it cannot drift.
+  assert.match(FORM, /setTally\(arrearsTyped\(raws\)\)/)
+  assert.match(FORM, /if \(form\.current\) recount\(form\.current\)\n  \}, \[month\]\)/)
+  assert.doesNotMatch(LIST, /tally\./, 'the figure is drawn inside the column of boxes')
+})
+
+test('what the press came back with is drawn in the rail, not at the top', () => {
+  for (const branch of ['state?.error', 'state?.warn', 'state?.ok']) {
+    assert.ok(RAIL.includes(branch), `${branch} is not beside the button`)
+    assert.equal(RENDER.split(branch).length - 1, 1, `${branch} is drawn twice`)
+  }
+  assert.match(RAIL, /role="status"/)
+})
+
+test('the boxes stay uncontrolled and the column stays memoised', () => {
+  // The load-bearing decision in the file: three hundred boxes whose text lives in
+  // React state re-render the whole column on every keystroke, which on the phone this
+  // is built for is a visible stutter on the one screen an owner types into for twenty
+  // minutes. A `value=` or a `defaultValue=` on the box would undo it silently.
+  assert.match(ROWS, /<input\n\s+id=\{`\$\{ARREARS_FIELD_PREFIX\}\$\{row\.id\}`\}/)
+  assert.doesNotMatch(ROWS, /value=/, 'an amount box became controlled')
+  assert.match(FORM, /const ArrearsRows = memo\(function ArrearsRows\(/)
+
+  // And a fresh `{}` for a month with nothing in it would give the memo a new prop on
+  // every keystroke, which is the same bug arriving by the other road.
+  assert.match(RENDER, /taken=\{taken\[month\] \?\? NOTHING_TAKEN\}/)
+  assert.match(FORM, /onChange=\{\(e\) => recount\(e\.currentTarget\)\}/)
+})
+
+test('a slot that already holds a bill has a figure in it and no box', () => {
+  // One input in the file, and it is the amount. A disabled box would take an amount
+  // and drop it: the write leaves a taken slot alone, and `unique (enrollment_id,
+  // period_month)` is what makes pressing twice safe.
+  assert.equal(FORM.split('<input').length - 1, 1)
+  assert.match(ROWS, /\{held \? \(/)
+  assert.match(ROWS, /held\.cancelled \? billedCancelled : billed/)
+  assert.match(ROWS, /className="num w-28 shrink-0 text-right/)
+  assert.match(ROWS, /aria-label=\{fill\(amountFor, \{ name: row\.name \}\)\}/)
+})
+
+test('the letterhead says what the screen is, and the empty card is not a metre wide', () => {
+  // Both of them, counted rather than matched: the refused screen writes its own h1 and
+  // a mutation to either one leaves the other standing to answer for it.
+  assert.equal(
+    PAGE.split('className="text-xl font-semibold text-ink lg:text-2xl">{t.title}').length - 1,
+    2,
+  )
+  assert.equal(PAGE.split('{t.subtitle}').length - 1, 1)
+  assert.equal(PAGE.split('{t.backToFees}').length - 1, 2, 'a way back went missing')
+  assert.match(PAGE, /<Card className="lg:max-w-2xl">/)
+  assert.match(PAGE, /flex flex-col gap-4 lg:max-w-2xl/)
+})
+
+test('§38: the reads, the gate and the months are the ones that were there', () => {
+  assert.match(PAGE, /pageCapability\('fees'\)/)
+  // Deliberately ungated. A free-tier board reading zero while the teacher is owed
+  // nine thousand is a board that lies, and the argument for this screen is that the
+  // figure on the board is the figure in the owner's head.
+  assert.doesNotMatch(PAGE, /has\(session\.plan/, 'a plan gate appeared on the arrears screen')
+
+  assert.equal(PAGE.split('pageAll((from, to) =>').length - 1, 3)
+  assert.equal(PAGE.split(".eq('coaching_center_id', session.active.centerId)").length - 1, 3)
+  assert.match(PAGE, /\.eq\('status', 'active'\)/)
+  assert.match(PAGE, /\.in\('period_month', months\.map\(\(m\) => m\.value\)\)/)
+  assert.match(PAGE, /select\('enrollment_id, period_month, amount_bdt, voided_at'\)/)
+
+  // All three or none: a form built on a read that failed accepts an afternoon's
+  // typing and saves some of it.
+  assert.match(PAGE, /const problem = worstFailure\(enrollments, students, billed\)/)
+  assert.match(
+    PAGE,
+    /!\('rows' in enrollments\) \|\| !\('rows' in students\) \|\| !\('rows' in billed\)/,
+  )
+  assert.match(PAGE, /oldestEnrollments\(enrollments\.rows\)/)
+
+  // Backwards only, and never this month: a row in the current month's slot makes the
+  // invoice generator skip that family, so their real monthly fee is never billed.
+  assert.match(PAGE, /addMonths\(currentPeriodMonth\(\), -\(i \+ 1\)\)/)
+  assert.match(PAGE, /Array\.from\(\{ length: 12 \}/)
+})
+

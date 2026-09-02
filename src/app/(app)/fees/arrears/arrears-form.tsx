@@ -15,10 +15,10 @@
  * arithmetic can catch ৳30,000 typed for ৳3,000, and the cap in the action is the
  * column's ceiling rather than a guess at a plausible fee — so the thing that catches
  * a fat-fingered amount is an owner reading a figure they can compare against the
- * bottom of their own register. It sits next to the submit button rather than in a
- * sticky bar: the shell already fixes a nav to the bottom of the screen, and a second
- * fixed strip fighting it for the same forty pixels is worse than a figure that is
- * exactly where the button is.
+ * bottom of their own register. On a phone it sits next to the submit button and not in
+ * a strip fixed to the bottom, because the shell already fixes a nav there and a second
+ * one fighting it for the same forty pixels is worse than a figure that is exactly where
+ * the button is.
  *
  * ONE BOX PER STUDENT AND NO VISIBLE LABEL ON IT. The name is already the row, so a
  * label would print it twice; the box carries an `aria-label` instead, because a
@@ -26,6 +26,14 @@
  * hundred times. It is a bare input rather than the shared `Field` for both of those
  * reasons, and because `Field` derives its id from `name` — fine for one form, wrong
  * for a repeated row.
+ *
+ * TWO COLUMNS FROM `lg`, AND THE FIGURE STOPS SCROLLING AWAY. The boxes take eight of
+ * twelve columns and the total, the button and the two lines explaining what the write
+ * does sit in four beside them — stuck to the top of the screen, so the figure an owner
+ * is checking their register against is still in front of them at row two hundred
+ * instead of eight thousand pixels below it. Nothing moves on a phone: the month, then
+ * the column, then the total and the button under it, which is the order somebody types
+ * in and the order it is written in. That is why there is no `order-N` in this file.
  */
 import { memo, useActionState, useEffect, useRef, useState } from 'react'
 
@@ -129,20 +137,14 @@ export function ArrearsForm({
       ref={form}
       action={formAction}
       onChange={(e) => recount(e.currentTarget)}
-      className="flex flex-col gap-4"
+      className="flex flex-col gap-4 lg:grid lg:grid-cols-12 lg:items-start lg:gap-6"
     >
-      {state?.error && <Alert>{state.error}</Alert>}
-      {state?.warn && <Alert tone="warn">{state.warn}</Alert>}
-      {state?.ok && (
-        <p role="status" className="font-medium text-brand-700">
-          {state.ok}
-        </p>
-      )}
-
-      <Card>
+      <Card className="lg:col-span-12">
         <p className="text-sm text-ink-soft">{t.howTo}</p>
 
-        <div className="mt-4 flex flex-col gap-3">
+        {/* Side by side from sm. Two selects stacked is two lines of a form on a
+            screen with room for one, and both are set once before any typing starts. */}
+        <div className="mt-4 grid gap-3 sm:grid-cols-2 sm:gap-4">
           <div className="flex flex-col gap-1.5">
             <label htmlFor="periodMonth" className="font-medium text-ink">
               {t.month}
@@ -181,7 +183,10 @@ export function ArrearsForm({
         </div>
       </Card>
 
-      <div className="overflow-hidden rounded-2xl border border-line bg-white">
+      <div
+        className="overflow-hidden rounded-2xl border border-line bg-white
+          lg:col-span-8"
+      >
         <div className="flex items-center gap-3 border-b border-line bg-surface-alt px-4 py-2">
           <span className="min-w-0 flex-1 text-sm font-medium text-ink-soft">
             {t.colStudent}
@@ -199,34 +204,45 @@ export function ArrearsForm({
         />
       </div>
 
-      <Card>
-        <div className="flex items-baseline justify-between gap-3">
-          <span className="text-sm text-ink-soft">
-            {fill(t.filledCount, { n: digits(tally.filled, locale) })}
-          </span>
-          <span className="text-right">
-            <span className="block text-sm text-ink-soft">{t.total}</span>
-            <span className="block text-xl font-semibold text-ink">
-              {formatTaka(tally.total)}
+      {/*
+        THE RAIL, and from `lg` it does not scroll away with the column. The result of
+        the press is drawn here too, beside the button that caused it rather than at the
+        top of a screen whose bottom the owner is standing at.
+      */}
+      <div className="flex flex-col gap-4 lg:sticky lg:top-8 lg:col-span-4">
+        {state?.error && <Alert>{state.error}</Alert>}
+        {state?.warn && <Alert tone="warn">{state.warn}</Alert>}
+        {state?.ok && (
+          <p role="status" className="font-medium text-brand-700">
+            {state.ok}
+          </p>
+        )}
+
+        <Card>
+          <div className="flex items-baseline justify-between gap-3">
+            <span className="text-sm text-ink-soft">{t.total}</span>
+            <span className="text-sm text-ink-faint">
+              {fill(t.filledCount, { n: digits(tally.filled, locale) })}
             </span>
-          </span>
-        </div>
+          </div>
+          <p className="num text-3xl font-bold text-ink">{formatTaka(tally.total)}</p>
 
-        <div className="mt-4">
-          <Button type="submit" disabled={pending} full>
-            {pending ? common.creating : t.submit}
-          </Button>
-        </div>
+          <div className="mt-4">
+            <Button type="submit" disabled={pending} full>
+              {pending ? common.creating : t.submit}
+            </Button>
+          </div>
 
-        <p className="mt-3 text-sm text-ink-faint">{t.safeToRepeat}</p>
-        <p className="mt-2 text-sm text-ink-faint">{t.howToFix}</p>
-      </Card>
+          <p className="mt-3 text-sm text-ink-faint">{t.safeToRepeat}</p>
+          <p className="mt-2 text-sm text-ink-faint">{t.howToFix}</p>
+        </Card>
+      </div>
     </form>
   )
 }
 
 /**
- * The column itself, memoised away from the total that ticks above it.
+ * The column itself, memoised away from the total that ticks beside it.
  *
  * Every prop is stable between keystrokes — the rows and the label templates come from
  * the server, and `taken` is one of the server's month maps rather than a fresh object
@@ -268,7 +284,7 @@ const ArrearsRows = memo(function ArrearsRows({
                  (enrolment, month) and the write ignores a row whose slot is taken, so
                  a box here would take an amount and then quietly drop it. The figure
                  is shown because it is the thing the owner came to check. */
-              <span className="w-28 shrink-0 text-right text-sm text-ink-soft">
+              <span className="num w-28 shrink-0 text-right text-sm text-ink-soft">
                 {fill(held.cancelled ? billedCancelled : billed, {
                   amount: formatTaka(held.amount),
                 })}
