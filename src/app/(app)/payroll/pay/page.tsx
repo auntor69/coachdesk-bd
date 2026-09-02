@@ -456,7 +456,17 @@ export default async function PayrollPayPage({
                         {v.name ?? t.unknownName}
                         {v.job && <span className="block text-ink-faint">{v.job}</span>}
                       </Td>
-                      <Td num>{v.voucherNo}</Td>
+                      {/* The voucher number is the way to the payslip, and this is the
+                          only way in: the pay action answers with a finished sentence and
+                          no id, and every voucher of the month is already here. */}
+                      <Td num>
+                        <Link
+                          href={`/payroll/payslip/${v.id}`}
+                          className="font-medium text-brand-700 underline"
+                        >
+                          {v.voucherNo}
+                        </Link>
+                      </Td>
                       {/* The Dhaka calendar day, not the raw timestamp: `paid_at` comes
                           back in UTC, and 1 September at 2am there is 31 August here. */}
                       <Td num>{formatDate(todayInDhaka(new Date(v.paidAt)), locale)}</Td>

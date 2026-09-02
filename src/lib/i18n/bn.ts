@@ -2481,6 +2481,90 @@ export const bn = {
   },
 
   /**
+   * One salary handed over, as a piece of paper — §9.9's second printable.
+   *
+   * WHY IT NEEDS ITS OWN WORDS RATHER THAN THE FEE RECEIPT'S. A fee slip is read by a
+   * guardian and says money came in; this is read by the person who was paid and says money
+   * went out, and every label on it therefore points the other way. The one place they
+   * genuinely differ in kind is the signature: a fee receipt is signed by whoever took the
+   * cash, and a payslip is signed twice — once by the employee, which is the centre's only
+   * record that the salary actually left the building.
+   *
+   * THE BREAKDOWN LABELS ARE NOT salaryPayForm's, and the tense is why. That form says
+   * "কাটা যাবে" about a figure somebody is about to type; the paper says "কাটা হয়েছে"
+   * about money already gone. Reusing the form's words would put a future tense on a
+   * receipt.
+   */
+  payslip: {
+    title: 'বেতনের রসিদ',
+    voucherNo: 'ভাউচার নং',
+    date: 'তারিখ',
+    payee: 'কাকে দেওয়া হলো',
+    month: 'কোন মাসের বেতন',
+    /** Which building paid it, on the letterhead and only when the row names one. */
+    branch: 'শাখা',
+    method: 'কীভাবে',
+    reference: 'রেফারেন্স',
+    note: 'নোট',
+
+    /* What the salary was made of — printed only when there is more than one part to it. */
+    basic: 'মূল বেতন',
+    allowances: 'ভাতা',
+    other: 'অন্যান্য',
+    gross: 'সর্বমোট',
+    deductions: 'কাটা হয়েছে',
+    amount: 'বেতনের পরিমাণ',
+
+    /**
+     * The same sheet when the money came back, which is the only way a mistake is undone:
+     * 20260811000044 revokes DELETE, so a wrong figure is corrected by a second row with a
+     * minus amount. Without these three the slip for that row would be a "বেতনের রসিদ"
+     * for money the centre took back — the one document the employee keeps, saying the
+     * opposite of what happened. The figure is printed unsigned and the words carry the
+     * direction, exactly as on a refunded fee receipt.
+     */
+    reversalTitle: 'বেতনের সংশোধনী',
+    reversalAmount: 'ফেরত নেওয়া টাকা',
+    reversalFootNote:
+      'এটি কম্পিউটারে তৈরি সংশোধনীর রসিদ। আগে লেখা বেতনের একটি ভুল অঙ্ক এই ভাউচার দিয়ে ফেরত দেখানো হয়েছে — হিসাবের সঙ্গে যত্ন করে রাখুন।',
+
+    /**
+     * The month up to this voucher, drawn only when this is not the whole of it.
+     *
+     * A centre paying half a salary on the ৫ তারিখ and half on the ২০ তারিখ writes two real
+     * rows, and 20260811000044 deliberately refuses to stop it. So a slip for ৳৬,৫০০ handed
+     * to somebody who has had ৳১৩,০০০ for the month is incomplete in the exact way that
+     * starts an argument — and this is the line that closes it. "এ পর্যন্ত" because the
+     * figure is frozen at this voucher and never moves again.
+     */
+    monthTotal: (n: number) => `এ পর্যন্ত এই মাসে মোট, ${n} বারে`,
+    monthUnreadable:
+      'এই মাসের বাকি ভাউচারগুলো এখন পড়া গেল না, তাই মাসের মোট দেখানো হয়নি। এই ভাউচারের অঙ্ক ঠিক আছে।',
+
+    /**
+     * Two signatures, and the first is the one that matters to the centre.
+     *
+     * "গ্রহণকারীর" is the employee: the office copy carrying their signature is the only
+     * proof the centre has that the cash was actually handed over, and no database column
+     * can hold it. Both lines are left blank for a pen — a printed name is what a person
+     * learns not to trust.
+     */
+    receivedBy: 'গ্রহণকারীর স্বাক্ষর',
+    paidBy: 'প্রদানকারীর স্বাক্ষর',
+
+    employeeCopy: 'কর্মীর কপি',
+    officeCopy: 'অফিস কপি',
+    cutHere: 'এখানে কেটে নিন',
+    print: 'প্রিন্ট করুন',
+    backToMonth: 'মাসের বেতনে ফিরুন',
+    footNote:
+      'এটি কম্পিউটারে তৈরি বেতনের রসিদ। বেতন পাওয়ার প্রমাণ হিসেবে যত্ন করে রাখুন।',
+    /** See en.payslip.unreadable — it says the payment is safe before anything else. */
+    unreadable:
+      'ভাউচারটি এখন পড়া গেল না, তাই রসিদ দেখানো হয়নি। বেতন লেখা হয়েছে, মুছে যায়নি — একটু পরে আবার চেষ্টা করুন।',
+  },
+
+  /**
    * The column headings inside the downloaded spreadsheets, and the few cells that
    * hold a word rather than a number.
    *

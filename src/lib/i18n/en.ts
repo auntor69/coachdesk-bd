@@ -1341,6 +1341,59 @@ export const en: Dictionary = {
       'A wrong figure cannot be deleted once saved — it is put right by recording a second payment as a minus amount.',
   },
 
+  /** See the Bangla for why a payslip cannot borrow the fee receipt's words. */
+  payslip: {
+    title: 'Payslip',
+    voucherNo: 'Voucher no.',
+    date: 'Date',
+    payee: 'Paid to',
+    month: 'Salary for',
+    branch: 'Branch',
+    method: 'How',
+    reference: 'Reference',
+    note: 'Note',
+
+    basic: 'Basic',
+    allowances: 'Allowances',
+    other: 'Other',
+    gross: 'Gross',
+    deductions: 'Deducted',
+    amount: 'Amount paid',
+
+    /** The same sheet when the money came back — see the Bangla. */
+    reversalTitle: 'Salary correction',
+    reversalAmount: 'Amount taken back',
+    reversalFootNote:
+      'This is a computer-generated correction voucher. It reverses a wrong figure recorded earlier — please keep it with your accounts.',
+
+    /** See the Bangla: “up to this voucher”, and only when this is not the whole month. */
+    monthTotal: (n: number) => `Total for the month so far, in ${n} payments`,
+    monthUnreadable:
+      'The other vouchers for this month could not be read just now, so the month’s total is not shown. The figures on this voucher are correct.',
+
+    receivedBy: 'Received by',
+    paidBy: 'Paid by',
+
+    employeeCopy: 'Employee’s copy',
+    officeCopy: 'Office copy',
+    cutHere: 'Cut here',
+    print: 'Print',
+    backToMonth: 'Back to the month’s salaries',
+    footNote:
+      'This is a computer-generated payslip. Please keep it as proof that this salary was paid.',
+    /**
+     * The voucher itself, when it could not be read — which `notFound()` was answering for
+     * as well, and on this screen that 404 renders as “we could not find that page”.
+     *
+     * It says the payment is saved before it says anything else, for the fee receipt's
+     * reason turned around: `salary_payments` revokes DELETE, so a payslip that appears to
+     * have vanished is the app appearing to break a promise it cannot break — and what an
+     * owner does next is pay the salary again, on a table that will happily record it twice.
+     */
+    unreadable:
+      'This voucher could not be read just now, so the payslip is not shown. The payment is saved and has not been removed — please try again in a moment.',
+  },
+
   /** See the Bangla for why the headings are translated and the values are not. */
   exportSheet: {
     colCode: 'ID',
