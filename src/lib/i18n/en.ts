@@ -4538,6 +4538,23 @@ export const en: Dictionary = {
     paymentSavedMonth: (amount: string, month: string) =>
       `Recorded ${amount} — for ${month}.`,
     planSaved: (plan: string, state: string) => `Now ${plan} · ${state}.`,
+    /**
+     * A credit, composed on the server because it carries a figure and the group below is
+     * string-leaves-only.
+     *
+     * "Credited" rather than "refunded", and the difference is real: this row says we owe
+     * the money, not that it has gone back. Whether it went over bKash or comes off the
+     * next purchase is the founder's sentence in the reason box, and the total is net of
+     * it either way.
+     */
+    creditSaved: (amount: string) => `Credited ${amount} back to them.`,
+    /**
+     * The floor, in words. Names what they have paid because that is the number the
+     * founder has to work with — a credit larger than it would leave our own books saying
+     * this centre gave us money they never gave us, and nothing can delete the row.
+     */
+    creditTooMuch: (paid: string) =>
+      `This centre has paid ${paid} in total. A credit cannot be more than that.`,
     tooMuch: (max: string) =>
       `More than ${max} at once is not allowed. Check the figure again.`,
     overLimit: (plan: string) =>
@@ -4557,6 +4574,17 @@ export const en: Dictionary = {
       note: 'Note',
       pay: 'Record payment',
       paying: 'Recording…',
+      creditTitle: 'Credit them back',
+      creditHint:
+        'Money we owe them — a downgrade part-way through, or a figure entered wrong. '
+        + 'It comes off what they have paid us. It cannot be undone.',
+      creditAmount: 'Amount to credit',
+      creditAmountHint: 'A positive figure. It is recorded as money going out.',
+      creditReason: 'Why',
+      creditReasonHint: 'Required. Say what was agreed — nobody can add this later.',
+      credit: 'Record credit',
+      crediting: 'Recording…',
+      badReason: 'Say why this credit was given. It cannot be added later.',
       planTitle: 'Plan and status',
       plan: 'Plan',
       state: 'Status',

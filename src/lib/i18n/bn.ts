@@ -6959,6 +6959,15 @@ export const bn = {
     paymentSavedMonth: (amount: string, month: string) =>
       `${amount} লেখা হয়েছে — ${month}-এর জন্য।`,
     planSaved: (plan: string, state: string) => `এখন ${plan} · ${state}।`,
+    /**
+     * A credit. "ফেরত দেওয়ার কথা" rather than "ফেরত দেওয়া হয়েছে" — the row records the
+     * debt, not that the money has moved; whether it went over bKash or comes off the
+     * next purchase is what the reason box says.
+     */
+    creditSaved: (amount: string) => `${amount} ওদের পাওনা হিসেবে লেখা হয়েছে।`,
+    /** The floor, naming what they have paid, because that is the figure to work with. */
+    creditTooMuch: (paid: string) =>
+      `এই সেন্টার মোট ${paid} দিয়েছে। এর চেয়ে বেশি পাওনা লেখা যাবে না।`,
     tooMuch: (max: string) =>
       `একবারে ${max}-এর বেশি লেখা যাবে না। অঙ্কটা আরেকবার দেখুন।`,
     overLimit: (plan: string) =>
@@ -6986,6 +6995,22 @@ export const bn = {
       note: 'নোট',
       pay: 'পেমেন্ট লিখুন',
       paying: 'লেখা হচ্ছে…',
+      creditTitle: 'পাওনা ফেরত লিখুন',
+      /**
+       * Said in full because this is the one form on the card that takes money off our
+       * own books and no screen can undo it.
+       */
+      creditHint:
+        'আমরা যা ওদের পাওনা — মাঝপথে ছোট প্ল্যানে নামা, বা ভুল অঙ্ক লেখা। '
+        + 'ওদের দেওয়া মোট টাকা থেকে এটা বাদ যাবে। পরে বদলানো যাবে না।',
+      creditAmount: 'কত টাকা পাওনা',
+      /** The sign is put on by the server; the founder types a plain figure. */
+      creditAmountHint: 'সাধারণ অঙ্ক লিখুন। টাকা বেরিয়ে যাওয়া হিসেবেই লেখা হবে।',
+      creditReason: 'কেন',
+      creditReasonHint: 'লিখতেই হবে। কী কথা হয়েছিল লিখুন — পরে কেউ যোগ করতে পারবে না।',
+      credit: 'পাওনা লিখুন',
+      crediting: 'লেখা হচ্ছে…',
+      badReason: 'কেন এই পাওনা, সেটা লিখুন। পরে আর যোগ করা যাবে না।',
       planTitle: 'প্ল্যান ও অবস্থা',
       plan: 'প্ল্যান',
       state: 'অবস্থা',

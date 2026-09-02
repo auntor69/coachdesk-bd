@@ -1,8 +1,8 @@
 'use client'
 
 /**
- * The two things the founder does to a customer: record what they paid, and set what
- * they are on.
+ * The three things the founder does to a customer: record what they paid, credit back
+ * what we owe them, and set what they are on.
  *
  * BEHIND A DISCLOSURE because the customer list is a list. Every card on /founder is
  * something the founder reads — the bill, the usage, whether the centre has gone quiet
@@ -10,11 +10,17 @@
  * two open forms each is a screen nobody can scan, and scanning is what that page is
  * for.
  *
- * ONE DISCLOSURE, TWO FORMS, and that is not a detail. They are separate `<form>`
+ * ONE DISCLOSURE, THREE FORMS, and that is not a detail. They are separate `<form>`
  * elements posting to separate Server Actions, so the plan `<select>` cannot ride along
  * on a payment: a founder taking ৳1,999 from a Pro teacher while the dropdown happens
  * to read "Centre" would otherwise have trebled that customer's bill without touching
  * it. See the note at the top of ./actions.ts.
+ *
+ * THE CREDIT IS THE THIRD FORM AND NOT A MINUS SIGN ON THE FIRST. Both write the same
+ * table and 20260811000074 tells them apart by the sign, which is exactly why a founder
+ * must not be able to choose it: one mis-tapped control on a shared form turns ৳1,999
+ * arriving into ৳1,999 going out, on a row nothing can delete. Two forms, one direction
+ * each, and the sign is applied on the server.
  *
  * EVERY DYNAMIC SENTENCE IS COMPOSED ON THE SERVER. `words` is strings only — no
  * functions, so the whole group crosses the boundary as-is — and anything with a taka
@@ -30,7 +36,12 @@ import { mintIdempotencyKey } from '@/lib/idempotency'
 import { MAX_LABEL, MAX_TEXT } from '@/lib/limits'
 import type { CenterStatus, PaymentMethod } from '@/lib/supabase/types'
 import type { PlanId } from '@/lib/plans'
-import { recordCenterPayment, setCenterPlan, type FounderState } from './actions'
+import {
+  creditCenterPayment,
+  recordCenterPayment,
+  setCenterPlan,
+  type FounderState,
+} from './actions'
 
 /**
  * Labels for both forms.
@@ -54,6 +65,15 @@ export type BillingWords = {
   note: string
   pay: string
   paying: string
+  creditTitle: string
+  creditHint: string
+  creditAmount: string
+  creditAmountHint: string
+  creditReason: string
+  creditReasonHint: string
+  credit: string
+  crediting: string
+  badReason: string
   planTitle: string
   plan: string
   state: string
@@ -122,7 +142,12 @@ export function CenterBilling({
     setCenterPlan,
     null,
   )
+  const [creditState, creditAction, crediting] = useActionState<FounderState, FormData>(
+    creditCenterPayment,
+    null,
+  )
   const payForm = useRef<HTMLFormElement>(null)
+  const creditForm = useRef<HTMLFormElement>(null)
 
   /**
    * A DOM id that is unique across the whole list, and it has to be.
@@ -147,6 +172,13 @@ export function CenterBilling({
    * two different uuids for the same markup, so this value cannot come out of render.
    */
   const keyRef = useRef<HTMLInputElement>(null)
+  /**
+   * The credit's own token, because a credit and a receipt are different rows and the
+   * unique index is on the key alone. Sharing one input would mean a founder who records
+   * a payment and then credits some of it back gets the second write silently refused as
+   * a replay of the first.
+   */
+  const creditKeyRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
     // Clear the amount once it is recorded. `disabled={paying}` is what stops a double
@@ -163,6 +195,15 @@ export function CenterBilling({
     const input = keyRef.current
     if (input && (payState?.ok || !input.value)) input.value = mintIdempotencyKey()
   }, [payState])
+
+  // The same two steps for the credit, for the same reason: a form still holding ৳4,000
+  // after ৳4,000 was credited is one stray tap from crediting it twice, and nothing in
+  // this product can delete either row.
+  useEffect(() => {
+    if (creditState?.ok) creditForm.current?.reset()
+    const input = creditKeyRef.current
+    if (input && (creditState?.ok || !input.value)) input.value = mintIdempotencyKey()
+  }, [creditState])
 
   return (
     <details className="mt-3 border-t border-line pt-2">
@@ -271,6 +312,81 @@ export function CenterBilling({
 
           <Button type="submit" disabled={paying} full>
             {paying ? words.paying : words.pay}
+          </Button>
+        </form>
+
+        {/* ------------------------------------------------------------------ */}
+        {/* The credit                                                         */}
+        {/* ------------------------------------------------------------------ */}
+        <form
+          ref={creditForm}
+          action={creditAction}
+          className="flex flex-col gap-3 border-t border-line pt-4"
+        >
+          <input type="hidden" name="centerId" value={centerId} />
+          <input type="hidden" name="idempotencyKey" ref={creditKeyRef} />
+          <p className="font-semibold text-ink">{words.creditTitle}</p>
+          {/* Said above the fields rather than under the button: what this form does is
+              take money off our own books permanently, and a warning read after the tap
+              is a warning nobody read. */}
+          <p className="text-sm text-ink-soft">{words.creditHint}</p>
+
+          {creditState?.error && <Alert>{creditState.error}</Alert>}
+          {creditState?.ok && (
+            <p role="status" className="font-medium text-brand-700">
+              {creditState.ok}
+            </p>
+          )}
+
+          <Field
+            label={words.creditAmount}
+            hint={words.creditAmountHint}
+            id={fid('creditAmount')}
+            name="amount"
+            type="text"
+            inputMode="decimal"
+            required
+            maxLength={12}
+            className="num"
+          />
+
+          <Select
+            label={words.method}
+            id={fid('creditMethod')}
+            name="method"
+            defaultValue="bkash"
+          >
+            {(Object.keys(methods) as PaymentMethod[]).map((m) => (
+              <option key={m} value={m}>
+                {methods[m]}
+              </option>
+            ))}
+          </Select>
+
+          {/* `required` here as well as at the table and in the action. The constraint
+              is what makes the rule true; this is what stops the founder losing a typed
+              reason to a round trip. */}
+          <Field
+            label={words.creditReason}
+            hint={words.creditReasonHint}
+            id={fid('creditReason')}
+            name="reason"
+            required
+            maxLength={MAX_TEXT}
+          />
+
+          <Field
+            label={words.reference}
+            hint={words.referenceHint}
+            id={fid('creditReference')}
+            name="reference"
+            placeholder="8N7A6B5C4D"
+            maxLength={MAX_LABEL}
+            className="num"
+          />
+
+          <Button type="submit" variant="secondary" disabled={crediting} full>
+            {crediting ? words.crediting : words.credit}
           </Button>
         </form>
 

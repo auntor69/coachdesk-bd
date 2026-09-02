@@ -82,7 +82,7 @@ import { dict, DEFAULT_LOCALE } from '@/lib/i18n'
 import { passwordTooShort } from '@/lib/i18n/messages'
 import { readIdempotencyKey, UNIQUE_VIOLATION } from '@/lib/idempotency'
 import { MAX_LABEL, MAX_TEXT, clamp } from '@/lib/limits'
-import { formatTaka, parseTaka } from '@/lib/money'
+import { formatTaka, parseTaka, sumTaka } from '@/lib/money'
 import {
   PLANS,
   planFor,
@@ -118,6 +118,15 @@ export type FounderState = {
  * array behind both so there is nothing left to forget. See @/lib/fees/methods.
  */
 const METHODS = new Set<PaymentMethod>(PAYMENT_METHODS)
+
+/**
+ * The Postgres code for a CHECK constraint or a trigger raising with it.
+ *
+ * Local rather than beside UNIQUE_VIOLATION in lib/idempotency.ts, which is about one
+ * tap being one payment and has nothing to say about arithmetic. One credit path reads
+ * it, and it reads it to name the floor in 20260811000074.
+ */
+const CHECK_VIOLATION = '23514'
 
 const PLAN_IDS = new Set<PlanId>(Object.keys(PLANS) as PlanId[])
 
@@ -307,6 +316,136 @@ export async function recordCenterPayment(
   return center.status === 'active'
     ? { ok: receipt }
     : { ok: receipt, warn: words.notActive }
+}
+
+/**
+ * Records a credit: money we owe a centre back.
+ *
+ * WHY THIS EXISTS. §15 had a move down a tier and a move taken mid-way through paid
+ * coverage as phone calls, and the reason was arithmetic rather than product design —
+ * both owe the customer the difference, and `payments.amount_bdt` was positive by check
+ * until 20260811000074. A negative row on the same table is the whole mechanism: the
+ * netted sum per centre is what we have actually been paid, so a credit handed back over
+ * bKash and a credit taken off the next purchase are the same row now and a full-price
+ * receipt later.
+ *
+ * ITS OWN ACTION, for the reason there are two forms rather than one: a sign is the
+ * easiest thing in the world to get wrong on a shared form, and the founder should not be
+ * one mis-tapped radio button away from recording ৳1,999 arriving as ৳1,999 going out.
+ * The form posts a positive figure and the sign is put on here, so a browser cannot
+ * choose the direction of the money at all.
+ *
+ * WHAT IT REFUSES TO SEND. No coverage window and no intent, both of which
+ * 20260811000074 also refuses at the table — see that migration on why a credit that
+ * could name a period would be free access forever, and why one pointing at a purchase
+ * would print as a sheet selling places back.
+ *
+ * THE REASON IS REQUIRED, here and at the table. This row cannot be edited or deleted, so
+ * an unexplained credit is a figure nobody can ever account for; the note is the only
+ * part of it that says what was agreed.
+ */
+export async function creditCenterPayment(
+  _prev: FounderState,
+  formData: FormData,
+): Promise<FounderState> {
+  const gate = await founder()
+  if (!isSession(gate)) return gate
+
+  const session = gate
+  const t = dict(session.locale).founder
+  const words = t.money
+
+  const centerId = String(formData.get('centerId') ?? '')
+  if (!centerId) return { error: words.noCenter }
+
+  // Positive on the way in and negated below. A form that could post a minus sign is a
+  // form that could record a payment as a credit by accident.
+  const amount = parseTaka(String(formData.get('amount') ?? ''))
+  if (amount === null || amount <= 0) return { error: words.badAmount }
+  if (amount > MAX_CENTER_PAYMENT_BDT) {
+    return { error: t.tooMuch(formatTaka(MAX_CENTER_PAYMENT_BDT)) }
+  }
+
+  // Which rail it went back on, or `cash` where it was handed over. The same closed list
+  // the receipt form uses.
+  const method = String(formData.get('method') ?? 'bkash') as PaymentMethod
+  if (!METHODS.has(method)) return { error: words.badMethod }
+
+  const reason = clamp(String(formData.get('reason') ?? '').trim(), MAX_TEXT)
+  if (!reason) return { error: words.badReason }
+
+  const reference = clamp(String(formData.get('reference') ?? '').trim(), MAX_LABEL)
+  const key = readIdempotencyKey(formData.get('idempotencyKey'))
+
+  const admin = createAdminClient(session.userId)
+
+  // scoped-by: the founder panel is every centre by definition; requirePlatformAdmin
+  // above is the gate and the id came from the list it rendered.
+  const { data: center } = await admin
+    .from('coaching_centers')
+    .select('id, name')
+    .eq('id', centerId)
+    .maybeSingle()
+
+  if (!center) return { error: words.noCenter }
+
+  /*
+   * What they have paid, read before the write so the refusal can name the figure.
+   *
+   * The floor is 20260811000074's trigger and this is not it: the trigger holds under
+   * two credits landing together and this read cannot. It is here because "৳4,000 is more
+   * than the ৳1,999 this centre has paid us" is a sentence a founder can act on and
+   * `23514` is not. The trigger is still what makes the rule true.
+   *
+   * scoped-by: filtered to the one centre below; the admin client has no session to
+   * scope to.
+   */
+  const { data: paidRows } = await admin
+    .from('payments')
+    .select('amount_bdt')
+    .eq('coaching_center_id', centerId)
+
+  const paid = sumTaka((paidRows ?? []).map((r) => Number(r.amount_bdt)))
+  if (paidRows && amount > paid) return { error: t.creditTooMuch(formatTaka(paid)) }
+
+  // scoped-by: coaching_center_id is written on the row below.
+  const { error } = await admin.from('payments').insert({
+    coaching_center_id: centerId,
+    // The sign, applied once, on the server.
+    amount_bdt: -amount,
+    method,
+    reference: reference || null,
+    // Not sent rather than sent as null: 20260811000074 refuses both, and leaving them
+    // out is the version that cannot be turned into a value by an edit further up.
+    note: reason,
+    recorded_by: session.userId,
+    idempotency_key: key,
+  })
+
+  if (error) {
+    // The unique index in 20260811000025 refusing a replay of a submit already recorded,
+    // which is a success. Guarded on `key`, because without one that index cannot fire.
+    if (key && error.code === UNIQUE_VIOLATION) {
+      const { data: existing } = await admin
+        .from('payments')
+        .select('amount_bdt')
+        .eq('coaching_center_id', centerId)
+        .eq('idempotency_key', key)
+        .maybeSingle()
+
+      if (!existing || Number(existing.amount_bdt) !== -amount) return { error: words.failed }
+    } else if (error.code === CHECK_VIOLATION) {
+      // The floor, having lost the race the read above wins on its own. Every other
+      // check on this row is satisfied by construction here — no window, no intent, a
+      // reason that is not blank — so 23514 can only be the netted total.
+      return { error: t.creditTooMuch(formatTaka(paid)) }
+    } else {
+      return { error: words.failed }
+    }
+  }
+
+  revalidatePath('/founder')
+  return { ok: t.creditSaved(formatTaka(amount)) }
 }
 
 /**
