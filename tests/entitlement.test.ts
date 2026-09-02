@@ -662,3 +662,41 @@ test('entitlement.ts stays importable from a client component', () => {
   )
   assert.match(source, /import type \{ CenterStatus \} from '\.\/supabase\/types\.ts'/)
 })
+
+/*
+ * The one write that ends a trial, checked where the reads of it are.
+ *
+ * Everything above resolves a trial that is *there*; §4.3 has the founder clearing the
+ * pair when a customer pays, and `setCenterPlan` is the only code that does. Nothing
+ * else in the repo would notice it stopping: a stale pair cannot demote anybody, so the
+ * symptom is a centre quietly holding a tier nobody agreed for however long the old
+ * `trial_ends_at` said — which is exactly the shape of failure no test catches by
+ * accident.
+ */
+test('the founder’s plan form ends a trial the customer has just answered', () => {
+  const source = readFileSync(
+    path.join(import.meta.dirname, '..', 'src', 'app', 'founder', 'actions.ts'),
+    'utf8',
+  )
+  const body = source.slice(source.indexOf('export async function setCenterPlan'))
+  const update = body.slice(body.indexOf('.update('), body.indexOf(".eq('id', centerId)"))
+
+  // Keyed on what the tier costs, not on which tier it is, so a paid teacher tier added
+  // tomorrow clears the pair by being paid for rather than by being listed here.
+  assert.match(update, /limits\.pricing === 'free'/)
+
+  const arms = [...update.matchAll(/\{[^{}]*\}/g)].map((m) => m[0])
+  assert.equal(arms.length, 2, 'setCenterPlan no longer writes two shapes of row')
+  const [free, paid] = arms
+
+  // The free arm touches neither column. `bootstrap_center` starts every signup on a
+  // fortnight of Plus, so an unconditional clear would take it off a three-day-old
+  // centre whose status the founder was correcting.
+  assert.doesNotMatch(free, /trial_/)
+
+  // Both halves on the paid arm, because coaching_centers_trial_pair refuses one
+  // without the other — clearing only the plan is a constraint violation, and clearing
+  // only the date is a permanent grant.
+  assert.match(paid, /trial_plan: null/)
+  assert.match(paid, /trial_ends_at: null/)
+})
