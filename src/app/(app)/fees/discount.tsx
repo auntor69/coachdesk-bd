@@ -32,22 +32,48 @@
  * THE CONFIRMATION STAYS ON SCREEN, like the refund panel's and unlike the cancel step's:
  * a discounted invoice is still on the board, so this component survives the revalidation
  * and can say what the bill is now worth.
+ *
+ * THREE WAYS TO SAY ONE WAIVER, since 20260811000069, chosen by one select above the box.
+ * Taka is the default and is what this panel has always done. A share reads the same box
+ * as a percentage. An award carries its own rule, so the box disappears — asking "how
+ * much" after the owner has said "merit 50%" is asking the same question twice, and the
+ * two answers could differ.
+ *
+ * THE PREVIEW IS THE SAME ARITHMETIC THE SERVER USES, not an approximation of it:
+ * `percentWaiver` and `ruleWaiver` are the functions the Server Action calls, and the
+ * check constraint under it holds the same figure to the poisha. What the owner reads
+ * before they save is what the bill will say afterwards.
  */
 import { useActionState, useState } from 'react'
+import Link from 'next/link'
 
 import { Alert, Button, Field } from '@/components/ui'
 import { maxDiscount, netAfterDiscount } from '@/lib/fees/discount'
+import {
+  awardBasis,
+  percentWaiver,
+  ruleWaiver,
+  type Award,
+} from '@/lib/fees/scholarship'
 import { MAX_TEXT } from '@/lib/limits'
 import type { T } from '@/lib/i18n'
 import { fill } from '@/lib/i18n/fill'
 import { formatTaka as taka, parseTaka } from '@/lib/money'
 import { discountInvoice, type FeeState } from './actions'
 
+/** The expense form's select, to the pixel: one control, one look. */
+const SELECT_CLASS =
+  'min-h-tap rounded-xl border-2 border-line bg-white px-4 text-base outline-none' +
+  ' focus:border-brand-500'
+
 export function DiscountBill({
   invoiceId,
   billed,
   discount,
   voidedAt,
+  awards,
+  scholarshipId,
+  discountPercent,
   t,
   common,
 }: {
@@ -65,6 +91,19 @@ export function DiscountBill({
    * anybody can see; the panel says so rather than hiding the control.
    */
   voidedAt: string | null
+  /**
+   * The centre's awards that are still in use, read once by the board and handed to
+   * every row. Empty is the normal state on a centre that has not named any, and the
+   * select then offers only the two plain ways — no empty group, no dead option.
+   */
+  awards: Award[]
+  /**
+   * `scholarship_id` and `discount_percent` off the bill, so the panel opens at the way
+   * the waiver was last said rather than at taka. Same argument as the prefilled figure:
+   * an owner opening a bill labelled "merit 50%" is changing that, not starting again.
+   */
+  scholarshipId: string | null
+  discountPercent: number | null
   t: T<'discount'>
   common: T<'common'>
 }) {
@@ -74,22 +113,59 @@ export function DiscountBill({
   )
   const [asking, setAsking] = useState(false)
 
+  /*
+   * Which of the three ways the panel opens at.
+   *
+   * A retired award is not in `awards`, so a bill it labelled falls back to its stored
+   * share — or to taka, which is always a way of saying the same figure. Nothing here can
+   * select an option the select does not contain, which would leave the box blank and the
+   * form claiming taka.
+   */
+  const stored =
+    scholarshipId && awards.some((award) => award.id === scholarshipId)
+      ? awardBasis(scholarshipId)
+      : discountPercent !== null
+        ? 'percent'
+        : 'taka'
+
+  const [basis, setBasis] = useState(stored)
+  const picked = awards.find((award) => awardBasis(award.id) === basis) ?? null
+  const asShare = basis === 'percent'
+
   /**
    * What the owner has typed, so the "what will be left" line can follow the keystrokes.
    *
    * Controlled rather than read on submit, because the whole argument for this panel is
-   * that the consequence of the figure is visible before it is stored. Starts at the
-   * stored waiver, and `''` for no waiver rather than `'0'` — a box containing a zero
-   * invites an owner to type after it and send 0500.
+   * that the consequence of the figure is visible before it is stored. Starts at whatever
+   * the bill already says in the units the select opened in, and `''` for nothing rather
+   * than `'0'` — a box containing a zero invites an owner to type after it and send 0500.
    */
-  const [typed, setTyped] = useState(discount > 0 ? String(discount) : '')
+  const [typed, setTyped] = useState(
+    stored === 'percent' && discountPercent !== null
+      ? String(discountPercent)
+      : stored === 'taka' && discount > 0
+        ? String(discount)
+        : '',
+  )
 
   // The same parser the Server Action uses, so the preview and the stored figure cannot
   // disagree about what "১,৫০০" means. `null` while the box is empty or halfway through
   // a number, which previews the bill as it stands.
   const wanted = parseTaka(typed)
   const ceiling = maxDiscount(billed)
-  const left = netAfterDiscount(billed, wanted ?? 0)
+
+  /*
+   * What is actually going to be waived, by the same functions the server calls — so the
+   * line under the box is not a second opinion. A broken award's `null` previews as
+   * nothing, which is also what the write refuses.
+   */
+  const waiver = picked
+    ? (ruleWaiver(picked, billed) ?? 0)
+    : asShare
+      ? percentWaiver(billed, wanted ?? 0)
+      : (wanted ?? 0)
+
+  const left = netAfterDiscount(billed, waiver)
 
   if (!asking) {
     return (
@@ -154,27 +230,91 @@ export function DiscountBill({
           )}
         </div>
 
-        <Field
-          label={t.amount}
-          id={`discount-amount-${invoiceId}`}
-          name="amount"
-          // Not type="number", for the reason the payment and refund fields give: it
-          // strips a thousands separator and refuses Bangla digits, and parseTaka takes
-          // both.
-          type="text"
-          inputMode="decimal"
-          required
-          maxLength={12}
-          className="num"
-          value={typed}
-          onChange={(event) => setTyped(event.target.value)}
-        />
+        {/* How the figure is being said, above the box that says it — because it decides
+            what the box means, and a control that changes a field's meaning has to come
+            first. Taka is the default and is what this panel has always done, so an owner
+            who never touches this select gets exactly the behaviour they know. */}
+        <label className="flex flex-col gap-1.5">
+          <span className="font-medium text-ink">{t.basis}</span>
+          <select
+            name="basis"
+            value={basis}
+            // The box means something different afterwards, so whatever is in it is
+            // wrong: "500" read as a share is 500%, and a percentage read as taka is a
+            // waiver of five hundred. Cleared rather than converted, because converting
+            // would be this panel deciding what the owner meant.
+            onChange={(event) => {
+              setBasis(event.target.value)
+              setTyped('')
+            }}
+            className={SELECT_CLASS}
+          >
+            <option value="taka">{t.basisTaka}</option>
+            <option value="percent">{t.basisPercent}</option>
+            {/* The centre's own awards, each labelled with its rule — "মেধাবৃত্তি (৫০%)"
+                — so picking one is picking a figure and not a word. Absent entirely on a
+                centre that has named none, which is every centre's first month. */}
+            {awards.map((award) => (
+              <option key={award.id} value={awardBasis(award.id)}>
+                {award.name}
+                {award.percent !== null
+                  ? ` (${award.percent}%)`
+                  : ` (${taka(award.amountBdt ?? 0)})`}
+              </option>
+            ))}
+          </select>
+        </label>
+
+        {/* Where the list is, said here because this select is where an owner first wants
+            one — a centre with no awards named sees two plain options and no hint that
+            naming is possible. Its own line rather than inside the label, so the tap
+            target does not sit on top of the control. */}
+        <Link
+          href="/fees/scholarships"
+          className="inline-flex min-h-tap items-center self-start text-sm
+            text-ink-faint underline"
+        >
+          {t.manageAwards} →
+        </Link>
+
+        {/* The box, for the two ways that need a figure. Gone rather than disabled when an
+            award is picked: the award carries its own rule, and a second answer to the
+            same question is a second answer the constraint would refuse. Being unmounted
+            is also what takes its `required` out of the way. */}
+        {!picked && (
+          <Field
+            label={asShare ? t.share : t.amount}
+            id={`discount-amount-${invoiceId}`}
+            name="amount"
+            // Not type="number", for the reason the payment and refund fields give: it
+            // strips a thousands separator and refuses Bangla digits, and parseTaka takes
+            // both.
+            type="text"
+            inputMode="decimal"
+            required
+            maxLength={12}
+            className="num"
+            value={typed}
+            onChange={(event) => setTyped(event.target.value)}
+          />
+        )}
+
+        {/* In its place, what the award comes to on this bill. The owner picked a name;
+            this is the name turning into money before they save it. */}
+        {picked && (
+          <p className="num text-sm text-ink-soft" aria-live="polite">
+            {fill(waiver > 0 ? t.awardWaives : t.awardWaivesNothing, {
+              name: picked.name,
+              amount: taka(waiver),
+            })}
+          </p>
+        )}
 
         {/* The consequence, under the box, following the keystrokes. Drawn from the
             shared rule rather than computed here, so it never previews a negative figure
             while the owner is still typing past the ceiling. */}
         <p className="num text-sm text-ink-soft" aria-live="polite">
-          {left <= 0 && (wanted ?? 0) > 0
+          {left <= 0 && waiver > 0
             ? t.leavesNothing
             : fill(t.leaves, { amount: taka(left) })}
         </p>

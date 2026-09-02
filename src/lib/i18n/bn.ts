@@ -979,6 +979,16 @@ export const bn = {
      */
     chargeLink: 'মাসিক ফি ছাড়া অন্য ফি ধরুন',
 
+    /**
+     * The way onto the awards list (section 9.3). Beside the two above it because all
+     * three are set-up doors rather than readings of the month, and last of the three
+     * because it is the only one that writes nothing onto a bill by itself.
+     *
+     * Says "বৃত্তি" first, because that is the word an owner uses for the thing they
+     * already grant and count by hand.
+     */
+    scholarshipsLink: 'বৃত্তি ও নিয়মিত ছাড়ের তালিকা',
+
     /** When a reminder went out, as a person would say it. Anything older is a date. */
     today: 'আজ',
     yesterday: 'গতকাল',
@@ -1059,6 +1069,13 @@ export const bn = {
     discounted: (name: string, amount: string) => `${name} — ${amount} ছাড় দেওয়া হলো।`,
     discountCleared: (name: string) =>
       `${name} — ছাড় তুলে নেওয়া হলো, বিলটি আবার পুরো টাকার।`,
+
+    /**
+     * The awards list's own two confirmations, named because an owner adding three in a
+     * row needs to see which one landed.
+     */
+    awardAdded: (name: string) => `${name} — তালিকায় যোগ হলো।`,
+    awardSaved: (name: string) => `${name} — সংরক্ষণ হলো।`,
 
     /**
      * The section under the board that holds them.
@@ -1236,6 +1253,46 @@ export const bn = {
       discountFailed: 'ছাড়ের হিসাব লেখা হয়নি। আবার চেষ্টা করুন।',
 
       /**
+       * The refusals that belong to the three *ways* of waiving, added with section 9.3.
+       *
+       * `discountBasis` is for a value the select could not have produced. An owner never
+       * sees it; a stale tab or a hand-made request does, and it fails closed rather than
+       * guessing which of three ways to spend the centre's money.
+       *
+       * `discountPercentRange` names both ends, because 0% is refused as well — taking a
+       * waiver off is its own control, and an owner who typed 0 meant to use that one.
+       *
+       * `discountNothing` is the ৳০ that a share or an award can come to on a small bill.
+       * The row would be a name with no money behind it, which the table refuses; said in
+       * terms of the bill, because the award itself is fine.
+       */
+      discountBasis: 'ছাড় কীভাবে দেওয়া হচ্ছে বোঝা গেল না। আবার বেছে নিন।',
+      discountPercentRange: (max: number) =>
+        `শতকরা ছাড় ১ থেকে ${max}-এর মধ্যে হতে হবে।`,
+      discountNothing:
+        'এই বিলে এই নিয়মে ছাড়ের মতো কিছু দাঁড়ায় না। ছাড় তুলে নিতে চাইলে "ছাড় তুলে নিন" ব্যবহার করুন।',
+
+      /**
+       * The awards themselves — read, granted, written down.
+       *
+       * `awardMissing` covers a retired award as well as one that never existed, and
+       * deliberately: a select left open while somebody else retired it is the common
+       * case, and "এই বৃত্তিটি আর নেই" is true of both.
+       *
+       * `awardRule` is only reachable on a row written before 20260811000069's checks
+       * existed, or one edited past them. It says which award, because the owner has to
+       * go and look at it.
+       */
+      awardUnreadable: 'বৃত্তির তথ্য পড়া গেল না। আবার চেষ্টা করুন।',
+      awardMissing: 'এই বৃত্তিটি আর নেই বা বন্ধ করা আছে। তালিকা থেকে আবার বেছে নিন।',
+      awardRule: 'এই বৃত্তির নিয়মে সমস্যা আছে, তাই ছাড় বসানো গেল না। তালিকায় গিয়ে দেখুন।',
+      awardKind: 'বৃত্তিটি শতকরা হিসাবে না টাকার হিসাবে, সেটি বেছে নিন।',
+      awardNoName: 'বৃত্তির একটি নাম দিন — নাম দিয়েই হিসাব আলাদা করা যায়।',
+      awardAmountRange: 'বৃত্তির টাকার পরিমাণ শূন্যের বেশি হতে হবে।',
+      awardDuplicate: 'এই নামে একটি বৃত্তি আগেই আছে। অন্য নাম দিন।',
+      awardFailed: 'বৃত্তিটি সংরক্ষণ করা যায়নি। আবার চেষ্টা করুন।',
+
+      /**
        * The four ways loading old dues is refused.
        *
        * `arrearsMonthNotPast` is the one rule the screen cannot enforce for itself. Old
@@ -1300,6 +1357,16 @@ export const bn = {
     paidOf: '{paid} / {net} দেওয়া হয়েছে',
     settled: '{paid} জমা হয়েছে · মোট {net}',
     discount: '({amount} ছাড়)',
+    /**
+     * What the waiver was, when it was more than a typed figure (section 9.3). The name
+     * is joined live from `fee_scholarships`, so correcting a spelling on the list
+     * corrects it on every bill; the money and the share stay frozen on the invoice.
+     *
+     * The share is shown on its own only when there is no name behind it — a one-off
+     * "অর্ধেক" — because a named percentage award already reads "মেধাবৃত্তি (৫০%)".
+     */
+    awardLabel: 'বৃত্তি',
+    discountShare: 'ফি-এর {percent}%',
     inCredit: '{amount} বেশি জমা আছে',
 
     chaseTitle: 'অভিভাবককে মনে করিয়ে দিন',
@@ -1578,6 +1645,114 @@ export const bn = {
     voidedNote: 'বিলটি আবার চালু করলে ছাড় দেওয়া যাবে।',
     /** Above the owner's own words, on the board, when they left any. */
     reasonLabel: 'ছাড়ের কারণ',
+
+    /**
+     * The three ways of saying the same waiver (section 9.3), as one select above the box.
+     *
+     * TAKA IS FIRST AND IS THE DEFAULT, because it is what the panel has always done and
+     * an owner who never looks at this control must get the behaviour they already know.
+     *
+     * A share earns its keep on the second month: "অর্ধেক" is right against a ৳১,৫০০ fee
+     * and a ৳২,২০০ fee without anybody recomputing it, which is what an owner does by
+     * hand today and gets wrong in the third batch.
+     *
+     * An award is picked by name and brings its own rule, so the box disappears — asking
+     * "how much" after the owner has already said "মেধাবৃত্তি" is asking the same question
+     * twice, and the two answers could differ.
+     */
+    basis: 'কীভাবে ছাড় দিচ্ছেন',
+    basisTaka: 'টাকার হিসাবে',
+    basisPercent: 'ফি-এর শতকরা হিসাবে',
+    /** The box's label when the select says a share. Percent, so ASCII digits. */
+    share: 'ফি-এর কত শতাংশ ছাড় দিচ্ছেন',
+    /**
+     * What the chosen award comes to on this bill, in place of the box. Named, because
+     * the owner picked a name and needs to see it turn into money before they save.
+     */
+    awardWaives: '{name} — এই বিলে ছাড় {amount}',
+    /** When the award's rule comes to nothing here, which the write refuses too. */
+    awardWaivesNothing: '{name} — এই বিলে ছাড়ের মতো কিছু নেই',
+    /** The way to the list, under the select, only for staff-admins who can add one. */
+    manageAwards: 'বৃত্তি ও ছাড়ের তালিকা',
+  },
+
+  /**
+   * The awards a centre grants by name, and what they cost it this month (section 9.3).
+   *
+   * WHY THIS SCREEN EXISTS AND THE DISCOUNT BOX IS NOT ENOUGH. A centre waives fees
+   * constantly — a second child, a topper it wants on the roll, a family having a bad
+   * year — and today each waiver is typed as a figure with a sentence beside it. Eleven
+   * spellings of "ভাইবোন" add up to nothing, so the one question an owner asks at the end
+   * of the month has no answer: of the fee we did not collect, how much did we decide not
+   * to collect?
+   *
+   * SO THE PAGE IS TWO HALVES AND THE SECOND ONE IS THE POINT. The list is what makes a
+   * waiver repeatable; the month's totals are why anybody would bother naming it.
+   */
+  scholarships: {
+    title: 'বৃত্তি ও নিয়মিত ছাড়',
+    subtitle: 'নাম দিয়ে ছাড় দিন, মাস শেষে হিসাব মেলান',
+    /**
+     * The sentence that has to land before an owner fills anything in, because the screen
+     * looks like a settings list and is really a reporting decision.
+     */
+    why: 'একবার নাম দিয়ে রাখলে প্রতি মাসে একই ছাড় আবার লিখতে হবে না, আর মাস শেষে কোন ছাড়ে কত টাকা গেছে তা আলাদা করে দেখা যাবে।',
+    backLink: 'ফি-এর তালিকায় ফিরুন',
+
+    addHeading: 'নতুন বৃত্তি বা ছাড়',
+    name: 'নাম',
+    nameHint: 'যেমন: ভাইবোন ছাড়, মেধাবৃত্তি, অসচ্ছল পরিবার',
+    /**
+     * Percentage first, because it is the one that pays for itself: it is right against a
+     * ৳১,৫০০ fee and a ৳২,২০০ fee without anybody recomputing it.
+     */
+    kind: 'নিয়ম',
+    kindPercent: 'ফি-এর শতকরা হিসাবে',
+    kindTaka: 'নির্দিষ্ট টাকা',
+    percentValue: 'ফি-এর কত শতাংশ',
+    takaValue: 'কত টাকা',
+    add: 'তালিকায় যোগ করুন',
+    adding: 'যোগ হচ্ছে…',
+    /**
+     * Said at the form, not after the refusal: the rule is frozen once the award has been
+     * granted on a bill, because that bill holds the figure it waived and a rule edited
+     * afterwards would make the old bills read as lies.
+     */
+    ruleFrozen: 'নিয়মটি পরে বদলানো যাবে না — নতুন নিয়ম মানে নতুন নাম। নাম আর চালু/বন্ধ যেকোনো সময় বদলানো যায়।',
+
+    listHeading: 'তালিকা',
+    /** Before there is anything, which is every centre's first visit. */
+    empty: 'এখনো কোনো নাম দেওয়া ছাড় নেই।',
+    percentRule: 'ফি-এর {percent}%',
+    activeLabel: 'চালু আছে',
+    /**
+     * A retired award, on its own row. Not "মুছে ফেলা" — nothing is deleted here, and the
+     * reason is that a deleted award would take the label off every bill it was ever
+     * granted on, along with the only record of why those bills were small.
+     */
+    retiredNote: 'বন্ধ করা আছে — নতুন বিলে আর বসানো যাবে না, পুরোনো হিসাব ঠিক থাকবে।',
+    save: 'সংরক্ষণ করুন',
+    saving: 'সংরক্ষণ হচ্ছে…',
+
+    /**
+     * The month's totals, which is the half of the page that answers section 9.3's
+     * question. Per award, and the awardless row is counted too — a centre that has
+     * always typed figures sees its whole waiver bill here on the first visit, which is
+     * the argument for naming them.
+     */
+    monthHeading: 'এই মাসে কত ছাড় দেওয়া হয়েছে',
+    monthEmpty: 'এই মাসে কোনো বিলে ছাড় দেওয়া হয়নি।',
+    /** The rows with no award behind them: a figure somebody typed, and nothing more. */
+    unnamed: 'নাম ছাড়া ছাড়',
+    /**
+     * Templates rather than functions, unlike most count-dependent strings here: both are
+     * read by the client components on this screen, and `T` poisons a function leaf on its
+     * way across. `fill` substitutes them at the point of use.
+     */
+    countNote: '{bills}টি বিল, {students} জন শিক্ষার্থী',
+    monthTotal: 'সব মিলিয়ে ছাড়',
+    /** Retired, but still in this month's figures, which needs saying once. */
+    retiredTag: 'বন্ধ',
   },
 
   /**

@@ -29,12 +29,22 @@ import { arrearsPlan, oldestEnrollments, ARREARS_FIELD_PREFIX } from '@/lib/fees
 import { cancelVerdict } from '@/lib/fees/void'
 import { refundVerdict, refundable } from '@/lib/fees/refund'
 import { discountVerdict, maxDiscount } from '@/lib/fees/discount'
+import {
+  MAX_PERCENT,
+  normalizePercent,
+  percentVerdict,
+  percentWaiver,
+  readAwardId,
+  readBasis,
+  ruleWaiver,
+  scholarshipVerdict,
+} from '@/lib/fees/scholarship'
 import { chargePlan, isChargeCategory } from '@/lib/fees/charge'
 import { PAYMENT_METHODS } from '@/lib/fees/methods'
 import { currentPeriodMonth } from '@/lib/bd/time'
 import { normalizeBdMobile } from '@/lib/bd/phone'
 import { readIdempotencyKey, UNIQUE_VIOLATION } from '@/lib/idempotency'
-import { MAX_LABEL, MAX_TEXT, clamp } from '@/lib/limits'
+import { MAX_LABEL, MAX_NAME, MAX_TEXT, clamp } from '@/lib/limits'
 import { dict } from '@/lib/i18n'
 import type { OutreachChannel, PaymentMethod } from '@/lib/supabase/types'
 
@@ -922,6 +932,9 @@ export async function refundPayment(
 const DISCOUNT_COLUMNS =
   'id, student_name, amount_bdt, discount_bdt, remaining_bdt, voided_at'
 
+/** The award's own rule, which is the only place a named waiver's figure comes from. */
+const AWARD_COLUMNS = 'id, name, percent, amount_bdt'
+
 /**
  * Waives part of a fee, or takes a waiver back.
  *
@@ -952,6 +965,15 @@ const DISCOUNT_COLUMNS =
  * NOT REFUSED: a waiver on a bill the family has already paid. That leaves them in
  * credit, which is true, is what the board should say, and is what the refund control on
  * the same row hands back. It is also the most sympathetic case there is.
+ *
+ * THREE WAYS TO SAY THE SAME FIGURE, since 20260811000069. Taka is what the box has
+ * always meant. A percentage reads the same box as a share and the *server* multiplies —
+ * `fee_invoices_discount_percent_agrees` refuses the row if the two answers differ by a
+ * poisha. A named award carries its own rule, so the box is not asked for at all: the
+ * rule is read from `fee_scholarships` by id, scoped to this centre, and a browser that
+ * sends an award belonging to another centre gets "no such award" rather than a waiver.
+ * Nothing about the money arrives from the form in the last two cases, which is §11.4's
+ * rule applied to the one place a centre gives money away.
  */
 export async function discountInvoice(
   _prev: FeeState,
@@ -965,8 +987,19 @@ export async function discountInvoice(
   const invoiceId = String(formData.get('invoiceId') ?? '')
   if (!invoiceId) return { error: t.errors.noInvoice }
 
-  const amount = parseTaka(String(formData.get('amount') ?? ''))
-  if (amount === null) return { error: t.errors.amountUnreadable }
+  // Missing means taka, which is what makes this field safe to add: a request queued
+  // offline before the select existed still waives what it always did. An unrecognised
+  // value is refused rather than guessed at.
+  const basis = readBasis(formData.get('basis'))
+  if (!basis) return { error: t.errors.discountBasis }
+
+  // The box, which means taka or a percentage depending on the basis and is not sent at
+  // all when an award is picked. parseTaka because it is the two-decimal reader — Bangla
+  // digits, a stray comma — and `numeric(5, 2)` holds a percentage to the same precision.
+  const typed = parseTaka(String(formData.get('amount') ?? ''))
+  if (basis.kind !== 'scholarship' && typed === null) {
+    return { error: t.errors.amountUnreadable }
+  }
 
   // Optional and clamped, exactly as the cancellation reason is: a required field here
   // would be answered with a full stop. The screen asks for it anyway, because this is
@@ -991,6 +1024,60 @@ export async function discountInvoice(
 
   const billed = Number(invoice.amount_bdt ?? 0)
 
+  // What the three columns will say. Only the taka case takes its figure from the form:
+  // the other two are computed here, from the bill the view just returned and a rule the
+  // database holds.
+  let amount = typed ?? 0
+  let percent: number | null = null
+  let scholarshipId: string | null = null
+
+  if (basis.kind === 'percent') {
+    const share = typed as number
+    if (percentVerdict(share) !== 'ok') {
+      return { error: t.errors.discountPercentRange(MAX_PERCENT) }
+    }
+    // The figure and the share are both written, and `discount_percent` is what makes
+    // the bill still explain itself next year. percentWaiver multiplies in whole poisha
+    // so the check constraint agrees with it to the last one.
+    amount = percentWaiver(billed, share)
+    percent = normalizePercent(share)
+  }
+
+  if (basis.kind === 'scholarship') {
+    // scoped-by: coaching_center_id is filtered here, and RLS refuses another centre's.
+    // `active` too — a retired award stays on the bills it already labelled and is not
+    // something a stale select may grant again.
+    const { data: award, error: awardError } = await supabase
+      .from('fee_scholarships')
+      .select(AWARD_COLUMNS)
+      .eq('coaching_center_id', session.active.centerId)
+      .eq('id', basis.id)
+      .eq('active', true)
+      .maybeSingle()
+
+    if (awardError) return { error: t.errors.awardUnreadable }
+    if (!award?.id) return { error: t.errors.awardMissing }
+
+    const rule = {
+      percent: award.percent === null ? null : Number(award.percent),
+      amountBdt: award.amount_bdt === null ? null : Number(award.amount_bdt),
+    }
+    const waiver = ruleWaiver(rule, billed)
+    if (waiver === null) return { error: t.errors.awardRule }
+
+    amount = waiver
+    // The share is copied onto the bill for a percentage award and only then, which is
+    // what `fee_invoices_discount_percent_agrees` will check. A fixed award has no share
+    // to copy, and the figure it waived is already on the row.
+    percent = rule.percent === null ? null : normalizePercent(rule.percent)
+    scholarshipId = award.id
+  }
+
+  // A share or an award that comes to nothing on this bill is a label with no money
+  // behind it, which `fee_invoices_waiver_attributed` refuses. Zero is only ever an
+  // owner taking a waiver back, and that control sends no basis at all.
+  if (basis.kind !== 'taka' && amount <= 0) return { error: t.errors.discountNothing }
+
   switch (discountVerdict({ billed, discount: amount, voidedAt: invoice.voided_at })) {
     case 'cancelled':
       return { error: t.errors.discountVoided }
@@ -1009,9 +1096,18 @@ export async function discountInvoice(
   //
   // discounted_by and discounted_at are not sent and could not be — they are outside the
   // column grant. The trigger stamps them.
+  //
+  // The last two columns are always sent, including as nulls, and that is the point: a
+  // bill carrying "merit 50%" that the owner now waives ৳300 of by hand must stop
+  // claiming the award. Sending them only when set would leave the old label behind.
   const { error } = await supabase
     .from('fee_invoices')
-    .update({ discount_bdt: amount, discount_reason: reason || null })
+    .update({
+      discount_bdt: amount,
+      discount_reason: reason || null,
+      discount_percent: percent,
+      scholarship_id: scholarshipId,
+    })
     .eq('coaching_center_id', session.active.centerId)
     .eq('id', invoice.id)
     .is('voided_at', null)
@@ -1056,6 +1152,145 @@ export async function discountInvoice(
   }
 
   return { ok: t.discounted(name, waived) }
+}
+
+/* -------------------------------------------------------------------------- */
+/* The awards a centre grants by name                                          */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Writes down an award the centre grants — sibling waiver, merit 50%, hardship.
+ *
+ * WHY A NAMED THING AND NOT A DISCOUNT TYPED TWICE (§9.3). "Why is our collection rate
+ * 82%" has a very different answer depending on whether the missing 18% was waived on
+ * purpose or never paid, and `discount_reason` is free text: eleven spellings of "sibling"
+ * total nothing. An award has an id, so `fee_waiver_month` can add up what each one cost
+ * the centre this month.
+ *
+ * ONE RULE, EITHER A SHARE OR A FIGURE, which `fee_scholarships_one_rule` enforces and
+ * `scholarshipVerdict` says first in a sentence the owner can read. A percentage is the
+ * one that earns its keep: it is right against a ৳1,500 fee and a ৳2,200 fee without
+ * anybody recomputing it, which is exactly what an owner does by hand today.
+ */
+export async function createScholarship(
+  _prev: FeeState,
+  formData: FormData,
+): Promise<FeeState> {
+  const session = await feeAdmin()
+  if (!isSession(session)) return session
+
+  const t = dict(session.locale).fees
+
+  const name = clamp(String(formData.get('name') ?? '').trim(), MAX_NAME)
+  const kind = String(formData.get('kind') ?? '')
+  if (kind !== 'percent' && kind !== 'taka') return { error: t.errors.awardKind }
+
+  // One box, read as a share or as taka depending on the select above it. parseTaka
+  // because it is the two-decimal reader and both columns are stored to two places.
+  const value = parseTaka(String(formData.get('value') ?? ''))
+  if (value === null) return { error: t.errors.amountUnreadable }
+
+  const percent = kind === 'percent' ? normalizePercent(value) : null
+  const amountBdt = kind === 'taka' ? value : null
+
+  switch (scholarshipVerdict({ name, percent, amountBdt })) {
+    case 'noName':
+      return { error: t.errors.awardNoName }
+    case 'percentRange':
+      return { error: t.errors.discountPercentRange(MAX_PERCENT) }
+    case 'amountRange':
+      return { error: t.errors.awardAmountRange }
+    // Neither is reachable from this form — the select picks exactly one column — and
+    // both are the same thing to say if a hand-made request arrives without one.
+    case 'noRule':
+    case 'twoRules':
+      return { error: t.errors.awardKind }
+  }
+
+  if (amountBdt !== null && amountBdt > MAX_TAKA) {
+    return { error: t.errors.awardAmountRange }
+  }
+
+  const supabase = await createClient()
+
+  const { error } = await supabase.from('fee_scholarships').insert({
+    coaching_center_id: session.active.centerId,
+    name,
+    percent,
+    amount_bdt: amountBdt,
+  })
+
+  // The unique index on (centre, lower(name)) is the only realistic failure, and "you
+  // already have this one" is more use than a database string. Two awards called
+  // "Sibling" would defeat the point of counting them by name.
+  if (error) {
+    if (error.code === UNIQUE_VIOLATION) return { error: t.errors.awardDuplicate }
+    return { error: t.errors.awardFailed }
+  }
+
+  revalidatePath('/fees/scholarships')
+  revalidatePath('/fees')
+  return { ok: t.awardAdded(name) }
+}
+
+/**
+ * Corrects an award's name, or retires it.
+ *
+ * THE TWO COLUMNS THAT MAY MOVE, and the grant in 20260811000069 is what says so: the
+ * rule and the centre are frozen by `app.guard_fee_scholarship()`, because a bill holding
+ * `scholarship_id` also holds the figure that was waived, and editing "50%" to "25%"
+ * afterwards would make every bill it ever labelled read as a lie. A new rule is a new
+ * award.
+ *
+ * RETIRING IS NOT DELETING, and deleting is refused outright for non-server roles: the
+ * invoice FK is `on delete set null`, so removing an award would silently unlabel every
+ * bill it was ever granted on and take the history with it. `active` keeps it off the
+ * select while `fee_waiver_month` still totals what it cost.
+ *
+ * Both columns in one write because both are corrections to a label, and the row's form
+ * always sends both — a rename that omitted `active` would quietly reopen a retired
+ * award.
+ */
+export async function updateScholarship(
+  _prev: FeeState,
+  formData: FormData,
+): Promise<FeeState> {
+  const session = await feeAdmin()
+  if (!isSession(session)) return session
+
+  const t = dict(session.locale).fees
+
+  const awardId = readAwardId(formData.get('awardId'))
+  if (!awardId) return { error: t.errors.awardMissing }
+
+  const name = clamp(String(formData.get('name') ?? '').trim(), MAX_NAME)
+  if (!name) return { error: t.errors.awardNoName }
+
+  // A real checkbox in a form somebody filled in, so absence legitimately means off —
+  // unlike the on/off buttons in settings, where absence would mean a broken request.
+  const active = String(formData.get('active') ?? '') === 'on'
+
+  const supabase = await createClient()
+
+  // `.select('id')` so an award that RLS or the centre filter refused comes back as an
+  // empty array rather than as a silent success on nothing.
+  const { data: saved, error } = await supabase
+    .from('fee_scholarships')
+    .update({ name, active })
+    .eq('coaching_center_id', session.active.centerId)
+    .eq('id', awardId)
+    .select('id')
+
+  if (error) {
+    if (error.code === UNIQUE_VIOLATION) return { error: t.errors.awardDuplicate }
+    return { error: t.errors.awardFailed }
+  }
+
+  if (!saved || saved.length === 0) return { error: t.errors.awardMissing }
+
+  revalidatePath('/fees/scholarships')
+  revalidatePath('/fees')
+  return { ok: t.awardSaved(name) }
 }
 
 /* -------------------------------------------------------------------------- */

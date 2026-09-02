@@ -1288,8 +1288,8 @@ be findable, or the refund looks like a deletion and the centre has an argument.
 | Due date per invoice | ✅ `fee_invoices.due_date` exists |
 | Partial payments | ✅ many payments per invoice, already works |
 | Fixed-taka discount | ✅ `discount_bdt`, bounded by `check (discount_bdt <= amount_bdt)` |
-| Percentage discount | ❌ |
-| Named scholarship / waiver, reusable across students | ❌ |
+| Percentage discount | ✅ `discount_percent`, held to the figure by `fee_invoices_discount_percent_agrees` |
+| Named scholarship / waiver, reusable across students | ✅ `fee_scholarships`, granted per bill, totalled by `fee_waiver_month` |
 | Overdue tracking and an arrears list | ✅ built |
 | Instalment plans (a schedule agreed in advance) | ❌ future |
 | Payment methods | ✅ cash, bKash, Nagad, Rocket, bank transfer, other — `card` missing |
@@ -1299,6 +1299,15 @@ A scholarship is not a discount typed twice. It is a named thing — *sibling
 waiver*, *merit 50%*, *hardship* — that a report needs to total separately, because
 "why is our collection rate 82%" has a very different answer depending on whether
 the missing 18% was waived on purpose or simply never paid.
+
+Built as a standing rule the owner names once and grants per bill, not as a
+property of a student: `/fees/scholarships` names them, the waiver panel on each
+board row offers taka, a share, or one of the awards, and the bill stores the
+figure, the share and which award it came from. The rule is frozen once created —
+retire an award and make its replacement — because every bill it ever labelled
+holds the figure it waived, and a rate that can be edited afterwards turns months
+of history into a lie. Applying an award to a student's every future invoice
+automatically is not built; §9.3 asks for reusable, not automatic.
 
 ### 9.4 Employees are not teachers ✅
 
@@ -1755,7 +1764,8 @@ document.
 numeric caps and feature flags checked server-side on every write path, failing
 closed; plan/status/SMS-credit/capacity columns tamper-proof at the database;
 attendance including an offline mode; exams and marks; fee invoices, partial
-payments, fixed-taka discounts, voiding, arrears, month close, and the bills that are
+payments, a waiver typed as a figure, taken as a share of the bill, or granted from an
+award the centre named once and can total by name, voiding, arrears, month close, and the bills that are
 not a monthly fee — admission, registration, exam, form and other income — raised for
 one batch or a whole centre in a single press that is safe to repeat, and read back
 per category under the month's billed line; append-only payments
@@ -1802,14 +1812,14 @@ a five-minute life, five tries counted under a row lock, a minute between sends 
 hourly ceiling per number and per IP, checked and spent inside the same call that
 creates the account — which switches itself on the day the aggregator's three variables
 exist, and is off until then (§5.4).
-1,222 RLS assertions and 1,074 unit tests green across 68 migrations and 41 tables in
+1,303 RLS assertions and 1,097 unit tests green across 69 migrations and 42 tables in
 `public` plus one in `app`, and four derived gates and two that ask the live API. One of those gates now refuses
 a query whose table name it cannot read, having discovered it had been counting five
 fewer than existed — and the RLS suite found a manager who could promote themselves
 to owner, which is what a suite is for.
 
 **Partly built ⚠️** — branches (money, staff and the HQ comparison yes, full
-isolation no); discounts (fixed only); scheduling (weekly recurrence, no clashes or
+isolation no); scheduling (weekly recurrence, no clashes or
 overrides); refunds (representable, no UI); plan selection (an
 owner may ask for a tier and buy places, not move themselves between tiers);
 income with no student behind it (hall rent, book sales and the like have a category
@@ -1821,7 +1831,8 @@ but no row to hang it on — every revenue row is a bill against a child).
 between tiers (`bootstrap_center` hard-codes `teacher_free` as the *paid* tier, and
 only a platform admin or an owner's request changes it); the five
 `teacher_permissions` booleans as capabilities;
-transfer history; the two new student statuses; percentage discounts; rooms and
+transfer history; the two new student statuses; an award that applies itself to a
+student's every future bill; rooms and
 teacher-clash detection.
 
 **Blocked 🚧** — automated SMS, and with it the enforcement of a signup phone gate that
@@ -1867,7 +1878,7 @@ teacher-centric attendance, fees with part payments and discounts, refunds,
 expenses, employees, payroll, revenue and profit, the two dashboards, the audit log,
 payment intents.
 
-**High priority, straight after:** percentage discounts and named scholarships,
+**High priority, straight after:**
 instalment plans, teacher clash detection, and per-branch capacity *reporting*
 (never per-branch quotas).
 

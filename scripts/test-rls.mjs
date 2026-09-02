@@ -2061,6 +2061,692 @@ await db.query('delete from fee_payments where invoice_id = any($1)', [
 await db.query('delete from fee_invoices where id = any($1)', [[waiveInv, voidWaiveInv]])
 
 // ---------------------------------------------------------------------------
+// A waiver with a name on it (20260811000069).
+//
+// §9.3 asks for two things a typed figure cannot give: a share of the bill, and a named
+// award reusable across students. Both land on fee_invoices beside the figure, and what
+// this section is for is that the figure and its explanation cannot drift apart.
+//
+// THE ARITHMETIC IS WRITTEN OUT TWICE, ON PURPOSE.
+// `fee_invoices_discount_percent_agrees` holds `discount_bdt = round(amount_bdt *
+// discount_percent / 100, 2)`. src/lib/fees/scholarship.ts computes the same figure from a
+// float and the app sends both. The triples below are the same twelve rows
+// tests/scholarship.test.ts pins, typed out again here rather than imported: two
+// independent hands, so a wrong answer has to be got wrong twice to pass. A poisha of
+// drift is an owner tapping Save, being refused, and having nothing on screen to explain
+// it.
+//
+// AND THE RULE IS FROZEN, which is the half that protects history. Every bill an award
+// ever labelled also stores the figure it waived, so editing "50%" to "25%" afterwards
+// makes months of bills read as a lie. Two fences say so — the column grant and
+// app.guard_fee_scholarship() — and each is asserted on its own, because a refusal that
+// only the grant produced leaves the trigger untested.
+//
+// The awards created here are deliberately left behind. The can_view_fees section further
+// down reads one through the balances view, and the capabilities section at the bottom
+// counts them; the invoices are cleaned up, as everywhere else in this file.
+// ---------------------------------------------------------------------------
+
+console.log('\nA waiver with a name on it (20260811000069):')
+
+/** What a staff admin's own INSERT does, as the browser would send it. */
+const addAward = async (center, name, percent, amount, userId = ids.ownerA) => {
+  try {
+    const { rows } = await asUser(db, userId, (tx) =>
+      tx.query(
+        `insert into fee_scholarships (coaching_center_id, name, percent, amount_bdt)
+         values ($1, $2, $3, $4) returning id`,
+        [center, name, percent, amount],
+      ),
+    )
+    return { id: rows[0].id, error: '' }
+  } catch (error) {
+    return { id: null, error: String(error.message) }
+  }
+}
+
+/** The award as stored, read as the superuser so RLS is never what is being observed. */
+const awardOn = async (id) =>
+  (
+    await db.query(
+      `select name, percent::text as percent, amount_bdt::text as amount, active
+         from fee_scholarships where id = $1`,
+      [id],
+    )
+  ).rows[0]
+
+const merit = await addAward(centerA, 'মেধাবৃত্তি', 50, null)
+check(
+  'an owner names an award their centre grants, with a share of the fee as its rule',
+  merit.id !== null,
+  merit.error.split('\n')[0],
+)
+
+const siblingAward = await addAward(centerA, 'ভাইবোন ছাড়', null, 300)
+check(
+  'and another whose rule is a flat figure, which is the other half of §9.3',
+  siblingAward.id !== null,
+  siblingAward.error.split('\n')[0],
+)
+
+// Latin, because the case-folded unique index below needs a name that has a case at all.
+const hardship = await addAward(centerA, 'Hardship', null, 500)
+check('and a third, so the collisions below have something to collide with', hardship.id !== null)
+
+const both = await addAward(centerA, 'দুই নিয়ম', 50, 300)
+check(
+  'an award carrying two rules is refused, so no bill has to choose between them',
+  /fee_scholarships_one_rule/.test(both.error),
+  both.error.split('\n')[0] || 'accepted',
+)
+
+const neither = await addAward(centerA, 'কোনো নিয়ম নয়', null, null)
+check(
+  'and one carrying none, which would be a name that waives nothing',
+  /fee_scholarships_one_rule/.test(neither.error),
+  neither.error.split('\n')[0] || 'accepted',
+)
+
+const overWhole = await addAward(centerA, 'একশোর বেশি', 120, null)
+check(
+  'a share larger than the whole fee is refused by the column',
+  /percent/.test(overWhole.error),
+  overWhole.error.split('\n')[0] || 'accepted',
+)
+
+const noShare = await addAward(centerA, 'শূন্য শতাংশ', 0, null)
+check(
+  'and a share of nothing, which is not a waiver anybody granted',
+  /percent/.test(noShare.error),
+  noShare.error.split('\n')[0] || 'accepted',
+)
+
+const sameName = await addAward(centerA, 'মেধাবৃত্তি', 25, null)
+check(
+  'one name, one rule: a second award called the same thing is refused',
+  /fee_scholarships_center_name_key/.test(sameName.error),
+  sameName.error.split('\n')[0] || 'accepted',
+)
+
+// The report in §9.3 totals by name, so two rows spelling the same word differently would
+// give an owner two lines with one label and no way to tell which bills went where.
+const shouted = await addAward(centerA, 'HARDSHIP', null, 500)
+check(
+  'and "HARDSHIP" is the same word as "Hardship" to everybody except a unique index',
+  /fee_scholarships_center_name_key/.test(shouted.error),
+  shouted.error.split('\n')[0] || 'accepted',
+)
+
+const khulnaHardship = await addAward(centerB, 'Hardship', null, 500, ids.ownerB)
+check(
+  'while the other centre may name theirs the same, because it is their own list',
+  khulnaHardship.id !== null,
+  khulnaHardship.error.split('\n')[0],
+)
+
+// Staff admin, like the waiver itself: inventing an award is a fee policy for the whole
+// centre, which reaches further than granting one on a single bill.
+check(
+  'a teacher cannot invent a fee policy for the centre',
+  await deniedAsUser(
+    db,
+    ids.karim,
+    `insert into fee_scholarships (coaching_center_id, name, percent)
+     values ($1, 'Teacher Merit', 10)`,
+    [centerA],
+  ),
+)
+check(
+  "nor the other centre's owner, in a centre that is not theirs",
+  await deniedAsUser(
+    db,
+    ids.ownerB,
+    `insert into fee_scholarships (coaching_center_id, name, percent)
+     values ($1, 'Khulna Merit', 10)`,
+    [centerA],
+  ),
+)
+
+await asUser(db, ids.ownerA, async (tx) => {
+  check(
+    'the owner reads their own three, which is what the picker on a bill offers',
+    (await n(tx, 'select count(*)::int as n from fee_scholarships')) === 3,
+    String(await n(tx, 'select count(*)::int as n from fee_scholarships')),
+  )
+})
+await asUser(db, ids.ownerB, async (tx) => {
+  check(
+    'and the other centre reads only theirs, name collision and all',
+    (await n(tx, 'select count(*)::int as n from fee_scholarships')) === 1,
+    String(await n(tx, 'select count(*)::int as n from fee_scholarships')),
+  )
+})
+// A teacher with no fee visibility, which is every teacher at this point in the file. The
+// ticked half is asserted in the can_view_fees section, where the box is on: read is wider
+// than write there because the balances view joins this name in, and a teacher reading
+// their batch's board would otherwise get "৳500 waived" with no explanation.
+await asUser(db, ids.karim, async (tx) => {
+  check(
+    'a teacher with no fee visibility cannot even list the awards',
+    (await n(tx, 'select count(*)::int as n from fee_scholarships')) === 0,
+  )
+})
+
+check(
+  'and naming an award is in the log, because it decides what future bills say',
+  (await n(
+    db,
+    `select count(*)::int as n from audit_log where entity = 'fee_scholarships' and entity_id = $1`,
+    [merit.id],
+  )) === 1,
+)
+
+// The two repairs an owner actually needs. A mistyped name is joined live onto every bill
+// the award ever labelled, so fixing it here corrects all of them.
+await asUser(db, ids.ownerA, (tx) =>
+  tx.query(
+    `update fee_scholarships set name = $2 where coaching_center_id = $1 and id = $3`,
+    [centerA, 'মেধা বৃত্তি', merit.id],
+  ),
+)
+check('an owner may fix a typo in an award name', (await awardOn(merit.id)).name === 'মেধা বৃত্তি')
+
+await asUser(db, ids.ownerA, (tx) =>
+  tx.query(
+    `update fee_scholarships set active = false where coaching_center_id = $1 and id = $2`,
+    [centerA, hardship.id],
+  ),
+)
+check('and retire one, which is how an award changes', (await awardOn(hardship.id)).active === false)
+
+// The first fence: `grant update (name, active)` and nothing else, so these fail at
+// executor startup before a row is scanned — which is why they can be observed at all.
+check(
+  'and cannot move the share the award waives, which past bills were waived by',
+  await deniedAsUser(
+    db,
+    ids.ownerA,
+    'update fee_scholarships set percent = 25 where coaching_center_id = $1 and id = $2',
+    [centerA, merit.id],
+  ),
+)
+check(
+  'nor the flat figure, for the same reason',
+  await deniedAsUser(
+    db,
+    ids.ownerA,
+    'update fee_scholarships set amount_bdt = 100 where coaching_center_id = $1 and id = $2',
+    [centerA, siblingAward.id],
+  ),
+)
+check(
+  'nor hand an award to another centre',
+  await deniedAsUser(
+    db,
+    ids.ownerA,
+    'update fee_scholarships set coaching_center_id = $2 where id = $3',
+    [centerA, centerB, merit.id],
+  ),
+)
+check(
+  'nor delete one, which would unlabel every bill granted under it',
+  await deniedAsUser(
+    db,
+    ids.ownerA,
+    'delete from fee_scholarships where coaching_center_id = $1 and id = $2',
+    [centerA, merit.id],
+  ),
+)
+
+// The second fence, reached the way the invoice guard above is reached: hand the privilege
+// back inside a transaction that is thrown away. Every refusal above would also be
+// produced by the REVOKE alone, which leaves the trigger untested — and a REVOKE only
+// removes grants the revoking role made, so a live database whose grant came from
+// supabase_admin would pass the block above while having no lock at all.
+const sGuard = { percent: '', amount: '', centre: '', del: '', name: false }
+await db.query('begin')
+try {
+  await db.query('grant update, delete on public.fee_scholarships to authenticated')
+  await db.query('set local role authenticated')
+  await db.query(`select set_config('request.jwt.claim.sub', $1, true)`, [ids.ownerA])
+  await db.query('savepoint probe')
+
+  try {
+    await db.query('update fee_scholarships set percent = 25 where id = $1', [merit.id])
+  } catch (error) {
+    sGuard.percent = String(error.message)
+  }
+  await db.query('rollback to savepoint probe')
+
+  try {
+    await db.query('update fee_scholarships set amount_bdt = 100 where id = $1', [siblingAward.id])
+  } catch (error) {
+    sGuard.amount = String(error.message)
+  }
+  await db.query('rollback to savepoint probe')
+
+  try {
+    await db.query('update fee_scholarships set coaching_center_id = $1 where id = $2', [
+      centerB,
+      merit.id,
+    ])
+  } catch (error) {
+    sGuard.centre = String(error.message)
+  }
+  await db.query('rollback to savepoint probe')
+
+  try {
+    await db.query('delete from fee_scholarships where id = $1', [merit.id])
+  } catch (error) {
+    sGuard.del = String(error.message)
+  }
+  await db.query('rollback to savepoint probe')
+
+  // And the name still goes through, so what is being observed is a guard on the rule and
+  // not a trigger that refuses everything handed to it.
+  const renamed = await db.query(
+    `update fee_scholarships set name = 'Still Editable' where id = $1 returning name`,
+    [hardship.id],
+  )
+  sGuard.name = renamed.rows[0]?.name === 'Still Editable'
+} finally {
+  await db.query('rollback')
+}
+
+check(
+  'a trigger refuses the rule even when the privilege is handed back',
+  /retire this one and create its replacement/.test(sGuard.percent),
+  sGuard.percent.split('\n')[0] || 'accepted',
+)
+check(
+  'and the flat figure, likewise',
+  /retire this one and create its replacement/.test(sGuard.amount),
+  sGuard.amount.split('\n')[0] || 'accepted',
+)
+check(
+  'and refuses to move an award between centres',
+  /retire this one and create its replacement/.test(sGuard.centre),
+  sGuard.centre.split('\n')[0] || 'accepted',
+)
+check(
+  'and refuses the delete, naming the thing to do instead',
+  /retire it instead/.test(sGuard.del),
+  sGuard.del.split('\n')[0] || 'accepted',
+)
+check('while still letting a rename through, which is the repair owners need', sGuard.name)
+check(
+  'and the thrown-away transaction took the grant with it',
+  await deniedAsUser(db, ids.ownerA, 'delete from fee_scholarships where id = $1', [merit.id]),
+)
+check('and the rename inside it went with the grant', (await awardOn(hardship.id)).name === 'Hardship')
+
+// The exemption, asserted rather than assumed: a support session deleting an award is why
+// fee_invoices.scholarship_id is `on delete set null`, and this is what that costs.
+const doomedAward = await addAward(centerA, 'Typo Award', 10, null)
+const doomedInv = await one(
+  `insert into fee_invoices
+     (coaching_center_id, student_id, period_month, amount_bdt, due_date,
+      discount_bdt, discount_percent, scholarship_id)
+   values ($1, $2, '2026-08-01', 1000, '2026-08-10', 100, 10, $3) returning id`,
+  [centerA, stAli, doomedAward.id],
+)
+await db.query('delete from fee_scholarships where id = $1', [doomedAward.id])
+const unlabelled = (
+  await db.query(
+    `select discount_bdt::text as amount, discount_percent::text as percent, scholarship_id
+       from fee_invoices where id = $1`,
+    [doomedInv],
+  )
+).rows[0]
+check('the server role may delete an award, which is the support case', (await awardOn(doomedAward.id)) === undefined)
+check('and the money stays on the bill', unlabelled.amount === '100.00')
+check('and the share it was expressed as', unlabelled.percent === '10.00')
+check(
+  'while the name goes, which is exactly why a session may not do this',
+  unlabelled.scholarship_id === null,
+)
+
+/**
+ * (bill, share, what round(numeric, 2) makes of it).
+ *
+ * The same twelve rows as tests/scholarship.test.ts, typed out again rather than imported:
+ * that file computes them from a float in the app's own code, this one hands them to
+ * Postgres and lets the check constraint be the judge. Neither borrows the other's answer.
+ *
+ * The ones that earn their place: 333.33 at 50% is exactly 166.665, and the double nearest
+ * that is a hair under it, so a float rounds *down* to 166.66 while `round(numeric, 2)`
+ * rounds half away from zero and gives 166.67. 1999.99 at 50% is the same tie an order of
+ * magnitude up. 999.99 at 33.33% is the long tail, where truncating loses a poisha.
+ */
+const TRIPLES = [
+  [2000, 50, 1000],
+  [1500, 50, 750],
+  [2200, 50, 1100],
+  [1000, 100, 1000],
+  [1500, 0.5, 7.5],
+  [1250, 12.5, 156.25],
+  [1500, 33.33, 499.95],
+  [1234.56, 7.5, 92.59],
+  [777.77, 25, 194.44],
+  [333.33, 50, 166.67],
+  [1999.99, 50, 1000],
+  [999.99, 33.33, 333.3],
+]
+
+/** A bill of any size, so the share has something exact to be a share of. */
+const billFor = (amount, student = stAli) =>
+  one(
+    `insert into fee_invoices (coaching_center_id, student_id, period_month, amount_bdt, due_date)
+     values ($1, $2, '2026-08-01', $3, '2026-08-10') returning id`,
+    [centerA, student, amount],
+  )
+
+/** The waiver as a browser sends it: the figure, and how it was arrived at. */
+const setShare = async (id, amount, percent, award = null, userId = ids.ownerA) => {
+  try {
+    await asUser(db, userId, (tx) =>
+      tx.query(
+        `update fee_invoices
+            set discount_bdt = $2, discount_percent = $3, scholarship_id = $4
+          where coaching_center_id = $1 and id = $5`,
+        [centerA, amount, percent, award, id],
+      ),
+    )
+    return ''
+  } catch (error) {
+    return String(error.message)
+  }
+}
+
+const shareBills = []
+const mismatched = []
+const drifted = []
+for (const [billed, percent, figure] of TRIPLES) {
+  const id = await billFor(billed)
+  shareBills.push(id)
+
+  const takes = await setShare(id, figure, percent)
+  if (takes !== '') mismatched.push(`${percent}% of ${billed}: ${takes.split('\n')[0]}`)
+
+  // A poisha short rather than a poisha over, so the refusal can only be the agreement
+  // check — over the figure, a 100% waiver would trip fee_invoices_discount_bound first
+  // and the assertion would be reading the wrong constraint's answer.
+  const short = await setShare(id, figure - 0.01, percent)
+  if (!/fee_invoices_discount_percent_agrees/.test(short)) {
+    drifted.push(`${percent}% of ${billed} took ${(figure - 0.01).toFixed(2)}`)
+  }
+}
+
+check(
+  'every share the app computes is the share the constraint computes',
+  mismatched.length === 0,
+  mismatched[0] ?? '',
+)
+check(
+  'and a poisha of drift is refused, which is the whole reason both sides compute it',
+  drifted.length === 0,
+  drifted[0] ?? '',
+)
+
+// The tie, named on its own so a failure says which case broke. Math.round on
+// 333.33 * 50 / 100 * 100 gives 16666 — a poisha under what Postgres stores.
+const tieBill = await billFor(333.33, stMim)
+const tieLow = await setShare(tieBill, 166.66, 50)
+check(
+  'a half poisha rounds away from zero, so 166.66 is not what half of 333.33 comes to',
+  /fee_invoices_discount_percent_agrees/.test(tieLow),
+  tieLow.split('\n')[0] || 'accepted',
+)
+check('and 166.67 is', (await setShare(tieBill, 166.67, 50)) === '')
+
+const overBill = await billFor(2000)
+const overPoisha = await setShare(overBill, 1000.01, 50)
+check(
+  'a poisha over is refused as well, on a bill where the old bound is not in the way',
+  /fee_invoices_discount_percent_agrees/.test(overPoisha),
+  overPoisha.split('\n')[0] || 'accepted',
+)
+// Belt and braces, and the figure here says why it has to be: a share past 100 can never
+// be the only thing wrong, because the figure that would agree with it is larger than the
+// bill. So 2020 is sent — the figure that does agree — and the refusal can only come from
+// the range check or from migration 1's bound.
+const pastWhole = await setShare(overBill, 2020, 101)
+check(
+  'and a share past the whole fee cannot be stored at all',
+  /fee_invoices_discount_percent_range|fee_invoices_discount_bound/.test(pastWhole),
+  pastWhole.split('\n')[0] || 'accepted',
+)
+
+// The named award on a bill, which is the part §9.3 asks for and the part a report can
+// total. The share is copied onto the bill beside it, so the bill explains itself after the
+// award has been retired and without a join.
+const namedBill = await billFor(2000)
+check(
+  'an owner grants a named award, and the bill records which one',
+  (await setShare(namedBill, 1000, 50, merit.id)) === '',
+)
+
+/** What the board actually renders: the frozen figures, and the name joined live. */
+const boardOn = async (id, userId = ids.ownerA) =>
+  (
+    await asUser(db, userId, (tx) =>
+      tx.query(
+        `select scholarship_name, discount_bdt::text as amount,
+                discount_percent::text as percent, net_bdt::text as net
+           from fee_invoice_balances where id = $1`,
+        [id],
+      ),
+    )
+  ).rows[0]
+
+let board = await boardOn(namedBill)
+check('and the board says which award it was', board?.scholarship_name === 'মেধা বৃত্তি', String(board?.scholarship_name))
+check('and the share it came to', board?.percent === '50.00', String(board?.percent))
+check('and the fee left to pay', board?.net === '1000.00', String(board?.net))
+
+// A flat award carries no share onto the bill, because there is not one to carry.
+const flatBill = await billFor(1200)
+check(
+  'a flat award waives its figure with no share beside it',
+  (await setShare(flatBill, 300, null, siblingAward.id)) === '',
+)
+board = await boardOn(flatBill)
+check('and the board names it', board?.scholarship_name === 'ভাইবোন ছাড়', String(board?.scholarship_name))
+check('with no percentage invented for it', board?.percent === null, String(board?.percent))
+
+// The composite foreign key, which is the whole reason fee_scholarships carries a unique
+// index on (id, coaching_center_id): a reference to `id` alone would have let centre A
+// label a bill with centre B's award and put a name from another business on it.
+const crossCentre = await setShare(namedBill, 1000, 50, khulnaHardship.id)
+check(
+  "a bill cannot be labelled with another centre's award",
+  /fee_invoices_scholarship_fkey/.test(crossCentre),
+  crossCentre.split('\n')[0] || 'accepted',
+)
+check('and the label it already had is untouched', (await boardOn(namedBill))?.percent === '50.00')
+
+// Nothing attributed when nothing is waived. On INSERT this is the check constraint's job,
+// and `generateInvoices` holds INSERT on this table — so without it a raised bill could
+// arrive already labelled with an award that waived nothing.
+let attributed = ''
+try {
+  await db.query(
+    `insert into fee_invoices
+       (coaching_center_id, student_id, period_month, amount_bdt, due_date,
+        discount_bdt, scholarship_id)
+     values ($1, $2, '2026-08-01', 1000, '2026-08-10', 0, $3)`,
+    [centerA, stAli, merit.id],
+  )
+} catch (error) {
+  attributed = String(error.message)
+}
+check(
+  'a bill cannot be raised already labelled with an award that waived nothing',
+  /fee_invoices_waiver_attributed/.test(attributed),
+  attributed.split('\n')[0] || 'accepted',
+)
+
+// On UPDATE the guard normalises instead of refusing, which is the right answer to an owner
+// undoing something: this is the path that takes a waiver off, and it takes all of it off.
+check('taking a named waiver back is allowed', (await setShare(flatBill, 0, null, siblingAward.id)) === '')
+const cleared = (
+  await db.query(
+    `select discount_bdt::text as amount, discount_percent, scholarship_id,
+            discount_reason, discounted_by, discounted_at
+       from fee_invoices where id = $1`,
+    [flatBill],
+  )
+).rows[0]
+check('and the award goes with it', cleared.scholarship_id === null, String(cleared.scholarship_id))
+check('and the share', cleared.discount_percent === null, String(cleared.discount_percent))
+check('and the signature beside them', cleared.discounted_by === null, String(cleared.discounted_by))
+
+// Retiring an award is not deleting it, and this is the assertion that makes that mean
+// something: the bill keeps its label and its figure while the award stops being offered.
+await asUser(db, ids.ownerA, (tx) =>
+  tx.query(`update fee_scholarships set active = false where coaching_center_id = $1 and id = $2`, [
+    centerA,
+    merit.id,
+  ]),
+)
+board = await boardOn(namedBill)
+check('a retired award still labels the bills it was granted on', board?.scholarship_name === 'মেধা বৃত্তি')
+check('and the figure it waived is untouched', board?.amount === '1000.00', String(board?.amount))
+await asUser(db, ids.ownerA, (tx) =>
+  tx.query(`update fee_scholarships set active = true where coaching_center_id = $1 and id = $2`, [
+    centerA,
+    merit.id,
+  ]),
+)
+
+// The one thing about a waiver that is read live rather than frozen. A label should be
+// correctable everywhere at once; the money and the rate must never move, and neither is on
+// this side of the join.
+await asUser(db, ids.ownerA, (tx) =>
+  tx.query(`update fee_scholarships set name = 'Merit 50%' where coaching_center_id = $1 and id = $2`, [
+    centerA,
+    merit.id,
+  ]),
+)
+board = await boardOn(namedBill)
+check('renaming an award corrects every bill it labelled', board?.scholarship_name === 'Merit 50%')
+check('without touching what any of them waived', board?.amount === '1000.00', String(board?.amount))
+await asUser(db, ids.ownerA, (tx) =>
+  tx.query(`update fee_scholarships set name = 'মেধা বৃত্তি' where coaching_center_id = $1 and id = $2`, [
+    centerA,
+    merit.id,
+  ]),
+)
+
+// ---------------------------------------------------------------------------
+// What the month cost the centre (fee_waiver_month).
+//
+// §9.3's other half: "why is our collection rate 82%" has opposite answers depending on
+// whether the missing 18% was given away on purpose or never paid, and a centre cannot ask
+// that of free text. One row per award per month, and one row with a null award for
+// everything waived without a name — which is the line an owner should watch growing.
+//
+// Bills and children counted separately, because this product bills per enrolment: a
+// student on merit taking three subjects is three bills, and "we carry eleven children on
+// merit" is the sentence an owner actually says.
+// ---------------------------------------------------------------------------
+
+/** The month as the owner's own screen reads it, through the caller's own policies. */
+const monthWaivers = async (userId = ids.ownerA) =>
+  (
+    await asUser(db, userId, (tx) =>
+      tx.query(
+        `select scholarship_id, scholarship_name, bills, students, waived_bdt::text as waived
+           from fee_waiver_month
+          where coaching_center_id = $1 and period_month = '2026-08-01'
+          order by waived_bdt desc`,
+        [centerA],
+      ),
+    )
+  ).rows
+
+let month = await monthWaivers()
+const namedRow = month.find((row) => row.scholarship_id === merit.id)
+const anonRow = month.find((row) => row.scholarship_id === null)
+
+check('the month totals the named award on its own line', namedRow !== undefined)
+check('under the name the owner reads it by', namedRow?.scholarship_name === 'মেধা বৃত্তি')
+check('with the figure it waived', namedRow?.waived === '1000.00', String(namedRow?.waived))
+check('and one bill behind it', namedRow?.bills === 1, String(namedRow?.bills))
+
+/*
+ * Everything waived without a name, on one line. Fourteen bills: the twelve triples, the
+ * tie, and the bill whose award a support session deleted — which is what "unlabelled"
+ * costs, and where that money goes when it happens.
+ */
+const handTyped = TRIPLES.reduce((sum, [, , figure]) => sum + figure, 0) + 166.67 + 100
+
+check('and everything waived without a name on one line beneath it', anonRow !== undefined)
+check('with no name to print', anonRow?.scholarship_name === null, String(anonRow?.scholarship_name))
+check('totalling every figure somebody typed', anonRow?.waived === handTyped.toFixed(2), String(anonRow?.waived))
+check('across fourteen bills', anonRow?.bills === 14, String(anonRow?.bills))
+// The reason both counts are on the view: bills are enrolments, children are children.
+check('but two children, because a centre counts children', anonRow?.students === 2, String(anonRow?.students))
+check(
+  'and a bill with no waiver on it is not on this report at all',
+  month.every((row) => Number(row.waived) > 0),
+)
+
+// A cancelled bill is off every other total in the schema, and this one too — otherwise the
+// month's giving-away would include fees the centre never charged.
+await asUser(db, ids.ownerA, (tx) =>
+  tx.query(
+    `update fee_invoices set voided_at = now(), void_reason = 'ভুল বিল'
+      where coaching_center_id = $1 and id = $2`,
+    [centerA, namedBill],
+  ),
+)
+month = await monthWaivers()
+check(
+  'cancelling the bill takes its waiver off the month',
+  month.every((row) => row.scholarship_id !== merit.id),
+)
+
+// And relabelling a waiver that is in no total on any screen is refused, on the same
+// argument the figure is: the owner meant to do something, and doing nothing quietly would
+// leave them believing they had.
+const relabel = await setShare(namedBill, 1000, 50, siblingAward.id)
+check(
+  'and the award on a cancelled bill cannot be changed either',
+  /restore it first/.test(relabel),
+  relabel.split('\n')[0] || 'accepted',
+)
+
+await asUser(db, ids.ownerA, (tx) =>
+  tx.query(`update fee_invoices set voided_at = null where coaching_center_id = $1 and id = $2`, [
+    centerA,
+    namedBill,
+  ]),
+)
+month = await monthWaivers()
+check(
+  'restoring it puts the waiver back on the month, under the award it was granted under',
+  month.find((row) => row.scholarship_id === merit.id)?.waived === '1000.00',
+)
+
+// security_invoker, so the report is only ever the caller's own rows added up. A view that
+// grouped for everybody would be a total wearing the wrong centre's name.
+check(
+  "the other centre's owner reads none of this centre's month",
+  (await monthWaivers(ids.ownerB)).length === 0,
+)
+check(
+  'and a teacher with no fee visibility reads none of it either',
+  (await monthWaivers(ids.karim)).length === 0,
+)
+
+// Put the seed back: the sections below count invoices and payments. The awards stay, and
+// the two sections that use them say so where they use them.
+await db.query('delete from fee_invoices where id = any($1)', [
+  [...shareBills, tieBill, overBill, namedBill, flatBill, doomedInv],
+])
+
+// ---------------------------------------------------------------------------
 // The record of having chased a fee.
 //
 // Three things here are not obvious from reading the migration.
@@ -4025,6 +4711,70 @@ check(
   'and the payment is still on the record',
   untouched.payments === 1,
   `${untouched.payments} payment(s) left`,
+)
+
+// The award's name, which is the half of 20260811000069 this box decides. Read is wider
+// than write on fee_scholarships for exactly this reason: the balances view joins the name
+// in under security_invoker, so a teacher who could not read the award would get "৳400
+// waived" with nothing beside it. Granted and taken back as the server role, so Ali's bill
+// is exactly as it was for the sections below — 400 is half of 800, which is what
+// fee_invoices_discount_percent_agrees requires of the pair.
+await db.query(
+  `update fee_invoices
+      set discount_bdt = 400, discount_percent = 50, scholarship_id = $2
+    where id = $1`,
+  [invoiceAli, merit.id],
+)
+await asUser(db, ids.karim, async (tx) => {
+  check(
+    'a fee-reading teacher reads the centre awards, because the board joins their names in',
+    (await n(tx, 'select count(*)::int as n from fee_scholarships')) === 3,
+    String(await n(tx, 'select count(*)::int as n from fee_scholarships')),
+  )
+  const labelled = (
+    await tx.query(
+      `select scholarship_name, discount_percent::text as percent
+         from fee_invoice_balances where id = $1`,
+      [invoiceAli],
+    )
+  ).rows[0]
+  check(
+    'so a waiver on a bill they can already see explains itself',
+    labelled?.scholarship_name === 'মেধা বৃত্তি',
+    String(labelled?.scholarship_name),
+  )
+  check('with the share it was granted at', labelled?.percent === '50.00', String(labelled?.percent))
+})
+// Reading the label is not writing the policy. The insert throws; the rename is refused by
+// the policy rather than the grant — `name` is inside it — so nought rows changed is what
+// the refusal looks like.
+check(
+  'while naming an award is still not a teacher',
+  await deniedAsUser(
+    db,
+    ids.karim,
+    `insert into fee_scholarships (coaching_center_id, name, percent) values ($1, 'Karim Merit', 20)`,
+    [centerA],
+  ),
+)
+const teacherRename = await asUser(db, ids.karim, (tx) =>
+  tx.query(`update fee_scholarships set name = 'Renamed' where id = $1`, [merit.id]),
+)
+check(
+  'nor renaming one, which would relabel every bill it ever waived',
+  teacherRename.affectedRows === 0,
+  `${teacherRename.affectedRows} row(s) changed`,
+)
+await db.query('update fee_invoices set discount_bdt = 0 where id = $1', [invoiceAli])
+check(
+  'and putting the waiver back to nought clears the award with it',
+  (
+    await db.query(
+      `select discount_bdt::text as amount, discount_percent, scholarship_id
+         from fee_invoices where id = $1`,
+      [invoiceAli],
+    )
+  ).rows[0].scholarship_id === null,
 )
 
 // The grant is per teacher, not per centre. Nasrin teaches Mim and has no
@@ -12465,6 +13215,26 @@ check(
   'nor a payment, which is the row a receipt is printed from',
   (await sees(receptionist, 'fee_payments')) === 0,
   String(await sees(receptionist, 'fee_payments')),
+)
+
+// The named awards (20260811000069), whose policy is restrictive over reads as well as
+// writes — one sentence for both, because a manager who cannot see a row must not be able
+// to edit it. The three are the ones the waiver section further up left behind.
+check(
+  'the bookkeeper reads the awards the fee book is waived under',
+  (await sees(bookkeeper, 'fee_scholarships')) === 3,
+  String(await sees(bookkeeper, 'fee_scholarships')),
+)
+check(
+  'and the receptionist reads none of them, because reads are narrowed too',
+  (await sees(receptionist, 'fee_scholarships')) === 0,
+  String(await sees(receptionist, 'fee_scholarships')),
+)
+await capWrite(
+  'nor names one, which would be a fee policy from the front desk',
+  receptionist,
+  `insert into fee_scholarships (coaching_center_id, name, percent) values ($1, 'Desk Merit', 30)`,
+  [centerA],
 )
 
 // The verb, not the noun. Section 4 of the migration leaves reads open on the roster and the

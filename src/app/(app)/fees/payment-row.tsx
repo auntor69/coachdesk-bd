@@ -22,6 +22,7 @@ import Link from 'next/link'
 import { MethodPicker } from '@/components/method-picker'
 import { Alert, Button, Field } from '@/components/ui'
 import { formatDate } from '@/lib/bd/time'
+import type { Award } from '@/lib/fees/scholarship'
 import { mintIdempotencyKey } from '@/lib/idempotency'
 import { MAX_LABEL } from '@/lib/limits'
 import type { Locale, T } from '@/lib/i18n'
@@ -74,6 +75,17 @@ export type FeeRow = ChaseTarget & {
    * looking at the row, not at a form.
    */
   discountReason: string | null
+  /**
+   * How the waiver was said, when it was said as more than a figure (§9.3).
+   *
+   * `discountPercent` and `scholarshipId` are frozen on the invoice; `scholarshipName` is
+   * joined live from the award, so a spelling corrected on the list is corrected on every
+   * bill it ever labelled. Null on a retired award is not possible — retiring keeps the
+   * row — but a null name with a set id would be a cross-centre row the FK forbids.
+   */
+  discountPercent: number | null
+  scholarshipId: string | null
+  scholarshipName: string | null
   net: number
   paid: number
   /** "today" / "yesterday" / a date, written server-side. Null if never chased. */
@@ -86,6 +98,7 @@ export function PaymentRow({
   center,
   locale,
   words,
+  awards,
   readOnly = false,
 }: {
   row: FeeRow
@@ -97,6 +110,12 @@ export function PaymentRow({
    */
   locale: Locale
   words: RowWords
+  /**
+   * The centre's awards that are still in use, for the waiver panel's select. Read
+   * once by the board and handed to every row as the same array, so it crosses the
+   * wire once however many rows there are.
+   */
+  awards: Award[]
   /**
    * A teacher with can_view_fees reads this board; they do not collect on it. See
    * the read-only branch below for what that removes and why it is a different
@@ -316,6 +335,24 @@ export function PaymentRow({
               <p className="num text-sm text-ink-soft">
                 {fill(t.discount, { amount: taka(row.discount) })}
               </p>
+              {/* What kind of waiver it was, when it was more than a figure somebody
+                  typed. The name first, because that is what a report totals; a bare
+                  share only when there is no name behind it, since a named percentage
+                  award already carries its rule in the label. */}
+              {row.scholarshipName && (
+                <p className="mt-0.5 text-sm text-ink-soft">
+                  <span className="text-ink-faint">{t.awardLabel}:</span>{' '}
+                  {row.scholarshipName}
+                  {row.discountPercent !== null && (
+                    <span className="num"> ({row.discountPercent}%)</span>
+                  )}
+                </p>
+              )}
+              {!row.scholarshipName && row.discountPercent !== null && (
+                <p className="num mt-0.5 text-sm text-ink-soft">
+                  {fill(t.discountShare, { percent: row.discountPercent })}
+                </p>
+              )}
               {/* Only when they left any: a blank line under a figure reads as a
                   rendering fault rather than as "they wrote nothing". */}
               {row.discountReason && (
@@ -365,6 +402,11 @@ export function PaymentRow({
             // so the panel's own refusal is the shared rule's, not this file's
             // assumption about which query it was rendered from.
             voidedAt={null}
+            awards={awards}
+            // How the waiver on this bill was last said, so the panel opens at it rather
+            // than at taka. Frozen figures off the invoice, not the award's rule today.
+            scholarshipId={row.scholarshipId}
+            discountPercent={row.discountPercent}
             t={discount}
             common={common}
           />

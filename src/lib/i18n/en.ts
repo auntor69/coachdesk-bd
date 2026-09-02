@@ -544,6 +544,9 @@ export const en: Dictionary = {
     /** The way onto the one-off charge screen. See the Bangla note. */
     chargeLink: 'Charge a fee that is not tuition',
 
+    /** The way onto the awards list. See the Bangla note. */
+    scholarshipsLink: 'Scholarships and standing waivers',
+
     today: 'today',
     yesterday: 'yesterday',
 
@@ -580,6 +583,9 @@ export const en: Dictionary = {
     discounted: (name: string, amount: string) => `${name} — ${amount} waived.`,
     discountCleared: (name: string) =>
       `${name} — the waiver is off, and the bill is back at its full fee.`,
+
+    awardAdded: (name: string) => `${name} — added to the list.`,
+    awardSaved: (name: string) => `${name} — saved.`,
 
     cancelledCount: (n: number) => `${n} cancelled ${n === 1 ? 'bill' : 'bills'}`,
     cancelledBody:
@@ -702,6 +708,24 @@ export const en: Dictionary = {
         `The fee on this bill is ${max}. A waiver cannot be more than that.`,
       discountFailed: 'The waiver was not recorded. Please try again.',
 
+      /** The refusals that belong to the three ways of waiving. See the Bangla notes. */
+      discountBasis: 'It is not clear how the waiver was meant to be worked out.',
+      discountPercentRange: (max: number) =>
+        `A share has to be between 1 and ${max} percent.`,
+      discountNothing:
+        'That rule comes to nothing on this bill. To remove a waiver, use “Take the waiver off”.',
+
+      /** The awards themselves — read, granted, written down. See the Bangla notes. */
+      awardUnreadable: 'The scholarship could not be read. Please try again.',
+      awardMissing: 'That scholarship is gone or retired. Pick one from the list again.',
+      awardRule:
+        'There is something wrong with that scholarship’s rule, so it was not applied. Open the list and check it.',
+      awardKind: 'Choose whether it is a share of the fee or a fixed figure.',
+      awardNoName: 'Give it a name — the name is what lets the total be counted on its own.',
+      awardAmountRange: 'A fixed figure has to be more than zero.',
+      awardDuplicate: 'You already have one with this name. Use a different one.',
+      awardFailed: 'It was not saved. Please try again.',
+
       /** The four ways loading old dues is refused. See the Bangla notes. */
       arrearsMonthNotPast:
         'Old dues have to be recorded against a month that has already ended — this month’s invoices are raised with the button above.',
@@ -743,6 +767,9 @@ export const en: Dictionary = {
     paidOf: '{paid} / {net} paid',
     settled: '{paid} received · {net} in total',
     discount: '({amount} discount)',
+    /** What the waiver was, when it was more than a typed figure. See the Bangla note. */
+    awardLabel: 'Scholarship',
+    discountShare: '{percent}% of the fee',
     inCredit: '{amount} in credit',
 
     chaseTitle: 'Remind the guardian',
@@ -824,6 +851,50 @@ export const en: Dictionary = {
     voidedTitle: 'A cancelled bill cannot be discounted',
     voidedNote: 'Put the bill back, and then it can be discounted.',
     reasonLabel: 'Reason for the waiver',
+    basis: 'How you are waiving it',
+    basisTaka: 'A figure in taka',
+    basisPercent: 'A share of the fee',
+    share: 'What share of the fee you are waiving',
+    awardWaives: '{name} waives {amount} of this bill',
+    awardWaivesNothing: '{name} comes to nothing on this bill',
+    manageAwards: 'Scholarships and standing waivers',
+  },
+
+  scholarships: {
+    title: 'Scholarships and standing waivers',
+    subtitle: 'Waive by name, and see what it cost at month end',
+    why: 'Name a waiver once and you never retype it, and at month end you can see what each one cost the centre.',
+    backLink: 'Back to fees',
+
+    addHeading: 'A new scholarship or waiver',
+    name: 'Name',
+    nameHint: 'e.g. sibling waiver, merit 50%, hardship',
+    kind: 'Rule',
+    kindPercent: 'A share of the fee',
+    kindTaka: 'A fixed figure',
+    percentValue: 'What share of the fee',
+    takaValue: 'How much',
+    add: 'Add it to the list',
+    adding: 'Adding…',
+    ruleFrozen:
+      'The rule cannot be changed later — a new rule means a new name. The name and whether it is in use can be changed any time.',
+
+    listHeading: 'The list',
+    empty: 'No named waivers yet.',
+    percentRule: '{percent}% of the fee',
+    activeLabel: 'In use',
+    retiredNote:
+      'Retired — it cannot be put on a new bill, and every old bill keeps its figures.',
+    save: 'Save',
+    saving: 'Saving…',
+
+    monthHeading: 'What was waived this month',
+    monthEmpty: 'Nothing was waived on any bill this month.',
+    unnamed: 'Waived without a name',
+    // Templates, not functions. See the Bangla note.
+    countNote: '{bills} bills, {students} students',
+    monthTotal: 'Waived altogether',
+    retiredTag: 'Retired',
   },
 
   receipt: {

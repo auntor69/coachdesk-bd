@@ -18,6 +18,7 @@ import { normalizeBdMobile } from '@/lib/bd/phone'
 import { tallyOutstanding, formatTaka } from '@/lib/money'
 import { searchTerms, matchesSearch, MAX_QUERY } from '@/lib/search'
 import { countChasesDue } from '@/lib/fees/reminder-schedule'
+import type { Award } from '@/lib/fees/scholarship'
 import { cancelledBills } from '@/lib/fees/void'
 import { dict, DEFAULT_LOCALE, type Locale } from '@/lib/i18n'
 import type { OutreachChannel } from '@/lib/supabase/types'
@@ -38,7 +39,7 @@ export async function generateMetadata() {
  * literal — split this across two lines with a `+` and TypeScript widens it to
  * `string`, the parse fails, and every column comes back as GenericStringError.
  */
-const COLUMNS = 'id, student_name, student_code, amount_bdt, discount_bdt, discount_reason, net_bdt, paid_bdt, remaining_bdt, due_date, period_month, guardian_phone, sms_opt_out, preferred_channel'
+const COLUMNS = 'id, student_name, student_code, amount_bdt, discount_bdt, discount_reason, discount_percent, scholarship_id, scholarship_name, net_bdt, paid_bdt, remaining_bdt, due_date, period_month, guardian_phone, sms_opt_out, preferred_channel'
 
 /**
  * The cancelled list needs a name, a month, what is no longer owed, and the owner's
@@ -148,6 +149,7 @@ export default async function FeesPage({
     { data: collectedRow, error: collectedError },
     chased,
     cancelled,
+    awardRows,
     { data: center, error: centerError },
   ] =
     await Promise.all([
@@ -266,6 +268,29 @@ export default async function FeesPage({
               .range(from, to),
           )
         : Promise.resolve(null),
+      // The awards this centre grants by name, for the waiver panel's select. One list
+      // for the whole board, handed to every row as the same array — a per-row read of a
+      // table with four rows in it would be a thousand round trips to draw one select.
+      //
+      // Active only: a retired award is still on the bills it waived, whose labels come
+      // off the invoice, but it must not be offered again. Staff-admin only, because the
+      // read-only board has no waiver panel to put a select in.
+      //
+      // A failed read comes back as no awards rather than as a broken page. What is lost
+      // is the shortcut, not the ability to waive a fee — the two plain ways are always
+      // in the select — and nothing here claims the centre has named none.
+      canWrite
+        ? pageOrNull((from, to) =>
+            supabase
+              .from('fee_scholarships')
+              .select('id, name, percent, amount_bdt')
+              .eq('coaching_center_id', session.active.centerId)
+              .eq('active', true)
+              .order('name', { ascending: true })
+              .order('id')
+              .range(from, to),
+          )
+        : Promise.resolve(null),
       // Where a parent should send the money. Read once for the whole board
       // rather than per row: it is one value for the centre, and every reminder
       // on the page is going to name it. Also skipped when read-only, for the
@@ -373,6 +398,16 @@ export default async function FeesPage({
     paymentWallet: center?.payment_wallet ?? null,
     paymentNumber: center?.payment_number ?? null,
   }
+
+  // The awards as the waiver panel needs them: both figures through `Number()`, because
+  // PostgREST hands numerics over as strings whatever the generated type says, and a
+  // percentage that arrives as "50" would render as a share and price as nothing.
+  const awards: Award[] = (awardRows ?? []).map((row) => ({
+    id: row.id,
+    name: row.name,
+    percent: row.percent === null ? null : Number(row.percent),
+    amountBdt: row.amount_bdt === null ? null : Number(row.amount_bdt),
+  }))
 
   // Newest cancellation first, sorted in the shared function rather than in the query
   // above — see lib/fees/void.ts for why `voided_at` is sorted on and then dropped
@@ -593,6 +628,23 @@ export default async function FeesPage({
         </p>
       )}
 
+      {/* Not a way a bill gets raised — a way one gets smaller. Named waivers are
+          maintained here and then picked on any row's waiver panel, so the link is
+          beside the other two setup jobs rather than inside a row nobody has opened
+          yet. Unconditional on the write board: a centre with no awards named is
+          exactly the centre that has not found this screen. */}
+      {canWrite && (
+        <p className="flex">
+          <Link
+            href="/fees/scholarships"
+            className="inline-flex min-h-tap items-center font-medium
+              text-brand-800 underline"
+          >
+            {t.scholarshipsLink} →
+          </Link>
+        </p>
+      )}
+
       {/* Only once something is owed. On an all-paid board it would be a link to
           a screen that can only say "nothing to do", which the empty board
           already says. */}
@@ -652,6 +704,7 @@ export default async function FeesPage({
                   key={row.id}
                   row={row}
                   center={centerPay}
+                  awards={awards}
                   locale={locale}
                   readOnly={!canWrite}
                   // One object built once for the whole board. Seven groups of words
@@ -709,6 +762,9 @@ type ViewRow = {
   amount_bdt: number | null
   discount_bdt: number | null
   discount_reason: string | null
+  discount_percent: number | null
+  scholarship_id: string | null
+  scholarship_name: string | null
   net_bdt: number | null
   paid_bdt: number | null
   remaining_bdt: number | null
@@ -745,6 +801,12 @@ function toRow(
       // owner left words, so an empty string and a null would draw differently for no
       // reason an owner could explain.
       discountReason: v.discount_reason,
+      // How the waiver was said, when it was not a figure somebody typed. The share
+      // through `Number()` like every other numeric; the id and the name straight
+      // through, including their nulls, because the row draws each only when set.
+      discountPercent: v.discount_percent === null ? null : Number(v.discount_percent),
+      scholarshipId: v.scholarship_id,
+      scholarshipName: v.scholarship_name,
       net: Number(v.net_bdt ?? 0),
       paid: Number(v.paid_bdt ?? 0),
       remaining: Number(v.remaining_bdt ?? 0),

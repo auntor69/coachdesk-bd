@@ -1109,6 +1109,8 @@ export type Database = {
           branch_id: string | null
           revenue_category: RevenueCategory
           idempotency_key: string | null
+          scholarship_id: string | null
+          discount_percent: number | null
         }
         Insert: {
           id?: string
@@ -1131,6 +1133,8 @@ export type Database = {
           branch_id?: string | null
           revenue_category?: RevenueCategory
           idempotency_key?: string | null
+          scholarship_id?: string | null
+          discount_percent?: number | null
         }
         Update: {
           id?: string
@@ -1153,6 +1157,8 @@ export type Database = {
           branch_id?: string | null
           revenue_category?: RevenueCategory
           idempotency_key?: string | null
+          scholarship_id?: string | null
+          discount_percent?: number | null
         }
         Relationships: [
           {
@@ -1181,6 +1187,13 @@ export type Database = {
             columns: ['enrollment_id', 'coaching_center_id']
             isOneToOne: false
             referencedRelation: 'enrollments'
+            referencedColumns: ['id', 'coaching_center_id']
+          },
+          {
+            foreignKeyName: 'fee_invoices_scholarship_fkey'
+            columns: ['scholarship_id', 'coaching_center_id']
+            isOneToOne: false
+            referencedRelation: 'fee_scholarships'
             referencedColumns: ['id', 'coaching_center_id']
           },
           {
@@ -1340,6 +1353,44 @@ export type Database = {
             columns: ['sent_by']
             isOneToOne: false
             referencedRelation: 'users'
+            referencedColumns: ['id']
+          },
+        ]
+      }
+      fee_scholarships: {
+        Row: {
+          id: string
+          coaching_center_id: string
+          name: string
+          percent: number | null
+          amount_bdt: number | null
+          active: boolean
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          coaching_center_id: string
+          name: string
+          percent?: number | null
+          amount_bdt?: number | null
+          active?: boolean
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          coaching_center_id?: string
+          name?: string
+          percent?: number | null
+          amount_bdt?: number | null
+          active?: boolean
+          created_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'fee_scholarships_coaching_center_id_fkey'
+            columns: ['coaching_center_id']
+            isOneToOne: false
+            referencedRelation: 'coaching_centers'
             referencedColumns: ['id']
           },
         ]
@@ -2859,6 +2910,24 @@ export type Database = {
           preferred_channel: OutreachChannel | null
           void_reason: string | null
           discount_reason: string | null
+          scholarship_id: string | null
+          discount_percent: number | null
+          scholarship_name: string | null
+        }
+        Relationships: []
+      }
+      fee_waiver_month: {
+        Row: {
+          coaching_center_id: string | null
+          period_month: string | null
+          scholarship_id: string | null
+          scholarship_name: string | null
+          scholarship_percent: number | null
+          scholarship_amount_bdt: number | null
+          scholarship_active: boolean | null
+          bills: number | null
+          students: number | null
+          waived_bdt: number | null
         }
         Relationships: []
       }

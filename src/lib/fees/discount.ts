@@ -58,8 +58,14 @@
  */
 export type DiscountVerdict = 'ok' | 'unreadable' | 'negative' | 'tooMuch' | 'cancelled'
 
-/** Taka to whole poisha, so two figures Postgres stored as numeric compare exactly. */
-function poisha(taka: number): number {
+/**
+ * Taka to whole poisha, so two figures Postgres stored as numeric compare exactly.
+ *
+ * Exported for scholarship.ts, which needs the same conversion to multiply a bill by a
+ * percentage in integers. A second copy of it there would be the one place a rounding
+ * difference could hide.
+ */
+export function poisha(taka: number): number {
   return Math.round(taka * 100)
 }
 
