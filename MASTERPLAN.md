@@ -1291,7 +1291,7 @@ be findable, or the refund looks like a deletion and the centre has an argument.
 | Percentage discount | ✅ `discount_percent`, held to the figure by `fee_invoices_discount_percent_agrees` |
 | Named scholarship / waiver, reusable across students | ✅ `fee_scholarships`, granted per bill, totalled by `fee_waiver_month` |
 | Overdue tracking and an arrears list | ✅ built |
-| Instalment plans (a schedule agreed in advance) | ❌ future |
+| Instalment plans (a schedule agreed in advance) | ✅ N bills, not one bill with a schedule — `instalment_plan_id`, `instalment_no`, `instalment_of` |
 | Payment methods | ✅ cash, bKash, Nagad, Rocket, bank transfer, other — `card` missing |
 | Refunds | ⚠️ representable, no UI |
 
@@ -1308,6 +1308,35 @@ retire an award and make its replacement — because every bill it ever labelled
 holds the figure it waived, and a rate that can be edited afterwards turns months
 of history into a lie. Applying an award to a student's every future invoice
 automatically is not built; §9.3 asks for reusable, not automatic.
+
+An instalment plan is **N bills, not one bill with a schedule**, and that decides
+everything else about it. A schedule table beside the invoice would need its own
+allocation rule — which part does a ৳500 payment pay? — and its own arrears
+arithmetic, and then there would be two answers to "what does this family owe"
+with no way to tell which is right. Three rows instead reuse every mechanism
+already keyed to an invoice: partial payments, the arrears list and its index on
+`due_date`, receipts, the collection register, waivers, cancelling, month close
+and the profit view. "Part two is overdue" needed no new code at all.
+
+The one-off charge form offers 2 to 12 parts and shows the schedule before the
+owner presses — each part's figure and the date it falls due, one month apart,
+with `period_month` following the due date so no month shows a spike it could not
+have collected. The split is in whole poisha and the remainder goes to the
+**earliest** parts, a poisha at a time: ৳5,000 over three is 1,666.67 / 1,666.67 /
+1,666.66. What matters is that the parts sum to what the owner typed, but
+earliest-first is the direction an owner can explain, because the last instalment
+is never the surprising one. The board labels each bill *part 2 of 3*, since
+"Admission fee ৳2,000, overdue" reads identically whether it is a whole fee nobody
+paid or the first third of an agreement being honoured, and those want opposite
+conversations with the family.
+
+**No total is stored anywhere.** A plan row holding "৳6,000 agreed" would be a
+second answer to what the family owes, and the first thing to disagree with the
+bills the moment one is cancelled or waived. The split is arithmetic the app does
+once, in poisha, guarded by tests asserting the parts add back up; the schema's
+job is only that a part cannot be renumbered, duplicated or quietly rewritten
+afterwards — so the three columns are in the frozen list with what was billed, and
+cancelling the rest of an agreement a family walked away from is the remedy.
 
 ### 9.4 Employees are not teachers ✅
 
@@ -1768,7 +1797,10 @@ payments, a waiver typed as a figure, taken as a share of the bill, or granted f
 award the centre named once and can total by name, voiding, arrears, month close, and the bills that are
 not a monthly fee — admission, registration, exam, form and other income — raised for
 one batch or a whole centre in a single press that is safe to repeat, and read back
-per category under the month's billed line; append-only payments
+per category under the month's billed line, or agreed in advance and collected in two
+to twelve parts, which is N bills rather than a schedule beside one and so is arrears,
+receipts, waivers and month close already working, each labelled *part 2 of 3* on the
+board and frozen at the number it was raised as; append-only payments
 with gapless receipt numbers; printable receipts and the collection register;
 a payslip an employee signs, off the breakdown copied onto the payment row and not
 off the agreement as it reads today; a voucher for money the centre paid out, whose
@@ -1812,7 +1844,7 @@ a five-minute life, five tries counted under a row lock, a minute between sends 
 hourly ceiling per number and per IP, checked and spent inside the same call that
 creates the account — which switches itself on the day the aggregator's three variables
 exist, and is off until then (§5.4).
-1,303 RLS assertions and 1,097 unit tests green across 69 migrations and 42 tables in
+1,330 RLS assertions and 1,113 unit tests green across 70 migrations and 42 tables in
 `public` plus one in `app`, and four derived gates and two that ask the live API. One of those gates now refuses
 a query whose table name it cannot read, having discovered it had been counting five
 fewer than existed — and the RLS suite found a manager who could promote themselves
@@ -1874,12 +1906,12 @@ money, money before reporting.
 **Core, and nothing beyond it:** the four plans, the trial, entitlement, capacity
 with atomic enforcement, single and bulk top-up, branch isolation, the shared pool,
 teacher accounts and usernames, phone-or-username sign-in, owner OTP,
-teacher-centric attendance, fees with part payments and discounts, refunds,
-expenses, employees, payroll, revenue and profit, the two dashboards, the audit log,
-payment intents.
+teacher-centric attendance, fees with part payments, discounts and instalment plans,
+refunds, expenses, employees, payroll, revenue and profit, the two dashboards, the
+audit log, payment intents.
 
 **High priority, straight after:**
-instalment plans, teacher clash detection, and per-branch capacity *reporting*
+teacher clash detection, and per-branch capacity *reporting*
 (never per-branch quotas).
 
 **Future, documented and not built:** rooms and timetable conflicts, holiday

@@ -21,8 +21,14 @@
 import { memo, useActionState, useEffect, useRef, useState } from 'react'
 
 import { Alert, Button, Card } from '@/components/ui'
-import { digits } from '@/lib/bd/time'
+import { digits, formatDate } from '@/lib/bd/time'
 import { CHARGE_CATEGORIES, type ChargeStudent } from '@/lib/fees/charge'
+import {
+  MAX_INSTALMENTS,
+  MIN_INSTALMENTS,
+  instalmentPlan,
+  type Instalment,
+} from '@/lib/fees/instalments'
 import { mintIdempotencyKey } from '@/lib/idempotency'
 import type { Locale, T } from '@/lib/i18n'
 import { fill } from '@/lib/i18n/fill'
@@ -66,7 +72,13 @@ export function ChargeForm({
     null,
   )
 
-  const [tally, setTally] = useState({ ticked: students.length, total: 0 })
+  const [tally, setTally] = useState({
+    ticked: students.length,
+    total: 0,
+    each: 0,
+    parts: 1,
+    plan: [] as Instalment[],
+  })
 
   const form = useRef<HTMLFormElement>(null)
   const keyRef = useRef<HTMLInputElement>(null)
@@ -88,14 +100,34 @@ export function ChargeForm({
    * from their keystrokes the same way the billed figure is — including a Bangla keypad's
    * ৩০০ and a typed ৳. `sumTaka` rather than `ticked * amount` for the same reason: it is
    * what the action totals with, and it is where the ceiling lives.
+   *
+   * THE TOTAL DOES NOT DIVIDE BY THE PARTS, and that is the point of the control: the box
+   * holds the whole fee, so `ticked × amount` is what the centre is owed whether it arrives
+   * in one payment or twelve. The schedule underneath is where the parts are shown.
    */
   function recount(el: HTMLFormElement) {
     const data = new FormData(el)
     const ticked = data.getAll('studentId').length
-    const each = parseTaka(String(data.get('amount') ?? ''))
+    const read = parseTaka(String(data.get('amount') ?? ''))
+    const each = read === null || read <= 0 ? 0 : read
+    const parts = Number(data.get('instalments') ?? 1) || 1
+
     setTally({
       ticked,
-      total: each === null || each <= 0 ? 0 : sumTaka(Array(ticked).fill(each)),
+      each,
+      parts,
+      total: each === 0 ? 0 : sumTaka(Array(ticked).fill(each)),
+      // The action's own arithmetic, imported rather than reimplemented, so what is on
+      // screen before the press is what Postgres is asked for after it.
+      plan:
+        parts > 1
+          ? instalmentPlan({
+              total: each,
+              count: parts,
+              firstMonth: String(data.get('periodMonth') ?? ''),
+              dueDay: Number(data.get('dueDay') ?? 10),
+            })
+          : [],
     })
   }
 
@@ -194,6 +226,72 @@ export function ChargeForm({
               ))}
             </select>
           </div>
+
+          <div className="flex flex-col gap-1.5">
+            <label htmlFor="instalments" className="font-medium text-ink">
+              {t.instalments}
+            </label>
+            <span className="text-sm text-ink-soft">{t.instalmentsHint}</span>
+            {/* Below the month and the deadline because it reads from both: part one is
+                billed in that month on that day, and the rest follow it monthly. */}
+            <select
+              id="instalments"
+              name="instalments"
+              defaultValue="1"
+              className={SELECT_CLASS}
+            >
+              <option value="1">{t.payInFull}</option>
+              {Array.from(
+                { length: MAX_INSTALMENTS - MIN_INSTALMENTS + 1 },
+                (_, i) => i + MIN_INSTALMENTS,
+              ).map((n) => (
+                <option key={n} value={n}>
+                  {fill(t.partsOption, { n: digits(n, locale) })}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/*
+           * The agreement, before it is agreed to. An owner splitting ৳6,000 three ways is
+           * committing the family to three dates, and the only place they can check those
+           * dates is here — once the bills are raised, changing them means cancelling one
+           * and charging again.
+           *
+           * Hidden until there is an amount to divide, because a schedule of ৳0 answers
+           * nothing. Shown as "too small" rather than blank when the fee will not divide
+           * that many ways, which is the same refusal the action would give.
+           */}
+          {tally.parts > 1 && tally.each > 0 && (
+            <div className="rounded-xl border border-line bg-surface-alt px-4 py-3">
+              {tally.plan.length === 0 ? (
+                <p className="text-sm text-ink-soft">{t.scheduleTooSmall}</p>
+              ) : (
+                <>
+                  <p className="text-sm font-medium text-ink-soft">{t.scheduleTitle}</p>
+                  <ul className="mt-2 flex flex-col gap-1">
+                    {tally.plan.map((part) => (
+                      <li
+                        key={part.no}
+                        className="flex items-baseline justify-between gap-3 text-sm"
+                      >
+                        <span className="text-ink-soft">
+                          {fill(t.partOf, {
+                            n: digits(part.no, locale),
+                            of: digits(part.of, locale),
+                          })}
+                        </span>
+                        <span className="font-medium text-ink">
+                          {formatTaka(part.amountBdt)} · {formatDate(part.dueDate, locale)}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                  <p className="mt-2 text-xs text-ink-faint">{t.scheduleNote}</p>
+                </>
+              )}
+            </div>
+          )}
 
           <div className="flex flex-col gap-1.5">
             <label htmlFor="note" className="font-medium text-ink">

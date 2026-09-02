@@ -1111,6 +1111,9 @@ export type Database = {
           idempotency_key: string | null
           scholarship_id: string | null
           discount_percent: number | null
+          instalment_plan_id: string | null
+          instalment_no: number | null
+          instalment_of: number | null
         }
         Insert: {
           id?: string
@@ -1135,6 +1138,9 @@ export type Database = {
           idempotency_key?: string | null
           scholarship_id?: string | null
           discount_percent?: number | null
+          instalment_plan_id?: string | null
+          instalment_no?: number | null
+          instalment_of?: number | null
         }
         Update: {
           id?: string
@@ -1159,6 +1165,9 @@ export type Database = {
           idempotency_key?: string | null
           scholarship_id?: string | null
           discount_percent?: number | null
+          instalment_plan_id?: string | null
+          instalment_no?: number | null
+          instalment_of?: number | null
         }
         Relationships: [
           {
@@ -2913,6 +2922,8 @@ export type Database = {
           scholarship_id: string | null
           discount_percent: number | null
           scholarship_name: string | null
+          instalment_no: number | null
+          instalment_of: number | null
         }
         Relationships: []
       }

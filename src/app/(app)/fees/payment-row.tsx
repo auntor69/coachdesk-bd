@@ -21,7 +21,7 @@ import Link from 'next/link'
 
 import { MethodPicker } from '@/components/method-picker'
 import { Alert, Button, Field } from '@/components/ui'
-import { formatDate } from '@/lib/bd/time'
+import { digits, formatDate } from '@/lib/bd/time'
 import type { Award } from '@/lib/fees/scholarship'
 import { mintIdempotencyKey } from '@/lib/idempotency'
 import { MAX_LABEL } from '@/lib/limits'
@@ -86,6 +86,16 @@ export type FeeRow = ChaseTarget & {
   discountPercent: number | null
   scholarshipId: string | null
   scholarshipName: string | null
+  /**
+   * Which part of an agreed plan this bill is, or null on a bill that is not part of one.
+   *
+   * Both or neither, which the invoice's own check constraint guarantees — the label reads
+   * "part 2 of 3" and needs the pair. Without it an owner cannot tell ৳2,000 overdue on a
+   * ৳2,000 fee from the first third of a ৳6,000 agreement being honoured, and those are
+   * opposite conversations to have with the family.
+   */
+  instalmentNo: number | null
+  instalmentOf: number | null
   net: number
   paid: number
   /** "today" / "yesterday" / a date, written server-side. Null if never chased. */
@@ -464,6 +474,18 @@ function RowHead({
         </p>
         <p className="text-sm text-ink-faint">
           {formatDate(row.dueDate, locale)}
+          {/* Which part of an agreed plan this is, so an overdue ৳2,000 on a ৳6,000 fee
+              reads as a family keeping to a schedule rather than one who has paid a
+              third of a bill. Not styled as a warning: it is what the bill is. */}
+          {row.instalmentNo !== null && row.instalmentOf !== null && (
+            <span className="num">
+              {' · '}
+              {fill(t.instalmentPart, {
+                n: digits(row.instalmentNo, locale),
+                of: digits(row.instalmentOf, locale),
+              })}
+            </span>
+          )}
           {/* Only while the money is still owed. Red is the colour that means
               act on this, and a settled invoice needs no action — leaving the
               warning on a paid row spends the owner's attention on the one

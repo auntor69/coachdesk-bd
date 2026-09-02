@@ -1148,6 +1148,22 @@ export const bn = {
     chargeCreated: (what: string, count: number, total: string) =>
       `${what} — ${count} জনের বিল হয়েছে, মোট ${total}।`,
     /**
+     * The same, for a fee agreed in parts.
+     *
+     * The bill count is named as well as the student count, because that is the figure that
+     * would otherwise look like a mistake: three students on a three-part plan puts nine
+     * rows on the board, and "৩ জনের বিল হয়েছে" followed by nine rows reads as a double
+     * charge. "জনপ্রতি" carries the per-student division that English does with "each".
+     */
+    chargePlanCreated: (
+      what: string,
+      students: number,
+      parts: number,
+      count: number,
+      total: string,
+    ) =>
+      `${what} — ${students} জন ${parts} কিস্তিতে দেবে, জনপ্রতি ${parts}টি করে মোট ${count}টি বিল হয়েছে, সব মিলিয়ে ${total}।`,
+    /**
      * The ticks that named nobody, said beside the confirmation rather than instead of it.
      *
      * The only way it happens is a picker that went stale while the form was being filled
@@ -1331,6 +1347,13 @@ export const bn = {
 
       /** The five ways a one-off charge is refused. */
       chargeCategory: 'কোন ফি সেটা বেছে নিন।',
+      /**
+       * Only reachable from a request the picker could not have made, so it states the rule
+       * rather than describing what arrived.
+       */
+      instalmentCount: 'ফি একবারে, বা ২ থেকে ১২ কিস্তিতে নেওয়া যায়।',
+      instalmentTooSmall:
+        'এত কিস্তিতে ভাগ করার মতো টাকা এটা নয়। কিস্তি কমান, বা একবারেই নিন।',
       chargeTooLarge: 'এত বড় টাকা রাখা যাবে না। আরেকবার দেখে নিন।',
       chargeNobody: 'কারো নাম টিক দেওয়া হয়নি। কার জন্য এই ফি, সেটা বেছে নিন।',
       chargeFailed: 'বিল তৈরি হয়নি। আবার চেষ্টা করুন।',
@@ -1368,6 +1391,14 @@ export const bn = {
     awardLabel: 'বৃত্তি',
     discountShare: 'ফি-এর {percent}%',
     inCredit: '{amount} বেশি জমা আছে',
+    /**
+     * Which part of an agreed plan the bill is, beside its deadline.
+     *
+     * "৩-এর ২ নম্বর কিস্তি" rather than a translation of "part 2 of 3": Bangla puts the
+     * whole before the part, and this is the order the same sentence takes in a notebook.
+     * Kept short because the line already holds a date and may hold a day count.
+     */
+    instalmentPart: '{of}-এর {n} নম্বর কিস্তি',
 
     chaseTitle: 'অভিভাবককে মনে করিয়ে দিন',
     /**
@@ -3246,6 +3277,28 @@ export const bn = {
     dueDay: 'শেষ তারিখ',
     dueDayHint: 'ওই মাসের কত তারিখের মধ্যে দিতে হবে',
     dayOption: '{d} তারিখ',
+
+    /**
+     * The instalment control. The hint's second clause is the whole reason it has one: the
+     * box above is the whole fee whether it is paid at once or in three goes, and an owner
+     * who reads it as "জনপ্রতি প্রতি কিস্তিতে কত" would agree three times the fee.
+     *
+     * "কিস্তি" needs no gloss — it is the word a household already uses for a fee taken in
+     * parts, on the shop counter and in the notebook this screen is replacing.
+     */
+    instalments: 'কীভাবে দেবে',
+    instalmentsHint:
+      'একবারে, নাকি কিস্তিতে। উপরের টাকাটা পুরো ফি — দুইভাবেই।',
+    payInFull: 'একবারে',
+    partsOption: '{n} কিস্তিতে',
+
+    scheduleTitle: 'কোন কিস্তিতে কত',
+    partOf: '{of}-এর {n} নম্বর কিস্তি',
+    scheduleNote:
+      'প্রতিটি কিস্তি আলাদা বিল, আলাদা মাসের, আলাদা শেষ তারিখের। সব মিলিয়ে উপরের ফি।',
+    /** Shown in the schedule's place when the fee will not divide that many ways. */
+    scheduleTooSmall: 'এত কিস্তিতে ভাগ করার মতো টাকা এটা নয়।',
+
     note: 'নোট (ইচ্ছা হলে)',
     /** What to write, not that they may write: an empty optional field gets skipped. */
     noteHint: 'কোন পরীক্ষা, কোন বোর্ড — পরে যা দেখতে চাইবেন',
@@ -3266,7 +3319,7 @@ export const bn = {
      * exam fees.
      */
     safeToRepeat:
-      'জনপ্রতি একটি বিল। এই সাবমিট দুইবার গেলে — লাইন কেটে গেলে বা দুইবার চাপ পড়লে — বিল একবারই হবে।',
+      'জনপ্রতি একটি বিল, কিস্তিতে নিলে প্রতি কিস্তিতে একটি। এই সাবমিট দুইবার গেলে — লাইন কেটে গেলে বা দুইবার চাপ পড়লে — বিল একবারই হবে।',
 
     emptyTitle: 'ধরার মতো কোনো শিক্ষার্থী নেই',
     emptyBody: 'এই ব্যাচে এখনো কেউ নেই। আগে শিক্ষার্থীদের ভর্তি করুন।',

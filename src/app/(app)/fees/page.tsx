@@ -39,7 +39,7 @@ export async function generateMetadata() {
  * literal — split this across two lines with a `+` and TypeScript widens it to
  * `string`, the parse fails, and every column comes back as GenericStringError.
  */
-const COLUMNS = 'id, student_name, student_code, amount_bdt, discount_bdt, discount_reason, discount_percent, scholarship_id, scholarship_name, net_bdt, paid_bdt, remaining_bdt, due_date, period_month, guardian_phone, sms_opt_out, preferred_channel'
+const COLUMNS = 'id, student_name, student_code, amount_bdt, discount_bdt, discount_reason, discount_percent, scholarship_id, scholarship_name, net_bdt, paid_bdt, remaining_bdt, due_date, period_month, guardian_phone, sms_opt_out, preferred_channel, instalment_no, instalment_of'
 
 /**
  * The cancelled list needs a name, a month, what is no longer owed, and the owner's
@@ -773,6 +773,8 @@ type ViewRow = {
   guardian_phone: string | null
   sms_opt_out: boolean | null
   preferred_channel: OutreachChannel | null
+  instalment_no: number | null
+  instalment_of: number | null
 }
 
 /**
@@ -807,6 +809,12 @@ function toRow(
       discountPercent: v.discount_percent === null ? null : Number(v.discount_percent),
       scholarshipId: v.scholarship_id,
       scholarshipName: v.scholarship_name,
+      // Which part of an agreed plan this bill is, or nulls on the bills that are not
+      // part of one — which is nearly all of them. Through `Number()` because the view
+      // hands smallints back as numbers already but a view column is nullable either
+      // way, and the row draws the label only when both are set.
+      instalmentNo: v.instalment_no === null ? null : Number(v.instalment_no),
+      instalmentOf: v.instalment_of === null ? null : Number(v.instalment_of),
       net: Number(v.net_bdt ?? 0),
       paid: Number(v.paid_bdt ?? 0),
       remaining: Number(v.remaining_bdt ?? 0),

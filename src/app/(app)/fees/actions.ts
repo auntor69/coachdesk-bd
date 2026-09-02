@@ -40,13 +40,18 @@ import {
   scholarshipVerdict,
 } from '@/lib/fees/scholarship'
 import { chargePlan, isChargeCategory } from '@/lib/fees/charge'
+import { instalmentPlan, instalmentVerdict, readInstalmentCount } from '@/lib/fees/instalments'
 import { PAYMENT_METHODS } from '@/lib/fees/methods'
 import { currentPeriodMonth } from '@/lib/bd/time'
 import { normalizeBdMobile } from '@/lib/bd/phone'
 import { readIdempotencyKey, UNIQUE_VIOLATION } from '@/lib/idempotency'
 import { MAX_LABEL, MAX_NAME, MAX_TEXT, clamp } from '@/lib/limits'
 import { dict } from '@/lib/i18n'
-import type { OutreachChannel, PaymentMethod } from '@/lib/supabase/types'
+import type {
+  OutreachChannel,
+  PaymentMethod,
+  TablesInsert,
+} from '@/lib/supabase/types'
 
 export type FeeState = {
   error?: string
@@ -1496,10 +1501,15 @@ export async function recordArrears(
  * and it says so with the uuid 20260811000067 added for it.
  *
  * ALL OR NOTHING, WHICH IS THE RIGHT SHAPE FOR A BATCH CHARGE. The index is
- * `(coaching_center_id, idempotency_key, student_id)`, so every row of one run carries
- * the same key and a replay loses on the first row it reaches — rolling the statement
- * back rather than topping up a partial run. An owner who charged forty families and
- * lost the response gets forty bills or none, never nineteen.
+ * `(coaching_center_id, idempotency_key, student_id, coalesce(instalment_no, 0))`, so every
+ * row of one run carries the same key and a replay loses on the first row it reaches —
+ * rolling the statement back rather than topping up a partial run. An owner who charged
+ * forty families and lost the response gets forty bills or none, never nineteen.
+ *
+ * AND A PLAN IS N BILLS PER FAMILY, which is why the part number is in that index at all:
+ * one press agreeing ৳6,000 in three writes three rows for the same student under the same
+ * key, and 20260811000067's narrower index would have refused every part but the first.
+ * See `@/lib/fees/instalments` for why there is no schedule table and no stored total.
  *
  * NO `branch_id` HERE. `app.stamp_invoice_branch()` (20260811000047) fills it from the
  * student, because money is filed under the branch of the thing it is about rather than
@@ -1523,6 +1533,27 @@ export async function oneOffCharge(
   if (amount === null) return { error: t.errors.amountUnreadable }
   if (amount <= 0) return { error: t.errors.amountNegative }
   if (amount > MAX_TAKA) return { error: t.errors.chargeTooLarge }
+
+  /*
+   * How many parts the fee is collected in, where one — the default, and what an absent
+   * field means — is the single bill this form has always raised.
+   *
+   * The figure in the box is the WHOLE fee either way, which is the one thing about this
+   * control that could be read two ways. An owner who types 6,000 and picks three has
+   * agreed ৳6,000, not ৳18,000: the total beside the button says so before they press, and
+   * splitting rather than multiplying is the reading that cannot silently treble a bill.
+   */
+  const parts = readInstalmentCount(formData.get('instalments'))
+  if (parts === null) return { error: t.errors.instalmentCount }
+
+  // `tooSmall` gets its own sentence because it is the one refusal about the money rather
+  // than the form: a ৳2 fee cannot be split three ways without a part of nothing, and an
+  // owner told "that is not a number of parts" would go on picking numbers of parts.
+  if (parts > 1) {
+    const verdict = instalmentVerdict(parts, amount)
+    if (verdict === 'tooSmall') return { error: t.errors.instalmentTooSmall }
+    if (verdict !== 'ok') return { error: t.errors.instalmentCount }
+  }
 
   // The current month is allowed here, unlike the arrears loader's, and the difference
   // is the missing enrolment: there is no `(enrollment_id, period_month)` slot for this
@@ -1582,28 +1613,83 @@ export async function oneOffCharge(
 
   if (plan.students.length === 0) return { error: t.errors.chargeNobody }
 
+  /*
+   * The agreement, worked out once. Every family on this press is billed the same fee on the
+   * same schedule, so the parts and their months are the same arithmetic for all of them —
+   * only the agreement's id differs, and it is minted per student below.
+   *
+   * Empty when the fee is paid in full, which is the single bill this form has always
+   * written and the branch below keeps byte-identical.
+   */
+  const schedule =
+    parts > 1
+      ? instalmentPlan({
+          total: amount,
+          count: parts,
+          firstMonth: periodMonth,
+          dueDay: rawDueDay,
+        })
+      : []
+
   // A plain insert and not an upsert. There is no conflict target to name: the
   // idempotency index is partial, and 20260811000048 explains why Postgres cannot infer
   // an arbiter from one — so the refusal arrives as an error and is answered below,
   // which is what makes the run all-or-nothing.
   //
-  // `enrollment_id` is left off rather than set to null, which is the same row and the
-  // honest way to write "this bill is about a student, not a subject".
+  // The rows are built inline rather than above, which is where scoping is visible:
+  // `coaching_center_id` comes off the session at the query, so check-scoping.mjs can see
+  // this write name its own centre. `enrollment_id` is left off rather than set to null,
+  // which is the same row and the honest way to write "this bill is about a student, not a
+  // subject".
   const { data: inserted, error: insertError } = await supabase
     .from('fee_invoices')
     .insert(
-      plan.students.map((studentId) => ({
-        coaching_center_id: session.active.centerId,
-        student_id: studentId,
-        period_month: periodMonth,
-        amount_bdt: amount,
-        due_date: dueDate,
-        revenue_category: rawCategory,
-        note: note || null,
-        idempotency_key: key,
-      })),
+      // Annotated, because `flatMap` takes the shape of the first `return` it sees as the
+      // shape of the callback: the plan branch's `instalment_plan_id: string` would make
+      // the paid-in-full branch's null a type error rather than the other row it is.
+      plan.students.flatMap((studentId): TablesInsert<'fee_invoices'>[] => {
+        const base = {
+          coaching_center_id: session.active.centerId,
+          student_id: studentId,
+          revenue_category: rawCategory,
+          note: note || null,
+          idempotency_key: key,
+        }
+
+        // The single bill this form has always raised, with the plan columns explicitly
+        // empty. Nulls and not zeros: `fee_invoices_instalment_whole` allows all three or
+        // none, and "part 0 of 0" would be a claim about an agreement nobody made.
+        if (schedule.length === 0) {
+          return [
+            {
+              ...base,
+              period_month: periodMonth,
+              amount_bdt: amount,
+              due_date: dueDate,
+              instalment_plan_id: null,
+              instalment_no: null,
+              instalment_of: null,
+            },
+          ]
+        }
+
+        // One agreement per family, not one per press: an instalment plan is a thing
+        // agreed with one household, so a shared id would make "show me this family's
+        // plan" answer with everybody's.
+        const planId = crypto.randomUUID()
+
+        return schedule.map((part) => ({
+          ...base,
+          period_month: part.periodMonth,
+          amount_bdt: part.amountBdt,
+          due_date: part.dueDate,
+          instalment_plan_id: planId,
+          instalment_no: part.no,
+          instalment_of: part.of,
+        }))
+      }),
     )
-    .select('id, amount_bdt')
+    .select('id, amount_bdt, student_id, instalment_of')
 
   let rows = inserted ?? []
 
@@ -1621,7 +1707,7 @@ export async function oneOffCharge(
     // is worse than no figure at all.
     const { data: existing, error: existingError } = await supabase
       .from('fee_invoices')
-      .select('id, amount_bdt')
+      .select('id, amount_bdt, student_id, instalment_of')
       .eq('coaching_center_id', session.active.centerId)
       .eq('idempotency_key', key)
 
@@ -1652,12 +1738,24 @@ export async function oneOffCharge(
   const total = sumTaka(rows.map((i) => Number(i.amount_bdt)))
   const what = t.categories[rawCategory]
 
+  /*
+   * Read off the rows rather than the submission, for the same reason the amount is: on the
+   * replay path these are somebody else's rows, and a plan counted from this request would
+   * describe an agreement that was never written. Null means no plan, whatever was asked
+   * for — every row of one press shares the count, so the first one carries it.
+   */
+  const each = rows[0]?.instalment_of ?? null
+  const families = new Set(rows.map((i) => i.student_id)).size
+
   // The unknown ticks are reported beside the confirmation rather than instead of it.
   // The bills really were raised; this is who was left off, and the only way it happens
   // is a picker that went stale while the form was being filled in — a student removed
   // from the centre, or a manager narrowed out of them mid-form.
   return {
-    ok: t.chargeCreated(what, count, formatTaka(total)),
+    ok:
+      each === null
+        ? t.chargeCreated(what, count, formatTaka(total))
+        : t.chargePlanCreated(what, families, each, count, formatTaka(total)),
     ...(plan.unknown > 0 ? { warn: t.chargeUnknown(plan.unknown) } : {}),
   }
 }

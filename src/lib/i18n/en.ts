@@ -623,6 +623,19 @@ export const en: Dictionary = {
     /** What a one-off charge says back. See the Bangla notes. */
     chargeCreated: (what: string, count: number, total: string) =>
       `${what} — ${count} ${count === 1 ? 'bill' : 'bills'} raised, ${total} in total.`,
+    /**
+     * The same confirmation for a fee agreed in parts, and it names the bill count because
+     * that is the surprise: three students on a three-part plan is nine rows on the board,
+     * and an owner who reads "3 bills" then finds nine thinks something has gone twice.
+     */
+    chargePlanCreated: (
+      what: string,
+      students: number,
+      parts: number,
+      count: number,
+      total: string,
+    ) =>
+      `${what} — ${students} ${students === 1 ? 'student' : 'students'} paying in ${parts} parts, so ${count} ${count === 1 ? 'bill' : 'bills'} raised, ${total} in total.`,
     chargeUnknown: (n: number) =>
       `${n} ${n === 1 ? 'name was' : 'names were'} no longer on the roster and ${n === 1 ? 'was' : 'were'} left off.`,
 
@@ -745,6 +758,13 @@ export const en: Dictionary = {
 
       /** The five ways a one-off charge is refused. See the Bangla notes. */
       chargeCategory: 'Pick what the fee is for.',
+      /**
+       * Only reachable from a request the form could not have sent — the picker offers 1 to
+       * 12 and nothing else — so it says what is allowed rather than what arrived.
+       */
+      instalmentCount: 'A fee can be paid in one go or split into 2 to 12 parts.',
+      instalmentTooSmall:
+        'That fee is too small to split into this many parts. Reduce the number of parts, or charge it in one go.',
       chargeTooLarge: 'That amount is too large to record. Please check it.',
       chargeNobody: 'Nobody is ticked. Choose who this fee is for.',
       chargeFailed: 'The bills were not raised. Please try again.',
@@ -771,6 +791,14 @@ export const en: Dictionary = {
     awardLabel: 'Scholarship',
     discountShare: '{percent}% of the fee',
     inCredit: '{amount} in credit',
+    /**
+     * Which part of an agreed plan the bill is, beside its deadline.
+     *
+     * Short because it sits in a line that already holds a date and may hold a day count,
+     * on a phone. "Part 2 of 3" is the whole of what the owner needs: what it is a part of
+     * is the fee named on the row above it.
+     */
+    instalmentPart: 'part {n} of {of}',
 
     chaseTitle: 'Remind the guardian',
     lastChase: 'Last',
@@ -1799,6 +1827,28 @@ export const en: Dictionary = {
     dueDay: 'Deadline',
     dueDayHint: 'The day of that month it has to be paid by',
     dayOption: 'day {d}',
+
+    /**
+     * The instalment control, and the one label on this screen that has to prevent a
+     * misreading rather than just name a field.
+     *
+     * "How much each" above is the whole fee whichever way this is set, so the hint says so
+     * outright: an owner who types 6,000 and picks three parts has agreed ৳6,000, and the
+     * schedule underneath shows the ৳2,000 thrice before they press.
+     */
+    instalments: 'Paid in',
+    instalmentsHint:
+      'One payment, or a fee the family pays off in parts. The amount above is the whole fee either way.',
+    payInFull: 'One payment',
+    partsOption: '{n} instalments',
+
+    scheduleTitle: 'What each part costs',
+    partOf: 'Part {n} of {of}',
+    scheduleNote:
+      'Each part is a bill of its own, in its own month, chased on its own deadline. Together they come to the fee above.',
+    /** Shown in the schedule's place when the fee is too small to divide that many ways. */
+    scheduleTooSmall: 'That fee is too small to split into this many parts.',
+
     note: 'Note (optional)',
     noteHint: 'Which exam, which board — whatever you will want to read later',
 
@@ -1817,7 +1867,7 @@ export const en: Dictionary = {
      * second real charge, because two exam fees in one month is a thing that happens.
      */
     safeToRepeat:
-      'One bill each. If this submit is sent twice — a lost connection, a double tap — only one set of bills is raised.',
+      'One bill each, or one per part when it is paid in instalments. If this submit is sent twice — a lost connection, a double tap — only one set of bills is raised.',
 
     emptyTitle: 'No students to charge',
     emptyBody: 'There is nobody in this batch yet. Enrol the students first.',

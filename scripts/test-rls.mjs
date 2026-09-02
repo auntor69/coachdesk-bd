@@ -2747,6 +2747,389 @@ await db.query('delete from fee_invoices where id = any($1)', [
 ])
 
 // ---------------------------------------------------------------------------
+// A fee too big to pay at once (20260811000070).
+//
+// An agreement is N bills, not one bill with a schedule, so most of what a plan needs
+// is machinery that predates it by forty files: three rows carry the arrears list, the
+// partial payments, the receipts and the month close that one row already carried. What
+// the schema had to add is the promise that a part cannot be renumbered, duplicated or
+// quietly rewritten — and the parts are checked against no total, because there is
+// deliberately no total stored anywhere to check them against. tests/instalments.test.ts
+// owns the arithmetic; this owns the rest.
+//
+// The rekeyed idempotency index is the assertion that earns its place most.
+// 20260811000067 keyed on (centre, key, student), so one press agreeing 6,000 in three
+// would have written part one and had parts two and three refused as retries — the
+// retry protection become the bug. It keys on coalesce(instalment_no, 0) now, which has
+// to hold in both directions at once: the parts of one agreement differ by their own
+// number, and two taps of an ordinary charge still collide.
+//
+// On its own students, like the two sections below that raise several bills. Deleting
+// them at the end takes every row here with it, so nothing above has to be recounted.
+// ---------------------------------------------------------------------------
+
+console.log('\nInstalment plans (one agreement, three bills):')
+
+const stPlan = await student(centerA, 'Admission Instalments')
+const stKin = await student(centerA, 'Admission Instalments Sibling')
+
+const AGREEMENT = 'b2c7d40e-9a15-4f62-8d33-6e0a1b7c9f28'
+const PRESS = '5e91a3c7-2d48-4b16-9f70-3a6c8d2e1b05'
+
+/**
+ * A bill as the charge form writes it, through the owner's own policies. Returns the
+ * refusal when there is one and '' when there is not, like setShare above, and the id
+ * beside it because most of what follows is about the rows that did land.
+ */
+const raisePart = async (row) => {
+  try {
+    const done = await asUser(db, row.by ?? ids.ownerA, (tx) =>
+      tx.query(
+        `insert into fee_invoices
+           (coaching_center_id, student_id, period_month, amount_bdt, due_date,
+            revenue_category, idempotency_key,
+            instalment_plan_id, instalment_no, instalment_of)
+         values ($1, $2, $3::date, $4, $3::date + 9,
+                 $5::public.revenue_category, $6, $7, $8, $9)
+         returning id`,
+        [
+          row.centre ?? centerA,
+          row.student ?? stPlan,
+          row.month ?? '2026-09-01',
+          row.amount ?? 2000,
+          row.category ?? 'admission',
+          row.key ?? null,
+          row.plan ?? null,
+          row.no ?? null,
+          row.of ?? null,
+        ],
+      ),
+    )
+    return { id: done.rows[0].id, why: '' }
+  } catch (error) {
+    return { id: null, why: String(error.message) }
+  }
+}
+// The three writes one press makes, and the place the feature would have died: same key,
+// same student, and 67's index had nothing left to tell the parts apart by.
+const p1 = await raisePart({ month: '2026-09-01', key: PRESS, plan: AGREEMENT, no: 1, of: 3 })
+const p2 = await raisePart({ month: '2026-10-01', key: PRESS, plan: AGREEMENT, no: 2, of: 3 })
+const p3 = await raisePart({ month: '2026-11-01', key: PRESS, plan: AGREEMENT, no: 3, of: 3 })
+
+check(
+  'an owner agrees a fee in three parts, under one press',
+  p1.why === '' && p2.why === '' && p3.why === '',
+  [p1.why, p2.why, p3.why].find(Boolean)?.split('\n')[0] ?? '',
+)
+
+// Each in its own month, which is what keeps a plan off the month it could not collect in.
+check(
+  'and each part is a bill of its own, in the month it falls due',
+  (await n(
+    db,
+    `select count(distinct period_month)::int as n from fee_invoices
+      where coaching_center_id = $1 and instalment_plan_id = $2`,
+    [centerA, AGREEMENT],
+  )) === 3,
+)
+
+// The retry the key exists for, and the shape a real one arrives in: the plan's id is minted
+// by the server on each request, so a resubmitted press carries a *different* one. The token
+// the browser minted once is the only thing the two attempts have in common, which is exactly
+// why the retry protection has to be keyed on it and not on the agreement.
+//
+// Named rather than "the database said no", for the reason the payment token above is named:
+// fee_invoices_instalment_part would also refuse a retry that happened to reuse the id, and
+// an assertion satisfied by any refusal would pass while the protection it names was gone.
+const RETRY = '7c2f8a51-6b39-4d04-9e87-1a5b3c6d9e02'
+const planReplay = []
+for (const [no, month] of [
+  [1, '2026-09-01'],
+  [2, '2026-10-01'],
+  [3, '2026-11-01'],
+]) {
+  const said = await raisePart({ month, key: PRESS, plan: RETRY, no, of: 3 })
+  if (!said.why.includes('fee_invoices_center_idempotency_key')) {
+    planReplay.push(`part ${no} — ${said.why.split('\n')[0] || 'accepted'}`)
+  }
+}
+check(
+  'the press arriving twice raises the agreement once',
+  planReplay.length === 0,
+  planReplay.join(' | '),
+)
+
+// And the half that could have been lost silently. A fourth column that was null on every
+// ordinary charge would make those rows distinct in the index — nulls always are — so a
+// double-tapped exam fee would have gone in twice with nothing to say it had. This is the
+// assertion that makes `coalesce(instalment_no, 0)` load-bearing rather than decorative.
+const TAP = 'c4d8e01f-3b26-4a79-8e51-7f2d9c0a6b13'
+const firstTap = await raisePart({ amount: 500, category: 'exam', key: TAP })
+const secondTap = await raisePart({ amount: 500, category: 'exam', key: TAP })
+
+check('an ordinary charge with no parts is recorded', firstTap.why === '', firstTap.why.split('\n')[0])
+check(
+  'and double-tapping it still collides, through coalesce(instalment_no, 0)',
+  /fee_invoices_center_idempotency_key/.test(secondTap.why),
+  secondTap.why.split('\n')[0] || 'accepted',
+)
+
+// One press charging a batch is one row per family, which is the other thing the key must
+// never refuse — 67's own promise, and it has to survive the rekeying.
+const kinCharge = await raisePart({ student: stKin, amount: 500, category: 'exam', key: TAP })
+check(
+  'while the same press charging another family is another bill',
+  kinCharge.why === '',
+  kinCharge.why.split('\n')[0],
+)
+
+// Centre-scoped, like every other uniqueness in this schema. An id arriving on an insert is
+// a claim until something checks it, and a key only ever compared inside the caller's own
+// centre cannot be used to find out which presses or which agreements another business has.
+const bTap = await one(
+  `insert into fee_invoices
+     (coaching_center_id, student_id, period_month, amount_bdt, due_date,
+      revenue_category, idempotency_key)
+   values ($1, $2, '2026-09-01', 500, '2026-09-10', 'exam', $3) returning id`,
+  [centerB, stB, TAP],
+)
+check("the same press token in another centre is that centre's own charge", Boolean(bTap))
+
+const bPart = await one(
+  `insert into fee_invoices
+     (coaching_center_id, student_id, period_month, amount_bdt, due_date,
+      revenue_category, instalment_plan_id, instalment_no, instalment_of)
+   values ($1, $2, '2026-09-01', 2000, '2026-09-10', 'admission', $3, 1, 3) returning id`,
+  [centerB, stB, AGREEMENT],
+)
+check('and the same agreement id there is a different agreement', Boolean(bPart))
+
+// A part cannot be raised twice inside its own agreement. A fresh token, so what refuses it
+// is fee_invoices_instalment_part and not the retry protection — two rows both calling
+// themselves part two of three would have the family owing a third more than they agreed,
+// on rows that each read perfectly ordinary.
+const dupPart = await raisePart({
+  month: '2026-10-01',
+  key: '9a1b2c3d-4e5f-4071-8293-a4b5c6d7e8f9',
+  plan: AGREEMENT,
+  no: 2,
+  of: 3,
+})
+check(
+  'and part two cannot be raised a second time',
+  /fee_invoices_instalment_part/.test(dupPart.why),
+  dupPart.why.split('\n')[0] || 'accepted',
+)
+
+/**
+ * What a part may not say about itself: (what the form got wrong, the columns it would
+ * have written, the constraint that has to be the one refusing it).
+ *
+ * Named constraints for the reason the tokens above are named. Every one of these rows
+ * also violates something else — part one of one collides with the part already raised,
+ * the tuition row does too — and Postgres evaluates CHECKs before it touches an index,
+ * so an assertion that only looked for a refusal would pass while reading the wrong
+ * answer, and go on passing if the check were dropped altogether.
+ */
+const MALFORMED = [
+  ['a part number with no count', { plan: AGREEMENT, no: 1 }, 'fee_invoices_instalment_whole'],
+  ['a count with no part number', { plan: AGREEMENT, of: 3 }, 'fee_invoices_instalment_whole'],
+  ['a part of no agreement at all', { no: 1, of: 3 }, 'fee_invoices_instalment_whole'],
+  ['an agreement of one part', { plan: AGREEMENT, no: 1, of: 1 }, 'fee_invoices_instalment_range'],
+  ['an agreement of thirteen', { plan: AGREEMENT, no: 1, of: 13 }, 'fee_invoices_instalment_range'],
+  ['a part four of three', { plan: AGREEMENT, no: 4, of: 3 }, 'fee_invoices_instalment_range'],
+  ['a part zero', { plan: AGREEMENT, no: 0, of: 3 }, 'fee_invoices_instalment_range'],
+  [
+    "a monthly fee in parts, which month-close's own unique key makes unrepresentable anyway",
+    { plan: AGREEMENT, no: 1, of: 3, category: 'tuition' },
+    'fee_invoices_instalment_one_off',
+  ],
+]
+
+const malformedSlips = []
+for (const [what, row, constraint] of MALFORMED) {
+  const said = await raisePart(row)
+  if (!said.why.includes(constraint)) {
+    malformedSlips.push(`${what} — ${said.why.split('\n')[0] || 'accepted'}`)
+  }
+}
+check(
+  `every malformed part is refused by the constraint that names it (${MALFORMED.length} shapes)`,
+  malformedSlips.length === 0,
+  malformedSlips.join(' | '),
+)
+
+// A part is in the frozen list, with what was billed, and not in the correctable one beside
+// it. Turning part 2 of 3 into part 2 of 4 would leave a family owing a quarter more than
+// they signed for on a row that looks untouched; cancelling it is the remedy, and that stays
+// available a few lines down.
+check(
+  'a session cannot renumber a part',
+  await deniedAsUser(db, ids.ownerA, 'update fee_invoices set instalment_no = 3 where id = $1', [
+    p2.id,
+  ]),
+)
+check(
+  'nor change how many parts the agreement has',
+  await deniedAsUser(db, ids.ownerA, 'update fee_invoices set instalment_of = 4 where id = $1', [
+    p2.id,
+  ]),
+)
+check(
+  'nor move a bill into some other agreement',
+  await deniedAsUser(
+    db,
+    ids.ownerA,
+    'update fee_invoices set instalment_plan_id = gen_random_uuid() where id = $1',
+    [p2.id],
+  ),
+)
+
+// The second fence, reached the way the waiver guard above is reached: hand the privilege
+// back inside a transaction that is thrown away. All three refusals above are produced by
+// the column grant alone, which leaves the trigger untested — and a REVOKE only removes
+// grants the revoking role made, so a live database whose grant came from supabase_admin
+// would pass them while having no lock at all.
+const iGuard = { no: '', of: '', plan: '', cancelled: false }
+await db.query('begin')
+try {
+  await db.query('grant update on public.fee_invoices to authenticated')
+  await db.query('set local role authenticated')
+  await db.query(`select set_config('request.jwt.claim.sub', $1, true)`, [ids.ownerA])
+  await db.query('savepoint probe')
+
+  for (const [key, sql] of [
+    ['no', 'update fee_invoices set instalment_no = 3 where id = $1'],
+    ['of', 'update fee_invoices set instalment_of = 4 where id = $1'],
+    ['plan', 'update fee_invoices set instalment_plan_id = gen_random_uuid() where id = $1'],
+  ]) {
+    try {
+      await db.query(sql, [p2.id])
+    } catch (error) {
+      iGuard[key] = String(error.message)
+    }
+    await db.query('rollback to savepoint probe')
+  }
+
+  // And cancelling the last part still goes through, so what is being observed is a guard on
+  // what was billed rather than a trigger refusing everything handed to it. A family that
+  // leaves halfway through an agreement has the rest of it cancelled, not rewritten.
+  const gone = await db.query(
+    `update fee_invoices set voided_at = now(), void_reason = 'পরিবার চলে গেছে'
+      where id = $1 returning voided_at`,
+    [p3.id],
+  )
+  iGuard.cancelled = gone.rows[0]?.voided_at !== null
+} finally {
+  await db.query('rollback')
+}
+
+check(
+  'a trigger refuses the renumbering even when the privilege is handed back',
+  /cancel it and raise the right one/.test(iGuard.no),
+  iGuard.no.split('\n')[0] || 'accepted',
+)
+check(
+  'and how many parts there are, likewise',
+  /cancel it and raise the right one/.test(iGuard.of),
+  iGuard.of.split('\n')[0] || 'accepted',
+)
+check(
+  'and refuses to move a part into another agreement',
+  /cancel it and raise the right one/.test(iGuard.plan),
+  iGuard.plan.split('\n')[0] || 'accepted',
+)
+check('while still letting the part be cancelled, which is the remedy owners have', iGuard.cancelled)
+check(
+  'and the thrown-away transaction took the grant with it',
+  await deniedAsUser(db, ids.ownerA, 'update fee_invoices set instalment_of = 4 where id = $1', [
+    p2.id,
+  ]),
+)
+check(
+  'and the cancellation inside it went with the grant',
+  (await n(db, 'select count(*)::int as n from fee_invoices where id = $1 and voided_at is null', [
+    p3.id,
+  ])) === 1,
+)
+
+/** What the board renders on a bill that is part of something bigger. */
+const partOn = async (id, userId = ids.ownerA) =>
+  (
+    await asUser(db, userId, (tx) =>
+      tx.query(
+        `select instalment_no, instalment_of, amount_bdt::text as amount,
+                remaining_bdt::text as remaining
+           from fee_invoice_balances where id = $1`,
+        [id],
+      ),
+    )
+  ).rows[0]
+
+// "Admission fee 2,000, overdue" reads identically whether it is a whole fee nobody paid or
+// the first third of an agreement being honoured, and those two want opposite conversations
+// with the family. Two smallints on the row the board already reads answer it.
+let onBoard = await partOn(p2.id)
+check('the board says which part of the agreement a bill is', Number(onBoard?.instalment_no) === 2, String(onBoard?.instalment_no))
+check('and how many parts the family agreed to', Number(onBoard?.instalment_of) === 3, String(onBoard?.instalment_of))
+check('and the figure on it is the part, not the fee', onBoard?.amount === '2000.00', String(onBoard?.amount))
+
+onBoard = await partOn(firstTap.id)
+check(
+  'while an ordinary bill claims to be part of nothing',
+  onBoard?.instalment_no === null && onBoard?.instalment_of === null,
+  `${onBoard?.instalment_no} of ${onBoard?.instalment_of}`,
+)
+// The whole payoff of three rows rather than one. Part one is paid and clears; the other two
+// go on being owed, chased, closed and reported by code written long before instalments
+// existed. "Part two is overdue" needed no new query.
+await asUser(db, ids.ownerA, (tx) =>
+  tx.query(
+    `insert into fee_payments (coaching_center_id, invoice_id, student_id, amount_bdt, method)
+     values ($1, $2, $3, 2000, 'bkash')`,
+    [centerA, p1.id, stPlan],
+  ),
+)
+check('paying a part clears that part', Number((await partOn(p1.id))?.remaining) === 0)
+check(
+  'and leaves the rest of the agreement owed',
+  Number((await partOn(p2.id))?.remaining) === 2000,
+  String((await partOn(p2.id))?.remaining),
+)
+
+// Counted through instalment_of rather than the agreement's id, because the id is
+// deliberately not on the view: nothing on screen groups by it yet, and a view column nobody
+// selects is one the next reader has to work out the purpose of.
+check(
+  'so the arrears list is still just the arrears list',
+  (await n(
+    db,
+    `select count(*)::int as n from fee_invoice_balances
+      where coaching_center_id = $1 and student_id = $2
+        and remaining_bdt > 0 and instalment_of is not null`,
+    [centerA, stPlan],
+  )) === 2,
+)
+
+// security_invoker survived the replace, which for a view is the difference between a report
+// and a data breach. Centre B's own part is in the answer, so the zero above it is isolation
+// and not an empty query.
+const bSees = await asUser(db, ids.ownerB, (tx) =>
+  tx.query('select id from fee_invoice_balances where instalment_of is not null'),
+)
+check(
+  "the other centre's owner reads their own agreement and nothing of this one",
+  bSees.rows.length === 1 && bSees.rows[0].id === bPart,
+  `${bSees.rows.length} row(s)`,
+)
+
+// Put the seed back. The two students take their bills and the payment on part one with
+// them; centre B's two rows are named, because centre B's student is still needed below.
+await db.query('delete from fee_invoices where id = any($1)', [[bTap, bPart]])
+await db.query('delete from students where id = any($1)', [[stPlan, stKin]])
+
+
+// ---------------------------------------------------------------------------
 // The record of having chased a fee.
 //
 // Three things here are not obvious from reading the migration.
