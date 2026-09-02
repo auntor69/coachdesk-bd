@@ -4287,6 +4287,7 @@ export const en: Dictionary = {
       salary_terms: 'Salary agreements',
       students: 'Students',
       guardians: 'Guardians',
+      attendance_records: 'Attendance overrides',
       teachers: 'Teachers',
       teacher_permissions: 'Permissions',
       employees: 'Staff',
@@ -4321,6 +4322,12 @@ export const en: Dictionary = {
       studentMoved: 'Student moved to another branch',
       guardianPhoneChanged: 'Guardian number changed',
       consentChanged: 'Message consent changed',
+      /**
+       * Not "attendance corrected". The log only ever holds the mark somebody other than
+       * the teacher who took the register changed, and the word for that has to be the
+       * one an owner would use when asking about it.
+       */
+      attendanceOverridden: 'Attendance overridden',
       feeRaised: 'Fee billed',
       feeVoided: 'Bill cancelled',
       discountGranted: 'Discount granted',

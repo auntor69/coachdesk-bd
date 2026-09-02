@@ -356,11 +356,40 @@ test('a role change reads as one, and the actor is carried through untouched', (
   assert.equal(entry.at, '2026-09-01T20:31:39.221Z')
 })
 
-test('only the fourteen tables with triggers are audited', () => {
+test('only the fifteen tables with triggers are audited', () => {
   assert.equal(isAuditedTable('fee_payments'), true)
-  // Deliberately not audited until §6.3's override marker exists: a trigger on
-  // attendance_records today would log every student on every day.
-  assert.equal(isAuditedTable('attendance_records'), false)
+  // 20260811000064 gave attendance an override marker, so 20260811000046's deferred
+  // trigger exists — attached with a WHEN clause, so what reaches the log is a status
+  // changed by somebody other than the teacher who took the register, and not every
+  // student on every day.
+  assert.equal(isAuditedTable('attendance_records'), true)
   assert.equal(isAuditedTable(''), false)
-  assert.equal(AUDITED_TABLES.length, 14)
+  assert.equal(AUDITED_TABLES.length, 15)
+})
+
+test('an override is drawn as the mark it moved, not as three anonymous details', () => {
+  const entry = describeAuditEntry(
+    row({
+      entity: 'attendance_records',
+      entity_id: 'mark-9',
+      before: {
+        status: 'present',
+        marked_by: 'rahim',
+        marked_at: '2026-09-01T10:00:00Z',
+        revision: 0,
+      },
+      after: {
+        status: 'absent',
+        marked_by: 'owner',
+        marked_at: '2026-09-01T14:00:00Z',
+        revision: 1,
+      },
+    }),
+  )
+  assert.equal(entry.action, 'attendanceOverridden')
+  assert.deepEqual(entry.shift, { kind: 'attendanceStatus', from: 'present', to: 'absent' })
+  // The stamp is the line: `marked_by` is its actor, `marked_at` is its time and
+  // `revision` is the fact that it is a correction at all. "And 3 other details" under
+  // "Attendance overridden" would be counting the sentence it is printed beneath.
+  assert.equal(entry.otherCount, 0)
 })

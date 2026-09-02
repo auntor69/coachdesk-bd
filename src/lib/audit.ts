@@ -24,6 +24,7 @@
  */
 
 import type {
+  AttendanceStatus,
   AuditOperation,
   CenterStatus,
   MemberRole,
@@ -32,7 +33,7 @@ import type {
 } from './supabase/types.ts'
 
 /**
- * The fourteen tables 20260811000046 attaches a trigger to.
+ * The fifteen tables 20260811000046 and 20260811000064 attach a trigger to.
  *
  * Listed so the filter on the screen offers exactly what the log can contain, and so a
  * table gaining a trigger without gaining a label here is a type error rather than a
@@ -46,6 +47,7 @@ export const AUDITED_TABLES = [
   'salary_terms',
   'students',
   'guardians',
+  'attendance_records',
   'teachers',
   'teacher_permissions',
   'employees',
@@ -88,6 +90,7 @@ export type AuditAction =
   | 'studentMoved'
   | 'guardianPhoneChanged'
   | 'consentChanged'
+  | 'attendanceOverridden'
   | 'feeRaised'
   | 'feeVoided'
   | 'discountGranted'
@@ -118,6 +121,7 @@ export type AuditShift =
   | { kind: 'centerStatus'; from: CenterStatus | null; to: CenterStatus | null }
   | { kind: 'studentStatus'; from: StudentStatus | null; to: StudentStatus | null }
   | { kind: 'role'; from: MemberRole | null; to: MemberRole | null }
+  | { kind: 'attendanceStatus'; from: AttendanceStatus | null; to: AttendanceStatus | null }
   | { kind: 'money'; from: number | null; to: number | null }
   | { kind: 'count'; from: number | null; to: number | null }
   | { kind: 'date'; from: string | null; to: string | null }
@@ -169,8 +173,27 @@ export type AuditLogRow = {
 
 type Snapshot = Record<string, unknown>
 
-/** Bookkeeping every audited table carries and no reader asked about. */
-const NOISE = new Set(['id', 'coaching_center_id', 'created_at', 'updated_at', 'idempotency_key'])
+/**
+ * Bookkeeping no reader asked about: which row, which centre, when it was made — and the
+ * stamps a guard trigger writes alongside a change the line already names. An override
+ * moves `marked_by`, `marked_at` and `revision` every single time, and all three are
+ * already on the line as its actor, its time and the fact that it is a correction, so
+ * counting them would be counting the line's own contents. `called_by` and `called_at`
+ * are frozen and cannot move, and are here so that a support session moving them by hand
+ * does not read as three anonymous details.
+ */
+const NOISE = new Set([
+  'id',
+  'coaching_center_id',
+  'created_at',
+  'updated_at',
+  'idempotency_key',
+  'marked_at',
+  'marked_by',
+  'revision',
+  'called_at',
+  'called_by',
+])
 
 type Facts = {
   op: AuditOperation
@@ -250,6 +273,18 @@ const RULES: Record<AuditedTable, Rule[]> = {
   guardians: [
     { column: 'phone', action: 'guardianPhoneChanged' },
     { column: 'sms_opt_out', action: 'consentChanged' },
+  ],
+  // One rule and no condition, because the condition is in the database: 20260811000064
+  // attaches its trigger with a WHEN clause, so the only line that can reach here is a
+  // status changed by somebody other than the teacher who called the mark.
+  //
+  // No SUBJECT entry, and it is a real gap rather than an oversight. `enrollment_id` does
+  // not move on a correction, so it is not in the snapshot, and `entity_id` is the mark
+  // itself — there is nothing on the line to resolve to a child's name. The screen that
+  // names children is the correction review, which reads the table and can embed the
+  // student; this log is the copy nobody can edit.
+  attendance_records: [
+    { column: 'status', action: 'attendanceOverridden', shift: 'attendanceStatus' },
   ],
   fee_invoices: [
     { on: 'created', action: 'feeRaised' },
@@ -425,6 +460,12 @@ function shiftOf(kind: AuditShift['kind'], from: unknown, to: unknown): AuditShi
       }
     case 'role':
       return { kind, from: text(from) as MemberRole | null, to: text(to) as MemberRole | null }
+    case 'attendanceStatus':
+      return {
+        kind,
+        from: text(from) as AttendanceStatus | null,
+        to: text(to) as AttendanceStatus | null,
+      }
   }
 }
 

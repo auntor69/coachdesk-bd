@@ -391,6 +391,10 @@ function sideOf(
       return pick(d.studentForm.status, String(value))
     case 'role':
       return pick(d.audit.roles, String(value))
+    // The register's own four words, which a manager reading a correction has already
+    // seen on the register itself.
+    case 'attendanceStatus':
+      return pick(d.attendance, String(value))
   }
 }
 

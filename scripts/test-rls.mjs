@@ -3210,6 +3210,7 @@ const windowPupil = async (name) => {
 
 const tardy = await windowPupil('Shuvo Late')
 const steady = await windowPupil('Tania Steady')
+const disputed = await windowPupil('Ruma Disputed')
 
 /** The message a browser session gets back, or '' when the write went through. */
 const tried = async (userId, sql, params = []) => {
@@ -3367,8 +3368,9 @@ const backdated = (enrollment, status) =>
 const markOf = async (enrollment) =>
   (
     await db.query(
-      `select status::text as status, revision, marked_by,
+      `select id, status::text as status, revision, marked_by, called_by,
               marked_at::text as marked_at,
+              called_at::text as called_at,
               marked_at < now() - interval '1 hour' as backdated
          from attendance_records where session_id = $1 and enrollment_id = $2`,
       [sToday, enrollment],
@@ -3384,19 +3386,19 @@ const setMark = (userId, enrollment, status, extra = '') =>
     [sToday, enrollment, status],
   )
 
-// A hand-made call claiming all three of the columns the trigger owns. The
-// register sends `marked_by` and nothing else, and sends the right one, so nothing
-// in the product produces this — which is the point: the only thing standing
-// between a forged call and a colleague's name on somebody else's decision is the
-// trigger.
+// A hand-made call claiming all five of the columns the trigger owns. The register
+// sends `marked_by` and nothing else, and sends the right one, so nothing in the
+// product produces this — which is the point: the only thing standing between a
+// forged call and a colleague's name on somebody else's decision is the trigger.
 check(
   'a mark goes in for the class that happened',
   (await tried(
     ids.karim,
     `insert into attendance_records
        (coaching_center_id, session_id, enrollment_id, status,
-        revision, marked_at, marked_by)
-     values ($1, $2, $3, 'present', 1, now() - interval '2 hours', $4)`,
+        revision, marked_at, marked_by, called_at, called_by)
+     values ($1, $2, $3, 'present', 1, now() - interval '2 hours', $4,
+             now() - interval '3 hours', $4)`,
     [centerA, sToday, steady.enrollment, ids.nasrin],
   )) === '',
 )
@@ -3416,6 +3418,15 @@ check(
   'and dated by the server clock, not backdated to before the class',
   takenFresh?.backdated === false,
   String(takenFresh?.marked_at),
+)
+// 20260811000064. A client that could name `called_by` could put a colleague down as
+// the teacher who took the register and then correct it as itself, which is an
+// override wearing somebody else's signature — the one thing this pair exists to
+// make impossible to write.
+check(
+  'and the caller is the same stamp, not the hour and hand the call claimed',
+  takenFresh?.called_by === ids.karim && takenFresh?.called_at === takenFresh?.marked_at,
+  JSON.stringify({ called_by: takenFresh?.called_by, called_at: takenFresh?.called_at }),
 )
 
 // The offline replay, which re-sends every student in the batch. Nothing changed,
@@ -3445,6 +3456,15 @@ check(
     asImported.backdated === true &&
     asImported.marked_by === ids.nasrin,
   JSON.stringify(asImported),
+)
+// And is given no caller, because this insert named none. A support import that knows
+// who wrote a mark and not who first called it says so by leaving the column empty,
+// rather than by repeating `marked_by` and putting a name to a register nobody
+// recorded taking.
+check(
+  'and no caller it was not given',
+  asImported.called_by === null && asImported.called_at === null,
+  JSON.stringify({ called_by: asImported.called_by, called_at: asImported.called_at }),
 )
 
 // The case the budget exists for at all: the register goes in at 4:05 and a boy
@@ -3506,6 +3526,127 @@ check(
   'and spending it does not touch the settled mark next to it',
   (await markOf(steady.enrollment)).revision === 1 &&
     (await markOf(tardy.enrollment)).revision === 1,
+)
+
+// ---------------------------------------------------------------------------
+// Whose register it was (20260811000064).
+//
+// §6.3: "Manager edits a record — allowed, and recorded as an override, with who and
+// when." The manager's power is unchanged and no policy here narrows it; what changes
+// is that the row can now say the edit was not the register's own.
+//
+// The line between a correction and an override is the two names on the mark and
+// nothing else. Karim fixing Karim's tick is the late arrival the budget was asked
+// for; the owner reaching into it is the thing an owner should be able to see they
+// did.
+// ---------------------------------------------------------------------------
+
+const overrideLines = async (markId) =>
+  (
+    await db.query(
+      `select actor, actor_role, operation, before, after
+         from audit_log where entity = 'attendance_records' and entity_id = $1
+        order by created_at`,
+      [markId],
+    )
+  ).rows
+
+// Karim's own correction, from the pair above: Tania's mark went present → absent and
+// he is the one who called it.
+const ownFix = await markOf(steady.enrollment)
+check(
+  'a teacher correcting their own tick keeps the caller and takes the signature',
+  ownFix.called_by === ids.karim && ownFix.marked_by === ids.karim && ownFix.revision === 1,
+  JSON.stringify({ called_by: ownFix.called_by, marked_by: ownFix.marked_by }),
+)
+check(
+  'and writes no log line, because the register corrected itself',
+  (await overrideLines(ownFix.id)).length === 0,
+)
+
+check(
+  'the teacher takes a third register',
+  (await tried(
+    ids.karim,
+    `insert into attendance_records (coaching_center_id, session_id, enrollment_id, status)
+     values ($1, $2, $3, 'present')`,
+    [centerA, sToday, disputed.enrollment],
+  )) === '',
+)
+
+const asCalled = await markOf(disputed.enrollment)
+
+// The owner reaching into a register Karim took, and claiming his signature on the way
+// through. The status change is allowed on purpose — §6.3: "An override that is
+// impossible is an override a centre works around by sharing the teacher's password,
+// and then nobody knows who marked what." The claim is not: an owner who could rewrite
+// `called_by` to their own id would turn an override into a correction of their own
+// register, and the row would then agree with them.
+//
+// Restored rather than refused, which is the whole file's shape: the offline replay
+// re-sends columns it did not mean to change, so a value that has not been asked for
+// is put back instead of taking the register down with it.
+check(
+  'an owner may still change a mark a teacher called',
+  (await setMark(
+    ids.ownerA,
+    disputed.enrollment,
+    'absent',
+    `, called_by = '${ids.ownerA}', called_at = now()`,
+  )) === '',
+)
+
+const overridden = await markOf(disputed.enrollment)
+check(
+  'and the mark now carries both names: who called it and who changed it',
+  overridden.called_by === ids.karim &&
+    overridden.marked_by === ids.ownerA &&
+    overridden.revision === 1,
+  JSON.stringify({ called_by: overridden.called_by, marked_by: overridden.marked_by }),
+)
+check(
+  'with the hour the register was taken left where it was',
+  overridden.called_at === asCalled.called_at && overridden.marked_at !== asCalled.marked_at,
+  JSON.stringify({ called_at: overridden.called_at, marked_at: overridden.marked_at }),
+)
+
+const overrideLogged = await overrideLines(overridden.id)
+check(
+  'an override writes the log line §10 asks for',
+  overrideLogged.length === 1,
+  String(overrideLogged.length),
+)
+check(
+  'naming who reached in',
+  overrideLogged[0]?.actor === ids.ownerA,
+  String(overrideLogged[0]?.actor),
+)
+check(
+  'and the mark it moved, from what to what',
+  overrideLogged[0]?.operation === 'updated' &&
+    overrideLogged[0]?.before?.status === 'present' &&
+    overrideLogged[0]?.after?.status === 'absent',
+  JSON.stringify({ before: overrideLogged[0]?.before, after: overrideLogged[0]?.after }),
+)
+
+// The same claim without a status change, so the restore is shown on its own rather
+// than alongside a correction the trigger was going to stamp anyway. Tania's mark is
+// settled at revision 1, and re-signing it is free and changes nothing.
+check(
+  'a teacher cannot re-sign a register as somebody else either',
+  await (async () => {
+    const before = await markOf(steady.enrollment)
+    const refused = await tried(
+      ids.karim,
+      `update attendance_records set called_by = $3, called_at = now() - interval '4 hours'
+        where session_id = $1 and enrollment_id = $2`,
+      [sToday, steady.enrollment, ids.nasrin],
+    )
+    const after = await markOf(steady.enrollment)
+    return (
+      refused === '' && after.called_by === before.called_by && after.called_at === before.called_at
+    )
+  })(),
 )
 
 // Ali's enrollment, in a batch this register is not for. A mark that could be
@@ -3584,10 +3725,10 @@ check(
     )) === 0,
 )
 
-// The two fixtures leave, so the roster counts and the worklists below stay about
+// The three fixtures leave, so the roster counts and the worklists below stay about
 // the students those sections wrote.
 await db.query('delete from students where id = any($1::uuid[])', [
-  [tardy.id, steady.id],
+  [tardy.id, steady.id, disputed.id],
 ])
 
 // ---------------------------------------------------------------------------

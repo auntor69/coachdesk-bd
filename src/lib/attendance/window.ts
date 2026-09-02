@@ -35,6 +35,40 @@ import { addDays, dayOfWeekOn } from '../bd/time.ts'
 export const ATTENDANCE_MAX_REVISION = 1
 
 /**
+ * 'asCalled'   — the mark as the register was taken. Nobody has changed it.
+ * 'corrected'  — changed, by the person who took it. §6.3's sanctioned act: the boy who
+ *                walked in at 4:10 moves present → late.
+ * 'overridden' — changed by somebody else. The thing §6.3 asks to be visible.
+ */
+export type MarkHistory = 'asCalled' | 'corrected' | 'overridden'
+
+/**
+ * Which of the three a mark is, from the two names on the row.
+ *
+ * `called_by` is frozen at the insert and `marked_by` moves to whoever last changed the
+ * status (20260811000064), so the comparison is the whole rule and no role is read —
+ * a teacher fixing their own tick is not an override and a manager doing it is, which is
+ * what §6.3 describes and what §6.2 forbids doing with an `if` on rank.
+ *
+ * WHERE THIS IS SOFTER THAN THE TRIGGER, on purpose. The audit trigger's WHEN clause is
+ * `marked_by is distinct from called_by`, so a mark corrected before `called_by` existed
+ * — null caller, real corrector — writes a log line. Here it comes back 'corrected'
+ * instead, because the screen puts a word next to a person's name and "overridden" is an
+ * accusation this row cannot support. The log would rather hold a line too many; the
+ * screen would rather not blame the wrong teacher. If they are ever made to agree, the
+ * trigger is the one that decides what was recorded.
+ */
+export function markHistory(mark: {
+  revision: number
+  markedBy: string | null
+  calledBy: string | null
+}): MarkHistory {
+  if (mark.revision <= 0) return 'asCalled'
+  if (mark.calledBy === null || mark.markedBy === null) return 'corrected'
+  return mark.markedBy === mark.calledBy ? 'corrected' : 'overridden'
+}
+
+/**
  * 'open'   — today, or the batch's last class: take it, correct it once.
  * 'future' — a class that has not happened. Refused for everybody.
  * 'closed' — a real class, long enough ago that changing it is bookkeeping.

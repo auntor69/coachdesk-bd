@@ -6,6 +6,7 @@ import {
   attendanceVerdict,
   isDateString,
   lastClassDate,
+  markHistory,
 } from '../src/lib/attendance/window.ts'
 import { dayOfWeekOn } from '../src/lib/bd/time.ts'
 
@@ -120,4 +121,42 @@ test('the correction budget the screen draws is the one the trigger enforces', (
   // number, not the agreement — the migration is the one that holds, and the RLS
   // suite is where a second correction is actually refused.
   assert.equal(ATTENDANCE_MAX_REVISION, 1)
+})
+
+/* -------------------------------------------------------------------------- */
+/* Who changed it                                                             */
+/* -------------------------------------------------------------------------- */
+
+const RAHIM = '11111111-1111-4111-8111-111111111111'
+const OWNER = '22222222-2222-4222-8222-222222222222'
+
+test('an untouched mark is the register, whoever is named on it', () => {
+  assert.equal(markHistory({ revision: 0, markedBy: RAHIM, calledBy: RAHIM }), 'asCalled')
+  // A server import that named neither. Still nobody's override.
+  assert.equal(markHistory({ revision: 0, markedBy: null, calledBy: null }), 'asCalled')
+})
+
+test('the teacher fixing their own tick is a correction and not an override', () => {
+  // §6.3's own example: the register goes in at 4:05 and a boy walks in at 4:10.
+  assert.equal(markHistory({ revision: 1, markedBy: RAHIM, calledBy: RAHIM }), 'corrected')
+})
+
+test('somebody else changing it is the override the plan asks to be visible', () => {
+  assert.equal(markHistory({ revision: 1, markedBy: OWNER, calledBy: RAHIM }), 'overridden')
+})
+
+test('a caller nobody recorded is not evidence against the person who corrected it', () => {
+  // A mark corrected before 20260811000064 existed. The trigger's WHEN clause would log
+  // this as an override; the screen will not name it one, because the row cannot say
+  // whose register it was. See markHistory's comment — the divergence is deliberate.
+  assert.equal(markHistory({ revision: 1, markedBy: OWNER, calledBy: null }), 'corrected')
+  assert.equal(markHistory({ revision: 1, markedBy: null, calledBy: RAHIM }), 'corrected')
+})
+
+test('a revision the trigger could not have written still reads as untouched', () => {
+  // Defensive, and the direction that matters: a negative counter out of a repaired row
+  // must not come back as an override against whoever is named on it.
+  assert.equal(markHistory({ revision: -1, markedBy: OWNER, calledBy: RAHIM }), 'asCalled')
+  // And a support session past the budget is still an override, not a fourth state.
+  assert.equal(markHistory({ revision: 4, markedBy: OWNER, calledBy: RAHIM }), 'overridden')
 })

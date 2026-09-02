@@ -115,6 +115,8 @@ export type Database = {
           marked_at: string
           marked_by: string | null
           revision: number
+          called_by: string | null
+          called_at: string | null
         }
         Insert: {
           id?: string
@@ -125,6 +127,8 @@ export type Database = {
           marked_at?: string
           marked_by?: string | null
           revision?: number
+          called_by?: string | null
+          called_at?: string | null
         }
         Update: {
           id?: string
@@ -135,8 +139,17 @@ export type Database = {
           marked_at?: string
           marked_by?: string | null
           revision?: number
+          called_by?: string | null
+          called_at?: string | null
         }
         Relationships: [
+          {
+            foreignKeyName: 'attendance_records_called_by_fkey'
+            columns: ['called_by']
+            isOneToOne: false
+            referencedRelation: 'users'
+            referencedColumns: ['id']
+          },
           {
             foreignKeyName: 'attendance_records_coaching_center_id_fkey'
             columns: ['coaching_center_id']

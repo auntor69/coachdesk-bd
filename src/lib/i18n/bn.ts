@@ -6584,6 +6584,7 @@ export const bn = {
       salary_terms: 'বেতনের চুক্তি',
       students: 'ছাত্রছাত্রী',
       guardians: 'অভিভাবক',
+      attendance_records: 'হাজিরা বদল',
       teachers: 'শিক্ষক',
       teacher_permissions: 'অনুমতি',
       employees: 'স্টাফ',
@@ -6618,6 +6619,8 @@ export const bn = {
       studentMoved: 'ছাত্রকে অন্য শাখায় নেওয়া হয়েছে',
       guardianPhoneChanged: 'অভিভাবকের নম্বর বদলেছে',
       consentChanged: 'বার্তা পাঠানোর সম্মতি বদলেছে',
+      /** যে শিক্ষক হাজিরা নিয়েছিলেন, তিনি ছাড়া অন্য কেউ বদলেছেন — সেটাই এখানে থাকে। */
+      attendanceOverridden: 'হাজিরা অন্যজন বদলেছেন',
       feeRaised: 'ফির বিল হয়েছে',
       feeVoided: 'বিল বাতিল হয়েছে',
       discountGranted: 'ছাড় দেওয়া হয়েছে',
