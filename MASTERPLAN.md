@@ -1099,11 +1099,15 @@ filter, and covered by the live RLS suite.
 
 ## 7. The register: students, batches, scheduling, guardians
 
-### 7.1 Student lifecycle ⚠️
+### 7.1 Student lifecycle ✅
 
-Today: `active`, `inactive`, `graduated`, `dropped`. Two more are needed —
-**`transferred`** (moved to another branch of the same institution) and
-**`suspended`** (temporarily barred, still enrolled, still owing).
+All six exist: `active`, `suspended` (temporarily barred, still enrolled, still
+owing), `inactive`, `transferred` (moved to another branch of the same institution),
+`graduated`, `dropped`. `src/lib/students/status.ts` is the one list, and it carries a
+compile guard — a status added to the enum without a label there fails `tsc` rather
+than rendering as a raw string. The edit form offers all six, `updateStudent`
+validates against the same list, and both dictionaries name them in plain words
+(`suspended` reads "Barred for now", not the database word).
 
 **Only `active` students are chargeable.** This is the sentence that makes capacity
 survivable: a centre that has taught for three years and accumulated eight hundred
@@ -1113,7 +1117,7 @@ returns takes one again, and if none is free the reactivation is refused with th
 top-up price beside it — the same dialog as adding a new student, because it is the
 same transaction.
 
-### 7.2 Branch transfer must not be a delete ❌
+### 7.2 Branch transfer must not be a delete ✅
 
 Moving a student between branches changes `branch_id` on the existing row. It does
 not create a second student.
@@ -1127,6 +1131,12 @@ else's. Worse, the org's chargeable-student count double-counts them for a perio
 So: one row, `branch_id` updated, and a **transfer history record** saying which
 branch, which direction, when, and who did it. The history is auditable because
 the first question after a transfer goes wrong is always *who moved this child*.
+
+Built that way. `updateStudent` writes `branch_id` on the one row and is the only
+place a student moves between buildings; 20260811000042's trigger writes the history
+itself, so a move recorded nowhere is not something the app can produce — there is no
+save path that skips it. The student's own screen reads the history back behind the
+same permission that reveals the rest of their file.
 
 ### 7.3 Scheduling — audit says it partly exists ✅⚠️
 
@@ -1559,10 +1569,11 @@ One append-only log of who did what, covering every action where the answer to
 *"who changed this?"* has money or a child's record behind it:
 
 fee amount changes · payments recorded · payment voids and refunds · discounts and
-scholarships granted · salary terms changed · salary paid · expenses recorded ·
+scholarships granted · awards created, renamed and retired · salary terms changed ·
+salary paid · expenses recorded ·
 permission changes · login accounts created or deactivated · branch transfers ·
 attendance overrides (§6.3) · student status changes · capacity purchases · plan
-changes.
+changes · what the centre asked to pay us and how that request ended.
 
 Each entry: actor, action, target, before, after, when. It is written by the same
 transaction that made the change, so a change cannot exist without its log line.
@@ -1571,13 +1582,23 @@ The reason this is not optional in a financial product: the first serious suppor
 conversation with a Center will be *"my manager says he never entered that"*, and
 without a log the founder's answer is a shrug.
 
-**Built** as sixteen triggers over one generic function (`20260811000046`), with the
+**Built** as seventeen triggers over one generic function (`20260811000046`, with one
+each from `20260811000057`, `20260811000064` and `20260811000069`), with the
 actor read off a request header because `set_config` cannot survive a PostgREST
 request boundary (`20260811000056`). The log stores what it can be certain of — table,
 operation, and only the columns that moved; naming the *action* is `src/lib/audit.ts`,
 where it is tested, and the owner reads it at `/settings/activity`. Insert, update,
 delete and truncate are revoked from every browser session, and the read policy is the
 owner alone: the manager is the subject of the question this log answers.
+
+Two of those seventeen spent a while recorded and unreadable, which is worth keeping
+written down. `payment_intents` and `fee_scholarships` attached their triggers in their
+own migrations without being added to `AUDITED_TABLES`, and the screen gates the table's
+name on that list — so a settled payment request and a retired award both read as
+"Changed" by somebody, with nothing saying what, and neither could be filtered to. The
+database half was never wrong. `scripts/check-migrations.mjs` now compares the triggers
+in the schema against that list, because the missing check was the one pointing from the
+database at the app rather than the other way round.
 
 Attendance overrides are the last item on that list to arrive, and they only could
 once §6.3 gave the register a way to tell an override from a mark
@@ -1876,8 +1897,9 @@ clock, says so on screen while it runs and for a week after, and grants its plac
 the trigger as well as on the screen; a founder panel that records real money and
 bills each customer for the buildings they actually run, from the same count the
 owner's own branches screen prices; an
-append-only audit log written by sixteen triggers inside the transaction that made
-the change, named for the reader in one tested module, resolved to the person each
+append-only audit log written by seventeen triggers inside the transaction that made
+the change, named for the reader in one tested module that a gate now checks against the
+triggers themselves, resolved to the person each
 line is about even where the stored snapshot cannot say, and read by the owner alone;
 an admin role that only an owner may hand out, and a centre that cannot be left
 without one; capabilities as a `text[]` on the membership rather than an enum, so an
@@ -1896,16 +1918,21 @@ writes and so the only moment a batch's routine is whole, and stated a second ti
 the form so the refusal can name the batch, the day and the hour instead of raising
 (§7.3). And an owner five per cent from full is told which of their buildings the places
 went to, counted as students still on the register so the breakdown adds up to the pool
-figure beside it, and never as a quota (§3.7).
-1,371 RLS assertions and 1,144 unit tests green across 72 migrations and 42 tables in
+figure beside it, and never as a quota (§3.7). And a student moving between branches is
+one row with its `branch_id` changed rather than a new child with no history, with the
+move recorded by a trigger rather than by the code that saved it, so a move nobody
+logged is not a thing the app can produce (§7.2).
+1,371 RLS assertions and 1,146 unit tests green across 72 migrations and 42 tables in
 `public` plus one in `app`, and four derived gates and two that ask the live API. One of those gates now refuses
 a query whose table name it cannot read, having discovered it had been counting five
 fewer than existed — and the RLS suite found a manager who could promote themselves
 to owner, which is what a suite is for.
 
-**Partly built ⚠️** — branches (money, staff and the HQ comparison yes, full
-isolation no); scheduling (weekly recurrence and teacher clashes, no rooms or
-overrides); refunds (representable, no UI); plan selection (an
+**Partly built ⚠️** — branches (money, staff, the HQ comparison and the growth
+breakdown yes, full isolation no); scheduling (weekly recurrence and teacher clashes,
+no rooms or overrides); refunds (a fee payment can be refunded from the register, with
+the counter-entry and the reason on the receipt; a *platform* payment cannot, because
+`payments.amount_bdt` is positive by check); plan selection (an
 owner may ask for a tier and buy places, not move themselves between tiers);
 income with no student behind it (hall rent, book sales and the like have a category
 but no row to hang it on — every revenue row is a bill against a child).
@@ -1915,8 +1942,10 @@ but no row to hang it on — every revenue row is a bill against a child).
 `payments.subscription_id` is always null); a customer moving their own centre
 between tiers (`bootstrap_center` hard-codes `teacher_free` as the *paid* tier, and
 only a platform admin or an owner's request changes it); the five
-`teacher_permissions` booleans as capabilities;
-transfer history; the two new student statuses; an award that applies itself to a
+`teacher_permissions` booleans folded into the capability vocabulary — they work, and
+four `app.can_*` resolvers enforce them in the database, but they are still five
+columns rather than words in a `text[]`, and §6.2 says why that waits;
+an award that applies itself to a
 student's every future bill; rooms, per-date overrides and a holiday
 calendar.
 
@@ -1964,8 +1993,11 @@ refunds, expenses, employees, payroll, revenue and profit, the two dashboards, t
 audit log, payment intents, teacher clash detection, per-branch capacity *reporting*
 (never per-branch quotas).
 
-**High priority, straight after:** transfer history and the two remaining student
-statuses, which are the last of §7.1 still on paper.
+**High priority, straight after:** an owner moving their own centre between tiers
+without a founder doing it for them, and the `subscriptions` row that makes a renewal
+something the app knows about rather than something a person remembers. Both are §5's
+plan model becoming a thing a customer can operate, and neither waits on bKash — the
+manual provider already settles a payment.
 
 **Future, documented and not built:** rooms and room double-booking, holiday
 calendars, term dates, an admissions pipeline, automated SMS and the parent summary

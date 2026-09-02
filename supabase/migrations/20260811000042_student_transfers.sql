@@ -23,12 +23,14 @@
 -- and the privileges revoked besides. Every row is a side effect of a `branch_id`
 -- write that already had to pass the student's own policies.
 --
--- DORMANT ON PURPOSE, TODAY. Nothing in the app writes `students.branch_id` yet —
--- branch management is §16's step 13 — so this trigger will not fire until the screens
--- that move students exist. It is here now because §16's step 2 is "one migration
--- wave, so the app is never half-shaped": the table that records a move should not be
--- written by the same commit that first performs one, or the first thing anybody tests
--- is a feature whose audit trail is a day old.
+-- DORMANT ON PURPOSE ON THE DAY THIS LANDED, and no longer dormant. Nothing in the app
+-- wrote `students.branch_id` when this was written — branch management is §16's step 13 —
+-- so the trigger could not fire until the screen that moves a student existed. It was
+-- written first because §16's step 2 is "one migration wave, so the app is never
+-- half-shaped": the table that records a move should not arrive in the same commit that
+-- first performs one, or the first thing anybody tests is a feature whose audit trail is
+-- a day old. The writer now exists — `updateStudent` in `src/app/(app)/settings/actions.ts`
+-- writes `branch_id`, and the student's own screen reads this table back.
 
 create table student_transfers (
   id           uuid primary key default gen_random_uuid(),
