@@ -2236,7 +2236,7 @@ export const en: Dictionary = {
    * — functions, which `T` refuses to send across the wire.
    */
   managerForm: {
-    body: 'An administrator is somebody this centre has already written down. They can then do everything you can, apart from appointing other administrators and changing the plan.',
+    body: 'An administrator is somebody this centre has already written down. Tick what they may do — left alone, that is everything you can do apart from appointing other administrators and changing the plan.',
     whoLabel: 'Who',
     whoHint: 'Your teachers and staff. Somebody who is not on the list yet has to be written down on their own screen first.',
     pickPrompt: 'Choose somebody',

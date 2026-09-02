@@ -31,7 +31,14 @@ function person(over: Partial<Person> = {}): Person {
 }
 
 function member(over: Partial<MemberRow> = {}): MemberRow {
-  return { id: 'm1', userId: OWNER, role: 'manager', branchId: null, ...over }
+  return {
+    id: 'm1',
+    userId: OWNER,
+    role: 'manager',
+    branchId: null,
+    capabilities: null,
+    ...over,
+  }
 }
 
 test('owner and manager are the two administrator roles', () => {

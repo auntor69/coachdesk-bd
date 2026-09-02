@@ -1,7 +1,8 @@
 'use server'
 
 /**
- * Who else administers this centre: appointing a manager, moving one, and removing one.
+ * Who else administers this centre: appointing a manager, moving one, narrowing what one
+ * may do, and removing one.
  *
  * THE OWNER'S SIGNATURE, three times over. 20260811000061 wrote the rule into the
  * database — `members_owner_write` is the only policy that can reach a row whose role is
@@ -28,6 +29,13 @@
  * need new enum values. A `manager` with a `branch_id` is a branch admin; a `manager` with
  * no `branch_id` is centre-wide." So this file writes one column to tell them apart, and
  * 20260811000053's `app.branch_ok` is what makes the distinction mean anything.
+ *
+ * AND A CAPABILITY LIST IS THE WHOLE OF THE REST OF §6.2 — "Deputy Owner, Accountant,
+ * Receptionist, Coordinator, Observer" are not enum values either, but one `text[]` on the
+ * same row. Which means the two questions this screen asks a manager are both columns of
+ * `center_members`, and neither is a role: what they may read, and what they may touch.
+ * `app.member_allows` enforces the second one and `lib/staff/capabilities.ts` is the app's
+ * word for it.
  *
  * AN ACCOUNT IS MADE WHERE THERE IS NONE, which is why `giveTeacherLogin` is this file's
  * closest relative rather than the branches actions. The two halves are one errand on
@@ -58,6 +66,7 @@ import { dict } from '@/lib/i18n'
 import { passwordTooShort } from '@/lib/i18n/messages'
 import { hasStaff } from '@/lib/plans'
 import { parsePerson } from '@/lib/staff/admins'
+import { parseCapabilities } from '@/lib/staff/capabilities'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { createClient } from '@/lib/supabase/server'
 
@@ -278,6 +287,11 @@ export async function appointManager(
     // 20260811000054 argues it: a guess either confines a new colleague with nothing on
     // the screen saying so, or hands them the whole organisation.
     branch_id: branchId,
+    // And what parts of the job they were given (§6.2). All six boxes collapse to null in
+    // `parseCapabilities`, which is the un-narrowed manager this form made before the
+    // boxes existed, and the picker ticks all six by default — so an owner who does not
+    // touch the control gets exactly what they used to get.
+    capabilities: parseCapabilities(formData.getAll('capability').map(String)),
   })
 
   if (error) {
@@ -330,6 +344,52 @@ export async function setManagerBranch(
   if (error) return { error: d.errors.saveFailed }
   // An update matching no policy changes nothing and reports no error, so the rows
   // written are counted rather than assumed — the trap saveMarks documents.
+  if (!saved || saved.length === 0) return { error: d.managers.errors.notFound }
+
+  revalidatePath('/settings/managers')
+  return { ok: d.managers.saved }
+}
+
+/**
+ * Changes what parts of the job a manager was given (§6.2).
+ *
+ * `setManagerBranch`'s twin, one column along, and every filter on it is there for the
+ * same reason: the centre because an owner of two passes `is_owner` for both, the role
+ * because `members_owner_write` would let a crafted post narrow the owner's own row from a
+ * form about managers, and the row count because an update no policy matches changes
+ * nothing and reports no error.
+ *
+ * NARROWING TAKES EFFECT ON THE NEXT REQUEST AND NOT LATER. `getSession` reads
+ * `center_members` per request with no cache of its own, so a manager mid-session loses the
+ * fee board on their next tap — which is what an owner clicking Save on this panel means.
+ *
+ * ALL SIX BOXES IS `null` AND NOT A LIST OF SIX, which is `parseCapabilities`'s doing and
+ * matters most here rather than on the appointment: an owner who ticks everything back on
+ * is putting the row back to the un-narrowed state, so a capability added in a later
+ * migration reaches them too. A stored list of today's six would silently withhold it.
+ */
+export async function setManagerCapabilities(
+  _prev: ManagerState,
+  formData: FormData,
+): Promise<ManagerState> {
+  const session = await owner()
+  if (!isSession(session)) return session
+
+  const d = dict(session.locale).settings
+  const memberId = String(formData.get('memberId') ?? '')
+  if (!memberId) return { error: d.managers.errors.notFound }
+
+  const supabase = await createClient()
+
+  const { data: saved, error } = await supabase
+    .from('center_members')
+    .update({ capabilities: parseCapabilities(formData.getAll('capability').map(String)) })
+    .eq('id', memberId)
+    .eq('coaching_center_id', session.active.centerId)
+    .eq('role', 'manager')
+    .select('id')
+
+  if (error) return { error: d.errors.saveFailed }
   if (!saved || saved.length === 0) return { error: d.managers.errors.notFound }
 
   revalidatePath('/settings/managers')

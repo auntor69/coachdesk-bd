@@ -35,6 +35,14 @@ export type MemberRow = {
   userId: string
   role: MemberRole
   branchId: string | null
+  /**
+   * What they may do, or `null` for the whole job (§6.2).
+   *
+   * `string[]` and not `Capability[]`, because the column is `text[]` and a value written
+   * by a migration this app has not shipped yet must not become a cast. `can` and
+   * `bundleOf` both take the loose type for the same reason.
+   */
+  capabilities: string[] | null
 }
 
 /**
@@ -62,6 +70,8 @@ export type Administrator = {
   userId: string
   role: MemberRole
   branchId: string | null
+  /** What they may do, or `null` for the whole job. An owner's is always null. */
+  capabilities: string[] | null
   /** The name a readable row carried, or `null` when neither list holds this person. */
   name: string | null
   /** What they are employed as, where that is recorded. */
@@ -137,6 +147,7 @@ export function administratorsFrom(
         userId: member.userId,
         role: member.role,
         branchId: member.branchId,
+        capabilities: member.capabilities,
         name: person?.name ?? null,
         job: person?.role ?? null,
         isSelf: member.userId === readerId,

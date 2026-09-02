@@ -78,7 +78,7 @@ export default async function ManagersPage() {
   const [memberRead, teacherRead, employeeRead, branches] = await Promise.all([
     supabase
       .from('center_members')
-      .select('id, user_id, role, branch_id')
+      .select('id, user_id, role, branch_id, capabilities')
       .eq('coaching_center_id', centerId)
       // Switched-off memberships are not appointments any more: `app.has_role` counts
       // only active rows, so one drawn here would be an administrator with no powers.
@@ -129,6 +129,7 @@ export default async function ManagersPage() {
     userId: row.user_id,
     role: row.role,
     branchId: row.branch_id,
+    capabilities: row.capabilities,
   }))
 
   /*
@@ -200,6 +201,7 @@ export default async function ManagersPage() {
             branchLabel={branches === null ? null : branchLabel(admin.branchId)}
             branches={branches}
             t={d.managerForm}
+            caps={d.capabilities}
             branchAccess={d.branchAccess}
             common={d.common}
           />
@@ -231,6 +233,7 @@ export default async function ManagersPage() {
           candidates={candidates}
           branches={branches}
           t={d.managerForm}
+          caps={d.capabilities}
           branchAccess={d.branchAccess}
           common={d.common}
         />

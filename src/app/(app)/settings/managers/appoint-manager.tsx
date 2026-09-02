@@ -20,6 +20,10 @@
  * either confines a new colleague with nothing on the screen saying so or hands them the
  * whole organisation — so the control is drawn, labelled and hinted, and the answer it
  * starts on is the narrower of the two.
+ *
+ * WHAT THEY MAY DO DEFAULTS THE OTHER WAY: all six boxes ticked, which `parseCapabilities`
+ * stores as the un-narrowed manager this form made before the boxes existed. An owner who
+ * ignores the control gets what they used to get, and narrowing is something they choose.
  */
 import { useActionState, useState } from 'react'
 
@@ -30,6 +34,7 @@ import type { BranchChoice } from '@/lib/branches'
 import type { T } from '@/lib/i18n'
 import type { Candidate } from '@/lib/staff/admins'
 import { appointManager, type ManagerState } from './actions'
+import { CapabilityPicker } from './capability-picker'
 
 /** The branch picker's own select, to the pixel: one control, one look. */
 const SELECT_CLASS =
@@ -41,6 +46,7 @@ export function AppointManager({
   candidates,
   branches,
   t,
+  caps,
   branchAccess,
   common,
 }: {
@@ -51,6 +57,7 @@ export function AppointManager({
   /** `null` draws no branch field at all — see branchChoicesFor. */
   branches: BranchChoice[] | null
   t: T<'managerForm'>
+  caps: T<'capabilities'>
   branchAccess: T<'branchAccess'>
   common: T<'common'>
 }) {
@@ -119,6 +126,11 @@ export function AppointManager({
       {/* Remounted with the candidate, so changing who is being appointed moves the default
           back to that person's own building instead of leaving the last one's showing. */}
       <BranchPicker key={picked} t={branchAccess} branches={branches} current={pin} />
+
+      {/* Remounted with the candidate too, and for the sharper version of that reason:
+          Accountant left ticked from the last appointment would quietly narrow the next
+          person the owner picks. `null` is all six — see the head of this file. */}
+      <CapabilityPicker key={picked} t={caps} current={null} />
 
       {selected?.needsLogin && (
         <Field
