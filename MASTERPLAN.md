@@ -2397,7 +2397,7 @@ teacher row rather than on the membership, and those three checks share one memo
 A gate that needed an `await` would put a round trip per row on the critical path of every
 screen in the product, which is why the test asserts there is not one.
 
-### 20.4 Plan and billing: six questions, in this order
+### 20.4 Plan and billing: six questions, in this order ✅
 
 Currently the worst screen in the product. It is a form; it should be an answer. It has to
 say, without being scrolled or clicked:
@@ -2426,6 +2426,29 @@ billing, because three places that each know the bands will disagree inside a mo
 **Center billing reads Students → Cost → Usage → Add capacity → Payment**, with
 `[Add students]` and `[Add teacher]` as the primary actions. Not a plan grid: a centre
 already paying us has chosen its plan and is now managing its size.
+
+**What shipped.** Question 1 is a three-fact strip under the heading — the tier, the price,
+and the date the money runs to — because the paid-through date used to be printed only
+inside the subscription card, which a manager cannot see and an owner with nothing left to
+buy never renders. Question 2's rows now say when a figure has met its ceiling and when it
+has passed one, in the reader's own numerals; "30 / 30" is the reason the screen gets opened
+and it looked like every other line on it. Question 4 is computed rather than compared: the
+features the next tier adds, filtered from the same list and the same labels as the card in
+the rail, and the ceilings it raises — so a feature cannot be present in one list and absent
+from the other. Question 5 is that block's own heading, one figure from the same
+`priceLine()` the tier list uses. Question 6 is one anchor, to the purchase control below or
+to the contact card, never a second priced dropdown beside the first. The four-tier grid
+§20.4 rejects still exists, folded into a disclosure that is open only on the free plan,
+where comparing tiers is the errand.
+
+Two rules are enforced by the screen rather than merely respected by it. §33: the rate bands
+and the working moved behind the calculator's disclosure, which is where the tallest block on
+the page had been sitting, in full, from the one engine. §2.7 and §8: the difference block
+drops any ceiling that is finite on a per-student tier, so "5 → 100 batches" and
+"5 → 200 subjects" never print — a centre told it is being given ninety-nine more batches has
+been sold a number we would refuse it at. `tests/plan-page.test.ts` asserts the second rule
+against `PLANS` itself rather than against the rendered string, so a tier that gains a finite
+cap fails there instead of quietly advertising it.
 
 ### 20.5 Buying happens where the need is met
 
@@ -2491,7 +2514,7 @@ rewrite, and nothing in §15's built list may stop working because a screen move
 |---|---|---|
 | 1 ✅ | The shell: sidebar, workspace, header bar, responsive frame | every other screen inherits it, so it cannot be second |
 | 2 ✅ | The centre dashboard | the first thing anyone sees, and until now the thinnest use of the width |
-| 3 | Plan and billing (§20.4) | the screen a customer reads before paying us |
+| 3 ✅ | Plan and billing (§20.4) | the screen a customer reads before paying us |
 | 4 | Add student, including the capacity step (§20.5) | the most-used write path in the product |
 | 5 | Student management: list, filters, one student's record | the register is the reason they bought it |
 | 6 | Finance: invoices, collection, expenses, payroll, profit | the most figures per screen, so the most to gain from a table |
@@ -2532,8 +2555,30 @@ Three things worth recording, because they are decisions and not consequences:
   behaviour. The reason the counts below did not move is that this was a layout change and
   nothing else, held by the 1,195 tests that already covered the page's rules.
 
-Step 3 is the plan and billing screen — §20.4's six questions, answered without printing the
-bands that answer them (§33).
+**Step 3 is done, and §20.4 above records what the screen now says.** Three decisions worth
+keeping here rather than there:
+
+- **The same one number, two shapes, again.** Ten blocks, an `order-N` each, two wrappers
+  that are `display: contents` below `lg` — step 2's arrangement, reused rather than
+  reinvented, seven columns of what an owner came to do beside five of what they check while
+  they are here. Seven and five and not eight and four because the rail holds sentences
+  rather than figures. `tests/plan-page.test.ts` carries the dashboard's ordering assertions
+  and was negative-tested against eleven mutations, all eleven caught — two of which it
+  missed on the first pass, both because a class name and a dictionary key are also
+  substrings of a comment and a longer key beside them.
+- **A §33 breach was already live.** The calculator printed the full band table and the seat
+  rate inline, on the one screen where a centre decides whether to start paying us. Nothing
+  was deleted; it is behind the disclosure §20.4 always asked for.
+- **`multipleBranches` became sellable.** It was kept out of the advertised feature list
+  because no screen stood behind it; step 1 gave `/hq` a way in and a greyed row, so it
+  joined — which is also what makes the centre→institution difference non-empty rather than a
+  card saying nothing changes.
+
+No query, capability gate or null-means-a-dash rule was touched (§38): the ten reads, the
+capacity gating and the receipt composition are the ones that were there.
+
+Step 4 is add student and the capacity step it interrupts (§20.5) — the most-used write path
+in the product, and the one place where the billing has to happen mid-sentence.
 
 ### 20.9 The rule that outranks everything above
 
@@ -2571,3 +2616,4 @@ truths start.
 | 2026-09-02 | **§12.1 rewritten: the caps are Layer 1.** 20260811000075 puts the four ceilings a plan sells besides student places — batches, subjects, teacher records, children in one batch — into triggers, because the tables they count still grant `insert` to `authenticated` and an owner's own token could be posted straight at the API. They mirror the Server Actions' counts exactly, resolve the ceiling through the same live trial, name which limit refused so Layer 2 keeps its own wording, treat a null allowance as no ceiling rather than none allowed, and exempt the migration runner but not the service key. §12.4's ❌ becomes ✅ — five ceilings, five advisory locks, and the counting helpers volatile on purpose so a bulk paste cannot pass one ceiling five hundred times. Feature flags are now the only cap left in Layer 2 alone, and §12.1 says why that stays. §16 records all twenty steps of the build order as landed. Counts: 1,418 RLS assertions, 1,176 unit tests, 75 migrations. |
 | 2026-09-02 | **§20.8 step 1 is built, and §§20–20.3 now record what shipped rather than what was wanted.** A `w-64` sidebar from `lg` up, the workspace ceiling off `max-w-3xl` and onto `max-w-7xl`, and — the actual defect — the six finished screens that were in no menu anywhere: spending, salaries, drifting away, notices, the week and the head office, reachable until now only from a dashboard card, which is how the dashboard became the menu. Eleven destinations do not fit a 375px bar, so the phone keeps its four daily tabs and the rest sit behind a `<details>` sheet that opens with no JavaScript — a sheet, not the drawer §20.1 asked for, and §20.1 now says why. Four groups rather than §20.2's eight, because the other four have no pages behind them yet. §20.3's hide-versus-lock sentence is now a rule in code: a capability hides a row, a plan greys it and leaves it there badged *Upgrade*, since that row is the only place a free-plan owner ever learns this product does payroll — and locked rows are kept out of the phone's four tabs, where a quarter of the screen is too much to give an advertisement. Held by `tests/navigation.test.ts`, which asserts each row against its own page's source in both directions and was itself negative-tested against five mutations. All of it decided from the session already in hand: no round trip per row. Counts: 1,418 RLS assertions, 1,195 unit tests, 75 migrations. |
 | 2026-09-02 | **§20.8 step 2 is built: the centre dashboard is a workspace rather than a column.** Step 1 widened the shell, which made this screen worse — thirteen blocks stretched to 1,280px, a 4xl ৳ figure with nine hundred pixels of white beside it, the month's profit two screens below the tiles it explains. It is now twelve columns from `lg` up, split by errand: eight columns of today's work (what is owed, the door that chases it, today's registers, the batch rates, who is drifting, and a real table of who owes since when) beside four of the centre's state (the three counts, the places left, the profit working, the branch comparison, and the two doors that tell families how the term went). §20.7's one primary action, made structural. The phone did not change at all — the same thirteen blocks in the same order, because each carries an `order-N` matching what it always was and the two column wrappers are `display: contents` below `lg`, so one number serves both shapes and there is no second ordering to drift. The overdue list became a `<table>` showing eight rows instead of five, three columns that fit 375px, head hidden below `sm` and present for a screen reader either way; the three glance tiles are boxes across on a phone and one card of ruled rows in the rail. No query, capability gate or null-means-a-dash rule was touched (§38), which is why the counts are unchanged: 1,418 RLS assertions, 1,195 unit tests, 75 migrations. Next is step 3, the plan and billing screen. |
+| 2026-09-02 | **§20.8 step 3 is built: the plan screen answers §20.4's six questions, and stops answering two it should not.** Question 1 moved out of a subtitle clause into a three-fact strip — tier, price, paid up to — because the date the money runs to was printed only inside the subscription card, which a manager never sees and an owner with nothing left to buy never renders. Question 2's rows now mark a met ceiling and a passed one, in the reader's own numerals. Question 4 stopped being four cards to diff by eye and became a computed difference: the features the next tier adds and the ceilings it raises, from the same list, labels and `priceLine()` as the card in the rail, so the two can never disagree; question 5 is that block's heading and question 6 is one anchor to the control below rather than a second priced dropdown. The tier grid survives inside a disclosure, open only on the free plan. Two rules are now structural rather than intended: §33 — the band table and the seat rate had been printing inline on the very screen where a centre decides to start paying us, and are now behind the calculator's disclosure, in full, from the one engine; §2.7 and §8 — the difference block drops any ceiling that is finite on a per-student tier, so no owner is ever sold the ninety-nine batches we would refuse them at, asserted against `PLANS` itself rather than the rendered string. Ten blocks, one `order-N` each and two `display: contents` wrappers, seven columns beside five; `tests/plan-page.test.ts` negative-tested against eleven mutations, all caught. No query, capability gate or null-means-a-dash rule was touched (§38). Counts: 1,418 RLS assertions, 1,210 unit tests, 75 migrations. |
