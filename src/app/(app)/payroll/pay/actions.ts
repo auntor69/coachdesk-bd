@@ -192,11 +192,12 @@ async function payeeExists(
  * generated column, so typing it negative adds to the salary. A reversal is a single negative
  * figure, not a mirror of the original's composition.
  *
- * `branch_id` is not written, and cannot be: `salary_payments` has no such column.
- * 20260811000049 records why that matters — three of the four sides of §8.3's per-branch
- * profit line exist and this is the missing one — and that it needs its own migration on
- * 20260811000047's argument, because a join through the employee would rewrite which branch
- * paid last year's salaries.
+ * `branch_id` is not sent, and must not be: 20260811000052 added the column and stamps it
+ * in a BEFORE INSERT trigger from the payee's own branch. That is deliberate rather than
+ * incidental — a value this file supplied is a value the month salary run forgets, and the
+ * forgetting is silent, since a null branch is not an error but a salary missing from one
+ * row of §8.3's comparison. Once stamped it never moves: a teacher transferred in July does
+ * not take last year's wage bill to their new branch.
  *
  * `paid_by` is the caller, from the session and never from the form. It is `on delete set
  * null`, so a manager who leaves takes their name off the voucher without taking the money
