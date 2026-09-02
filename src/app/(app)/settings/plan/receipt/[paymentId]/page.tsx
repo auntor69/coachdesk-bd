@@ -62,6 +62,14 @@ const RECEIPT_COLUMNS =
  * here would price the *next* purchase, `settle_payment_intent` having already raised
  * `student_capacity` by the time anybody prints this. Read, never re-derived.
  *
+ * A CREDIT NOTE COMES OUT OF THE SAME ROUTE, because since 20260811000074 a credit *is* a
+ * `payments` row — a negative one — and giving it a route of its own would mean two pages
+ * reading one table and disagreeing within a month. `purchaseReceipt` decides which sheet this
+ * is and the three things that differ are the heading, the label on the figure, and the
+ * paragraph at the foot. The tab title is the receipt's either way: `generateMetadata` would
+ * have to read the row a second time on every view to know better, and a browser tab is not
+ * worth a query.
+ *
  * A miss is notFound() rather than a 403: RLS decides what is visible, and refusing another
  * centre's payment id by name would confirm the id exists.
  */
@@ -108,6 +116,10 @@ export default async function PurchaseReceiptPage({
   if (!payment) notFound()
 
   const sheet = purchaseReceipt(payment)
+  // Read once. A credit is the same fields with three of them empty by constraint — no
+  // purchase code, no coverage window, no purpose — so what changes is the heading, the
+  // label on the figure, and the paragraph at the foot.
+  const isCredit = sheet.kind === 'credit'
 
   const [{ data: center }, branchRow] = await Promise.all([
     // The billed-to block. The app shell's header is print:hidden, so this is the only thing
@@ -164,7 +176,9 @@ export default async function PurchaseReceiptPage({
           </div>
 
           <div className="shrink-0 text-right">
-            <p className="text-sm font-medium text-ink-soft">{t.title}</p>
+            <p className="text-sm font-medium text-ink-soft">
+              {isCredit ? t.creditTitle : t.title}
+            </p>
             {sheet.number !== null && (
               <>
                 <p className="mt-0.5 text-sm text-ink-soft">
@@ -192,7 +206,11 @@ export default async function PurchaseReceiptPage({
 
         <dl className="mt-3 flex flex-col gap-1.5">
           {/* Converted, unlike the expense voucher's date — see the note at the top. */}
-          <Line label={t.date} value={formatDate(todayInDhaka(new Date(sheet.paidAt)), locale)} num />
+          <Line
+            label={isCredit ? t.creditDate : t.date}
+            value={formatDate(todayInDhaka(new Date(sheet.paidAt)), locale)}
+            num
+          />
           {/* Absent rather than guessed at when there is no intent behind the row: a
               founder-recorded payment says what it was for in its note, if anywhere. */}
           {sheet.purpose !== null && (
@@ -212,7 +230,13 @@ export default async function PurchaseReceiptPage({
           {sheet.reference !== null && (
             <Line label={t.reference} value={sheet.reference} num />
           )}
-          {sheet.note !== null && <Line label={t.note} value={sheet.note} />}
+          {/* Labelled "Why" on a credit note and "Note" on a receipt. It is the same column
+              and not the same thing: optional prose on a receipt, and on a credit the reason
+              somebody agreed to it, which `payments_credit_explained` requires precisely
+              because nothing can add it afterwards. */}
+          {sheet.note !== null && (
+            <Line label={isCredit ? t.creditReason : t.note} value={sheet.note} />
+          )}
         </dl>
 
         {/*
@@ -247,9 +271,17 @@ export default async function PurchaseReceiptPage({
         )}
 
         {/* The figure the sheet is for. Neutral rather than the fee receipt's green: that
-            green means money the centre received, and this is money it sent. */}
-        <div className="mt-3 flex items-baseline justify-between gap-4 rounded-lg bg-surface-alt px-3 py-2">
-          <span className="font-medium text-ink">{t.amount}</span>
+            green means money the centre received, and this is money it sent. A credit is
+            money coming back, and it is toned rather than coloured — `late` is this app's
+            "read this twice", and a credit note is a sheet somebody has to reconcile. The
+            figure itself is positive either way; the heading says the direction. */}
+        <div
+          className={`mt-3 flex items-baseline justify-between gap-4 rounded-lg px-3 py-2
+            ${isCredit ? 'bg-late/10' : 'bg-surface-alt'}`}
+        >
+          <span className="font-medium text-ink">
+            {isCredit ? t.creditAmount : t.amount}
+          </span>
           <span className="num text-2xl font-bold text-ink">{formatTaka(sheet.amount)}</span>
         </div>
 
@@ -260,11 +292,15 @@ export default async function PurchaseReceiptPage({
           <p className="mt-3 font-medium text-ink">{t.placesAdded(sheet.placesAdded)}</p>
         )}
 
-        <p className="mt-4 text-xs text-ink-faint">{t.footNote}</p>
+        <p className="mt-4 text-xs text-ink-faint">
+          {isCredit ? t.creditFootNote : t.footNote}
+        </p>
         {/* Only for the handful of rows that carry neither identifier. Said out loud, because
             an owner looking for a number on a receipt and finding none assumes it is a bug. */}
         {sheet.number === null && (
-          <p className="mt-1 text-xs text-ink-faint">{t.noNumberNote}</p>
+          <p className="mt-1 text-xs text-ink-faint">
+            {isCredit ? t.creditNoNumberNote : t.noNumberNote}
+          </p>
         )}
       </section>
     </div>

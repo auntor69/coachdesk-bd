@@ -494,6 +494,11 @@ export default async function PlanPage() {
    * so the machine-written note (`student_capacity x40`) is dropped in both places rather
    * than in one. Nothing is priced here: see that module on why the bands must not be
    * recomputed after a purchase has already raised the ceiling.
+   *
+   * CREDITS ARE IN THIS LIST, not filtered out of it. They are `payments` rows since
+   * 20260811000074 and the card is the only place an owner can see what we have done with
+   * their money; a credit hidden here is a figure they cannot reconcile against the total.
+   * Labelled and signed on the way out, because the sheet prints the magnitude.
    */
   // The printable's own words, not a second copy of them in this group: the list and the
   // sheet it opens must name a purchase identically.
@@ -501,15 +506,21 @@ export default async function PlanPage() {
   const receipts =
     settled?.map((row) => {
       const sheet = purchaseReceipt(row)
+      const credit = sheet.kind === 'credit'
       return {
         id: row.id,
+        // A credit has no intent by constraint, so it always falls to its reason — which is
+        // required, so it is never the bare fallback word.
         what:
           sheet.purpose !== null
             ? sheetWords.bought[sheet.purpose](sheet.quantity)
             : (sheet.note ?? t.paid.receipt),
-        taka: formatTaka(sheet.amount),
+        // The one place the sign is printed. On a line among other lines it is what tells a
+        // reader which way ৳750 went, and the badge beside it says the word.
+        taka: credit ? `− ${formatTaka(sheet.amount)}` : formatTaka(sheet.amount),
+        credit,
         day: formatDate(todayInDhaka(new Date(sheet.paidAt)), locale),
-        number: sheet.number?.value ?? t.paid.receipt,
+        number: sheet.number?.value ?? (credit ? t.paid.credit : t.paid.receipt),
       }
     }) ?? null
 
@@ -753,12 +764,21 @@ export default async function PlanPage() {
                   <Link
                     key={r.id}
                     href={`/settings/plan/receipt/${r.id}`}
-                    className="flex min-h-tap flex-col justify-center rounded-xl border
-                      border-line bg-surface-alt p-3"
+                    className={`flex min-h-tap flex-col justify-center rounded-xl border p-3
+                      ${r.credit ? 'border-late/40 bg-late/5' : 'border-line bg-surface-alt'}`}
                   >
                     <div className="flex items-baseline justify-between gap-3">
                       <span className="font-medium text-ink">{r.what}</span>
-                      <span className="num shrink-0 font-bold text-ink">{r.taka}</span>
+                      {/* Toned rather than coloured, and the sign is in the string: a
+                          credit among receipts has to be legible as the odd one out at a
+                          glance, and green or red would both say the wrong thing about
+                          money the centre is owed. */}
+                      <span
+                        className={`num shrink-0 font-bold
+                          ${r.credit ? 'text-late' : 'text-ink'}`}
+                      >
+                        {r.taka}
+                      </span>
                     </div>
                     <div className="mt-0.5 flex items-baseline justify-between gap-3">
                       <span className="num text-sm text-ink-soft">{r.day}</span>

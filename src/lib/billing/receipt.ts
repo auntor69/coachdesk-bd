@@ -39,6 +39,13 @@
  * per-place average matches no published band whenever a purchase straddles two. So this reads
  * the document and prints nothing at all if it is not the shape it should be.
  *
+ * AND WHETHER IT IS A RECEIPT AT ALL. Since 20260811000074 a `payments` row can be negative:
+ * a credit, money we owe the centre back, which is the only correction that table permits.
+ * That is a different sheet with the same fields — no purchase code, no coverage window, no
+ * purpose, a reason that is required rather than optional — so `kind` says which one it is and
+ * `amount` is the magnitude. Nothing prints a minus sign; a sheet headed "Payment receipt" with
+ * −৳750 on it is a sheet an owner rings up about.
+ *
  * Pure, and importable by `node --test`: nothing here reaches a database. Relative imports
  * with the extension, like every other unit-tested module.
  */
@@ -117,15 +124,35 @@ export type ReceiptPaymentRow = {
 export type ReceiptNumber = { kind: 'purchase' | 'transfer'; value: string }
 
 export type PurchaseReceipt = {
+  /**
+   * Which sheet this is. `credit` is a negative row — money we owe the centre back, which
+   * 20260811000074 made the only correction `payments` permits.
+   *
+   * A discriminator rather than leaving the caller to look at the sign, because the two
+   * sheets differ by more than a minus: one is headed "Payment receipt" and says what it
+   * bought, the other is headed "Credit note" and says what was agreed. A page that read
+   * `amount < 0` would have to know all of that itself, and both readers would have to
+   * agree about it separately.
+   */
+  kind: 'receipt' | 'credit'
   /** Null when the row carries neither an intent nor a provider reference. */
   number: ReceiptNumber | null
   /** `paid_at` as stored — a timestamptz, so the page must put it through `todayInDhaka`. */
   paidAt: string
+  /**
+   * The magnitude, always positive. `kind` carries the direction, so nothing has to print
+   * a minus sign: "Credit note … ৳750" is a sheet somebody can file, and "Payment receipt
+   * … −৳750" is a sheet somebody rings up about.
+   */
   amount: number
   method: PaymentMethod
   /** The provider's TrxID, and only when it is not already the number above. */
   reference: string | null
-  /** A note worth printing, or null. See the header on the machine-written one. */
+  /**
+   * A note worth printing, or null. See the header on the machine-written one. Never null
+   * on a credit: `payments_credit_explained` requires one, because the reason is the whole
+   * content of a row nothing can annotate later.
+   */
   note: string | null
   /** Null where there is no intent: the sheet then names no purpose rather than guessing. */
   purpose: PaymentPurpose | null
@@ -159,10 +186,19 @@ function isMachineNote(note: string, intent: NonNullable<ReceiptIntentRow>): boo
 export function purchaseReceipt(row: ReceiptPaymentRow): PurchaseReceipt {
   const intent = intentOf(row)
   const reference = row.reference?.trim() || null
+  const signed = Number(row.amount_bdt)
+
+  // The sign, read once. Zero cannot reach here — `payments_amount_nonzero` — and if some
+  // future path made it, `receipt` is the safer reading of the two: a sheet that says money
+  // arrived and names ৳0 is odd, and one that says we owe ৳0 back is alarming.
+  const kind = signed < 0 ? 'credit' : 'receipt'
 
   // The purchase code wins where there is one, and then the TrxID is still worth printing
   // underneath: one is what we called the sale, the other is what the bank called it, and
   // somebody reconciling a statement needs the second.
+  //
+  // A credit never has an intent (`payments_credit_no_intent`), so it is headed by its TrxID
+  // or by nothing — which is right: a credit is not a sale and has no purchase code.
   const number: ReceiptNumber | null =
     row.intent_id !== null
       ? { kind: 'purchase', value: transferReference(row.intent_id) }
@@ -173,9 +209,11 @@ export function purchaseReceipt(row: ReceiptPaymentRow): PurchaseReceipt {
   const note = row.note?.trim() || null
 
   return {
+    kind,
     number,
     paidAt: row.paid_at,
-    amount: Number(row.amount_bdt),
+    // The magnitude. See the field's own note on why no sheet prints the sign.
+    amount: Math.abs(signed),
     method: row.method,
     // Suppressed only when it is already the heading, never merged into it.
     reference: number?.kind === 'transfer' ? null : reference,

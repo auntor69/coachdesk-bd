@@ -3648,6 +3648,12 @@ export const en: Dictionary = {
         body: 'Each one can be printed as a receipt.',
         /** For a row with no description and for one with no number. */
         receipt: 'Receipt',
+        /**
+         * The badge on a negative row. Said out loud in a card titled "what we have
+         * received", where a credit sitting unlabelled beside the payments would read as
+         * money the centre paid twice.
+         */
+        credit: 'Credited back',
         unreadable: 'What you have paid before could not be read just now.',
       },
     },
@@ -4402,6 +4408,21 @@ export const en: Dictionary = {
   /** See the Bangla for why this is the one printable whose letterhead is ours. */
   purchaseReceipt: {
     title: 'Payment receipt',
+    /**
+     * The same sheet the other way round. Named a credit note rather than a refund because
+     * the row says we owe the money, not that it has gone back — it may come off the next
+     * purchase instead, and the reason line is what says which.
+     */
+    creditTitle: 'Credit note',
+    creditAmount: 'Amount credited',
+    creditDate: 'Date credited',
+    creditReason: 'Why',
+    creditFootNote:
+      'This is a computer-generated credit note. It records money we owe you back, and it '
+      + 'has been taken off the total you have paid us.',
+    creditNoNumberNote:
+      'This credit has no separate number. Quote the date and the amount if you need to ask '
+      + 'us about it.',
     issuerLine: 'Fee and attendance software for coaching centres',
     billedTo: 'Billed to',
     purchaseNo: 'Purchase no.',

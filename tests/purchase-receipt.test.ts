@@ -312,6 +312,114 @@ test('every unit a line can count in has a label on the paper', () => {
   }
 })
 
+/**
+ * A credit as `creditCenterPayment` leaves it: negative, no window, no intent, a reason.
+ *
+ * Every one of those is a check constraint in 20260811000074 rather than a convention, which
+ * is why the fixture can be this plain — the shapes this function would have to be defensive
+ * about cannot reach it.
+ */
+function credited(over: Partial<ReceiptPaymentRow> = {}): ReceiptPaymentRow {
+  return {
+    intent_id: null,
+    amount_bdt: -750,
+    method: 'bkash',
+    reference: null,
+    covers_period_start: null,
+    covers_period_end: null,
+    note: 'Moved down to Pro on 12 August, three months of centre coverage unused',
+    paid_at: '2026-09-02T09:14:00+00:00',
+    payment_intents: null,
+    ...over,
+  }
+}
+
+test('a negative row is a credit note and not a receipt', () => {
+  assert.equal(purchaseReceipt(credited()).kind, 'credit')
+  assert.equal(purchaseReceipt(settled()).kind, 'receipt')
+})
+
+test('a credit prints its magnitude, never a minus sign', () => {
+  // The heading carries the direction. `formatTaka(-750)` on a sheet titled "Payment
+  // receipt" is what this avoids, and the reason `amount` is absolute rather than signed.
+  const sheet = purchaseReceipt(credited())
+  assert.equal(sheet.amount, 750)
+  assert.ok(sheet.amount > 0)
+  // Including down the string path, since `numeric` arrives as one on some reads.
+  assert.equal(purchaseReceipt(credited({ amount_bdt: '-750.00' })).amount, 750)
+})
+
+test('a credit says why, because nothing can add the reason afterwards', () => {
+  const sheet = purchaseReceipt(credited())
+  assert.equal(
+    sheet.note,
+    'Moved down to Pro on 12 August, three months of centre coverage unused',
+  )
+})
+
+test('a credit has no purchase code, no purpose and no period', () => {
+  // All three refused at the table — payments_credit_no_intent and
+  // payments_credit_no_coverage — so what this asserts is that the sheet does not invent
+  // them. A credit headed by a CD- code would read as a sale.
+  const sheet = purchaseReceipt(credited())
+  assert.equal(sheet.number, null)
+  assert.equal(sheet.purpose, null)
+  assert.equal(sheet.quantity, 0)
+  assert.equal(sheet.placesAdded, 0)
+  assert.equal(sheet.coverage, null)
+  assert.deepEqual(sheet.lines, [])
+})
+
+test('a credit paid back over a wallet is headed by that transaction number', () => {
+  // The one identifier a credit can have. An owner reconciling a bKash statement needs it,
+  // and it is the only thing on the sheet both sides hold.
+  const sheet = purchaseReceipt(credited({ reference: 'BKA5R1T8ZP' }))
+  assert.deepEqual(sheet.number, { kind: 'transfer', value: 'BKA5R1T8ZP' })
+  assert.equal(sheet.reference, null)
+  assert.equal(sheet.kind, 'credit')
+})
+
+test('the credit note and the receipt come off one route and one function', () => {
+  // The whole reason `kind` exists rather than each reader testing the sign. If the printable
+  // ever grows a second copy of that decision, the list and the sheet can disagree about what
+  // a row is — and one of them will be titling a credit "Payment receipt".
+  const page = readFileSync(
+    path.join(ROOT, 'src', 'app', '(app)', 'settings', 'plan', 'receipt', '[paymentId]', 'page.tsx'),
+    'utf8',
+  )
+  assert.match(page, /sheet\.kind === 'credit'/)
+  assert.match(page, /creditTitle/)
+  // And nowhere does it look at the sign itself.
+  assert.doesNotMatch(page, /amount\s*<\s*0/)
+
+  const list = readFileSync(
+    path.join(ROOT, 'src', 'app', '(app)', 'settings', 'plan', 'page.tsx'),
+    'utf8',
+  )
+  assert.match(list, /sheet\.kind === 'credit'/)
+  assert.doesNotMatch(list, /amount\s*<\s*0/)
+})
+
+test('both languages have words for a credit note', () => {
+  for (const d of [bn, en]) {
+    for (const key of [
+      'creditTitle',
+      'creditAmount',
+      'creditDate',
+      'creditReason',
+      'creditFootNote',
+      'creditNoNumberNote',
+    ] as const) {
+      const word = d.purchaseReceipt[key]
+      assert.equal(typeof word, 'string', key)
+      assert.ok(word.trim().length > 0, key)
+    }
+    // And the badge the billing list puts on the row, which is in the plan group rather than
+    // this one because that card owns it.
+    assert.ok(d.settings.plan.paid.credit.trim().length > 0)
+  }
+})
+
 test('the sheet reads what the places cost and does not recompute it', () => {
   // §3.8's rate is a column now, and the trap it replaced is still open: by the time this
   // sheet is printed `settle_payment_intent` has already raised `student_capacity`, so the
