@@ -941,7 +941,7 @@ On the teacher tiers this ladder is decoration: there is one person, and
 missing feature. A solo plan showing a staff list would be showing the reader a
 list containing themselves.
 
-### 6.2 The roles the spec adds ❌
+### 6.2 The roles the spec adds ⚠️
 
 Accountant, Receptionist, Coordinator, Branch Admin, Institution HQ Admin. Not all
 of these need to appear in the UI now — but the permission system has to be able
@@ -962,6 +962,25 @@ being explicit about:
    and putting them in `teachers` to borrow its permission row would corrupt the
    teacher seat count that Center billing depends on. They belong with employees
    (§9.4).
+
+**What exists now.** `center_members.capabilities` is a `text[]` — six words, no
+enum, no table — and the vocabulary lives in `src/lib/staff/capabilities.ts`
+rather than in the schema, so a seventh narrowing costs a constant and not a
+migration. It is a **veto and not a grant**: null is the whole of the role, which
+is why every account that predates the column kept working. `app.member_allows`
+enforces it as a restrictive policy per table, and because a person often holds
+two memberships at one centre the app-side answer is the *intersection* of them —
+a teacher row cannot lift a narrowing the manager row imposes. Five bundles
+(Deputy, Accountant, Coordinator, Receptionist, Observer) are offered as tick-box
+shortcuts and none of them is stored: the boxes are the truth and the name is a
+summary, because the moment an owner unticks one box the name would be a lie.
+Only an owner may write the column.
+
+**What is left.** The five booleans in `teacher_permissions` are still booleans,
+so the sentence above about hard-coding remains true of teachers. Folding them in
+means four SQL resolvers and around seventy policy references, and it buys
+expressiveness the manager side already has — so it waits until something needs
+it.
 
 ### 6.3 Attendance belongs to teachers ⚠️
 
@@ -1612,8 +1631,11 @@ the trigger as well as on the screen; a founder panel that records real money; a
 append-only audit log written by fourteen triggers inside the transaction that made
 the change, named for the reader in one tested module and read by the owner alone;
 an admin role that only an owner may hand out, and a centre that cannot be left
-without one.
-1,129 RLS assertions and 939 unit tests green across 62 migrations and 42 tables,
+without one; capabilities as a `text[]` on the membership rather than an enum, so an
+owner can appoint an accountant who never sees the roster or a receptionist who
+never sees the money, with the narrowing enforced per table as a restrictive policy
+and every screen it would otherwise fill with noughts refusing at the door.
+1,165 RLS assertions and 980 unit tests green across 63 migrations and 41 tables,
 plus four derived gates and two that ask the live API. One of those gates now refuses
 a query whose table name it cannot read, having discovered it had been counting five
 fewer than existed — and the RLS suite found a manager who could promote themselves
@@ -1632,8 +1654,8 @@ is not built).
 (`subscriptions` still has zero reads and zero writes in the app, and
 `payments.subscription_id` is always null); a customer moving their own centre
 between tiers (`bootstrap_center` hard-codes `teacher_free` as the *paid* tier, and
-only a platform admin or an owner's request changes it); OTP; capability-based
-permissions and a way to create a manager; revenue categories; §9.10's dashboards;
+only a platform admin or an owner's request changes it); OTP; the five
+`teacher_permissions` booleans as capabilities; revenue categories; §9.10's dashboards;
 transfer history; the two new student statuses; percentage discounts; rooms and
 teacher-clash detection.
 
