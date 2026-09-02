@@ -970,6 +970,15 @@ export const bn = {
      */
     arrearsLink: 'আগের বাকি তুলে দিন',
 
+    /**
+     * The way onto the one-off charge screen.
+     *
+     * It says "নয়" — not tuition — because that is the whole distinction an owner has to
+     * make before they tap. Every other door on this board is about the monthly fee, and
+     * a link reading "ফি নিন" would be pressed by somebody looking for the generator.
+     */
+    chargeLink: 'মাসিক ফি ছাড়া অন্য ফি ধরুন',
+
     /** When a reminder went out, as a person would say it. Anything older is a date. */
     today: 'আজ',
     yesterday: 'গতকাল',
@@ -1088,6 +1097,48 @@ export const bn = {
       `${n} জনের ওই মাসে আগেই বিল ছিল, তাদের হিসাব বদলানো হয়নি।`,
     arrearsAllExisted:
       'এই সবার ওই মাসের বিল আগেই আছে। নতুন কিছু যোগ হয়নি।',
+
+    /**
+     * What each revenue category is called. One copy for the picker, the confirmation
+     * and the month's breakdown.
+     *
+     * `tuition` is here although the charge form never offers it: the breakdown has a row
+     * for it, and it is most of the money. The words are the ones a Bangladeshi coaching
+     * centre already uses on its own receipt book — ভর্তি ফি, রেজিস্ট্রেশন ফি, পরীক্ষার
+     * ফি, ফর্ম ফিলাপ ফি — rather than translations of the enum's English.
+     *
+     * "ফর্ম ফিলাপ" and not "ফর্ম পূরণ": the board form fill-up is called form fill-up in
+     * Bangla too, by every student who has ever done one.
+     */
+    categories: {
+      tuition: 'মাসিক বেতন',
+      admission: 'ভর্তি ফি',
+      registration: 'রেজিস্ট্রেশন ফি',
+      exam: 'পরীক্ষার ফি',
+      form: 'ফর্ম ফিলাপ ফি',
+      other: 'অন্য আয়',
+    },
+
+    /**
+     * What a one-off charge says back.
+     *
+     * The category comes first, because the fear this sentence answers is not whether it
+     * saved but whether it saved the right thing: an owner charging an exam fee to one
+     * batch has just ticked forty boxes, and the word they check is "পরীক্ষার ফি".
+     *
+     * ASCII digits for the count and the total, like every tally on this board.
+     */
+    chargeCreated: (what: string, count: number, total: string) =>
+      `${what} — ${count} জনের বিল হয়েছে, মোট ${total}।`,
+    /**
+     * The ticks that named nobody, said beside the confirmation rather than instead of it.
+     *
+     * The only way it happens is a picker that went stale while the form was being filled
+     * in, so the sentence says the roster and not the tick: an owner who reads "৩ জন বাদ
+     * পড়েছে" with no reason goes looking for a bug in the form.
+     */
+    chargeUnknown: (n: number) =>
+      `${n} জন আর তালিকায় নেই, তাই তাদের বিল হয়নি।`,
 
     errors: {
       forbidden: 'ফি-এর হিসাব শুধু মালিক বা ম্যানেজার রাখতে পারেন।',
@@ -1220,6 +1271,23 @@ export const bn = {
         tooLarge: 'অনেক বড়',
         notEnrolled: 'ব্যাচে নেই',
       },
+
+      /** The five ways a one-off charge is refused. */
+      chargeCategory: 'কোন ফি সেটা বেছে নিন।',
+      chargeTooLarge: 'এত বড় টাকা রাখা যাবে না। আরেকবার দেখে নিন।',
+      chargeNobody: 'কারো নাম টিক দেওয়া হয়নি। কার জন্য এই ফি, সেটা বেছে নিন।',
+      chargeFailed: 'বিল তৈরি হয়নি। আবার চেষ্টা করুন।',
+      /**
+       * The same proof and the same instruction as paymentMaybeRecorded, over a batch.
+       *
+       * The index has already refused the insert, so the bills are there; only the read
+       * that would have counted them did not arrive. Worth its own sentence because this
+       * form charges forty families at once: an owner told it failed presses again, reads
+       * the same refusal, reloads, and submits with a fresh token — and a bill cannot be
+       * deleted from a browser, so the duplicates have to be cancelled one by one.
+       */
+      chargeMaybeDone:
+        'বিলগুলো সম্ভবত আগেই তৈরি হয়ে গেছে, কিন্তু এখন গুনে দেখা গেল না। আবার ধরার আগে ফি বোর্ডে খুঁজে দেখুন — দুইবার বিল হলে একটা একটা করে বাতিল করতে হবে।',
     },
   },
 
@@ -2958,6 +3026,82 @@ export const bn = {
      */
     howToFix:
       'ভুল টাকা লিখে ফেললে ফি বোর্ড থেকে ওই বিলটি বাতিল করুন, তারপর সঠিক টাকা অন্য কোনো শেষ হয়ে যাওয়া মাসের হিসাবে লিখুন — বাতিল করা বিল ওই মাসের জায়গা ছাড়ে না।',
+  },
+
+  /**
+   * The screen that charges a fee which is not the monthly one.
+   *
+   * §9.7's other four columns of income: ভর্তি ফি at admission, রেজিস্ট্রেশন and ফর্ম
+   * ফিলাপ when the board's dates come round, পরীক্ষার ফি every model test. All four are
+   * charged to a whole batch at once in a real centre, which is why this looks like the
+   * arrears screen and nothing like the payment form.
+   *
+   * A client form — a list of tick boxes and a total that adds up as they are ticked — so:
+   * strings only, and the ones with a figure in them are `{}` templates filled in the
+   * browser. See ./fill.ts.
+   */
+  charge: {
+    title: 'অন্য ফি ধরুন',
+    subtitle: 'ভর্তি, রেজিস্ট্রেশন, পরীক্ষা ও ফর্ম ফিলাপ ফি',
+    backToFees: 'ফি বোর্ডে ফিরুন',
+    /**
+     * The one paragraph that has to land, and the last sentence is the load-bearing one:
+     * this bill sits beside the monthly fee rather than replacing it. An owner who thinks
+     * charging an exam fee cancels the month's tuition will not press the button.
+     */
+    howTo:
+      'কার জন্য, কোন ফি আর কার কত — এই তিনটা বলুন। প্রতি শিক্ষার্থীর জন্য একটি বিল ফি বোর্ডে উঠবে, মাসিক বেতনের পাশাপাশি, বেতনের বদলে নয়।',
+
+    who: 'কার জন্য',
+    whoHint: 'কোন ব্যাচে ধরবেন, বা পুরো কোচিং',
+    everyone: 'কোচিংয়ের সবাই',
+    show: 'তালিকা দেখুন',
+    /**
+     * The screen before a batch has been picked. The list is a page load away rather than
+     * a select away — three hundred tick boxes with typed amounts above them cannot be
+     * swapped out under the owner's fingers, so the batch is chosen first and the form
+     * comes after it.
+     */
+    pickFirst: 'উপরে একটি ব্যাচ বেছে নিন, তারপর শিক্ষার্থীদের তালিকা এখানে আসবে।',
+
+    category: 'কোন ফি',
+    amount: 'জনপ্রতি কত (৳)',
+    amountHint: 'যাদের টিক দেওয়া, সবার জন্য একই টাকা',
+    month: 'কোন মাসের হিসাবে',
+    dueDay: 'শেষ তারিখ',
+    dueDayHint: 'ওই মাসের কত তারিখের মধ্যে দিতে হবে',
+    dayOption: '{d} তারিখ',
+    note: 'নোট (ইচ্ছা হলে)',
+    /** What to write, not that they may write: an empty optional field gets skipped. */
+    noteHint: 'কোন পরীক্ষা, কোন বোর্ড — পরে যা দেখতে চাইবেন',
+
+    colStudent: 'শিক্ষার্থী',
+    tickAll: 'সবাইকে টিক',
+    tickNone: 'টিক তুলুন',
+    tickedCount: '{n} জনকে টিক দেওয়া',
+    total: 'মোট',
+    submit: 'বিল তৈরি করুন',
+    /**
+     * Deliberately weaker than the other two forms' promise, and the difference is real.
+     *
+     * The generator and the arrears loader cannot write a row twice ever, because the
+     * month key refuses it. This one deduplicates one submission: the same form sent twice
+     * raises one set of bills, but the same batch charged again from a fresh page is a
+     * second real charge — which it has to be, since two model tests in one month is two
+     * exam fees.
+     */
+    safeToRepeat:
+      'জনপ্রতি একটি বিল। এই সাবমিট দুইবার গেলে — লাইন কেটে গেলে বা দুইবার চাপ পড়লে — বিল একবারই হবে।',
+
+    emptyTitle: 'ধরার মতো কোনো শিক্ষার্থী নেই',
+    emptyBody: 'এই ব্যাচে এখনো কেউ নেই। আগে শিক্ষার্থীদের ভর্তি করুন।',
+    noBatches: 'এখনো কোনো ব্যাচ নেই, তাই পুরো কোচিং বেছে নিন।',
+    /** See arrears.unreadable for why a failed read takes the whole form away. */
+    unreadable:
+      'তালিকাটি এখন তৈরি করা গেল না, তাই দেখানো হয়নি — কিছুই হারায়নি। একটু পরে আবার চেষ্টা করুন।',
+    /** See fees.close.tooLarge for why this does not point anywhere. */
+    tooLarge:
+      'এই কোচিংয়ে শিক্ষার্থীর সংখ্যা এত বেশি যে এই পর্দা একবারে তালিকা করতে পারছে না। আপনার হিসাবে কোনো সমস্যা নেই — এক ব্যাচ করে ধরুন, বা আমাদের সাথে যোগাযোগ করুন।',
   },
 
   /**

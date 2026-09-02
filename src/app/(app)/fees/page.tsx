@@ -577,6 +577,22 @@ export default async function FeesPage({
         </p>
       )}
 
+      {/* The third way, and the only one that is not about monthly tuition at all:
+          admission, registration, exam and form fees (section 9.7). Beside the arrears
+          loader because both raise bills the generator never will, and unlike the
+          arrears loader this one is used every season rather than once. */}
+      {canWrite && (
+        <p className="flex">
+          <Link
+            href="/fees/charge"
+            className="inline-flex min-h-tap items-center font-medium
+              text-brand-800 underline"
+          >
+            {t.chargeLink} →
+          </Link>
+        </p>
+      )}
+
       {/* Only once something is owed. On an all-paid board it would be a link to
           a screen that can only say "nothing to do", which the empty board
           already says. */}

@@ -29,6 +29,7 @@ import { arrearsPlan, oldestEnrollments, ARREARS_FIELD_PREFIX } from '@/lib/fees
 import { cancelVerdict } from '@/lib/fees/void'
 import { refundVerdict, refundable } from '@/lib/fees/refund'
 import { discountVerdict, maxDiscount } from '@/lib/fees/discount'
+import { chargePlan, isChargeCategory } from '@/lib/fees/charge'
 import { PAYMENT_METHODS } from '@/lib/fees/methods'
 import { currentPeriodMonth } from '@/lib/bd/time'
 import { normalizeBdMobile } from '@/lib/bd/phone'
@@ -1239,5 +1240,189 @@ export async function recordArrears(
   return {
     ok: t.arrearsCreated(count, formatTaka(total)),
     ...(skipped > 0 ? { warn: t.arrearsSomeExisted(skipped) } : {}),
+  }
+}
+
+/* -------------------------------------------------------------------------- */
+/* Income that is not a monthly fee (§9.7)                                    */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Raises an admission, registration, exam, form or other bill against one or more
+ * students.
+ *
+ * WHAT MAKES THIS DIFFERENT FROM EVERY OTHER WRITE ON THIS SCREEN. The generator and
+ * the arrears loader are both idempotent through `unique (enrollment_id, period_month)`,
+ * and neither can write a row twice however many times it is pressed. This one carries
+ * no enrolment at all — 20260811000048's `fee_invoices_category_enrollment_bound` allows
+ * a non-tuition bill only when `enrollment_id is null`, and nulls are distinct in a
+ * unique index — so two exam fees in one month are two valid rows, and nothing in the
+ * columns tells that apart from one exam fee submitted twice. Only the browser knows,
+ * and it says so with the uuid 20260811000067 added for it.
+ *
+ * ALL OR NOTHING, WHICH IS THE RIGHT SHAPE FOR A BATCH CHARGE. The index is
+ * `(coaching_center_id, idempotency_key, student_id)`, so every row of one run carries
+ * the same key and a replay loses on the first row it reaches — rolling the statement
+ * back rather than topping up a partial run. An owner who charged forty families and
+ * lost the response gets forty bills or none, never nineteen.
+ *
+ * NO `branch_id` HERE. `app.stamp_invoice_branch()` (20260811000047) fills it from the
+ * student, because money is filed under the branch of the thing it is about rather than
+ * the desk it was taken at — see 20260811000054.
+ */
+export async function oneOffCharge(
+  _prev: FeeState,
+  formData: FormData,
+): Promise<FeeState> {
+  const session = await feeAdmin()
+  if (!isSession(session)) return session
+
+  const t = dict(session.locale).fees
+
+  // Fails closed, and `tuition` fails with it: a monthly fee belongs to the generator,
+  // which hangs it off an enrolment so the month cannot be billed twice.
+  const rawCategory = String(formData.get('category') ?? '')
+  if (!isChargeCategory(rawCategory)) return { error: t.errors.chargeCategory }
+
+  const amount = parseTaka(String(formData.get('amount') ?? ''))
+  if (amount === null) return { error: t.errors.amountUnreadable }
+  if (amount <= 0) return { error: t.errors.amountNegative }
+  if (amount > MAX_TAKA) return { error: t.errors.chargeTooLarge }
+
+  // The current month is allowed here, unlike the arrears loader's, and the difference
+  // is the missing enrolment: there is no `(enrollment_id, period_month)` slot for this
+  // row to take, so it cannot make the generator skip a family.
+  const rawMonth = String(formData.get('periodMonth') ?? '')
+  const periodMonth = MONTH_RE.test(rawMonth) ? rawMonth : currentPeriodMonth()
+
+  const rawDueDay = Number(formData.get('dueDay') ?? 10)
+  if (!Number.isInteger(rawDueDay) || rawDueDay < 1 || rawDueDay > 28) {
+    return { error: t.errors.dueDayRange }
+  }
+  const dueDate = `${periodMonth.slice(0, 7)}-${String(rawDueDay).padStart(2, '0')}`
+
+  // Clamped rather than refused, like the payment form's. What an exam fee was for is
+  // the owner's own words and the only thing on the row that says why the bill exists —
+  // `revenue_category` says what kind it is, not which exam.
+  const note = clamp(String(formData.get('note') ?? '').trim(), MAX_TEXT)
+
+  const ticked = formData.getAll('studentId').map((v) => String(v))
+  if (ticked.length === 0) return { error: t.errors.chargeNobody }
+
+  const key = readIdempotencyKey(formData.get('idempotencyKey'))
+
+  const supabase = await createClient()
+
+  // THE ROSTER IS READ HERE AND NOT TAKEN FROM THE FORM. A Server Action is a public
+  // endpoint, so the ticked ids are a claim; these are the students this session can
+  // actually see. The whole centre rather than the batch the picker was filtered to,
+  // because the filter is how the owner found the students and not part of the bill —
+  // a non-tuition charge hangs off no enrolment, so no batch is implied by it.
+  //
+  // Paged for the arrears loader's reason: read short, the students past the cut come
+  // back as ids matching nobody, and an owner who ticked three hundred boxes would be
+  // told most of them name nobody in their own centre.
+  const roster = await pageAll((from, to) =>
+    supabase
+      .from('students')
+      .select('id, name, student_code')
+      .eq('coaching_center_id', session.active.centerId)
+      .order('student_code', { ascending: true, nullsFirst: false })
+      .order('name', { ascending: true })
+      .order('id')
+      .range(from, to),
+  )
+
+  if ('failed' in roster) {
+    return {
+      error:
+        roster.failed === 'tooLarge' ? t.errors.rosterTooLarge : t.errors.rosterUnreadable,
+    }
+  }
+
+  const plan = chargePlan(
+    ticked,
+    roster.rows.map((s) => ({ id: s.id, name: s.name, code: s.student_code })),
+  )
+
+  if (plan.students.length === 0) return { error: t.errors.chargeNobody }
+
+  // A plain insert and not an upsert. There is no conflict target to name: the
+  // idempotency index is partial, and 20260811000048 explains why Postgres cannot infer
+  // an arbiter from one — so the refusal arrives as an error and is answered below,
+  // which is what makes the run all-or-nothing.
+  //
+  // `enrollment_id` is left off rather than set to null, which is the same row and the
+  // honest way to write "this bill is about a student, not a subject".
+  const { data: inserted, error: insertError } = await supabase
+    .from('fee_invoices')
+    .insert(
+      plan.students.map((studentId) => ({
+        coaching_center_id: session.active.centerId,
+        student_id: studentId,
+        period_month: periodMonth,
+        amount_bdt: amount,
+        due_date: dueDate,
+        revenue_category: rawCategory,
+        note: note || null,
+        idempotency_key: key,
+      })),
+    )
+    .select('id, amount_bdt')
+
+  let rows = inserted ?? []
+
+  if (insertError) {
+    // The one refusal that is not a failure. Guarded on `key` as well as the code,
+    // because without one this index cannot be the one that fired and a 23505 from
+    // anywhere else is a genuine failure.
+    if (!key || insertError.code !== UNIQUE_VIOLATION) {
+      return { error: t.errors.chargeFailed }
+    }
+
+    // Read back what the earlier run actually wrote rather than reporting what this one
+    // asked for. The key is proof that rows carrying it are in the table; it is not
+    // proof they hold this amount, and a confirmation naming a figure nobody was billed
+    // is worse than no figure at all.
+    const { data: existing, error: existingError } = await supabase
+      .from('fee_invoices')
+      .select('id, amount_bdt')
+      .eq('coaching_center_id', session.active.centerId)
+      .eq('idempotency_key', key)
+
+    /*
+     * The read that failed, and the one place here where "it did not save" writes a
+     * second set of bills. Getting here means the index already refused the insert, so
+     * the bills exist — and `chargeFailed` would send an owner to press again. The form
+     * carries the same key, so they would read the same sentence, reload, and submit
+     * fresh with a new key: forty duplicate bills that cannot be deleted from a browser
+     * (20260811000028) and can only be cancelled one at a time, each leaving a row.
+     *
+     * So it says to go and look. The board is revalidated on the way out because the
+     * rows it is being sent to were written by a request this one knows nothing about.
+     */
+    if (existingError) {
+      revalidatePath('/fees')
+      revalidatePath('/dashboard')
+      return { error: t.errors.chargeMaybeDone }
+    }
+
+    rows = existing ?? []
+  }
+
+  revalidatePath('/fees')
+  revalidatePath('/dashboard')
+
+  const count = rows.length
+  const total = sumTaka(rows.map((i) => Number(i.amount_bdt)))
+  const what = t.categories[rawCategory]
+
+  // The unknown ticks are reported beside the confirmation rather than instead of it.
+  // The bills really were raised; this is who was left off, and the only way it happens
+  // is a picker that went stale while the form was being filled in — a student removed
+  // from the centre, or a manager narrowed out of them mid-form.
+  return {
+    ok: t.chargeCreated(what, count, formatTaka(total)),
+    ...(plan.unknown > 0 ? { warn: t.chargeUnknown(plan.unknown) } : {}),
   }
 }

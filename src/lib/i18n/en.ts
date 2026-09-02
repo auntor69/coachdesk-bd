@@ -541,6 +541,9 @@ export const en: Dictionary = {
     /** The way onto the old-dues screen. See the Bangla note. */
     arrearsLink: 'Load the old dues',
 
+    /** The way onto the one-off charge screen. See the Bangla note. */
+    chargeLink: 'Charge a fee that is not tuition',
+
     today: 'today',
     yesterday: 'yesterday',
 
@@ -589,6 +592,33 @@ export const en: Dictionary = {
       `${n} already had a bill in that month and ${n === 1 ? 'was' : 'were'} left alone.`,
     arrearsAllExisted:
       'They all already have a bill in that month. Nothing new was added.',
+
+    /**
+     * What each revenue category is called, in the enum's order.
+     *
+     * One copy for the whole product: the picker on the charge screen reads them, the
+     * confirmation names the one that was raised, and the month's breakdown heads its
+     * rows with them. `tuition` is here even though the charge form never offers it,
+     * because the breakdown has a row for it — it is most of the money.
+     *
+     * "Fee" is in each label rather than in the sentence around it. These are read
+     * inside a select, at the top of a table column, and in the middle of a
+     * confirmation, and "Exam" alone is a heading in one of those three places only.
+     */
+    categories: {
+      tuition: 'Monthly tuition',
+      admission: 'Admission fee',
+      registration: 'Registration fee',
+      exam: 'Exam fee',
+      form: 'Form fee',
+      other: 'Other income',
+    },
+
+    /** What a one-off charge says back. See the Bangla notes. */
+    chargeCreated: (what: string, count: number, total: string) =>
+      `${what} — ${count} ${count === 1 ? 'bill' : 'bills'} raised, ${total} in total.`,
+    chargeUnknown: (n: number) =>
+      `${n} ${n === 1 ? 'name was' : 'names were'} no longer on the roster and ${n === 1 ? 'was' : 'were'} left off.`,
 
     errors: {
       forbidden: 'Only an owner or a manager can keep the fee records.',
@@ -688,6 +718,24 @@ export const en: Dictionary = {
         tooLarge: 'far too large',
         notEnrolled: 'not in a batch',
       },
+
+      /** The five ways a one-off charge is refused. See the Bangla notes. */
+      chargeCategory: 'Pick what the fee is for.',
+      chargeTooLarge: 'That amount is too large to record. Please check it.',
+      chargeNobody: 'Nobody is ticked. Choose who this fee is for.',
+      chargeFailed: 'The bills were not raised. Please try again.',
+      /**
+       * The same proof and the same instruction as paymentMaybeRecorded, over a whole
+       * batch. The unique index has already refused the insert, so the bills exist; only
+       * the read that would have counted them back did not arrive.
+       *
+       * Worth its own sentence rather than `chargeFailed`, because this form charges a
+       * batch: an owner told it failed presses again, gets the same refusal, reloads, and
+       * submits fresh with a new token — forty duplicate bills that cannot be deleted and
+       * have to be cancelled one at a time.
+       */
+      chargeMaybeDone:
+        'These bills have most likely been raised already, but they could not be counted back just now. Please look for them on the fee board before charging again — a bill raised twice has to be cancelled one at a time.',
     },
   },
 
@@ -1656,6 +1704,59 @@ export const en: Dictionary = {
     /** The correction, which needs saying. See the Bangla note. */
     howToFix:
       'Typed a wrong amount? Cancel that bill on the fee board, then record the right amount against a different finished month — a cancelled bill keeps its month’s place.',
+  },
+
+  /** The one-off charge screen. A client form, so strings only. See the Bangla notes. */
+  charge: {
+    title: 'Charge a fee',
+    subtitle: 'Admission, registration, exam and form fees',
+    backToFees: 'Back to fees',
+    howTo:
+      'Pick who it is for, say what the fee is and how much each of them owes. One bill per student goes onto the fee board, separate from their monthly tuition.',
+
+    who: 'Who it is for',
+    whoHint: 'Pick a batch to charge it to, or the whole centre',
+    everyone: 'Everyone in the centre',
+    show: 'Show the list',
+    /** The screen before a batch has been chosen. */
+    pickFirst: 'Choose a batch above, then the list of students appears here.',
+
+    category: 'What the fee is for',
+    amount: 'How much each (৳)',
+    amountHint: 'The same amount for everyone ticked',
+    month: 'Recorded against',
+    dueDay: 'Deadline',
+    dueDayHint: 'The day of that month it has to be paid by',
+    dayOption: 'day {d}',
+    note: 'Note (optional)',
+    noteHint: 'Which exam, which board — whatever you will want to read later',
+
+    colStudent: 'Student',
+    tickAll: 'Tick all',
+    tickNone: 'Clear',
+    tickedCount: '{n} ticked',
+    total: 'Total',
+    submit: 'Raise the bills',
+    /**
+     * Not "safe to press twice" without the qualifier the other two forms have earned.
+     *
+     * The generator and the arrears loader are idempotent through the month key and
+     * cannot write a row twice ever. This one is idempotent per submission: the same form
+     * resubmitted is deduplicated, but a fresh page charging the same batch again is a
+     * second real charge, because two exam fees in one month is a thing that happens.
+     */
+    safeToRepeat:
+      'One bill each. If this submit is sent twice — a lost connection, a double tap — only one set of bills is raised.',
+
+    emptyTitle: 'No students to charge',
+    emptyBody: 'There is nobody in this batch yet. Enrol the students first.',
+    noBatches: 'There are no batches yet, so pick the whole centre.',
+    /** See arrears.unreadable for why a failed read takes the form away entirely. */
+    unreadable:
+      'The list could not be put together just now, so it is not shown — nothing has been lost. Please try again in a moment.',
+    /** See fees.close.tooLarge for why this does not point anywhere. */
+    tooLarge:
+      'This centre has more students than this screen can list at once. Nothing is wrong with your records — please charge one batch at a time, or get in touch.',
   },
 
   exams: {

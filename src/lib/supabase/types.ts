@@ -1108,6 +1108,7 @@ export type Database = {
           discounted_at: string | null
           branch_id: string | null
           revenue_category: RevenueCategory
+          idempotency_key: string | null
         }
         Insert: {
           id?: string
@@ -1129,6 +1130,7 @@ export type Database = {
           discounted_at?: string | null
           branch_id?: string | null
           revenue_category?: RevenueCategory
+          idempotency_key?: string | null
         }
         Update: {
           id?: string
@@ -1150,6 +1152,7 @@ export type Database = {
           discounted_at?: string | null
           branch_id?: string | null
           revenue_category?: RevenueCategory
+          idempotency_key?: string | null
         }
         Relationships: [
           {
