@@ -11880,6 +11880,15 @@ const brUttara = await one(
 // A whole branch, twice over: the same twenty-six rows filed under Mirpur and under Uttara,
 // so every assertion below is the same question asked of two identical things that differ
 // only in which office they belong to.
+//
+// THE MONEY MONTHS ARE DECEMBER 2025 AND JANUARY 2026, both already gone, on the argument
+// the charged-and-collected section makes further up: the seed bills
+// `date_trunc('month', current_date)`, so a section pinned to a month the calendar has yet
+// to reach reads exact figures until the morning it arrives and then reads those figures
+// plus the seed's. These were 2026-12 and 2027-01, which was three months of runway; the
+// branch comparison at step 9 asserts per-branch expenses, payroll and charges to the taka
+// against a centre-wide total, and December's seed invoices would have landed in the
+// middle of it. A month that has passed cannot be reached by a default again.
 async function branchWorld(tag, branch, salary, rent) {
   const w = { branches: branch }
 
@@ -11991,7 +12000,7 @@ async function branchWorld(tag, branch, salary, rent) {
   w.fee_invoices = await one(
     `insert into fee_invoices (coaching_center_id, student_id, enrollment_id, period_month,
                                amount_bdt, due_date)
-     values ($1, $2, $3, '2026-12-01', 900, '2026-12-10') returning id`,
+     values ($1, $2, $3, '2025-12-01', 900, '2025-12-10') returning id`,
     [centerA, w.students, w.enrollments],
   )
   w.fee_payments = await one(
@@ -12019,12 +12028,12 @@ async function branchWorld(tag, branch, salary, rent) {
   // that supplied it would be testing the test rather than the trigger.
   w.salary_payments = await one(
     `insert into salary_payments (coaching_center_id, employee_id, for_month, basic_bdt)
-     values ($1, $2, '2026-12-01', $3) returning id`,
+     values ($1, $2, '2025-12-01', $3) returning id`,
     [centerA, w.employees, salary],
   )
   w.expenses = await one(
     `insert into expenses (coaching_center_id, branch_id, category, amount_bdt, spent_on, note)
-     values ($1, $2, 'rent', $3, '2026-12-05', 'branch scope fixture') returning id`,
+     values ($1, $2, 'rent', $3, '2025-12-05', 'branch scope fixture') returning id`,
     [centerA, branch, rent],
   )
   w.notices = await one(
@@ -12233,7 +12242,7 @@ await allowed(
   "a Mirpur manager can bill Mirpur's child",
   pinnedManager,
   `insert into fee_invoices (coaching_center_id, student_id, period_month, amount_bdt, due_date)
-   values ($1, $2, '2027-01-01', 900, '2027-01-10')`,
+   values ($1, $2, '2026-01-01', 900, '2026-01-10')`,
   [centerA, mirpur.students],
 )
 check(
@@ -12242,7 +12251,7 @@ check(
     db,
     pinnedManager,
     `insert into fee_invoices (coaching_center_id, student_id, period_month, amount_bdt, due_date)
-     values ($1, $2, '2027-01-01', 900, '2027-01-10')`,
+     values ($1, $2, '2026-01-01', 900, '2026-01-10')`,
     [centerA, uttara.students],
   ),
 )
@@ -12251,7 +12260,7 @@ check(
 // one the manager just raised; its number came from the centre's book, and so must the
 // receipt's.
 const janInvoice = await one(
-  `select id from fee_invoices where student_id = $1 and period_month = '2027-01-01'`,
+  `select id from fee_invoices where student_id = $1 and period_month = '2026-01-01'`,
   [mirpur.students],
 )
 const receiptBefore = await seriesTop('fee_payments', 'receipt_no')
@@ -12283,7 +12292,7 @@ await allowed(
   "a Mirpur manager can pay Mirpur's cleaner",
   pinnedManager,
   `insert into salary_payments (coaching_center_id, employee_id, for_month, basic_bdt)
-   values ($1, $2, '2027-01-01', 3000)`,
+   values ($1, $2, '2026-01-01', 3000)`,
   [centerA, mirpur.employees],
 )
 check(
@@ -12296,7 +12305,7 @@ check(
     db,
     pinnedManager,
     `insert into salary_payments (coaching_center_id, employee_id, for_month, basic_bdt)
-     values ($1, $2, '2027-01-01', 4000)`,
+     values ($1, $2, '2026-01-01', 4000)`,
     [centerA, uttara.employees],
   ),
 )
@@ -12439,7 +12448,7 @@ const scopedProfit = async (user) =>
     await asUser(db, user, (tx) =>
       tx.query(
         `select expenses_bdt, payroll_bdt from center_profit_month
-          where coaching_center_id = $1 and period_month = '2026-12-01'`,
+          where coaching_center_id = $1 and period_month = '2025-12-01'`,
         [centerA],
       ),
     )
@@ -12467,11 +12476,11 @@ check(
 // comparison table that read it as "every branch" would double the organisation's costs.
 await db.query(
   `insert into expenses (coaching_center_id, category, amount_bdt, spent_on, note)
-   values ($1, 'software', 500, '2026-12-09', 'head office cost')`,
+   values ($1, 'software', 500, '2025-12-09', 'head office cost')`,
   [centerA],
 )
 
-const branchRows = (view, user, month = '2026-12-01') =>
+const branchRows = (view, user, month = '2025-12-01') =>
   asUser(db, user, (tx) =>
     tx
       .query(
@@ -12509,7 +12518,7 @@ const centreDec = (
   await asUser(db, hqManager, (tx) =>
     tx.query(
       `select collected_bdt, expenses_bdt, payroll_bdt, profit_bdt from center_profit_month
-        where coaching_center_id = $1 and period_month = '2026-12-01'`,
+        where coaching_center_id = $1 and period_month = '2025-12-01'`,
       [centerA],
     ),
   )
@@ -12542,7 +12551,7 @@ const hqChargeTotal = (
   await asUser(db, hqManager, (tx) =>
     tx.query(
       `select charged_bdt from fee_charges_month
-        where coaching_center_id = $1 and period_month = '2026-12-01'`,
+        where coaching_center_id = $1 and period_month = '2025-12-01'`,
       [centerA],
     ),
   )
@@ -12572,7 +12581,7 @@ check(
 // today in Dhaka, so every other student in this suite lands in whatever month it happens to
 // be run — which is fine for them and useless here, where the assertion is about a figure
 // per month. Two named months nobody's default can reach keeps the counts stable, and keeps
-// this section out of the 2026-12-01 fixtures' eventual rewrite.
+// this section out of the branch fixtures' own named months.
 const admittedMonth = '2025-05-01'
 const laterMonth = '2025-06-01'
 
