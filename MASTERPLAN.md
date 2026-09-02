@@ -1344,12 +1344,29 @@ Recurring expenses (rent, internet) are flagged as recurring so the owner is not
 re-typing rent every month, but each month's actual payment is still its own row.
 A template is not a transaction.
 
-### 9.7 Revenue sources ❌
+### 9.7 Revenue sources ✅
 
 Student fees are most of it, but not all: admission fees, registration fees, exam
 fees, form fees, and other income. Categorised for the same reason expenses are —
 an owner who wants to know whether admission season carried the year needs those
 separable from monthly tuition.
+
+Raised from `/fees/charge`: pick a batch or the whole centre, name the fee, set one
+amount, and one press bills every student ticked. A non-tuition bill carries no
+enrolment — the check constraint on `revenue_category` requires it — which is also
+what keeps it outside the `(enrollment_id, period_month)` slot month-close needs, so
+two exam fees in one month are two real bills and neither can stop a family's monthly
+fee being raised. That is why the month key cannot make this form safe to repeat and
+a per-submission uuid does it instead, keyed per centre per student so one press
+billing forty families is one key and a double tap loses on the first row.
+
+Read back under the billed line on the home screen, split six ways, off the view the
+month's own total is selected from — so the split cannot drift from the figure it sums
+to. Only past one category: a month billed entirely as monthly fees needs no table.
+
+Income with no student behind it — hall rent, book sales — still has no home in the
+schema. It is outside the collected column and therefore outside the profit line, so
+a centre with much of it reads low. Documented in 20260811000048, unbuilt.
 
 ### 9.8 Profit ✅
 
@@ -1730,7 +1747,10 @@ document.
 numeric caps and feature flags checked server-side on every write path, failing
 closed; plan/status/SMS-credit/capacity columns tamper-proof at the database;
 attendance including an offline mode; exams and marks; fee invoices, partial
-payments, fixed-taka discounts, voiding, arrears, month close; append-only payments
+payments, fixed-taka discounts, voiding, arrears, month close, and the bills that are
+not a monthly fee — admission, registration, exam, form and other income — raised for
+one batch or a whole centre in a single press that is safe to repeat, and read back
+per category under the month's billed line; append-only payments
 with gapless receipt numbers; printable receipts and the collection register;
 a payslip an employee signs, off the breakdown copied onto the payment row and not
 off the agreement as it reads today; a voucher for money the centre paid out, whose
@@ -1772,7 +1792,7 @@ a five-minute life, five tries counted under a row lock, a minute between sends 
 hourly ceiling per number and per IP, checked and spent inside the same call that
 creates the account — which switches itself on the day the aggregator's three variables
 exist, and is off until then (§5.4).
-1,217 RLS assertions and 1,045 unit tests green across 66 migrations and 41 tables in
+1,217 RLS assertions and 1,068 unit tests green across 67 migrations and 41 tables in
 `public` plus one in `app`, and four derived gates and two that ask the live API. One of those gates now refuses
 a query whose table name it cannot read, having discovered it had been counting five
 fewer than existed — and the RLS suite found a manager who could promote themselves
@@ -1782,8 +1802,8 @@ to owner, which is what a suite is for.
 isolation no); discounts (fixed only); scheduling (weekly recurrence, no clashes or
 overrides); refunds (representable, no UI); plan selection (an
 owner may ask for a tier and buy places, not move themselves between tiers);
-revenue categories (the column, the check that keeps it off the month-close key, and the
-per-category view exist; nothing raises a non-tuition bill and nothing reads the view).
+income with no student behind it (hall rent, book sales and the like have a category
+but no row to hang it on — every revenue row is a bill against a child).
 
 **Not built ❌** — subscriptions as a living thing
 (`subscriptions` still has zero reads and zero writes in the app, and
