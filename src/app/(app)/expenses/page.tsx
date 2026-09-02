@@ -250,7 +250,17 @@ export default async function ExpensesPage({
                 {rows.map((r) => (
                   <tr key={r.id} className="border-b border-line align-top">
                     <Td num>{formatDate(r.date, locale)}</Td>
-                    <Td num>{r.voucherNo}</Td>
+                    {/* The voucher number is the way to the printable, and this is the only
+                        way in: the form's action answers with a finished sentence and no id,
+                        and every voucher of the month is already here. */}
+                    <Td num>
+                      <Link
+                        href={`/expenses/voucher/${r.id}`}
+                        className="font-medium text-brand-700 underline"
+                      >
+                        {r.voucherNo}
+                      </Link>
+                    </Td>
                     <Td>
                       {t.categories[r.category]}
                       {/* On the row and not only in the foot: an owner scanning for

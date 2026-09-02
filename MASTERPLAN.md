@@ -1359,8 +1359,8 @@ the number that convinces an owner to expand into a loss.
 
 ### 9.9 Receipts for everything ⚠️
 
-A printable record for a fee payment ✅, a refund ✅ and a salary payment ✅, and —
-❌ — for an expense and a student-capacity purchase. In Bangladesh a receipt is the
+A printable record for a fee payment ✅, a refund ✅, a salary payment ✅ and an
+expense ✅, and — ❌ — for a student-capacity purchase. In Bangladesh a receipt is the
 transaction; a payment without paper did not fully happen. Each one carries the
 centre's letterhead, a number, the date, the amount in figures, and who received
 or paid it.
@@ -1372,6 +1372,16 @@ signature on the office copy, the breakdown as it was copied onto the payment ro
 rather than as the agreement reads today, and the month's total frozen at that
 voucher. It is printed by a staff admin and handed over, so it needs no new policy;
 a teacher still cannot read `salary_payments` at all (§6.2).
+
+The expense voucher is the one sheet where the centre is the paying side, and that
+turns it round again: the office copy comes first and the recipient's second, there
+are three signature lines rather than two — who took the cash, who handed it over,
+who approved it — and the line that would be a month's total on a payslip is instead
+this category's spending up to this voucher, which is the duplicate check for the
+rent being written down twice. Frozen by voucher number and not by date, because
+`spent_on` is backdatable and a row entered next week must not change what today's
+paper said. `recurring` is deliberately not printed: it is a hint about next month,
+not a record of what happened.
 
 ### 9.10 The dashboards ❌
 
@@ -1673,7 +1683,10 @@ attendance including an offline mode; exams and marks; fee invoices, partial
 payments, fixed-taka discounts, voiding, arrears, month close; append-only payments
 with gapless receipt numbers; printable receipts and the collection register;
 a payslip an employee signs, off the breakdown copied onto the payment row and not
-off the agreement as it reads today;
+off the agreement as it reads today; a voucher for money the centre paid out, whose
+office copy comes first because the centre is the paying side, with three signature
+lines and the month's spending in that category frozen at that voucher rather than at
+a backdatable date;
 tap-to-send messaging; bulk import in one transaction; teacher records that can exist
 without accounts, server-generated usernames and signing in with either one;
 teacher→batch→student scoping in RLS; tenant-safe composite branch keys; employees,
@@ -1704,7 +1717,7 @@ a five-minute life, five tries counted under a row lock, a minute between sends 
 hourly ceiling per number and per IP, checked and spent inside the same call that
 creates the account — which switches itself on the day the aggregator's three variables
 exist, and is off until then (§5.4).
-1,217 RLS assertions and 1,017 unit tests green across 66 migrations and 41 tables in
+1,217 RLS assertions and 1,028 unit tests green across 66 migrations and 41 tables in
 `public` plus one in `app`, and four derived gates and two that ask the live API. One of those gates now refuses
 a query whose table name it cannot read, having discovered it had been counting five
 fewer than existed — and the RLS suite found a manager who could promote themselves
@@ -1712,8 +1725,8 @@ to owner, which is what a suite is for.
 
 **Partly built ⚠️** — branches (money, staff and the HQ comparison yes, full
 isolation no); discounts (fixed only); scheduling (weekly recurrence, no clashes or
-overrides); refunds (representable, no UI); printables (fee receipt, refund slip and
-payslip yes; expense voucher and capacity-purchase receipt no); plan selection (an
+overrides); refunds (representable, no UI); printables (fee receipt, refund slip, payslip and
+expense voucher yes; capacity-purchase receipt no); plan selection (an
 owner may ask for a tier and buy places, not move themselves between tiers);
 dashboards (`/hq` compares the branches; §9.10's own screen is not built).
 
@@ -1770,8 +1783,8 @@ expenses, employees, payroll, revenue and profit, the two dashboards, the audit 
 payment intents.
 
 **High priority, straight after:** percentage discounts and named scholarships,
-instalment plans, teacher clash detection, the two printables §9.9 still lacks — an
-expense voucher and a capacity-purchase receipt — per-branch capacity
+instalment plans, teacher clash detection, the one printable §9.9 still lacks — a
+capacity-purchase receipt — per-branch capacity
 *reporting* (never per-branch quotas).
 
 **Future, documented and not built:** rooms and timetable conflicts, holiday

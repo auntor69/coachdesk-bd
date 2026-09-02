@@ -1996,6 +1996,97 @@ export const bn = {
   },
 
   /**
+   * The paper an expense leaves behind.
+   *
+   * NOT THE PAYSLIP'S WORDS, and the difference is who the sheet protects. A payslip is the
+   * employee's proof they were paid; §10 says what this one is for, in the sentence it
+   * predicts as the first serious support conversation — "my manager says he never entered
+   * that". `expenses` answers it with an append-only row, and this answers it with a signed
+   * piece of paper. So the office copy comes first here and the recipient's second, which is
+   * the other way round from a payslip and from a fee receipt.
+   *
+   * "খরচের ভাউচার" and not "রসিদ": a রসিদ is what somebody hands you when they take your
+   * money, and the centre is on the paying side. A ভাউচার is the office's own slip, and it
+   * is what the stationery shops sell in books.
+   *
+   * THREE SIGNATURES, which no other sheet in the app has. প্রাপক signs for the cash,
+   * প্রদানকারী handed it over, and অনুমোদনকারী said it could go — and that third line is
+   * the whole reason this voucher exists rather than being a nicety: the row already records
+   * who typed it, and what it cannot record is who agreed to it.
+   *
+   * NOTHING ABOUT `recurring` ON THE PAPER. It is a hint about next month rather than a
+   * statement about what happened, and it is one of the three columns a browser session may
+   * still change after the sheet is printed. A record and a forecast on one page is a page
+   * whose reader has to know which line is which.
+   */
+  expenseVoucher: {
+    title: 'খরচের ভাউচার',
+    voucherNo: 'ভাউচার নং',
+    date: 'তারিখ',
+    /** The category, in the form's own words — কোন খাতে, not the table's enum. */
+    category: 'কোন খাতে',
+    /** Which building's cost it was, on the letterhead and only when the row names one. */
+    branch: 'শাখা',
+    method: 'কীভাবে',
+    reference: 'রেফারেন্স',
+    /**
+     * The note, which on this sheet is doing more work than a payslip's.
+     *
+     * 20260811000045 calls it "the free-text half of a fixed list plus a free-text note" —
+     * which month's rent, which printer was repaired. So the label asks what the money was
+     * for rather than calling it a নোট, because that is the question it answers.
+     */
+    note: 'কী বাবদ',
+    amount: 'খরচের পরিমাণ',
+
+    /**
+     * The same sheet when the figure went the other way.
+     *
+     * A negative row is the only correction the table allows, and it covers two different
+     * things — an amount typed wrong, and money a shop gave back. Both take taka off the
+     * month, so one set of words has to fit both: "বাদ দেওয়া টাকা" says what happened to the
+     * month's total without claiming to know which of the two it was.
+     */
+    correctionTitle: 'খরচের সংশোধনী',
+    correctionAmount: 'বাদ দেওয়া টাকা',
+    correctionFootNote:
+      'এটি কম্পিউটারে তৈরি সংশোধনীর ভাউচার। আগে লেখা খরচের একটি ভুল অঙ্ক, বা ফেরত পাওয়া টাকা, এই ভাউচার দিয়ে মাসের হিসাব থেকে বাদ দেখানো হয়েছে — হিসাবের সঙ্গে যত্ন করে রাখুন।',
+
+    /**
+     * The duplicate check, on the paper, at the moment the money leaves.
+     *
+     * The spending screen's own list is there so an owner "can check that the rent is not on
+     * there twice", and this is that check without anybody having to think to open a screen:
+     * a second rent voucher for the month says so on its face, in front of the person taking
+     * the cash. Drawn only past one entry — with one it would be this voucher's own figure
+     * printed twice under two labels.
+     *
+     * "এ পর্যন্ত" because the figure is frozen at this voucher and never moves again. See
+     * src/lib/expenses/voucher.ts on why it is frozen by voucher number and not by date.
+     */
+    categoryTotal: (what: string, n: number) => `এ পর্যন্ত এই মাসে ${what}, ${n} বারে`,
+    categoryUnreadable:
+      'এই মাসে এই খাতের বাকি ভাউচারগুলো এখন পড়া গেল না, তাই খাতের মোট দেখানো হয়নি। এই ভাউচারের অঙ্ক ঠিক আছে।',
+
+    /** Three blank lines for a pen. See the group's own note on why there are three. */
+    receivedBy: 'গ্রহণকারী',
+    paidBy: 'প্রদানকারী',
+    approvedBy: 'অনুমোদনকারী',
+
+    /** Office first, recipient second — the reverse of the payslip. See above. */
+    officeCopy: 'অফিস কপি',
+    recipientCopy: 'গ্রহণকারীর কপি',
+    cutHere: 'এখানে কেটে নিন',
+    print: 'প্রিন্ট করুন',
+    backToSpending: 'মাসের খরচে ফিরুন',
+    footNote:
+      'এটি কম্পিউটারে তৈরি খরচের ভাউচার। টাকা দেওয়ার প্রমাণ হিসেবে হিসাবের সঙ্গে যত্ন করে রাখুন।',
+    /** Says the expense is safe first — `expenses` revokes DELETE, so it cannot have gone. */
+    unreadable:
+      'ভাউচারটি এখন পড়া গেল না, তাই কাগজটি দেখানো হয়নি। খরচ লেখা হয়েছে, মুছে যায়নি — একটু পরে আবার চেষ্টা করুন।',
+  },
+
+  /**
    * What the centre has agreed to pay the people who work for it.
    *
    * THE THIRD TERM OF THE PROFIT LINE, and the word is বেতন — what an owner calls it —

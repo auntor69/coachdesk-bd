@@ -1113,6 +1113,47 @@ export const en: Dictionary = {
       'Once it is saved it stays on the record. If you get a figure wrong, write it again as a minus amount — that way the correction is on the sheet instead of the mistake being quietly gone.',
   },
 
+  /** See the Bangla for why the office copy comes first and why there are three signatures. */
+  expenseVoucher: {
+    title: 'Expense voucher',
+    voucherNo: 'Voucher no.',
+    date: 'Date',
+    category: 'What it was for',
+    branch: 'Branch',
+    method: 'How',
+    reference: 'Reference',
+    /** See the Bangla: on this sheet the note is the description, not an aside. */
+    note: 'What for',
+    amount: 'Amount paid',
+
+    /** The same sheet when the figure went the other way — see the Bangla. */
+    correctionTitle: 'Expense correction',
+    correctionAmount: 'Amount taken off',
+    correctionFootNote:
+      'This is a computer-generated correction voucher. It takes a wrong figure — or money that came back — off an expense recorded earlier. Please keep it with your accounts.',
+
+    /** See the Bangla: “up to this voucher”, and only when this is not the only entry. */
+    categoryTotal: (what: string, n: number) =>
+      `${what} this month up to this voucher, in ${n} entries`,
+    categoryUnreadable:
+      'The month’s other entries in this category could not be read just now, so the category total is not shown. The figures on this voucher are correct.',
+
+    receivedBy: 'Received by',
+    paidBy: 'Paid by',
+    approvedBy: 'Approved by',
+
+    officeCopy: 'Office copy',
+    recipientCopy: 'Recipient’s copy',
+    cutHere: 'Cut here',
+    print: 'Print',
+    backToSpending: 'Back to the month’s spending',
+    footNote:
+      'This is a computer-generated expense voucher. Please keep it with your accounts as proof that this money was paid out.',
+    /** Says the expense is saved first — `expenses` revokes DELETE, so it cannot have gone. */
+    unreadable:
+      'This voucher could not be read just now, so the paper is not shown. The expense is saved and has not been removed — please try again in a moment.',
+  },
+
   /**
    * What the centre has agreed to pay the people who work for it.
    *
