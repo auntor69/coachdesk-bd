@@ -84,12 +84,16 @@ export function Field({ label, hint, error, id, className = '', ...props }: Fiel
 export function Card({
   children,
   className = '',
+  id,
 }: {
   children: ReactNode
   className?: string
+  /** For an in-page anchor — a `#pay` link somewhere above scrolling to this card. */
+  id?: string
 }) {
   return (
     <div
+      id={id}
       className={`rounded-2xl border border-line bg-white p-5 shadow-sm ${className}`}
     >
       {children}

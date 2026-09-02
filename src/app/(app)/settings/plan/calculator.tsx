@@ -128,57 +128,70 @@ export function PriceCalculator({
         </span>
       </div>
 
-      <p className="mt-3 text-sm font-medium text-ink-soft">{t.breakdown}</p>
-      <dl className="mt-1 flex flex-col gap-1 text-sm">
-        <Row label={t.studentPart} value={formatTaka(billedStudents)} />
-        {/* A note rather than a row, so the figures above and below it are the two
-            that make the total. It explains the row it sits under: the students
-            came to less than this and this is what is charged anyway. */}
-        {onFloor && (
-          <p className="text-ink-faint">
-            {fill(t.floorNote, { floor: formatTaka(CENTER_MONTHLY_FLOOR_BDT) })}
-          </p>
-        )}
-        {extraSeats > 0 ? (
-          <Row
-            label={fill(t.seatPart, { n: digits(extraSeats, locale) })}
-            value={formatTaka(seatPart)}
-          />
-        ) : (
-          <p className="text-ink-faint">
-            {fill(t.seatsIncluded, {
-              n: digits(CENTER_FREE_TEACHER_SEATS, locale),
-            })}
-          </p>
-        )}
-      </dl>
+      {/*
+        EVERYTHING BELOW THE TOTAL IS BEHIND THIS, per §33 and §20.4. The rate card was
+        the largest thing on the screen where somebody decides to start paying us, and a
+        band table read before the total invites a centre to do our arithmetic instead of
+        reading our price. What it is not is removed: one tap and the working is all
+        there, from the same engine, which is what keeps the figure defensible.
+      */}
+      <details className="mt-3">
+        <summary className="min-h-tap cursor-pointer text-sm font-medium text-brand-800">
+          {t.details}
+        </summary>
 
-      <p className="mt-4 text-sm font-medium text-ink-soft">{t.ratesTitle}</p>
-      <ul className="mt-1 flex flex-col gap-0.5 text-sm text-ink-soft">
-        {STUDENT_BANDS.map((band, i) => {
-          const from = (i === 0 ? 0 : (STUDENT_BANDS[i - 1].upTo ?? 0)) + 1
-          const rate = formatTaka(band.rateBdt)
-          return (
-            <li key={band.rateBdt} className="num">
-              {band.upTo === null
-                ? fill(t.bandLast, { from: digits(from - 1, locale), rate })
-                : fill(t.bandRow, {
-                    from: digits(from, locale),
-                    to: digits(band.upTo, locale),
-                    rate,
-                  })}
-            </li>
-          )
-        })}
-        <li className="num">
-          {fill(t.seatRate, {
-            n: digits(CENTER_FREE_TEACHER_SEATS, locale),
-            rate: formatTaka(CENTER_TEACHER_SEAT_BDT),
+        <p className="mt-2 text-sm font-medium text-ink-soft">{t.breakdown}</p>
+        <dl className="mt-1 flex flex-col gap-1 text-sm">
+          <Row label={t.studentPart} value={formatTaka(billedStudents)} />
+          {/* A note rather than a row, so the figures above and below it are the two
+              that make the total. It explains the row it sits under: the students
+              came to less than this and this is what is charged anyway. */}
+          {onFloor && (
+            <p className="text-ink-faint">
+              {fill(t.floorNote, { floor: formatTaka(CENTER_MONTHLY_FLOOR_BDT) })}
+            </p>
+          )}
+          {extraSeats > 0 ? (
+            <Row
+              label={fill(t.seatPart, { n: digits(extraSeats, locale) })}
+              value={formatTaka(seatPart)}
+            />
+          ) : (
+            <p className="text-ink-faint">
+              {fill(t.seatsIncluded, {
+                n: digits(CENTER_FREE_TEACHER_SEATS, locale),
+              })}
+            </p>
+          )}
+        </dl>
+
+        <p className="mt-4 text-sm font-medium text-ink-soft">{t.ratesTitle}</p>
+        <ul className="mt-1 flex flex-col gap-0.5 text-sm text-ink-soft">
+          {STUDENT_BANDS.map((band, i) => {
+            const from = (i === 0 ? 0 : (STUDENT_BANDS[i - 1].upTo ?? 0)) + 1
+            const rate = formatTaka(band.rateBdt)
+            return (
+              <li key={band.rateBdt} className="num">
+                {band.upTo === null
+                  ? fill(t.bandLast, { from: digits(from - 1, locale), rate })
+                  : fill(t.bandRow, {
+                      from: digits(from, locale),
+                      to: digits(band.upTo, locale),
+                      rate,
+                    })}
+              </li>
+            )
           })}
-        </li>
-      </ul>
+          <li className="num">
+            {fill(t.seatRate, {
+              n: digits(CENTER_FREE_TEACHER_SEATS, locale),
+              rate: formatTaka(CENTER_TEACHER_SEAT_BDT),
+            })}
+          </li>
+        </ul>
 
-      <p className="mt-3 text-xs text-ink-faint">{t.quoteNote}</p>
+        <p className="mt-3 text-xs text-ink-faint">{t.quoteNote}</p>
+      </details>
     </Card>
   )
 }

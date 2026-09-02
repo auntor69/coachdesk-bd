@@ -5485,19 +5485,39 @@ export const bn = {
      */
     plan: {
       title: 'প্ল্যান ও দাম',
-      onNow: (name: string) => `আপনি এখন ${name} প্ল্যানে`,
       freePrice: 'কোনো খরচ নেই',
       monthly: (taka: string) => `মাসে ${taka}`,
       /** The centre tiers have no list price — the calculator below is the price. */
       sized: 'সেন্টারের আকার অনুযায়ী',
       from: (taka: string) => `${taka} থেকে শুরু`,
 
+      /**
+       * The strip at the top of the screen, which answers §20.4's first question —
+       * what am I on, what does it cost, how long is it paid for. Labels above
+       * figures, not a sentence: the date is the fact an owner came for and a
+       * sentence buries it mid-line.
+       */
+      factPlan: 'প্ল্যান',
+      factPrice: 'দাম',
+      factPaid: 'যে তারিখ পর্যন্ত দেওয়া',
+      factPaidNone: 'এখনও নয়',
+
       usageTitle: 'এখন যা ব্যবহার হচ্ছে',
       batches: 'ব্যাচ',
       students: 'শিক্ষার্থী',
       subjects: 'বিষয়',
       teachers: 'শিক্ষক',
+      /** A row label in the difference block. `perBatchCap`'s sentence is too long for it. */
+      perBatch: 'এক ব্যাচে শিক্ষার্থী',
       noCap: 'সীমা নেই',
+      /**
+       * On the row itself, because a row reading "৩০ / ৩০" is the whole reason this
+       * screen gets opened and it looks like every other row until something says
+       * so. Over the limit is a real state, not an impossible one: a centre moved
+       * down a tier keeps its students.
+       */
+      capFull: 'সীমা পূর্ণ',
+      capOver: 'সীমার বেশি',
       perBatchCap: (cap: number) =>
         `এক ব্যাচে সর্বোচ্চ ${digits(cap, 'bn')} জন।`,
       /** See en.settings.plan.perBranchBatches. */
@@ -5514,21 +5534,45 @@ export const bn = {
       summary: 'হাজিরা আর নম্বর থেকে সাপ্তাহিক অভিভাবক রিপোর্ট',
       staff: 'শিক্ষক যোগ করা আর অনুমতি ভাগ করা',
       export: 'Excel ফাইলে তালিকা ডাউনলোড',
+      branches: 'একাধিক শাখা, প্রতিটির নিজের হিসাব, এক প্রধান কার্যালয়ের নিচে',
       /**
-       * Why the list is eight rows and not twelve.
+       * Why the list is nine rows and not twelve.
        *
-       * The plan engine knows about branches and about paid SMS; neither exists.
-       * Listing them with a tick beside a paid tier would be selling something
-       * that does not exist, which is the one thing a price screen cannot do and
-       * survive. Rows join this list on the day the screen behind them works, not
-       * on the day the tier was priced: export joined when the three sheets
-       * downloaded, and the weekly parent report joined when /progress shipped
-       * with its own paywall — which made its absence the opposite mistake, a
-       * price screen leaving out the single thing ৳499 buys.
+       * The plan engine knows about paid SMS, which does not exist; listing it with
+       * a tick beside a paid tier would be selling something that is not there,
+       * which is the one thing a price screen cannot do and survive. Rows join this
+       * list on the day the screen behind them works, not on the day the tier was
+       * priced: export joined when the three sheets downloaded, the weekly parent
+       * report joined when /progress shipped with its own paywall — which made its
+       * absence the opposite mistake, a price screen leaving out the single thing
+       * ৳499 buys — and branches joined when /hq shipped with a row in the menu.
        */
       onlyBuilt: 'যা এখন সত্যিই কাজ করছে শুধু তাই এই তালিকায়। নতুন কিছু চালু হলে যোগ হবে।',
 
+      /**
+       * §20.4's fourth question, which the four cards below could never answer: not
+       * two feature lists to compare by eye, but the difference itself — what the
+       * next tier up adds, what it raises, and what it costs.
+       *
+       * Only what is fit to print. A tier priced per student advertises no ceiling
+       * on students, teachers or batch size because it genuinely has none; its
+       * internal safety limits (§8) are the centre's own business once they are on
+       * it, and they are shown in the usage table above, not sold in this block.
+       */
+      nextTitle: (name: string) => `${name}-এ উঠলে কী হবে`,
+      nextAdds: 'এগুলোও পাবেন',
+      nextRaises: 'আর এগুলো বদলাবে',
+      nextGo: 'এই প্ল্যান নিন',
+      nextAsk: 'বদলে দিতে বলুন',
+
       ladderTitle: 'প্ল্যানগুলো',
+      /**
+       * Folded away on a tier that is already paid for. A centre paying us has
+       * chosen its plan and is managing its size; a plan grid in its face is a
+       * question it has already answered. Open on the free tier, where choosing is
+       * the errand.
+       */
+      ladderAll: 'চারটি প্ল্যান পাশাপাশি দেখুন',
       /** One line each: what the tier is for, not a feature list. */
       addsFree: 'দেখে নেওয়ার জন্য — ১টি ব্যাচ, ৩০ জন শিক্ষার্থী।',
       addsPro:
@@ -6707,10 +6751,13 @@ export const bn = {
    * template filled by `fill`. Mixing the two in one group would mean the whole
    * group could hold no functions at all.
    *
-   * The bill is shown broken down rather than as one figure, and that is a sales
-   * decision as much as a design one: a single number an owner cannot reconstruct
-   * invites the suspicion that it was invented on the spot, which is exactly what
-   * a founder quoting a price from their own laptop needs to avoid.
+   * The bill can be seen broken down rather than being one bare figure, and that is a
+   * sales decision as much as a design one: a single number an owner cannot reconstruct
+   * invites the suspicion that it was invented on the spot, which is exactly what a
+   * founder quoting a price from their own laptop needs to avoid. It is behind a
+   * disclosure and not on the page, per §33 — the working is available to anyone who
+   * asks for it, which is what makes the figure defensible, without the rate card being
+   * the largest thing on the screen where somebody is deciding to pay us.
    */
   planCalc: {
     title: 'সেন্টারের খরচ হিসাব করুন',
@@ -6718,6 +6765,8 @@ export const bn = {
     students: 'শিক্ষার্থী কতজন',
     teachers: 'শিক্ষক কতজন',
     monthly: 'মাসে',
+    /** The disclosure everything below the total lives in. See the group's own note. */
+    details: 'দাম কীভাবে হিসাব হয় দেখুন',
     breakdown: 'হিসাবটা এভাবে',
     studentPart: 'শিক্ষার্থী বাবদ',
     seatPart: 'বাড়তি শিক্ষক {n} জন',

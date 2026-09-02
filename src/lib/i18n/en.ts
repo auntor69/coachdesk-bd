@@ -3481,18 +3481,28 @@ export const en: Dictionary = {
     /** See the Bangla for why this screen exists and what it deliberately omits. */
     plan: {
       title: 'Plan and pricing',
-      onNow: (name: string) => `You are on ${name}`,
       freePrice: 'No charge',
       monthly: (taka: string) => `${taka} a month`,
       sized: 'Priced by the size of the centre',
       from: (taka: string) => `From ${taka}`,
+
+      /** The three facts at the top of the screen. Labels, not sentences. */
+      factPlan: 'Plan',
+      factPrice: 'Price',
+      factPaid: 'Paid up to',
+      factPaidNone: 'Nothing yet',
 
       usageTitle: 'What you are using now',
       batches: 'Batches',
       students: 'Students',
       subjects: 'Subjects',
       teachers: 'Teachers',
+      /** A row label in the difference block, where `perBatchCap`'s sentence will not fit. */
+      perBatch: 'Students in one batch',
       noCap: 'No limit',
+      /** Said on the row, not in a banner. See the Bangla. */
+      capFull: 'Full',
+      capOver: 'Over the limit',
       perBatchCap: (cap: number) => `Up to ${cap} students in any one batch.`,
       /**
        * The row above reads the organisation's batches against a cap that is per
@@ -3514,10 +3524,22 @@ export const en: Dictionary = {
       summary: 'The weekly parent report, written from attendance and marks',
       staff: 'Adding teachers and sharing out permissions',
       export: 'Download lists as Excel files',
+      branches: 'Several branches, each with its own figures, under one head office',
       onlyBuilt:
         'Only what actually works today is listed here. Anything new is added when it ships.',
 
+      /**
+       * The difference between this plan and the next one up — the answer to "what do
+       * I get if I pay more", which four cards of feature lists do not give.
+       */
+      nextTitle: (name: string) => `Moving up to ${name}`,
+      nextAdds: 'You would also get',
+      nextRaises: 'And these would change',
+      nextGo: 'Choose this plan',
+      nextAsk: 'Ask us to move you',
+
       ladderTitle: 'The plans',
+      ladderAll: 'Compare all four plans',
       addsFree: 'For trying it out — 1 batch, 30 students.',
       addsPro:
         'One teacher’s whole coaching — 5 batches, 150 students, printed receipts, the register and the weekly parent report.',
@@ -4464,6 +4486,8 @@ export const en: Dictionary = {
     students: 'How many students',
     teachers: 'How many teachers',
     monthly: 'A month',
+    /** The disclosure that holds everything below the total. See the Bangla. */
+    details: 'See how the price is worked out',
     breakdown: 'How that adds up',
     studentPart: 'For students',
     seatPart: '{n} extra teachers',
