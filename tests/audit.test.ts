@@ -356,15 +356,110 @@ test('a role change reads as one, and the actor is carried through untouched', (
   assert.equal(entry.at, '2026-09-01T20:31:39.221Z')
 })
 
-test('only the fifteen tables with triggers are audited', () => {
+test('only the seventeen tables with triggers are audited', () => {
   assert.equal(isAuditedTable('fee_payments'), true)
   // 20260811000064 gave attendance an override marker, so 20260811000046's deferred
   // trigger exists — attached with a WHEN clause, so what reaches the log is a status
   // changed by somebody other than the teacher who took the register, and not every
   // student on every day.
   assert.equal(isAuditedTable('attendance_records'), true)
+  // The two that were audited by their own migrations while this list said fifteen. A row
+  // from either read as "Changed" with no table beside it, because the activity screen
+  // asks isAuditedTable before it prints the name. scripts/check-migrations.mjs asserts
+  // the other direction — that no trigger exists without a name here.
+  assert.equal(isAuditedTable('payment_intents'), true)
+  assert.equal(isAuditedTable('fee_scholarships'), true)
   assert.equal(isAuditedTable(''), false)
-  assert.equal(AUDITED_TABLES.length, 15)
+  assert.equal(AUDITED_TABLES.length, 17)
+})
+
+test('a payment request is named by which end it reached', () => {
+  const settled = describeAuditEntry(
+    row({
+      entity: 'payment_intents',
+      entity_id: 'pi-1',
+      before: { state: 'initiated', settled_at: null },
+      after: { state: 'settled', settled_at: '2026-09-02T09:00:00Z' },
+    }),
+  )
+  assert.equal(settled.action, 'paymentSettled')
+
+  const cancelled = describeAuditEntry(
+    row({
+      entity: 'payment_intents',
+      before: { state: 'pending', cancelled_at: null },
+      after: { state: 'cancelled', cancelled_at: '2026-09-02T09:00:00Z' },
+    }),
+  )
+  assert.equal(cancelled.action, 'paymentCancelled')
+
+  // A refund carries `settled_at` as well when anything touches both — the trigger stores
+  // only what moved, so this is the support-session case — and the order in RULES is what
+  // decides it, not the columns.
+  const refunded = describeAuditEntry(
+    row({
+      entity: 'payment_intents',
+      before: { state: 'settled', settled_at: '2026-08-01T09:00:00Z', refunded_at: null },
+      after: {
+        state: 'refunded',
+        settled_at: '2026-08-01T09:00:00Z',
+        refunded_at: '2026-09-02T09:00:00Z',
+      },
+    }),
+  )
+  assert.equal(refunded.action, 'paymentRefunded')
+
+  // Created leads with the figure asked for, the way every other money table does.
+  const asked = describeAuditEntry(
+    row({
+      entity: 'payment_intents',
+      operation: 'created',
+      after: { state: 'pending', amount_bdt: 1999, quantity: 1 },
+    }),
+  )
+  assert.equal(asked.action, 'paymentRequested')
+  assert.equal(asked.amountBdt, 1999)
+})
+
+test('an award is named, and its name is the line', () => {
+  const created = describeAuditEntry(
+    row({
+      entity: 'fee_scholarships',
+      operation: 'created',
+      after: { name: 'Sibling discount', percent: '50.00', active: true },
+    }),
+  )
+  assert.equal(created.action, 'awardCreated')
+  assert.equal(created.label, 'Sibling discount')
+  // Deliberately no money on the line: the award waives half a bill, and no taka moved.
+  assert.equal(created.amountBdt, null)
+
+  const retired = describeAuditEntry(
+    row({
+      entity: 'fee_scholarships',
+      before: { active: true },
+      after: { active: false },
+    }),
+  )
+  assert.equal(retired.action, 'awardRetired')
+
+  const restored = describeAuditEntry(
+    row({
+      entity: 'fee_scholarships',
+      before: { active: false },
+      after: { active: true },
+    }),
+  )
+  assert.equal(restored.action, 'awardRestored')
+
+  const renamed = describeAuditEntry(
+    row({
+      entity: 'fee_scholarships',
+      before: { name: 'Merit' },
+      after: { name: 'Merit 2026' },
+    }),
+  )
+  assert.equal(renamed.action, 'awardRenamed')
 })
 
 test('an override is drawn as the mark it moved, not as three anonymous details', () => {

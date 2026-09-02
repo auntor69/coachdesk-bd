@@ -4732,6 +4732,7 @@ export const en: Dictionary = {
     entities: {
       fee_payments: 'Fee payments',
       fee_invoices: 'Fee bills',
+      fee_scholarships: 'Awards and waivers',
       expenses: 'Spending',
       salary_payments: 'Salaries paid',
       salary_terms: 'Salary agreements',
@@ -4744,6 +4745,7 @@ export const en: Dictionary = {
       center_members: 'Logins',
       coaching_centers: 'The centre',
       payments: 'Paid to us',
+      payment_intents: 'Payment requests',
       subscriptions: 'Subscription',
     },
     actions: {
@@ -4785,12 +4787,25 @@ export const en: Dictionary = {
       feeAmountChanged: 'Fee amount changed',
       feeDueDateChanged: 'Fee due date changed',
       paymentReceived: 'Fee payment taken',
+      awardCreated: 'Award created',
+      awardRenamed: 'Award renamed',
+      awardRetired: 'Award retired',
+      awardRestored: 'Award offered again',
       salarySet: 'Salary agreed',
       salaryRetired: 'Earlier salary agreement closed',
       salaryTermsChanged: 'Salary agreement changed',
       salaryPaid: 'Salary paid',
       expenseRecorded: 'Spending recorded',
       platformPaymentRecorded: 'Paid to us',
+      /**
+       * "Requested" and not "started", because the centre's side of a manual transfer is
+       * an intention: the money has not moved until somebody here confirms it did.
+       */
+      paymentRequested: 'Payment requested',
+      paymentSettled: 'Payment confirmed',
+      paymentFailed: 'Payment failed',
+      paymentCancelled: 'Payment request cancelled',
+      paymentRefunded: 'Payment refunded',
       subscriptionStarted: 'Subscription started',
       /** A line nobody wrote a name for — the table's own label sits beside it. */
       rowCreated: 'Added',

@@ -7294,6 +7294,7 @@ export const bn = {
     entities: {
       fee_payments: 'ফি জমা',
       fee_invoices: 'ফির বিল',
+      fee_scholarships: 'বৃত্তি ও ছাড়',
       expenses: 'খরচ',
       salary_payments: 'বেতন দেওয়া',
       salary_terms: 'বেতনের চুক্তি',
@@ -7306,6 +7307,7 @@ export const bn = {
       center_members: 'লগইন',
       coaching_centers: 'সেন্টার',
       payments: 'আমাদের দেওয়া টাকা',
+      payment_intents: 'টাকা পাঠানোর অনুরোধ',
       subscriptions: 'সাবস্ক্রিপশন',
     },
     actions: {
@@ -7343,12 +7345,22 @@ export const bn = {
       feeAmountChanged: 'ফির অঙ্ক বদলেছে',
       feeDueDateChanged: 'ফির তারিখ বদলেছে',
       paymentReceived: 'ফি জমা নেওয়া হয়েছে',
+      awardCreated: 'নতুন বৃত্তি তৈরি হয়েছে',
+      awardRenamed: 'বৃত্তির নাম বদলেছে',
+      awardRetired: 'বৃত্তি বন্ধ করা হয়েছে',
+      awardRestored: 'বৃত্তি আবার চালু হয়েছে',
       salarySet: 'বেতন ঠিক হয়েছে',
       salaryRetired: 'আগের বেতনের চুক্তি বন্ধ হয়েছে',
       salaryTermsChanged: 'বেতনের চুক্তি বদলেছে',
       salaryPaid: 'বেতন দেওয়া হয়েছে',
       expenseRecorded: 'খরচ লেখা হয়েছে',
       platformPaymentRecorded: 'আমাদের টাকা দেওয়া হয়েছে',
+      /** "অনুরোধ", কারণ কেউ নিশ্চিত না করা পর্যন্ত টাকাটা আসলে আসেনি। */
+      paymentRequested: 'টাকা পাঠানোর অনুরোধ হয়েছে',
+      paymentSettled: 'টাকা পাওয়া গেছে বলে নিশ্চিত হয়েছে',
+      paymentFailed: 'টাকা পাঠানো হয়নি',
+      paymentCancelled: 'টাকার অনুরোধ বাতিল হয়েছে',
+      paymentRefunded: 'টাকা ফেরত দেওয়া হয়েছে',
       subscriptionStarted: 'সাবস্ক্রিপশন শুরু হয়েছে',
       /** যে লাইনের জন্য আলাদা নাম লেখা হয়নি — টেবিলের নামটাই পাশে বসে। */
       rowCreated: 'যোগ হয়েছে',

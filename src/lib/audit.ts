@@ -33,15 +33,25 @@ import type {
 } from './supabase/types.ts'
 
 /**
- * The fifteen tables 20260811000046 and 20260811000064 attach a trigger to.
+ * The seventeen tables 20260811000046, 20260811000057, 20260811000064 and
+ * 20260811000069 attach a trigger to.
  *
  * Listed so the filter on the screen offers exactly what the log can contain, and so a
  * table gaining a trigger without gaining a label here is a type error rather than a
  * blank option.
+ *
+ * That guard only ever bound the labels to this list, not this list to the database, and
+ * two tables walked through the gap: `payment_intents` and `fee_scholarships` were
+ * audited by their own migrations while this said fifteen, so every line either of them
+ * wrote read as "Changed" by somebody, with the table's name suppressed — `isAuditedTable`
+ * gates the one word that says what was changed. `scripts/check-migrations.mjs` now
+ * compares this list against the triggers themselves, which is the direction that was
+ * missing.
  */
 export const AUDITED_TABLES = [
   'fee_payments',
   'fee_invoices',
+  'fee_scholarships',
   'expenses',
   'salary_payments',
   'salary_terms',
@@ -54,6 +64,7 @@ export const AUDITED_TABLES = [
   'center_members',
   'coaching_centers',
   'payments',
+  'payment_intents',
   'subscriptions',
 ] as const
 
@@ -98,12 +109,21 @@ export type AuditAction =
   | 'feeAmountChanged'
   | 'feeDueDateChanged'
   | 'paymentReceived'
+  | 'awardCreated'
+  | 'awardRenamed'
+  | 'awardRetired'
+  | 'awardRestored'
   | 'salarySet'
   | 'salaryRetired'
   | 'salaryTermsChanged'
   | 'salaryPaid'
   | 'expenseRecorded'
   | 'platformPaymentRecorded'
+  | 'paymentRequested'
+  | 'paymentSettled'
+  | 'paymentFailed'
+  | 'paymentCancelled'
+  | 'paymentRefunded'
   | 'subscriptionStarted'
   | 'rowCreated'
   | 'rowUpdated'
@@ -300,6 +320,16 @@ const RULES: Record<AuditedTable, Rule[]> = {
     { column: 'due_date', action: 'feeDueDateChanged', shift: 'date' },
   ],
   fee_payments: [{ on: 'created', action: 'paymentReceived' }],
+  // Three rules and no catch-all, because 20260811000069 grants update on `name` and
+  // `active` and nothing else: an award's rate is frozen, so the list below is the whole
+  // of what an owner can do to one after creating it. The retire/restore pair is the same
+  // shape as every other switched-off row in this schema.
+  fee_scholarships: [
+    { on: 'created', action: 'awardCreated' },
+    { column: 'active', is: (f) => f.after.active === false, action: 'awardRetired' },
+    { column: 'active', action: 'awardRestored' },
+    { column: 'name', action: 'awardRenamed' },
+  ],
   salary_terms: [
     { on: 'created', action: 'salarySet' },
     // 20260811000044 retires the previous agreement automatically, so this arm is mostly
@@ -311,6 +341,27 @@ const RULES: Record<AuditedTable, Rule[]> = {
   salary_payments: [{ on: 'created', action: 'salaryPaid' }],
   expenses: [{ on: 'created', action: 'expenseRecorded' }],
   payments: [{ on: 'created', action: 'platformPaymentRecorded' }],
+  // Keyed on the timestamps rather than on `state`, and that is the cheaper of two honest
+  // options. Each of these columns moves once, in one direction, and names exactly one
+  // outcome; `state` would need a shift kind and a word for every value of the enum to say
+  // the same thing. `state` moves in the same update, so nothing is lost — and a save that
+  // reaches none of these (an `initiated_at`, an expiry pushed out) reads as a change to a
+  // payment request, which is what it is.
+  payment_intents: [
+    { on: 'created', action: 'paymentRequested' },
+    // Refunded above settled, and the order is the point: a refund is a settlement being
+    // reversed, so a snapshot carrying both timestamps is the reversal. The trigger stores
+    // only the columns that moved, which usually settles it — this decides the case where
+    // something moves both.
+    { column: 'refunded_at', is: (f) => f.after.refunded_at !== null, action: 'paymentRefunded' },
+    { column: 'settled_at', is: (f) => f.after.settled_at !== null, action: 'paymentSettled' },
+    { column: 'failed_at', is: (f) => f.after.failed_at !== null, action: 'paymentFailed' },
+    {
+      column: 'cancelled_at',
+      is: (f) => f.after.cancelled_at !== null,
+      action: 'paymentCancelled',
+    },
+  ],
   subscriptions: [
     { on: 'created', action: 'subscriptionStarted' },
     { column: 'plan', action: 'planChanged', shift: 'plan' },
@@ -325,7 +376,12 @@ const MONEY_ON_CREATE: Partial<Record<AuditedTable, readonly string[]>> = {
   salary_payments: ['amount_bdt'],
   expenses: ['amount_bdt'],
   payments: ['amount_bdt'],
+  payment_intents: ['amount_bdt'],
   salary_terms: ['net_bdt', 'per_class_bdt'],
+  // Not fee_scholarships, whose `amount_bdt` is a rule and not a sum: "৳500" under "Award
+  // created" reads as five hundred taka having moved, when what happened is that a waiver
+  // worth that much now exists. The award's name carries the line instead, off
+  // LABEL_COLUMNS — and a percentage award has no figure to lead with at all.
 }
 
 /** Which row a line is about, when it is about one a screen can name. */

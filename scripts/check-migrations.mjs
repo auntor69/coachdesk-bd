@@ -1,9 +1,14 @@
 /**
  * Applies every migration to a throwaway Postgres and reports what was created,
- * then checks the four structural invariants that the whole tenant boundary
- * rests on. Run: node scripts/check-migrations.mjs
+ * then checks the structural invariants that the whole tenant boundary rests on.
+ * Run: node scripts/check-migrations.mjs
  */
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
+
 import { bootDatabase } from './lib/pg-harness.mjs'
+
+const ROOT = process.cwd()
 
 try {
   const { db, migrations } = await bootDatabase({ verbose: true })
@@ -682,6 +687,102 @@ name, not a privilege nobody granted on purpose.`,
   }
 
   console.log('TRUNCATE: not held by authenticated or anon on any table.')
+
+  // -------------------------------------------------------------------------
+  // Every table with an audit trigger is named in src/lib/audit.ts.
+  //
+  // 20260811000046 attaches app.log_audit_entry() to fourteen tables and three
+  // later migrations added one each. `AUDITED_TABLES` in src/lib/audit.ts is the
+  // app's copy of that list, and it is not decoration: the activity screen builds
+  // its filter from it, and `isAuditedTable` gates the one word on each line that
+  // says which table changed.
+  //
+  // WHAT THIS CAUGHT, WHICH IS WHY IT EXISTS. `payment_intents` (57) and
+  // `fee_scholarships` (69) each attached a trigger without being added to that
+  // list, and the log went on recording them correctly — the database half was
+  // never wrong. What broke was reading: a settled payment request and a retired
+  // award both rendered as "Changed" by somebody, with the table's name suppressed
+  // because the list did not admit the table existed, and neither could be filtered
+  // to. A log line that cannot say what it is about is not evidence.
+  //
+  // The list's own comment claimed a missing table was a type error. It was half of
+  // one: the label dictionaries are checked against the list, so a table in the list
+  // without a word fails `tsc`. Nothing checked the list against the database, which
+  // is the direction a new migration moves in. This is that direction.
+  //
+  // Parsed as text rather than imported: audit.ts imports from
+  // src/lib/supabase/types.ts and pulls a good deal of the app in behind it, for one
+  // array of string literals.
+  // -------------------------------------------------------------------------
+  const audited = await db.query(`
+    select c.relname
+    from pg_trigger g
+    join pg_class c on c.oid = g.tgrelid
+    join pg_namespace n on n.oid = c.relnamespace and n.nspname = 'public'
+    join pg_proc p on p.oid = g.tgfoid
+    join pg_namespace pn on pn.oid = p.pronamespace and pn.nspname = 'app'
+    where not g.tgisinternal and p.proname = 'log_audit_entry'
+    group by c.relname
+    order by c.relname;
+  `)
+
+  const auditSource = readFileSync(join(ROOT, 'src/lib/audit.ts'), 'utf8')
+  const auditList = /export const AUDITED_TABLES = \[([^\]]*)\]/.exec(auditSource)
+  if (auditList === null) {
+    console.error(
+      `
+AUDITED_TABLES NOT FOUND in src/lib/audit.ts. This check reads that array as text
+to compare it with the triggers in the schema. If it was renamed or reshaped,
+teach this check the new shape — do not delete the check, or a table can be
+audited by the database and unnameable on the screen that reads the log.`,
+    )
+    process.exit(1)
+  }
+
+  const named = new Set(
+    [...auditList[1].matchAll(/'([a-z_]+)'/g)].map((m) => m[1]),
+  )
+  const withTrigger = audited.rows.map((r) => r.relname)
+
+  const unnamed = withTrigger.filter((name) => !named.has(name))
+  const phantom = [...named].filter((name) => !withTrigger.includes(name))
+
+  if (unnamed.length > 0 || phantom.length > 0) {
+    if (unnamed.length > 0) {
+      console.error(
+        `\nAUDITED BUT UNNAMED — ${unnamed.length} table(s) have an audit trigger and no entry in AUDITED_TABLES:\n`,
+      )
+      for (const name of unnamed) console.error(`  ${name}`)
+      console.error(
+        `
+Every line these tables write reads as "Changed" with no table beside it, because
+src/app/(app)/settings/activity/page.tsx asks isAuditedTable() before printing
+the name — and the filter above the log cannot select them at all.
+
+Add each one to AUDITED_TABLES in src/lib/audit.ts. The compiler then asks for
+the rest: a RULES entry saying what a create and each meaningful update is called,
+and a word in both dictionaries' audit.entities.`,
+      )
+    }
+    if (phantom.length > 0) {
+      console.error(
+        `\nNAMED BUT NOT AUDITED — ${phantom.length} entry(s) in AUDITED_TABLES have no audit trigger:\n`,
+      )
+      for (const name of phantom) console.error(`  ${name}`)
+      console.error(
+        `
+The filter above the log offers these and the log can never contain them, so
+choosing one shows "nothing of this kind" forever. Either the trigger was dropped
+— put it back — or the table is gone, in which case remove it from
+AUDITED_TABLES and from audit.entities in both dictionaries.`,
+      )
+    }
+    process.exit(1)
+  }
+
+  console.log(
+    `Audit log: ${withTrigger.length} table(s) with a trigger, all named in src/lib/audit.ts.`,
+  )
 
   await db.close()
 } catch (error) {
