@@ -41,6 +41,17 @@ function actionModules(dir: string): string[] {
   return out.sort()
 }
 
+/** Every `.ts`/`.tsx` under a directory, same shape as above. */
+function sourceFiles(dir: string): string[] {
+  const out: string[] = []
+  for (const entry of readdirSync(dir, { withFileTypes: true })) {
+    const full = path.join(dir, entry.name)
+    if (entry.isDirectory()) out.push(...sourceFiles(full))
+    else if (/\.tsx?$/.test(entry.name)) out.push(path.relative(ROOT, full).split(path.sep).join('/'))
+  }
+  return out.sort()
+}
+
 /**
  * The modules that write without the check, and why each one has to.
  *
@@ -167,6 +178,29 @@ test('pageGuard handles every AuthError code', () => {
   const union = source.slice(source.indexOf('export class AuthError'))
   const declared = [...union.slice(0, 400).matchAll(/\| '(\w+)'/g)].map((m) => m[1])
   assert.deepEqual(declared.sort(), [...codes].sort())
+})
+
+/**
+ * The write check only reaches `(app)`, and the walk above only looks there. One write in
+ * this product spends money the moment it succeeds — queueing an SMS debits credits — so
+ * the question of where that write may live is asked here rather than left to the walk.
+ *
+ * IT IS ASKED ABOUT THE QUEUE AND NOT ABOUT THE WORKER. `claim_sms_batch` has no centre
+ * filter on purpose (20260811000016): credits are spent when a message is queued, so a
+ * centre suspended in the minutes before the cron ran has already paid for what is
+ * sitting there, and refusing to deliver it would be keeping the money and the message
+ * both. The gate belongs where the money moves, which is why this test names the
+ * insert sites and says nothing about the drain.
+ */
+test('the only thing that queues an SMS is inside the write check', () => {
+  const writers = sourceFiles(path.join(ROOT, 'src')).filter((file) =>
+    /\.from\('sms_logs'\)\s*\.insert\(/.test(read(file)),
+  )
+
+  // Named, not counted: a second queue writer is only safe if it is somewhere the write
+  // check reaches, and deciding that is not something a passing test should do quietly.
+  assert.deepEqual(writers, ['src/app/(app)/exams/actions.ts'])
+  assert.match(read(writers[0]), /requireWritable\(/)
 })
 
 test('the banner explains what the refusal only names', () => {

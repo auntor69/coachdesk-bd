@@ -29,6 +29,14 @@ import { createAdminClient } from '@/lib/supabase/admin'
  * them. What is left for this file is: prove you are the cron, ask for a batch,
  * hand each message to the gateway, report what came back.
  *
+ * IT DOES NOT CHECK WHETHER THE CENTRE IS STILL PAYING, and that is the decision
+ * rather than the omission. Credits are spent where the message is queued —
+ * `sendResultSms` debits them behind `requireWritable`, so a suspended, cancelled or
+ * lapsed centre cannot queue anything in the first place. A row already in the queue
+ * has therefore been paid for, and a status that changed in the minutes since would
+ * have this endpoint keep the credits and drop the message. `claim_sms_batch` says the
+ * same thing at the other end, where the absent centre filter is.
+ *
  * ORDER MATTERS, and it is reap → cancel → claim → send → settle:
  *   reap first, so a row stranded by the previous run is back in the queue in time
  *   to be claimed by this one instead of waiting a full extra cycle;
