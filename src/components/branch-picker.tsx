@@ -26,7 +26,8 @@
  *
  * UNCONTROLLED, unlike MethodPicker. There is nothing to react to — no total to
  * recompute, no second field to reveal — so the value is read off the form on submit
- * by `postedBranchId` and never mirrored into React state.
+ * by `postedBranchId`. One caller mirrors it anyway, through `onPick`, and only to put
+ * it back after React 19 resets the form under a refused submit.
  *
  * IT ANSWERS EVEN WHEN IT DOES NOT ASK, which is the whole of why `current` is required
  * rather than optional. An add form has nothing to carry and passes null; an edit form
@@ -65,6 +66,7 @@ export function BranchPicker({
   current,
   name = 'branchId',
   id = name,
+  onPick,
 }: {
   t: T<'branchPick'>
   /** The open buildings from `branchChoicesFor`, or `null` for "there is nothing to ask". */
@@ -93,6 +95,17 @@ export function BranchPicker({
    * screen and takes the default. Field does the same thing for the same reason.
    */
   id?: string
+  /**
+   * The new answer, for a caller that has to survive a refused submit.
+   *
+   * React 19 resets every `<form action>` on submit whatever the outcome, and a select's
+   * `defaultSelected` is written at mount only — so a form that keeps its own state and
+   * feeds it back as `current` also needs telling when the reader changes this one, and
+   * needs to remount the control (a `key`) for the new default to take. Eight of the nine
+   * callers pass nothing: on an edit form the reset restores the row's own branch, which
+   * is the right answer anyway. See student-form.tsx.
+   */
+  onPick?: (branchId: string | null) => void
 }) {
   /*
    * No list, or a list this row's own building is not on: no select either way, and the
@@ -136,6 +149,7 @@ export function BranchPicker({
         id={id}
         name={name}
         defaultValue={current ?? ''}
+        onChange={onPick ? (e) => onPick(e.target.value || null) : undefined}
         aria-describedby={`${id}-hint`}
         className={SELECT_CLASS}
       >
