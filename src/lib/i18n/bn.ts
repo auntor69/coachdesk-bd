@@ -4078,6 +4078,9 @@ export const bn = {
       marks: 'শেষ ১২০ দিনে কোনো পরীক্ষা হয়নি, তাই ফলের কারণে কারও নাম আসবে না।',
       fees: 'এখনও কোনো ফির বিল তৈরি হয়নি, তাই বাকি ফির কারণে কারও নাম আসবে না।',
     },
+    /** Withheld, not blind: the reader may not read the fee book (§6.2). */
+    feesWithheld:
+      'আপনাকে ফির হিসাব দেখার অনুমতি দেওয়া হয়নি, তাই বাকি ফির কারণে এখানে কারও নাম আসবে না।',
     /** The dashboard card's link to the full list. */
     seeAll: 'সবাইকে দেখুন',
     /** On a row, opening the guardian's number in the phone dialler. */

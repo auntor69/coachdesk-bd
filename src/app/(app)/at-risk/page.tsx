@@ -8,6 +8,7 @@ import { pageAll, worstFailure } from '@/lib/supabase/page'
 import { studentsAtRisk, blindArms, RISK_COLUMNS } from '@/lib/students/risk'
 import { addDays, todayInDhaka } from '@/lib/bd/time'
 import { dict, DEFAULT_LOCALE } from '@/lib/i18n'
+import { can } from '@/lib/staff/capabilities'
 
 /** getSession, not pageRole — see the note on teach/page.tsx's own. */
 export async function generateMetadata() {
@@ -47,6 +48,15 @@ export async function generateMetadata() {
  * teacher would be their own batches' share of each student wearing the whole
  * picture's name. A role gate, not a plan gate — a solo teacher on the free plan
  * owns their centre and gets this screen exactly as a 300-student centre does.
+ *
+ * AND NOT GATED ON `fees`, WHICH IS A DECISION (§6.2). One of the three signals is
+ * built from `fee_invoices`, so a manager whose owner unticked the word gets a list
+ * with the fee arm silently missing: a student behind on nothing else drops off it,
+ * and one behind on all three arrives wearing two signals instead of three. But
+ * chasing an empty seat and a falling mark is the receptionist's actual job and
+ * precisely what §6.2 describes, so the screen stays open and says which arm was
+ * withheld — `t.feesWithheld` rather than `t.blind.fees`, because a nought this
+ * reader caused is not a centre that has never invoiced anybody.
  */
 export default async function AtRiskPage() {
   const session = await pageRole('manager')
@@ -63,6 +73,14 @@ export default async function AtRiskPage() {
   const today = todayInDhaka()
   const attendanceFrom = addDays(today, -30)
   const examsFrom = addDays(today, -120)
+
+  /*
+   * Whether the fee arm is this reader's to see at all (§6.2).
+   *
+   * Off the session, so no query. It decides two things below: that the count is not
+   * asked for, and that the screen says the arm was withheld rather than blind.
+   */
+  const mayReadFees = can(session.active.capabilities, 'fees')
 
   const [data, sessions, exams, invoices] = await Promise.all([
     // Paged. One row per student with at least one signal, which stays under the
@@ -91,10 +109,17 @@ export default async function AtRiskPage() {
       .gt('exam_date', examsFrom),
     // Ever, and not inside a window: an unpaid bill from March is still unpaid
     // today, which is exactly what the fee signal fires on.
-    supabase
-      .from('fee_invoices')
-      .select('id', { count: 'exact', head: true })
-      .eq('coaching_center_id', session.active.centerId),
+    //
+    // Not asked at all when the reader may not read it. `fee_invoices` is one of the
+    // three tables 20260811000063 takes away on the read, so the count would come
+    // back nought rather than fail — and `blindArms` would report a centre that has
+    // never billed anybody. A null claims nothing, which is the honest answer here.
+    mayReadFees
+      ? supabase
+          .from('fee_invoices')
+          .select('id', { count: 'exact', head: true })
+          .eq('coaching_center_id', session.active.centerId)
+      : Promise.resolve({ count: null }),
   ])
 
   /*
@@ -116,6 +141,17 @@ export default async function AtRiskPage() {
     exams: exams.count,
     invoices: invoices.count,
   })
+
+  /*
+   * Everything the list could not say, in the order the signals matter.
+   *
+   * One array rather than two, because the empty state and the footnote both ask the
+   * same question of it — is there anything to admit — and an all-clear drawn while a
+   * withheld arm went unmentioned would be `empty`'s sentence about all three signals
+   * printed by a screen that read two.
+   */
+  const notes = blind.map((arm) => t.blind[arm])
+  if (!mayReadFees) notes.push(t.feesWithheld)
 
   return (
     <div className="flex flex-col gap-4">
@@ -145,7 +181,7 @@ export default async function AtRiskPage() {
           </p>
         </Card>
       ) : students.length === 0 ? (
-        blind.length === 0 ? (
+        notes.length === 0 ? (
           // The good news, and the only screen it appears on. The dashboard card is
           // absent on a healthy month rather than showing this, because a card that
           // is usually empty is one an owner learns to skip past — but somebody who
@@ -166,8 +202,8 @@ export default async function AtRiskPage() {
             <p className="font-medium text-ink">{t.notWatchingYet}</p>
             <p className="mt-1 text-sm text-ink-soft">{t.notWatchingYetHint}</p>
             <ul className="mt-3 flex flex-col gap-1.5 text-sm text-ink-soft">
-              {blind.map((arm) => (
-                <li key={arm}>· {t.blind[arm]}</li>
+              {notes.map((note) => (
+                <li key={note}>· {note}</li>
               ))}
             </ul>
           </Card>
@@ -194,10 +230,8 @@ export default async function AtRiskPage() {
           because there it is the whole message; here the names are the message and
           this is the asterisk on them. The same sentences either way — two wordings
           for one fact is two things to keep true. */}
-      {students.length > 0 && blind.length > 0 && (
-        <p className="text-xs text-ink-faint">
-          {blind.map((arm) => t.blind[arm]).join(' ')}
-        </p>
+      {students.length > 0 && notes.length > 0 && (
+        <p className="text-xs text-ink-faint">{notes.join(' ')}</p>
       )}
     </div>
   )

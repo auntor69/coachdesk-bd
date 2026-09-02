@@ -2557,6 +2557,17 @@ export const en: Dictionary = {
         'No exam has been held in the last 120 days, so nobody can be flagged on results.',
       fees: 'No fee has been invoiced yet, so nobody can be flagged on an unpaid fee.',
     },
+    /**
+     * The fee signal withheld rather than blind, which is a different sentence (§6.2).
+     *
+     * A manager whose owner unticked `fees` cannot read `fee_invoices`, and every view is
+     * `security_invoker` — so the count comes back nought and the fee arm of `student_risk`
+     * is silently absent from every row. `blind.fees` would say the centre has never
+     * invoiced anybody, which is a claim about the business made out of a fact about the
+     * reader. This says whose limitation it is.
+     */
+    feesWithheld:
+      'You have not been given the fee book, so nobody here is flagged on an unpaid fee.',
     seeAll: 'See everyone',
     callGuardian: 'Call guardian',
     noPhone: 'No number',
