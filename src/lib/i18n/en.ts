@@ -3927,8 +3927,32 @@ export const en: Dictionary = {
        * words, and lib/plans.ts studentCeiling for where the number comes from.
        */
       placesTitle: 'There are no student places left',
+      /**
+       * Names the wall and nothing else. It used to end "…or ask for more places on the
+       * plan screen", which is the journey §3.4 opens by forbidding: the owner was
+       * refused here and sent somewhere else to work out how many to buy. Every way out
+       * is now on this card, so the sentence sets up what follows instead of replacing
+       * it with a destination.
+       */
       places: (places: number) =>
-        `This centre has ${places} student ${places === 1 ? 'place' : 'places'} and is using every one. Turn a student off to free one, or ask for more places on the plan screen.`,
+        `This centre has ${places} student ${places === 1 ? 'place' : 'places'} and is using every one. Another student needs another place.`,
+      /**
+       * The owner's way out, on the screen the refusal happened on — §3.4 and §20.5.
+       *
+       * THE PRICE IS IN THE REFUSAL, which is what §20.5 asks for in as many words: "You
+       * have used all 120 places. One more costs ৳18", never "capacity exceeded". One
+       * figure and not the bands (§33), and the same one BuyPlaces quotes with — it says
+       * it again under its own field, where it turns into the whole bill as soon as a
+       * number is typed. The price belongs in the sentence that refuses and beside the
+       * field that changes it, so twice is right here.
+       *
+       * The note is what no price can say — §22. The money is sent by hand and a human
+       * settles it, so buying does not admit the child standing at the desk, and an owner
+       * who is not told that will keep a family waiting for a form that never finishes.
+       */
+      placesNext: (taka: string) => `One more place costs ${taka}.`,
+      placesBuyNote:
+        'You send the money yourself and we add the places once we have checked it. Nothing is added by this form — so if a family is waiting, take the guardian’s number and admit the student when the places arrive.',
       /**
        * The same card again, for the branch manager who cannot buy their way out of it
        * — §3.7. The count is ASK_PLACES; the button is the only way forward this reader
@@ -3939,8 +3963,29 @@ export const en: Dictionary = {
       placesAsked: (n: number) =>
         `HQ has been asked for ${n} more places. They add them by paying for them.`,
       placesAskWithdraw: 'Cancel the request',
+      /**
+       * The way out that costs nothing and exists on every tier, including the two that
+       * sell no places at all: a student who left in March is still holding a place.
+       *
+       * It is also the only route a teacher on `can_manage_students` is offered here —
+       * they cannot buy, cannot ask, and would be refused at /settings/plan.
+       */
+      placesFreeLink: 'Turn a student off to free a place',
       /** Owner or manager — /settings/plan is pageRole('manager'). */
       placesPlanLink: 'Places and plan',
+      /**
+       * The rail beside the form: what saving it actually does.
+       *
+       * Both sentences are problems the roster already counts afterwards — a guardian
+       * number nobody answers, and a student in no batch. This is the one moment where
+       * saying so costs nobody an afternoon, because the answer is one more tap rather
+       * than three hundred rows to search.
+       */
+      savesTitle: 'What saving this does',
+      savesPhone:
+        'Results and fee reminders go to the guardian’s number, so a digit out of place is a parent who hears nothing all term.',
+      savesBatch:
+        'A student in no batch has no register to be marked on and no fee to be billed. Ticking the batches now is quicker than finding them again later.',
       added: 'Student added',
 
       editTitle: 'Fix their details',

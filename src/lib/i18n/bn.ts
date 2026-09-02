@@ -6026,15 +6026,34 @@ export const bn = {
        * See en.settings.students.places and lib/plans.ts studentCeiling.
        */
       placesTitle: 'শিক্ষার্থীর আর জায়গা নেই',
+      /** See en — the tail that sent the reader to another screen is gone (§3.4). */
       places: (places: number) =>
-        `এই সেন্টারে ${digits(places, 'bn')}টি শিক্ষার্থীর জায়গা, সবই ব্যবহার হচ্ছে। একটি জায়গা খালি করতে কোনো শিক্ষার্থীকে বন্ধ করুন, বা প্ল্যানের পাতা থেকে আরও জায়গা চান।`,
+        `এই সেন্টারে ${digits(places, 'bn')}টি শিক্ষার্থীর জায়গা, সবই ব্যবহার হচ্ছে। আরেকজন শিক্ষার্থীর জন্য আরেকটি জায়গা লাগবে।`,
+      /**
+       * §3.4 and §20.5 — the refusal names the price, and the owner buys from here. The
+       * figure is already formatted with ৳ and ASCII digits, like every other taka string
+       * that crosses from a page (see settings.plan.placesLine). The note is §22's half,
+       * and it is the half that changes what the owner does with the family in front of
+       * them.
+       */
+      placesNext: (taka: string) => `আরেকটি জায়গার দাম ${taka}।`,
+      placesBuyNote:
+        'টাকা আপনি নিজে পাঠাবেন, আর আমরা তা মিলিয়ে দেখে জায়গা যোগ করে দেব। এই ফর্ম নিজে থেকে কিছু যোগ করে না — তাই কেউ অপেক্ষা করছেন থাকলে অভিভাবকের নম্বরটি লিখে রাখুন, জায়গা এলে শিক্ষার্থীকে ভর্তি করবেন।',
       /** §3.7 — the same card for a manager, whose only way forward is the button. */
       placesAsk: (n: number) => `হেড অফিসে আরও ${digits(n, 'bn')}টি জায়গার অনুরোধ পাঠান`,
       placesAsking: 'পাঠানো হচ্ছে…',
       placesAsked: (n: number) =>
         `হেড অফিসে আরও ${digits(n, 'bn')}টি জায়গার অনুরোধ গেছে। তাঁরা টাকা দিয়ে জায়গা যোগ করবেন।`,
       placesAskWithdraw: 'অনুরোধ বাতিল করুন',
+      /** The route that costs nothing, on every tier — and a teacher's only one here. */
+      placesFreeLink: 'জায়গা খালি করতে কোনো শিক্ষার্থীকে বন্ধ করুন',
       placesPlanLink: 'জায়গা ও প্ল্যান',
+      /** See en.settings.students.savesTitle — the two ways a record looks finished. */
+      savesTitle: 'সেভ করলে কী হয়',
+      savesPhone:
+        'ফল আর ফির কথা অভিভাবকের নম্বরেই যায়, তাই একটি অঙ্ক ভুল হলে সারা টার্ম তাঁরা কিছুই জানবেন না।',
+      savesBatch:
+        'কোনো ব্যাচে না থাকলে শিক্ষার্থীর হাজিরাও ওঠে না, ফির বিলও হয় না। এখনই ব্যাচ টিক দেওয়া পরে খুঁজে বের করার চেয়ে সহজ।',
       added: 'শিক্ষার্থী যোগ হয়েছে',
 
       /**

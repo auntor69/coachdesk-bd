@@ -328,6 +328,11 @@ export async function buyStudentPlaces(
   if (told.kind === 'blocked') return { error: t.closed }
 
   revalidatePath('/settings/plan')
+  // And the desk this was very likely pressed from. §3.4: an owner who runs out of places
+  // with a family standing in front of them buys them inside the add-student screen, and
+  // that screen prints the reference off the row this just wrote. Without this line the
+  // confirmation there says "send the money as shown below" above nothing.
+  revalidatePath('/settings/students/new')
 
   return { ok: t.opened }
 }
