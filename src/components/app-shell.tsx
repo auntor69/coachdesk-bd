@@ -38,7 +38,7 @@ import {
 import { isHqMember } from '@/lib/branches'
 import { can, canReadMoney } from '@/lib/staff/capabilities'
 import { TRIAL_NOTICE_DAYS, trialStanding, type TrialStanding } from '@/lib/entitlement'
-import { has, planName, type PlanLimits } from '@/lib/plans'
+import { has, planName, type FeatureKey, type PlanLimits } from '@/lib/plans'
 import { formatBdMobile, normalizeBdMobile } from '@/lib/bd/phone'
 import { formatDate } from '@/lib/bd/time'
 import { dict, type Dictionary, type Locale } from '@/lib/i18n'
@@ -61,7 +61,7 @@ import { dict, type Dictionary, type Locale } from '@/lib/i18n'
 type NavGroup = keyof Dictionary['shell']['navGroups']
 
 /**
- * Whether this reader gets this row, asked with the same call the screen behind it
+ * Whether this reader gets this row at all, asked with the same call the screen behind it
  * makes — see `navFor` for why it lives on the row and not in a list of `if`s.
  */
 type NavGate = (ctx: { plan: PlanLimits; member: Membership }) => boolean
@@ -72,6 +72,17 @@ type NavItem = {
   icon: string
   group?: NavGroup
   when?: NavGate
+  /**
+   * The plan feature this screen belongs to, when it belongs to one.
+   *
+   * NOT A `when`, and MASTERPLAN.md §20.3 is explicit about the difference: a group its
+   * reader's capabilities exclude is not drawn, and a group their *plan* does not include
+   * is drawn and says what would unlock it, "the one place a locked door beats a hidden
+   * one, because that door is also the upgrade path". So this marks the row rather than
+   * removing it, and the screen behind it already draws the card naming the plan that has
+   * it. Hiding these would mean a centre never learning the product does payroll.
+   */
+  needs?: FeatureKey
 }
 
 /**
@@ -141,17 +152,18 @@ const STAFF_ADMIN_NAV: NavItem[] = [
     label: 'expenses',
     icon: '↓',
     group: 'money',
-    // pageCapability('expenses'), then `has(centerWideReporting)` for the upsell card.
-    when: ({ plan, member }) =>
-      can(member.capabilities, 'expenses') && has(plan, 'centerWideReporting'),
+    // pageCapability('expenses'), and the plan half as `needs` so the row is drawn
+    // locked rather than hidden — the screen behind it is the upsell card.
+    when: ({ member }) => can(member.capabilities, 'expenses'),
+    needs: 'centerWideReporting',
   },
   {
     href: '/payroll',
     label: 'payroll',
     icon: '⛁',
     group: 'money',
-    when: ({ plan, member }) =>
-      can(member.capabilities, 'payroll') && has(plan, 'centerWideReporting'),
+    when: ({ member }) => can(member.capabilities, 'payroll'),
+    needs: 'centerWideReporting',
   },
   // pageRole('manager') and nothing else: every tier has students who stop coming.
   { href: '/at-risk', label: 'atRisk', icon: '!', group: 'families' },
@@ -160,7 +172,7 @@ const STAFF_ADMIN_NAV: NavItem[] = [
     label: 'notices',
     icon: '✉',
     group: 'families',
-    // No plan gate on this one either — a solo teacher on the free plan can tell a
+    // No plan gate on this one at all — a solo teacher on the free plan can tell a
     // batch's parents the room is shut on Thursday, and always could.
     when: ({ member }) => can(member.capabilities, 'messages'),
   },
@@ -169,19 +181,19 @@ const STAFF_ADMIN_NAV: NavItem[] = [
     label: 'progress',
     icon: '★',
     group: 'families',
-    when: ({ plan, member }) =>
-      can(member.capabilities, 'messages') && has(plan, 'parentSummary'),
+    when: ({ member }) => can(member.capabilities, 'messages'),
+    needs: 'parentSummary',
   },
   {
     href: '/hq',
     label: 'hq',
     icon: '⌗',
     group: 'organisation',
-    // All three of the screen's own checks. `isHqMember` is the one that matters most
-    // here: a manager pinned to one branch gets a card explaining that the comparison
-    // is not theirs to read, and a menu row leading to that card is a row that lies.
-    when: ({ plan, member }) =>
-      has(plan, 'multipleBranches') && isHqMember(member) && canReadMoney(member.capabilities),
+    // The screen's other two checks, both of which hide rather than lock: a manager
+    // pinned to one branch is not being sold anything by a row leading to a card that
+    // says the comparison is not theirs to read.
+    when: ({ member }) => isHqMember(member) && canReadMoney(member.capabilities),
+    needs: 'multipleBranches',
   },
   SETTINGS_TAB,
 ]
@@ -201,9 +213,10 @@ const NAV_GROUPS: NavGroup[] = ['money', 'families', 'organisation']
  * THIS TABLE IS THE CEILING AND `navFor` IS THE GATE. It used to be neither — every
  * row in it was open to every plan and every capability, which is why the comment here
  * said it was not a plan gate. Six of the eleven rows above are not like that: four
- * turn on a plan feature and four on one of the six capability boxes, and `navFor`
- * asks the same questions the screens themselves ask. A row that survives to the
- * sidebar is a row whose screen will open.
+ * belong to a plan feature and five turn on one of the six capability boxes, and
+ * `navFor` asks the same questions the screens themselves ask. A row that survives to
+ * the sidebar is a row whose screen will open — locked or not, and a locked one opens
+ * the card that sells the plan it needs.
  */
 const NAV: Record<MemberRole, NavItem[]> = {
   owner: STAFF_ADMIN_NAV,
@@ -303,12 +316,13 @@ function CenterName({ session, t }: { session: Session; t: Dictionary['shell'] }
  * worse answer than no tab. The same reasoning is what puts a `when` on spending,
  * salaries, notices and the week.
  *
- * THE PLAN GATES ARE THE ONE PLACE THIS GOES FURTHER THAN THE SCREEN. /expenses,
- * /payroll, /progress and /hq do not refuse a reader whose plan lacks the feature —
- * they draw a card explaining which plan has it, which is the right thing for somebody
- * who arrived from a bookmark or a link. It is not the right thing to build a menu out
- * of: a solo teacher on the free plan would get a sidebar of ten rows, four of them
- * advertisements. The plan screen is where this product says what the other tiers do.
+ * A PLAN DOES NOT HIDE A ROW, IT LOCKS ONE. That asymmetry is deliberate and it is
+ * MASTERPLAN.md §20.3's: a reader narrowed by a capability box is being kept out of
+ * something their colleague does, and a reader on a smaller plan is being sold
+ * something. /expenses, /payroll, /progress and /hq carry `needs` rather than a plan
+ * `when`, so a free-plan teacher sees Salaries greyed out with a padlock, and the screen
+ * behind it — which already refuses nobody — says which plan has it. Hiding them is how
+ * a centre owner reaches month four without knowing this product does payroll.
  *
  * The three teacher checks run together rather than in sequence: they share one memoised
  * query behind `myTeacherRows`, so the cost is a single round trip either way, but awaiting
@@ -349,6 +363,13 @@ async function navFor(session: Session, role: MemberRole): Promise<NavItem[]> {
  * touches every day — the dashboard, the register, the marks and the money — and the
  * sheet holds the rest in the same order the sidebar draws them.
  *
+ * A LOCKED ROW NEVER TAKES A SLOT. In the table's own order the first four are never
+ * locked, but they are not fixed: a manager whose owner unticked `fees` loses the fourth,
+ * and spending — which a Teacher Pro centre does not have — slides up into it. One of
+ * four tabs on the only screen that reader ever sees is too much room to give an
+ * advertisement, so locked rows are pushed behind More, where the upgrade path is still a
+ * tap away and the daily work is not competing with it.
+ *
  * Under five rows there is no sheet at all, which is every role that is not a staff
  * admin: a teacher's bar is the two or four rows it has always been, and a student's
  * single row still hides the bar entirely.
@@ -356,8 +377,11 @@ async function navFor(session: Session, role: MemberRole): Promise<NavItem[]> {
 const PHONE_TABS = 4
 
 function splitForPhone(entries: NavEntry[]): { tabs: NavEntry[]; more: NavEntry[] } {
-  if (entries.length <= PHONE_TABS + 1) return { tabs: entries, more: [] }
-  return { tabs: entries.slice(0, PHONE_TABS), more: entries.slice(PHONE_TABS) }
+  const locked = entries.some((entry) => entry.locked)
+  if (entries.length <= PHONE_TABS + 1 && !locked) return { tabs: entries, more: [] }
+
+  const tabs = entries.filter((entry) => !entry.locked).slice(0, PHONE_TABS)
+  return { tabs, more: entries.filter((entry) => !tabs.includes(entry)) }
 }
 
 /**
@@ -586,7 +610,7 @@ function Sidebar({
           asked — the same reason the bottom bar has always hidden itself for them. */}
       {rows > 1 && (
         <div className="min-h-0 flex-1 overflow-y-auto px-2 py-3">
-          <SideNav sections={sections} label={t.mainMenu} />
+          <SideNav sections={sections} label={t.mainMenu} lockedLabel={t.locked} />
         </div>
       )}
 
@@ -659,12 +683,18 @@ export async function AppShell({
    * `group` rides along so the sections below can be cut without pairing two arrays up
    * by index. It is a string or nothing, so it crosses into the client component the
    * same way the label does.
+   *
+   * `locked` is where `needs` is finally asked — once per row, against the plan the
+   * session already carries, so a locked row costs the same nothing an open one does.
+   * `has` is the plan's own predicate, the same call the screen behind the row makes to
+   * decide whether to draw its work or the card that sells the tier holding it.
    */
   const entries = items.map((item) => ({
     href: item.href,
     icon: item.icon,
     label: t.nav[item.label],
     group: item.group,
+    locked: item.needs !== undefined && !has(session.plan, item.needs),
   }))
 
   /*
@@ -830,7 +860,13 @@ export async function AppShell({
         </main>
 
         {entries.length > 1 && (
-          <TabBar items={tabs} more={more} label={t.mainMenu} moreLabel={t.more} />
+          <TabBar
+            items={tabs}
+            more={more}
+            label={t.mainMenu}
+            moreLabel={t.more}
+            lockedLabel={t.locked}
+          />
         )}
       </div>
     </div>

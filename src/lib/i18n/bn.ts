@@ -233,6 +233,8 @@ export const bn = {
      */
     switchTo: 'ভাষা বদলে {lang} করুন',
     more: 'আরও',
+    /** The loanword, which every phone in the country already uses for this. */
+    locked: 'আপগ্রেড',
     nav: {
       home: 'হোম',
       attendance: 'হাজিরা',

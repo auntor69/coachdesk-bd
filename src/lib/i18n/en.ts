@@ -65,6 +65,14 @@ export const en: Dictionary = {
     switchTo: 'Switch language to {lang}',
     more: 'More',
     /**
+     * The badge on a menu row this centre's plan does not include.
+     *
+     * A word, not a padlock, and this one rather than "Locked": the row still opens, and
+     * what it opens is the card naming the plan that has the screen. Says nothing about
+     * price — §33, the billing engine stays ours.
+     */
+    locked: 'Upgrade',
+    /**
      * Short enough for a 48px tab at 375px, which is the constraint the Bangla
      * labels were written to and the one English loses most easily: "Attendance"
      * is ten characters where হাজিরা is six.

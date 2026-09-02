@@ -36,7 +36,21 @@ import { usePathname } from 'next/navigation'
  * the shell holds the key so a missing one fails the build, and hands over the
  * sentence so this file needs no dictionary and no locale.
  */
-export type NavEntry = { href: Route; label: string; icon: string }
+export type NavEntry = {
+  href: Route
+  label: string
+  icon: string
+  /**
+   * True when the reader's plan does not include this screen.
+   *
+   * The row is still drawn, and still a link, because the screen behind it already
+   * refuses nobody — it draws the card naming the plan that has it. MASTERPLAN.md §20.3:
+   * "the one place a locked door beats a hidden one, because that door is also the
+   * upgrade path". A capability a reader lacks is different and never reaches here; the
+   * shell drops those rows.
+   */
+  locked?: boolean
+}
 
 /**
  * A run of destinations under one heading, or under none.
@@ -65,8 +79,24 @@ function isHere(pathname: string, href: string): boolean {
   return pathname === href || pathname.startsWith(`${href}/`)
 }
 
-/** One sidebar row, shared by both groups so an active row cannot look different in one. */
-function SideRow({ item, here }: { item: NavEntry; here: boolean }) {
+/**
+ * One sidebar row, shared by both groups so an active row cannot look different in one.
+ *
+ * A locked row is greyed and carries a word. Not a padlock glyph on its own: a padlock
+ * reads as "broken" or "forbidden" to plenty of people and as "there is a better plan"
+ * to almost none, and it is the same 10px smudge in both languages. The word is
+ * "Upgrade", which is what the row actually does — the screen behind it names the tier —
+ * and it is read out as itself by a screen reader, which a colour is not.
+ */
+function SideRow({
+  item,
+  here,
+  lockedLabel,
+}: {
+  item: NavEntry
+  here: boolean
+  lockedLabel: string
+}) {
   return (
     <li>
       <Link
@@ -78,7 +108,9 @@ function SideRow({ item, here }: { item: NavEntry; here: boolean }) {
           text-sm ${
             here
               ? 'bg-brand-50 font-semibold text-brand-800'
-              : 'font-medium text-ink-soft hover:bg-surface-alt hover:text-ink'
+              : item.locked
+                ? 'font-medium text-ink-faint hover:bg-surface-alt'
+                : 'font-medium text-ink-soft hover:bg-surface-alt hover:text-ink'
           }`}
       >
         {/* Fixed width so ten labels start on the same pixel — a ৳ and a ⌂
@@ -87,6 +119,14 @@ function SideRow({ item, here }: { item: NavEntry; here: boolean }) {
           {item.icon}
         </span>
         <span className="truncate">{item.label}</span>
+        {item.locked && (
+          <span
+            className="ml-auto shrink-0 rounded-full bg-surface-alt px-1.5
+              text-[0.625rem] font-semibold uppercase tracking-wide text-ink-faint"
+          >
+            {lockedLabel}
+          </span>
+        )}
       </Link>
     </li>
   )
@@ -105,7 +145,15 @@ function SideRow({ item, here }: { item: NavEntry; here: boolean }) {
  * reader announcing "Money, list of 3" is the whole point of the headings, and a
  * `<ul>` interrupted by an `<h3>` is not a list any more.
  */
-export function SideNav({ sections, label }: { sections: NavSection[]; label: string }) {
+export function SideNav({
+  sections,
+  label,
+  lockedLabel,
+}: {
+  sections: NavSection[]
+  label: string
+  lockedLabel: string
+}) {
   const pathname = usePathname()
 
   return (
@@ -122,7 +170,12 @@ export function SideNav({ sections, label }: { sections: NavSection[]; label: st
           )}
           <ul className="flex flex-col gap-0.5">
             {section.items.map((item) => (
-              <SideRow key={item.href} item={item} here={isHere(pathname, item.href)} />
+              <SideRow
+                key={item.href}
+                item={item}
+                here={isHere(pathname, item.href)}
+                lockedLabel={lockedLabel}
+              />
             ))}
           </ul>
         </div>
@@ -154,12 +207,15 @@ export function TabBar({
   more,
   label,
   moreLabel,
+  lockedLabel,
 }: {
+  /** Never a locked row — the shell keeps those out of the bar. See `splitForPhone`. */
   items: NavEntry[]
   /** Empty for every role that fits in the bar — a teacher, a student, a guardian. */
   more: NavEntry[]
   label: string
   moreLabel: string
+  lockedLabel: string
 }) {
   const pathname = usePathname()
   const moreHere = more.some((item) => isHere(pathname, item.href))
@@ -230,7 +286,12 @@ export function TabBar({
                 {more.map((item) => {
                   const here = isHere(pathname, item.href)
                   return (
-                    <SideRow key={item.href} item={item} here={here} />
+                    <SideRow
+                      key={item.href}
+                      item={item}
+                      here={here}
+                      lockedLabel={lockedLabel}
+                    />
                   )
                 })}
               </ul>

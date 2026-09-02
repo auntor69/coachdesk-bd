@@ -16,11 +16,17 @@ import { bn } from '../src/lib/i18n/bn.ts'
  * else. The sidebar now carries them.
  *
  * WHY THAT NEEDS A TEST RATHER THAN A GLANCE. A menu row is a promise that a screen
- * will open. Four of the six turn on a plan feature and four on one of the six
+ * will open. Four of the six belong to a plan feature and five turn on one of the six
  * capability boxes, so the row and the page each hold half of the same rule, in two
  * files, with nothing between them. If they drift, the failure is not a crash: a
  * narrowed manager is offered Salaries and gets a 403, or an owner who has paid for
  * the Institution plan is never shown the head office. `tsc` catches neither.
+ *
+ * AND THE TWO HALVES ARE NOT THE SAME HALF. A capability a reader lacks hides the row; a
+ * plan the centre has not bought greys it and leaves it there, because that row is the
+ * only place the product ever mentions the tier — MASTERPLAN.md §20.3. Swapping one for
+ * the other type-checks perfectly and is a silent revenue defect in one direction and a
+ * silent privacy defect in the other, so both are asserted per row.
  *
  * So this file is the third party. For each row it asserts what the page demands and
  * what the row gates on, and a change to either side without the other fails here.
@@ -77,6 +83,9 @@ function rowsOf(source: string): Map<string, string> {
 
 const ROWS = rowsOf(TABLE)
 
+/** Read out of the shell rather than repeated here, so the two cannot disagree. */
+const PHONE_TABS = Number(SHELL.match(/const PHONE_TABS = (\d+)/)?.[1])
+
 /** The staff-admin rows in the order they are written, references resolved. */
 const ORDER = [
   ...TABLE.slice(TABLE.indexOf('const STAFF_ADMIN_NAV')).matchAll(
@@ -95,8 +104,17 @@ const ORDER = [
  * `page` is what must still be in the page for the row's gate to be the right gate.
  * `row` is what must be in the row. Both halves are asserted, so removing the plan check
  * from /payroll fails here rather than silently making the sidebar wrong.
+ *
+ * THE TWO KINDS OF GATE ARE NOT INTERCHANGEABLE and this table is where that is held.
+ * `row` is a capability or a membership fact, and a row that fails it is not drawn.
+ * `needs` is a plan feature, and a row that fails it IS drawn, greyed, because
+ * MASTERPLAN.md §20.3 asks for the locked door over the hidden one where the door is also
+ * the upgrade path. Writing a plan check into `when` would hide four rows a centre is
+ * being sold; writing a capability into `needs` would advertise a colleague's job to
+ * somebody the owner deliberately narrowed. Both are asserted per row, in both
+ * directions.
  */
-const GATED: { href: string; page: string[]; row: string[] }[] = [
+const GATED: { href: string; page: string[]; row: string[]; needs?: string }[] = [
   {
     href: '/fees',
     page: ["if (!(await canReadFees())) forbidden()"],
@@ -105,12 +123,14 @@ const GATED: { href: string; page: string[]; row: string[] }[] = [
   {
     href: '/expenses',
     page: ["pageCapability('expenses')", "has(session.plan, 'centerWideReporting')"],
-    row: ["can(member.capabilities, 'expenses')", "has(plan, 'centerWideReporting')"],
+    row: ["can(member.capabilities, 'expenses')"],
+    needs: 'centerWideReporting',
   },
   {
     href: '/payroll',
     page: ["pageCapability('payroll')", "has(session.plan, 'centerWideReporting')"],
-    row: ["can(member.capabilities, 'payroll')", "has(plan, 'centerWideReporting')"],
+    row: ["can(member.capabilities, 'payroll')"],
+    needs: 'centerWideReporting',
   },
   {
     href: '/notices',
@@ -120,7 +140,8 @@ const GATED: { href: string; page: string[]; row: string[] }[] = [
   {
     href: '/progress',
     page: ["pageCapability('messages')", "has(session.plan, 'parentSummary')"],
-    row: ["can(member.capabilities, 'messages')", "has(plan, 'parentSummary')"],
+    row: ["can(member.capabilities, 'messages')"],
+    needs: 'parentSummary',
   },
   {
     href: '/hq',
@@ -129,11 +150,8 @@ const GATED: { href: string; page: string[]; row: string[] }[] = [
       'isHqMember(session.active)',
       'canReadMoney(session.active.capabilities)',
     ],
-    row: [
-      "has(plan, 'multipleBranches')",
-      'isHqMember(member)',
-      'canReadMoney(member.capabilities)',
-    ],
+    row: ['isHqMember(member)', 'canReadMoney(member.capabilities)'],
+    needs: 'multipleBranches',
   },
 ]
 
@@ -160,7 +178,7 @@ test('the six screens that had no way in are in the menu', () => {
 })
 
 test('a row asks exactly what its screen asks', () => {
-  for (const { href, page, row } of GATED) {
+  for (const { href, page, row, needs } of GATED) {
     const source = read('src', 'app', '(app)', href.slice(1), 'page.tsx')
 
     for (const demand of page) {
@@ -172,6 +190,58 @@ test('a row asks exactly what its screen asks', () => {
     for (const gate of row) {
       assert.ok(literal.includes(gate), `the ${href} row does not ask: ${gate}`)
     }
+
+    // The plan half, on the other side of the row. A `has(plan, …)` inside `when` is the
+    // regression this catches: it would type fine, pass every other test in this file,
+    // and silently hide the four rows that are the product's upgrade path.
+    assert.doesNotMatch(literal, /when:[\s\S]*?\bhas\(/, `the ${href} row hides a plan gate`)
+    if (needs) {
+      assert.ok(literal.includes(`needs: '${needs}'`), `the ${href} row does not need: ${needs}`)
+    } else {
+      assert.doesNotMatch(literal, /needs:/, `the ${href} row claims a plan feature`)
+    }
+  }
+})
+
+test('a plan the centre does not have locks a row rather than hiding it', () => {
+  // MASTERPLAN.md §20.3, which is the rule this pair of fields exists to keep: a group a
+  // reader's plan does not include "is drawn, and says what would unlock it — the one
+  // place a locked door beats a hidden one, because that door is also the upgrade path".
+  const needed = GATED.filter((entry) => entry.needs)
+  assert.equal(needed.length, 4, 'four screens belong to a plan feature')
+
+  const carriers = [...ROWS].filter(([, literal]) => literal.includes('needs:'))
+  assert.equal(carriers.length, needed.length, `${carriers.length} rows carry a plan feature`)
+
+  // Locked is decided once, on the plan the session already holds, and it reaches the
+  // client component as data rather than as a second copy of the rule.
+  assert.match(SHELL, /locked: item\.needs !== undefined && !has\(session\.plan, item\.needs\)/)
+  assert.match(NAV_MODULE, /locked\?: boolean/)
+  assert.match(NAV_MODULE, /item\.locked && \(/)
+
+  // Still a link, because the screen behind it draws the card naming the plan that has
+  // it. A locked row that did not navigate would be an advertisement with no page.
+  assert.doesNotMatch(NAV_MODULE, /disabled|aria-disabled|pointer-events-none/)
+})
+
+test('a locked row never takes one of the four phone tabs', () => {
+  // The bar's first four are unlocked in the table's own order, but the order is not
+  // fixed: a manager who has lost `fees` loses the fourth row, and /expenses slides into
+  // it — locked, on a Teacher Pro plan. One tab in four is too much of a 375px screen to
+  // give an advertisement, so the split skips them.
+  assert.match(SHELL, /const tabs = entries\.filter\(\(entry\) => !entry\.locked\)\.slice\(0, PHONE_TABS\)/)
+  assert.match(SHELL, /more: entries\.filter\(\(entry\) => !tabs\.includes\(entry\)\)/)
+
+  // And the shortcut for the roles that fit in the bar cannot swallow a locked row: a
+  // five-row reader with one locked gets four tabs and a sheet, not five tabs.
+  assert.match(SHELL, /entries\.length <= PHONE_TABS \+ 1 && !locked/)
+
+  // None of the four in the table's order carries one anyway, which is the belt to that
+  // brace: if a future reorder puts /payroll fourth, this fails and says so.
+  for (const href of ORDER.slice(0, PHONE_TABS)) {
+    const literal = ROWS.get(href!)
+    assert.ok(literal, `${href} is in no menu`)
+    assert.doesNotMatch(literal, /needs:/, `${href} is a phone tab and belongs to a plan`)
   }
 })
 
@@ -183,6 +253,7 @@ test('a row with no gate points at a screen that needs none', () => {
     const literal = ROWS.get(href)
     assert.ok(literal, `${href} is in no menu`)
     assert.ok(!literal.includes('when:'), `${href} has a gate that GATED does not name`)
+    assert.ok(!literal.includes('needs:'), `${href} has a plan gate that GATED does not name`)
 
     const source = read('src', 'app', '(app)', href.slice(1), 'page.tsx')
     assert.doesNotMatch(source, /pageCapability\(/, `${href}/page.tsx narrowed itself`)
@@ -203,15 +274,11 @@ test('deciding the menu costs no query', () => {
 })
 
 test('the phone bar keeps the four a centre touches daily', () => {
-  // The bar shows the first four rows of the table and the rest go behind More, so the
-  // table's order is not cosmetic: reordering it moves a screen out of one tap. These
-  // four are the register, the marks, the money and the dashboard they are read from.
+  // The bar shows the first four unlocked rows of the table and the rest go behind More,
+  // so the table's order is not cosmetic: reordering it moves a screen out of one tap.
+  // These four are the register, the marks, the money and the dashboard they are read from.
   assert.deepEqual(ORDER.slice(0, 4), ['/dashboard', '/teach', '/exams', '/fees'])
   assert.match(SHELL, /const PHONE_TABS = 4/)
-
-  // And the sheet holds the rest in the same order, rather than a second list that
-  // could word or order them differently.
-  assert.match(SHELL, /entries\.slice\(0, PHONE_TABS\), more: entries\.slice\(PHONE_TABS\)/)
 })
 
 test('under five destinations there is no More at all', () => {
@@ -233,6 +300,16 @@ test('every row the sidebar can draw has a label in both languages', () => {
       const sentence = d.shell.nav[label as keyof typeof d.shell.nav]
       assert.equal(typeof sentence, 'string', `${lang}.nav.${label}`)
       assert.ok(sentence.length > 0, `${lang}.nav.${label}`)
+    }
+  }
+
+  // The two words the bars add to the table's rows, for the same reason: an empty More
+  // tab is a fifth of the bar with nothing in it, and an empty badge is a grey smudge
+  // beside a greyed row.
+  for (const d of [en, bn]) {
+    for (const key of ['more', 'locked'] as const) {
+      assert.equal(typeof d.shell[key], 'string')
+      assert.ok(d.shell[key].length > 0, key)
     }
   }
 })
