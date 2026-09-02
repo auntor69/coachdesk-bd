@@ -63,10 +63,15 @@ export const en: Dictionary = {
     otherCenter: 'Other centre',
     thisCenter: 'Here now',
     switchTo: 'Switch language to {lang}',
+    more: 'More',
     /**
      * Short enough for a 48px tab at 375px, which is the constraint the Bangla
      * labels were written to and the one English loses most easily: "Attendance"
      * is ten characters where হাজিরা is six.
+     *
+     * The six below only ever appear in the sidebar or behind More, where there is
+     * room, so they are the screen's own heading rather than an abbreviation of it —
+     * a menu that renames the page you land on is a menu you stop trusting.
      */
     nav: {
       home: 'Home',
@@ -76,6 +81,18 @@ export const en: Dictionary = {
       exams: 'Exams',
       mine: 'Mine',
       myChild: 'Child',
+      expenses: 'Spending',
+      payroll: 'Salaries',
+      atRisk: 'Drifting away',
+      notices: 'Notices',
+      progress: 'The week',
+      hq: 'Head office',
+    },
+    /** Headings over the sidebar's groups. The first group has none — see NAV_GROUPS. */
+    navGroups: {
+      money: 'Money',
+      families: 'Families',
+      organisation: 'Organisation',
     },
   },
 

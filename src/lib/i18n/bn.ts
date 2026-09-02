@@ -232,6 +232,7 @@ export const bn = {
      * LOCALE_NAME rather than from here, because neither name is translated.
      */
     switchTo: 'ভাষা বদলে {lang} করুন',
+    more: 'আরও',
     nav: {
       home: 'হোম',
       attendance: 'হাজিরা',
@@ -240,6 +241,17 @@ export const bn = {
       exams: 'পরীক্ষা',
       mine: 'আমার',
       myChild: 'সন্তান',
+      expenses: 'খরচ',
+      payroll: 'বেতন',
+      atRisk: 'ঝুঁকিতে আছে',
+      notices: 'নোটিশ',
+      progress: 'সপ্তাহের খবর',
+      hq: 'হেড অফিস',
+    },
+    navGroups: {
+      money: 'টাকা',
+      families: 'অভিভাবক',
+      organisation: 'প্রতিষ্ঠান',
     },
   },
 

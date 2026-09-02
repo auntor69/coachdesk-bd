@@ -1,21 +1,33 @@
 /**
  * The frame every signed-in screen sits in.
  *
- * Navigation lives at the *bottom* on phones. That is not an aesthetic choice:
- * teachers hold the phone one-handed while looking at a room full of students,
- * and the top of a 6.5" screen is out of thumb reach. Desktop gets the same
- * bar — owners check the fee board on a laptop, but they are a minority and a
- * second layout is a second thing to keep correct.
+ * TWO LAYOUTS, on purpose, and this file used to say the opposite. Navigation lives
+ * at the *bottom* on phones: teachers hold the phone one-handed while looking at a
+ * room full of students, and the top of a 6.5" screen is out of thumb reach. What
+ * was wrong was giving a laptop the same thing — the whole application centred in a
+ * 768px column with four phone tabs stuck to the bottom of a 1440px screen, which
+ * is a phone screenshot with grey either side of it. An owner reconciling a month of
+ * fees against a bKash statement is on a laptop, and that is the reader this product
+ * is for at the point money moves.
+ *
+ * So from `lg` up: a standing sidebar holding the centre, the menu and the account,
+ * and a workspace that uses the width. Below `lg`: exactly what was there before.
+ * The breakpoint is 1024px, which puts a tablet in portrait on the phone layout,
+ * where its thumbs are.
+ *
+ * ONE navigation table for both, resolved once. Two lists would drift the way the
+ * owner and manager arrays drifted before they were merged — see NAV below.
  */
 import Link from 'next/link'
 import type { Route } from 'next'
 
 import { signOut } from '@/app/(auth)/actions'
 import { switchCenter } from '@/app/(app)/actions'
+import { SideNav, TabBar, type NavEntry, type NavSection } from '@/components/app-nav'
 import { LanguageSwitch } from '@/components/language-switch'
 import { Logo } from '@/components/ui'
 import type { MemberRole, CenterStatus } from '@/lib/supabase/types'
-import type { Session } from '@/lib/auth/session'
+import type { Membership, Session } from '@/lib/auth/session'
 import {
   atLeast,
   billingOf,
@@ -23,8 +35,10 @@ import {
   canManageStudents,
   canManageBatches,
 } from '@/lib/auth/session'
+import { isHqMember } from '@/lib/branches'
+import { can, canReadMoney } from '@/lib/staff/capabilities'
 import { TRIAL_NOTICE_DAYS, trialStanding, type TrialStanding } from '@/lib/entitlement'
-import { planName } from '@/lib/plans'
+import { has, planName, type PlanLimits } from '@/lib/plans'
 import { formatBdMobile, normalizeBdMobile } from '@/lib/bd/phone'
 import { formatDate } from '@/lib/bd/time'
 import { dict, type Dictionary, type Locale } from '@/lib/i18n'
@@ -37,15 +51,46 @@ import { dict, type Dictionary, type Locale } from '@/lib/i18n'
  * `label` is a key into the nav group rather than a string, so the table below
  * stays one table instead of one per language — and a key that does not exist in
  * the dictionary fails the build alongside a route that does not exist.
+ *
+ * `group` is the sidebar heading this row sits under, and `undefined` is the first
+ * group, which has no heading. Keyed into the dictionary for the same reason `label`
+ * is. It is only read by the sidebar: the phone bar takes the first four rows in
+ * table order and puts the rest behind More, so the table's order is the order both
+ * layouts show, and the groups cannot re-sort one of them.
  */
-type NavItem = { href: Route; label: keyof Dictionary['shell']['nav']; icon: string }
+type NavGroup = keyof Dictionary['shell']['navGroups']
+
+/**
+ * Whether this reader gets this row, asked with the same call the screen behind it
+ * makes — see `navFor` for why it lives on the row and not in a list of `if`s.
+ */
+type NavGate = (ctx: { plan: PlanLimits; member: Membership }) => boolean
+
+type NavItem = {
+  href: Route
+  label: keyof Dictionary['shell']['nav']
+  icon: string
+  group?: NavGroup
+  when?: NavGate
+}
 
 /**
  * The fee tab, named once because two roles reach it by different routes — the
  * table below for a staff-admin, `canReadFees` for a teacher whose owner has
  * ticked the permission. Two literals would eventually be two different icons.
+ *
+ * `when` is `canReadFees`'s staff-admin half, spelled out: the screen itself runs
+ * `if (!(await canReadFees())) forbidden()`, and for a manager that call is exactly
+ * this line. A teacher's half needs the query and stays in `navFor`; `can(null, …)`
+ * is true, so this gate cannot take back what that query granted.
  */
-const FEES_TAB: NavItem = { href: '/fees', label: 'fees', icon: '৳' }
+const FEES_TAB: NavItem = {
+  href: '/fees',
+  label: 'fees',
+  icon: '৳',
+  group: 'money',
+  when: ({ member }) => can(member.capabilities, 'fees'),
+}
 
 /** Named for the same reason, now that three roles reach it. */
 const EXAMS_TAB: NavItem = { href: '/exams', label: 'exams', icon: '✎' }
@@ -59,29 +104,90 @@ const EXAMS_TAB: NavItem = { href: '/exams', label: 'exams', icon: '✎' }
  * all, which is half of why the two checkboxes did nothing: the screens were behind
  * a rank they could not clear, and behind a tab they were never given.
  */
-const SETTINGS_TAB: NavItem = { href: '/settings', label: 'settings', icon: '⚙' }
+const SETTINGS_TAB: NavItem = {
+  href: '/settings',
+  label: 'settings',
+  icon: '⚙',
+  group: 'organisation',
+}
 
 /**
- * Owners and managers, who see the same five tabs.
+ * Owners and managers, who see the same ten rows at most.
  *
  * One array rather than two identical ones, because the two roles had drifted:
  * both were missing /exams while a teacher had it, and a fix applied to `owner`
  * alone would have left every manager in the country unable to reach a third of
- * the product. Written as a shared const rather than merged into one Record key
- * so that the day an owner-only tab exists it is `[...STAFF_ADMIN_NAV, BILLING]`
- * and not a re-split of four entries.
+ * the product.
  *
- * Exams sits after attendance, matching the teacher's bar, so somebody promoted
- * from teaching finds it where they left it. Settings stays last, where every
- * app on the phone keeps it.
+ * SIX OF THESE ARE NEW AND WERE NOT REACHABLE FROM ANY MENU. /expenses, /payroll,
+ * /notices, /progress, /at-risk and /hq have all been built, tested and guarded for
+ * weeks, and the only way to any of them was a card on the dashboard — so recording
+ * an expense meant going home first. That is what turned the dashboard into a menu,
+ * and it is the defect this table fixes, not a redesign of anything behind it.
+ *
+ * Ordered as the reader sees it, groups included: the first four rows are the ones a
+ * centre touches daily, because those four are the phone's bar and the rest go behind
+ * More. Exams sits after attendance, matching the teacher's bar, so somebody promoted
+ * from teaching finds it where they left it. Settings stays last, where every app on
+ * the phone keeps it.
  */
 const STAFF_ADMIN_NAV: NavItem[] = [
   { href: '/dashboard', label: 'home', icon: '⌂' },
   { href: '/teach', label: 'attendance', icon: '✓' },
   EXAMS_TAB,
   FEES_TAB,
+  {
+    href: '/expenses',
+    label: 'expenses',
+    icon: '↓',
+    group: 'money',
+    // pageCapability('expenses'), then `has(centerWideReporting)` for the upsell card.
+    when: ({ plan, member }) =>
+      can(member.capabilities, 'expenses') && has(plan, 'centerWideReporting'),
+  },
+  {
+    href: '/payroll',
+    label: 'payroll',
+    icon: '⛁',
+    group: 'money',
+    when: ({ plan, member }) =>
+      can(member.capabilities, 'payroll') && has(plan, 'centerWideReporting'),
+  },
+  // pageRole('manager') and nothing else: every tier has students who stop coming.
+  { href: '/at-risk', label: 'atRisk', icon: '!', group: 'families' },
+  {
+    href: '/notices',
+    label: 'notices',
+    icon: '✉',
+    group: 'families',
+    // No plan gate on this one either — a solo teacher on the free plan can tell a
+    // batch's parents the room is shut on Thursday, and always could.
+    when: ({ member }) => can(member.capabilities, 'messages'),
+  },
+  {
+    href: '/progress',
+    label: 'progress',
+    icon: '★',
+    group: 'families',
+    when: ({ plan, member }) =>
+      can(member.capabilities, 'messages') && has(plan, 'parentSummary'),
+  },
+  {
+    href: '/hq',
+    label: 'hq',
+    icon: '⌗',
+    group: 'organisation',
+    // All three of the screen's own checks. `isHqMember` is the one that matters most
+    // here: a manager pinned to one branch gets a card explaining that the comparison
+    // is not theirs to read, and a menu row leading to that card is a row that lies.
+    when: ({ plan, member }) =>
+      has(plan, 'multipleBranches') && isHqMember(member) && canReadMoney(member.capabilities),
+  },
   SETTINGS_TAB,
 ]
+
+/** The order the sidebar draws its headings in. The unheaded group is always first. */
+const NAV_GROUPS: NavGroup[] = ['money', 'families', 'organisation']
 
 /**
  * What each role sees. Icons are text glyphs rather than an icon font or SVG
@@ -92,10 +198,12 @@ const STAFF_ADMIN_NAV: NavItem[] = [
  * here until someone decides what that role's navigation is, instead of
  * silently handing them an empty bar.
  *
- * Note what this table is not: a plan gate. Every screen here is guarded by role
- * and permission alone, so a solo teacher on teacher_free — who is the `owner` of
- * their own centre — gets all five tabs. Exams especially: on the free plan the
- * owner *is* the teacher, and marks are a third of what they signed up for.
+ * THIS TABLE IS THE CEILING AND `navFor` IS THE GATE. It used to be neither — every
+ * row in it was open to every plan and every capability, which is why the comment here
+ * said it was not a plan gate. Six of the eleven rows above are not like that: four
+ * turn on a plan feature and four on one of the six capability boxes, and `navFor`
+ * asks the same questions the screens themselves ask. A row that survives to the
+ * sidebar is a row whose screen will open.
  */
 const NAV: Record<MemberRole, NavItem[]> = {
   owner: STAFF_ADMIN_NAV,
@@ -175,31 +283,50 @@ function CenterName({ session, t }: { session: Session; t: Dictionary['shell'] }
 }
 
 /**
- * A reader's bar: their role's tabs, less what was taken away and plus what was granted.
+ * A reader's menu: their role's rows, less the ones their plan or their permissions do
+ * not open, plus the ones a teacher was granted.
  *
- * A STAFF ADMIN CAN LOSE THE FEE TAB NOW (§6.2). A manager whose owner unticked `fees` has
- * a fee board where 20260811000063's policies filter every row out, so the tab leads to a
- * centre that appears to have collected nothing and to be owed nothing — which is a worse
- * answer than no tab. `canReadFees` already knows this and costs a staff admin no query:
- * the narrowing rides along on the session.
+ * THE GATE IS ON THE ROW, not in a ladder of `if`s down here, because the rule this
+ * function exists to keep is that a row and its screen never disagree — and the way
+ * that breaks is somebody adding a row to the table above and not noticing there was a
+ * ladder to extend. Adjacent, it is one edit. Each `when` is written as the same call
+ * the page makes, so the pairing can be read in one line rather than inferred.
  *
- * Only that one tab. Attendance, marks and the settings hub are not narrowed by §6.2 at
- * all, and the hub decides its own rows the way it already does for a teacher.
+ * NONE OF IT COSTS A QUERY for a staff admin. `can`, `has`, `isHqMember` and
+ * `canReadMoney` are all pure functions of the session the layout already holds; the
+ * narrowing and the plan ride along on it. Only a teacher pays, and only for the two
+ * grants that live on a teacher row rather than on the membership.
+ *
+ * A STAFF ADMIN CAN LOSE THE FEE TAB (§6.2). A manager whose owner unticked `fees` has
+ * a fee board where 20260811000063's policies filter every row out, so the tab leads to
+ * a centre that appears to have collected nothing and to be owed nothing — which is a
+ * worse answer than no tab. The same reasoning is what puts a `when` on spending,
+ * salaries, notices and the week.
+ *
+ * THE PLAN GATES ARE THE ONE PLACE THIS GOES FURTHER THAN THE SCREEN. /expenses,
+ * /payroll, /progress and /hq do not refuse a reader whose plan lacks the feature —
+ * they draw a card explaining which plan has it, which is the right thing for somebody
+ * who arrived from a bookmark or a link. It is not the right thing to build a menu out
+ * of: a solo teacher on the free plan would get a sidebar of ten rows, four of them
+ * advertisements. The plan screen is where this product says what the other tiers do.
  *
  * The three teacher checks run together rather than in sequence: they share one memoised
  * query behind `myTeacherRows`, so the cost is a single round trip either way, but awaiting
  * them one at a time would make that look like three.
  *
  * Settings appears for either roster permission, because the hub itself now decides
- * which rows to draw — a teacher with only `can_manage_batches` gets the tab and one
- * row behind it, and that is the honest thing to show rather than a tab that leads
- * to a page of things they cannot open.
+ * which rows to draw — a teacher with only `can_manage_batches` gets the row and one
+ * row behind it, and that is the honest thing to show rather than a menu entry that
+ * leads to a page of things they cannot open.
  */
-async function navFor(role: MemberRole): Promise<NavItem[]> {
-  if (role !== 'teacher') {
-    if (role !== 'owner' && role !== 'manager') return NAV[role]
-    return (await canReadFees()) ? NAV[role] : NAV[role].filter((tab) => tab !== FEES_TAB)
-  }
+async function navFor(session: Session, role: MemberRole): Promise<NavItem[]> {
+  const member = session.active
+  if (!member) return NAV[role]
+
+  const ctx = { plan: session.plan, member }
+  const allowed = (items: NavItem[]) => items.filter((item) => !item.when || item.when(ctx))
+
+  if (role !== 'teacher') return allowed(NAV[role])
 
   const [fees, students, batches] = await Promise.all([
     canReadFees(),
@@ -207,11 +334,30 @@ async function navFor(role: MemberRole): Promise<NavItem[]> {
     canManageBatches(),
   ])
 
-  return [
+  return allowed([
     ...NAV.teacher,
     ...(fees ? [FEES_TAB] : []),
     ...(students || batches ? [SETTINGS_TAB] : []),
-  ]
+  ])
+}
+
+/**
+ * The rows the phone's bar shows, and the rows that go behind More.
+ *
+ * FOUR, and the fifth slot is the sheet. A staff admin now has up to eleven
+ * destinations; at 375px that is 34px a tab, so the bar keeps the four a centre
+ * touches every day — the dashboard, the register, the marks and the money — and the
+ * sheet holds the rest in the same order the sidebar draws them.
+ *
+ * Under five rows there is no sheet at all, which is every role that is not a staff
+ * admin: a teacher's bar is the two or four rows it has always been, and a student's
+ * single row still hides the bar entirely.
+ */
+const PHONE_TABS = 4
+
+function splitForPhone(entries: NavEntry[]): { tabs: NavEntry[]; more: NavEntry[] } {
+  if (entries.length <= PHONE_TABS + 1) return { tabs: entries, more: [] }
+  return { tabs: entries.slice(0, PHONE_TABS), more: entries.slice(PHONE_TABS) }
 }
 
 /**
@@ -394,6 +540,96 @@ function TrialBanner({
   )
 }
 
+/**
+ * The desktop sidebar: the centre at the top, the menu in the middle, the account at
+ * the foot.
+ *
+ * WHY IT HOLDS EVERYTHING THE PHONE HEADER HELD. The header and this are alternatives,
+ * not layers — running both on a laptop would put the centre's name and the account
+ * circle on screen twice. So every control from the header is in here, and the header
+ * is `lg:hidden`. Nothing was dropped in the move: logo, centre switcher, account,
+ * language, log out.
+ *
+ * `sticky top-0 h-screen` and not `fixed`, so the workspace beside it needs no left
+ * margin to compensate and no magic number to keep in step with `w-64`. The nav is the
+ * part that scrolls, because a reader with four centres and nine rows on a 720p laptop
+ * is a real reader and the account block at the foot is the thing they must not lose.
+ *
+ * `print:hidden`, like the header and the bars. A receipt crosses a desk to a parent
+ * and a register gets filed; neither wants a menu down the left of it.
+ */
+function Sidebar({
+  session,
+  sections,
+  rows,
+  t,
+}: {
+  session: Session
+  /** Already resolved and already narrowed by role, plan and permission — see `navFor`. */
+  sections: NavSection[]
+  /** How many rows there are across all of them, for the one-destination case below. */
+  rows: number
+  t: Dictionary['shell']
+}) {
+  return (
+    <aside
+      className="sticky top-0 hidden h-screen w-64 shrink-0 flex-col border-r
+        border-line bg-white lg:flex print:hidden"
+    >
+      <div className="border-b border-line px-4 py-4">
+        <Logo className="text-base" />
+        <CenterName session={session} t={t} />
+      </div>
+
+      {/* One destination is not a menu. A student or guardian has exactly one, and a
+          sidebar drawing a single highlighted row is answering a question they never
+          asked — the same reason the bottom bar has always hidden itself for them. */}
+      {rows > 1 && (
+        <div className="min-h-0 flex-1 overflow-y-auto px-2 py-3">
+          <SideNav sections={sections} label={t.mainMenu} />
+        </div>
+      )}
+
+      {/* mt-auto so the account block sits at the foot whether or not there is a menu
+          above it, and without the menu having to be a flex-1 that is sometimes absent. */}
+      <div className="mt-auto border-t border-line p-2">
+        <Link
+          href="/account"
+          className="flex min-h-tap items-center gap-3 rounded-xl px-2
+            text-sm text-ink-soft hover:bg-surface-alt hover:text-ink"
+        >
+          <span
+            aria-hidden
+            className="grid h-8 w-8 shrink-0 place-items-center rounded-full
+              bg-brand-50 text-sm font-semibold text-brand-700"
+          >
+            {initialFor(session)}
+          </span>
+          {/* The name, not just a letter. There is room for it here, and on a shared
+              office laptop "whose account is this" is the question the circle on the
+              phone header can only hint at. */}
+          <span className="min-w-0 flex-1 truncate font-medium text-ink">
+            {greetingFor(session)}
+          </span>
+        </Link>
+
+        <div className="mt-1 flex items-center justify-between gap-1 px-1">
+          <LanguageSwitch locale={session.locale} />
+          <form action={signOut}>
+            <button
+              type="submit"
+              className="rounded-lg px-3 py-2 text-sm font-medium text-ink-soft
+                hover:bg-surface-alt hover:text-ink"
+            >
+              {t.logout}
+            </button>
+          </form>
+        </div>
+      </div>
+    </aside>
+  )
+}
+
 export async function AppShell({
   session,
   children,
@@ -405,19 +641,49 @@ export async function AppShell({
   const d = dict(session.locale)
   const t = d.shell
 
-  // The two entries the table above cannot decide, because they turn on a
-  // permission rather than a role. Asked through the same helpers the screens guard
-  // themselves with, so a tab and its screen can never disagree — and each is
-  // memoised per request, so the layout and the page it wraps cost one query
-  // between them rather than one each.
-  //
-  // Appended rather than slotted in: the two tabs a teacher already knows keep
-  // their positions on the day a permission is granted or taken away, and settings
-  // ends up last, where every app on the phone keeps it.
-  //
-  // Only for `teacher` and the two staff-admin roles. A student or guardian holds
-  // neither a teacher row for a permission to hang off nor a capability list.
-  const items: NavItem[] = await navFor(role)
+  // The rows the table above cannot decide on its own, because they turn on a plan
+  // feature or on one of the six capability boxes rather than on a role. Each is asked
+  // with the same call the screen guards itself with, so a menu row and its screen can
+  // never disagree — see `navFor`.
+  const items: NavItem[] = await navFor(session, role)
+
+  /*
+   * The labels resolved once, here, for both layouts.
+   *
+   * `NavItem.label` is a dictionary key so a table entry naming a string that does not
+   * exist fails the build; `NavEntry.label` is the sentence, because the bars are client
+   * components and a client component gets no dictionary — see the note in app-nav.tsx.
+   * Doing it once is also what stops the sidebar and the tab bar wording a row
+   * differently.
+   *
+   * `group` rides along so the sections below can be cut without pairing two arrays up
+   * by index. It is a string or nothing, so it crosses into the client component the
+   * same way the label does.
+   */
+  const entries = items.map((item) => ({
+    href: item.href,
+    icon: item.icon,
+    label: t.nav[item.label],
+    group: item.group,
+  }))
+
+  /*
+   * The same rows, cut into the sidebar's groups.
+   *
+   * The unheaded group goes first and empty groups are dropped — a heading with nothing
+   * under it is what a narrowed manager would otherwise get where their fee and spending
+   * rows used to be.
+   */
+  const sections: NavSection[] = [
+    { label: null, items: entries.filter((entry) => entry.group === undefined) },
+    ...NAV_GROUPS.map((group) => ({
+      label: t.navGroups[group],
+      items: entries.filter((entry) => entry.group === group),
+    })),
+  ].filter((section) => section.items.length > 0)
+
+  /* Four tabs and a sheet, or every row and no sheet. See `splitForPhone`. */
+  const { tabs, more } = splitForPhone(entries)
 
   /*
    * A lapsed or cancelled subscription, which the banner below explains and
@@ -465,118 +731,108 @@ export async function AppShell({
       : null
 
   return (
-    <div className="flex min-h-full flex-col">
-      {/* print:hidden on both the header and the nav below. A receipt is handed
-          across a desk and a register is filed, and neither wants a logout button
-          or four tab icons on it — the sticky header would also reprint at the top
-          of every sheet. What the paper needs instead is the centre's name, which
-          each of those pages prints for itself as a letterhead. */}
-      <header
-        className="sticky top-0 z-10 border-b border-line bg-white/95 backdrop-blur
-          print:hidden"
-      >
-        <div className="mx-auto flex w-full max-w-3xl items-center justify-between gap-3 px-4 py-3">
-          <div className="min-w-0">
-            <Logo className="text-base" />
-            <CenterName session={session} t={t} />
-          </div>
+    <div className="flex min-h-full flex-col lg:flex-row">
+      <Sidebar session={session} sections={sections} rows={entries.length} t={t} />
 
-          <div className="flex shrink-0 items-center gap-1">
-            {/*
-              One letter in a circle, not a third labelled button. The right-hand
-              cluster already holds two words, and a 320px screen has no room for a
-              third before the centre's name starts losing characters — so the entry
-              point to /account is the smallest control that can still be tapped,
-              with its name given to the screen reader instead of to the layout.
+      {/* min-w-0 so a wide table inside the workspace scrolls itself instead of
+          stretching the flex row and pushing the sidebar off the left edge. */}
+      <div className="flex min-h-full flex-1 flex-col lg:min-w-0">
+        {/* print:hidden on both the header and the bar below. A receipt is handed
+            across a desk and a register is filed, and neither wants a logout button
+            or four tab icons on it — the sticky header would also reprint at the top
+            of every sheet. What the paper needs instead is the centre's name, which
+            each of those pages prints for itself as a letterhead.
 
-              It also answers a question the header never used to: whose account is
-              signed in on this shared phone. The letter is the first character of
-              the greeting, which is the name if there is one and the number if
-              there is not.
-            */}
-            <Link
-              href="/account"
-              aria-label={t.account}
-              title={t.account}
-              className="grid h-9 w-9 shrink-0 place-items-center rounded-full
-                bg-brand-50 text-sm font-semibold text-brand-700
-                hover:bg-brand-100"
-            >
-              <span aria-hidden>{initialFor(session)}</span>
-            </Link>
-
-            <LanguageSwitch locale={session.locale} />
-
-            <form action={signOut}>
-              <button
-                type="submit"
-                className="rounded-lg px-3 py-2 text-sm font-medium text-ink-soft
-                  hover:bg-surface-alt hover:text-ink"
-              >
-                {t.logout}
-              </button>
-            </form>
-          </div>
-        </div>
-      </header>
-
-      {/* pb-24 clears the fixed bottom bar; without it the last row of any
-          list sits permanently under the nav and looks like a rendering bug.
-          On paper there is no bar and no phone-width column to centre in, so all
-          of it comes off: @page owns the margins, and max-w-3xl left standing
-          would waste a third of an A4 sheet the register wants for its columns. */}
-      <main
-        className="mx-auto w-full max-w-3xl flex-1 px-4 py-5 pb-24
-          print:max-w-none print:px-0 print:py-0 print:pb-0"
-      >
-        {readOnly && (
-          <ReadOnlyBanner
-            status={readOnly.status}
-            coveredTo={lapsed ? formatDate(lapsed, session.locale) : null}
-            t={d.readOnly}
-            canSeePlan={atLeast(role, 'manager')}
-          />
-        )}
-        {trial && (
-          <TrialBanner
-            standing={trial}
-            locale={session.locale}
-            t={d.trialNotice}
-            canSeePlan={atLeast(role, 'manager')}
-          />
-        )}
-        {children}
-      </main>
-
-      {items.length > 1 && (
-        <nav
-          aria-label={t.mainMenu}
-          className="fixed inset-x-0 bottom-0 z-10 border-t border-line bg-white
-            print:hidden"
+            lg:hidden because the sidebar holds all of it from that width up. */}
+        <header
+          className="sticky top-0 z-10 border-b border-line bg-white/95 backdrop-blur
+            lg:hidden print:hidden"
         >
-          <ul className="mx-auto flex w-full max-w-3xl">
-            {items.map((item) => (
-              <li key={item.href} className="flex-1">
-                <Link
-                  href={item.href}
-                  className="flex min-h-tap flex-col items-center justify-center
-                    gap-0.5 py-2 text-ink-soft hover:text-brand-700"
+          <div className="mx-auto flex w-full max-w-3xl items-center justify-between gap-3 px-4 py-3">
+            <div className="min-w-0">
+              <Logo className="text-base" />
+              <CenterName session={session} t={t} />
+            </div>
+
+            <div className="flex shrink-0 items-center gap-1">
+              {/*
+                One letter in a circle, not a third labelled button. The right-hand
+                cluster already holds two words, and a 320px screen has no room for a
+                third before the centre's name starts losing characters — so the entry
+                point to /account is the smallest control that can still be tapped,
+                with its name given to the screen reader instead of to the layout.
+
+                It also answers a question the header never used to: whose account is
+                signed in on this shared phone. The letter is the first character of
+                the greeting, which is the name if there is one and the number if
+                there is not.
+              */}
+              <Link
+                href="/account"
+                aria-label={t.account}
+                title={t.account}
+                className="grid h-9 w-9 shrink-0 place-items-center rounded-full
+                  bg-brand-50 text-sm font-semibold text-brand-700
+                  hover:bg-brand-100"
+              >
+                <span aria-hidden>{initialFor(session)}</span>
+              </Link>
+
+              <LanguageSwitch locale={session.locale} />
+
+              <form action={signOut}>
+                <button
+                  type="submit"
+                  className="rounded-lg px-3 py-2 text-sm font-medium text-ink-soft
+                    hover:bg-surface-alt hover:text-ink"
                 >
-                  <span aria-hidden className="text-xl leading-none">
-                    {item.icon}
-                  </span>
-                  {/* truncate, not wrap: "Attendance" is ten characters where
-                      হাজিরা is six, and a wrapped label makes one tab taller
-                      than the other three. */}
-                  <span className="w-full truncate px-1 text-center text-xs font-medium">
-                    {t.nav[item.label]}
-                  </span>
-                </Link>
-              </li>
-            ))}
-          </ul>
-        </nav>
-      )}
+                  {t.logout}
+                </button>
+              </form>
+            </div>
+          </div>
+        </header>
+
+        {/* pb-24 clears the fixed bottom bar; without it the last row of any
+            list sits permanently under the nav and looks like a rendering bug. There
+            is no bar from `lg` up, so the padding comes back off there.
+
+            max-w-3xl is the phone's column and stays the phone's column. From `lg`
+            the ceiling goes to 7xl — wide enough that a fee board shows a month of
+            columns without a horizontal scroll, bounded so that on a 27" monitor a
+            line of Bangla prose is still a line and not a strip.
+
+            On paper there is no bar and no column to centre in, so all of it comes
+            off: @page owns the margins, and max-w-3xl left standing would waste a
+            third of an A4 sheet the register wants for its columns. */}
+        <main
+          className="mx-auto w-full max-w-3xl flex-1 px-4 py-5 pb-24
+            lg:max-w-7xl lg:px-8 lg:py-8 lg:pb-8
+            print:max-w-none print:px-0 print:py-0 print:pb-0"
+        >
+          {readOnly && (
+            <ReadOnlyBanner
+              status={readOnly.status}
+              coveredTo={lapsed ? formatDate(lapsed, session.locale) : null}
+              t={d.readOnly}
+              canSeePlan={atLeast(role, 'manager')}
+            />
+          )}
+          {trial && (
+            <TrialBanner
+              standing={trial}
+              locale={session.locale}
+              t={d.trialNotice}
+              canSeePlan={atLeast(role, 'manager')}
+            />
+          )}
+          {children}
+        </main>
+
+        {entries.length > 1 && (
+          <TabBar items={tabs} more={more} label={t.mainMenu} moreLabel={t.more} />
+        )}
+      </div>
     </div>
   )
 }
