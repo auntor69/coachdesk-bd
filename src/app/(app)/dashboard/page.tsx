@@ -17,7 +17,7 @@ import { has, capacityPressure } from '@/lib/plans'
 import { can, canReadMoney } from '@/lib/staff/capabilities'
 import { setupSteps } from '@/lib/setup'
 import { countChasesDue } from '@/lib/fees/reminder-schedule'
-import { monthBills, monthMoney, payrollState } from '@/lib/finance/profit'
+import { categoryBills, monthBills, monthMoney, payrollState } from '@/lib/finance/profit'
 import { ratesForDashboard } from '@/lib/attendance/rates'
 import { studentsAtRisk, RISK_COLUMNS } from '@/lib/students/risk'
 import {
@@ -226,6 +226,7 @@ export default async function DashboardPage() {
     { count: sessionCount },
     { data: profitRow, error: profitError },
     { data: chargesRow, error: chargesError },
+    { data: categoryRows },
     { count: termsCount },
     { count: salaryPayCount },
     { count: salaryExpenseCount },
@@ -444,6 +445,29 @@ export default async function DashboardPage() {
           .eq('coaching_center_id', session.active.centerId)
           .eq('period_month', period)
           .maybeSingle()
+      : Promise.resolve({ data: null, error: null }),
+    /*
+     * AND WHAT IT WAS BILLED FOR (§9.7), which is the line above split six ways.
+     *
+     * The same three columns one grouping finer, off the view the total one is selected
+     * FROM — so charged is `amount_bdt - discount_bdt` in exactly one place in the
+     * database and the split cannot drift from the figure it sums to. Nothing adds these
+     * up here; see `categoryBills`.
+     *
+     * No paging and no `.order()`. The group is (centre, month, category) against a
+     * six-value enum, so this is at most six rows, and the order they are drawn in is the
+     * enum's rather than the planner's.
+     *
+     * No `error` branch, unlike the read above it: a breakdown that did not arrive is a
+     * card without a breakdown, and the billed line it sits under is already the honest
+     * headline. There is no wrong figure to warn about.
+     */
+    showMoney
+      ? supabase
+          .from('fee_charges_category_month')
+          .select('revenue_category, charged_bdt, paid_bdt, outstanding_bdt')
+          .eq('coaching_center_id', session.active.centerId)
+          .eq('period_month', period)
       : Promise.resolve({ data: null, error: null }),
     /*
      * AND THE TWO COUNTS THAT DECIDE WHETHER THE PAYROLL TERM ABOVE IS A LIE.
@@ -665,6 +689,7 @@ export default async function DashboardPage() {
    */
   const money = monthMoney(profitRow, Boolean(profitError))
   const bills = monthBills(chargesRow, Boolean(chargesError))
+  const billedFor = categoryBills(categoryRows)
   const payroll = payrollState(termsCount, salaryPayCount)
 
   /*
@@ -854,6 +879,8 @@ export default async function DashboardPage() {
           locale={locale}
           money={money}
           bills={bills}
+          billedFor={billedFor}
+          categories={d.fees.categories}
           payroll={payroll}
           salaryEntries={salaryExpenseCount}
           t={t.money}

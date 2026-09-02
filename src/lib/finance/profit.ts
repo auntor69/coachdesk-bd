@@ -29,6 +29,8 @@
  * NO WORDS, NO ROUTES, NO FORMATTING — see the note on ./setup.ts. This decides what
  * state a month is in; the card decides what to say about it.
  */
+import { REVENUE_CATEGORIES } from '../fees/charge.ts'
+import type { RevenueCategory } from '../supabase/types.ts'
 
 /**
  * A `numeric` column as a number.
@@ -145,6 +147,74 @@ export function monthBills(row: ChargesRow | null, failed: boolean): MonthBills 
     paid: figure(row.paid_bdt),
     outstanding: figure(row.outstanding_bdt),
   }
+}
+
+/**
+ * The same three figures one grouping finer — per revenue category, per §9.7.
+ *
+ * `revenue_category` alongside them, and it is the view's own group-by column rather than
+ * anything derived, so a category the enum gains appears here the moment a bill carries
+ * it.
+ *
+ * Nullable because every column of a view is nullable in the generated types, not because
+ * a null is reachable: the column is `not null` on `fee_invoices` and it is a group-by
+ * key. A null would simply match none of the six names below and be left off, which is
+ * the same answer as refusing it and needs no branch of its own.
+ */
+export type CategoryChargesRow = ChargesRow & {
+  revenue_category: string | null
+}
+
+/** One line of the breakdown: what a category was billed, paid and is still owed. */
+export type CategoryBills = MonthBills & {
+  category: RevenueCategory
+}
+
+/**
+ * What the month billed, split by what it was for — MASTERPLAN.md §9.7.
+ *
+ * NOTHING IS ADDED UP HERE, which is the whole discipline of this module. The rows come
+ * out of `fee_charges_category_month` one per category, `fee_charges_month` is that view
+ * summed by Postgres, and both are `numeric(12, 2)`. A screen that added these six
+ * figures in JavaScript floats to check them against the total would disagree with it in
+ * the paisa on some months, which is the one thing §9.1 forbids outright. So each line is
+ * carried as it arrived and the total stays the total view's answer.
+ *
+ * ORDERED BY THE ENUM AND NOT BY SIZE. Tuition first, then the enum's order — which is
+ * roughly the order of a student's year and is the same order every month, so an owner
+ * comparing March against September is reading two lists with the lines in the same
+ * places. Sorted by amount, the biggest category would move and the comparison would
+ * need reading rather than glancing at.
+ *
+ * A CATEGORY WITH NOTHING IN IT IS NOT A LINE. The view emits no row for a category
+ * nobody billed, and it does emit one for a month whose bills were entirely waived —
+ * "Exam fee ৳0" against a month with no exam is furniture, and against a month whose
+ * exam fee was waived for everybody the ৳0 is true but says less than its own absence.
+ *
+ * Null in, empty out: a failed read is a card with no breakdown on it, not a card
+ * claiming a centre billed nothing but tuition.
+ */
+export function categoryBills(rows: readonly CategoryChargesRow[] | null): CategoryBills[] {
+  if (rows === null) return []
+
+  const byCategory = new Map<string, CategoryChargesRow>()
+  for (const row of rows) {
+    if (row.revenue_category !== null) byCategory.set(row.revenue_category, row)
+  }
+
+  const lines: CategoryBills[] = []
+  for (const category of REVENUE_CATEGORIES) {
+    const row = byCategory.get(category)
+    if (!row) continue
+
+    const charged = figure(row.charged_bdt)
+    const paid = figure(row.paid_bdt)
+    if (charged === 0 && paid === 0) continue
+
+    lines.push({ category, charged, paid, outstanding: figure(row.outstanding_bdt) })
+  }
+
+  return lines
 }
 
 /**

@@ -35,6 +35,19 @@ export const CHARGE_CATEGORIES = [
 export type ChargeCategory = (typeof CHARGE_CATEGORIES)[number]
 
 /**
+ * All six, tuition first, for the screen that reads a month back rather than writes it.
+ *
+ * Here rather than in lib/finance, so the fence below guards one list instead of two —
+ * a second copy of the vocabulary somewhere else is exactly the drift `Unlisted` exists
+ * to catch. Tuition leads because it is the largest line in every month a centre has,
+ * and the rest follow the enum's own order.
+ */
+export const REVENUE_CATEGORIES = [
+  'tuition',
+  ...CHARGE_CATEGORIES,
+] as const satisfies readonly RevenueCategory[]
+
+/**
  * Whatever the list above left out, `tuition` aside. `never` while it is complete.
  *
  * The same mechanism as ALL_METHODS_LISTED in ./methods.ts, and it earns its keep the

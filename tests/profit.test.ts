@@ -24,9 +24,11 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 
 import {
+  categoryBills,
   monthBills,
   monthMoney,
   payrollState,
+  type CategoryChargesRow,
   type ChargesRow,
   type ProfitRow,
 } from '../src/lib/finance/profit.ts'
@@ -175,4 +177,105 @@ test('an unknown agreement count does not silence a known payment count', () => 
    * whose payroll is demonstrably in the figure.
    */
   assert.deepEqual(payrollState(null, 4), { kind: 'recorded', payments: 4 })
+})
+
+/*
+ * ---------------------------------------------------------------------------
+ * §9.7's split, which is the same three figures one grouping finer.
+ *
+ * Still no arithmetic under test, and that is the invariant these guard: the six lines
+ * sum to `fee_charges_month` in Postgres, so summing them again in JavaScript floats
+ * would put a different total on the same card. Every figure below is carried, never
+ * added.
+ * ---------------------------------------------------------------------------
+ */
+
+/** One line of the view, numerics as strings, the way PostgREST sends them. */
+function line(
+  category: string | null,
+  charged: string,
+  paid: string,
+  outstanding: string,
+): CategoryChargesRow {
+  return {
+    revenue_category: category,
+    charged_bdt: charged,
+    paid_bdt: paid,
+    outstanding_bdt: outstanding,
+  }
+}
+
+test('the split is in the enum order, whatever order the rows arrive in', () => {
+  // The same order every month is what makes March comparable against September at a
+  // glance. Sorted by size, the biggest line would move and the comparison would have to
+  // be read rather than seen.
+  const lines = categoryBills([
+    line('other', '500', '0', '500'),
+    line('exam', '4000', '4000', '0'),
+    line('tuition', '90000', '60000', '30000'),
+    line('admission', '15000', '15000', '0'),
+  ])
+
+  assert.deepEqual(
+    lines.map((l) => l.category),
+    ['tuition', 'admission', 'exam', 'other'],
+  )
+})
+
+test('every figure is the view\u2019s own, read and not recomputed', () => {
+  // `outstanding` is deliberately not `charged - paid` here: Postgres did that in
+  // numeric(12, 2), and a second subtraction in floats would disagree in the paisa on
+  // some months — which is the one thing a finance screen may never do.
+  const [only] = categoryBills([line('exam', '4000.50', '1000.25', '3000.25')])
+
+  assert.deepEqual(only, {
+    category: 'exam',
+    charged: 4000.5,
+    paid: 1000.25,
+    outstanding: 3000.25,
+  })
+})
+
+test('a read that did not arrive is no breakdown, not a tuition-only month', () => {
+  // The same class of lie as a failed profit read drawn as four noughts: this one would
+  // tell an owner their admission season raised nothing.
+  assert.deepEqual(categoryBills(null), [])
+  assert.deepEqual(categoryBills([]), [])
+})
+
+test('a category with nothing in it is not a line', () => {
+  // The view emits no row at all for a category nobody billed, and emits one reading zero
+  // for a month whose bills were entirely waived. "Exam fee \u09F30" is furniture in both
+  // readings — in the second the nought is true and says less than its own absence.
+  const lines = categoryBills([
+    line('tuition', '90000', '60000', '30000'),
+    line('exam', '0', '0', '0'),
+  ])
+
+  assert.deepEqual(
+    lines.map((l) => l.category),
+    ['tuition'],
+  )
+})
+
+test('a waived category that somebody has paid into still shows', () => {
+  // Charged nought and money against it: a bill waived after it was paid, which nets to a
+  // credit the family is owed. Dropping the line would take that off the screen entirely.
+  const lines = categoryBills([line('form', '0', '300', '-300')])
+
+  assert.deepEqual(lines, [
+    { category: 'form', charged: 0, paid: 300, outstanding: -300 },
+  ])
+})
+
+test('a category the six names do not cover is left off rather than drawn unlabelled', () => {
+  // Unreachable — the column is a `not null` enum and a group-by key — but the generated
+  // view types make it nullable, and a row with no name has no label to print either.
+  const lines = categoryBills([
+    line(null, '999', '0', '999'),
+    line('hall_rent', '999', '0', '999'),
+    line('tuition', '90000', '60000', '30000'),
+  ])
+
+  assert.deepEqual(lines.map((l) => l.category), ['tuition'])
 })

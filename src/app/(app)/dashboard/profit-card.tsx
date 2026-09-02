@@ -3,7 +3,7 @@ import Link from 'next/link'
 
 import { Card } from '@/components/ui'
 import { formatMonth } from '@/lib/bd/time'
-import type { MonthBills, MonthMoney, PayrollState } from '@/lib/finance/profit'
+import type { CategoryBills, MonthBills, MonthMoney, PayrollState } from '@/lib/finance/profit'
 import type { Dictionary } from '@/lib/i18n'
 import type { Locale } from '@/lib/i18n/locale'
 import { formatTaka } from '@/lib/money'
@@ -41,6 +41,8 @@ export function ProfitCard({
   locale,
   money,
   bills,
+  billedFor,
+  categories,
   payroll,
   salaryEntries,
   t,
@@ -57,6 +59,19 @@ export function ProfitCard({
    * label both, so the card does not print them as a pair.
    */
   bills: MonthBills | null
+  /**
+   * The same figure split by what it was for (§9.7), or empty when that read did not
+   * arrive or the month has nothing in it. Never added up here — it sums to `bills` in
+   * Postgres and would disagree with it in the paisa if it were summed again in floats.
+   */
+  billedFor: CategoryBills[]
+  /**
+   * The category labels. Off `fees` rather than `dashboard.money`, because the select on
+   * the charge form and the rows of this breakdown must name the same thing the same way
+   * — an owner who raises an "Exam fee" and then reads "Examination" here has two
+   * products in front of them.
+   */
+  categories: Dictionary['fees']['categories']
   payroll: PayrollState
   /**
    * How many spending entries this month were filed under the salary category — which
@@ -116,6 +131,39 @@ export function ProfitCard({
             ? t.stillOwed(formatTaka(bills.outstanding))
             : t.allBilledPaid}
         </p>
+      )}
+
+      {/*
+        AND WHAT IT WAS BILLED FOR — §9.7's whole reason for existing: "an owner who wants
+        to know whether admission season carried the year needs those separable from
+        monthly tuition."
+
+        Only past one line. A centre that billed nothing but monthly fees this month —
+        which is most centres in most months — would otherwise read a breakdown whose one
+        row repeats the figure directly above it, and a table that only ever says what the
+        line above said is furniture an owner learns to skip past.
+
+        Indented under the billed line rather than made its own card, because it is that
+        line's working and not a fifth figure. The amount is what was charged; the faint
+        second half is what has not arrived yet, which is the question an owner asks next
+        and the one the total line cannot answer per category.
+      */}
+      {billedFor.length > 1 && (
+        <dl className="mt-2 flex flex-col gap-1 border-l-2 border-line pl-3">
+          {billedFor.map((line) => (
+            <div key={line.category} className="flex items-baseline justify-between gap-3">
+              <dt className="min-w-0 text-sm text-ink-soft">{categories[line.category]}</dt>
+              <dd className="num shrink-0 text-right text-sm">
+                <span className="font-medium text-ink">{formatTaka(line.charged)}</span>
+                {line.outstanding > 0 && (
+                  <span className="block text-xs text-ink-faint">
+                    {t.stillOwed(formatTaka(line.outstanding))}
+                  </span>
+                )}
+              </dd>
+            </div>
+          ))}
+        </dl>
       )}
 
       {/*
