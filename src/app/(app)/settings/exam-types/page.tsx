@@ -35,6 +35,9 @@ export async function generateMetadata() {
  * every exam ever held under it, including the ones already read by a guardian.
  * There is no cap, so no reason to refuse the off switch — the only refusal here is
  * a removal that would strip the kind off exams that were actually sat.
+ *
+ * A LIST AND A RAIL FROM `xl`, and the same rail as the subject screen because it is
+ * the same form. The arithmetic is written out there.
  */
 export default async function ExamTypesPage() {
   const session = await pageRole('manager')
@@ -66,14 +69,14 @@ export default async function ExamTypesPage() {
    */
   if (examTypes === null) {
     return (
-      <div className="flex flex-col gap-5">
+      <div className="flex max-w-2xl flex-col gap-5">
         <Link
           href="/settings"
           className="inline-flex min-h-tap items-center text-ink-soft hover:text-ink"
         >
           ← {d.settings.hub.title}
         </Link>
-        <h1 className="text-xl font-bold text-ink">{t.title}</h1>
+        <h1 className="text-xl font-bold text-ink lg:text-2xl">{t.title}</h1>
         <Card className="border-late/30 bg-late/5">
           <p className="font-medium text-ink">{d.settings.listUnreadable}</p>
         </Card>
@@ -101,20 +104,20 @@ export default async function ExamTypesPage() {
   }
 
   return (
-    <div className="flex flex-col gap-5">
-      <div>
+    <div className="flex flex-col gap-5 xl:grid xl:grid-cols-12 xl:items-start xl:gap-6">
+      <div className="min-w-0 xl:col-span-12">
         <Link
           href="/settings"
           className="inline-flex min-h-tap items-center text-ink-soft hover:text-ink"
         >
           ← {d.settings.hub.title}
         </Link>
-        <h1 className="mt-1 text-xl font-bold text-ink">{t.title}</h1>
+        <h1 className="mt-1 text-xl font-bold text-ink lg:text-2xl">{t.title}</h1>
         <p className="mt-1 text-ink-soft">{t.subtitle}</p>
       </div>
 
       {rows.length > 0 && (
-        <ul className="flex flex-col gap-2">
+        <ul className="flex flex-col gap-2 xl:col-span-7">
           {rows.map((type) => {
             const primary = localName(type, locale)
             const use = uses ? (uses.get(type.id) ?? { examCount: 0 }) : null
@@ -148,13 +151,18 @@ export default async function ExamTypesPage() {
         </ul>
       )}
 
-      <QuickAdd
-        action={createExamType}
-        common={d.common}
-        label={t.nameLabel}
-        placeholder="Weekly Test"
-        placeholderBn="সাপ্তাহিক পরীক্ষা"
-      />
+      {/* The rail, sticky past a long list and last on a phone, for the reasons the
+          subject screen's own carries. No cap card to swap for: a centre may name as
+          many kinds of exam as it holds. */}
+      <div className="xl:sticky xl:top-8 xl:col-span-5">
+        <QuickAdd
+          action={createExamType}
+          common={d.common}
+          label={t.nameLabel}
+          placeholder="Weekly Test"
+          placeholderBn="সাপ্তাহিক পরীক্ষা"
+        />
+      </div>
     </div>
   )
 }

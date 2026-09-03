@@ -61,24 +61,41 @@ export function QuickAdd({
         </p>
       )}
 
-      <Field
-        label={label}
-        hint={hint}
-        name="name"
-        placeholder={placeholder}
-        required
-        maxLength={MAX_NAME}
-      />
-      <Field
-        label={`${common.bnName} (${common.optional})`}
-        name="nameBn"
-        placeholder={placeholderBn}
-        maxLength={MAX_NAME}
-      />
+      {/* Two shapes, because the form has two homes. Below `xl` it is the width of
+          the screen under the list, and two name fields side by side beat two 670px
+          ones stacked. From `xl` it is a 386px rail beside the list, where side by
+          side would be two 180px fields. The button follows the same rule, and
+          the pair is aligned on its bottom edge because only the first field carries
+          a hint — two inputs at different heights is the tell.
+
+          No `id` on either field, unlike the panels in list-row.tsx: this is the one
+          add form on the screen, so `Field`'s fallback to the input's name is
+          unambiguous here — and `name`/`nameBn` are what the action reads. */}
+      <div className="grid gap-3 sm:grid-cols-2 sm:items-end xl:grid-cols-1">
+        <Field
+          label={label}
+          hint={hint}
+          name="name"
+          placeholder={placeholder}
+          required
+          maxLength={MAX_NAME}
+        />
+        <Field
+          label={`${common.bnName} (${common.optional})`}
+          name="nameBn"
+          placeholder={placeholderBn}
+          maxLength={MAX_NAME}
+        />
+      </div>
 
       {children}
 
-      <Button type="submit" disabled={pending} full>
+      <Button
+        type="submit"
+        disabled={pending}
+        full
+        className="sm:w-auto sm:self-start xl:w-full"
+      >
         {pending ? common.adding : common.add}
       </Button>
     </form>

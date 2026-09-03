@@ -36,6 +36,11 @@ export async function generateMetadata() {
  * three repairs, and which of them is offered depends on what the centre has
  * already built on top of the subject — see `lib/settings/retire.ts`, which the
  * actions behind the buttons call again.
+ *
+ * A LIST AND A RAIL FROM `xl` (§20.8.8), the branches shape. One column at every width
+ * made a 1,216px row out of a name and a batch count, and put the add form under
+ * however many subjects the centre teaches. The form is 386px beside the list now,
+ * which is what two name fields want. `xl` and not `lg`, where five of twelve is 279px.
  */
 export default async function SubjectsPage() {
   const session = await pageRole('manager')
@@ -69,14 +74,14 @@ export default async function SubjectsPage() {
    */
   if (subjects === null) {
     return (
-      <div className="flex flex-col gap-5">
+      <div className="flex max-w-2xl flex-col gap-5">
         <Link
           href="/settings"
           className="inline-flex min-h-tap items-center text-ink-soft hover:text-ink"
         >
           ← {d.settings.hub.title}
         </Link>
-        <h1 className="text-xl font-bold text-ink">{t.title}</h1>
+        <h1 className="text-xl font-bold text-ink lg:text-2xl">{t.title}</h1>
         <Card className="border-late/30 bg-late/5">
           <p className="font-medium text-ink">{d.settings.listUnreadable}</p>
         </Card>
@@ -142,22 +147,22 @@ export default async function SubjectsPage() {
   const onReason = atCap ? capSentence : null
 
   return (
-    <div className="flex flex-col gap-5">
-      <div>
+    <div className="flex flex-col gap-5 xl:grid xl:grid-cols-12 xl:items-start xl:gap-6">
+      <div className="min-w-0 xl:col-span-12">
         <Link
           href="/settings"
           className="inline-flex min-h-tap items-center text-ink-soft hover:text-ink"
         >
           ← {d.settings.hub.title}
         </Link>
-        <h1 className="mt-1 text-xl font-bold text-ink">{t.title}</h1>
+        <h1 className="mt-1 text-xl font-bold text-ink lg:text-2xl">{t.title}</h1>
         <p className="mt-1 text-ink-soft">
           {quota === null ? t.count(activeCount) : t.used(activeCount, quota)}
         </p>
       </div>
 
       {rows.length > 0 && (
-        <ul className="flex flex-col gap-2">
+        <ul className="flex flex-col gap-2 xl:col-span-7">
           {rows.map((subject) => {
             // The reader's own name first, the other one under it when the owner
             // typed both. Not `name_bn || name`, which showed a Bangla subject
@@ -193,21 +198,31 @@ export default async function SubjectsPage() {
         </ul>
       )}
 
-      {atCap ? (
-        <Card>
-          <p className="font-medium text-ink">{t.capTitle}</p>
-          <p className="mt-1 text-sm text-ink-soft">{capSentence}</p>
-        </Card>
-      ) : (
-        <QuickAdd
-          action={createSubject}
-          common={d.common}
-          label={t.nameLabel}
-          hint={t.nameHint}
-          placeholder="Mathematics"
-          placeholderBn="গণিত"
-        />
-      )}
+      {/* The rail, and it stays put past a list of twenty: the question a long
+          subject list raises is "is the one I want already here", which is asked at
+          the bottom of it as often as at the top. Last on a phone, where a form above
+          the list would be a name being typed over the names already there.
+
+          With no rows at all it is the only thing under the heading and sits at the
+          left of the grid, 386px wide — which is a form, not an empty column with a
+          form parked off to one side of it. */}
+      <div className="xl:sticky xl:top-8 xl:col-span-5">
+        {atCap ? (
+          <Card>
+            <p className="font-medium text-ink">{t.capTitle}</p>
+            <p className="mt-1 text-sm text-ink-soft">{capSentence}</p>
+          </Card>
+        ) : (
+          <QuickAdd
+            action={createSubject}
+            common={d.common}
+            label={t.nameLabel}
+            hint={t.nameHint}
+            placeholder="Mathematics"
+            placeholderBn="গণিত"
+          />
+        )}
+      </div>
     </div>
   )
 }

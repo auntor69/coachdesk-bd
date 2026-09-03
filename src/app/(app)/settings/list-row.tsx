@@ -151,25 +151,41 @@ export function SettingsListRow({
               </p>
             )}
 
-            <Field
-              label={nameLabel}
-              name="name"
-              defaultValue={name}
-              placeholder={placeholder}
-              required
-              maxLength={MAX_NAME}
-              autoComplete="off"
-            />
-            <Field
-              label={`${common.bnName} (${common.optional})`}
-              name="nameBn"
-              defaultValue={nameBn}
-              placeholder={placeholderBn}
-              maxLength={MAX_NAME}
-              autoComplete="off"
-            />
+            {/* Side by side from `sm`, and the ids keyed by the row. `Field` falls
+                back to the input's name for its id (ui.tsx:49), so every panel open
+                on the screen — and the add form below them — rendered id="name",
+                and every label on the page pointed at whichever came first. */}
+            <div className="grid gap-3 sm:grid-cols-2">
+              <Field
+                id={`${idField}-name-${id}`}
+                label={nameLabel}
+                name="name"
+                defaultValue={name}
+                placeholder={placeholder}
+                required
+                maxLength={MAX_NAME}
+                autoComplete="off"
+              />
+              <Field
+                id={`${idField}-nameBn-${id}`}
+                label={`${common.bnName} (${common.optional})`}
+                name="nameBn"
+                defaultValue={nameBn}
+                placeholder={placeholderBn}
+                maxLength={MAX_NAME}
+                autoComplete="off"
+              />
+            </div>
 
-            <Button type="submit" disabled={renaming} full>
+            {/* Full width on a phone, where the wide button at the bottom is the
+                one you press, and its own size from `sm` — a 670px Save under two
+                name fields is the desktop-as-giant-phone shape. */}
+            <Button
+              type="submit"
+              disabled={renaming}
+              full
+              className="sm:w-auto sm:self-start"
+            >
               {renaming ? common.saving : common.save}
             </Button>
           </form>
@@ -252,7 +268,10 @@ export function SettingsListRow({
                     same order as the bill cancel step and the exam one, and for
                     the same reason: the habit this app builds is "the wide one at
                     the bottom is the one you press", and a confirm step is the
-                    worst place to break it. */}
+                    worst place to break it. `self-start` is what makes the second
+                    one narrow: a flex column stretches its children, so without it
+                    the two buttons were the same width and the sentence above was
+                    describing markup that did not exist. */}
                 <div className="flex flex-col gap-2">
                   <Button
                     type="button"
@@ -262,7 +281,12 @@ export function SettingsListRow({
                   >
                     {t.keep}
                   </Button>
-                  <Button type="submit" variant="danger" disabled={removing}>
+                  <Button
+                    type="submit"
+                    variant="danger"
+                    disabled={removing}
+                    className="self-start"
+                  >
                     {removing ? t.removing : t.removeConfirm}
                   </Button>
                 </div>
