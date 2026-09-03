@@ -5423,6 +5423,21 @@ export const bn = {
     hub: {
       /** Also the page title, and the label on every back link that returns here. */
       title: 'সেটিংস',
+      /**
+       * Headings over the hub's groups. Thirteen rows in one flat list said that
+       * thirteen things are equally important and equally unrelated; these four say
+       * which question a row is under, so an owner looking for the payment number is
+       * not reading past exam kinds to find it.
+       *
+       * Four and not seven, for §20.2's reason: eight headings over eleven rows is
+       * eight headings with one row under most of them.
+       */
+      groups: {
+        centre: 'এই সেন্টার',
+        people: 'মানুষ',
+        teaching: 'পড়ানো',
+        records: 'রেকর্ড',
+      },
       smsCredits: 'SMS ক্রেডিট',
       details: 'বিস্তারিত',
       /**

@@ -2,7 +2,6 @@ import Link from 'next/link'
 import { forbidden } from 'next/navigation'
 import type { Route } from 'next'
 
-import { Card } from '@/components/ui'
 import {
   pageCenter,
   isStaffAdmin,
@@ -85,6 +84,77 @@ async function staffCounts(
 }
 
 /**
+ * Which heading a row sits under (§20.8 step 9).
+ *
+ * Four questions, not thirteen answers: what this centre is, who is in it, what is
+ * taught, and what has been written down. `null` is the founder's row, which is about
+ * every centre rather than this one and is drawn below the groups.
+ */
+type HubGroup = 'centre' | 'people' | 'teaching' | 'records'
+
+type HubItem = {
+  href: Route
+  label: string
+  hint: string
+  count: number | null
+  group: HubGroup | null
+}
+
+/** The rows themselves, and nothing when the reader holds none of them. */
+function HubRows({ items }: { items: HubItem[] }) {
+  if (items.length === 0) return null
+  return (
+    <ul className="flex flex-col gap-2">
+      {items.map((item) => (
+        <li key={item.href}>
+          <Link
+            href={item.href}
+            className="flex items-center gap-3 rounded-xl border border-line
+              bg-white px-4 py-3 transition-colors hover:border-brand-300"
+          >
+            <div className="min-w-0 flex-1">
+              <p className="font-medium text-ink">{item.label}</p>
+              <p className="truncate text-sm text-ink-soft">{item.hint}</p>
+            </div>
+            {item.count !== null && (
+              <span className="num shrink-0 text-sm font-semibold text-ink-soft">
+                {item.count}
+              </span>
+            )}
+            <span aria-hidden className="shrink-0 text-ink-faint">
+              →
+            </span>
+          </Link>
+        </li>
+      ))}
+    </ul>
+  )
+}
+
+/**
+ * A heading and its rows, or nothing at all.
+ *
+ * The empty check is the point: a teacher handed admissions has rows in one of the
+ * four groups, and three headings over nothing would read as three features being
+ * withheld. The type treatment is the sidebar's own (app-nav.tsx), so the app has one
+ * voice for "this is a group of destinations", inset to this screen's rows.
+ */
+function HubSection({ heading, items }: { heading: string; items: HubItem[] }) {
+  if (items.length === 0) return null
+  return (
+    <section>
+      <h2
+        className="px-4 pb-1.5 text-[0.6875rem] font-semibold uppercase tracking-wide
+          text-ink-faint"
+      >
+        {heading}
+      </h2>
+      <HubRows items={items} />
+    </section>
+  )
+}
+
+/**
  * The customization hub.
  *
  * Everything a centre needs to shape the app to how it actually runs — its own
@@ -100,6 +170,21 @@ async function staffCounts(
  * the two permissions — and the list is built from what the reader actually holds.
  * A teacher handed admissions sees one row, and the plan, the credits, the payment
  * number and their colleagues' names are not among them.
+ *
+ * FOUR GROUPS AND TWO COLUMNS FROM `xl` (§20.8 step 9). Before this the page was
+ * thirteen identical rows in one column 1,216px wide, in an order that was the order
+ * they had been written in — the payment number, the roster, the batches, the subjects,
+ * the teachers, the log, the plan, all equally weighted and all equally unrelated. §20.2
+ * asks for two levels and no more: a group, and the pages inside it.
+ *
+ * `xl` and not `lg` for the second column, from the shell's arithmetic: two columns at
+ * `lg` are 340px, less the row's own padding, and the longest hint on the page —
+ * "Morning / noon / afternoon / evening, which days" — wants more than what is left. At
+ * `xl` each column is 468px and every hint fits on its line.
+ *
+ * THE CREDIT BALANCE MOVED INTO THE HEADER BAND, out of a Card the full width of the
+ * workspace holding one number. It is a fact about the centre, like the name beside it,
+ * and it keeps the link to the ledger because that is where credits are bought.
  */
 export default async function SettingsPage() {
   const session = await pageCenter()
@@ -174,12 +259,7 @@ export default async function SettingsPage() {
       ? t.planUnlimited(planName(session.plan, locale))
       : t.plan(planName(session.plan, locale), maxBatches)
 
-  const items: {
-    href: Route
-    label: string
-    hint: string
-    count: number | null
-  }[] = [
+  const items: HubItem[] = [
     ...(staff
       ? [
           {
@@ -187,6 +267,7 @@ export default async function SettingsPage() {
             label: t.center,
             hint: payHint,
             count: null,
+            group: 'centre' as HubGroup,
           },
         ]
       : []),
@@ -207,6 +288,7 @@ export default async function SettingsPage() {
             // their first week is actually checking, and a dropped count is not an
             // empty roster. No chip says as much as the truth allows.
             count: studentCount,
+            group: 'people' as HubGroup,
           },
         ]
       : []),
@@ -218,6 +300,7 @@ export default async function SettingsPage() {
             hint: t.batchesHint,
             /** See the students row. */
             count: batchCount,
+            group: 'teaching' as HubGroup,
           },
         ]
       : []),
@@ -228,6 +311,7 @@ export default async function SettingsPage() {
             label: t.subjects,
             hint: t.subjectsHint,
             count: staffOnly.subjectCount,
+            group: 'teaching' as HubGroup,
           },
           /*
            * Staff appears only where there is staff. On a one-teacher plan this row
@@ -256,6 +340,7 @@ export default async function SettingsPage() {
                   label: t.teachers,
                   hint: t.teachersHint,
                   count: staffOnly.teacherCount,
+                  group: 'people' as HubGroup,
                 },
               ]
             : []),
@@ -282,6 +367,7 @@ export default async function SettingsPage() {
                   // every owner a round trip to print a number that is on the screen
                   // this row opens; the hint is doing the work here.
                   count: null,
+                  group: 'people' as HubGroup,
                 },
               ]
             : []),
@@ -300,6 +386,7 @@ export default async function SettingsPage() {
                   label: t.managers,
                   hint: t.managersHint,
                   count: null,
+                  group: 'people' as HubGroup,
                 },
               ]
             : []),
@@ -321,6 +408,7 @@ export default async function SettingsPage() {
                   label: t.branches,
                   hint: t.branchesHint,
                   count: null,
+                  group: 'centre' as HubGroup,
                 },
               ]
             : []),
@@ -329,12 +417,14 @@ export default async function SettingsPage() {
             label: t.examTypes,
             hint: t.examTypesHint,
             count: staffOnly.examTypeCount,
+            group: 'teaching' as HubGroup,
           },
           {
             href: '/settings/sms' as Route,
             label: t.sms,
             hint: t.smsHint,
             count: null,
+            group: 'centre' as HubGroup,
           },
           /*
            * Shown whether or not the plan includes it, unlike the staff row above.
@@ -350,6 +440,7 @@ export default async function SettingsPage() {
               ? t.exportsHint
               : t.exportsLocked,
             count: null,
+            group: 'records' as HubGroup,
           },
           /*
            * §10, and the one row inside this spread that a manager must not see. The
@@ -365,6 +456,7 @@ export default async function SettingsPage() {
                   label: t.activity,
                   hint: t.activityHint,
                   count: null,
+                  group: 'records' as HubGroup,
                 },
               ]
             : []),
@@ -379,6 +471,7 @@ export default async function SettingsPage() {
             label: t.plans,
             hint: planLine,
             count: null,
+            group: 'centre' as HubGroup,
           },
         ]
       : []),
@@ -400,65 +493,66 @@ export default async function SettingsPage() {
             label: t.founder,
             hint: t.founderHint,
             count: null,
+            // Under no heading: the four groups are all about this centre, and this
+            // row is about every centre. Drawn below them, on its own.
+            group: null,
           },
         ]
       : []),
   ]
 
-  return (
-    <div className="flex flex-col gap-5">
-      <div>
-        <h1 className="text-xl font-bold text-ink">{t.title}</h1>
-        <p className="mt-1 text-ink-soft">{session.active.centerName}</p>
-      </div>
+  const inGroup = (group: HubGroup) => items.filter((item) => item.group === group)
 
-      {/* Whose credits they are. A teacher cannot top them up, cannot open the
-          ledger the "details" link points at, and does not need to know what the
-          centre has left — the send screen tells them the cost of the message in
-          front of them, which is the only balance question they have. */}
-      {staff && (
-        <Card>
-          <div className="flex items-baseline justify-between gap-3">
+  return (
+    <div className="flex flex-col gap-6">
+      <div
+        className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between
+          sm:gap-6"
+      >
+        <div className="min-w-0">
+          <h1 className="text-xl font-bold text-ink lg:text-2xl">{t.title}</h1>
+          <p className="mt-1 truncate text-ink-soft">{session.active.centerName}</p>
+        </div>
+
+        {/* Whose credits they are. A teacher cannot top them up, cannot open the
+            ledger the "details" link points at, and does not need to know what the
+            centre has left — the send screen tells them the cost of the message in
+            front of them, which is the only balance question they have.
+
+            In the band rather than in a Card of its own: one number does not need
+            1,216px of white box, and beside the centre's name it reads as another
+            fact about the centre, which is what it is. */}
+        {staff && (
+          <div className="flex shrink-0 items-end gap-4">
             <div>
               <p className="text-sm text-ink-soft">{t.smsCredits}</p>
-              <p className="num mt-0.5 text-2xl font-bold text-ink">
+              <p className="num mt-0.5 text-xl font-bold text-ink">
                 {session.active.smsCreditBalance}
               </p>
             </div>
             <Link
               href="/settings/sms"
-              className="text-sm font-medium text-brand-700"
+              className="inline-flex min-h-tap items-center text-sm font-medium
+                text-brand-700 hover:text-brand-900"
             >
               {t.details}
             </Link>
           </div>
-        </Card>
-      )}
+        )}
+      </div>
 
-      <ul className="flex flex-col gap-2">
-        {items.map((item) => (
-          <li key={item.href}>
-            <Link
-              href={item.href}
-              className="flex items-center gap-3 rounded-xl border border-line
-                bg-white px-4 py-3 transition-colors hover:border-brand-300"
-            >
-              <div className="min-w-0 flex-1">
-                <p className="font-medium text-ink">{item.label}</p>
-                <p className="truncate text-sm text-ink-soft">{item.hint}</p>
-              </div>
-              {item.count !== null && (
-                <span className="num shrink-0 text-sm font-semibold text-ink-soft">
-                  {item.count}
-                </span>
-              )}
-              <span aria-hidden className="shrink-0 text-ink-faint">
-                →
-              </span>
-            </Link>
-          </li>
-        ))}
-      </ul>
+      {/* Two columns from `xl`, and the shorter group not stretched by the taller.
+          Source order is reading order — centre and people first, because the row an
+          owner opens in their first week is the payment number and the one they open
+          every week after that is the roster. */}
+      <div className="grid gap-5 xl:grid-cols-2 xl:items-start">
+        <HubSection heading={t.groups.centre} items={inGroup('centre')} />
+        <HubSection heading={t.groups.people} items={inGroup('people')} />
+        <HubSection heading={t.groups.teaching} items={inGroup('teaching')} />
+        <HubSection heading={t.groups.records} items={inGroup('records')} />
+      </div>
+
+      <HubRows items={items.filter((item) => item.group === null)} />
     </div>
   )
 }

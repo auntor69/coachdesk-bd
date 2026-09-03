@@ -3465,6 +3465,13 @@ export const en: Dictionary = {
 
     hub: {
       title: 'Settings',
+      /** See the Bangla for why there are four of these and not seven. */
+      groups: {
+        centre: 'This centre',
+        people: 'People',
+        teaching: 'Teaching',
+        records: 'Records',
+      },
       smsCredits: 'SMS credits',
       details: 'Details',
       feesGoTo: (number: string) => `Fees go to ${number}`,
