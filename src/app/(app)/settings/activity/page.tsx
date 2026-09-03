@@ -56,6 +56,12 @@ const PAGE = 50
  * PLAIN GET FOR BOTH CONTROLS — the filter and the older-page cursor — like the expenses
  * month select: no client component, and a URL an owner can send us mid-conversation.
  * The filter has a button because Android Chrome fires no navigation on a bare <select>.
+ *
+ * THREE COLUMNS FROM `lg` (§20.8.10). Fifty log lines are the densest list in the app and
+ * were the loosest: a card per line with the time pushed 1,100px away from the action it
+ * belonged to by `justify-between`, and the figure that settles the argument two lines
+ * below that. From `lg` a line is `when | what, who, about | figure` — every time starting
+ * at the same x, every amount ending at it — and a row is two lines instead of five.
  */
 export default async function ActivityPage({
   searchParams,
@@ -243,48 +249,55 @@ export default async function ActivityPage({
 
   return (
     <div className="flex flex-col gap-4">
-      <div>
-        <Link
-          href="/settings"
-          className="inline-flex min-h-tap items-center text-ink-soft hover:text-ink"
-        >
-          ← {d.settings.hub.title}
-        </Link>
-        <h1 className="mt-1 text-xl font-bold text-ink">{t.title}</h1>
-        <p className="text-sm text-ink-soft">{t.subtitle}</p>
-      </div>
-
-      {/* Submitting drops the cursor on purpose: a filter applied halfway down the log
-          would start from a timestamp that has nothing to do with the new list. */}
-      <form method="get" className="flex items-end gap-2">
-        <label className="flex min-w-0 flex-1 flex-col gap-1.5">
-          <span className="font-medium text-ink">{t.filterLabel}</span>
-          <select
-            name="entity"
-            defaultValue={entity ?? ''}
-            className="min-h-tap w-full rounded-xl border-2 border-line bg-white px-3
-              font-medium text-ink"
+      {/* The heading and the one control on it, side by side from `xl`: a select for one
+          of seventeen table names has never wanted the width of the screen, and the log
+          under it does. Below `xl` the form is its own row, because the subtitle beside
+          it would wrap to three lines to make room. */}
+      <div className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between xl:gap-6">
+        <div className="min-w-0">
+          <Link
+            href="/settings"
+            className="inline-flex min-h-tap items-center text-ink-soft hover:text-ink"
           >
-            <option value="">{t.filterAll}</option>
-            {AUDITED_TABLES.map((table) => (
-              <option key={table} value={table}>
-                {t.entities[table]}
-              </option>
-            ))}
-          </select>
-        </label>
-        <button
-          type="submit"
-          className="min-h-tap rounded-xl bg-brand-600 px-5 font-semibold text-white"
-        >
-          {t.show}
-        </button>
-      </form>
+            ← {d.settings.hub.title}
+          </Link>
+          <h1 className="mt-1 text-xl font-bold text-ink lg:text-2xl">{t.title}</h1>
+          <p className="text-sm text-ink-soft">{t.subtitle}</p>
+        </div>
+
+        {/* Submitting drops the cursor on purpose: a filter applied halfway down the log
+            would start from a timestamp that has nothing to do with the new list. */}
+        <form method="get" className="flex items-end gap-2">
+          <label className="flex min-w-0 flex-1 flex-col gap-1.5 sm:flex-none">
+            <span className="font-medium text-ink">{t.filterLabel}</span>
+            <select
+              name="entity"
+              defaultValue={entity ?? ''}
+              className="min-h-tap w-full rounded-xl border-2 border-line bg-white px-3
+                font-medium text-ink sm:w-64"
+            >
+              <option value="">{t.filterAll}</option>
+              {AUDITED_TABLES.map((table) => (
+                <option key={table} value={table}>
+                  {t.entities[table]}
+                </option>
+              ))}
+            </select>
+          </label>
+          <button
+            type="submit"
+            className="min-h-tap rounded-xl bg-brand-600 px-5 font-semibold text-white"
+          >
+            {t.show}
+          </button>
+        </form>
+      </div>
 
       {page.error !== null && <Alert>{t.unreadable}</Alert>}
 
       {page.error === null && entries.length === 0 && (
-        <Card>
+        /* Three sentences, so a card and not a column of one. */
+        <Card className="max-w-2xl">
           <h2 className="font-semibold text-ink">{t.emptyTitle}</h2>
           <p className="mt-1 text-sm text-ink-soft">
             {entity === null ? t.emptyBody : t.emptyFiltered}
@@ -307,9 +320,13 @@ export default async function ActivityPage({
 
       {/* Forward only. A back link would need the previous page's first timestamp, which
           a stateless GET does not have — "newest" returns to the top of the same filter,
-          which is where a reader who has gone too far actually wants to be. */}
+          which is where a reader who has gone too far actually wants to be.
+
+          Apart at the two edges on a phone and together at the left from `lg`: on the
+          first page the only link is "older", and at 1,216px `justify-between` parks it
+          alone in the far corner, a screen's width from the list it continues. */}
       {(hasOlder || before !== null) && (
-        <div className="flex items-center justify-between gap-3">
+        <div className="flex items-center justify-between gap-3 lg:justify-start">
           {before === null ? (
             <span />
           ) : (
@@ -325,7 +342,7 @@ export default async function ActivityPage({
         </div>
       )}
 
-      <p className="text-xs text-ink-soft">{t.writtenBy}</p>
+      <p className="max-w-2xl text-xs text-ink-soft">{t.writtenBy}</p>
     </div>
   )
 }
@@ -421,11 +438,23 @@ function sideOf(
 }
 
 /**
- * One line: what happened, to whom, and the one figure or one from-to worth drawing.
+ * One line: when, what happened to whom, and the one figure or from-to worth drawing.
  *
  * Individually bordered rather than a divided table, because on a 375px phone the
- * interesting part of a line is the second row of it — actor and target — and a table
- * would put that in a column narrower than a name.
+ * interesting part of a line is who did it and to whom, and a table would put that in a
+ * column narrower than a name.
+ *
+ * FROM `lg` THE CARD IS THREE COLUMNS: a 128px time, the sentence, and the figures
+ * right-aligned. Fixed widths and not `max-content`, which would size each row's columns
+ * to its own longest word and align nothing — every card is its own grid. 128px holds
+ * "১১ ফেব্রুয়ারি ২০২৬" at `text-xs`, and the time goes under the date rather than beside
+ * it: the month names are spelled out in both languages, and a column wide enough for
+ * "Student places bought" plus a date plus a time is a column that leaves no room for
+ * the two names the line is actually about.
+ *
+ * The time is a line of its own on a phone rather than the top-right corner it used to
+ * be. That corner cost nothing to give up — the same three cells in a column read as a
+ * card, and one structure for both widths is one structure to get right.
  */
 function AuditRow({
   entry,
@@ -442,39 +471,52 @@ function AuditRow({
 }) {
   const t = d.audit
   const when = dhakaMoment(entry.at)
+  const hasFigures = entry.amountBdt !== null || entry.shift !== null || entry.otherCount > 0
 
   return (
-    <li className="flex flex-col gap-1 rounded-xl border border-line bg-white px-4 py-3">
-      <div className="flex flex-wrap items-baseline justify-between gap-x-3">
-        <span className="font-semibold text-ink">{t.actions[entry.action]}</span>
-        <span className="num text-xs text-ink-soft">
-          {formatDate(when.date, locale)} {formatTime(when.time, locale)}
-        </span>
+    <li
+      className="flex flex-col gap-1 rounded-xl border border-line bg-white px-4 py-3
+        lg:grid lg:grid-cols-[8rem_minmax(0,1fr)_auto] lg:items-baseline lg:gap-x-4"
+    >
+      <div className="num text-xs text-ink-soft lg:flex lg:flex-col">
+        <span>{formatDate(when.date, locale)}</span>{' '}
+        <span>{formatTime(when.time, locale)}</span>
       </div>
 
-      <div className="flex flex-wrap items-baseline gap-x-2 text-sm text-ink-soft">
-        <span className="font-medium text-ink">{actor}</span>
-        {name !== null && <span>· {name}</span>}
-        {/* The table's own name, but only where the action did not already say it —
-            "Changed" on its own is not a sentence. */}
-        {entry.action.startsWith('row') && isAuditedTable(entry.entity) && (
-          <span>· {t.entities[entry.entity]}</span>
-        )}
+      <div className="min-w-0">
+        <div className="font-semibold text-ink">{t.actions[entry.action]}</div>
+        <div className="flex flex-wrap items-baseline gap-x-2 text-sm text-ink-soft">
+          <span className="font-medium text-ink">{actor}</span>
+          {name !== null && <span>· {name}</span>}
+          {/* The table's own name, but only where the action did not already say it —
+              "Changed" on its own is not a sentence. */}
+          {entry.action.startsWith('row') && isAuditedTable(entry.entity) && (
+            <span>· {t.entities[entry.entity]}</span>
+          )}
+        </div>
       </div>
 
-      {entry.amountBdt !== null && (
-        <div className="num font-semibold text-ink">{formatTaka(entry.amountBdt)}</div>
-      )}
+      {/* Rendered only when there is one, so an absent third cell leaves the sentence
+          the width instead of a gap where a number would have been. */}
+      {hasFigures && (
+        <div className="flex flex-col lg:items-end lg:text-right">
+          {entry.amountBdt !== null && (
+            <div className="num font-semibold text-ink">{formatTaka(entry.amountBdt)}</div>
+          )}
 
-      {entry.shift !== null && (
-        <div className="num text-sm text-ink">
-          {sideOf(entry.shift, entry.shift.from, locale, d)}{' '}
-          <span className="text-ink-soft">→</span>{' '}
-          {sideOf(entry.shift, entry.shift.to, locale, d)}
+          {entry.shift !== null && (
+            <div className="num text-sm text-ink">
+              {sideOf(entry.shift, entry.shift.from, locale, d)}{' '}
+              <span className="text-ink-soft">→</span>{' '}
+              {sideOf(entry.shift, entry.shift.to, locale, d)}
+            </div>
+          )}
+
+          {entry.otherCount > 0 && (
+            <div className="text-xs text-ink-soft">{t.more(entry.otherCount)}</div>
+          )}
         </div>
       )}
-
-      {entry.otherCount > 0 && <div className="text-xs text-ink-soft">{t.more(entry.otherCount)}</div>}
     </li>
   )
 }
