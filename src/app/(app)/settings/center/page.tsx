@@ -86,10 +86,13 @@ export default async function CenterSettingsPage() {
   return (
     <div className="flex flex-col gap-5">
       <div>
-        <Link href="/settings" className="text-sm font-medium text-brand-700">
+        <Link
+          href="/settings"
+          className="inline-flex min-h-tap items-center text-ink-soft hover:text-ink"
+        >
           ← {dict(locale).settings.hub.title}
         </Link>
-        <h1 className="mt-2 text-xl font-bold text-ink">{t.title}</h1>
+        <h1 className="mt-1 text-xl font-bold text-ink lg:text-2xl">{t.title}</h1>
         <p className="mt-1 text-ink-soft">{t.subtitle}</p>
       </div>
 
@@ -113,7 +116,7 @@ export default async function CenterSettingsPage() {
          * read-only card goes with it: what it draws off the same null is "no
          * payment number yet", told to the person a guardian rings to ask.
          */
-        <Card className="border-late/30 bg-late/5">
+        <Card className="max-w-2xl border-late/30 bg-late/5">
           <p className="font-medium text-ink">{t.unreadable}</p>
         </Card>
       ) : canEdit ? (
@@ -136,7 +139,10 @@ export default async function CenterSettingsPage() {
           common={dict(locale).common}
         />
       ) : (
-        <Card>
+        /* A manager's whole screen is this one card, so it is a card and not a
+           column: three short lines stretched to 1,216px is a paragraph nobody can
+           find the end of. */
+        <Card className="max-w-2xl">
           <p className="font-medium text-ink">
             {center?.name ?? session.active.centerName}
           </p>
