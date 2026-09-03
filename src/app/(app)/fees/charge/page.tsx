@@ -148,7 +148,7 @@ export default async function ChargePage({
       </Link>
 
       <div>
-        <h1 className="text-xl font-semibold text-ink lg:text-2xl">{t.title}</h1>
+        <h1 className="text-xl font-bold text-ink lg:text-2xl">{t.title}</h1>
         <p className="mt-1 text-sm text-ink-soft">{t.subtitle}</p>
       </div>
 

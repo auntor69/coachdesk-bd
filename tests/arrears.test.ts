@@ -399,7 +399,7 @@ test('the letterhead says what the screen is, and the empty card is not a metre 
   // Both of them, counted rather than matched: the refused screen writes its own h1 and
   // a mutation to either one leaves the other standing to answer for it.
   assert.equal(
-    PAGE.split('className="text-xl font-semibold text-ink lg:text-2xl">{t.title}').length - 1,
+    PAGE.split('className="text-xl font-bold text-ink lg:text-2xl">{t.title}').length - 1,
     2,
   )
   assert.equal(PAGE.split('{t.subtitle}').length - 1, 1)

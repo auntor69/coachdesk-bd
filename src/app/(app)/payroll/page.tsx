@@ -136,7 +136,7 @@ export default async function PayrollPage() {
     return (
       <div className="flex flex-col gap-4">
         <BackToFees label={t.backToFees} />
-        <h1 className="text-xl font-bold text-ink">{t.title}</h1>
+        <h1 className="text-xl font-bold text-ink lg:text-2xl">{t.title}</h1>
         <Card className="border-late/30 bg-late/5">
           <p className="font-medium text-ink">{t.unreadable}</p>
         </Card>

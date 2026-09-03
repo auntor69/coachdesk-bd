@@ -326,7 +326,7 @@ test('the schedule is a band inside the fee card, not a tile inside it', () => {
 
 test('the letterhead says what the screen is, and no card is a metre wide', () => {
   assert.equal(
-    PAGE.split('className="text-xl font-semibold text-ink lg:text-2xl">{t.title}').length - 1,
+    PAGE.split('className="text-xl font-bold text-ink lg:text-2xl">{t.title}').length - 1,
     1,
   )
   assert.equal(PAGE.split('{t.subtitle}').length - 1, 1)

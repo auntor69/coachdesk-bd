@@ -460,7 +460,7 @@ export default async function FeesPage({
       // most of a laptop screen saying nothing.
       <div className="flex max-w-2xl flex-col gap-5">
         <div>
-          <h1 className="text-xl font-bold text-ink">{t.title}</h1>
+          <h1 className="text-xl font-bold text-ink lg:text-2xl">{t.title}</h1>
           <p className="mt-1 text-ink-soft">{t.subtitle}</p>
         </div>
         <Card className="border-late/30 bg-late/5">
@@ -498,7 +498,7 @@ export default async function FeesPage({
      */
     <div className="flex flex-col gap-5 lg:grid lg:grid-cols-12 lg:items-start lg:gap-6">
       <div className="order-1 lg:col-span-12">
-        <h1 className="text-xl font-bold text-ink">{t.title}</h1>
+        <h1 className="text-xl font-bold text-ink lg:text-2xl">{t.title}</h1>
         <p className="mt-1 text-ink-soft">{t.subtitle}</p>
       </div>
 

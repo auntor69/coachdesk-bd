@@ -84,7 +84,7 @@ export default async function ArrearsPage() {
       >
         ← {t.backToFees}
       </Link>
-      <h1 className="text-xl font-semibold text-ink lg:text-2xl">{t.title}</h1>
+      <h1 className="text-xl font-bold text-ink lg:text-2xl">{t.title}</h1>
       <Card className="border-late/30 bg-late/5">
         <p className="font-medium text-ink">
           {problem === 'tooLarge' ? t.tooLarge : t.unreadable}
@@ -221,7 +221,7 @@ export default async function ArrearsPage() {
       </Link>
 
       <div>
-        <h1 className="text-xl font-semibold text-ink lg:text-2xl">{t.title}</h1>
+        <h1 className="text-xl font-bold text-ink lg:text-2xl">{t.title}</h1>
         <p className="mt-1 text-sm text-ink-soft">{t.subtitle}</p>
       </div>
 
