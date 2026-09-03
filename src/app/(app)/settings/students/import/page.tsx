@@ -93,9 +93,9 @@ export default async function ImportStudentsPage() {
           >
             ← {d.settings.students.title}
           </Link>
-          <h1 className="mt-1 text-xl font-bold text-ink">{t.title}</h1>
+          <h1 className="mt-1 text-xl font-bold text-ink lg:text-2xl">{t.title}</h1>
         </div>
-        <Card className="border-late/30 bg-late/5">
+        <Card className="max-w-2xl border-late/30 bg-late/5">
           <p className="font-medium text-ink">{t.unreadable}</p>
         </Card>
       </div>
@@ -143,8 +143,8 @@ export default async function ImportStudentsPage() {
         >
           ← {d.settings.students.title}
         </Link>
-        <h1 className="mt-1 text-xl font-bold text-ink">{t.title}</h1>
-        <p className="mt-1 text-sm text-ink-soft">{t.body}</p>
+        <h1 className="mt-1 text-xl font-bold text-ink lg:text-2xl">{t.title}</h1>
+        <p className="mt-1 max-w-2xl text-sm text-ink-soft">{t.body}</p>
       </div>
 
       {/*
@@ -155,7 +155,7 @@ export default async function ImportStudentsPage() {
        * shortfall is priced from the bands, and the purchase is offered in place.
        */}
       {room === 0 && forSale === null ? (
-        <Card>
+        <Card className="max-w-2xl">
           {/*
            * One set of words now, where there used to be two. The other set —
            * settings.students.places, "every place you bought is in use" — belongs to a
