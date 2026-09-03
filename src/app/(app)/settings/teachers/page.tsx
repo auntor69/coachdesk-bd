@@ -30,6 +30,10 @@ export async function generateMetadata() {
  * without that, a manager who may not read the fee book could tick `can_view_fees` on a
  * teacher and read it through them. Every control on this page — the boxes, the login
  * buttons, the password reset — is that write. Reads stay open, so the guard is here.
+ *
+ * ONE COLUMN AND NO RAIL, which is a decision rather than the old default: the roster is
+ * the whole screen and the only other thing on it is one button, so the width is spent
+ * inside the list instead — see the note on the return, and TeacherList for what it buys.
  */
 export default async function TeachersPage() {
   const session = await pageCapability('staff')
@@ -120,14 +124,16 @@ export default async function TeachersPage() {
    */
   if (teachers === null || allSubjects === null) {
     return (
-      <div className="flex flex-col gap-5">
+      // Capped rather than stretched: one sentence set across 1,216px is the defect
+      // §26 names, and a refusal is one sentence.
+      <div className="flex max-w-2xl flex-col gap-5">
         <Link
           href="/settings"
           className="inline-flex min-h-tap items-center text-ink-soft hover:text-ink"
         >
           ← {d.settings.hub.title}
         </Link>
-        <h1 className="text-xl font-bold text-ink">{t.title}</h1>
+        <h1 className="text-xl font-bold text-ink lg:text-2xl">{t.title}</h1>
         <Card className="border-late/30 bg-late/5">
           <p className="font-medium text-ink">{d.settings.listUnreadable}</p>
         </Card>
@@ -230,13 +236,17 @@ export default async function TeachersPage() {
   // whether this screen has a job.
   if (!staff && !overStaffSeats(session.plan, activeCount)) {
     return (
-      <div className="flex flex-col gap-5">
+      <div className="flex max-w-2xl flex-col gap-5">
         <Link
           href="/settings"
           className="inline-flex min-h-tap items-center text-ink-soft hover:text-ink"
         >
           ← {d.settings.hub.title}
         </Link>
+        {/* The heading the other two shapes draw. It was missing here, so a reader
+            landing on a bookmark was told about their plan by a card with nothing
+            above it saying which screen had refused them. */}
+        <h1 className="text-xl font-bold text-ink lg:text-2xl">{t.title}</h1>
         <Card>
           <h2 className="font-semibold text-ink">{t.soloTitle}</h2>
           <p className="mt-1 text-sm text-ink-soft">
@@ -263,18 +273,48 @@ export default async function TeachersPage() {
   const atLimit = wouldExceed(session.plan, 'maxTeachers', activeCount)
 
   return (
+    /*
+     * ONE COLUMN, DELIBERATELY, AND THE WIDTH SPENT INSIDE THE LIST.
+     *
+     * The roster is the screen; the only other thing on it is one button. A rail holding
+     * that button and nothing else is §20.7's "two columns of white space around one
+     * column of content", so the twelve columns go to the list instead — where a row
+     * spends them on three aligned columns and an opened panel on three forms side by
+     * side rather than a stack taller than the screen.
+     */
     <div className="flex flex-col gap-5">
-      <div>
-        <Link
-          href="/settings"
-          className="inline-flex min-h-tap items-center text-ink-soft hover:text-ink"
-        >
-          ← {dict(locale).settings.hub.title}
-        </Link>
-        <h1 className="mt-1 text-xl font-bold text-ink">{t.title}</h1>
-        <p className="mt-1 text-ink-soft">
-          {limit === null ? t.count(activeCount) : t.used(activeCount, limit)}
-        </p>
+      <div
+        className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between
+          sm:gap-6"
+      >
+        <div className="min-w-0">
+          <Link
+            href="/settings"
+            className="inline-flex min-h-tap items-center text-ink-soft hover:text-ink"
+          >
+            ← {dict(locale).settings.hub.title}
+          </Link>
+          <h1 className="mt-1 text-xl font-bold text-ink lg:text-2xl">{t.title}</h1>
+          <p className="mt-1 text-ink-soft">
+            {limit === null ? t.count(activeCount) : t.used(activeCount, limit)}
+          </p>
+        </div>
+
+        {/* The one thing to do here, beside the heading rather than under the last row:
+            on a centre with nine teachers it was below all nine, and adding somebody is
+            the reason most visits happen. Nothing at all on a plan with no staff
+            features — the card below already says the way out is down, not up. */}
+        {staff && !atLimit && (
+          <Link
+            href="/settings/teachers/new"
+            className="flex min-h-tap shrink-0 items-center justify-center rounded-xl
+              border-2 border-dashed border-brand-300 bg-brand-50/50 px-5 font-medium
+              text-brand-700 hover:bg-brand-50"
+          >
+            <span aria-hidden>+&nbsp;</span>
+            {t.new}
+          </Link>
+        )}
       </div>
 
       {/* Why this list is here at all, above the list rather than under it: on a
@@ -282,7 +322,7 @@ export default async function TeachersPage() {
           down to one teacher, and an owner who reads the names first will wonder
           which of them the app is asking about. */}
       {!staff && (
-        <Card>
+        <Card className="max-w-3xl">
           <h2 className="font-semibold text-ink">{t.trimTitle}</h2>
           <p className="mt-1 text-sm text-ink-soft">
             {t.trimBody(
@@ -296,8 +336,26 @@ export default async function TeachersPage() {
         </Card>
       )}
 
+      {/* Where the add button would have been, for a capped multi-teacher tier that has
+          filled its seats. Above the list for the reason the button is: it answers the
+          question the reader came with. */}
+      {staff && atLimit && (
+        <Card className="max-w-3xl">
+          {/* The same refusal the add form gives, in the same words. */}
+          <p className="font-medium text-ink">{t.capTitle}</p>
+          <p className="mt-1 text-sm text-ink-soft">
+            {/* limit is non-null here: wouldExceed is false on an uncapped plan. */}
+            {t.cap(
+              planName(session.plan, locale),
+              limit ?? 0,
+              planName(PLANS.center, locale),
+            )}
+          </p>
+        </Card>
+      )}
+
       {rows.length === 0 ? (
-        <Card>
+        <Card className="max-w-3xl">
           <h2 className="font-semibold text-ink">{t.emptyTitle}</h2>
           <p className="mt-1 text-sm text-ink-soft">{t.emptyBody}</p>
         </Card>
@@ -313,34 +371,6 @@ export default async function TeachersPage() {
           branches={branches}
           trim={!staff}
         />
-      )}
-
-      {/* Neither the cap card nor the add button on a plan with no staff: the
-          card above already says the centre is over its seats, and the way out of
-          that is down. */}
-      {!staff ? null : atLimit ? (
-        <Card>
-          {/* The same refusal the add form gives, in the same words. */}
-          <p className="font-medium text-ink">{t.capTitle}</p>
-          <p className="mt-1 text-sm text-ink-soft">
-            {/* limit is non-null here: wouldExceed is false on an uncapped plan. */}
-            {t.cap(
-              planName(session.plan, locale),
-              limit ?? 0,
-              planName(PLANS.center, locale),
-            )}
-          </p>
-        </Card>
-      ) : (
-        <Link
-          href="/settings/teachers/new"
-          className="flex min-h-tap items-center justify-center rounded-xl border-2
-            border-dashed border-brand-300 bg-brand-50/50 px-4 font-medium
-            text-brand-700 hover:bg-brand-50"
-        >
-          <span aria-hidden>+&nbsp;</span>
-          {t.new}
-        </Link>
       )}
     </div>
   )

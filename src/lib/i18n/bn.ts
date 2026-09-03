@@ -4078,6 +4078,22 @@ export const bn = {
     inactive: 'বন্ধ',
     /** A record with no account behind it — see teacherForm.loginNow. */
     noLogin: 'লগইন নেই',
+    /*
+     * The column heads over the list, from `lg` only and as a scanning aid — the strip
+     * is aria-hidden, because three loose labels with nothing tying them to the cells
+     * below would be read out as three orphan words.
+     */
+    colTeacher: 'শিক্ষক',
+    colWork: 'ব্যাচ ও অনুমতি',
+    /** The same column on a plan where grants are not drawn — see the list's `trim`. */
+    colBatches: 'ব্যাচ',
+    colLogin: 'লগইন',
+    /**
+     * Under a teacher with no extra permission ticked. A blank cell under a heading
+     * reads as something that failed to load; this is the true answer, because hajira
+     * and marks for their own batches need no permission at all.
+     */
+    noExtras: 'শুধু হাজিরা ও নম্বর',
     /** Collapsed: reading the list is the common case, editing is the rare one. */
     edit: 'শিক্ষকের তথ্য বদলান',
     /**

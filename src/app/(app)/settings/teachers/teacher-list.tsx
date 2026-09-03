@@ -5,7 +5,13 @@
  *
  * Three errands behind one summary, in the order an owner needs them: their name,
  * subjects and building, which is the repair almost everybody eventually wants and the
- * one that can never be refused; their permissions; and their account.
+ * one that can never be refused; their permissions; and their account. Side by side from
+ * `lg` rather than stacked, because that is what §20.8's seventh step is for — the record
+ * and the access in one place, close enough to read one while changing the other.
+ *
+ * A row is three aligned cells at that width, under a strip that names them: who they
+ * are, what they carry, whether they can sign in. Aligned so a column can be read down
+ * — "who can send SMS" was nine sentences to read one at a time.
  *
  * Permissions are per-teacher rather than per-role because real centres are not
  * tidy: one senior teacher collects fees and edits the roster, another only marks
@@ -194,6 +200,21 @@ export function TeacherList({
         </p>
       )}
 
+      {/* The column heads, from `lg` only. Below that each row is three stacked lines
+          that explain themselves, and a strip of labels over them would be furniture.
+          Not a <table>: every row opens into forms, and a <details> cannot wrap <tr>s. */}
+      <div
+        aria-hidden
+        className="hidden px-4 text-xs font-medium uppercase tracking-wide text-ink-faint
+          lg:flex lg:gap-3"
+      >
+        <div className="grid flex-1 grid-cols-2 gap-4">
+          <span>{t.colTeacher}</span>
+          <span>{trim ? t.colBatches : t.colWork}</span>
+        </div>
+        <span className="w-44 text-right">{t.colLogin}</span>
+      </div>
+
       <ul className="flex flex-col gap-2">
         {teachers.map((teacher) => {
           const granted = grantedLabels(teacher.permissions)
@@ -246,7 +267,7 @@ export function TeacherList({
           )
 
           const details = (
-            <form action={detailsAction} className="mt-2 flex flex-col gap-3">
+            <form action={detailsAction} className="flex flex-col gap-3">
               <input type="hidden" name="teacherId" value={teacher.id} />
               <p className="font-medium text-ink">{t.detailsTitle}</p>
 
@@ -344,10 +365,8 @@ export function TeacherList({
           const asking = loginRow === teacher.id && loginState?.confirm
 
           const login = !teacher.hasLogin && (
-            <details className="mt-3 border-t border-line pt-3">
-              <summary className="min-h-tap cursor-pointer text-sm font-medium text-brand-700">
-                {t.loginSummary}
-              </summary>
+            <div className="border-t border-line pt-3 lg:border-t-0 lg:pt-0">
+              <p className="font-medium text-ink">{t.loginSummary}</p>
               <p className="mt-1 text-sm text-ink-soft">{t.loginBody}</p>
               <form action={loginAction} className="mt-2 flex flex-col gap-2">
                 <input type="hidden" name="teacherId" value={teacher.id} />
@@ -402,14 +421,15 @@ export function TeacherList({
                   {loginPending ? common.saving : t.loginSubmit}
                 </button>
               </form>
-            </details>
+            </div>
           )
 
           /*
            * The only "forgot password" this product has, and it is here rather than
            * on a screen of its own because there is nowhere to send a reset link:
-           * login is a number and a password, no email and no OTP. Behind its own
-           * summary so a password box is not sitting open on twelve rows at once.
+           * login is a number and a password, no email and no OTP. No longer behind a
+           * second summary inside the first: a password box was three clicks away, and
+           * one closed row is already enough to keep it off a list of twelve.
            *
            * Drawn only where it would work — an account that exists, switched on,
            * and not the reader's own. All three are refused by the action too, since
@@ -419,10 +439,8 @@ export function TeacherList({
            * well, which an owner is not allowed to be shown.
            */
           const reset = teacher.hasLogin && teacher.active && !teacher.isSelf && (
-            <details className="mt-3 border-t border-line pt-3">
-              <summary className="min-h-tap cursor-pointer text-sm font-medium text-brand-700">
-                {t.resetSummary}
-              </summary>
+            <div className="border-t border-line pt-3 lg:border-t-0 lg:pt-0">
+              <p className="font-medium text-ink">{t.resetSummary}</p>
               <p className="mt-1 text-sm text-ink-soft">{t.resetBody}</p>
               <form action={pwAction} className="mt-2 flex flex-col gap-2">
                 <input type="hidden" name="teacherId" value={teacher.id} />
@@ -449,7 +467,7 @@ export function TeacherList({
                   {pwPending ? common.saving : t.resetSubmit}
                 </button>
               </form>
-            </details>
+            </div>
           )
 
           return (
@@ -457,25 +475,41 @@ export function TeacherList({
               key={teacher.id}
               className="rounded-xl border border-line bg-white px-4 py-3"
             >
+              {/* Three cells, and from `lg` they are the three columns the strip above
+                  the list names: who they are, what they carry, whether they can sign
+                  in. The same widths on every row, so a column can be read down —
+                  "who can send SMS" was nine sentences to read before this. */}
               <div className="flex items-start justify-between gap-3">
-                <div className="min-w-0">
-                  <p className="truncate font-medium text-ink">
-                    {teacher.name}
-                    {!teacher.active && (
-                      <span className="ml-2 text-sm text-ink-faint">{t.inactive}</span>
-                    )}
-                  </p>
-                  {teacher.subjects.length > 0 && (
-                    <p className="truncate text-sm text-ink-soft">
-                      {teacher.subjects.join(' · ')}
+                <div className="min-w-0 flex-1 lg:grid lg:grid-cols-2 lg:gap-4">
+                  <div className="min-w-0">
+                    <p className="truncate font-medium text-ink">
+                      {teacher.name}
+                      {!teacher.active && (
+                        <span className="ml-2 text-sm text-ink-faint">{t.inactive}</span>
+                      )}
                     </p>
-                  )}
-                  <p className="text-sm text-ink-faint">
-                    {teacher.batchLabel}
-                    {!trim && granted.length > 0 && ` · ${granted.join(', ')}`}
-                  </p>
+                    {teacher.subjects.length > 0 && (
+                      <p className="truncate text-sm text-ink-soft">
+                        {teacher.subjects.join(' · ')}
+                      </p>
+                    )}
+                  </div>
+
+                  {/* Their batches and their grants, which used to be one joined line
+                      and are now a column of their own. `noExtras` rather than a blank
+                      cell: an empty space under a heading reads as a figure that did
+                      not arrive, and "attendance and marks only" is the answer. */}
+                  <div className="min-w-0">
+                    <p className="text-sm text-ink-faint">{teacher.batchLabel}</p>
+                    {!trim && (
+                      <p className="text-sm text-ink-faint">
+                        {granted.length > 0 ? granted.join(', ') : t.noExtras}
+                      </p>
+                    )}
+                  </div>
                 </div>
-                <div className="shrink-0 text-right">
+
+                <div className="shrink-0 text-right lg:w-44">
                   {teacher.phone && (
                     <p className="num text-sm text-ink-soft">
                       {formatBdMobile(teacher.phone)}
@@ -502,48 +536,71 @@ export function TeacherList({
                     {t.edit}
                   </summary>
 
-                  {details}
-
-                  <form
-                    action={permAction}
-                    className="mt-3 flex flex-col gap-2 border-t border-line pt-3"
+                  {/*
+                   * THE RECORD AND THE ACCESS SIDE BY SIDE, WHICH IS THE ERRAND (§20.8.7).
+                   *
+                   * Three forms that used to be a stack roughly twice a laptop screen
+                   * tall: an owner ticking a permission could not see the name it was
+                   * about, and the account form was below both. Two columns from `lg`
+                   * and three from `2xl`, which is also what keeps a name box from being
+                   * set six hundred pixels wide on a big monitor.
+                   *
+                   * Below `lg` the same blocks stack in the same order, each with the
+                   * rule above it that used to separate them.
+                   */}
+                  <div
+                    className="mt-1 flex flex-col gap-4 lg:grid lg:grid-cols-2
+                      lg:items-start lg:gap-6 2xl:grid-cols-3"
                   >
-                    <input type="hidden" name="teacherId" value={teacher.id} />
-                    <p className="font-medium text-ink">{t.permissionsTitle}</p>
-                    {PERMISSION_KEYS.map((key) => (
-                      <label
-                        key={key}
-                        className="flex min-h-tap cursor-pointer items-start gap-3"
-                      >
-                        <input
-                          type="checkbox"
-                          name={key}
-                          defaultChecked={teacher.permissions[key] ?? false}
-                          className="mt-0.5 h-5 w-5 shrink-0 accent-brand-600"
-                        />
-                        <span className="min-w-0">
-                          <span className="block text-ink">{labels[key].label}</span>
-                          <span className="block text-sm text-ink-soft">
-                            {labels[key].hint}
-                          </span>
-                        </span>
-                      </label>
-                    ))}
-                    <button
-                      type="submit"
-                      disabled={permPending}
-                      className="min-h-tap self-start rounded-lg border-2 border-brand-500
-                        bg-brand-50 px-4 text-sm font-semibold text-brand-700
-                        disabled:opacity-50"
+                    {details}
+
+                    <form
+                      action={permAction}
+                      className="flex flex-col gap-2 border-t border-line pt-3
+                        lg:border-t-0 lg:pt-0"
                     >
-                      {permPending ? common.saving : t.save}
-                    </button>
-                  </form>
+                      <input type="hidden" name="teacherId" value={teacher.id} />
+                      <p className="font-medium text-ink">{t.permissionsTitle}</p>
+                      {PERMISSION_KEYS.map((key) => (
+                        <label
+                          key={key}
+                          className="flex min-h-tap cursor-pointer items-start gap-3"
+                        >
+                          <input
+                            type="checkbox"
+                            name={key}
+                            defaultChecked={teacher.permissions[key] ?? false}
+                            className="mt-0.5 h-5 w-5 shrink-0 accent-brand-600"
+                          />
+                          <span className="min-w-0">
+                            <span className="block text-ink">{labels[key].label}</span>
+                            <span className="block text-sm text-ink-soft">
+                              {labels[key].hint}
+                            </span>
+                          </span>
+                        </label>
+                      ))}
+                      <button
+                        type="submit"
+                        disabled={permPending}
+                        className="min-h-tap self-start rounded-lg border-2 border-brand-500
+                          bg-brand-50 px-4 text-sm font-semibold text-brand-700
+                          disabled:opacity-50"
+                      >
+                        {permPending ? common.saving : t.save}
+                      </button>
+                    </form>
 
-                  {login}
-                  {reset}
+                    {/* At most one of the two is ever drawn — one asks for an account,
+                        the other repairs one — so they share the third column. */}
+                    {login}
+                    {reset}
+                  </div>
 
-                  <div className="mt-3 border-t border-line pt-3">{toggle}</div>
+                  {/* The one destructive control, under all three and across the width:
+                      it is not part of any of them, and it is not a thing to reach for
+                      while correcting a spelling. */}
+                  <div className="mt-4 border-t border-line pt-3">{toggle}</div>
                 </details>
               )}
             </li>

@@ -2508,6 +2508,22 @@ export const en: Dictionary = {
   teacherList: {
     inactive: 'Off',
     noLogin: 'No login',
+    /*
+     * The column heads, drawn only from `lg` and only as a scanning aid. Short because
+     * they sit over three cells of a row and not over a table: "Batches and permissions"
+     * is the widest thing on the strip and still one line at 244px.
+     */
+    colTeacher: 'Teacher',
+    colWork: 'Batches and permissions',
+    /** The same column where grants are not drawn at all — see the list's `trim`. */
+    colBatches: 'Batches',
+    colLogin: 'Login',
+    /**
+     * Under a teacher with no permissions ticked. Not a blank cell: an empty space under
+     * a heading reads as a figure that failed to arrive, and this is the true answer —
+     * every teacher can take attendance and enter marks for their own batches.
+     */
+    noExtras: 'Attendance and marks only',
     edit: 'Change this teacher',
     detailsTitle: 'Name and subjects',
     nameLabel: 'Name',
