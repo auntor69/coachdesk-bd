@@ -18,6 +18,12 @@
  * TODAY ARRIVES AS A PROP, for the reason ExpenseForm gives at length: a client
  * component that read the clock itself would disagree with the server for six hours out
  * of every twenty-four, and the reader's machine may be set to anything at all.
+ *
+ * THE SHORT FIELDS PAIR UP AND THE FORM IS CAPPED (§20.8.7). This was one column of
+ * full-width boxes at every width, which on a laptop is a date input 704px wide and on a
+ * monitor 1,216 — §26's defect in its other shape, a form handed four times the width it
+ * wants. Nothing here needs a rail beside it, so the width is spent inside: `max-w-3xl`,
+ * two columns from `sm`, and the two fields that hold a sentence spanning both.
  */
 import { useActionState } from 'react'
 import { useRouter } from 'next/navigation'
@@ -70,80 +76,98 @@ export function EmployeeForm({
   )
 
   return (
-    <form action={action} className="flex flex-col gap-3">
+    <form action={action} className="flex max-w-3xl flex-col gap-4">
       {state?.error && <Alert>{state.error}</Alert>}
 
-      <Field
-        label={t.nameLabel}
-        name="name"
-        placeholder={t.namePlaceholder}
-        required
-        maxLength={MAX_NAME}
-        autoComplete="off"
-      />
+      {/* Two from `sm` and not from `lg`, because every field but two is short: a role, a
+          job title, a phone number and a date are each narrower than a 328px column, and
+          waiting for `lg` would leave a tablet reading one box per line for no reason.
+          `items-end` because three of these carry a line of hint above the control and
+          three do not — bottom-aligned, every box in a row starts at the same height. */}
+      <div className="grid gap-4 sm:grid-cols-2 sm:items-end">
+        {/* A name is the one thing here worth the whole width. */}
+        <div className="sm:col-span-2">
+          <Field
+            label={t.nameLabel}
+            name="name"
+            placeholder={t.namePlaceholder}
+            required
+            maxLength={MAX_NAME}
+            autoComplete="off"
+          />
+        </div>
 
-      <label className="flex flex-col gap-1.5">
-        <span className="font-medium text-ink">{t.roleLabel}</span>
-        {/* Empty first and `required`, the way the expense form asks for a category.
-            The column defaults to `other`, which is exactly the answer nobody means:
-            a select that opened on it would file the whole payroll under "Other" for
-            every owner who tapped past this field. */}
-        <select name="role" required defaultValue="" className={SELECT_CLASS}>
-          <option value="">—</option>
-          {roles.map((role) => (
-            <option key={role.value} value={role.value}>
-              {role.label}
-            </option>
-          ))}
-        </select>
-      </label>
+        <label className="flex flex-col gap-1.5">
+          <span className="font-medium text-ink">{t.roleLabel}</span>
+          {/* Empty first and `required`, the way the expense form asks for a category.
+              The column defaults to `other`, which is exactly the answer nobody means:
+              a select that opened on it would file the whole payroll under "Other" for
+              every owner who tapped past this field. */}
+          <select name="role" required defaultValue="" className={SELECT_CLASS}>
+            <option value="">—</option>
+            {roles.map((role) => (
+              <option key={role.value} value={role.value}>
+                {role.label}
+              </option>
+            ))}
+          </select>
+        </label>
 
-      <Field
-        label={`${t.designationLabel} (${common.optional})`}
-        hint={t.designationHint}
-        name="designation"
-        maxLength={MAX_LABEL}
-        autoComplete="off"
-      />
+        {/* Beside the role, because the two are the same question at two levels of
+            precision: Accountant, and then which accountant. */}
+        <Field
+          label={`${t.designationLabel} (${common.optional})`}
+          hint={t.designationHint}
+          name="designation"
+          maxLength={MAX_LABEL}
+          autoComplete="off"
+        />
 
-      {/* Which building they work in — the branch their wage is billed to, through
-          `app.payee_branch`. Draws nothing for all but the head office of an
-          institution. */}
-      <BranchPicker t={branchPick} branches={branches} current={null} />
+        {/* Which building they work in — the branch their wage is billed to, through
+            `app.payee_branch`. Draws a hidden input for all but the head office of an
+            institution, and a hidden input is `display:none`, so it is not a grid item
+            and the two fields under it close up rather than leaving a hole. */}
+        <BranchPicker t={branchPick} branches={branches} current={null} />
 
-      <Field
-        label={`${t.phoneLabel} (${common.optional})`}
-        hint={t.phoneHint}
-        name="phone"
-        type="tel"
-        inputMode="numeric"
-        placeholder="01712345678"
-        className="num"
-      />
+        <Field
+          label={`${t.phoneLabel} (${common.optional})`}
+          hint={t.phoneHint}
+          name="phone"
+          type="tel"
+          inputMode="numeric"
+          placeholder="01712345678"
+          className="num"
+        />
 
-      {/* Defaulted to today and capped there: somebody who starts next week is added
-          next week, and a date in the future would put them on this month's payroll
-          before they have worked a day of it. The floor is the year, because a centre
-          entering the staff it has had for three years is the ordinary first use. */}
-      <Field
-        label={t.joinedLabel}
-        name="joinedOn"
-        type="date"
-        required
-        defaultValue={today}
-        min={EARLIEST_JOIN}
-        max={today}
-      />
+        {/* Defaulted to today and capped there: somebody who starts next week is added
+            next week, and a date in the future would put them on this month's payroll
+            before they have worked a day of it. The floor is the year, because a centre
+            entering the staff it has had for three years is the ordinary first use. */}
+        <Field
+          label={t.joinedLabel}
+          name="joinedOn"
+          type="date"
+          required
+          defaultValue={today}
+          min={EARLIEST_JOIN}
+          max={today}
+        />
 
-      <Field
-        label={`${t.noteLabel} (${common.optional})`}
-        name="note"
-        placeholder={t.notePlaceholder}
-        maxLength={MAX_TEXT}
-        autoComplete="off"
-      />
+        {/* A sentence, so it takes the width the sentence wants. */}
+        <div className="sm:col-span-2">
+          <Field
+            label={`${t.noteLabel} (${common.optional})`}
+            name="note"
+            placeholder={t.notePlaceholder}
+            maxLength={MAX_TEXT}
+            autoComplete="off"
+          />
+        </div>
+      </div>
 
-      <Button type="submit" full disabled={pending}>
+      {/* Sized to itself: `full` across a 768px form is a control stretched to a width
+          that says nothing about what it does. */}
+      <Button type="submit" disabled={pending} className="self-start">
         {pending ? common.adding : t.submit}
       </Button>
     </form>

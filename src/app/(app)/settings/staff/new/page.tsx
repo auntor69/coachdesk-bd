@@ -28,7 +28,13 @@ export async function generateMetadata() {
  *
  * No count and no cap, unlike the teacher form beside it. Seats are a teacher thing:
  * `staffManagement` is bought or it is not, and a centre that has it may employ as many
- * people as it actually employs. Nothing here is priced per head.
+ * people as it actually employs. Nothing here is priced per head — which is also why this
+ * letterhead carries no figure under it, where /settings/teachers/new carries a seat count.
+ *
+ * ONE COLUMN ON PURPOSE (§20.8.7). Six short fields and no second subject: there is no
+ * login to decide and no salary to set, both being other screens' business, so there is
+ * nothing to put in a rail and a rail holding nothing is worse than none. The width is
+ * spent inside the form instead — see employee-form.tsx.
  *
  * `staff` (§6.2), like the list behind it. `employees_capability_write` would refuse the
  * insert on its own; this is so it is refused before the typing.
@@ -44,13 +50,17 @@ export default async function NewStaffPage() {
   // regardless — see caller() there for why the page cannot be the fence.
   if (!has(session.plan, 'staffManagement')) {
     return (
-      <div className="flex flex-col gap-5">
+      // Capped, and carrying the heading this shape never had: a refusal is two sentences,
+      // and a bookmark used to land a reader on a card about their plan with nothing above
+      // it naming the screen that had refused them.
+      <div className="flex max-w-2xl flex-col gap-5">
         <Link
           href="/settings"
           className="inline-flex min-h-tap items-center text-ink-soft hover:text-ink"
         >
           ← {d.settings.hub.title}
         </Link>
+        <h1 className="text-xl font-bold text-ink lg:text-2xl">{t.newTitle}</h1>
         <Card>
           <h2 className="font-semibold text-ink">{t.lockedTitle}</h2>
           <p className="mt-1 text-sm text-ink-soft">
@@ -84,7 +94,7 @@ export default async function NewStaffPage() {
         >
           ← {t.title}
         </Link>
-        <h1 className="mt-1 text-xl font-bold text-ink">{t.newTitle}</h1>
+        <h1 className="mt-1 text-xl font-bold text-ink lg:text-2xl">{t.newTitle}</h1>
       </div>
 
       <EmployeeForm
