@@ -15,6 +15,12 @@
  * owner sees first, and it can neither silence a channel nor bring one back. A
  * single form would have the switch writing whatever the dropdown happened to be
  * showing, and a dropdown change toggling the switch.
+ *
+ * ONE LINE PER FAMILY FROM `sm` (§20.8.11). Two stacked rows per student is right on a
+ * phone and absurd on a desktop: three hundred families became six hundred rows, each
+ * with a dropdown as wide as the screen. From `sm` the inner block goes `contents` and
+ * the row is `name | switch | channel` on one line — no `order-N`, no second markup
+ * tree, and the phone keeps the shape the note further down defends.
  */
 import { useActionState } from 'react'
 
@@ -58,7 +64,10 @@ export function OptOutList({
   )
 
   return (
-    <section className="flex flex-col gap-3">
+    /* Capped, because a consent row is a name, a number, a switch and a dropdown —
+       at 1,216px the switch ends up a hand's width from the name it belongs to. The
+       cap also bounds the two Alerts, which take no className of their own. */
+    <section className="flex max-w-4xl flex-col gap-3">
       <div>
         <h2 className="font-semibold text-ink">{t.title}</h2>
         <p className="num mt-0.5 text-sm text-ink-soft">{subtitle}</p>
@@ -85,10 +94,13 @@ export function OptOutList({
         {students.map((student) => (
           <li
             key={student.id}
-            className="flex flex-col gap-2 rounded-xl border border-line
-              bg-white px-4 py-2.5"
+            className="flex flex-col gap-2 rounded-xl border border-line bg-white
+              px-4 py-2.5 sm:flex-row sm:items-center sm:gap-4"
           >
-            <div className="flex items-center gap-3">
+            {/* `contents` from `sm` so the two things inside it become cells of the
+                row itself. The alternative was a second copy of the name and the
+                switch behind a breakpoint, which is two places to fix a bug in. */}
+            <div className="flex items-center gap-3 sm:contents">
               <div className="min-w-0 flex-1">
                 <p className="truncate font-medium text-ink">{student.name}</p>
                 <p className="num truncate text-sm text-ink-faint">
@@ -98,7 +110,7 @@ export function OptOutList({
                 </p>
               </div>
 
-              <form action={formAction}>
+              <form action={formAction} className="shrink-0">
                 <input type="hidden" name="studentId" value={student.id} />
                 <input
                   type="hidden"
@@ -128,10 +140,12 @@ export function OptOutList({
               </form>
             </div>
 
-            {/* Its own row, not squeezed in beside the switch. A 360px screen with
-                a Bangla name, an eleven-digit number, a toggle and a dropdown on
-                one line is four things nobody can hit with a thumb. */}
-            <form action={markAction}>
+            {/* Its own row below `sm`, not squeezed in beside the switch: a 360px
+                screen with a Bangla name, an eleven-digit number, a toggle and a
+                dropdown on one line is four things nobody can hit with a thumb. From
+                `sm` there is room for all four, and 12rem is a dropdown holding one
+                of four words — not a control the width of the roster. */}
+            <form action={markAction} className="shrink-0 sm:w-48">
               <input type="hidden" name="studentId" value={student.id} />
               {/*
                 Submits on change, so there is no save button to leave unpressed —
