@@ -21,10 +21,18 @@ const MONTH_RE = /^\d{4}-\d{2}-01$/
  * Where an owner takes their own data out.
  *
  * THIS SCREEN DRAWS NOTHING IT IS ABOUT. It has no preview, no row counts and no
- * table — three descriptions and three links. That is deliberate: every count on it
+ * table — five descriptions and five links. That is deliberate: every count on it
  * would be a query run to render a number nobody asked for, and a preview of a
  * spreadsheet on a 375px phone is a table nobody can read. The file is the artefact,
  * and the file opens in the app that is good at this.
+ *
+ * TWO COLUMNS OF CARDS FROM `xl` (§20.8.11), AND A MONTH PICKER A MONTH WIDE. Five
+ * descriptions down a 1,216px page is a menu that scrolls for no reason, and the
+ * control that decides what all five buttons will download scrolls off the top of it.
+ * At `xl` the two columns are 472px each and the whole screen is one view: the month
+ * stays in sight, and the body text — which is how an owner picks a sheet — stays at a
+ * width somebody reads rather than scans. The order is unchanged, so the money sheets
+ * still come before the teaching ones on a phone and on a desktop alike.
  *
  * PLAIN `<a>`, NOT `<Link>`. The client router intercepts a `<Link>` and tries to
  * render the destination as a route; there is no route here, there is a response with
@@ -71,7 +79,7 @@ export default async function ExportPage({
     return (
       <div className="flex flex-col gap-4">
         {back}
-        <Card>
+        <Card className="max-w-2xl">
           <h1 className="font-semibold text-ink">{t.lockedTitle}</h1>
           <p className="mt-1 text-sm text-ink-soft">
             {t.lockedBody(
@@ -111,11 +119,13 @@ export default async function ExportPage({
     <div className="flex flex-col gap-5">
       <div>
         {back}
-        <h1 className="mt-1 text-xl font-bold text-ink">{t.title}</h1>
+        <h1 className="mt-1 text-xl font-bold text-ink lg:text-2xl">{t.title}</h1>
         <p className="mt-1 text-ink-soft">{t.subtitle}</p>
       </div>
 
-      <form method="get" className="flex items-end gap-2">
+      {/* Capped at the width of what it asks: one month, and a button to fetch it.
+          Left uncapped it becomes a dropdown a metre wide holding "সেপ্টেম্বর ২০২৬". */}
+      <form method="get" className="flex max-w-sm items-end gap-2">
         <label className="flex min-w-0 flex-1 flex-col gap-1.5">
           <span className="font-medium text-ink">{t.month}</span>
           <select
@@ -140,7 +150,7 @@ export default async function ExportPage({
         </button>
       </form>
 
-      <ul className="flex flex-col gap-3">
+      <ul className="flex flex-col gap-3 xl:grid xl:grid-cols-2 xl:gap-4">
         {REPORT_IDS.map((id) => {
           // The month rides on the link only where the sheet has one. The roster is
           // a snapshot of now — see NEEDS_MONTH — and a `month` on that URL would be
@@ -151,34 +161,40 @@ export default async function ExportPage({
 
           return (
             <li key={id}>
-              <Card>
+              {/* `h-full` and `mt-auto` are one decision: the five descriptions are
+                  two lines long and five, so in a row of two the buttons would sit at
+                  two different heights and the shorter card would end in white space.
+                  Both are no-ops on a phone, where the card is as tall as it reads. */}
+              <Card className="flex h-full flex-col">
                 <h2 className="font-semibold text-ink">{t.reports[id].title}</h2>
                 <p className="mt-1 text-sm text-ink-soft">{t.reports[id].body}</p>
-                {/* Which period the file will actually cover, spelled out under the
-                    button. The month picker is one control above three links, and an
-                    owner who scrolled past it needs to see on the button itself
-                    whether they are about to download August or today. */}
-                <p className="mt-2 text-sm font-medium text-ink-faint">
-                  {NEEDS_MONTH[id]
-                    ? formatMonth(month, locale)
-                    : t.asOf(formatDate(todayInDhaka(), locale))}
-                </p>
-                <p className="mt-3">
-                  <a
-                    href={href}
-                    className="inline-flex min-h-tap items-center rounded-xl
-                      bg-brand-600 px-5 font-semibold text-white"
-                  >
-                    {t.download}
-                  </a>
-                </p>
+                {/* Which period the file will actually cover, kept with the button
+                    rather than with the description: the month picker is one control
+                    above five links, and an owner who scrolled past it needs to read
+                    on the thing they are about to tap whether it is August or today. */}
+                <div className="mt-auto pt-3">
+                  <p className="text-sm font-medium text-ink-faint">
+                    {NEEDS_MONTH[id]
+                      ? formatMonth(month, locale)
+                      : t.asOf(formatDate(todayInDhaka(), locale))}
+                  </p>
+                  <p className="mt-2">
+                    <a
+                      href={href}
+                      className="inline-flex min-h-tap items-center rounded-xl
+                        bg-brand-600 px-5 font-semibold text-white"
+                    >
+                      {t.download}
+                    </a>
+                  </p>
+                </div>
               </Card>
             </li>
           )
         })}
       </ul>
 
-      <p className="text-sm text-ink-faint">{t.opensIn}</p>
+      <p className="max-w-2xl text-sm text-ink-faint">{t.opensIn}</p>
     </div>
   )
 }
