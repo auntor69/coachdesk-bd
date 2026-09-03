@@ -41,6 +41,12 @@ export async function generateMetadata() {
  * would make administrators nobody can name a week later; a form that offers the people
  * the centre has already written down has their name, their number and their building
  * already recorded, on the screen where each is editable.
+ *
+ * THE ROSTER AND THE APPOINTMENT SIDE BY SIDE FROM `xl` (§20.8.7), which is where this
+ * screen's width was going wrong: the appoint form is a select, a building, six boxes with
+ * a line of explanation each and a submit, and it was being handed 1,184px for a job that
+ * wants 400. `xl` and not `lg` for the reason /expenses gives — five of twelve columns is
+ * 279px at `lg`, and a rail that narrow is a squeeze rather than a rail.
  */
 export default async function ManagersPage() {
   const session = await pageRole('owner')
@@ -55,13 +61,18 @@ export default async function ManagersPage() {
    */
   if (!hasStaff(session.plan)) {
     return (
-      <div className="flex flex-col gap-5">
+      // Capped rather than stretched: a refusal is one sentence, and one sentence set
+      // across 1,216px is §26's defect turned inside out. The heading was missing here
+      // altogether, so a reader arriving on a bookmark got a card about their plan with
+      // nothing above it naming the screen that had refused them.
+      <div className="flex max-w-2xl flex-col gap-5">
         <Link
           href="/settings"
           className="inline-flex min-h-tap items-center text-ink-soft hover:text-ink"
         >
           ← {d.settings.hub.title}
         </Link>
+        <h1 className="text-xl font-bold text-ink lg:text-2xl">{t.title}</h1>
         <Card>
           <h2 className="font-semibold text-ink">{t.lockedTitle}</h2>
           <p className="mt-1 text-sm text-ink-soft">
@@ -114,9 +125,9 @@ export default async function ManagersPage() {
    */
   if (memberRead.error || memberRead.data === null) {
     return (
-      <div className="flex flex-col gap-5">
+      <div className="flex max-w-2xl flex-col gap-5">
         {back}
-        <h1 className="text-xl font-bold text-ink">{t.title}</h1>
+        <h1 className="text-xl font-bold text-ink lg:text-2xl">{t.title}</h1>
         <Card className="border-late/30 bg-late/5">
           <p className="font-medium text-ink">{d.settings.listUnreadable}</p>
         </Card>
@@ -184,14 +195,27 @@ export default async function ManagersPage() {
       : (branchNames.get(branchId) ?? t.branchClosed)
 
   return (
-    <div className="flex flex-col gap-5">
-      <div>
+    /*
+     * THE ROSTER AND THE FORM SIDE BY SIDE, seven columns and five, and stacked below `xl`.
+     * Source order is reading order here, so there is no `order-N` on this screen at all:
+     * who administers the centre, then how to appoint somebody else.
+     *
+     * The list is short by nature — one owner and a manager or two — so it is not the
+     * width that the roster needs; it is that the form below it was being set across the
+     * whole page. Six checkboxes with a line of explanation each, stretched to 1,184px, is
+     * the same defect as a 600px column on a monitor, from the other side.
+     */
+    <div className="flex flex-col gap-4 xl:grid xl:grid-cols-12 xl:items-start xl:gap-6">
+      <div className="xl:col-span-12">
         {back}
-        <h1 className="mt-1 text-xl font-bold text-ink">{t.title}</h1>
+        <h1 className="mt-1 text-xl font-bold text-ink lg:text-2xl">{t.title}</h1>
         <p className="mt-1 text-ink-soft">{t.subtitle}</p>
       </div>
 
-      <ul className="flex flex-col gap-2">
+      {/* No strip of column heads over this list, unlike the teacher and staff rosters:
+          those run to fourteen rows and reward a column that can be read down, and three
+          words over three rows would be furniture. Each row says what it is instead. */}
+      <ul className="flex flex-col gap-2 xl:col-span-7">
         {admins.map((admin) => (
           <ManagerRow
             key={admin.memberId}
@@ -208,36 +232,39 @@ export default async function ManagersPage() {
         ))}
       </ul>
 
-      {candidates === null ? (
-        <Card>
-          <h2 className="font-semibold text-ink">{t.appointTitle}</h2>
-          <p className="mt-1 text-sm text-ink-soft">{t.staffUnreadable}</p>
-        </Card>
-      ) : candidates.length === 0 ? (
-        /* Nobody left to offer, which on a centre with one owner and no staff yet is the
-           ordinary first visit. Names the screen that fixes it rather than a form that
-           cannot: an administrator has to be somebody the centre has written down. */
-        <Card>
-          <h2 className="font-semibold text-ink">{t.nobodyTitle}</h2>
-          <p className="mt-1 text-sm text-ink-soft">{t.nobodyBody}</p>
-          <Link
-            href="/settings/staff"
-            className="mt-3 inline-flex min-h-tap items-center font-medium text-brand-700"
-          >
-            {d.settings.hub.staff} →
-          </Link>
-        </Card>
-      ) : (
-        <AppointManager
-          title={t.appointTitle}
-          candidates={candidates}
-          branches={branches}
-          t={d.managerForm}
-          caps={d.capabilities}
-          branchAccess={d.branchAccess}
-          common={d.common}
-        />
-      )}
+      <div className="xl:col-span-5">
+        {candidates === null ? (
+          <Card>
+            <h2 className="font-semibold text-ink">{t.appointTitle}</h2>
+            <p className="mt-1 text-sm text-ink-soft">{t.staffUnreadable}</p>
+          </Card>
+        ) : candidates.length === 0 ? (
+          /* Nobody left to offer, which on a centre with one owner and no staff yet is the
+             ordinary first visit. Names the screen that fixes it rather than a form that
+             cannot: an administrator has to be somebody the centre has written down. */
+          <Card>
+            <h2 className="font-semibold text-ink">{t.nobodyTitle}</h2>
+            <p className="mt-1 text-sm text-ink-soft">{t.nobodyBody}</p>
+            <Link
+              href="/settings/staff"
+              className="mt-3 inline-flex min-h-tap items-center font-medium
+                text-brand-700"
+            >
+              {d.settings.hub.staff} →
+            </Link>
+          </Card>
+        ) : (
+          <AppointManager
+            title={t.appointTitle}
+            candidates={candidates}
+            branches={branches}
+            t={d.managerForm}
+            caps={d.capabilities}
+            branchAccess={d.branchAccess}
+            common={d.common}
+          />
+        )}
+      </div>
     </div>
   )
 }
