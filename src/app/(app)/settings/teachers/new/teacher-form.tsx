@@ -14,6 +14,13 @@
  * reports results; who has paid is the owner's business. Those defaults live in
  * `@/lib/permissions` beside the list of five, because the list screen falls back
  * to the same values when a teacher has no permissions row at all.
+ *
+ * WHO THEY ARE ON THE LEFT, WHAT THEY MAY DO ON THE RIGHT, from `lg` (§20.8.7). A name, a
+ * number, a building, the subject ticks, five permissions with a line of explanation each
+ * and the login opt-in were one column at every width: on a laptop the submit sat two
+ * scrolls below the name and the login decision — the one an owner most often comes here
+ * to make — was never on screen when the form loaded. The two halves are the two things
+ * being created, and source order is reading order, so tab order is unchanged.
  */
 import { useActionState, useState } from 'react'
 import { useRouter } from 'next/navigation'
@@ -74,10 +81,14 @@ export function TeacherForm({
   // there is nobody else a fresh username could have been.
   if (state?.linked || state?.username) {
     return (
-      <div className="flex flex-col gap-4">
+      <div className="flex max-w-2xl flex-col gap-4">
         <Alert tone="ok">{state.ok}</Alert>
         {state.linked && <p className="text-sm text-ink-soft">{t.wrongPerson}</p>}
-        <Button type="button" full onClick={() => router.push('/settings/teachers')}>
+        <Button
+          type="button"
+          className="self-start"
+          onClick={() => router.push('/settings/teachers')}
+        >
           {t.seeList}
         </Button>
       </div>
@@ -85,156 +96,172 @@ export function TeacherForm({
   }
 
   return (
-    <form action={formAction} className="flex flex-col gap-4">
+    <form action={formAction} className="flex max-w-5xl flex-col gap-4">
       {state?.error && <Alert>{state.error}</Alert>}
       {state?.confirm && <Alert tone="warn">{state.confirm}</Alert>}
 
-      <Field
-        label={t.nameLabel}
-        name="name"
-        placeholder={t.namePlaceholder}
-        required
-        maxLength={MAX_NAME}
-        autoComplete="off"
-      />
+      <div className="grid gap-4 lg:grid-cols-2 lg:items-start lg:gap-6">
+        {/* The record: who they are, where they teach, what they teach. */}
+        <div className="flex flex-col gap-4">
+          <Field
+            label={t.nameLabel}
+            name="name"
+            placeholder={t.namePlaceholder}
+            required
+            maxLength={MAX_NAME}
+            autoComplete="off"
+          />
 
-      <div>
-        <Field
-          label={`${t.phone} (${common.optional})`}
-          hint={t.phoneHint}
-          name="phone"
-          type="tel"
-          inputMode="numeric"
-          placeholder="01712345678"
-          value={phone}
-          onChange={(e) => setPhone(e.target.value)}
-          error={showEcho && !normalized ? t.phoneBad : undefined}
-        />
-        {showEcho && normalized && (
-          <p className="num mt-1 text-sm font-medium text-brand-700">
-            {formatBdMobile(normalized)} ✓
-          </p>
-        )}
-      </div>
+          <div>
+            <Field
+              label={`${t.phone} (${common.optional})`}
+              hint={t.phoneHint}
+              name="phone"
+              type="tel"
+              inputMode="numeric"
+              placeholder="01712345678"
+              value={phone}
+              onChange={(e) => setPhone(e.target.value)}
+              error={showEcho && !normalized ? t.phoneBad : undefined}
+            />
+            {showEcho && normalized && (
+              <p className="num mt-1 text-sm font-medium text-brand-700">
+                {formatBdMobile(normalized)} ✓
+              </p>
+            )}
+          </div>
 
-      {/* WHERE THEY TEACH, NOT WHAT THEY MAY SEE, and the two are easy to confuse
-          because both are a branch. This one is `teachers.branch_id`: it puts them on
-          the Mirpur staff list and in Mirpur's salary bill. What a colleague may reach
-          is `center_members.branch_id`, which is a permission and has to be typed on
-          its own screen — 20260811000054 declines to infer it for exactly this reason.
-          A teacher filed under Mirpur still reads the whole organisation until
-          somebody says otherwise. */}
-      <BranchPicker t={branchPick} branches={branches} current={null} />
+          {/* WHERE THEY TEACH, NOT WHAT THEY MAY SEE, and the two are easy to confuse
+              because both are a branch. This one is `teachers.branch_id`: it puts them on
+              the Mirpur staff list and in Mirpur's salary bill. What a colleague may reach
+              is `center_members.branch_id`, which is a permission and has to be typed on
+              its own screen — 20260811000054 declines to infer it for exactly this reason.
+              A teacher filed under Mirpur still reads the whole organisation until
+              somebody says otherwise. */}
+          <BranchPicker t={branchPick} branches={branches} current={null} />
 
-      {/* A line where the ticks would be, when the list of subjects could not be read.
-          The same call the new-student form makes and for the same reasons: the ticks
-          are optional, nothing exists yet to be overwritten, and the teacher list is
-          where a missing one gets put right. Silence is the only thing ruled out. */}
-      {subjects === null ? (
-        <p className="text-sm text-ink-soft">{t.subjectsUnreadable}</p>
-      ) : (
-        subjects.length > 0 && (
+          {/* A line where the ticks would be, when the list of subjects could not be read.
+              The same call the new-student form makes and for the same reasons: the ticks
+              are optional, nothing exists yet to be overwritten, and the teacher list is
+              where a missing one gets put right. Silence is the only thing ruled out. */}
+          {subjects === null ? (
+            <p className="text-sm text-ink-soft">{t.subjectsUnreadable}</p>
+          ) : (
+            subjects.length > 0 && (
+              <fieldset className="flex flex-col gap-2">
+                <legend className="mb-1 font-medium text-ink">{t.whichSubjects}</legend>
+                {/* Paired from `xl`, where this half is 468px: a subject name is two or
+                    three words, and one per row down a column of that width is a list
+                    that scrolls for no reason. */}
+                <div className="grid gap-2 xl:grid-cols-2">
+                  {subjects.map((subject) => (
+                    <label
+                      key={subject.id}
+                      className="flex min-h-tap cursor-pointer items-center gap-3
+                        rounded-xl border-2 border-line bg-white px-4
+                        has-[:checked]:border-brand-600 has-[:checked]:bg-brand-50"
+                    >
+                      <input
+                        type="checkbox"
+                        name="subjectIds"
+                        value={subject.id}
+                        className="h-5 w-5 shrink-0 accent-brand-600"
+                      />
+                      <span className="min-w-0 truncate text-ink">{subject.label}</span>
+                    </label>
+                  ))}
+                </div>
+              </fieldset>
+            )
+          )}
+        </div>
+
+        {/* And what they may do with it: the five permissions, then the login. */}
+        <div className="flex flex-col gap-4">
+
           <fieldset className="flex flex-col gap-2">
-            <legend className="mb-1 font-medium text-ink">{t.whichSubjects}</legend>
+            <legend className="mb-1 font-medium text-ink">{t.whatTheyCanDo}</legend>
             <div className="flex flex-col gap-2">
-              {subjects.map((subject) => (
+              {PERMISSION_KEYS.map((key) => (
                 <label
-                  key={subject.id}
-                  className="flex min-h-tap cursor-pointer items-center gap-3
-                    rounded-xl border-2 border-line bg-white px-4
+                  key={key}
+                  className="flex min-h-tap cursor-pointer items-start gap-3 rounded-xl
+                    border-2 border-line bg-white px-4 py-3
                     has-[:checked]:border-brand-600 has-[:checked]:bg-brand-50"
                 >
                   <input
                     type="checkbox"
-                    name="subjectIds"
-                    value={subject.id}
-                    className="h-5 w-5 shrink-0 accent-brand-600"
+                    name={key}
+                    defaultChecked={PERMISSION_DEFAULTS[key]}
+                    className="mt-0.5 h-5 w-5 shrink-0 accent-brand-600"
                   />
-                  <span className="min-w-0 truncate text-ink">{subject.label}</span>
+                  <span className="min-w-0">
+                    <span className="block text-ink">{labels[key].label}</span>
+                    <span className="block text-sm text-ink-soft">{labels[key].hint}</span>
+                  </span>
                 </label>
               ))}
             </div>
           </fieldset>
-        )
-      )}
 
-      <fieldset className="flex flex-col gap-2">
-        <legend className="mb-1 font-medium text-ink">{t.whatTheyCanDo}</legend>
-        <div className="flex flex-col gap-2">
-          {PERMISSION_KEYS.map((key) => (
-            <label
-              key={key}
-              className="flex min-h-tap cursor-pointer items-start gap-3 rounded-xl
-                border-2 border-line bg-white px-4 py-3
-                has-[:checked]:border-brand-600 has-[:checked]:bg-brand-50"
-            >
+          <fieldset
+            className="flex flex-col gap-3 rounded-2xl border border-line bg-white p-4"
+          >
+            <label className="flex min-h-tap cursor-pointer items-start gap-3">
               <input
                 type="checkbox"
-                name={key}
-                defaultChecked={PERMISSION_DEFAULTS[key]}
+                name="wantsLogin"
+                checked={wantsLogin}
+                onChange={(e) => setWantsLogin(e.target.checked)}
                 className="mt-0.5 h-5 w-5 shrink-0 accent-brand-600"
               />
               <span className="min-w-0">
-                <span className="block text-ink">{labels[key].label}</span>
-                <span className="block text-sm text-ink-soft">{labels[key].hint}</span>
+                <span className="block font-medium text-ink">{t.loginNow}</span>
+                <span className="block text-sm text-ink-soft">{t.loginNowBody}</span>
               </span>
             </label>
-          ))}
+
+            {wantsLogin && (
+              <>
+                <Field
+                  label={t.password}
+                  hint={t.passwordHint}
+                  name="password"
+                  type="text"
+                  required
+                  minLength={MIN_PASSWORD}
+                  autoComplete="off"
+                  placeholder={t.passwordPlaceholder}
+                />
+                <p className="text-sm text-ink-soft">{t.passwordNote}</p>
+              </>
+            )}
+
+            {/*
+              Only rendered once the server has said the number belongs to an existing
+              account. Unchecked by default and deliberately not remembered, so the
+              owner has to look at the name in the banner above and agree to it.
+            */}
+            {state?.confirm && (
+              <label
+                className="flex min-h-tap cursor-pointer items-center gap-3 rounded-xl
+                  border-2 border-late/40 bg-late/5 px-4 py-3"
+              >
+                <input
+                  type="checkbox"
+                  name="confirmLink"
+                  className="h-5 w-5 shrink-0 accent-brand-600"
+                />
+                <span className="text-ink">{t.confirmLink}</span>
+              </label>
+            )}
+          </fieldset>
         </div>
-      </fieldset>
+      </div>
 
-      <fieldset className="flex flex-col gap-3 rounded-2xl border border-line bg-white p-4">
-        <label className="flex min-h-tap cursor-pointer items-start gap-3">
-          <input
-            type="checkbox"
-            name="wantsLogin"
-            checked={wantsLogin}
-            onChange={(e) => setWantsLogin(e.target.checked)}
-            className="mt-0.5 h-5 w-5 shrink-0 accent-brand-600"
-          />
-          <span className="min-w-0">
-            <span className="block font-medium text-ink">{t.loginNow}</span>
-            <span className="block text-sm text-ink-soft">{t.loginNowBody}</span>
-          </span>
-        </label>
-
-        {wantsLogin && (
-          <>
-            <Field
-              label={t.password}
-              hint={t.passwordHint}
-              name="password"
-              type="text"
-              required
-              minLength={MIN_PASSWORD}
-              autoComplete="off"
-              placeholder={t.passwordPlaceholder}
-            />
-            <p className="text-sm text-ink-soft">{t.passwordNote}</p>
-          </>
-        )}
-
-        {/*
-          Only rendered once the server has said the number belongs to an existing
-          account. Unchecked by default and deliberately not remembered, so the
-          owner has to look at the name in the banner above and agree to it.
-        */}
-        {state?.confirm && (
-          <label
-            className="flex min-h-tap cursor-pointer items-center gap-3 rounded-xl
-              border-2 border-late/40 bg-late/5 px-4 py-3"
-          >
-            <input
-              type="checkbox"
-              name="confirmLink"
-              className="h-5 w-5 shrink-0 accent-brand-600"
-            />
-            <span className="text-ink">{t.confirmLink}</span>
-          </label>
-        )}
-      </fieldset>
-
-      <Button type="submit" full disabled={pending}>
+      {/* Sized to itself, under both columns: `full` across a 1,024px form is a control
+          stretched to a width that says nothing about what it does. */}
+      <Button type="submit" disabled={pending} className="self-start">
         {pending ? common.adding : t.submit}
       </Button>
     </form>

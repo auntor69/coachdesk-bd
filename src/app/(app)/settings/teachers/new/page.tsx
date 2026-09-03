@@ -15,7 +15,14 @@ export async function generateMetadata() {
   return { title: `${dict(locale).settings.teachers.newTitle} — CoachDesk` }
 }
 
-/** `staff` (§6.2), like the list behind it — this is the write that word is about. */
+/**
+ * `staff` (§6.2), like the list behind it — this is the write that word is about.
+ *
+ * THE FORM IS TWO COLUMNS FROM `lg` (§20.8.7), which teacher-form.tsx does rather than
+ * this page: one `<form>` has to hold both halves. What this page owns is the letterhead —
+ * the seat count the list screen also carries, so the two agree — and the two refusals,
+ * both capped, both now carrying the heading this screen never had.
+ */
 export default async function NewTeacherPage() {
   const session = await pageCapability('staff')
   const locale = session.locale
@@ -27,13 +34,17 @@ export default async function NewTeacherPage() {
   // link this build still renders.
   if (!hasStaff(session.plan)) {
     return (
-      <div className="flex flex-col gap-5">
+      // Capped: a refusal is two sentences, and two sentences set across 1,216px is §26's
+      // defect inside out. The heading was missing altogether, so a bookmark landed a
+      // reader on a card about their plan with nothing above it naming the screen.
+      <div className="flex max-w-2xl flex-col gap-5">
         <Link
           href="/settings"
           className="inline-flex min-h-tap items-center text-ink-soft hover:text-ink"
         >
           ← {d.settings.hub.title}
         </Link>
+        <h1 className="text-xl font-bold text-ink lg:text-2xl">{t.newTitle}</h1>
         <Card>
           <h2 className="font-semibold text-ink">{t.soloTitle}</h2>
           <p className="mt-1 text-sm text-ink-soft">
@@ -69,7 +80,9 @@ export default async function NewTeacherPage() {
     branchChoicesFor(supabase, session),
   ])
 
-  const atLimit = wouldExceed(session.plan, 'maxTeachers', teacherCount ?? 0)
+  const active = teacherCount ?? 0
+  const limit = session.plan.maxTeachers
+  const atLimit = wouldExceed(session.plan, 'maxTeachers', active)
 
   /*
    * `null` goes down as `null`, so the form can say the ticks are missing rather
@@ -94,18 +107,24 @@ export default async function NewTeacherPage() {
         >
           ← {t.title}
         </Link>
-        <h1 className="mt-1 text-xl font-bold text-ink">{t.newTitle}</h1>
+        <h1 className="mt-1 text-xl font-bold text-ink lg:text-2xl">{t.newTitle}</h1>
+        {/* The same line the list carries, in the same words: how many teachers there
+            are, and out of how many where a tier caps them. An owner adding somebody is
+            the reader most likely to want it. */}
+        <p className="mt-1 text-ink-soft">
+          {limit === null ? t.count(active) : t.used(active, limit)}
+        </p>
       </div>
 
       {atLimit ? (
-        <Card>
+        <Card className="max-w-3xl">
           {/* The same refusal the list gives, in the same words. */}
           <p className="font-medium text-ink">{t.capTitle}</p>
           <p className="mt-1 text-sm text-ink-soft">
             {/* maxTeachers is non-null here: wouldExceed is false when uncapped. */}
             {t.cap(
               planName(session.plan, locale),
-              session.plan.maxTeachers ?? 0,
+              limit ?? 0,
               planName(PLANS.center, locale),
             )}
           </p>
