@@ -104,11 +104,11 @@ export default async function NewBatchPage() {
         >
           ← {t.title}
         </Link>
-        <h1 className="mt-1 text-xl font-bold text-ink">{t.newTitle}</h1>
+        <h1 className="mt-1 text-xl font-bold text-ink lg:text-2xl">{t.newTitle}</h1>
       </div>
 
       {atLimit ? (
-        <Card>
+        <Card className="max-w-2xl">
           <p className="font-medium text-ink">{t.capTitle}</p>
           <p className="mt-1 text-sm text-ink-soft">
             {/* maxBatches is non-null here: wouldExceed only says yes when it is. */}
@@ -116,11 +116,11 @@ export default async function NewBatchPage() {
           </p>
         </Card>
       ) : subjects === null ? (
-        <Card className="border-late/30 bg-late/5">
+        <Card className="max-w-2xl border-late/30 bg-late/5">
           <p className="font-medium text-ink">{t.subjectsUnreadable}</p>
         </Card>
       ) : subjects.length === 0 ? (
-        <Card>
+        <Card className="max-w-2xl">
           <p className="font-medium text-ink">{t.needSubjectTitle}</p>
           <p className="mt-1 text-sm text-ink-soft">{t.needSubjectBody}</p>
           <Link

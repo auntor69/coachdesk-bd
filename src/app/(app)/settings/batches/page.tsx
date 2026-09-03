@@ -16,6 +16,17 @@ export async function generateMetadata() {
   return { title: `${dict(locale).settings.batches.title} — CoachDesk` }
 }
 
+/**
+ * The timetable: every batch the centre runs, in the order the day runs them.
+ *
+ * A CAPPED COLUMN, AND TWO OF THEM AT 1,216px (§20.8.11). A batch row is a name, a
+ * subject, a time, the days, a teacher and a price — a 1,216px row puts the price a
+ * screen away from the name it belongs to, and stretching one to fit was the whole
+ * complaint. Rows stay the width they are legible at, and where there is room for two
+ * such columns the list becomes two: a centre with forty batches scrolls half as far.
+ * Not sooner than `2xl` — at 960px two columns are 468px each, and "Sat, Mon, Wed ·
+ * Rahim Uddin" wraps in that, which turns every row into five lines to save a scroll.
+ */
 export default async function BatchesPage() {
   const session = await pagePermission('can_manage_batches')
   const supabase = await createClient()
@@ -64,14 +75,14 @@ export default async function BatchesPage() {
    */
   if (batches === null) {
     return (
-      <div className="flex flex-col gap-5">
+      <div className="flex max-w-2xl flex-col gap-5">
         <Link
           href="/settings"
           className="inline-flex min-h-tap items-center text-ink-soft hover:text-ink"
         >
           ← {d.settings.hub.title}
         </Link>
-        <h1 className="text-xl font-bold text-ink">{t.title}</h1>
+        <h1 className="text-xl font-bold text-ink lg:text-2xl">{t.title}</h1>
         <Card className="border-late/30 bg-late/5">
           <p className="font-medium text-ink">{d.settings.listUnreadable}</p>
         </Card>
@@ -114,7 +125,11 @@ export default async function BatchesPage() {
   const limit = capIsQuota(session.plan, 'maxBatches') ? session.plan.maxBatches : null
 
   return (
-    <div className="flex flex-col gap-5">
+    /* The cap is on the page and not the list, so the heading, the count and the
+       button that opens a batch stay the width of the rows they belong to. It lifts
+       at `2xl`, which is where the list becomes two columns and the button belongs at
+       the far edge again. */
+    <div className="flex max-w-2xl flex-col gap-5 2xl:max-w-none">
       <div>
         <Link
           href="/settings"
@@ -124,7 +139,7 @@ export default async function BatchesPage() {
         </Link>
         <div className="mt-1 flex items-end justify-between gap-3">
           <div>
-            <h1 className="text-xl font-bold text-ink">{t.title}</h1>
+            <h1 className="text-xl font-bold text-ink lg:text-2xl">{t.title}</h1>
             <p className="mt-1 text-ink-soft">
               {limit === null ? t.count(activeCount) : t.used(activeCount, limit)}
             </p>
@@ -145,12 +160,12 @@ export default async function BatchesPage() {
       </div>
 
       {rows.length === 0 ? (
-        <Card>
+        <Card className="max-w-2xl">
           <h2 className="font-semibold text-ink">{t.emptyTitle}</h2>
           <p className="mt-1 text-sm text-ink-soft">{t.emptyBody}</p>
         </Card>
       ) : (
-        <ul className="flex flex-col gap-2">
+        <ul className="flex flex-col gap-2 2xl:grid 2xl:grid-cols-2 2xl:gap-3">
           {rows.map((row) => {
             const body = (
               <>
@@ -223,15 +238,17 @@ export default async function BatchesPage() {
                   // The whole row, not a pencil in the corner: the thing an owner
                   // comes here to change is usually the number they are already
                   // looking at, and on the phone this is held in one hand.
+                  // `h-full` only where there are two columns, so the pair in a row
+                  // are the same height and the border does not step mid-list.
                   <Link
                     href={`/settings/batches/${row.id}`}
                     className="block rounded-xl border border-line bg-white px-4 py-3
-                      hover:border-brand-300 active:bg-brand-50"
+                      hover:border-brand-300 active:bg-brand-50 2xl:h-full"
                   >
                     {body}
                   </Link>
                 ) : (
-                  <div className="rounded-xl border border-line bg-white px-4 py-3">
+                  <div className="rounded-xl border border-line bg-white px-4 py-3 2xl:h-full">
                     {body}
                   </div>
                 )}

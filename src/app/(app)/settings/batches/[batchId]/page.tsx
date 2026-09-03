@@ -103,7 +103,7 @@ export default async function BatchPage({
     return (
       <div className="flex flex-col gap-5">
         {back}
-        <Card className="border-late/30 bg-late/5">
+        <Card className="max-w-2xl border-late/30 bg-late/5">
           <p className="font-medium text-ink">{t.batchUnreadable}</p>
         </Card>
       </div>
@@ -116,7 +116,7 @@ export default async function BatchPage({
     return (
       <div className="flex flex-col gap-5">
         {back}
-        <p className="text-ink">{t.errors.notFound}</p>
+        <p className="max-w-2xl text-ink">{t.errors.notFound}</p>
       </div>
     )
   }
@@ -165,7 +165,9 @@ export default async function BatchPage({
     <div className="flex flex-col gap-5">
       <div>
         {back}
-        <h1 className="mt-1 truncate text-xl font-bold text-ink">{batch.name}</h1>
+        <h1 className="mt-1 truncate text-xl font-bold text-ink lg:text-2xl">
+          {batch.name}
+        </h1>
         <p className="mt-1 text-ink-soft">{t.editTitle}</p>
       </div>
 
