@@ -35,6 +35,11 @@ export async function generateMetadata() {
  * STAFF ADMIN AND `fees`, matching the panel it feeds: an award is a standing instruction
  * to reduce what families owe, so a manager narrowed away from money must not be able to
  * write one. The action re-checks, because that is where the security is.
+ *
+ * TWO COLUMNS FROM `lg`: the list of awards in seven, and beside it the form that names a
+ * new one and what the named ones cost this month. The rule and the cost of the same award
+ * end up level with each other, which is the pairing the single column made impossible —
+ * "sibling, 50% of the fee" was three screens above "sibling, 12 bills, ৳9,000".
  */
 export default async function ScholarshipsPage() {
   const session = await pageCapability('fees')
@@ -51,22 +56,23 @@ export default async function ScholarshipsPage() {
   // has ever granted, and an owner looking for "why is this bill labelled hardship"
   // needs to find hardship even after they stopped offering it. `active desc` puts the
   // ones they can still grant at the top.
-  const [{ data: awards }, { data: waived }] = await Promise.all([
-    supabase
-      .from('fee_scholarships')
-      .select('id, name, percent, amount_bdt, active')
-      .eq('coaching_center_id', session.active.centerId)
-      .order('active', { ascending: false })
-      .order('name', { ascending: true }),
-    // This month only. A year of history belongs in a report, and the question this
-    // screen answers is "what are these costing us", which is a question about now.
-    supabase
-      .from('fee_waiver_month')
-      .select('scholarship_id, scholarship_name, bills, students, waived_bdt')
-      .eq('coaching_center_id', session.active.centerId)
-      .eq('period_month', month)
-      .order('waived_bdt', { ascending: false }),
-  ])
+  const [{ data: awards, error: awardsError }, { data: waived, error: waivedError }] =
+    await Promise.all([
+      supabase
+        .from('fee_scholarships')
+        .select('id, name, percent, amount_bdt, active')
+        .eq('coaching_center_id', session.active.centerId)
+        .order('active', { ascending: false })
+        .order('name', { ascending: true }),
+      // This month only. A year of history belongs in a report, and the question this
+      // screen answers is "what are these costing us", which is a question about now.
+      supabase
+        .from('fee_waiver_month')
+        .select('scholarship_id, scholarship_name, bills, students, waived_bdt')
+        .eq('coaching_center_id', session.active.centerId)
+        .eq('period_month', month)
+        .order('waived_bdt', { ascending: false }),
+    ])
 
   const lines = waived ?? []
 
@@ -76,34 +82,105 @@ export default async function ScholarshipsPage() {
   const total = sumTaka(lines.map((line) => Number(line.waived_bdt ?? 0)))
 
   return (
-    <div className="flex flex-col gap-4">
-      <Link
-        href="/fees"
-        className="inline-flex min-h-tap items-center font-medium text-brand-700"
-      >
-        ← {t.backLink}
-      </Link>
+    /*
+     * The `contents` + `order-N` arrangement the rest of §20.8 uses: each block carries the
+     * number of the place a phone draws it in, and below `lg` the rail generates no box at
+     * all, so its two blocks fall back into the one column around the list.
+     *
+     * The rail is written FIRST and drawn second. `order` moves nothing for a keyboard or a
+     * screen reader, so written last, naming a waiver would be reached only after tabbing
+     * through the edit button of every award the centre has ever granted.
+     */
+    <div className="flex flex-col gap-5 lg:grid lg:grid-cols-12 lg:items-start lg:gap-6">
+      <div className="order-1 flex flex-col gap-4 lg:col-span-12">
+        <Link
+          href="/fees"
+          className="inline-flex min-h-tap items-center font-medium text-brand-700"
+        >
+          ← {t.backLink}
+        </Link>
 
-      <div>
-        <h1 className="text-xl font-semibold text-ink">{t.title}</h1>
-        <p className="mt-1 text-sm text-ink-soft">{t.subtitle}</p>
+        <div>
+          <h1 className="text-xl font-bold text-ink lg:text-2xl">{t.title}</h1>
+          <p className="mt-1 text-sm text-ink-soft">{t.subtitle}</p>
+        </div>
       </div>
 
-      {/* What the screen is for, in one sentence, above the form. An owner who has never
-          waived anything by name cannot tell from a list of nothing why they would. */}
-      <Card>
-        <p className="text-sm text-ink-soft">{t.why}</p>
-      </Card>
+      <div className="contents lg:order-3 lg:col-span-5 lg:flex lg:flex-col lg:gap-5">
+        {/* `t.why` lives inside this form now rather than in a card above it — see the
+            note there. Not sticky: the form and the month's figures together are taller
+            than a laptop screen, and a rail that cannot be scrolled past is worse than
+            one that scrolls. */}
+        <ScholarshipForm t={t} className="order-2" />
 
-      <ScholarshipForm t={t} />
+        <div className="order-4 flex flex-col gap-2">
+          <h2 className="font-semibold text-ink">
+            {t.monthHeading} — {formatMonth(month, locale)}
+          </h2>
 
-      <div className="flex flex-col gap-2">
+          {waivedError ? (
+            <Card>
+              <p className="text-sm text-ink-soft">{t.monthUnreadable}</p>
+            </Card>
+          ) : lines.length === 0 ? (
+            <Card>
+              <p className="text-sm text-ink-soft">{t.monthEmpty}</p>
+            </Card>
+          ) : (
+            <Card>
+              <ul className="flex flex-col divide-y divide-line">
+                {lines.map((line) => (
+                  <li
+                    key={line.scholarship_id ?? 'unnamed'}
+                    className="flex items-baseline justify-between gap-3 py-2 first:pt-0
+                      last:pb-0"
+                  >
+                    <div className="min-w-0">
+                      {/* A waiver with no award behind it is a figure somebody typed, and
+                          it is on this report rather than left off it: the owner needs to
+                          see how much of the month's giving away was unaccounted for. */}
+                      <p className="truncate font-medium text-ink">
+                        {line.scholarship_name ?? t.unnamed}
+                      </p>
+                      <p className="num text-sm text-ink-faint">
+                        {fill(t.countNote, {
+                          bills: Number(line.bills ?? 0),
+                          students: Number(line.students ?? 0),
+                        })}
+                      </p>
+                    </div>
+                    <p className="num shrink-0 font-medium text-ink">
+                      {formatTaka(Number(line.waived_bdt ?? 0))}
+                    </p>
+                  </li>
+                ))}
+              </ul>
+
+              <div
+                className="mt-3 flex items-baseline justify-between gap-3 border-t
+                  border-line pt-3"
+              >
+                <p className="font-semibold text-ink">{t.monthTotal}</p>
+                <p className="num font-semibold text-ink">{formatTaka(total)}</p>
+              </div>
+            </Card>
+          )}
+        </div>
+      </div>
+      {/* Seven columns, because a row opens into a form: a name, a tick and a save
+          button. Written after the rail and drawn before it. */}
+      <div className="order-3 flex flex-col gap-2 lg:order-2 lg:col-span-7">
         <h2 className="font-semibold text-ink">{t.listHeading}</h2>
 
-        {/* Null and empty read the same here on purpose. A failed read leaves the form
-            above working and the month's totals below untouched, and "no named waivers
-            yet" is the honest state of the centre this screen is written for. */}
-        {(awards ?? []).length === 0 ? (
+        {/* A read that failed is not an empty list, and saying it was invites the one
+            mistake this screen cannot absorb: `fee_scholarships_center_name_key` folds
+            case, so an owner told "no named waivers yet" who adds hardship again is
+            refused by an index rather than by the screen. */}
+        {awardsError ? (
+          <Card>
+            <p className="text-sm text-ink-soft">{t.unreadable}</p>
+          </Card>
+        ) : (awards ?? []).length === 0 ? (
           <Card>
             <p className="text-sm text-ink-soft">{t.empty}</p>
           </Card>
@@ -124,54 +201,6 @@ export default async function ScholarshipsPage() {
               />
             ))}
           </ul>
-        )}
-      </div>
-
-      <div className="flex flex-col gap-2">
-        <h2 className="font-semibold text-ink">
-          {t.monthHeading} — {formatMonth(month, locale)}
-        </h2>
-
-        {lines.length === 0 ? (
-          <Card>
-            <p className="text-sm text-ink-soft">{t.monthEmpty}</p>
-          </Card>
-        ) : (
-          <Card>
-            <ul className="flex flex-col divide-y divide-line">
-              {lines.map((line) => (
-                <li
-                  key={line.scholarship_id ?? 'unnamed'}
-                  className="flex items-baseline justify-between gap-3 py-2 first:pt-0
-                    last:pb-0"
-                >
-                  <div className="min-w-0">
-                    {/* A waiver with no award behind it is a figure somebody typed, and
-                        it is on this report rather than left off it: the owner needs to
-                        see how much of the month's giving away was unaccounted for. */}
-                    <p className="truncate font-medium text-ink">
-                      {line.scholarship_name ?? t.unnamed}
-                    </p>
-                    <p className="num text-sm text-ink-faint">
-                      {fill(t.countNote, {
-                        bills: Number(line.bills ?? 0),
-                        students: Number(line.students ?? 0),
-                      })}
-                    </p>
-                  </div>
-                  <p className="num shrink-0 font-medium text-ink">
-                    {formatTaka(Number(line.waived_bdt ?? 0))}
-                  </p>
-                </li>
-              ))}
-            </ul>
-
-            <div className="mt-3 flex items-baseline justify-between gap-3 border-t
-              border-line pt-3">
-              <p className="font-semibold text-ink">{t.monthTotal}</p>
-              <p className="num font-semibold text-ink">{formatTaka(total)}</p>
-            </div>
-          </Card>
         )}
       </div>
     </div>

@@ -35,7 +35,14 @@ const SELECT_CLASS =
  */
 const DEFAULT_KIND = 'percent'
 
-export function ScholarshipForm({ t }: { t: T<'scholarships'> }) {
+export function ScholarshipForm({
+  t,
+  className = '',
+}: {
+  t: T<'scholarships'>
+  /** The grid slot, because on a laptop this form is the rail. See the page. */
+  className?: string
+}) {
   const [kind, setKind] = useState(DEFAULT_KIND)
   const formRef = useRef<HTMLFormElement>(null)
 
@@ -62,9 +69,16 @@ export function ScholarshipForm({ t }: { t: T<'scholarships'> }) {
     <form
       ref={formRef}
       action={formAction}
-      className="flex flex-col gap-3 rounded-2xl border border-line bg-white p-5"
+      className={`flex flex-col gap-3 rounded-2xl border border-line bg-white p-5
+        ${className}`}
     >
       <h2 className="font-semibold text-ink">{t.addHeading}</h2>
+
+      {/* Why anybody would name a waiver at all, inside the form it is about rather than
+          in a card of its own above it: an owner who has never done this cannot tell from
+          an empty list why they would start, and a one-sentence card floating over a form
+          is the page furniture §37 asks us to stop drawing. */}
+      <p className="text-sm text-ink-soft">{t.why}</p>
 
       {state?.error && <Alert>{state.error}</Alert>}
       {state?.ok && (

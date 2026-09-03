@@ -943,6 +943,14 @@ export const en: Dictionary = {
 
     listHeading: 'The list',
     empty: 'No named waivers yet.',
+    /**
+     * Not the same sentence as `empty`, and the difference is worth a key: a failed read
+     * shown as "no named waivers yet" invites an owner to add a name that is already
+     * there, and `fee_scholarships_center_name_key` refuses it — on the screen that just
+     * told them the list was empty.
+     */
+    unreadable:
+      'The named waivers could not be read just now, so none are shown. Nothing has been lost — please reload before adding one, in case the name is already on the list.',
     percentRule: '{percent}% of the fee',
     activeLabel: 'In use',
     retiredNote:
@@ -952,6 +960,9 @@ export const en: Dictionary = {
 
     monthHeading: 'What was waived this month',
     monthEmpty: 'Nothing was waived on any bill this month.',
+    /** Same reason as `unreadable`: an empty month and an unread one are different facts. */
+    monthUnreadable:
+      'This month’s figures could not be read just now, so no total is shown. The waivers themselves are safe — please try again in a moment.',
     unnamed: 'Waived without a name',
     // Templates, not functions. See the Bangla note.
     countNote: '{bills} bills, {students} students',

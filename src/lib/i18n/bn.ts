@@ -1774,6 +1774,9 @@ export const bn = {
     listHeading: 'তালিকা',
     /** Before there is anything, which is every centre's first visit. */
     empty: 'এখনো কোনো নাম দেওয়া ছাড় নেই।',
+    /** See en.scholarships.unreadable: a list shown as empty invites a duplicate name. */
+    unreadable:
+      'নাম দেওয়া ছাড়ের তালিকা এখন পড়া গেল না, তাই কিছু দেখানো হয়নি। কিছু হারায়নি — নতুন নাম যোগ করার আগে পাতাটি আবার লোড করুন, নামটি হয়তো তালিকায় আছেই।',
     percentRule: 'ফি-এর {percent}%',
     activeLabel: 'চালু আছে',
     /**
@@ -1793,6 +1796,9 @@ export const bn = {
      */
     monthHeading: 'এই মাসে কত ছাড় দেওয়া হয়েছে',
     monthEmpty: 'এই মাসে কোনো বিলে ছাড় দেওয়া হয়নি।',
+    /** See en.scholarships.monthUnreadable: an empty month and an unread one differ. */
+    monthUnreadable:
+      'এই মাসের হিসাব এখন পড়া গেল না, তাই কোনো মোট দেখানো হয়নি। ছাড়গুলো ঠিক আছে — একটু পরে আবার চেষ্টা করুন।',
     /** The rows with no award behind them: a figure somebody typed, and nothing more. */
     unnamed: 'নাম ছাড়া ছাড়',
     /**

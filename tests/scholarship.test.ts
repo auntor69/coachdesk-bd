@@ -14,6 +14,8 @@
  */
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
+import { readFileSync } from 'node:fs'
+import path from 'node:path'
 
 import {
   MAX_PERCENT,
@@ -27,6 +29,8 @@ import {
   ruleWaiver,
   scholarshipVerdict,
 } from '../src/lib/fees/scholarship.ts'
+import { bn } from '../src/lib/i18n/bn.ts'
+import { en } from '../src/lib/i18n/en.ts'
 
 /**
  * (bill, share, what Postgres rounds it to). Shared with scripts/test-rls.mjs.
@@ -212,4 +216,173 @@ test('an id that merely looks like a uuid is not one', () => {
   assert.equal(readAwardId('2f2c8d1e9a7b4c3d8e5f1a2b3c4d5e6f'), null)
   assert.equal(readAwardId('2f2c8d1e-9a7b-4c3d-8e5f-1a2b3c4d5e6'), null)
   assert.equal(readAwardId(null), null)
+})
+
+/* -------------------------------------------------------------------------- */
+/* And the screen's own shape                                                 */
+/* -------------------------------------------------------------------------- */
+
+const ROOT = path.join(import.meta.dirname, '..')
+const read = (...parts: string[]) => readFileSync(path.join(ROOT, ...parts), 'utf8')
+
+const HERE = ['src', 'app', '(app)', 'fees', 'scholarships']
+const PAGE = read(...HERE, 'page.tsx')
+const FORM = read(...HERE, 'scholarship-form.tsx')
+const ROW = read(...HERE, 'scholarship-row.tsx')
+
+/** Each anchor is an assertion: a changed span makes its `indexOf` -1. */
+const RENDER = PAGE.slice(
+  PAGE.indexOf('<div className="flex flex-col gap-5 lg:grid lg:grid-cols-12 lg:items-start lg:gap-6">'),
+)
+const HEAD_AT = RENDER.indexOf('<div className="order-1 flex flex-col gap-4 lg:col-span-12">')
+const RAIL_AT = RENDER.indexOf(
+  '<div className="contents lg:order-3 lg:col-span-5 lg:flex lg:flex-col lg:gap-5">',
+)
+const LIST_AT = RENDER.indexOf(
+  '<div className="order-3 flex flex-col gap-2 lg:order-2 lg:col-span-7">',
+)
+
+const RAIL = RENDER.slice(RAIL_AT, LIST_AT)
+const LIST = RENDER.slice(LIST_AT)
+
+/** See plan-page.test.ts: the lookbehind keeps `border-2` and `lg:col-span-N` out. */
+function ordersIn(source: string): string[] {
+  return [...source.matchAll(/(?<=["\s`])order-(\d+|last)\b/g)].map((m) => m[1])
+}
+
+const count = (hay: string, needle: string) => hay.split(needle).length - 1
+
+test('the awards and what they cost sit side by side from lg', () => {
+  // The whole point of the redesign: "sibling, 50% of the fee" level with "sibling, 12
+  // bills, 9,000" instead of three screens above it.
+  assert.ok(RENDER.startsWith('<div className="flex flex-col gap-5 lg:grid'))
+  assert.ok(HEAD_AT >= 0, 'letterhead spans twelve')
+  assert.ok(RAIL_AT >= 0, 'rail takes five')
+  assert.ok(LIST_AT >= 0, 'awards list takes seven')
+  assert.ok(HEAD_AT < RAIL_AT && RAIL_AT < LIST_AT, 'head, then rail, then list')
+})
+
+test('the rail is written first and drawn second', () => {
+  // order moves nothing for a keyboard, so naming a waiver has to come before the edit
+  // button of every award the centre has ever granted.
+  assert.deepEqual(ordersIn(RENDER), ['1', '2', '4', '3'])
+  assert.deepEqual([...ordersIn(RENDER)].sort(), ['1', '2', '3', '4'])
+  assert.ok(RENDER.includes('lg:order-3 lg:col-span-5'))
+  assert.ok(RENDER.includes('lg:order-2 lg:col-span-7'))
+})
+
+test('the rail generates no box below lg, so its two blocks fall into the one column', () => {
+  assert.ok(RENDER.includes('className="contents lg:order-3'))
+})
+
+test('nothing on this screen is stuck to the top', () => {
+  // The form plus the month's figures are taller than a laptop screen, and a stuck block
+  // taller than the viewport cannot be scrolled past. The lookahead is what keeps the
+  // comment saying so ("Not sticky:") from failing the test that enforces it.
+  assert.doesNotMatch(RENDER, /sticky(?=[\s"])/)
+})
+
+test('the form takes its grid slot from the page, not from itself', () => {
+  assert.ok(FORM.includes("className = ''"))
+  assert.ok(FORM.includes('${className}'))
+  assert.ok(RENDER.includes('<ScholarshipForm t={t} className="order-2" />'))
+})
+
+test('why anybody would name a waiver is inside the form it is about', () => {
+  assert.equal(count(FORM, '>{t.why}'), 1)
+  assert.equal(count(PAGE, '>{t.why}'), 0, 'no one-sentence card floating above the form')
+})
+
+test("the month's cost is in the rail and the awards are in the list", () => {
+  assert.ok(RAIL.includes('{t.monthHeading} — {formatMonth(month, locale)}'))
+  assert.ok(RAIL.includes('{t.monthTotal}'))
+  assert.ok(RAIL.includes('{formatTaka(total)}'))
+  assert.ok(RAIL.includes('{fill(t.countNote, {'))
+  assert.ok(RAIL.includes('?? t.unnamed'))
+
+  assert.ok(LIST.includes('{t.listHeading}'))
+  assert.ok(LIST.includes('<ScholarshipRow'))
+
+  // Neither half draws the other's figures, or the same money would be read twice.
+  assert.doesNotMatch(LIST, /monthHeading|monthTotal|formatTaka\(total\)/)
+  assert.doesNotMatch(RAIL, /<ScholarshipRow|t\.listHeading/)
+})
+
+test('a read that failed is not an empty list', () => {
+  // fee_scholarships_center_name_key folds case, so an owner told "none yet" who adds
+  // hardship again is refused by an index on the screen that just invited them to.
+  assert.ok(PAGE.includes('error: awardsError'))
+  assert.ok(PAGE.includes('error: waivedError'))
+  assert.equal(count(PAGE, 'awardsError ?'), 1)
+  assert.equal(count(PAGE, 'waivedError ?'), 1)
+
+  const refused = LIST.indexOf('{t.unreadable}')
+  const emptied = LIST.indexOf('{t.empty}')
+  assert.ok(refused >= 0 && emptied > refused, 'unreadable is asked before empty')
+
+  const monthRefused = RAIL.indexOf('{t.monthUnreadable}')
+  const monthEmptied = RAIL.indexOf('{t.monthEmpty}')
+  assert.ok(monthRefused >= 0 && monthEmptied > monthRefused)
+})
+
+test('both refusals are written in both languages, and say something else', () => {
+  for (const d of [bn, en]) {
+    assert.ok(d.scholarships.unreadable.length > 0)
+    assert.ok(d.scholarships.monthUnreadable.length > 0)
+    assert.notEqual(d.scholarships.unreadable, d.scholarships.empty)
+    assert.notEqual(d.scholarships.monthUnreadable, d.scholarships.monthEmpty)
+    assert.notEqual(d.scholarships.unreadable, d.scholarships.monthUnreadable)
+  }
+  assert.notEqual(bn.scholarships.unreadable, en.scholarships.unreadable)
+})
+
+test('the letterhead is drawn once, in the hand the other screens use', () => {
+  assert.equal(count(PAGE, 'text-xl font-bold text-ink lg:text-2xl'), 1)
+  assert.equal(count(RENDER, '<h1'), 1)
+  const back = RENDER.indexOf('href="/fees"')
+  assert.ok(back >= 0, 'the way back to the board is on the page')
+  assert.ok(back < RENDER.indexOf('<h1'), 'back link on top')
+})
+
+test('the row still opens into the same form, and the rule is still frozen', () => {
+  // §38: the redesign moved boxes on the page, it did not touch what a row can change.
+  assert.ok(ROW.includes("import { updateScholarship, type FeeState } from '../actions'"))
+  assert.ok(ROW.includes('useActionState<FeeState, FormData>(\n    updateScholarship,'))
+  assert.ok(ROW.includes('<input type="hidden" name="awardId" value={id} />'))
+  assert.ok(ROW.includes('name="active"'))
+  assert.ok(ROW.includes('defaultChecked={active}'))
+  assert.ok(ROW.includes('{t.ruleFrozen}'))
+
+  // No box for the rule, because app.guard_fee_scholarship() refuses a change to it, and
+  // no way to delete an award, because the invoice FK is `on delete set null`.
+  assert.doesNotMatch(ROW, /name="percent"|name="value"|name="amount/)
+  assert.doesNotMatch(ROW, /deleteScholarship|name="remove"/)
+})
+
+test('neither client component carries a grid slot of its own', () => {
+  assert.deepEqual(ordersIn(FORM), [])
+  assert.deepEqual(ordersIn(ROW), [])
+})
+
+test('the reads and the sums the redesign moved past are unchanged', () => {
+  // §38 again, at the top of the file this time: two scoped reads, both months' worth of
+  // ordering, and one addition done in poisha.
+  assert.ok(PAGE.includes("pageCapability('fees')"))
+  assert.equal(count(PAGE, ".eq('coaching_center_id', session.active.centerId)"), 2)
+  assert.ok(PAGE.includes("from('fee_scholarships')"))
+  assert.ok(PAGE.includes("from('fee_waiver_month')"))
+  assert.ok(PAGE.includes("select('id, name, percent, amount_bdt, active')"))
+  assert.ok(PAGE.includes("'scholarship_id, scholarship_name, bills, students, waived_bdt'"))
+  assert.ok(PAGE.includes("order('active', { ascending: false })"))
+  assert.ok(PAGE.includes("order('name', { ascending: true })"))
+  assert.ok(PAGE.includes("order('waived_bdt', { ascending: false })"))
+  assert.ok(PAGE.includes('const month = currentPeriodMonth()'))
+  assert.ok(PAGE.includes(".eq('period_month', month)"))
+  assert.ok(PAGE.includes('sumTaka(lines.map((line) => Number(line.waived_bdt ?? 0)))'))
+  assert.ok(PAGE.includes('Number(award.percent)'))
+  assert.ok(PAGE.includes('Number(award.amount_bdt)'))
+
+  // Deliberately not paged: a centre names a handful of these, and the month's report has
+  // one row per name. Neither can reach PostgREST's ceiling without a thousand awards.
+  assert.doesNotMatch(PAGE, /pageAll/)
 })
