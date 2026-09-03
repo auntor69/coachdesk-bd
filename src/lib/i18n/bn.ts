@@ -6486,6 +6486,22 @@ export const bn = {
         'হিসাবরক্ষক, রিসেপশনিস্ট, কো-অর্ডিনেটর, পরিচ্ছন্নতাকর্মী, দরজার গার্ড — ব্যাচ নেন না কিন্তু কোচিং বেতন দেয়, এমন যে কেউ। শিক্ষকেরা তাঁদের নিজের পাতায় আছেন।',
       /** The badge on a row for somebody who has left, or been switched off. */
       inactive: 'বন্ধ',
+      /*
+       * The three column heads over the list, from `lg` only, and aria-hidden: nothing
+       * ties them to the cells beneath the way a <table> would, so they are a scanning
+       * aid and every row still reads on its own.
+       *
+       * `colTenure` is "কর্মকাল" — how long they have been here — and not "যোগ দিয়েছেন",
+       * because the cell under it says the last day on the rows of people who have left.
+       */
+      colStaff: 'কর্মী',
+      colTenure: 'কর্মকাল',
+      colPhone: 'ফোন',
+      /**
+       * Where there is no number, rather than an empty cell: a blank under a heading
+       * reads as something that failed to load, and this is a real gap an owner can fill.
+       */
+      noPhone: 'নম্বর নেই',
       /**
        * Under the name, and only where the centre's own word for the job replaced the
        * role's. The role is what a payroll report groups by, so an owner who reads

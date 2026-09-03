@@ -4322,6 +4322,24 @@ export const en: Dictionary = {
         'An accountant, a receptionist, a coordinator, a cleaner, a guard — anyone the centre pays who does not hold a batch. Teachers are on their own screen.',
       /** The badge on a row for somebody who has left or been switched off. */
       inactive: 'Off',
+      /*
+       * The three column heads over the list, from `lg` only.
+       *
+       * A scanning aid and nothing more — the strip is aria-hidden, because nothing ties
+       * these words to the cells under them the way a <table> would, and every row says
+       * what it is without them. "At the centre" rather than "Joined", because the cell
+       * says when somebody left on the rows where that is the fact worth having.
+       */
+      colStaff: 'Staff member',
+      colTenure: 'At the centre',
+      colPhone: 'Phone',
+      /**
+       * Where the phone cell has no number, rather than a blank.
+       *
+       * An empty cell under a column head reads as a figure that failed to arrive. This
+       * one is a real gap in the record and one an owner can close.
+       */
+      noPhone: 'No number',
       /** Under the name, when the centre's own word for the job is not the role's. */
       roleUnder: (role: string) => `Role: ${role}`,
       joined: (date: string) => `Joined ${date}`,
