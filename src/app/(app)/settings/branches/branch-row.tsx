@@ -63,7 +63,15 @@ export function BranchRow({
   )
 
   return (
-    <li className="rounded-xl border border-line bg-white">
+    /*
+     * The fragment target §8.3's table links to. `scroll-mt` because a phone has a sticky
+     * header over the workspace, and a jump that lands the row underneath it looks like a
+     * jump to the wrong row.
+     */
+    <li
+      id={`branch-${branch.id}`}
+      className="scroll-mt-20 rounded-xl border border-line bg-white lg:scroll-mt-4"
+    >
       <div className="flex items-center justify-between gap-3 px-4 py-3">
         <div className="min-w-0">
           <p className="flex items-center gap-2 font-medium text-ink">
@@ -117,26 +125,34 @@ export function BranchRow({
               </p>
             )}
 
-            <Field
-              label={t.nameLabel}
-              name="name"
-              defaultValue={branch.name}
-              placeholder={t.namePlaceholder}
-              required
-              maxLength={MAX_NAME}
-              autoComplete="off"
-            />
+            {/* Two fields and two of them fit, from the width a phone stops being one.
+                Neither is a sentence — a building's name and where it stands — so neither
+                needs the row to itself, and a panel 520px wide holding one field per line
+                throws the other half away. */}
+            <div className="grid gap-3 sm:grid-cols-2">
+              <Field
+                label={t.nameLabel}
+                id={`branch-name-${branch.id}`}
+                name="name"
+                defaultValue={branch.name}
+                placeholder={t.namePlaceholder}
+                required
+                maxLength={MAX_NAME}
+                autoComplete="off"
+              />
 
-            <Field
-              label={`${t.addressLabel} (${common.optional})`}
-              hint={t.addressHint}
-              name="address"
-              defaultValue={branch.address ?? ''}
-              maxLength={MAX_TEXT}
-              autoComplete="off"
-            />
+              <Field
+                label={`${t.addressLabel} (${common.optional})`}
+                hint={t.addressHint}
+                id={`branch-address-${branch.id}`}
+                name="address"
+                defaultValue={branch.address ?? ''}
+                maxLength={MAX_TEXT}
+                autoComplete="off"
+              />
+            </div>
 
-            <Button type="submit" disabled={saving} full>
+            <Button type="submit" disabled={saving} className="self-start">
               {saving ? common.saving : common.save}
             </Button>
           </form>
@@ -164,7 +180,7 @@ export function BranchRow({
                   everything already filed here is the worry, and this is the answer to
                   it. Only on the way out: nobody is afraid of opening a building. */}
               {branch.active && (
-                <p className="mt-2 text-sm text-ink-soft">{t.turnOffHint}</p>
+                <p className="mt-2 max-w-prose text-sm text-ink-soft">{t.turnOffHint}</p>
               )}
             </form>
           </div>

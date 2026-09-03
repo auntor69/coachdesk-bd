@@ -60,31 +60,36 @@ export function AddBranch({
         </p>
       )}
 
-      <Field
-        label={t.nameLabel}
-        name="name"
-        placeholder={t.namePlaceholder}
-        required
-        maxLength={MAX_NAME}
-        autoComplete="off"
-      />
+      {/* Paired while this form has the page's width, stacked again once it is the rail
+          beside the list (§20.8.8): from `sm` there is room for two fields on a line, and
+          from `xl` the form is 384px and there is not. */}
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-1">
+        <Field
+          label={t.nameLabel}
+          name="name"
+          placeholder={t.namePlaceholder}
+          required
+          maxLength={MAX_NAME}
+          autoComplete="off"
+        />
 
-      <Field
-        label={`${t.addressLabel} (${common.optional})`}
-        hint={t.addressHint}
-        name="address"
-        maxLength={MAX_TEXT}
-        autoComplete="off"
-      />
+        <Field
+          label={`${t.addressLabel} (${common.optional})`}
+          hint={t.addressHint}
+          name="address"
+          maxLength={MAX_TEXT}
+          autoComplete="off"
+        />
+      </div>
 
       <div>
-        <Button type="submit" disabled={pending} full>
+        <Button type="submit" disabled={pending}>
           {pending ? common.adding : t.submit}
         </Button>
         {/* Under the button, where the staff row puts its consequence and the bill
             screen puts its total: this is the answer to "what does this cost me", and
             an owner asks it with their thumb already on the button. */}
-        <p className="mt-2 text-sm text-ink-soft">{costLine}</p>
+        <p className="mt-2 max-w-prose text-sm text-ink-soft">{costLine}</p>
       </div>
     </form>
   )
