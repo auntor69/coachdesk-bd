@@ -4977,6 +4977,7 @@ export const en: Dictionary = {
   hq: {
     title: 'Branches side by side',
     subtitle: 'One month, every building, and which one is carrying the others',
+    level: (organisation: string) => `Whole organisation · ${organisation}`,
     lockedTitle: 'Branches come with the Institution plan',
     lockedBody: (plan: string, institution: string) =>
       `${plan} is one building. ${institution} runs several — each with its own students, registers, fees and payroll, and a head office that reads all of them at once and can see which is carrying the others.`,
@@ -4993,6 +4994,7 @@ export const en: Dictionary = {
     unnamedBranch: 'Another branch',
     branch: 'Branch',
     students: 'Students',
+    teachers: 'Teachers',
     collected: 'Cash in',
     spending: 'Spending',
     salaries: 'Salaries',

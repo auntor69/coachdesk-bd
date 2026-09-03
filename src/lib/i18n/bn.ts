@@ -7456,6 +7456,13 @@ export const bn = {
   hq: {
     title: 'শাখাগুলো পাশাপাশি',
     subtitle: 'এক মাসে প্রতিটি শাখা কী করল, আর কোনটি অন্যগুলোকে টানছে',
+    /**
+     * Which level the reader is on, §20.6: "the reader must never be in doubt". The
+     * organisation's name is in it because that is the level — the sidebar shows the same
+     * name whichever screen is open, and this table is the one place where reading a
+     * branch's figure as the organisation's would be a reportable mistake.
+     */
+    level: (organisation: string) => `গোটা প্রতিষ্ঠান · ${organisation}`,
     /** Word for word the branches screen's, so the two locked cards read as one rule. */
     lockedTitle: 'শাখা ইনস্টিটিউশন প্ল্যানে আছে',
     lockedBody: (plan: string, institution: string) =>
@@ -7488,6 +7495,7 @@ export const bn = {
     unnamedBranch: 'অন্য একটি শাখা',
     branch: 'শাখা',
     students: 'ছাত্র',
+    teachers: 'শিক্ষক',
     collected: 'আদায়',
     spending: 'খরচ',
     salaries: 'বেতন',

@@ -42,15 +42,33 @@ const MONTH_RE = /^\d{4}-\d{2}-01$/
 /**
  * §8.3: the branches as rows, so the head office can see which one is carrying the others.
  *
- * NO NAV TAB, DELIBERATELY. `NAV` in app-shell.tsx carries the note that it is not a plan
- * gate, and a sixth tab that four tiers out of five cannot use would make it one. This is
- * reached from the dashboard's profit block and from the branches screen, both of which
- * already know the reader is the head office of an institution.
+ * IN THE SIDEBAR NOW, under Organisation, and this paragraph used to say the opposite.
+ * `NAV` in app-shell.tsx stopped being a ceiling and became a gate: the row carries
+ * `when: isHqMember && canReadMoney` alongside `needs: 'multipleBranches'`, so a pinned or
+ * a narrowed reader is never offered it, and a centre on a smaller tier is offered it
+ * locked — the plan's own asymmetry (§20.3), where a capability hides a row and a plan
+ * sells one. Two of the three refusals below therefore answer a bookmark; the locked card
+ * is what the padlocked row opens on purpose.
  *
  * A NEW ROUTE AND NOT ANOTHER DASHBOARD CARD, because the dashboard already carries
  * at-risk students, attendance rates, the profit line, the setup card, the weekly note and
  * progress entry — and because this screen has a month picker, which a card cannot have
  * without putting the whole dashboard on a query string.
+ *
+ * THE TABLE IS THE SCREEN AND THE WIDTH IS ITS OWN (§20.8.8). Nine columns want 52rem,
+ * which is more than the 704px a laptop gives the workspace, so there is no rail to be had
+ * beside it: a four-column one would leave the table narrower here than it is on a phone.
+ * What was being stretched is everything *under* it — five blocks of two sentences each,
+ * one below the other across 1,216px. They are two subjects and are now two columns: the
+ * footnotes that belong to the table on the left, and what §3.7 asks of a head office on
+ * the right, where the pool, the places running out and the branches asking for more read
+ * as one argument instead of three separate notes.
+ *
+ * THE LEVEL IS NAMED (§20.6). "Same figures at two levels is how somebody reports a
+ * branch's profit as the organisation's", so the letterhead says whole organisation and
+ * then the organisation's name. Cheap insurance: this is the one screen in the product
+ * where every figure is an aggregate of buildings, and the sidebar's centre name looks
+ * identical on the branch-level screens beside it.
  *
  * THE TABLE MUST TOTAL TO THE DASHBOARD'S PROFIT CARD. 20260811000055 made that true in
  * SQL by redefining `center_profit_month` to sum `branch_profit_month`, and the only way
@@ -83,8 +101,8 @@ export default async function HqPage({
    */
   if (!has(session.plan, 'multipleBranches')) {
     return (
-      <Shell home={d.shell.nav.home} title={t.title}>
-        <Card>
+      <Shell refusal={{ home: d.shell.nav.home, title: t.title }}>
+        <Card className="max-w-2xl">
           <h2 className="font-semibold text-ink">{t.lockedTitle}</h2>
           <p className="mt-1 text-sm text-ink-soft">
             {t.lockedBody(
@@ -106,8 +124,8 @@ export default async function HqPage({
    */
   if (!isHqMember(session.active)) {
     return (
-      <Shell home={d.shell.nav.home} title={t.title}>
-        <Card>
+      <Shell refusal={{ home: d.shell.nav.home, title: t.title }}>
+        <Card className="max-w-2xl">
           <h2 className="font-semibold text-ink">{t.pinnedTitle}</h2>
           <p className="mt-1 text-sm text-ink-soft">{t.pinnedBody}</p>
         </Card>
@@ -136,7 +154,7 @@ export default async function HqPage({
 
   const supabase = await createClient()
 
-  const [money, bills, branchList, centerHeads, asks] = await Promise.all([
+  const [money, bills, branchList, centerHeads, centerTeachers, asks] = await Promise.all([
     supabase
       .from('branch_profit_month')
       .select(PROFIT_COLUMNS)
@@ -160,6 +178,14 @@ export default async function HqPage({
       .select('id', { count: 'exact', head: true })
       .eq('coaching_center_id', session.active.centerId)
       .eq('status', 'active'),
+    // The staff, for the foot of the teachers column. Not a pool and not priced per
+    // branch either: seats are counted for the organisation (§5), which is why this is
+    // the same unfiltered shape as the line above it.
+    supabase
+      .from('teachers')
+      .select('id', { count: 'exact', head: true })
+      .eq('coaching_center_id', session.active.centerId)
+      .eq('active', true),
     // §3.7 names this screen for the asks as well as for the warning: "It appears on the
     // HQ dashboard and in the founder panel." Read for a manager too, who cannot answer
     // one — a head office reading that Mirpur has been waiting a fortnight is how the
@@ -187,18 +213,37 @@ export default async function HqPage({
     return { value, label: formatMonth(value, locale) }
   })
 
+  /*
+   * The letterhead. The month picker sits beside the title rather than under it because it
+   * is the one control on the screen and the table below wants every pixel of the height.
+   */
   const header = (
-    <>
-      <header>
-        <h1 className="text-xl font-bold text-ink">{t.title}</h1>
-        <p className="text-sm text-ink-soft">{t.subtitle}</p>
-      </header>
+    <div
+      className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between
+        sm:gap-6"
+    >
+      <div className="min-w-0">
+        <Link
+          href="/dashboard"
+          className="inline-flex min-h-tap items-center font-medium text-brand-700"
+        >
+          ← {d.shell.nav.home}
+        </Link>
+        {/* §20.6, and the whole reason the line exists: this product draws the same five
+            figures at two levels, and the sidebar's centre name looks identical on the
+            branch-level screens beside this one. */}
+        <p className="text-sm font-medium text-ink-soft">
+          {t.level(session.active.centerName)}
+        </p>
+        <h1 className="mt-1 text-xl font-bold text-ink lg:text-2xl">{t.title}</h1>
+        <p className="mt-1 max-w-prose text-sm text-ink-soft">{t.subtitle}</p>
+      </div>
 
       {/* A plain GET form, so the month lands in a URL that can be bookmarked. The
           button is not decoration — Android Chrome fires no navigation on a bare
           <select> change. */}
-      <form method="get" className="flex items-end gap-2">
-        <label className="flex min-w-0 flex-1 flex-col gap-1.5">
+      <form method="get" className="flex shrink-0 items-end gap-2">
+        <label className="flex min-w-0 flex-1 flex-col gap-1.5 sm:w-44 sm:flex-none">
           <span className="font-medium text-ink">{t.monthLabel}</span>
           <select
             name="month"
@@ -221,16 +266,14 @@ export default async function HqPage({
           {t.show}
         </button>
       </form>
-
-      <p className="font-medium text-ink-soft">{formatMonth(month, locale)}</p>
-    </>
+    </div>
   )
 
   if (profitRows === null || branches === null) {
     return (
-      <Shell home={d.shell.nav.home}>
+      <Shell>
         {header}
-        <Card className="border-late/30 bg-late/5">
+        <Card className="max-w-2xl border-late/30 bg-late/5">
           <p className="font-medium text-ink">{t.unreadable}</p>
         </Card>
       </Shell>
@@ -239,9 +282,9 @@ export default async function HqPage({
 
   if (branches.length === 0) {
     return (
-      <Shell home={d.shell.nav.home}>
+      <Shell>
         {header}
-        <Card>
+        <Card className="max-w-2xl">
           <h2 className="font-semibold text-ink">{t.emptyTitle}</h2>
           <p className="mt-1 text-sm text-ink-soft">{t.emptyBody}</p>
           <Link
@@ -265,21 +308,38 @@ export default async function HqPage({
    * Head office is in the list, with `.is('branch_id', null)`, because it is a row on
    * this table and not a wildcard. Bounded by buildings rather than students: seven
    * queries returning seven integers beat one returning nine hundred rows.
+   *
+   * Two counts per building now — §20.6 asks for teachers beside students, and an owner
+   * comparing two branches on profit alone cannot see that one of them earns it with half
+   * the staff. Both rounds are in the one `Promise.all`.
    */
   const keys: (string | null)[] = [...branches.map((branch) => branch.id), null]
   const heads = await Promise.all(
     keys.map(async (branchId) => {
-      const query = supabase
+      const studentQuery = supabase
         .from('students')
         .select('id', { count: 'exact', head: true })
         .eq('coaching_center_id', session.active.centerId)
         .eq('status', 'active')
-      const { count } = await (branchId === null
-        ? query.is('branch_id', null)
-        : query.eq('branch_id', branchId))
+      // Standing staff, like the teachers screen counts them. A teacher who has left is
+      // not in this building's Teachers cell, and their salary is still in its payroll.
+      const teacherQuery = supabase
+        .from('teachers')
+        .select('id', { count: 'exact', head: true })
+        .eq('coaching_center_id', session.active.centerId)
+        .eq('active', true)
+      const [students, teachers] = await Promise.all([
+        branchId === null
+          ? studentQuery.is('branch_id', null)
+          : studentQuery.eq('branch_id', branchId),
+        branchId === null
+          ? teacherQuery.is('branch_id', null)
+          : teacherQuery.eq('branch_id', branchId),
+      ])
       // As it came, null and all: a count answers null when the query failed, not when
       // it found nobody, and a row with no figure beats a row claiming a building is empty.
-      return { branchId, count }
+      // Separately per count, because a narrowed reader can be allowed one and not the other.
+      return { branchId, students: students.count, teachers: teachers.count }
     }),
   )
 
@@ -287,7 +347,8 @@ export default async function HqPage({
     profit: profitRows,
     charges: chargeRows,
     branches,
-    students: heads,
+    students: heads.map((head) => ({ branchId: head.branchId, count: head.students })),
+    teachers: heads.map((head) => ({ branchId: head.branchId, count: head.teachers })),
     headOffice: t.headOffice,
     unnamed: t.unnamedBranch,
   })
@@ -295,8 +356,17 @@ export default async function HqPage({
   const gap = payrollGap(rows)
 
   const totalHeads = centerHeads.error ? null : centerHeads.count
+  const totalTeachers = centerTeachers.error ? null : centerTeachers.count
   const pressure =
     totalHeads === null ? null : capacityPressure(session.ceiling, totalHeads)
+
+  /*
+   * Which branch names open a record. A row `branchMoneyRows` had to name itself — a
+   * branch whose row a policy withheld — has an id and nothing on the branches screen to
+   * scroll to, and head office is not a branch at all. Both stay plain text rather than
+   * becoming a link to a screen the building is not on.
+   */
+  const listed = new Set(branches.map((branch) => branch.id))
 
   /*
    * §3.7's urgent row, and only that row: "≤ 5% — urgent, HQ told which branches are
@@ -331,17 +401,25 @@ export default async function HqPage({
     intake === null ? null : growingBranches(intake, (id) => named.get(id) ?? t.unnamedBranch)
 
   return (
-    <Shell home={d.shell.nav.home}>
+    <Shell>
       {header}
 
-      {/* Seven columns do not fit 320px, and a table that wraps a taka figure onto two
-          lines is a table nobody checks. */}
-      <div className="-mx-4 overflow-x-auto px-4">
-        <table className="w-full min-w-[46rem] border-collapse text-sm">
+      {/* Nine columns do not fit 320px, and a table that wraps a taka figure onto two
+          lines is a table nobody checks. The bleed follows <main>'s own padding at each
+          width, so the scroll runs edge to edge instead of inside a 32px margin — width
+          this screen has no second column to spend (§20.8.8). */}
+      <div className="-mx-4 overflow-x-auto px-4 lg:-mx-8 lg:px-8">
+        <table className="w-full min-w-[52rem] border-collapse text-sm">
+          {/* The month is the table's name, not a line floating above it — and a caption
+              prints with the table when a page of this gets read out at a meeting. */}
+          <caption className="mb-2 text-left font-medium text-ink-soft">
+            {formatMonth(month, locale)}
+          </caption>
           <thead>
             <tr className="border-b-2 border-line text-left align-bottom">
               <Th>{t.branch}</Th>
               <Th num right>{t.students}</Th>
+              <Th num right>{t.teachers}</Th>
               <Th num right>{t.collected}</Th>
               <Th num right>{t.spending}</Th>
               <Th num right>{t.salaries}</Th>
@@ -355,7 +433,22 @@ export default async function HqPage({
               <tr key={row.branchId ?? 'hq'} className="border-b border-line align-top">
                 <Td>
                   <span className="flex items-center gap-2">
-                    <span className="font-medium">{row.name}</span>
+                    {row.branchId !== null && listed.has(row.branchId) ? (
+                      // §20.6 asks for a click into the branch. What exists to open today
+                      // is its record on the branches screen, so that is what this opens —
+                      // an anchor to the row itself, not a filtered copy of this screen,
+                      // which would need a scope-narrowing mechanism §8.2 puts in the
+                      // database and not in a query string.
+                      <Link
+                        href={`/settings/branches#branch-${row.branchId}`}
+                        className="font-medium text-brand-700 underline-offset-2
+                          hover:underline"
+                      >
+                        {row.name}
+                      </Link>
+                    ) : (
+                      <span className="font-medium">{row.name}</span>
+                    )}
                     {!row.active && (
                       <span
                         className="shrink-0 rounded-full bg-surface-alt px-2 py-0.5
@@ -367,6 +460,7 @@ export default async function HqPage({
                   </span>
                 </Td>
                 <Td num right>{row.students === null ? '—' : row.students}</Td>
+                <Td num right>{row.teachers === null ? '—' : row.teachers}</Td>
                 <Td num right>{formatTaka(row.collected)}</Td>
                 <Td num right>{formatTaka(row.expenses)}</Td>
                 <Td num right>{formatTaka(row.payroll)}</Td>
@@ -390,6 +484,9 @@ export default async function HqPage({
               <td className="num px-2 py-2 text-right">
                 {totalHeads === null ? '—' : totalHeads}
               </td>
+              <td className="num px-2 py-2 text-right">
+                {totalTeachers === null ? '—' : totalTeachers}
+              </td>
               <td className="num px-2 py-2 text-right">{formatTaka(total.collected)}</td>
               <td className="num px-2 py-2 text-right">{formatTaka(total.expenses)}</td>
               <td className="num px-2 py-2 text-right">{formatTaka(total.payroll)}</td>
@@ -405,131 +502,149 @@ export default async function HqPage({
         </table>
       </div>
 
-      {/* §9.1's labelling problem, in one sentence under the table it applies to: cash in
-          is keyed to when the money arrived and the two bill columns to the month billed
-          for, so they will not agree and an owner who cannot tell why stops trusting
-          both. The head count in the foot is the organisation's own, not the sum of the
-          column — a student filed at head office is in one and not the other. */}
-      <p className="text-sm text-ink-soft">{t.legend}</p>
-
-      {chargeRows === null && (
-        <p className="text-sm text-ink-soft">{t.chargesUnreadable}</p>
-      )}
-
-      {/* THE WARNING 20260811000055 LEFT TO THIS SCREEN. Entering payroll centrally
-          leaves every branch but head office looking free, and every profit figure above
-          is then wrong in the flattering direction. Amber and not red: nothing is broken,
-          a number is missing. */}
-      {gap.kind !== 'none' && (
-        <div className="rounded-lg border border-late/30 bg-late/5 p-3">
-          <p className="font-medium text-ink">
-            {gap.kind === 'all' ? t.payrollAll : t.payrollSome(gap.names.join(', '))}
-          </p>
-          <p className="mt-1 text-sm text-ink-soft">
-            {gap.kind === 'all' ? t.payrollAllNote : t.payrollSomeNote}
-          </p>
-        </div>
-      )}
-
-      {/* §8.3 asks for the pool on this screen and §17 says what it is: one allowance for
-          the whole organisation, never a quota per building. Which is why it sits under
-          the table rather than in it — a column would invite exactly the division the
-          plan forbids.
-
-          §3.7 names this screen for the warning, so past a fifth left the section gives
-          way to the shared one and the pool note travels with it. The card an owner reads
-          calmly and the box telling them next week is a problem are not the same object. */}
-      {pressure !== null &&
-        (pressure.level === 'fine' ? (
-          <section className="rounded-xl border border-line bg-white p-4">
-            <p className="num font-medium text-ink">
-              {d.dashboard.placesLeft(pressure.remaining, pressure.ceiling)}
-            </p>
-            <p className="mt-1 text-sm text-ink-soft">{t.poolNote}</p>
-            <Link
-              href="/settings/plan"
-              className="mt-2 inline-flex min-h-tap items-center font-medium text-brand-700"
-            >
-              {d.dashboard.placesLink} →
-            </Link>
-          </section>
-        ) : (
-          <PlacesWarning
-            pressure={pressure}
-            t={d.dashboard}
-            note={t.poolNote}
-          />
-        ))}
-
       {/*
-        §3.7's other half of the urgent row: the owner is told which branches are growing.
-        Under the boxed warning and never under the calm card, because the plan puts this on
-        the ≤ 5% row alone.
-
-        A FAILED READ MUST NOT READ AS "NOTHING IS GROWING". The two are opposite advice —
-        one says buy places for Sylhet, the other says the register filled with students who
-        were already on it — so `null` gets its own sentence rather than falling into the
-        empty case. This is also why the box does not simply vanish on a failed read: it is
-        attached to a warning an owner is acting on this week.
+        TWO SUBJECTS, TWO COLUMNS FROM lg. Everything below the table used to be one stack
+        of two-sentence blocks running the full 1,216px — footnotes about the table's
+        columns interleaved with what §3.7 asks a head office to do about the pool. Left is
+        what the figures above mean; right is the decision. Source order is reading order,
+        so the phone keeps the stack it has today and no `order-N` is needed.
       */}
-      {urgent && (
-        <section className="rounded-xl border border-line bg-white p-4">
-          <h2 className="font-semibold text-ink">{t.growingTitle}</h2>
-          {grew === null ? (
-            <p className="mt-1 text-sm text-ink-soft">{t.growingUnreadable}</p>
-          ) : grew.top.length === 0 ? (
-            <p className="mt-1 text-sm text-ink-soft">{t.growingNone}</p>
-          ) : (
-            <>
-              <p className="num mt-1 text-ink">
-                {t.growingLine(
-                  grew.top.map((b) => t.growingBranch(b.name, b.admitted)).join(', '),
-                )}
-              </p>
-              {grew.others > 0 && (
-                <p className="mt-1 text-sm text-ink-soft">{t.growingOthers(grew.others)}</p>
-              )}
-            </>
+      <div className="grid gap-6 lg:grid-cols-2 lg:items-start">
+        <div className="flex flex-col gap-3">
+          {/* §9.1's labelling problem, in one sentence under the table it applies to: cash
+              in is keyed to when the money arrived and the two bill columns to the month
+              billed for, so they will not agree and an owner who cannot tell why stops
+              trusting both. The two head counts in the foot are the organisation's own
+              reads rather than sums of the columns above them — head office is a row of
+              this table, so the only way a foot can differ from its column is a building
+              this reader was not shown. */}
+          <p className="text-sm text-ink-soft">{t.legend}</p>
+
+          {chargeRows === null && (
+            <p className="text-sm text-ink-soft">{t.chargesUnreadable}</p>
           )}
-          <p className="mt-1 text-sm text-ink-soft">{t.growingNote}</p>
-        </section>
-      )}
 
-      {/*
-        §3.7's asks, on the screen it names for them. A LIST AND NOT A CONTROL: the two
-        answers are a purchase and a refusal, both of which belong on the plan screen
-        beside the price and behind `requireRole('owner')`. What this adds is that the
-        head office finds out — a manager who filed an ask has no way to reach the owner
-        that is not this product, and an ask nobody reads is the email we replaced.
+          {/* THE WARNING 20260811000055 LEFT TO THIS SCREEN. Entering payroll centrally
+              leaves every branch but head office looking free, and every profit figure
+              above is then wrong in the flattering direction. Amber and not red: nothing
+              is broken, a number is missing. */}
+          {gap.kind !== 'none' && (
+            <div className="rounded-lg border border-late/30 bg-late/5 p-3">
+              <p className="font-medium text-ink">
+                {gap.kind === 'all' ? t.payrollAll : t.payrollSome(gap.names.join(', '))}
+              </p>
+              <p className="mt-1 text-sm text-ink-soft">
+                {gap.kind === 'all' ? t.payrollAllNote : t.payrollSomeNote}
+              </p>
+            </div>
+          )}
+        </div>
 
-        Silent when the read fails. The card below it is a warning about the pool, the
-        table above is the month's money, and a line about a read that did not work
-        belongs to neither; §3.7's own list is on the plan screen, which says so there.
-      */}
-      {asks !== null && asks.length > 0 && (
-        <section className="rounded-xl border border-line bg-white p-4">
-          <h2 className="font-semibold text-ink">{d.settings.plan.places.asksTitle}</h2>
-          <ul className="mt-2 flex flex-col gap-1">
-            {asks.map((ask) => (
-              <li key={ask.id} className="num text-sm text-ink">
-                {d.settings.plan.places.askLine(
-                  ask.branchId === null
-                    ? t.headOffice
-                    : (ask.branchName ?? t.unnamedBranch),
-                  ask.places,
-                  formatDate(todayInDhaka(new Date(ask.createdAt)), locale),
-                )}
-              </li>
+        <div className="flex flex-col gap-4">
+          {/* §8.3 asks for the pool on this screen and §17 says what it is: one allowance
+              for the whole organisation, never a quota per building. Which is why it sits
+              beside the table rather than in it — a column would invite exactly the
+              division the plan forbids.
+
+              §3.7 names this screen for the warning, so past a fifth left the section
+              gives way to the shared one and the pool note travels with it. The card an
+              owner reads calmly and the box telling them next week is a problem are not
+              the same object. */}
+          {pressure !== null &&
+            (pressure.level === 'fine' ? (
+              <section className="rounded-xl border border-line bg-white p-4">
+                <p className="num font-medium text-ink">
+                  {d.dashboard.placesLeft(pressure.remaining, pressure.ceiling)}
+                </p>
+                <p className="mt-1 text-sm text-ink-soft">{t.poolNote}</p>
+                <Link
+                  href="/settings/plan"
+                  className="mt-2 inline-flex min-h-tap items-center font-medium
+                    text-brand-700"
+                >
+                  {d.dashboard.placesLink} →
+                </Link>
+              </section>
+            ) : (
+              <PlacesWarning pressure={pressure} t={d.dashboard} note={t.poolNote} />
             ))}
-          </ul>
-          <Link
-            href="/settings/plan"
-            className="mt-2 inline-flex min-h-tap items-center font-medium text-brand-700"
-          >
-            {d.settings.plan.places.title} →
-          </Link>
-        </section>
-      )}
+
+          {/*
+            §3.7's other half of the urgent row: the owner is told which branches are
+            growing. Under the boxed warning and never under the calm card, because the plan
+            puts this on the ≤ 5% row alone.
+
+            A FAILED READ MUST NOT READ AS "NOTHING IS GROWING". The two are opposite advice
+            — one says buy places for Sylhet, the other says the register filled with
+            students who were already on it — so `null` gets its own sentence rather than
+            falling into the empty case. This is also why the box does not simply vanish on
+            a failed read: it is attached to a warning an owner is acting on this week.
+          */}
+          {urgent && (
+            <section className="rounded-xl border border-line bg-white p-4">
+              <h2 className="font-semibold text-ink">{t.growingTitle}</h2>
+              {grew === null ? (
+                <p className="mt-1 text-sm text-ink-soft">{t.growingUnreadable}</p>
+              ) : grew.top.length === 0 ? (
+                <p className="mt-1 text-sm text-ink-soft">{t.growingNone}</p>
+              ) : (
+                <>
+                  <p className="num mt-1 text-ink">
+                    {t.growingLine(
+                      grew.top.map((b) => t.growingBranch(b.name, b.admitted)).join(', '),
+                    )}
+                  </p>
+                  {grew.others > 0 && (
+                    <p className="mt-1 text-sm text-ink-soft">
+                      {t.growingOthers(grew.others)}
+                    </p>
+                  )}
+                </>
+              )}
+              <p className="mt-1 text-sm text-ink-soft">{t.growingNote}</p>
+            </section>
+          )}
+
+          {/*
+            §3.7's asks, on the screen it names for them. A LIST AND NOT A CONTROL: the two
+            answers are a purchase and a refusal, both of which belong on the plan screen
+            beside the price and behind `requireRole('owner')`. What this adds is that the
+            head office finds out — a manager who filed an ask has no way to reach the owner
+            that is not this product, and an ask nobody reads is the email we replaced.
+
+            Silent when the read fails. The card above it is a warning about the pool, the
+            table beside it is the month's money, and a line about a read that did not work
+            belongs to neither; §3.7's own list is on the plan screen, which says so there.
+          */}
+          {asks !== null && asks.length > 0 && (
+            <section className="rounded-xl border border-line bg-white p-4">
+              <h2 className="font-semibold text-ink">
+                {d.settings.plan.places.asksTitle}
+              </h2>
+              <ul className="mt-2 flex flex-col gap-1">
+                {asks.map((ask) => (
+                  <li key={ask.id} className="num text-sm text-ink">
+                    {d.settings.plan.places.askLine(
+                      ask.branchId === null
+                        ? t.headOffice
+                        : (ask.branchName ?? t.unnamedBranch),
+                      ask.places,
+                      formatDate(todayInDhaka(new Date(ask.createdAt)), locale),
+                    )}
+                  </li>
+                ))}
+              </ul>
+              <Link
+                href="/settings/plan"
+                className="mt-2 inline-flex min-h-tap items-center font-medium
+                  text-brand-700"
+              >
+                {d.settings.plan.places.title} →
+              </Link>
+            </section>
+          )}
+        </div>
+      </div>
 
       <Link
         href="/settings/branches"
@@ -544,27 +659,31 @@ export default async function HqPage({
 /**
  * The page's frame, in one place because five returns need it.
  *
- * `title` only on the branches that draw no header of their own — the locked and pinned
- * cards, which have no month picker to hang one under.
+ * `refusal` is for the two shapes that draw no letterhead of their own — the locked and
+ * the pinned card, which have no month picker to hang one under. The three that do build
+ * their own band, back-link included, so the title can sit next to the picker rather than
+ * above a control it belongs beside.
  */
 function Shell({
-  home,
-  title,
+  refusal,
   children,
 }: {
-  home: string
-  title?: string
+  refusal?: { home: string; title: string }
   children: React.ReactNode
 }) {
   return (
-    <div className="flex flex-col gap-4">
-      <Link
-        href="/dashboard"
-        className="inline-flex min-h-tap items-center font-medium text-brand-700"
-      >
-        ← {home}
-      </Link>
-      {title && <h1 className="text-xl font-bold text-ink">{title}</h1>}
+    <div className="flex flex-col gap-6">
+      {refusal && (
+        <div>
+          <Link
+            href="/dashboard"
+            className="inline-flex min-h-tap items-center font-medium text-brand-700"
+          >
+            ← {refusal.home}
+          </Link>
+          <h1 className="mt-1 text-xl font-bold text-ink lg:text-2xl">{refusal.title}</h1>
+        </div>
+      )}
       {children}
     </div>
   )

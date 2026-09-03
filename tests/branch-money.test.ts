@@ -64,12 +64,14 @@ function rows(input: {
   charges?: BranchChargesSourceRow[] | null
   branches?: typeof BRANCHES
   students?: { branchId: string | null; count: number | null }[]
+  teachers?: { branchId: string | null; count: number | null }[]
 }): BranchMoneyRow[] {
   return branchMoneyRows({
     profit: input.profit ?? [],
     charges: input.charges === undefined ? [] : input.charges,
     branches: input.branches ?? BRANCHES,
     students: input.students ?? [],
+    teachers: input.teachers ?? [],
     headOffice: HQ,
     unnamed: UNNAMED,
   })
@@ -214,6 +216,29 @@ test('a head count that did not arrive is nobody, not zero students', () => {
 
   // Never counted for, never claimed.
   assert.equal(table.find((r) => r.branchId === GONE)?.students, null)
+})
+
+test('teachers are counted per branch on the same terms as students', () => {
+  // §20.6 asks for both columns, and for a reason: two branches with the same profit and
+  // half the staff between them are not the same branch, and profit alone cannot say so.
+  const table = rows({
+    students: [{ branchId: MIRPUR, count: 120 }],
+    teachers: [
+      { branchId: MIRPUR, count: 7 },
+      { branchId: UTTARA, count: null },
+      { branchId: null, count: 0 },
+    ],
+  })
+
+  assert.equal(table.find((r) => r.branchId === MIRPUR)?.teachers, 7)
+  assert.equal(table.find((r) => r.branchId === UTTARA)?.teachers, null)
+  assert.equal(table.find((r) => r.branchId === null)?.teachers, 0)
+  assert.equal(table.find((r) => r.branchId === GONE)?.teachers, null)
+
+  // The two counts are separate reads and one may arrive without the other. A branch
+  // with students and no teacher figure must not borrow the figure beside it.
+  assert.equal(table.find((r) => r.branchId === MIRPUR)?.students, 120)
+  assert.equal(table.find((r) => r.branchId === UTTARA)?.students, null)
 })
 
 test('the foot adds up in paisa and not in floating point', () => {
