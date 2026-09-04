@@ -401,10 +401,10 @@ test('a slot that already holds a bill has a figure in it and no box', () => {
 })
 
 test('the bar says what the screen is on both shapes, and the empty card is not a metre wide', () => {
-  // Two bars and one crumb: the refused screen draws its own, and a mutation to either
-  // one leaves the other standing to answer for it.
-  assert.equal(PAGE.split('<PageHeader').length - 1, 2)
-  assert.equal(PAGE.split('back={back}').length - 1, 2, 'a way back went missing')
+  // Three bars and one crumb: the refused screen and the lapsed one each draw their own,
+  // and a mutation to any one of them leaves the others standing to answer for it.
+  assert.equal(PAGE.split('<PageHeader').length - 1, 3)
+  assert.equal(PAGE.split('back={back}').length - 1, 3, 'a way back went missing')
   assert.equal(PAGE.split("{ href: '/fees' as const, label: t.backToFees }").length - 1, 1)
   assert.equal(PAGE.split('{t.subtitle}').length - 1, 1)
   // The bar owns the title on every screen that has one; a hand-rolled h1 beside it is
@@ -415,6 +415,24 @@ test('the bar says what the screen is on both shapes, and the empty card is not 
   // 672px into a 1,216px workspace.
   assert.match(PAGE, /<Card className="max-w-2xl border-late\/30/)
   assert.doesNotMatch(PAGE, /flex flex-col gap-4 lg:max-w-2xl/)
+})
+
+test('a lapsed centre is told before it types three hundred balances, not after', () => {
+  /*
+   * §4.4, and this is the screen where the arm is worth the most in the product.
+   * `recordArrears` runs requireWritable, and the whole argument for this screen is that
+   * nobody types an opening balance twice: an owner working down a paper register box by
+   * box and being refused on submit loses the afternoon, not a form.
+   */
+  assert.match(PAGE, /if \(session\.access !== 'full'\) \{/)
+  assert.match(PAGE, /<ReadOnlyNote t=\{d\.readOnly\} className="max-w-2xl" \/>/)
+
+  // Above all three reads — the largest set in the app, twelve months of a whole centre's
+  // invoices among them — so the arm costs the centre least able to use them nothing.
+  const lapsed = PAGE.indexOf("if (session.access !== 'full') {")
+  assert.ok(lapsed > 0)
+  assert.ok(lapsed < PAGE.indexOf('await Promise.all'))
+  assert.ok(lapsed < PAGE.indexOf('pageAll((from, to) =>'))
 })
 
 test('§38: the reads, the gate and the months are the ones that were there', () => {

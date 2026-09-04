@@ -325,14 +325,15 @@ test('the schedule is a band inside the fee card, not a tile inside it', () => {
 })
 
 test('the letterhead is the page bar, and no card is a metre wide', () => {
-  // One bar, and it owns the h1 — so the empty-batch card's own title is an h2.
-  assert.equal(PAGE.split('<PageHeader').length - 1, 1)
+  // Two bars, one per ending: the screen, and the shape a lapsed centre gets. Both own
+  // the h1 — so the empty-batch card's own title is an h2.
+  assert.equal(PAGE.split('<PageHeader').length - 1, 2)
   assert.equal(PAGE.split('<h1').length - 1, 0)
   assert.equal(PAGE.split('text-xl font-bold text-ink lg:text-2xl').length - 1, 0)
   assert.equal(PAGE.split('{t.subtitle}').length - 1, 1)
   assert.equal(
     PAGE.split("back={{ href: '/fees', label: t.backToFees }}").length - 1,
-    1,
+    2,
     'a way back went missing',
   )
 
@@ -348,6 +349,21 @@ test('the letterhead is the page bar, and no card is a metre wide', () => {
   assert.match(PAGE, /method="get"/)
   assert.match(PAGE, /sm:flex-row sm:items-end sm:gap-3/)
   assert.match(PAGE, /className="mt-3 w-full sm:mt-0 sm:w-auto"/)
+})
+
+test('a lapsed centre gets no boxes to tick, and no picker leading to none', () => {
+  // §4.4. `oneOffCharge` runs requireWritable, so this screen's whole errand — pick a
+  // batch, tick thirty students, name the fee, press charge — ends in a refusal. The
+  // picker is inside the arm it removes rather than above the note, because a batch chosen
+  // on this screen leads nowhere else.
+  assert.match(PAGE, /if \(session\.access !== 'full'\) \{/)
+  assert.match(PAGE, /<ReadOnlyNote t=\{d\.readOnly\} className="max-w-2xl" \/>/)
+  const lapsed = PAGE.indexOf("if (session.access !== 'full') {")
+  assert.ok(lapsed < PAGE.indexOf('method="get"'))
+
+  // Above the client and both reads, so a lapsed centre pays for no round trip.
+  assert.ok(lapsed < PAGE.indexOf('createClient()'))
+  assert.ok(lapsed < PAGE.indexOf(".from('"))
 })
 
 test('§38: the gate, the guard on the parameter and both reads are the ones that were there', () => {

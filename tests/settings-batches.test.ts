@@ -149,7 +149,7 @@ test('the furniture is the one the other settings screens use', () => {
   for (const [which, src, bars] of [
     ['list', LIST, 2],
     ['new', NEW, 2],
-    ['edit', EDIT, 3],
+    ['edit', EDIT, 4],
   ] as [string, string, number][]) {
     assert.equal(count(src, '<PageHeader'), bars, which)
     assert.equal(count(src, 'back='), bars, `${which}: every arm offers the way back`)
@@ -293,7 +293,18 @@ test('the edit screen is manager-only and reads its own batch', () => {
   assert.ok(EDIT.includes('if (!batch) {'))
   assert.ok(EDIT.indexOf('if (batchError) {') < EDIT.indexOf('if (!batch) {'))
   assert.ok(EDIT.includes('{t.batchUnreadable}'))
-  assert.equal(count(EDIT, 'max-w-2xl'), 2, 'both are one sentence')
+  assert.equal(count(EDIT, 'max-w-2xl'), 3, 'both are one sentence, and so is the note')
+
+  // §4.4, above the four reads. `updateBatch` runs requireWritable, so a lapsed centre
+  // would change the fee, the slot and the days and be refused. The bar names the screen
+  // rather than the batch — the batch's own name is in the read below the arm — which is
+  // what the other two early arms do for the same reason.
+  const lapsed = EDIT.indexOf("if (session.access !== 'full') {")
+  assert.ok(lapsed > 0, 'the read-only arm is gone from the edit screen')
+  assert.ok(EDIT.includes('<ReadOnlyNote t={d.readOnly} className="max-w-2xl" />'))
+  assert.ok(lapsed < EDIT.indexOf('await Promise.all'))
+  assert.ok(lapsed < EDIT.indexOf('if (batchError) {'))
+  assert.equal(count(EDIT, '<PageHeader title={t.editTitle} back={back} />'), 3)
 
   // An option missing from the picker is a field that can never be corrected.
   assert.ok(

@@ -1,4 +1,5 @@
 import { PageHeader } from '@/components/page-header'
+import { ReadOnlyNote } from '@/components/read-only-note'
 import { Card } from '@/components/ui'
 import { pageCapability, getSession } from '@/lib/auth/session'
 import { createClient } from '@/lib/supabase/server'
@@ -75,6 +76,21 @@ export default async function ArrearsPage() {
   })
 
   const back = { href: '/fees' as const, label: t.backToFees }
+
+  /*
+   * §4.4, above all three reads — and this is the screen where the arm is worth the most.
+   * `recordArrears` runs requireWritable, and the whole point of this screen is that
+   * nobody will type three hundred opening balances twice: an owner working down a paper
+   * register box by box and being refused on submit loses the afternoon, not a form.
+   */
+  if (session.access !== 'full') {
+    return (
+      <div className="flex flex-col gap-4">
+        <PageHeader title={t.title} back={back} />
+        <ReadOnlyNote t={d.readOnly} className="max-w-2xl" />
+      </div>
+    )
+  }
 
   /** The screen with no form on it. See the guard below for why all three refuse. */
   const refusal = (problem: PageFailure) => (

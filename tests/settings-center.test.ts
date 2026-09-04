@@ -72,7 +72,7 @@ test('the furniture is the page bar the other settings screens use', () => {
   assert.equal(count(PAGE, '<PageHeader'), 1, 'one screen, one bar')
   assert.equal(count(PAGE, '<h1'), 0, 'the bar owns the heading')
   assert.ok(
-    PAGE.includes("back={{ href: '/settings', label: dict(locale).settings.hub.title }}"),
+    PAGE.includes("back={{ href: '/settings', label: d.settings.hub.title }}"),
     'and the way back is the crumb every other settings screen puts there',
   )
   assert.ok(PAGE.includes('subtitle={t.subtitle}'))
@@ -89,8 +89,14 @@ test('the furniture is the page bar the other settings screens use', () => {
 
 test('the gate is still the owner and the manager still only reads', () => {
   assert.ok(PAGE.includes("const session = await pageRole('manager')"))
-  assert.ok(PAGE.includes("const canEdit = session.active.role === 'owner'"))
+  assert.ok(PAGE.includes("const isOwner = session.active.role === 'owner'"))
   assert.ok(PAGE.includes('{t.readOnly}'), 'and is told which it is')
+
+  // "Only the centre's owner can change these" is suppressed for the owner, who is the
+  // owner: the true reason their form is gone is the note below it.
+  assert.ok(
+    PAGE.includes('{!isOwner && <p className="mt-3 text-sm text-ink-faint">{t.readOnly}</p>}'),
+  )
 
   // The screen that draws no form at all, because a dropped row seeded the form with
   // "no wallet" and a save then wrote that over a centre that had one.
@@ -99,6 +105,22 @@ test('the gate is still the owner and the manager still only reads', () => {
   assert.ok(PAGE.includes('const wallet = center?.payment_wallet ?? null'))
   assert.ok(PAGE.includes('const number = center?.payment_number ?? null'))
   assert.ok(PAGE.includes('{t.noNumber}'), 'the manager is told when there is none')
+})
+
+test('a lapsed owner keeps the two facts and loses the form', () => {
+  /*
+   * §4.4, and the one screen in the product where the reads deliberately stay above the
+   * decision: what a manager reads here — the centre's name and the wallet a parent sends
+   * fees to — is exactly what an owner of a lapsed centre still needs to read out over the
+   * phone. So the form goes, the facts stay, and the owner falls into the manager's arm.
+   */
+  assert.ok(PAGE.includes("const canEdit = isOwner && session.access === 'full'"))
+  assert.ok(PAGE.includes('{isOwner && <ReadOnlyNote t={d.readOnly} className="max-w-2xl" />}'))
+  assert.equal(count(PAGE, 'max-w-2xl'), 3, 'both cards and the note, and none of them a page')
+
+  // No early return, therefore, and no second bar: the decision is a const.
+  assert.doesNotMatch(PAGE, /if \(session\.access !== 'full'\) \{/)
+  assert.ok(PAGE.indexOf('await Promise.all') < PAGE.indexOf('const canEdit'))
 })
 
 test('the sample the preview is built from is still this centre own', () => {

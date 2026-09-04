@@ -1,5 +1,6 @@
 import { Card } from '@/components/ui'
 import { PageHeader } from '@/components/page-header'
+import { ReadOnlyNote } from '@/components/read-only-note'
 import { pageRole, getSession } from '@/lib/auth/session'
 import { createClient } from '@/lib/supabase/server'
 import { currentPeriodMonth, monthName } from '@/lib/bd/time'
@@ -27,11 +28,16 @@ export async function generateMetadata() {
  * that line, and it matters more now than when this row held a name and an
  * address: whoever edits the payment number decides where a month of fees goes.
  * A manager still sees the number, because they are the person a parent asks.
+ *
+ * And so does an owner whose subscription has lapsed (§4.4): the form goes, the two
+ * facts stay, and the sentence under them changes — "ask the owner" is not something
+ * to tell the owner.
  */
 export default async function CenterSettingsPage() {
   const session = await pageRole('manager')
   const locale = session.locale
-  const t = dict(locale).settings.center
+  const d = dict(locale)
+  const t = d.settings.center
   const supabase = await createClient()
   const periodMonth = currentPeriodMonth()
 
@@ -78,7 +84,19 @@ export default async function CenterSettingsPage() {
         .maybeSingle(),
     ])
 
-  const canEdit = session.active.role === 'owner'
+  /*
+   * §4.4, and the reads stay above it on purpose — unlike every other write screen, where
+   * the arm returns before the first query. What this screen shows a manager is the centre's
+   * name and the wallet a parent sends fees to, which is exactly what an owner of a lapsed
+   * centre still needs to be able to read out over the phone. So the form goes and the facts
+   * stay, and the facts are the read.
+   *
+   * `saveCenterDetails` runs requireWritable, and this is the one form in the product where
+   * being refused on save is not the worst of it: the owner would have retyped the payment
+   * number before finding out.
+   */
+  const isOwner = session.active.role === 'owner'
+  const canEdit = isOwner && session.access === 'full'
   const wallet = center?.payment_wallet ?? null
   const number = center?.payment_number ?? null
 
@@ -86,7 +104,7 @@ export default async function CenterSettingsPage() {
     <div className="flex flex-col gap-5">
       <PageHeader
         title={t.title}
-        back={{ href: '/settings', label: dict(locale).settings.hub.title }}
+        back={{ href: '/settings', label: d.settings.hub.title }}
         subtitle={t.subtitle}
       />
 
@@ -128,28 +146,33 @@ export default async function CenterSettingsPage() {
             // preview. The month *inside* the message stays Bangla.
             monthLabel: monthName(periodMonth, locale),
           }}
-          t={dict(locale).centerForm}
-          wallets={dict(locale).wallets}
-          common={dict(locale).common}
+          t={d.centerForm}
+          wallets={d.wallets}
+          common={d.common}
         />
       ) : (
         /* A manager's whole screen is this one card, so it is a card and not a
            column: three short lines stretched to 1,216px is a paragraph nobody can
-           find the end of. */
-        <Card className="max-w-2xl">
-          <p className="font-medium text-ink">
-            {center?.name ?? session.active.centerName}
-          </p>
-          {wallet && number ? (
-            <p className="mt-1 text-ink-soft">
-              {dict(locale).wallets[wallet]}{' '}
-              <span className="num font-medium text-ink">{formatBdMobile(number)}</span>
+           find the end of. An owner reaching it is one whose centre has lapsed. */
+        <>
+          <Card className="max-w-2xl">
+            <p className="font-medium text-ink">
+              {center?.name ?? session.active.centerName}
             </p>
-          ) : (
-            <p className="mt-1 text-ink-soft">{t.noNumber}</p>
-          )}
-          <p className="mt-3 text-sm text-ink-faint">{t.readOnly}</p>
-        </Card>
+            {wallet && number ? (
+              <p className="mt-1 text-ink-soft">
+                {d.wallets[wallet]}{' '}
+                <span className="num font-medium text-ink">{formatBdMobile(number)}</span>
+              </p>
+            ) : (
+              <p className="mt-1 text-ink-soft">{t.noNumber}</p>
+            )}
+            {/* Whose screen this is. A manager is told to ask the owner; an owner is the
+                owner, so for them the true reason is the one in the note below. */}
+            {!isOwner && <p className="mt-3 text-sm text-ink-faint">{t.readOnly}</p>}
+          </Card>
+          {isOwner && <ReadOnlyNote t={d.readOnly} className="max-w-2xl" />}
+        </>
       )}
     </div>
   )

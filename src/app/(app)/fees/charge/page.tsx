@@ -1,4 +1,5 @@
 import { PageHeader } from '@/components/page-header'
+import { ReadOnlyNote } from '@/components/read-only-note'
 import { Button, Card } from '@/components/ui'
 import { pageCapability, getSession } from '@/lib/auth/session'
 import { createClient } from '@/lib/supabase/server'
@@ -51,6 +52,21 @@ export default async function ChargePage({
   const locale = session.locale
   const d = dict(locale)
   const t = d.charge
+
+  /*
+   * §4.4, above the batch list and the roster both. `oneOffCharge` runs requireWritable,
+   * so every part of this screen — pick a batch, tick thirty students, name the fee, press
+   * charge — ends in a refusal. The picker goes with the form rather than staying above the
+   * note, because a batch chosen here leads nowhere else.
+   */
+  if (session.access !== 'full') {
+    return (
+      <div className="flex flex-col gap-4 lg:gap-6">
+        <PageHeader title={t.title} back={{ href: '/fees', label: t.backToFees }} />
+        <ReadOnlyNote t={d.readOnly} className="max-w-2xl" />
+      </div>
+    )
+  }
 
   const supabase = await createClient()
 

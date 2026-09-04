@@ -1,4 +1,5 @@
 import { PageHeader } from '@/components/page-header'
+import { ReadOnlyNote } from '@/components/read-only-note'
 import { Card } from '@/components/ui'
 import { pageRole, getSession } from '@/lib/auth/session'
 import { branchChoicesFor } from '@/lib/branches'
@@ -43,6 +44,24 @@ export default async function BatchPage({
   const d = dict(locale)
   const t = d.settings.batches
 
+  const back = { href: '/settings/batches' as const, label: t.title }
+
+  /*
+   * §4.4, above the four reads. `updateBatch` runs requireWritable, so every field on this
+   * screen — the name, the subject, the teacher, the slot, the days, the fee and the switch
+   * that closes the batch — would be changed and refused. The bar names the screen rather
+   * than the batch, because the batch's own name is in the read below it; that is the same
+   * heading the two arms further down draw for the same reason.
+   */
+  if (session.access !== 'full') {
+    return (
+      <div className="flex flex-col gap-5">
+        <PageHeader title={t.editTitle} back={back} />
+        <ReadOnlyNote t={d.readOnly} className="max-w-2xl" />
+      </div>
+    )
+  }
+
   const [batchRow, { data: subjects }, { data: teachers }, branches] = await Promise.all([
     supabase
       .from('batches')
@@ -78,8 +97,6 @@ export default async function BatchPage({
   // Destructured on its own line, because `error` decides one of the two answers
   // below and the array above has no room left for it.
   const { data: batch, error: batchError } = batchRow
-
-  const back = { href: '/settings/batches' as const, label: t.title }
 
   /*
    * The read that failed, ahead of the row that is not there — see the same pair on

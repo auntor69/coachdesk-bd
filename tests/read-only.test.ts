@@ -307,16 +307,11 @@ const WRITE_SCREENS = PAGES.filter((file) =>
  */
 const PENDING: string[] = [
   'src/app/(app)/exams/[examId]/page.tsx',
-  'src/app/(app)/fees/arrears/page.tsx',
-  'src/app/(app)/fees/charge/page.tsx',
   'src/app/(app)/fees/page.tsx',
   'src/app/(app)/fees/reminders/page.tsx',
   'src/app/(app)/fees/scholarships/page.tsx',
-  'src/app/(app)/notices/page.tsx',
   'src/app/(app)/progress/page.tsx',
-  'src/app/(app)/settings/batches/[batchId]/page.tsx',
   'src/app/(app)/settings/branches/page.tsx',
-  'src/app/(app)/settings/center/page.tsx',
   'src/app/(app)/settings/exam-types/page.tsx',
   'src/app/(app)/settings/managers/page.tsx',
   'src/app/(app)/settings/sms/page.tsx',
@@ -510,6 +505,40 @@ test('the arm is written above every read it would otherwise pay for', () => {
       assert.ok(arm < first, `${file}: \`${marker}\` runs for a centre that cannot write`)
     }
   }
+})
+
+test('the mixed screens keep the half of themselves that is a read', () => {
+  /*
+   * Two screens settle this with a const instead of an arm, which is why they are
+   * correctly outside `ARMED` and its ordering rule — and why they need a test of their
+   * own: nothing else in the suite reads notices/page.tsx at all, and the mixed shape is
+   * the one a later pass would most plausibly flatten into an early return.
+   *
+   * On notices, the log below the form is the record of what this centre has already told
+   * whom, and both chips on those rows copy the centre's own words and its own guardians'
+   * numbers to the owner's own handset. None of that is a write, so none of it goes.
+   *
+   * On settings/center, the two facts are the centre's name and the wallet a parent sends
+   * fees to — what a lapsed owner still has to read out over the phone.
+   */
+  const notices = read('src', 'app', '(app)', 'notices', 'page.tsx')
+  assert.ok(notices.includes("const mayWrite = session.access === 'full'"))
+  assert.ok(notices.includes('{!mayWrite ? ('))
+  assert.ok(notices.includes('<ReadOnlyNote t={d.readOnly} className="max-w-2xl" />'))
+  assert.equal(
+    notices.split('mayWrite').length - 1,
+    2,
+    'one declaration and one use, so the log is not gated on it too',
+  )
+  assert.ok(notices.indexOf('{!mayWrite ? (') < notices.indexOf('{t.batchesUnreadable}'))
+
+  const center = read('src', 'app', '(app)', 'settings', 'center', 'page.tsx')
+  assert.ok(center.includes("const canEdit = isOwner && session.access === 'full'"))
+  assert.ok(center.includes('{isOwner && <ReadOnlyNote t={d.readOnly} className="max-w-2xl" />}'))
+  assert.ok(
+    center.includes('{!isOwner && <p className="mt-3 text-sm text-ink-faint">{t.readOnly}</p>}'),
+    'a lapsed owner is not told to ask the owner',
+  )
 })
 
 test('a lapsed centre is asked for the bill before it is offered a bigger plan', () => {

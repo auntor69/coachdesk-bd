@@ -1,5 +1,6 @@
 import { Card } from '@/components/ui'
 import { PageHeader } from '@/components/page-header'
+import { ReadOnlyNote } from '@/components/read-only-note'
 import { pageCapability, getSession } from '@/lib/auth/session'
 import { createClient } from '@/lib/supabase/server'
 import { formatDate } from '@/lib/bd/time'
@@ -173,6 +174,18 @@ export default async function NoticesPage() {
       }
     })
 
+  /*
+   * §4.4, and this screen is the one where the two halves come apart cleanly. `postNotice`
+   * runs requireWritable, so a lapsed centre cannot publish; but the log below is the record
+   * of what this centre has already told whom, and both chips on those rows copy the centre's
+   * own words and its own guardians' numbers to the owner's own handset. None of that is a
+   * write, so none of it goes. Only the form does.
+   *
+   * No early return, therefore, and the three reads above stay: withholding the log would be
+   * taking away the record over an unpaid bill.
+   */
+  const mayWrite = session.access === 'full'
+
   return (
     <div className="flex flex-col gap-5">
       <PageHeader
@@ -181,10 +194,15 @@ export default async function NoticesPage() {
         subtitle={t.lead}
       />
 
-      {/* The form, or the sentence in place of it. Amber and not the grey aside the
-          roster gets below, because this one is a thing withheld rather than a note
-          added: the reader came to write a notice and there is no form to write it on. */}
-      {options === null ? (
+      {/* The form, or one of the two things that stand in its place. The standing is asked
+          first: a lapsed centre whose batch list also failed to arrive cannot act on either
+          sentence, and only one of them is the reason there is no form. Amber for the
+          unreadable list and not for the note, because a dropped read is worth another tap
+          and this is not — see read-only-note.tsx on why it is furniture rather than a
+          second alert. */}
+      {!mayWrite ? (
+        <ReadOnlyNote t={d.readOnly} className="max-w-2xl" />
+      ) : options === null ? (
         <Card className="border-late/30 bg-late/5">
           <p className="font-medium text-ink">{t.batchesUnreadable}</p>
         </Card>
