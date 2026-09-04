@@ -1,6 +1,7 @@
 import Link from 'next/link'
 
 import { Card } from '@/components/ui'
+import { PageHeader } from '@/components/page-header'
 import { SearchBox, SearchEmpty } from '@/components/search-box'
 import { pageCapability, getSession } from '@/lib/auth/session'
 import { has, planName, PLANS } from '@/lib/plans'
@@ -90,14 +91,9 @@ export default async function ProgressPage({
   const d = dict(locale)
   const t = d.progress
 
-  const back = (
-    <Link
-      href="/dashboard"
-      className="inline-flex min-h-tap items-center text-ink-soft hover:text-ink"
-    >
-      ← {d.dashboard.title}
-    </Link>
-  )
+  // One crumb for all three arms of this screen. Each of them draws the bar rather
+  // than only the way out: a page that refuses still has to say which page refused.
+  const back = { href: '/dashboard' as const, label: d.dashboard.title }
 
   // Before the query, not after. A locked screen has no use for a week of
   // aggregates, and running the view to throw the rows away is work done for a page
@@ -105,9 +101,11 @@ export default async function ProgressPage({
   if (!has(session.plan, 'parentSummary')) {
     return (
       <div className="flex flex-col gap-4">
-        {back}
-        <Card>
-          <h1 className="font-semibold text-ink">{t.lockedTitle}</h1>
+        <PageHeader title={t.title} back={back} />
+        <Card className="max-w-2xl">
+          {/* An `<h2>`, because the bar above is this screen's heading: two page
+              titles is what a screen reader then lists. */}
+          <h2 className="font-semibold text-ink">{t.lockedTitle}</h2>
           <p className="mt-1 text-sm text-ink-soft">
             {t.lockedBody(
               planName(session.plan, locale),
@@ -161,8 +159,8 @@ export default async function ProgressPage({
   if (!('rows' in data)) {
     return (
       <div className="flex flex-col gap-4">
-        {back}
-        <Card className="border-late/30 bg-late/5">
+        <PageHeader title={t.title} back={back} />
+        <Card className="max-w-2xl border-late/30 bg-late/5">
           <p className="font-medium text-ink">
             {data.failed === 'tooLarge' ? t.tooLarge : t.unreadable}
           </p>
@@ -298,16 +296,27 @@ export default async function ProgressPage({
 
   return (
     <div className="flex flex-col gap-5">
-      <div>
-        {back}
-        <h1 className="mt-1 text-xl font-bold text-ink">{t.title}</h1>
-        <p className="mt-1 text-ink-soft">{t.lead}</p>
-        {weekFrom && (
-          <p className="num mt-1 text-sm text-ink-faint">
-            {t.covers(formatDate(weekFrom, locale), formatDate(weekTo, locale))}
-          </p>
-        )}
-      </div>
+      {/* The week is part of the subtitle rather than a third line under it: the bar's
+          contract is one line, and its subtitle is one paragraph. Every figure on this
+          screen was counted over that span, so a reader about to quote one to a parent
+          has to be able to see it. */}
+      <PageHeader
+        title={t.title}
+        back={back}
+        subtitle={
+          <>
+            {t.lead}
+            {weekFrom && (
+              <>
+                {' · '}
+                <span className="num">
+                  {t.covers(formatDate(weekFrom, locale), formatDate(weekTo, locale))}
+                </span>
+              </>
+            )}
+          </>
+        }
+      />
 
       {/* The headline figure, and it counts every family still to tell whatever is in
           the box. A search asks which of these rows is Ali's; it does not ask for the

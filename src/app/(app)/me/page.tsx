@@ -1,4 +1,5 @@
 import { Card } from '@/components/ui'
+import { PageHeader } from '@/components/page-header'
 import { greetingFor } from '@/components/app-shell'
 import { pageCenter, getSession } from '@/lib/auth/session'
 import { createClient } from '@/lib/supabase/server'
@@ -79,10 +80,11 @@ export default async function MePage() {
 
   return (
     <div className="flex flex-col gap-5">
-      <div>
-        <h1 className="text-xl font-bold text-ink">{greetingFor(session)}</h1>
-        <p className="mt-1 text-ink-soft">{session.active.centerName}</p>
-      </div>
+      {/* No crumb: this is where a student or guardian starts, and the shell gives
+          them no tab bar to go back to. The centre is the subtitle because a guardian
+          with a child at two centres is a member of both and this screen is one of
+          them — the same reason every read below is filtered by its id. */}
+      <PageHeader title={greetingFor(session)} subtitle={session.active.centerName} />
 
       {(students ?? []).map((student) => {
         const mine = rows.filter((r) => r.studentId === student.id)

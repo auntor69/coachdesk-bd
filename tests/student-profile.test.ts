@@ -837,8 +837,10 @@ test('moves: nothing to show is an empty list either way', () => {
  * The failure this catches is specific. The phone order here is not a preference — it is
  * what shipped, and an owner who has learned that the numbers to ring are two swipes down
  * does not want them somewhere else after a redesign. So the numbers are asserted to be
- * 1 to 8 with nothing missing and nothing shared, and each column to ascend in source
- * order, which is what makes a laptop draw what the phone reads.
+ * 2 to 8 with nothing missing and nothing shared, and each column to ascend in source
+ * order, which is what makes a laptop draw what the phone reads. 1 is vacant because the
+ * heading held it and now sits in the page bar above the grid; the seven blocks kept the
+ * numbers they shipped with, since renumbering them would move nothing on screen.
  */
 
 const PROFILE = readFileSync(
@@ -855,12 +857,49 @@ function ordersIn(source: string): string[] {
   return [...source.matchAll(/(?<=["\s])order-(\d+|last)\b/g)].map((m) => m[1])
 }
 
+test('layout: the name stays on screen, and the way to edit it is beside the name', () => {
+  const head = PROFILE.slice(
+    PROFILE.indexOf('if (!student) notFound()'),
+    PROFILE.indexOf('<div className="flex flex-col gap-5 lg:grid'),
+  )
+
+  // The bar is a direct child of a tall column and is written above the grid, which is
+  // what makes it stick: a grid cell's containing block is one grid row, so the twelfth-
+  // column heading this replaced scrolled away like any other cell.
+  assert.match(
+    head,
+    /return \(\s+<div className="flex flex-col gap-5">\s+(\{\/\*[\s\S]*?\*\/\}\s+)?<PageHeader/,
+  )
+  assert.match(head, /\{student\.name\}/, 'the bar does not carry the name')
+  assert.match(head, /back=\{\{ href: '\/settings\/students', label: t\.roster \}\}/)
+
+  // Forty rows into the fee list is where somebody on the phone to a guardian is, so the
+  // three facts that identify the record travel with them: the name, whether the student
+  // has left, and the code the centre files them under.
+  assert.match(head, /\{student\.status !== 'active' && \(/)
+  assert.match(head, /t\.inactive/, 'a student who has left is not marked in the bar')
+  assert.match(head, /<span className="num">\{student\.student_code\}<\/span>/)
+
+  // §38 again, and 20260811000019: `can_manage_students` is SELECT and INSERT with no
+  // UPDATE, so a permitted teacher reads this page and cannot edit the record. The button
+  // is the owner's and the manager's, and a teacher gets no link to a refusal.
+  assert.match(head, /actions=\{\s*mayEdit && \(/, 'the edit button is not gated on mayEdit')
+  assert.match(head, /href=\{`\/settings\/students\/\$\{student\.id\}`\}/)
+  assert.match(head, /min-h-tap/, 'the edit button is under a thumb target')
+
+  // The bar is the page's heading, so the page keeps none of its own — two <h1>s is what
+  // a screen reader then lists as the title of one screen.
+  assert.doesNotMatch(PROFILE, /<h1/, 'the page draws a second heading beside the bar')
+})
+
 test('layout: one column on a phone, seven and five from lg', () => {
   assert.match(
     RENDER,
     /^<div className="flex flex-col gap-5 lg:grid lg:grid-cols-12 lg:items-start lg:gap-6">/,
   )
-  assert.match(RENDER, /className="order-1 lg:col-span-12"/, 'the header does not span the grid')
+  // No twelfth-column cell for the heading any more: the bar sits above the grid, because
+  // a sticky box only travels inside its containing block and a cell's is one grid row.
+  assert.doesNotMatch(RENDER, /lg:col-span-12/)
 
   assert.ok(RAIL_AT > 0, 'the five-column rail is not where this test expects it')
   assert.ok(MAIN_AT > RAIL_AT, 'the rail must be written before the panels')
@@ -872,23 +911,23 @@ test('layout: one column on a phone, seven and five from lg', () => {
     assert.match(decl, /lg:flex lg:flex-col/, `${wrapper} never becomes a column`)
   }
 
-  // Exactly the two, because a grid item with no `lg:order` is 0 and draws above the
-  // header — the one place nothing may go.
+  // Exactly the two, because a grid item with no `lg:order` is 0 and would draw above
+  // both — and the rail is not what a laptop should open on.
   assert.equal([...RENDER.matchAll(/lg:order-[23]\b/g)].length, 2)
 })
 
-test('layout: the phone order is 1 to 8, unchanged, and no two blocks share a place', () => {
+test('layout: the phone order is 2 to 8, unchanged, and no two blocks share a place', () => {
   const counts = new Map<string, number>()
   for (const value of ordersIn(RENDER)) counts.set(value, (counts.get(value) ?? 0) + 1)
 
   for (const [value, n] of counts) assert.equal(n, 1, `order-${value} is used ${n} times`)
-  for (let n = 1; n <= 8; n += 1) {
+  for (let n = 2; n <= 8; n += 1) {
     assert.ok([...counts.keys()].includes(String(n)), `no block is order-${n}`)
   }
-  assert.equal(counts.size, 8, `${counts.size} distinct positions, expected 8`)
+  assert.equal(counts.size, 7, `${counts.size} distinct positions, expected 7`)
 
-  // Header, teacher note, contact, moves, flags, attendance, marks, fees — in that order,
-  // which is the order the page shipped in.
+  // Teacher note, contact, moves, flags, attendance, marks, fees — in that order, which
+  // is the order the page shipped in. 1 was the heading, which the bar carries now.
   const rail = RENDER.slice(RAIL_AT, MAIN_AT)
   const main = RENDER.slice(MAIN_AT)
   assert.equal(ordersIn(rail).join(), '2,3,4,5', 'the rail no longer holds the four short facts')
@@ -936,13 +975,19 @@ test('layout: the rail holds what is read while talking, the panels hold the row
 })
 
 test('layout: a read that failed is one capped column, not an empty rail', () => {
+  // To notFound(), not to the grid: the main arm's own root is a tall flex column too,
+  // and a slice that ran past this block would match it instead of the failure.
   const wall = PROFILE.slice(
     PROFILE.indexOf('if (studentError) {'),
-    PROFILE.indexOf('<div className="flex flex-col gap-5 lg:grid'),
+    PROFILE.indexOf('if (!student) notFound()'),
   )
   assert.ok(wall.length > 100, 'the failed-read return is not where this test expects it')
-  assert.match(wall, /<div className="flex max-w-2xl flex-col gap-5">/)
+  // The cap is on the card, not the column: the bar's background reaches the workspace
+  // edges, and the one sentence under it stays the width of a sentence.
+  assert.match(wall, /<div className="flex flex-col gap-5">/)
+  assert.match(wall, /<Card className="max-w-2xl border-late\/30 bg-late\/5">/)
   assert.doesNotMatch(wall, /lg:grid-cols-12/, 'the failure is not a twelve-column grid')
-  // The back link stays, so the reader is not stranded on it.
-  assert.match(wall, /href="\/settings\/students"/)
+  // The way out stays, so the reader is not stranded on it — and it is the bar's crumb
+  // now, which is also this arm's heading: the page that refused has to say which page.
+  assert.match(wall, /<PageHeader title=\{t\.title\} back=\{\{ href: '\/settings\/students'/)
 })

@@ -1,6 +1,5 @@
-import Link from 'next/link'
-
 import { Card } from '@/components/ui'
+import { PageHeader } from '@/components/page-header'
 import { RiskList } from '@/components/risk-list'
 import { pageRole, getSession } from '@/lib/auth/session'
 import { createClient } from '@/lib/supabase/server'
@@ -155,19 +154,13 @@ export default async function AtRiskPage() {
 
   return (
     <div className="flex flex-col gap-4">
-      <div>
-        {/* At the top and labelled with where it goes, like every other back link
-            in the app. This page is only reachable from the dashboard card, so the
-            destination is not a guess. */}
-        <Link
-          href="/dashboard"
-          className="inline-flex min-h-tap items-center text-ink-soft hover:text-ink"
-        >
-          ← {d.dashboard.title}
-        </Link>
-        <h1 className="mt-1 text-xl font-bold text-ink">{t.title}</h1>
-        <p className="mt-1 text-ink-soft">{t.lead}</p>
-      </div>
+      {/* The crumb is not a guess: this screen is only reachable from the dashboard
+          card. */}
+      <PageHeader
+        title={t.title}
+        back={{ href: '/dashboard', label: d.dashboard.title }}
+        subtitle={t.lead}
+      />
 
       {listProblem !== null ? (
         // Amber, unlike the two cards below it. A centre in its first fortnight is

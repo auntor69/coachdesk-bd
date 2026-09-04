@@ -1,6 +1,5 @@
-import Link from 'next/link'
-
 import { Card } from '@/components/ui'
+import { PageHeader } from '@/components/page-header'
 import { pageCapability, getSession } from '@/lib/auth/session'
 import { createClient } from '@/lib/supabase/server'
 import { formatDate } from '@/lib/bd/time'
@@ -176,16 +175,11 @@ export default async function NoticesPage() {
 
   return (
     <div className="flex flex-col gap-5">
-      <div>
-        <Link
-          href="/dashboard"
-          className="inline-flex min-h-tap items-center text-ink-soft hover:text-ink"
-        >
-          ← {t.back}
-        </Link>
-        <h1 className="mt-1 text-xl font-bold text-ink">{t.title}</h1>
-        <p className="mt-1 text-sm text-ink-soft">{t.lead}</p>
-      </div>
+      <PageHeader
+        title={t.title}
+        back={{ href: '/dashboard', label: t.back }}
+        subtitle={t.lead}
+      />
 
       {/* The form, or the sentence in place of it. Amber and not the grey aside the
           roster gets below, because this one is a thing withheld rather than a note

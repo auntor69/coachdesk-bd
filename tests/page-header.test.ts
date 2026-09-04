@@ -205,19 +205,54 @@ test('the bar is never wrapped in a box of its own or handed to a grid', () => {
       /<div[^>]*>\s*\n?\s*<PageHeader[^>]*\/>\s*\n?\s*<\/div>/,
       `${file}: the bar is wrapped in a box of its own`,
     )
+    // The third shape, which un-bleeds it instead of un-sticking it. The bar's background
+    // spans the workspace with `lg:-mx-8`, so a `max-w-*` on the column that holds it
+    // stops that background at 672px and leaves rows scrolling up through bare page
+    // either side. Every screen with a narrow form caps the CARD instead — see the note
+    // on account/page.tsx, which is where this was got wrong.
+    assert.doesNotMatch(
+      source,
+      /<div className="[^"]*\bmax-w-[^"]*"[^>]*>\s*(\{\/\*[\s\S]*?\*\/\}\s*)?<PageHeader/,
+      `${file}: the column holding the bar is capped, so its background is too`,
+    )
   }
 })
 
-test('every screen that draws the bar imports it from the one place', () => {
-  const users = TSX.filter((f) => f.source.includes('<PageHeader'))
-  // A floor and not a target: it goes up as the rest of §20.8's screens are converted,
-  // and it is here so a refactor that quietly unhooks the bar from most of the app is a
-  // failure rather than a diff nobody reads. Thirty-eight screens carry it as this is
-  // written, out of forty-nine under `(app)` — and a handful of those may never have it,
-  // because a printed sheet draws no bar and `PageHeader` is `print:hidden`.
-  assert.ok(users.length >= 38, `only ${users.length} screens carry the bar`)
+/**
+ * Every screen under `(app)`, which is every screen that owes the reader a heading.
+ * `error.tsx` and the rest are not here: a page file is what a route resolves to.
+ */
+const PAGES = TSX.filter(
+  (f) => f.path.startsWith('src/app/(app)/') && f.path.endsWith('/page.tsx'),
+)
 
-  for (const { path: file, source } of users) {
+/**
+ * The five that draw no bar, and each is settled rather than pending.
+ *
+ * Four are printed sheets — a guardian's receipt, a payslip, an expense voucher, a plan
+ * receipt — and `PageHeader` is `print:hidden`, so a bar on them would be furniture that
+ * exists only on the screen it is printed from. The fifth is the fee register, whose
+ * `<h1>` is the centre's own name because that sheet gets handed across a desk.
+ *
+ * A list and not a floor: the rollout is done, so the failure worth catching now is the
+ * next screen somebody adds without a heading, and a `>=` count can never catch that.
+ */
+const NO_BAR = [
+  'src/app/(app)/expenses/voucher/[expenseId]/page.tsx',
+  'src/app/(app)/fees/receipt/[paymentId]/page.tsx',
+  'src/app/(app)/fees/register/page.tsx',
+  'src/app/(app)/payroll/payslip/[paymentId]/page.tsx',
+  'src/app/(app)/settings/plan/receipt/[paymentId]/page.tsx',
+]
+
+test('every screen in the app draws the bar, or is one of the five printed exceptions', () => {
+  const without = PAGES.filter((f) => !f.source.includes('<PageHeader')).map((f) => f.path)
+  assert.deepEqual(without.sort(), [...NO_BAR].sort())
+
+  // Over every `.tsx` and not just the pages, because a shared block that drew a bar of
+  // its own would owe the same two things.
+  for (const { path: file, source } of TSX) {
+    if (!source.includes('<PageHeader')) continue
     assert.ok(
       source.includes("import { PageHeader } from '@/components/page-header'"),
       `${file}: draws the bar without importing it`,

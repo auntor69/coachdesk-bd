@@ -1,6 +1,5 @@
-import Link from 'next/link'
-
 import { Card } from '@/components/ui'
+import { PageHeader } from '@/components/page-header'
 import { pageCenter, getSession, homePathFor } from '@/lib/auth/session'
 import { MIN_PASSWORD } from '@/lib/auth/password'
 import { formatBdMobile } from '@/lib/bd/phone'
@@ -42,20 +41,14 @@ export default async function AccountPage() {
 
   return (
     <div className="flex flex-col gap-5">
-      <div>
-        {/* Where the bottom bar would be for everybody else. A student or guardian
-            has a single tab, which the shell does not draw as a bar at all, so
-            without this the only way off this screen is the browser's back arrow. */}
-        <Link
-          href={homePathFor(session)}
-          className="inline-flex min-h-tap items-center text-ink-soft hover:text-ink"
-        >
-          ← {t.back}
-        </Link>
-        <h1 className="mt-1 text-xl font-bold text-ink">{t.title}</h1>
-      </div>
+      {/* The crumb is where the bottom bar would be for everybody else. A student or
+          guardian has a single tab, which the shell does not draw as a bar at all, so
+          without it the only way off this screen is the browser's back arrow. */}
+      <PageHeader title={t.title} back={{ href: homePathFor(session), label: t.back }} />
 
-      <Card>
+      {/* Capped on the cards and not on the column, so the bar reaches the workspace
+          edges while a name box stays the width of a name. */}
+      <Card className="max-w-2xl">
         <h2 className="font-semibold text-ink">{t.nameTitle}</h2>
         <p className="mb-3 mt-1 text-sm text-ink-soft">{t.nameBody}</p>
         {/* `?? ''` and not the old "No name set" line: the box itself is where the
@@ -64,7 +57,7 @@ export default async function AccountPage() {
         <NameForm fullName={session.fullName ?? ''} t={t} common={d.common} />
       </Card>
 
-      <Card>
+      <Card className="max-w-2xl">
         {/* Whichever of the two this account signs in with. A username teacher has no
             number to show, and the number card standing empty under the heading
             "Login number" would read as something they still have to supply — when in
@@ -86,7 +79,7 @@ export default async function AccountPage() {
         )}
       </Card>
 
-      <Card>
+      <Card className="max-w-2xl">
         <h2 className="font-semibold text-ink">{t.passwordTitle}</h2>
         <p className="mb-3 mt-1 text-sm text-ink-soft">{t.passwordBody}</p>
         <PasswordForm
