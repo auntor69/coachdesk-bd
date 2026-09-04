@@ -2,6 +2,7 @@ import Link from 'next/link'
 
 import { PageHeader } from '@/components/page-header'
 import { Card } from '@/components/ui'
+import { ReadOnlyNote } from '@/components/read-only-note'
 import { pagePermission, getSession, isStaffAdmin } from '@/lib/auth/session'
 import { branchChoicesFor, mayChooseBranch } from '@/lib/branches'
 import { createClient } from '@/lib/supabase/server'
@@ -24,6 +25,20 @@ export default async function NewBatchPage() {
   const locale = session.locale
   const d = dict(locale)
   const t = d.settings.batches
+
+  /*
+   * A lapsed centre gets no form, above all four reads below. `createBatch` runs
+   * requireWritable, so the name, the subject, the teacher, the slot and the week's
+   * days would all be filled in and refused on save.
+   */
+  if (session.access !== 'full') {
+    return (
+      <div className="flex flex-col gap-5">
+        <PageHeader title={t.newTitle} back={{ href: '/settings/batches', label: t.title }} />
+        <ReadOnlyNote t={d.readOnly} className="max-w-2xl" />
+      </div>
+    )
+  }
 
   const [{ data: subjects }, { data: teachers }, { count: batchCount }, branches] =
     await Promise.all([

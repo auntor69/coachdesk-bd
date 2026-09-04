@@ -148,7 +148,7 @@ test('the furniture is the one the other settings screens use', () => {
   // would be a heading that scrolls away on that one screen only.
   for (const [which, src, bars] of [
     ['list', LIST, 2],
-    ['new', NEW, 1],
+    ['new', NEW, 2],
     ['edit', EDIT, 3],
   ] as [string, string, number][]) {
     assert.equal(count(src, '<PageHeader'), bars, which)
@@ -211,11 +211,20 @@ test('the list still withholds what it cannot prove', () => {
   assert.ok(LIST.includes('{limit === null ? t.count(activeCount) : t.used(activeCount, limit)}'))
 })
 
-test('the create screen keeps its four arms in that order', () => {
+test('the create screen keeps its five arms in that order', () => {
   assert.ok(NEW.includes("const session = await pagePermission('can_manage_batches')"))
   assert.equal(count(NEW, ".eq('coaching_center_id', session.active.centerId)"), 3)
   assert.ok(NEW.includes(".select('id', { count: 'exact', head: true })"))
   assert.ok(NEW.includes('branchChoicesFor(supabase, session)'))
+
+  // The fifth arm, and the first one written: §4.4's, because `createBatch` runs
+  // requireWritable and this form's nine fields would all be refused on save. Above all
+  // four reads, so a lapsed centre pays for none of them.
+  const lapsed = NEW.indexOf("if (session.access !== 'full') {")
+  assert.ok(lapsed > 0, 'the read-only arm is gone from the create screen')
+  assert.ok(NEW.includes('<ReadOnlyNote t={d.readOnly} className="max-w-2xl" />'))
+  assert.ok(lapsed < NEW.indexOf('await Promise.all'))
+  assert.ok(lapsed < NEW.indexOf('{atLimit ? ('))
 
   // Not drawn for a reader about to choose a building: §8.4 caps batches per branch, so
   // the count is the wrong number and `t.cap` the wrong claim.
@@ -234,7 +243,7 @@ test('the create screen keeps its four arms in that order', () => {
   assert.ok(NEW.indexOf('{t.capTitle}') < NEW.indexOf('{t.subjectsUnreadable}'))
   assert.ok(NEW.indexOf('{t.subjectsUnreadable}') < NEW.indexOf('{t.needSubjectTitle}'))
   assert.ok(NEW.indexOf('{t.needSubjectTitle}') < NEW.indexOf('<BatchForm'))
-  assert.equal(count(NEW, 'max-w-2xl'), 3, 'each arm is a sentence, the form is not')
+  assert.equal(count(NEW, 'max-w-2xl'), 4, 'each arm is a sentence, the form is not')
 
   // The teacher list fails open, because the field is genuinely optional.
   assert.ok(NEW.includes('hasStaff(session.plan)'))

@@ -306,9 +306,7 @@ const WRITE_SCREENS = PAGES.filter((file) =>
  * NOTHING MAY BE ADDED TO THIS LIST. A screen leaves it by branching on `session.access`.
  */
 const PENDING: string[] = [
-  'src/app/(app)/exams/[examId]/edit/page.tsx',
   'src/app/(app)/exams/[examId]/page.tsx',
-  'src/app/(app)/exams/new/page.tsx',
   'src/app/(app)/fees/arrears/page.tsx',
   'src/app/(app)/fees/charge/page.tsx',
   'src/app/(app)/fees/page.tsx',
@@ -317,16 +315,13 @@ const PENDING: string[] = [
   'src/app/(app)/notices/page.tsx',
   'src/app/(app)/progress/page.tsx',
   'src/app/(app)/settings/batches/[batchId]/page.tsx',
-  'src/app/(app)/settings/batches/new/page.tsx',
   'src/app/(app)/settings/branches/page.tsx',
   'src/app/(app)/settings/center/page.tsx',
   'src/app/(app)/settings/exam-types/page.tsx',
   'src/app/(app)/settings/managers/page.tsx',
   'src/app/(app)/settings/sms/page.tsx',
-  'src/app/(app)/settings/staff/new/page.tsx',
   'src/app/(app)/settings/staff/page.tsx',
   'src/app/(app)/settings/subjects/page.tsx',
-  'src/app/(app)/settings/teachers/new/page.tsx',
   'src/app/(app)/settings/teachers/page.tsx',
   'src/app/(app)/teach/[batchId]/page.tsx',
 ]
@@ -458,6 +453,82 @@ test('both languages say it, and neither suggests the records are gone', () => {
       t.noFormTitle,
       /\d/,
       `${name}.readOnly.noFormTitle names a figure the banner above already names`,
+    )
+  }
+})
+
+/* -------------------------------------------------------------------------- */
+/* Where in the screen the question is asked                                  */
+/* -------------------------------------------------------------------------- */
+
+/** The screens that answer a lapsed centre with a whole arm rather than a hidden button. */
+const ARMED = PAGES.filter((f) => read(f).includes("if (session.access !== 'full') {"))
+
+test('the arm names the one standing that may write, and not the one that may not', () => {
+  /*
+   * `requireWritable` is written `access !== 'full'` and deliberately not
+   * `=== 'read_only'`, so a third `Access` value would be refused rather than admitted.
+   * A screen written the other way round is the same fail-open one layer up — and it
+   * would also drop out of `ARMED` above, taking the ordering rule below with it.
+   *
+   * The `if` is what makes this a decision. `settings/plan/page.tsx` reads
+   * `access === 'read_only'` to pick a badge colour, which is a tone and not a refusal.
+   */
+  for (const file of PAGES) {
+    assert.doesNotMatch(
+      read(file),
+      /if \([^)]*access\s*===\s*'read_only'/,
+      `${file}: refuses on the state that may not write instead of the one that may`,
+    )
+  }
+})
+
+test('the arm is written above every read it would otherwise pay for', () => {
+  assert.ok(ARMED.length >= 8, `only ${ARMED.length} screens return early on standing`)
+
+  /*
+   * Standing comes off the session, so this arm never needs a query to know it applies —
+   * which makes a read above it pure waste, charged to the centre least able to use the
+   * answer. Supabase auto-pauses on the free tier and these screens run four reads each,
+   * so "wasted" is not academic: a lapsed centre browsing the product it cannot write to
+   * is exactly the traffic worth not serving.
+   *
+   * It is also the ordering that keeps the arm honest. Below the reads, an arm sits after
+   * the dropped-read and empty-list cards, so whichever of those fires first answers a
+   * reader whose real answer is this one.
+   *
+   * A permission gate above it is not a read this rule can see, and is meant to be there:
+   * `canManageExams()` on the two exam screens asks whether this reader may be here at
+   * all, which is a different and earlier question than whether the centre may save.
+   */
+  for (const file of ARMED) {
+    const source = read(file)
+    const arm = source.indexOf("if (session.access !== 'full') {")
+    for (const marker of [".from('", 'await Promise.all', 'supabase.rpc(']) {
+      const first = source.indexOf(marker)
+      if (first === -1) continue
+      assert.ok(arm < first, `${file}: \`${marker}\` runs for a centre that cannot write`)
+    }
+  }
+})
+
+test('a lapsed centre is asked for the bill before it is offered a bigger plan', () => {
+  /*
+   * §4.4's one-ask-per-screen rule, in the one place two arms both want to talk about the
+   * plan. `settings/teachers/new` and `settings/staff/new` refuse a teacher-tier centre
+   * with an upsell to Coaching Center; a lapsed centre reaching the same screen would be
+   * sold a tier while the subscription it already has is the thing that stopped. Places
+   * and seats bought on a lapsed subscription are capacity nobody can use until the bill
+   * is settled, so the bill is the one ask worth making — the same call the shell makes
+   * when it suppresses the trial notice behind the read-only banner.
+   */
+  for (const file of ARMED) {
+    const source = read(file)
+    const upsell = source.indexOf('PLANS.center')
+    if (upsell === -1) continue
+    assert.ok(
+      source.indexOf("if (session.access !== 'full') {") < upsell,
+      `${file}: sells a bigger plan to a centre that has not paid for this one`,
     )
   }
 })

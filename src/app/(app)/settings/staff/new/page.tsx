@@ -1,5 +1,6 @@
 import { PageHeader } from '@/components/page-header'
 import { Card } from '@/components/ui'
+import { ReadOnlyNote } from '@/components/read-only-note'
 import { pageCapability, getSession } from '@/lib/auth/session'
 import { todayInDhaka } from '@/lib/bd/time'
 import { branchChoicesFor } from '@/lib/branches'
@@ -43,6 +44,21 @@ export default async function NewStaffPage() {
   const locale = session.locale
   const d = dict(locale)
   const t = d.settings.staff
+
+  /*
+   * A lapsed centre gets no form, and is answered before the plan card below is.
+   * `addEmployee` runs requireWritable, so the six fields would be typed in and
+   * refused; and the plan card is a tier upsell, which is the wrong ask to make of a
+   * centre whose subscription is what has lapsed.
+   */
+  if (session.access !== 'full') {
+    return (
+      <div className="flex flex-col gap-5">
+        <PageHeader title={t.newTitle} back={{ href: '/settings/staff', label: t.title }} />
+        <ReadOnlyNote t={d.readOnly} className="max-w-2xl" />
+      </div>
+    )
+  }
 
   // Same card as the list behind it, for the same reason: reached by a bookmark or a
   // back button, never by a link this build renders. The action re-checks the plan

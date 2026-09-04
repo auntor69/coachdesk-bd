@@ -2,6 +2,7 @@ import { forbidden, notFound } from 'next/navigation'
 
 import { Card } from '@/components/ui'
 import { PageHeader } from '@/components/page-header'
+import { ReadOnlyNote } from '@/components/read-only-note'
 import { pageRole, getSession, canManageExams } from '@/lib/auth/session'
 import { createClient } from '@/lib/supabase/server'
 import { dict, localName, DEFAULT_LOCALE } from '@/lib/i18n'
@@ -58,6 +59,24 @@ export default async function EditExamPage({
   const locale = session.locale
   const d = dict(locale)
   const t = d.examEdit
+
+  /*
+   * A lapsed centre gets no fields, above the two reads below. Both writes this screen
+   * offers — `updateExam` and `deleteExam` — run requireWritable, so every field drawn
+   * here would be typed into and refused, and the delete link would refuse for a reason
+   * that has nothing to do with the marks the panel spends four sentences on.
+   *
+   * The crumb is the exam, not the list: a read-only centre still reads everything, so
+   * the screen the reader came from is exactly where they should go back to.
+   */
+  if (session.access !== 'full') {
+    return (
+      <div className="flex flex-col gap-5">
+        <PageHeader title={t.title} back={{ href: `/exams/${examId}`, label: t.back }} />
+        <ReadOnlyNote t={d.readOnly} className="max-w-2xl" />
+      </div>
+    )
+  }
 
   // RLS decides visibility, and a miss is a 404 rather than a 403 — so the URL cannot
   // be used to find out which exam ids exist in other centres. Same call as the exam

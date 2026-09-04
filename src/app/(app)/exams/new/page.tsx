@@ -3,6 +3,7 @@ import { forbidden } from 'next/navigation'
 
 import { Card } from '@/components/ui'
 import { PageHeader } from '@/components/page-header'
+import { ReadOnlyNote } from '@/components/read-only-note'
 import {
   pageRole,
   getSession,
@@ -35,10 +36,30 @@ export default async function NewExamPage() {
   // permissions row and no settings screen to tick anything on — is never asked.
   if (!(await canManageExams())) forbidden()
 
-  const supabase = await createClient()
   const locale = session.locale
   const d = dict(locale)
   const t = d.exams
+
+  /** The same bar on all three shapes of the screen, so none of them can lose the crumb. */
+  const head = (
+    <PageHeader title={t.newTitle} back={{ href: '/exams', label: t.title }} />
+  )
+
+  /*
+   * A lapsed centre gets no form, above every read below. `createExam` runs
+   * requireWritable, so the six fields could only be filled in and refused — and a
+   * teacher fills them in standing in front of the class the paper is for.
+   */
+  if (session.access !== 'full') {
+    return (
+      <div className="flex flex-col gap-5">
+        {head}
+        <ReadOnlyNote t={d.readOnly} className="max-w-2xl" />
+      </div>
+    )
+  }
+
+  const supabase = await createClient()
 
   // Which batches this reader may actually put an exam on.
   //
@@ -117,7 +138,7 @@ export default async function NewExamPage() {
   if (rows === null) {
     return (
       <div className="flex flex-col gap-4">
-        <PageHeader title={t.newTitle} back={{ href: '/exams', label: t.title }} />
+        {head}
         <Card className="max-w-2xl border-late/30 bg-late/5">
           <p className="font-medium text-ink">{t.batchesUnreadable}</p>
         </Card>
@@ -151,7 +172,7 @@ export default async function NewExamPage() {
    */
   return (
     <div className="flex flex-col gap-5">
-      <PageHeader title={t.newTitle} back={{ href: '/exams', label: t.title }} />
+      {head}
 
       {batchOptions.length === 0 ? (
         // Two different emptinesses. An owner has no batches at the centre yet and

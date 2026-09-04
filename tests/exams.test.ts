@@ -1,8 +1,10 @@
 /**
  * The four exam screens (§20.8), which nothing read before this file.
  *
- * WHAT IS BEING GUARDED. Each screen now draws one `PageHeader` per ending instead of
- * its own heading block, and each one made a different width decision:
+ * WHAT IS BEING GUARDED. Every ending on each screen now draws a `PageHeader` instead of
+ * the screen writing its own heading block — either one bar per ending, or, where a screen
+ * grew a third, one hoisted `head` the endings share. Each screen made a different width
+ * decision:
  *
  *   - `/exams` is the only one that spends the desktop. Forty rows is a list density
  *     helps, so the width buys a second column from `xl` rather than a 672px column on
@@ -52,9 +54,15 @@ test('every ending on all four screens draws the bar and none draws a heading', 
   // A screen with three endings draws three bars, each naming the screen that refused —
   // that is the whole reason the bar is a component and not part of the shell.
   assert.equal(count(LIST, '<PageHeader'), 2, 'the list: the rows and a failed read')
-  assert.equal(count(NEW, '<PageHeader'), 2, 'the form: the form and a failed read')
   assert.equal(count(SHEET, '<PageHeader'), 3, 'the sheet: the sheet and two failed reads')
-  assert.equal(count(EDIT, '<PageHeader'), 2, 'the edit form: the form and a failed read')
+  assert.equal(count(EDIT, '<PageHeader'), 3, 'the edit form: the form, a failed read, read-only')
+
+  // The new-exam form has three endings too — the form, a failed batch read, and a centre
+  // that cannot save — and one bar between them, hoisted so a crumb cannot go missing from
+  // whichever arm a later pass edits. Both halves asserted: one bar written, three drawn.
+  assert.equal(count(NEW, '<PageHeader'), 1, 'the form: one bar for all three endings')
+  assert.equal(count(NEW, 'const head = ('), 1)
+  assert.equal(count(NEW, '{head}'), 3)
 
   for (const [name, src] of [
     ['list', LIST],
@@ -75,8 +83,8 @@ test('the list carries no crumb and the three sub-screens all do', () => {
   // got here, so a "back" pointing at nothing above it would be furniture.
   assert.doesNotMatch(LIST, /back=\{\{/)
 
-  // Both of the new-exam form's endings return to the list.
-  assert.equal(count(NEW, "back={{ href: '/exams', label: t.title }}"), 2)
+  // One crumb for all three of the new-exam form's endings, because the bar is hoisted.
+  assert.equal(count(NEW, "back={{ href: '/exams', label: t.title }}"), 1)
 
   // All three of the sheet's, including the failed reads — the list it returns to still
   // has the exam on it, so the way out is drawn even when the row would not load.
@@ -145,10 +153,10 @@ test('the New button is in the bar, gated, and gone when the read failed', () =>
 /* -------------------------------------------------------------------------- */
 
 test('the new-exam form is capped on its content and not on the page', () => {
-  assert.match(NEW, /return \(\n {4}<div className="flex flex-col gap-5">\n {6}<PageHeader/)
+  assert.match(NEW, /return \(\n {4}<div className="flex flex-col gap-5">\n {6}\{head\}/)
   // `ExamForm` takes no className, so the cap is a wrapper around it.
   assert.match(NEW, /<div className="max-w-2xl">\n {10}<ExamForm/)
-  assert.equal(count(NEW, 'max-w-2xl'), 3)
+  assert.equal(count(NEW, 'max-w-2xl'), 4, 'the form, both refusal cards, and the note')
 })
 
 test('the marks sheet, its notices and the metered gate share one capped group', () => {
@@ -171,7 +179,7 @@ test('the marks sheet, its notices and the metered gate share one capped group',
 test('the correction form is capped, and its crumb goes back to the exam', () => {
   assert.match(EDIT, /return \(\n {4}<div className="flex flex-col gap-5">\n {6}<PageHeader/)
   assert.match(EDIT, /<div className="flex max-w-2xl flex-col gap-5">/)
-  assert.equal(count(EDIT, 'max-w-2xl'), 2)
+  assert.equal(count(EDIT, 'max-w-2xl'), 3, 'the form group, the failed read, and the note')
 
   // Where the reader came from, and where the marks they were looking at still are.
   assert.match(EDIT, /back=\{\{ href: `\/exams\/\$\{exam\.id\}`, label: t\.back \}\}/)
@@ -183,6 +191,32 @@ test('the correction form is capped, and its crumb goes back to the exam', () =>
 
   // Nothing in the file links by hand any more, so the import went with the crumbs.
   assert.doesNotMatch(EDIT, /from 'next\/link'/)
+})
+
+test('neither exam form is drawn to a centre that cannot save', () => {
+  /*
+   * §4.4. `createExam`, `updateExam` and `deleteExam` all run requireWritable, so both of
+   * these screens could only ever be filled in and refused — and the reader filling them
+   * in is a teacher standing in front of the class the paper is for, on a phone, between
+   * two batches. The repo-wide half of this is in read-only.test.ts; what is here is the
+   * two facts particular to these screens.
+   */
+  for (const [name, src] of [['new', NEW], ['edit', EDIT]] as const) {
+    assert.match(src, /if \(session\.access !== 'full'\) \{/, `${name}: draws the form anyway`)
+    assert.match(src, /<ReadOnlyNote t=\{d\.readOnly\} className="max-w-2xl" \/>/, `${name}: no note`)
+
+    // Below the permission gate, which asks a different and earlier question: whether this
+    // reader may be on the screen at all. A teacher without the owner's "Exams & marks"
+    // tick gets the 403 they would get at a paying centre.
+    assert.ok(
+      src.indexOf('canManageExams()') < src.indexOf("if (session.access !== 'full') {"),
+      `${name}: the standing is checked before the permission is`,
+    )
+  }
+
+  // The crumb is the exam and not the list, the same as the form arm's: a read-only centre
+  // still reads everything, so the screen the reader came from is where they go back to.
+  assert.match(EDIT, /back=\{\{ href: `\/exams\/\$\{examId\}`, label: t\.back \}\}/)
 })
 
 /* -------------------------------------------------------------------------- */

@@ -1,5 +1,6 @@
 import { PageHeader } from '@/components/page-header'
 import { Card } from '@/components/ui'
+import { ReadOnlyNote } from '@/components/read-only-note'
 import { pageCapability, getSession } from '@/lib/auth/session'
 import { branchChoicesFor } from '@/lib/branches'
 import { createClient } from '@/lib/supabase/server'
@@ -27,6 +28,25 @@ export default async function NewTeacherPage() {
   const locale = session.locale
   const d = dict(locale)
   const t = d.settings.teachers
+
+  /*
+   * A lapsed centre gets no form, and is answered before the solo card below is.
+   * `createTeacher` runs requireWritable, so every field here would be refused on save
+   * — and above the solo card for the reason the add-student screen orders its own two
+   * arms that way: both of these want to talk about the plan, and a tier upsell to a
+   * centre whose subscription has lapsed is the wrong one of the two asks.
+   */
+  if (session.access !== 'full') {
+    return (
+      <div className="flex flex-col gap-5">
+        <PageHeader
+          title={t.newTitle}
+          back={{ href: '/settings/teachers', label: t.title }}
+        />
+        <ReadOnlyNote t={d.readOnly} className="max-w-2xl" />
+      </div>
+    )
+  }
 
   // Same card as the list behind it, for the same reason: on a one-teacher plan
   // there is nobody to add. Reached by a bookmark or a back button, never by a

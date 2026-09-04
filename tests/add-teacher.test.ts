@@ -48,14 +48,35 @@ test('the page holds no grid, because the form is the thing that splits', () => 
   assert.deepEqual(ordersIn(PAGE), [])
 })
 
-test('both shapes of this screen draw the same heading', () => {
+test('all three shapes of this screen draw the same heading', () => {
   // The plan refusal had no h1 at all, so a bookmark landed a reader on a card about
   // their plan with nothing above it naming the screen that had refused them. The bar
-  // carries it on both now, and owns the h1, so a card's own title is an h2.
-  assert.equal(count(PAGE, '<PageHeader'), 2)
-  assert.equal(count(PAGE, 'title={t.newTitle}'), 2)
+  // carries it on all three now, and owns the h1, so a card's own title is an h2.
+  assert.equal(count(PAGE, '<PageHeader'), 3)
+  assert.equal(count(PAGE, 'title={t.newTitle}'), 3)
   assert.equal(count(PAGE, '<h1'), 0)
   assert.doesNotMatch(PAGE, /text-xl font-bold text-ink lg:text-2xl/)
+})
+
+test('a lapsed centre gets no form, and is not sold a bigger plan instead', () => {
+  // §4.4. `createTeacher` runs requireWritable, so every field here would be typed in
+  // and refused on save. The repo-wide half is in read-only.test.ts.
+  assert.match(PAGE, /if \(session\.access !== 'full'\) \{/)
+  assert.ok(PAGE.includes('<ReadOnlyNote t={d.readOnly} className="max-w-2xl" />'))
+  assert.ok(PAGE.includes("import { ReadOnlyNote } from '@/components/read-only-note'"))
+
+  // Above the solo card, which is a Coaching Center upsell: one ask per screen, and for a
+  // centre whose own subscription has stopped the bill is the ask worth making. Seats
+  // bought on a lapsed subscription are capacity nobody can use until it is settled.
+  const lapsed = PAGE.indexOf("if (session.access !== 'full') {")
+  assert.ok(lapsed < PAGE.indexOf('if (!hasStaff(session.plan)) {'))
+
+  // And above both reads, so the arm costs a lapsed centre no round trips.
+  assert.ok(lapsed < PAGE.indexOf('await Promise.all'))
+
+  // The crumb is the teachers list, which still reads. The solo card goes to the hub
+  // instead, because on a one-teacher plan that list is the same refusal again.
+  assert.ok(PAGE.includes("back={{ href: '/settings/teachers', label: t.title }}"))
 })
 
 test('the two refusals are capped, each the way its twin on the list is', () => {
