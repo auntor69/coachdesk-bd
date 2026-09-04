@@ -21,6 +21,9 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import path from 'node:path'
 
+import { bn } from '../src/lib/i18n/bn.ts'
+import { en } from '../src/lib/i18n/en.ts'
+
 const ROOT = path.join(import.meta.dirname, '..')
 
 /** CRLF out, because a `\n` anchor in a CRLF file silently matches nothing. */
@@ -236,6 +239,34 @@ test('the create screen keeps its four arms in that order', () => {
   // The teacher list fails open, because the field is genuinely optional.
   assert.ok(NEW.includes('hasStaff(session.plan)'))
   assert.ok(NEW.includes('(teachers ?? []).map((teacher) => ({'))
+})
+
+test('the third arm offers the subject button only to somebody who can press it', () => {
+  /*
+   * This screen's floor is `can_manage_batches`, a box an owner ticks per teacher, and
+   * /settings/subjects is `pageRole('manager')` — 20260811000019 grants that box INSERT on
+   * batches and nothing on subjects. So the reader most likely to meet this arm, a teacher
+   * at a centre whose owner opened the batch box before writing the subjects down, was
+   * handed the one control on the card and it answers with a 403.
+   */
+  assert.ok(NEW.includes("import { pagePermission, getSession, isStaffAdmin } from '@/lib/auth/session'"))
+  assert.ok(NEW.includes('{isStaffAdmin(session) ? t.needSubjectBody : t.needSubjectAsk}'))
+
+  const at = NEW.indexOf('href="/settings/subjects"')
+  assert.ok(at > 0, 'the subject button is gone')
+  assert.ok(NEW.slice(at - 400, at).includes('{isStaffAdmin(session) && ('), 'it is still ungated')
+
+  // The card still says what is wrong either way; only the door is conditional.
+  assert.equal(count(NEW, '{t.needSubjectTitle}'), 1)
+  assert.equal(count(NEW, 'href="/settings/subjects"'), 1)
+
+  for (const d of [bn, en]) {
+    const t = d.settings.batches
+    assert.notEqual(t.needSubjectAsk, t.needSubjectBody)
+    // It names who to ask, so it is a longer sentence than the one with a button under it.
+    assert.ok(t.needSubjectAsk.length > t.needSubjectBody.length)
+  }
+  assert.doesNotMatch(bn.settings.batches.needSubjectAsk, /[A-Za-z]/)
 })
 
 test('the edit screen is manager-only and reads its own batch', () => {

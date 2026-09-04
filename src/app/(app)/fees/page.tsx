@@ -5,6 +5,7 @@ import { PageHeader } from '@/components/page-header'
 import { Card } from '@/components/ui'
 import { SearchBox, SearchEmpty } from '@/components/search-box'
 import { pageCenter, getSession, isStaffAdmin, canReadFees } from '@/lib/auth/session'
+import { can } from '@/lib/staff/capabilities'
 import { createClient } from '@/lib/supabase/server'
 import { pageAll, pageOrNull, type Paged, worstFailure } from '@/lib/supabase/page'
 import {
@@ -115,6 +116,18 @@ export default async function FeesPage({
   // or we would not have got this far — but "may they collect", and that is
   // staff-admin work in both feeAdmin() and RLS.
   const canWrite = isStaffAdmin(session)
+
+  /*
+   * And whether the wage bill is this reader's business, which `canWrite` cannot
+   * answer. Every reader who gets this far holds `fees` — `canReadFees` asks
+   * `can(capabilities, 'fees')` of a staff-admin — but `payroll` and `expenses` are
+   * separate boxes on the same form, so a manager left with the money in and none of
+   * the money out is a shape an owner can tick. Both screens are `pageCapability` and
+   * refuse them; the two links that stay inside fees need no check for the same reason
+   * they need no plan check.
+   */
+  const mayReadPayroll = canWrite && can(session.active.capabilities, 'payroll')
+  const mayReadSpending = canWrite && can(session.active.capabilities, 'expenses')
 
   const supabase = await createClient()
   const today = todayInDhaka()
@@ -578,27 +591,35 @@ export default async function FeesPage({
                     bottom bar because five staff-admin tabs already fill that at 320px,
                     and ungated like the register's own link — see the head of the
                     spending page for why a plan that cannot open it is told so there
-                    rather than shown a dead end here. */}
-                <Link
-                  href={`/expenses?month=${thisMonth}`}
-                  className="inline-flex min-h-tap items-center font-medium
-                    text-brand-800 underline"
-                >
-                  {t.spendingLink} →
-                </Link>
+                    rather than shown a dead end here — but gated on `expenses`, which is
+                    a different question and one this card's own reader can fail. */}
+                {mayReadSpending && (
+                  <Link
+                    href={`/expenses?month=${thisMonth}`}
+                    className="inline-flex min-h-tap items-center font-medium
+                      text-brand-800 underline"
+                  >
+                    {t.spendingLink} →
+                  </Link>
+                )}
                 {/* And the third term of the same subtraction. Spending and salaries are
                     both money going out, but a centre's wage bill is not a bill it pays
                     once — it is an agreement standing behind every month, which is why it
                     has a screen rather than a category on the one above. Last of the four,
                     because it is the only one that is not about this month at all. No
-                    `month` in the URL for the same reason: an agreement is not a month. */}
-                <Link
-                  href="/payroll"
-                  className="inline-flex min-h-tap items-center font-medium
-                    text-brand-800 underline"
-                >
-                  {t.payrollLink} →
-                </Link>
+                    `month` in the URL for the same reason: an agreement is not a month.
+
+                    Gated on its own capability, like the one above and unlike the two
+                    that stay inside fees — see mayReadPayroll. */}
+                {mayReadPayroll && (
+                  <Link
+                    href="/payroll"
+                    className="inline-flex min-h-tap items-center font-medium
+                      text-brand-800 underline"
+                  >
+                    {t.payrollLink} →
+                  </Link>
+                )}
               </p>
             )}
           </Card>

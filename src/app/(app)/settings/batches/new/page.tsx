@@ -2,7 +2,7 @@ import Link from 'next/link'
 
 import { PageHeader } from '@/components/page-header'
 import { Card } from '@/components/ui'
-import { pagePermission, getSession } from '@/lib/auth/session'
+import { pagePermission, getSession, isStaffAdmin } from '@/lib/auth/session'
 import { branchChoicesFor, mayChooseBranch } from '@/lib/branches'
 import { createClient } from '@/lib/supabase/server'
 import { wouldExceed, planName, hasStaff } from '@/lib/plans'
@@ -115,14 +115,25 @@ export default async function NewBatchPage() {
       ) : subjects.length === 0 ? (
         <Card className="max-w-2xl">
           <p className="font-medium text-ink">{t.needSubjectTitle}</p>
-          <p className="mt-1 text-sm text-ink-soft">{t.needSubjectBody}</p>
-          <Link
-            href="/settings/subjects"
-            className="mt-4 inline-flex min-h-tap items-center justify-center
-              rounded-xl bg-brand-600 px-5 font-semibold text-white"
-          >
-            {t.addSubject}
-          </Link>
+          <p className="mt-1 text-sm text-ink-soft">
+            {isStaffAdmin(session) ? t.needSubjectBody : t.needSubjectAsk}
+          </p>
+          {/* And the button only for the reader who can use it. /settings/subjects is
+              pageRole('manager'), while this screen's floor is a teacher holding
+              can_manage_batches — 20260811000019 grants that box INSERT on batches and
+              nothing on subjects. So the teacher who is most likely to meet this arm, at
+              a centre whose owner opened the batch box before writing the subjects down,
+              was handed the one control that answers with a 403. They get the sentence
+              instead, which names the person who can. */}
+          {isStaffAdmin(session) && (
+            <Link
+              href="/settings/subjects"
+              className="mt-4 inline-flex min-h-tap items-center justify-center
+                rounded-xl bg-brand-600 px-5 font-semibold text-white"
+            >
+              {t.addSubject}
+            </Link>
+          )}
         </Card>
       ) : (
         <BatchForm

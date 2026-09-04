@@ -3,6 +3,7 @@ import Link from 'next/link'
 import { PageHeader } from '@/components/page-header'
 import { Card } from '@/components/ui'
 import { pageCapability, getSession } from '@/lib/auth/session'
+import { can } from '@/lib/staff/capabilities'
 import { formatDate, todayInDhaka } from '@/lib/bd/time'
 import { branchChoicesFor } from '@/lib/branches'
 import { dict, DEFAULT_LOCALE } from '@/lib/i18n'
@@ -52,6 +53,15 @@ export default async function StaffPage() {
   const locale = session.locale
   const d = dict(locale)
   const t = d.settings.staff
+
+  /*
+   * Whether the second link in the bar is offered. `staff` and `payroll` are separate
+   * boxes on the same form — writing down who works here is not agreeing what they are
+   * paid — so a manager granted the first and not the second was being shown
+   * "Salaries →" and answered with "you do not have access to this". Absent rather than
+   * greyed: there is nothing they can do about it, and the door is not on their errand.
+   */
+  const mayReadPayroll = can(session.active.capabilities, 'payroll')
 
   /*
    * Reachable and refused, in the register's own style. A 404 would be the tidier
@@ -211,13 +221,15 @@ export default async function StaffPage() {
               <span aria-hidden>+&nbsp;</span>
               {t.new}
             </Link>
-            <Link
-              href="/payroll"
-              className="inline-flex min-h-tap items-center font-medium text-brand-800
-                underline underline-offset-4 hover:text-brand-900 lg:min-h-0"
-            >
-              {t.payrollLink} →
-            </Link>
+            {mayReadPayroll && (
+              <Link
+                href="/payroll"
+                className="inline-flex min-h-tap items-center font-medium text-brand-800
+                  underline underline-offset-4 hover:text-brand-900 lg:min-h-0"
+              >
+                {t.payrollLink} →
+              </Link>
+            )}
           </>
         }
       />

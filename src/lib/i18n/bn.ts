@@ -5984,6 +5984,9 @@ export const bn = {
       needSubjectTitle: 'আগে একটি বিষয় যোগ করুন',
       needSubjectBody:
         'ব্যাচ কোন বিষয়ের, সেটা ছাড়া নম্বর আর ফি ঠিক জায়গায় বসবে না।',
+      /** See en.settings.batches.needSubjectAsk — the teacher's version, with no button. */
+      needSubjectAsk:
+        'ব্যাচ কোন বিষয়ের, সেটা আগে দরকার। কোচিংয়ের মালিককে একটি বিষয় যোগ করতে বলুন — বিষয় সেটিংসে যোগ হয়, আর একটি হলেই এই ফর্মটি কাজ করবে।',
       addSubject: 'বিষয় যোগ করুন',
       /** See en.settings.batches.subjectsUnreadable — it denies the wrong guess. */
       subjectsUnreadable:

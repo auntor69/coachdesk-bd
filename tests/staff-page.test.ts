@@ -294,3 +294,22 @@ test('the column heads are written in both languages and mean different things',
   assert.notEqual(bn.settings.staff.colStaff, en.settings.staff.colStaff)
   assert.notEqual(bn.settings.staff.noPhone, en.settings.staff.noPhone)
 })
+
+test('the salaries link in the bar asks for the salaries box', () => {
+  /*
+   * This screen is `pageCapability('staff')` and /payroll is `pageCapability('payroll')`.
+   * Two boxes on the same form and neither implies the other — writing down who works
+   * here is not agreeing what they are paid — so a manager granted the first was being
+   * shown "Salaries →" in the bar and answered with "you do not have access to this".
+   */
+  assert.ok(PAGE.includes("const mayReadPayroll = can(session.active.capabilities, 'payroll')"))
+  assert.match(PAGE, /^import \{ can \} from '@\/lib\/staff\/capabilities'$/m)
+
+  const at = PAGE.indexOf('href="/payroll"')
+  assert.ok(at > 0, 'the salaries link is gone')
+  assert.ok(PAGE.slice(at - 120, at).includes('{mayReadPayroll && ('), 'it is still ungated')
+
+  // The other half of the bar is not gated: adding somebody is what `staff` is.
+  const add = PAGE.indexOf('href="/settings/staff/new"')
+  assert.ok(add > 0 && !PAGE.slice(add - 120, add).includes('mayReadPayroll'))
+})

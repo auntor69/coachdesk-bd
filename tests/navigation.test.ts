@@ -386,9 +386,9 @@ function reaches(from: Guard, to: Guard): boolean {
   return true
 }
 
-/** Every screen under (app): its route, its own function's body, and its guard. */
-const SCREENS = (function walk(dir: string): { route: string; body: string }[] {
-  const out: { route: string; body: string }[] = []
+/** Every screen under (app): its route, its whole file, and its own function's body. */
+const SCREENS = (function walk(dir: string): { route: string; source: string; body: string }[] {
+  const out: { route: string; source: string; body: string }[] = []
   for (const entry of readdirSync(dir, { withFileTypes: true })) {
     const full = path.join(dir, entry.name)
     if (entry.isDirectory()) out.push(...walk(full))
@@ -404,6 +404,7 @@ const SCREENS = (function walk(dir: string): { route: string; body: string }[] {
             .relative(path.join(ROOT, 'src', 'app', '(app)'), full)
             .replaceAll('\\', '/')
             .replace(/\/?page\.tsx$/, ''),
+        source,
         body: close < 0 ? rest : rest.slice(0, close),
       })
     }
@@ -445,6 +446,94 @@ test('every screen carries a way back that its own reader can open', () => {
       const to = guards.get(target)
       if (!to || reaches(from, to)) continue
       offenders.push(`${route} -> ${target}`)
+    }
+  }
+
+  assert.deepEqual(offenders, [])
+})
+
+/* -------------------------------------------------------------------------- */
+/* And the links in the middle of a screen, for the six capability boxes       */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Every href a page body writes, with the query string and any `${}` cut out.
+ *
+ * The template case keeps the shape rather than the value — `/exams/${id}` becomes
+ * `/exams/x` — because what is being resolved is which route file answers, and any
+ * non-empty segment answers the same one.
+ */
+function hrefsIn(body: string): Set<string> {
+  return new Set(
+    [
+      ...[...body.matchAll(/href="(\/[^"]*)"/g)].map((m) => m[1]),
+      ...[...body.matchAll(/href=\{`(\/[^`]*)`\}/g)].map((m) => m[1].replace(/\$\{[^}]*\}/g, 'x')),
+      ...[...body.matchAll(/href: '(\/[^']*)'/g)].map((m) => m[1]),
+    ].map((href) => href.split(/[?#]/)[0]),
+  )
+}
+
+/** Which route file answers `href`, segment by segment: `[studentId]` takes anything. */
+function routeFor(href: string): string | null {
+  const want = href.split('/').filter(Boolean)
+  for (const { route } of SCREENS) {
+    const have = route.split('/').filter(Boolean)
+    if (have.length !== want.length) continue
+    if (have.every((seg, i) => seg.startsWith('[') || seg === want[i])) return route
+  }
+  return null
+}
+
+test('a link into a capability screen is drawn only where that box was asked about', () => {
+  /*
+   * THE TWO DEFECTS THIS CAUGHT, both on the money screens and both the same slip: the
+   * link was gated on the *role*, which is what `isStaffAdmin` answers, and the screen at
+   * the other end asks for a capability, which is a separate box on the same form. So a
+   * manager whose owner ticked `fees` and left `expenses` and `payroll` unticked read the
+   * fee board — correctly, it is their job — and was offered "Spending →" and "Salaries →"
+   * under the month's takings, both of which answer "you do not have access to this".
+   * `/settings/staff` had the same pair: `staff` is written down who works here, `payroll`
+   * is what they are paid, and one does not imply the other.
+   *
+   * The shell was already right — every capability row in app-nav.tsx carries a `when` —
+   * which is why this direction needed its own gate. A screen body is where the drift
+   * happens, because the reader is already inside and the link looks like part of the page.
+   *
+   * ASKED ABOUT, NOT ADJACENT. This reads the file for a mention of the capability rather
+   * than trying to evaluate the JSX condition around the link: which of `mayReadPayroll`,
+   * `canWrite && can(…)` or a nested `mayReadFees` is the true gate is a question about
+   * runtime, and a test that guessed would be a test that argued with correct code. The
+   * defect this catches is the one that actually happens — nobody thought about the box at
+   * all — and the screen's own test asserts which check it turned on.
+   *
+   * `pageRole('owner')` is exempt because nothing narrows an owner: `can` reads their null
+   * column as the whole role, so every capability screen opens for them.
+   */
+  const capOf = new Map<string, string>()
+  for (const { route, body } of SCREENS) {
+    const capability = body.match(/await pageCapability\('(\w+)'\)/)?.[1]
+    if (capability) capOf.set(route, capability)
+  }
+  assert.equal(capOf.size, 18, 'the set of capability screens moved — check the exemptions')
+
+  /** `canReadFees` and `canReadMoney` are `can` under another name. See both. */
+  const MONEY = ['fees', 'expenses', 'payroll']
+  const offenders: string[] = []
+
+  for (const { route, source, body } of SCREENS) {
+    if (/await pageRole\('owner'\)/.test(body)) continue
+    const own = capOf.get(route)
+
+    for (const href of hrefsIn(body)) {
+      const target = routeFor(href)
+      if (target === null || target === route) continue
+      const need = capOf.get(target)
+      if (!need || need === own) continue
+      const asks =
+        new RegExp(`can\\([^)]*'${need}'\\)`).test(source) ||
+        (need === 'fees' && /canReadFees\(\)/.test(source)) ||
+        (MONEY.includes(need) && /canReadMoney\(/.test(source))
+      if (!asks) offenders.push(`${route} -> ${target} (${need})`)
     }
   }
 

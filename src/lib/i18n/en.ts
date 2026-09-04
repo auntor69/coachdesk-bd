@@ -3892,6 +3892,13 @@ export const en: Dictionary = {
       needSubjectTitle: 'Add a subject first',
       needSubjectBody:
         'A batch belongs to a subject. Without one, marks and fees have nowhere to land.',
+      /**
+       * The same fact for a teacher who was given "open a new batch" and nothing else.
+       * Subjects are a manager's screen, so the sentence names who to ask instead of
+       * ending in a button that refuses them.
+       */
+      needSubjectAsk:
+        'A batch belongs to a subject. Ask the centre owner to add one — subjects are set up in Settings, and this form works as soon as there is one.',
       addSubject: 'Add a subject',
       /**
        * The form is not drawn, because the subject list behind its one required

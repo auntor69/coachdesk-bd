@@ -206,3 +206,31 @@ test('both languages name the card of doors, and name it in their own script', (
   }
   assert.doesNotMatch(bn.fees.otherBillsTitle, /[A-Za-z]/, 'bn.fees.otherBillsTitle is English')
 })
+
+test('the two doors out of the money card ask for their own capability', () => {
+  /*
+   * `canWrite` is `isStaffAdmin`, a role, and both of these screens are
+   * `pageCapability` — a separate tick box on the same form. So a manager whose owner
+   * granted `fees` and nothing else read this board correctly and was handed two links
+   * that answer "you do not have access to this". The register and the month-close stay
+   * on `canWrite` alone because they are `fees`, which every reader of this board holds:
+   * `canReadFees` asks `can(capabilities, 'fees')` of a staff-admin.
+   */
+  const CAPS = "can(session.active.capabilities, '"
+  assert.ok(PAGE.includes(`const mayReadPayroll = canWrite && ${CAPS}payroll')`))
+  assert.ok(PAGE.includes(`const mayReadSpending = canWrite && ${CAPS}expenses')`))
+  assert.match(PAGE, /^import \{ can \} from '@\/lib\/staff\/capabilities'$/m)
+
+  for (const [gate, href] of [
+    ['mayReadSpending', '{`/expenses?month=${thisMonth}`}'],
+    ['mayReadPayroll', '"/payroll"'],
+  ] as const) {
+    const at = PAGE.indexOf(`href=${href}`)
+    assert.ok(at > 0, `the ${gate} link is gone`)
+    assert.ok(PAGE.slice(at - 120, at).includes(`{${gate} && (`), `${gate} does not gate it`)
+  }
+
+  // And nowhere else, so a second copy cannot be added ungated without this failing.
+  assert.equal(count(PAGE, 'href="/payroll"'), 1)
+  assert.equal(count(PAGE, 'href={`/expenses?month='), 1)
+})
