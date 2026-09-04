@@ -1,7 +1,7 @@
-import Link from 'next/link'
 import { forbidden, notFound } from 'next/navigation'
 
 import { Card } from '@/components/ui'
+import { PageHeader } from '@/components/page-header'
 import { pageRole, getSession, canManageExams } from '@/lib/auth/session'
 import { createClient } from '@/lib/supabase/server'
 import { dict, localName, DEFAULT_LOCALE } from '@/lib/i18n'
@@ -89,16 +89,8 @@ export default async function EditExamPage({
   if (examError) {
     return (
       <div className="flex flex-col gap-5">
-        <div>
-          <Link
-            href="/exams"
-            className="inline-flex min-h-tap items-center text-ink-soft hover:text-ink"
-          >
-            ← {d.exams.title}
-          </Link>
-          <h1 className="mt-1 text-xl font-bold text-ink">{t.title}</h1>
-        </div>
-        <Card className="border-late/30 bg-late/5">
+        <PageHeader title={t.title} back={{ href: '/exams', label: d.exams.title }} />
+        <Card className="max-w-2xl border-late/30 bg-late/5">
           <p className="font-medium text-ink">{d.exams.examUnreadable}</p>
         </Card>
       </div>
@@ -199,62 +191,64 @@ export default async function EditExamPage({
       ? null
       : examTypes.map((type) => ({ id: type.id, label: localName(type, locale) }))
 
+  /*
+   * A correction form and nothing to read beside it, so the cap goes on the content and
+   * the width goes back (§20.8's last idiom) — on the page column it would stop the
+   * bar's own background 672px into a 1,216px workspace.
+   *
+   * The crumb returns to the exam and not to the list, because that is where the reader
+   * came from and where the marks they were looking at still are. The lead moves under
+   * the bar: it is one sentence about what this screen can and cannot change, read once.
+   */
   return (
     <div className="flex flex-col gap-5">
-      <div>
-        <Link
-          href={`/exams/${exam.id}`}
-          className="inline-flex min-h-tap items-center text-ink-soft hover:text-ink"
-        >
-          ← {t.back}
-        </Link>
-        <h1 className="mt-1 text-xl font-bold text-ink">{t.title}</h1>
-        <p className="mt-1 text-ink-soft">{t.lead}</p>
-      </div>
+      <PageHeader
+        title={t.title}
+        back={{ href: `/exams/${exam.id}`, label: t.back }}
+        subtitle={t.lead}
+      />
 
-      {/* The one thing on this screen that is a fact rather than a field, with the
-          reason underneath it. Above the form, because a teacher who opened this page
-          to move a physics test off the maths batch needs to read it before they start
-          re-typing anything else. */}
-      <Card>
-        <p className="font-medium text-ink">{t.onBatch(batchLabel)}</p>
-        <p className="mt-1 text-sm text-ink-soft">{t.cannotMove}</p>
-      </Card>
-
-      {notes.length > 0 && (
-        <Card className="border-brand-200 bg-brand-50">
-          <p className="text-sm font-medium text-brand-800">{t.dependsTitle}</p>
-          <ul className="mt-2 flex flex-col gap-1 text-sm text-brand-900">
-            {notes.map((note) => (
-              <li key={note}>{note}</li>
-            ))}
-          </ul>
+      <div className="flex max-w-2xl flex-col gap-5">
+        {/* The one thing on this screen that is a fact rather than a field, with the
+            reason underneath it. Above the form, because a teacher who opened this page
+            to move a physics test off the maths batch needs to read it before they start
+            re-typing anything else. */}
+        <Card>
+          <p className="font-medium text-ink">{t.onBatch(batchLabel)}</p>
+          <p className="mt-1 text-sm text-ink-soft">{t.cannotMove}</p>
         </Card>
-      )}
 
-      <EditExamForm
-        examId={exam.id}
-        examTypes={kindOptions}
-        current={{
-          title: exam.title,
-          examTypeId: exam.exam_type_id ?? '',
-          // Number(), so a teacher sees the 100 they typed and not 100.00 — numerics
-          // arrive from PostgREST with their scale intact.
-          totalMarks: Number(exam.total_marks),
-          passMarks: exam.pass_marks === null ? '' : String(Number(exam.pass_marks)),
-          examDate: exam.exam_date,
-        }}
-        frozen={!facts || facts.smsSent}
-        t={d.examEditForm}
-        form={d.examForm}
-        common={d.common}
-      />
+        {notes.length > 0 && (
+          <Card className="border-brand-200 bg-brand-50">
+            <p className="text-sm font-medium text-brand-800">{t.dependsTitle}</p>
+            <ul className="mt-2 flex flex-col gap-1 text-sm text-brand-900">
+              {notes.map((note) => (
+                <li key={note}>{note}</li>
+              ))}
+            </ul>
+          </Card>
+        )}
 
-      <RemoveExam
-        examId={exam.id}
-        blockedReason={blockedReason}
-        t={d.examEditForm}
-      />
+        <EditExamForm
+          examId={exam.id}
+          examTypes={kindOptions}
+          current={{
+            title: exam.title,
+            examTypeId: exam.exam_type_id ?? '',
+            // Number(), so a teacher sees the 100 they typed and not 100.00 — numerics
+            // arrive from PostgREST with their scale intact.
+            totalMarks: Number(exam.total_marks),
+            passMarks: exam.pass_marks === null ? '' : String(Number(exam.pass_marks)),
+            examDate: exam.exam_date,
+          }}
+          frozen={!facts || facts.smsSent}
+          t={d.examEditForm}
+          form={d.examForm}
+          common={d.common}
+        />
+
+        <RemoveExam examId={exam.id} blockedReason={blockedReason} t={d.examEditForm} />
+      </div>
     </div>
   )
 }

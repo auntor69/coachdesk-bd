@@ -123,7 +123,13 @@ test('the title is one truncating line and the action keeps its own size', () =>
 test('the crumb is a typed route and a tap target on a phone', () => {
   // `Route` and not `string`, for the reason the nav table gives: a crumb pointing at a
   // route that does not exist fails the build rather than the click.
-  assert.match(SRC, /back\?: \{ href: Route; label: string \}/)
+  //
+  // Generic, because bare `Route` resolves its dynamic branch against `string` — which
+  // is `never` — so `/exams` compiles and `/exams/${id}` does not. Half the screens
+  // that carry a crumb are sub-screens of a dynamic route, so the argument is inferred
+  // from the href exactly as `next/link` infers its own.
+  assert.match(SRC, /export function PageHeader<RouteType extends string>\(/)
+  assert.match(SRC, /back\?: \{ href: Route<RouteType>; label: string \}/)
   assert.match(SRC, /import type \{ Route \} from 'next'/)
 
   // 44px on a phone, and released past `lg` where the bar is 56px tall and the crumb is
@@ -206,10 +212,10 @@ test('every screen that draws the bar imports it from the one place', () => {
   const users = TSX.filter((f) => f.source.includes('<PageHeader'))
   // A floor and not a target: it goes up as the rest of §20.8's screens are converted,
   // and it is here so a refactor that quietly unhooks the bar from most of the app is a
-  // failure rather than a diff nobody reads. Thirty-four screens carry it as this is
+  // failure rather than a diff nobody reads. Thirty-eight screens carry it as this is
   // written, out of forty-nine under `(app)` — and a handful of those may never have it,
   // because a printed sheet draws no bar and `PageHeader` is `print:hidden`.
-  assert.ok(users.length >= 34, `only ${users.length} screens carry the bar`)
+  assert.ok(users.length >= 38, `only ${users.length} screens carry the bar`)
 
   for (const { path: file, source } of users) {
     assert.ok(

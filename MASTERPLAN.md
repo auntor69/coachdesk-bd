@@ -2037,10 +2037,10 @@ but no row to hang it on — every revenue row is a bill against a child);
 the interface (the frame §20 describes is built — sidebar, wide workspace, a real
 navigation — and so are all nine of §20.8's steps, so every screen a centre uses daily has
 a shape of its own at 1,216px rather than a phone's column stretched to fit. What is partial
-is the page furniture: `components/page-header.tsx` exists and thirty-four screens draw it, so on
-the rest — the exams, the notices, the at-risk list and the reports — the
+is the page furniture: `components/page-header.tsx` exists and thirty-eight screens draw it, so on
+the rest — the notices, the at-risk list, the reports and the two personal screens — the
 heading still scrolls away with the first ten rows. §20.8 steps 1–9 ✅, §20.1's bar adopted
-on thirty-four screens of the forty-nine under `(app)`, five of which are print sheets that must
+on thirty-eight screens of the forty-nine under `(app)`, five of which are print sheets that must
 never have it).
 
 **Not built ❌** — the five
@@ -2271,11 +2271,11 @@ last. Colours and corner radii are not the problem, and changing them is not the
 1,216px rather than a phone's column stretched to fit, the bulk-import screen included —
 it was a step 5 workflow step 5 did not reach, and it is now the paste and everything read
 back off it in seven columns beside the batches it joins in five. The page-furniture bar
-§20.1 asks for exists too, as `components/page-header.tsx`, and thirty-four screens draw it —
+§20.1 asks for exists too, as `components/page-header.tsx`, and thirty-eight screens draw it —
 every one of the money screens, every one of the settings screens, the board, the branch
-comparison and the two teaching screens. What remains is the
-narrower half: the four exam screens, the notices,
-the at-risk list, the progress report and the two account screens. A heading that scrolls
+comparison, the two teaching screens and all four exam screens. What remains is the
+narrower half: the notices, the
+at-risk list, the progress report and the two account screens. A heading that scrolls
 away is now the exception rather than the rule.
 
 ### 20.1 Desktop is not a large phone ✅
@@ -2914,14 +2914,15 @@ built the shell and left the bar inside it undrawn, so every screen wrote its ow
 a crumb, an `<h1>` and a subtitle in a `<div>` at the top of the column — which scrolled away
 with the first ten rows. At 1,216px that costs a reader forty rows into the arrears register the
 one thing they need on screen: which month they are writing, and the way back to the board.
-`components/page-header.tsx` is that block in one place, and thirty-four screens draw it. The first ten
+`components/page-header.tsx` is that block in one place, and thirty-eight screens draw it. The first ten
 were the one-list screens — subjects, exam kinds, branches, the centre's details, SMS, the download
 screen, the activity log, the bulk import and the chase list — and the twenty after them are every
 screen that handles money or settings: the fee board, the arrears register, the one-off charge, the
 month close, the waivers, spending, the wage bill, the month's payslips, the settings hub, the plan
 screen, and the batch, student, staff, teacher and manager screens with their new-and-edit forms.
 The four after those are the daily-work screens, and they are where the bar was hardest to place:
-the board, the branch comparison, the day's classes and one batch's register. Each drops its
+the board, the branch comparison, the day's classes and one batch's register. The last four are
+the exam screens. Each drops its
 hand-rolled block, its now-unused `Link` import, and
 where it had one the `max-w-2xl` on its root column — which moves onto the card, so the bar still
 reaches the workspace edges while the prose stays a sentence wide.
@@ -2944,6 +2945,31 @@ both went back to a `max-w-2xl` column rather than being spread over 1,216px, wh
 last idiom read the other way round: the defect there was never that the rows were too narrow,
 and here it was that a tap target sat 900px from the name it belongs to.
 
+**The exam list is the one screen in the four that spends the width, and it does it with a
+second column of rows.** A row there is a title over its batch, subject and date with the
+marked fraction and the SMS state at the far end, and across 1,216px that put "12/40" eight
+hundred pixels from the exam it belongs to. A table was the obvious answer and is the wrong
+one: the row carries seven facts, and seven columns at 375px is horizontal scroll on the
+screen teachers actually use — the board's arrears table gets away with `hidden
+sm:table-header-group` because it has three. Capping the list at 672px was the other
+obvious answer and is the shape §20 exists to end. So `grid gap-2 xl:grid-cols-2` with
+`h-full` on the row link: one column to `lg`, two from `xl`, twenty rows tall rather than
+forty, and no field stranded from its own row. Two and not three, because at `2xl` a third
+column is 390px and a row needs about 460 before the title truncates mid-word. The other
+three exam screens are a form, a marks sheet and a correction form, so all three give the
+width back — the sheet especially, because its note field is a `w-full` input that reaches
+1,160px uncapped for a five-word note. The marks screen also folded four stacked paragraphs
+of exam identity into one subtitle and moved its "Correct this exam" link into the bar's
+`actions`, still a quiet text link rather than a button, because the errand on that screen
+is entering marks and not fixing the heading.
+
+Making the crumb work on those screens changed the component's signature: `back.href` is now
+`Route<RouteType>` inferred from the argument rather than a bare `Route`. Bare, the type
+resolves its dynamic-route branch against `string`, which is `never` — so `/exams` compiled
+and `` `/exams/${id}` `` did not, and half the screens that need a crumb are sub-screens of a
+dynamic route. `next/link` infers its own href the same way; a path matching no route at all
+still fails the build.
+
 Two properties of it are contracts on the rest of the app rather than details of the component,
 and §20.1 states both: it returns a fragment, because a sticky box only travels inside its
 containing block; and it is one line of 56px, which is why every sticky rail in the app moved
@@ -2955,8 +2981,9 @@ grid-rooted screens the bar is hoisted out of the grid and the grid nested under
 the `order-1 lg:col-span-12` heading cell those screens carried — the remaining `order-N` are left
 at the numbers they had rather than renumbered from 1, because only their relative order matters
 and moving six blocks down to reclaim a 1 is six chances to swap two of them. What is
-left is the same edit on the daily-work screens; no screen may be left drawing its own `<h1>` and
-`tests/page-header.test.ts` fails the build if one is.
+left is the notices, the at-risk list, the progress report and the two account screens; no
+screen may be left drawing its own page heading and `tests/page-header.test.ts` fails the
+build if one is.
 
 ### 20.9 The rule that outranks everything above
 

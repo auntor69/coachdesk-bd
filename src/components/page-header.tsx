@@ -34,7 +34,7 @@ import Link from 'next/link'
 import type { Route } from 'next'
 import type { ReactNode } from 'react'
 
-export function PageHeader({
+export function PageHeader<RouteType extends string>({
   title,
   back,
   subtitle,
@@ -46,8 +46,14 @@ export function PageHeader({
    * The way out, one level up. `Route` and not `string`, for the reason the nav table
    * gives: a crumb pointing at a route that does not exist fails the build rather than
    * the click.
+   *
+   * Generic for the same reason `Link` is. Bare `Route` resolves its dynamic-route
+   * branch against `string`, which is `never`, so it admits `/exams` and rejects
+   * `/exams/${id}` — and half the screens that need a crumb are sub-screens of a
+   * dynamic route. Inferring the argument from the href is what lets both through
+   * while a path that matches no route at all still fails the build.
    */
-  back?: { href: Route; label: string }
+  back?: { href: Route<RouteType>; label: string }
   /** Under the bar and in flow, because it is read once and can scroll away. */
   subtitle?: ReactNode
   /**

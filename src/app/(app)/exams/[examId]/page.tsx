@@ -2,6 +2,7 @@ import Link from 'next/link'
 import { notFound } from 'next/navigation'
 
 import { Card } from '@/components/ui'
+import { PageHeader } from '@/components/page-header'
 import { pageRole, getSession, canSendSms, canManageExams } from '@/lib/auth/session'
 import { createClient } from '@/lib/supabase/server'
 import { formatDate, todayInDhaka } from '@/lib/bd/time'
@@ -67,20 +68,15 @@ export default async function ExamPage({
    * the shell, nothing about marks. The only reading left is that the exam is gone, and
    * a teacher with a week of scripts in front of them makes it again.
    *
-   * So the 404 is kept for the miss and this says what actually happened. No `<h1>`
-   * above the card, because the title is precisely what did not arrive; the back link
-   * is, because the list it returns to still has the exam on it.
+   * So the 404 is kept for the miss and this says what actually happened. The heading is
+   * the screen's own name and not the exam's, because the title is precisely what did not
+   * arrive; the way back is drawn, because the list it returns to still has the exam on it.
    */
   if (examError) {
     return (
       <div className="flex flex-col gap-4">
-        <Link
-          href="/exams"
-          className="inline-flex min-h-tap items-center text-ink-soft hover:text-ink"
-        >
-          ← {t.title}
-        </Link>
-        <Card className="border-late/30 bg-late/5">
+        <PageHeader title={t.marksTitle} back={{ href: '/exams', label: t.title }} />
+        <Card className="max-w-2xl border-late/30 bg-late/5">
           <p className="font-medium text-ink">{t.examUnreadable}</p>
         </Card>
       </div>
@@ -137,14 +133,8 @@ export default async function ExamPage({
   if (enrollments === null || results === null) {
     return (
       <div className="flex flex-col gap-4">
-        <Link
-          href="/exams"
-          className="inline-flex min-h-tap items-center text-ink-soft hover:text-ink"
-        >
-          ← {t.title}
-        </Link>
-        <h1 className="text-xl font-bold text-ink">{exam.title}</h1>
-        <Card className="border-late/30 bg-late/5">
+        <PageHeader title={exam.title} back={{ href: '/exams', label: t.title }} />
+        <Card className="max-w-2xl border-late/30 bg-late/5">
           <p className="font-medium text-ink">{t.sheetUnreadable}</p>
         </Card>
       </div>
@@ -284,50 +274,61 @@ export default async function ExamPage({
 
   const providerLive = smsProviderConfigured()
 
+  /*
+   * Four stacked paragraphs of exam identity became one line under the bar (§20.1): the
+   * batch, subject and kind, then the day, the full mark and the pass mark. They are one
+   * fact — which exam this is — and a reader checks them together.
+   *
+   * THE SHEET IS CAPPED, for the reason the attendance register is. A row is a name, a
+   * 64px mark box, two 44px buttons and a note field under it; across 1,216px that note
+   * field is 1,160px wide for a five-word note, and the mark box sits a screen away from
+   * the name it belongs to. The notices under the sheet are not a rail either — they say
+   * "save the marks first" until the marks are in, so they are the same errand a minute
+   * later rather than a second subject to read beside it.
+   */
   return (
     <div className="flex flex-col gap-5">
-      <div>
-        <Link
-          href="/exams"
-          className="inline-flex min-h-tap items-center text-ink-soft hover:text-ink"
-        >
-          ← {t.title}
-        </Link>
-        <h1 className="mt-1 text-xl font-bold text-ink">{exam.title}</h1>
-        {subtitle && <p className="mt-0.5 text-ink-soft">{subtitle}</p>}
-        <p className="mt-0.5 text-sm text-ink-faint">
-          {formatDate(exam.exam_date, locale)} · {t.fullMarks}{' '}
-          <span className="num">{Number(exam.total_marks)}</span>
-          {exam.pass_marks !== null && (
-            <>
-              {' '}
-              · {t.pass} <span className="num">{Number(exam.pass_marks)}</span>
-            </>
-          )}
-        </p>
-
-        {/* The way out of a mistyped exam, and deliberately quiet — the errand on this
-            screen is entering marks, not correcting the heading. Gated on the same
-            permission the edit screen and both its actions check, so a teacher without
-            it is never offered a door that answers 403. */}
-        {canMark && (
-          <Link
-            href={`/exams/${exam.id}/edit`}
-            className="mt-1 inline-flex min-h-tap items-center text-sm font-medium
-              text-brand-700"
-          >
-            {d.examEdit.title} →
-          </Link>
-        )}
-      </div>
+      <PageHeader
+        title={exam.title}
+        back={{ href: '/exams', label: t.title }}
+        subtitle={
+          <>
+            {subtitle && <>{subtitle} · </>}
+            {formatDate(exam.exam_date, locale)} · {t.fullMarks}{' '}
+            <span className="num">{Number(exam.total_marks)}</span>
+            {exam.pass_marks !== null && (
+              <>
+                {' '}
+                · {t.pass} <span className="num">{Number(exam.pass_marks)}</span>
+              </>
+            )}
+          </>
+        }
+        /* The way out of a mistyped exam, and deliberately quiet — the errand on this
+           screen is entering marks, not correcting the heading, so it is a text link at
+           the end of the bar rather than a button. Gated on the same permission the edit
+           screen and both its actions check, so a teacher without it is never offered a
+           door that answers 403. */
+        actions={
+          canMark && (
+            <Link
+              href={`/exams/${exam.id}/edit`}
+              className="inline-flex min-h-tap items-center text-sm font-medium
+                text-brand-700"
+            >
+              {d.examEdit.title} →
+            </Link>
+          )
+        }
+      />
 
       {rows.length === 0 ? (
-        <Card>
+        <Card className="max-w-2xl">
           <h2 className="font-semibold text-ink">{t.noStudentsTitle}</h2>
           <p className="mt-1 text-sm text-ink-soft">{t.noStudentsBody}</p>
         </Card>
       ) : (
-        <>
+        <div className="flex max-w-2xl flex-col gap-5">
           <MarksSheet
             examId={exam.id}
             totalMarks={Number(exam.total_marks)}
@@ -423,7 +424,7 @@ export default async function ExamPage({
               }}
             />
           )}
-        </>
+        </div>
       )}
     </div>
   )

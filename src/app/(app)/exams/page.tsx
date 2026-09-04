@@ -1,6 +1,7 @@
 import Link from 'next/link'
 
 import { Card } from '@/components/ui'
+import { PageHeader } from '@/components/page-header'
 import { SearchBox, SearchEmpty } from '@/components/search-box'
 import { pageRole, getSession, canManageExams } from '@/lib/auth/session'
 import { createClient } from '@/lib/supabase/server'
@@ -159,11 +160,8 @@ export default async function ExamsPage({
   if (indexed === null) {
     return (
       <div className="flex flex-col gap-5">
-        <div>
-          <h1 className="text-xl font-bold text-ink">{t.title}</h1>
-          <p className="mt-1 text-ink-soft">{t.subtitle}</p>
-        </div>
-        <Card className="border-late/30 bg-late/5">
+        <PageHeader title={t.title} subtitle={t.subtitle} />
+        <Card className="max-w-2xl border-late/30 bg-late/5">
           <p className="font-medium text-ink">{t.listUnreadable}</p>
         </Card>
       </div>
@@ -327,26 +325,40 @@ export default async function ExamsPage({
     }
   })
 
+  /*
+   * The list is two columns from `xl`, and that is the whole desktop decision.
+   *
+   * A row is a title over its batch, subject and date, with the marked fraction and the
+   * SMS state at the far end. Across 1,216px that put "12/40" eight hundred pixels from
+   * the exam it belongs to — but the answer is not to cap the column at 672px either,
+   * because forty exams is a list density helps and a 672px column on a 1,216px screen
+   * is the phone-stretched-to-fit shape §20 exists to end. So the width buys a second
+   * column of rows instead: one column to `lg`, two from `xl`, which is twenty rows tall
+   * rather than forty and leaves no field stranded from its own row.
+   *
+   * Two and not three. At `2xl` a third column would be 390px, and a row needs about
+   * 460 before the title starts truncating mid-word.
+   */
   return (
     <div className="flex flex-col gap-5">
-      <div className="flex items-end justify-between gap-3">
-        <div>
-          <h1 className="text-xl font-bold text-ink">{t.title}</h1>
-          <p className="mt-1 text-ink-soft">{t.subtitle}</p>
-        </div>
-        {canMark && (
-          <Link
-            href="/exams/new"
-            className="inline-flex min-h-tap shrink-0 items-center justify-center
-              rounded-xl bg-brand-600 px-5 font-semibold text-white"
-          >
-            {t.new}
-          </Link>
-        )}
-      </div>
+      <PageHeader
+        title={t.title}
+        subtitle={t.subtitle}
+        actions={
+          canMark && (
+            <Link
+              href="/exams/new"
+              className="inline-flex min-h-tap items-center justify-center rounded-xl
+                bg-brand-600 px-5 font-semibold text-white hover:bg-brand-700"
+            >
+              {t.new}
+            </Link>
+          )
+        }
+      />
 
       {indexed.length === 0 ? (
-        <Card>
+        <Card className="max-w-2xl">
           <h2 className="font-semibold text-ink">{t.emptyTitle}</h2>
           {/* The instruction, or the reason there is no instruction. Same split as
               the fee board's empty state, and the same reason: a reader with no
@@ -383,7 +395,7 @@ export default async function ExamsPage({
               with the centre's data, the exams are all still openable, and the one
               thing a teacher needs from the fractions is on the exam's own screen. */}
           {countsProblem !== null && (
-            <Card>
+            <Card className="max-w-2xl">
               <p className="text-sm text-ink-soft">
                 {countsProblem === 'tooLarge' ? t.countsTooLarge : t.countsUnreadable}
               </p>
@@ -396,13 +408,14 @@ export default async function ExamsPage({
                exam because they mistyped a batch name. */
             <SearchEmpty t={d.search} />
           ) : (
-            <ul className="flex flex-col gap-2">
+            <ul className="grid gap-2 xl:grid-cols-2">
               {rows.map((row) => (
                 <li key={row.id}>
                   <Link
                     href={`/exams/${row.id}`}
-                    className="flex items-center gap-3 rounded-xl border border-line
-                      bg-white px-4 py-3 transition-colors hover:border-brand-300"
+                    className="flex h-full items-center gap-3 rounded-xl border
+                      border-line bg-white px-4 py-3 transition-colors
+                      hover:border-brand-300"
                   >
                     <div className="min-w-0 flex-1">
                       <p className="truncate font-medium text-ink">{row.title}</p>

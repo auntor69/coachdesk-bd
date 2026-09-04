@@ -2,6 +2,7 @@ import Link from 'next/link'
 import { forbidden } from 'next/navigation'
 
 import { Card } from '@/components/ui'
+import { PageHeader } from '@/components/page-header'
 import {
   pageRole,
   getSession,
@@ -116,14 +117,8 @@ export default async function NewExamPage() {
   if (rows === null) {
     return (
       <div className="flex flex-col gap-4">
-        <Link
-          href="/exams"
-          className="inline-flex min-h-tap items-center text-ink-soft hover:text-ink"
-        >
-          ← {t.title}
-        </Link>
-        <h1 className="text-xl font-bold text-ink">{t.newTitle}</h1>
-        <Card className="border-late/30 bg-late/5">
+        <PageHeader title={t.newTitle} back={{ href: '/exams', label: t.title }} />
+        <Card className="max-w-2xl border-late/30 bg-late/5">
           <p className="font-medium text-ink">{t.batchesUnreadable}</p>
         </Card>
       </div>
@@ -149,17 +144,14 @@ export default async function NewExamPage() {
     label: localName(type, locale),
   }))
 
+  /*
+   * Six fields and nothing to put beside them, so the cap goes on the content and the
+   * width goes back rather than being filled with an empty rail (§20.8's last idiom).
+   * On the column it would stop the bar's own background 672px into a 1,216px screen.
+   */
   return (
     <div className="flex flex-col gap-5">
-      <div>
-        <Link
-          href="/exams"
-          className="inline-flex min-h-tap items-center text-ink-soft hover:text-ink"
-        >
-          ← {t.title}
-        </Link>
-        <h1 className="mt-1 text-xl font-bold text-ink">{t.newTitle}</h1>
-      </div>
+      <PageHeader title={t.newTitle} back={{ href: '/exams', label: t.title }} />
 
       {batchOptions.length === 0 ? (
         // Two different emptinesses. An owner has no batches at the centre yet and
@@ -168,7 +160,7 @@ export default async function NewExamPage() {
         // "create a batch" are advice they cannot take. /teach's own pair of
         // sentences, borrowed rather than restated, because it is the same fact
         // about the same reader.
-        <Card>
+        <Card className="max-w-2xl">
           <h2 className="font-semibold text-ink">
             {isAdmin ? t.needBatchTitle : d.teach.noBatchesTitle}
           </h2>
@@ -186,13 +178,15 @@ export default async function NewExamPage() {
           )}
         </Card>
       ) : (
-        <ExamForm
-          batches={batchOptions}
-          examTypes={kindOptions}
-          today={todayInDhaka()}
-          t={d.examForm}
-          common={d.common}
-        />
+        <div className="max-w-2xl">
+          <ExamForm
+            batches={batchOptions}
+            examTypes={kindOptions}
+            today={todayInDhaka()}
+            t={d.examForm}
+            common={d.common}
+          />
+        </div>
       )}
     </div>
   )
