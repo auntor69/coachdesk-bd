@@ -249,6 +249,7 @@ test('every screen in the app draws the bar, or is one of the five printed excep
   const without = PAGES.filter((f) => !f.source.includes('<PageHeader')).map((f) => f.path)
   assert.deepEqual(without.sort(), [...NO_BAR].sort())
 
+
   // Over every `.tsx` and not just the pages, because a shared block that drew a bar of
   // its own would owe the same two things.
   for (const { path: file, source } of TSX) {
@@ -262,3 +263,101 @@ test('every screen in the app draws the bar, or is one of the five printed excep
     assert.equal(count(source, '<h1'), 0, `${file}: still writes its own <h1>`)
   }
 })
+
+/* -------------------------------------------------------------------------- */
+/* Repo-wide: every arm of every screen, not just the one an owner reaches     */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * A page's own default-exported function, from its `export default` to the first `}` in
+ * column 0. Helper components live below that line and draw their own headings or not on
+ * their own terms; what is being counted here is the screen's own arms.
+ */
+function pageBody(source: string, file: string) {
+  const from = source.search(/^export default (async )?function/m)
+  assert.ok(from >= 0, `${file}: no default-exported page function`)
+  const rest = source.slice(from)
+  const close = rest.search(/^\}$/m)
+  return close < 0 ? rest : rest.slice(0, close)
+}
+
+/**
+ * The page's own `const` blocks that hold JSX, by name. Two shapes, because both are in
+ * use: `const header = (…)`, which an arm draws as `{header}`, and hq's and arrears'
+ * `const refusal = (problem) => (…)`, which an arm returns outright.
+ */
+function localBlocks(body: string) {
+  const out = new Map<string, string>()
+  for (const m of body.matchAll(/^ {2}const (\w+) = (?:\([^)]*\) => )?\(\n(?:.*\n)*?^ {2}\)\n/gm)) {
+    out.set(m[1], m[0])
+  }
+  return out
+}
+
+/** Local components that draw a bar when handed a `refusal`, which is hq's `Shell`. */
+function refusalShells(source: string) {
+  return [...source.matchAll(/^function (\w+)\(\{\n(?:.*\n)*?^\}$/gm)]
+    .filter((m) => m[0].includes('<PageHeader') && m[0].includes('refusal'))
+    .map((m) => m[1])
+}
+
+test('every arm of every screen draws the bar, not just the one an owner reaches', () => {
+  /*
+   * WHY ARMS AND NOT FILES. The test above reads each page as one string, so a screen
+   * passes it on the strength of a single `<PageHeader` anywhere inside — and every one of
+   * these screens returns early several times before it gets to the arm an owner with
+   * everything enabled sees. A trialling teacher hits the paywall arm, a lapsed centre the
+   * read-only one, a narrowed accountant the refusal, and anybody at all hits the dropped
+   * read. Those are the arms that most need to say which screen is refusing: the reader is
+   * already surprised, and a bare card in the middle of the workspace names nothing.
+   *
+   * §20.9's first obligation, made mechanical — "a layout that only works for an owner with
+   * everything enabled has not been tested".
+   *
+   * The five printed sheets are out, for the reason they are out of the bar entirely: the
+   * bar is `print:hidden`, so on a page whose whole purpose is paper it would be furniture
+   * that exists only on the screen it is printed from. Their refusals carry a crumb back to
+   * the list and a card whose first line names what happened instead, and the two that are
+   * paywalls rather than dropped reads — the voucher and the payslip — write a real `<h1>`.
+   */
+  const offenders: string[] = []
+
+  for (const { path: file, source } of PAGES) {
+    if (NO_BAR.includes(file)) continue
+
+    const body = pageBody(source, file)
+    const blocks = localBlocks(body)
+    const holders = [...blocks].filter(([, b]) => b.includes('<PageHeader')).map(([n]) => n)
+    const shells = refusalShells(source)
+    const at = (index: number) =>
+      source.slice(0, source.indexOf(body) + index).split('\n').length
+
+    const arms = [...body.matchAll(/^ {2,4}return \(\n/gm)]
+    assert.ok(arms.length > 0, `${file}: no arm found, so this file is going unchecked`)
+
+    arms.forEach((arm, i) => {
+      const next = arms[i + 1]
+      const text = body.slice(arm.index, next ? next.index : body.length)
+      const draws =
+        text.includes('<PageHeader') ||
+        holders.some((h) => text.includes(`{${h}}`)) ||
+        shells.some((s) => new RegExp(`<${s}[^>]*refusal=`).test(text))
+      if (!draws) offenders.push(`${file}:${at(arm.index)}`)
+    })
+
+    // And the arms that hand the whole screen to a local block instead of returning JSX,
+    // which is how arrears refuses three different reads with one card. Skipped when the
+    // name is imported rather than declared here — a `.map()` callback returning a helper
+    // is not an arm — and flagged when it is declared but its block cannot be read, so a
+    // holder written in a shape this test does not know fails loudly instead of quietly.
+    const declared = new Set([...body.matchAll(/^ {2}const (\w+) = /gm)].map((m) => m[1]))
+    for (const m of body.matchAll(/^ {2,4}return (\w+)\(/gm)) {
+      if (!declared.has(m[1])) continue
+      if (blocks.get(m[1])?.includes('<PageHeader')) continue
+      offenders.push(`${file}:${at(m.index)} (via ${m[1]})`)
+    }
+  }
+
+  assert.deepEqual(offenders, [])
+})
+
