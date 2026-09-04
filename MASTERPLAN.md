@@ -578,7 +578,7 @@ is called the same thing in both places. A failed read says so — "nothing is g
 "we could not tell you" are opposite advice, and the box is attached to a warning an owner is
 acting on this week.
 
-### 3.8 The payment model ❌ (partly ✅)
+### 3.8 The payment model ✅
 
 Money moves in person and by bKash. The founder records it. That is the model
 until there are enough customers to justify a gateway, and the *record* has to be
@@ -606,8 +606,27 @@ reads it.
 amount they explain and checked against it, because it is the one field that cannot be
 worked out afterwards: places are priced marginally from the ceiling the centre had at
 the time, and settling the purchase raises that ceiling before anybody prints the
-receipt. What is *not* built is the last row's second half: a platform payment cannot yet
-be voided by a counter-entry, because `payments.amount_bdt` is positive by check.
+receipt.
+
+**And the last row's second half is built too.** `20260811000074` dropped the
+`check (amount_bdt > 0)` that migration 1 had carried — the constraint that made this
+section's own promise undeliverable, while the table comment claimed it — and replaced
+it with `<> 0`, the rule `fee_payments` has held from the start. A credit is money we
+owe back, sitting on the row that says what we have been paid, so `sum(amount_bdt)` per
+centre is net of credits and that is the honest answer to what a customer has actually
+given us. Three constraints keep it from being anything else: a negative row carries **no
+coverage window**, because `paid_through` is `max(covers_period_end)` in two independent
+derivations and a -৳1 row dated to 2099 would buy permanent free access while looking
+less like tampering than editing `status` by hand; it carries **no intent**, because an
+intent means "this receipt settled that purchase" and a credit settles nothing, and the
+printable would otherwise render as a sheet selling 180 places with a minus in front of
+the total; and it **must carry a note**, required here and optional on every positive
+row, because a credit is a decision somebody made and this table has no UPDATE path to
+annotate it later. A credit also cannot exceed what the centre has paid. Nobody with a
+browser can write one — INSERT was revoked from `authenticated` and `anon` in
+`20260811000024`, so it is service_role only, which today means the founder panel behind
+`requirePlatformAdmin()`. `payment_intents.amount_bdt` stays `> 0`: a quote for negative
+money is not a thing this product sells.
 
 **Payments are immutable.** No edit path, no delete path, from any browser
 session. A mistake is corrected by a *negative counter-entry* that references the
@@ -1381,7 +1400,7 @@ The questions it has to answer, in the owner's words:
 - Which branch is doing well? *(Institution)*
 - How many student places do we have left? *(Center and Institution)*
 
-### 9.1 Three numbers that must never be confused ✅ (rule) ⚠️ (surfaced)
+### 9.1 Three numbers that must never be confused ✅
 
 | Number | What it means | Where it comes from |
 |---|---|---|
@@ -1392,6 +1411,15 @@ The questions it has to answer, in the owner's words:
 Reports must label which one they are showing. "Revenue" that silently means
 *charged* tells an owner they had a good month while the cash never came, and that
 is the single most expensive lie a finance screen can tell.
+
+And they do: the word *revenue* appears nowhere in either dictionary. Every money
+figure in this product names which of the three it is — "Cash in" against "Bills
+unpaid" and "Bills paid" on the HQ table, "Collected" against the month's billing on
+the fee board, "Spending, excluding salaries" where the profit view drops a category
+— and where two figures on one screen answer different questions, the screen says so
+in a sentence rather than leaving an owner to discover it by subtracting. The one
+that reads as a footnote is load-bearing: an owner who found out by comparing two
+screens that spending excludes salaries would stop trusting both.
 
 ### 9.2 Money is append-only ✅ — and it already is
 
@@ -1425,7 +1453,12 @@ Net        ৳7,000
 Both lines stay on the record. The original receipt a family is holding must still
 be findable, or the refund looks like a deletion and the centre has an argument.
 
-### 9.3 Fees: due dates, part payments, discounts ⚠️
+Both lines exist on our own books too, since `20260811000074`: a **platform** payment
+may be negative for the same reason a fee payment may, under tighter constraints
+because a credit against a subscription can buy time as well as money. §3.8 holds the
+rules.
+
+### 9.3 Fees: due dates, part payments, discounts ✅
 
 | | Status |
 |---|---|
@@ -1437,7 +1470,7 @@ be findable, or the refund looks like a deletion and the centre has an argument.
 | Overdue tracking and an arrears list | ✅ built |
 | Instalment plans (a schedule agreed in advance) | ✅ N bills, not one bill with a schedule — `instalment_plan_id`, `instalment_no`, `instalment_of` |
 | Payment methods | ✅ cash, bKash, Nagad, Rocket, bank transfer, other — `card` missing |
-| Refunds | ⚠️ representable, no UI |
+| Refunds | ✅ a negative payment against the bill, from the register — `lib/fees/refund.ts` holds the floor |
 
 A scholarship is not a discount typed twice. It is a named thing — *sibling
 waiver*, *merit 50%*, *hardship* — that a report needs to total separately, because
@@ -1803,9 +1836,11 @@ fence in §12.2 is unchanged and there are two doors through it rather than one.
 panel must never grow a button that *says* a payment succeeded without one having. Its
 plan-change function deliberately does no limit enforcement and warns instead, because a
 founder moving a customer down a tier is a decision, not a validation error — and a
-customer moving *themselves* down is not offered at all, for the same reason: it is a
-conversation, since the credit a mid-term downgrade owes cannot be a positive payment
-row (§9.2).
+customer moving *themselves* down is not offered at all, for a reason that has narrowed
+since `20260811000074`: the credit a mid-term downgrade owes now has a row to live on, so
+what is missing is not the row but the arithmetic — nothing works out what a centre's
+unused coverage is worth, and a number nobody can check is not a refund an owner should be
+able to ask for themselves (§9.2).
 
 ---
 
@@ -2104,8 +2139,10 @@ and leaves rows scrolling up through bare page either side. Its gate names the f
 exceptions rather than counting the adopters, so the next screen added without a heading
 fails a test instead of shipping (§20.1).
 
-**Partly built ⚠️** — branches (money, staff, the HQ comparison and the growth
-breakdown yes, full isolation no); scheduling (weekly recurrence and teacher clashes,
+**Partly built ⚠️** — branches (isolation, money, staff, the HQ comparison and the growth
+breakdown yes; the drill-down into one branch's workspace no, because `app.branch_ok`
+reads the membership's own branch and not a chosen one — §8.3); scheduling (weekly
+recurrence and teacher clashes,
 no rooms or overrides); plan selection (an owner may buy a move up and buy places; a move
 *down* is still a conversation — the credit it owes has a row and the founder can write it,
 but nothing on the owner's own screen works out what their unused coverage is worth);
@@ -3168,3 +3205,4 @@ truths start.
 | 2026-09-04 | **A crumb is a promise too, and one of them was lying.** §20.9's persona pass found the student profile — open to any teacher — offering `← Student roster`, which is `can_manage_students`, a box an owner ticks per teacher. A teacher without it reaches a child from the dashboard's at-risk card, drawn off the risk view's own rows rather than a role, so the only way out of that screen answered "you do not have access to this"; the rule was already written three fields above it for the receipt link. The crumb is now chosen by `canManageStudents` — the roster for whoever holds it, the dashboard for whoever does not, which is where that card is and the one screen every reader of this page can open — and costs no query a staff-admin or a teacher was not already making. `tests/navigation.test.ts` gains the direction it never had: it held the menu to the screens it points at, and nothing held a screen's own way back. Every crumb target must now be openable by every reader the screen itself admits, with rank, roster permission and capability compared separately, because rank implies no capability below owner and a manager clears a roster box without it being ticked. All forty-two crumbs checked, that one was the only offender, and a screen whose guard the comparison cannot read fails rather than being skipped. 7 of 7 mutations caught. Counts: 1,418 RLS assertions, 1,551 unit tests, 75 migrations. |
 | 2026-09-04 | **Three links promised a screen that then refused the reader, and all three were gated on the role instead of the box.** The fee board put "Spending →" and "Salaries →" under the month's takings behind `canWrite`, which is `isStaffAdmin` — a role — while `/expenses` and `/payroll` are `pageCapability`, an independent tick per manager. So an owner who granted `fees` and left the two money-out boxes unticked was handing that manager a board they should read and two links that answer "you do not have access to this". `/settings/staff` offered the same salaries link on the same mistake: `staff` is writing down who works here, `payroll` is agreeing what they are paid. The third was not a capability — the new-batch screen's "add a subject first" card put its only button on `/settings/subjects`, which is manager-only, while the screen opens to a teacher holding `can_manage_batches`, a box that grants INSERT on batches and nothing on subjects; that teacher now reads a sentence naming who to ask, in both languages. **The gate is deliberately narrower than the crumb gate.** A crumb is one promise per screen and two guards can be compared; an in-page link cannot be, because the page guard is only a floor and the real gate is a local const no source-reading test can evaluate — an audit of all thirty-four such links returned thirty-one false positives on exactly that. So `tests/navigation.test.ts` holds the one class where the check is honest: a link into a `pageCapability` screen may only be drawn on a screen whose source asks about that capability, read as a question in the file rather than an answer in the JSX, with the screen's own test asserting which check was turned on. Eleven links in scope, owner-only screens exempt because nothing narrows an owner. The shell was already right — every capability row in `app-nav.tsx` carries a `when` — which is why the drift was in the page bodies. 10 of 10 mutations caught. Counts: 1,418 RLS assertions, 1,555 unit tests, 75 migrations. |
 | 2026-09-04 | **§8.1 and §8.2 were marked ⚠️ and ❌ on a product where branch scoping is built, tested and shipped — the drift §25 forbids, pointing the wrong way.** A section that says "not built" about something that is invites two failures: somebody builds it again, or somebody reads the marker as a live security finding and reports a hole that closed months ago. §8.1's body was the worse half, because it was specific: *"nothing reads it — three references in the whole of `src/`, all in one file"* and *"a branch manager can see every branch"*. Forty-five files in `src/` reference it, and a branch manager can see one branch. What `20260811000053_branch_scoping.sql` actually does is now written down: 26 policies named `<table>_branch_scope`, one per table §8.2 lists, every one of them **RESTRICTIVE** so it is ANDed with the 102 permissive policies already there rather than replacing one — which is what made it safe to add to a live schema, since a capability that was already refusing somebody keeps refusing them and branch is a second question asked after the first still passes. One function decides, `app.branch_ok(center, branch)`, and HQ wins over a pin because it asks whether *any* of the caller's memberships reaches the row. The thirteen unscoped tables are recorded with their categories — one bill and one owner, one person with many memberships, shared catalogues, one queue, one stated deferral — because a reader auditing the file should not have to treat its silence as a finding. Two things the migration had to fix on the way are recorded too: a trigger files a new row under the branch that wrote it, since every add form in this product posts a row with no branch and a restrictive policy alone would have left a pinned manager able to read their branch and write nothing at all; and three number series became `security definer`, because a branch-pinned caller taking `max(no) + 1` through their own policies gets their branch's maximum and two branches would have issued one receipt number twice. The leak suite §8.2 asks for by name is in `scripts/test-rls.mjs` and is a case per table in three directions — the pinned read, the HQ control over the same 26 tables, and the hostile write with each refusal paired with the write it must not break. **The two open items stay visible and are both waiting on a screen, not on a decision:** a branch snapshot column on `sms_dispatches` and `sms_logs`, and a write-time branch column on `audit_log`, which is safe today only because that table opens to owners and an owner is HQ by definition. §8.3's ⚠️ is untouched and is now the only one in §8: a branch name opens that branch's record rather than its workspace, because the drill-down needs `app.branch_ok` to read a *chosen* branch and a `branch_id` in a query string is the leak the section forbids. Documentation only — no code, no counts moved. |
+| 2026-09-04 | **Then the same sweep over every other marker, because one stale ❌ is a mistake and four is a habit.** §3.8 was marked ❌ *(partly ✅)* over one sentence that was true when written and is not now: *"a platform payment cannot yet be voided by a counter-entry, because `payments.amount_bdt` is positive by check"*. `20260811000074` dropped that check — by name rather than `if exists`, since a rename would have left `> 0` standing under a passing migration — and the section now records what replaced it: a credit is money we owe back sitting on the row that says what we have been paid, so a centre's `sum(amount_bdt)` is net of credits and that is the intended reading. Three constraints keep a credit from being anything else, and the first is the one that matters most: **no coverage window**, because `paid_through` is `max(covers_period_end)` in two independent derivations and a -৳1 row dated to 2099 would buy permanent free access while looking less like tampering than editing `status` by hand. Also no intent, because an intent means "this receipt settled that purchase" and the printable would otherwise render as a sheet selling 180 places with a minus in front of the total; and a required note, because a credit is a decision somebody made and this table has no UPDATE path to explain it afterwards. §9.3's last ⚠️ row said refunds were *"representable, no UI"* — there is a refund form on the register, mounted on the payment row, with `lib/fees/refund.ts` holding the floor at what actually came in. §9.1 was ✅ on the rule and ⚠️ on surfacing it; the word *revenue* appears nowhere in either dictionary, every money figure names which of the three numbers it is, and where two figures on one screen answer different questions the screen says so in a sentence — so the ⚠️ was describing a screen this product does not have. And §11's founder paragraph still gave the old reason for not offering an owner a move *down* a tier. The reason has narrowed rather than gone: the credit has a row now, so what is missing is the arithmetic, and a number nobody can check is not a refund an owner should be able to ask for themselves. **The markers that stay are the ones that earn it:** §6.2 ⚠️ (five `teacher_permissions` booleans, still columns rather than words, and it says why that waits), §7.3 ✅⚠️ (no rooms, no per-date overrides, no term dates), §8.3 ⚠️ (the drill-down). Documentation only. |
