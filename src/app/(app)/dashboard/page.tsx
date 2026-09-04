@@ -21,6 +21,7 @@ import { countChasesDue } from '@/lib/fees/reminder-schedule'
 import { categoryBills, monthBills, monthMoney, payrollState } from '@/lib/finance/profit'
 import { ratesForDashboard } from '@/lib/attendance/rates'
 import { studentsAtRisk, RISK_COLUMNS } from '@/lib/students/risk'
+import { centerStudentCount } from '@/lib/students/headcount'
 import {
   progressToTell,
   PROGRESS_COUNT_COLUMNS,
@@ -231,6 +232,7 @@ export default async function DashboardPage() {
     { count: termsCount },
     { count: salaryPayCount },
     { count: salaryExpenseCount },
+    pooledStudents,
   ] = await Promise.all([
     supabase
       .from('students')
@@ -523,6 +525,23 @@ export default async function DashboardPage() {
           .gte('spent_on', period)
           .lt('spent_on', addMonths(period, 1))
       : noCount,
+    /*
+     * The organisation's headcount, which is not the same number as the tile above.
+     *
+     * The tile is what this reader can see, and for a manager pinned to one building
+     * that is their building — `students_branch_scope`. Places pool across the whole
+     * institution (§3.6), so the places line has to be told the organisation's count or
+     * it pairs 40 students with a 300-place ceiling and reports 260 free when there are
+     * five. 20260811000076 is the read that sees past the scope, gated inside on the
+     * same staff-admin word `isAdmin` is.
+     *
+     * Asked of every staff admin rather than only a pinned one: for head office it
+     * returns exactly what the tile already says, and putting a branch test on the
+     * condition would be a second copy of the scoping rule inside a page. A teacher is
+     * skipped because the line it feeds is `isAdmin`-gated — the RPC would refuse them
+     * anyway — and the ternary keeps the tuple's shape, which is what `noCount` is for.
+     */
+    isAdmin ? centerStudentCount(supabase, session.active.centerId) : null,
   ])
 
   /*
@@ -694,8 +713,7 @@ export default async function DashboardPage() {
   const payroll = payrollState(termsCount, salaryPayCount)
 
   /*
-   * Places remaining — §9.10's last item, and the only one on this page that costs
-   * nothing: the ceiling is on the session and the count is the tile it sits under.
+   * Places remaining — §9.10's last item.
    *
    * Drawn on every plan rather than behind `showMoney`. Capacity is not a centre
    * feature — the ceiling is nearest on free, where it is thirty — and an owner who
@@ -704,12 +722,30 @@ export default async function DashboardPage() {
    *
    * `capacityPressure` and not `studentRoom`, because the same call now decides how loud
    * the line is: §3.7's thresholds live in lib/plans.ts, where the other two screens that
-   * print a place count read them from. `remaining` is what `studentRoom` returned. The
-   * count fed in is the centre's own and never this branch's — the pool belongs to the
-   * organisation, which is the rule the whole figure rests on.
+   * print a place count read them from. `remaining` is what `studentRoom` returned.
+   *
+   * FED THE ORGANISATION'S COUNT AND NOT THE TILE'S, which is the one thing this line
+   * cannot get wrong. `capacityPressure` says so itself — "ORGANISATION-WIDE, ALWAYS …
+   * never a branch's own" — and `studentCount` is a branch's own for a pinned manager,
+   * because it comes through their policies. So the count comes from the RPC and the
+   * whole line goes away when that read fails: a pinned manager shown their branch's
+   * figure against the pool spends the afternoon admitting students CD001 refuses one at
+   * a time, and no figure at all is better than that one.
    */
   const pressure =
-    studentCount === null ? null : capacityPressure(session.ceiling, studentCount)
+    pooledStudents === null ? null : capacityPressure(session.ceiling, pooledStudents)
+
+  /*
+   * And a pinned manager is told whose places these are.
+   *
+   * Two figures answering different questions on one screen, which §9.1 says the screen
+   * has to spell out: the tile above is this building's forty students and the line below
+   * is the institution's five remaining places. Unqualified, the arithmetic between them
+   * invites "so we have 260 spare". Head office needs none of this — for them the tile
+   * and the ceiling are the same organisation — so the qualifier turns on the pin and not
+   * on the plan.
+   */
+  const pooledPlaces = !isHqMember(session.active)
 
   return (
     <div className="flex flex-col gap-5">
@@ -1015,7 +1051,9 @@ export default async function DashboardPage() {
               pressure !== null &&
               (pressure.level === 'fine' ? (
                 <p className="num mt-2 text-sm text-ink-soft">
-                  {t.placesLeft(pressure.remaining, pressure.ceiling)}{' '}
+                  {pooledPlaces
+                    ? t.placesPooled(pressure.remaining, pressure.ceiling)
+                    : t.placesLeft(pressure.remaining, pressure.ceiling)}{' '}
                   <Link
                     href="/settings/plan"
                     className="font-medium text-brand-800 underline"
@@ -1025,7 +1063,17 @@ export default async function DashboardPage() {
                 </p>
               ) : (
                 <div className="mt-3">
-                  <PlacesWarning pressure={pressure} t={t} />
+                  {/* The pool sentence, in the box where the warning is loud enough to
+                      act on: a branch manager reading "only 5 places left" needs to know
+                      those five are the organisation's and not their building's ration,
+                      or the next thing they do is ask head office for a bigger quota
+                      that does not exist. HQ's own wording, so the two screens that
+                      explain the pool cannot drift. */}
+                  <PlacesWarning
+                    pressure={pressure}
+                    t={t}
+                    note={pooledPlaces ? d.hq.poolNote : undefined}
+                  />
                 </div>
               ))}
           </div>

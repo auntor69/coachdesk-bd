@@ -2792,6 +2792,22 @@ export const en: Dictionary = {
      */
     placesLeft: (left: number, total: number) => `${left} of ${total} places left`,
     /**
+     * The same line for a manager pinned to one branch, and four words is the whole of
+     * the difference.
+     *
+     * The tile above this line is what that reader can see, which is their building;
+     * these places are the institution's, because a place is a licence and licences pool
+     * (§3.6). Left unqualified the two figures invite the subtraction between them —
+     * forty students, three hundred places, so two hundred and sixty spare — and the
+     * organisation may have five. §9.1's rule: where two figures on one screen answer
+     * different questions, the screen says which.
+     *
+     * Not shown to head office, whose tile and ceiling are already the same organisation,
+     * and who would read it as a distinction with nothing on the other side of it.
+     */
+    placesPooled: (left: number, total: number) =>
+      `${left} of ${total} places left across the organisation`,
+    /**
      * The ceiling reached, and a different sentence rather than "0 places left": a
      * nought is a figure, and this is the one state where the next student is a
      * decision instead of a form. The link says where to make it.
@@ -3970,6 +3986,18 @@ export const en: Dictionary = {
       /** The noun agrees with the cap, not the count: "9/60 students". */
       used: (n: number, limit: number) =>
         `${n}/${limit} ${limit === 1 ? 'student' : 'students'}`,
+      /**
+       * The same line for a manager pinned to one branch, where `used` would be a lie
+       * made of two true halves: the count is their building's — students_branch_scope
+       * narrows the roster below — while the ceiling pools across the organisation
+       * (§3.6). "40/300 students" then reads as 260 free places that do not exist.
+       *
+       * So the ceiling comes off, and what is left describes the list it sits above.
+       * The organisation's real pressure is in the places warning beside it, carrying
+       * hq.poolNote, which is where a figure about the whole institution belongs.
+       */
+      usedHere: (n: number) =>
+        `${n} ${n === 1 ? 'student' : 'students'} at this branch`,
       new: 'New',
       importTitle: 'Add a whole register at once',
       importBody: (max: number) => `Paste a list of names — up to ${max} at a time`,

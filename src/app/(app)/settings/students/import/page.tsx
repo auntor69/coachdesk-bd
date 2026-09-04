@@ -5,6 +5,7 @@ import { openAsk } from '@/lib/billing/asks'
 import { createClient } from '@/lib/supabase/server'
 import { studentRoom, studentCeiling, planFor, planName } from '@/lib/plans'
 import { rosterKey } from '@/lib/bd/roster'
+import { centerStudentCount } from '@/lib/students/headcount'
 import { slotLabel } from '@/lib/bd/schedule'
 import { dict, localName, DEFAULT_LOCALE } from '@/lib/i18n'
 import { ImportForm } from './import-form'
@@ -32,7 +33,7 @@ export default async function ImportStudentsPage() {
   const d = dict(locale)
   const t = d.settings.import
 
-  const [{ data: batches }, { count: studentCount }, { data: roster }] =
+  const [{ data: batches }, studentCount, { data: roster }] =
     await Promise.all([
       supabase
         .from('batches')
@@ -40,11 +41,19 @@ export default async function ImportStudentsPage() {
         .eq('coaching_center_id', centerId)
         .eq('active', true)
         .order('start_time', { ascending: true, nullsFirst: false }),
-      supabase
-        .from('students')
-        .select('id', { count: 'exact', head: true })
-        .eq('coaching_center_id', centerId)
-        .eq('status', 'active'),
+      /*
+       * How full the ORGANISATION is, through 20260811000076 rather than a count of
+       * what this reader can see.
+       *
+       * `room` below is the number of lines this screen will accept, and it is
+       * `session.ceiling` minus this. The ceiling is one pooled figure for the whole
+       * institution (§3.6) while a count through the reader's own client is their
+       * branch's — `students_branch_scope` — so a manager pinned to Mirpur was told
+       * 260 lines would fit when the organisation had five. `importStudents` does not
+       * partially create students (§10), so the paste is refused whole: three hundred
+       * typed lines, an afternoon, and nothing saved.
+       */
+      centerStudentCount(supabase, centerId),
       // No status filter, deliberately, and unlike the count above: a student who
       // left is still on the roster as far as "do we have this name already" is
       // concerned, which is exactly what the import's own check does. Re-importing

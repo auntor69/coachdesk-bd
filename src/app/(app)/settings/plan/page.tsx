@@ -17,6 +17,7 @@ import { purchaseReceipt } from '@/lib/billing/receipt'
 import { dict, DEFAULT_LOCALE } from '@/lib/i18n'
 import { formatTaka } from '@/lib/money'
 import { MONTHS_COVERED, coverageStart } from '@/lib/platform/billing'
+import { centerStudentCount } from '@/lib/students/headcount'
 import {
   PLANS,
   CENTER_MONTHLY_FLOOR_BDT,
@@ -158,7 +159,7 @@ export default async function PlanPage() {
 
   const [
     { count: batchCount },
-    { count: studentCount },
+    studentCount,
     { count: subjectCount },
     { count: teacherCount },
     { count: branchCount },
@@ -173,11 +174,27 @@ export default async function PlanPage() {
       .select('id', { count: 'exact', head: true })
       .eq('coaching_center_id', session.active.centerId)
       .eq('active', true),
-    supabase
-      .from('students')
-      .select('id', { count: 'exact', head: true })
-      .eq('coaching_center_id', session.active.centerId)
-      .eq('status', 'active'),
+    /*
+     * THE ORGANISATION'S HEADCOUNT, THROUGH 20260811000076 AND NOT A COUNT OF ITS OWN.
+     *
+     * Two things on this page read it and both are wrong with a branch's count in them.
+     * The usage row pairs it with `session.ceiling`, which is one pooled number for the
+     * whole institution (§3.6), so a manager pinned to Mirpur read "40 / 300" and their
+     * organisation was full. And `counts.students` below is the basis of a bill that
+     * becomes a receipt.
+     *
+     * The bill is the reason this is not merely a display fix. Only a `manager` row is
+     * ever pinned — every write in settings/managers/actions.ts carries
+     * `.eq('role', 'manager')` — so an owner is head office and the two counts agree for
+     * the one reader who can subscribe. That is application code, not a constraint, and a
+     * bill basis should not rest on it.
+     *
+     * The batch row above keeps its own count on purpose: §8.4 caps batches PER BRANCH,
+     * so a pinned manager's narrowed count against a per-branch ceiling is the correct
+     * pair. Subjects are one catalogue for the organisation and are not branch-scoped at
+     * all. This is the only row where the two halves came from different scopes.
+     */
+    centerStudentCount(supabase, session.active.centerId),
     supabase
       .from('subjects')
       .select('id', { count: 'exact', head: true })

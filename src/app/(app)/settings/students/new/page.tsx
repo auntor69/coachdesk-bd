@@ -11,6 +11,7 @@ import { openAsk } from '@/lib/billing/asks'
 import { branchChoicesFor } from '@/lib/branches'
 import { dict, localName, DEFAULT_LOCALE } from '@/lib/i18n'
 import { formatTaka } from '@/lib/money'
+import { centerStudentCount } from '@/lib/students/headcount'
 import {
   capacityPressure,
   studentRoom,
@@ -61,7 +62,7 @@ export default async function NewStudentPage() {
   const d = dict(locale)
   const t = d.settings.students
 
-  const [{ data: batches }, { count: studentCount }, branches] = await Promise.all([
+  const [{ data: batches }, studentCount, branches] = await Promise.all([
     supabase
       .from('batches')
       .select('id, name, slot, subjects (name, name_bn)')
@@ -71,11 +72,17 @@ export default async function NewStudentPage() {
       .eq('coaching_center_id', session.active.centerId)
       .eq('active', true)
       .order('start_time', { ascending: true, nullsFirst: false }),
-    supabase
-      .from('students')
-      .select('id', { count: 'exact', head: true })
-      .eq('coaching_center_id', session.active.centerId)
-      .eq('status', 'active'),
+    /*
+     * The ORGANISATION's headcount, through 20260811000076 rather than a count of the
+     * rows this reader can see. A place is a licence and licences pool (§3.6), so
+     * `session.ceiling` below is one figure for the whole institution; a count through
+     * this client is `students_branch_scope`'s, i.e. one building's. Pairing them told
+     * a manager pinned to Mirpur with 40 students that 260 places were free while the
+     * organisation was full, and this is the screen where that costs the most: the
+     * family is at the desk, the form is drawn, and `createStudent` refuses with CD001
+     * on save.
+     */
+    centerStudentCount(supabase, session.active.centerId),
     // Which building this child attends, for the head office of an organisation that
     // has more than one. `null` for everybody else, and no query for them either —
     // see branchChoicesFor.

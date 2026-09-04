@@ -3038,6 +3038,12 @@ export type Database = {
         Args: Record<PropertyKey, never>
         Returns: number
       }
+      center_student_count: {
+        Args: {
+          p_center_id: string | null
+        }
+        Returns: number
+      }
       claim_sms_batch: {
         Args: {
           p_limit?: number | null

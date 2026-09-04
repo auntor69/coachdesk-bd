@@ -187,9 +187,12 @@ test('the roster is a hint, and null means no hint rather than no matches', () =
               ? null`),
   )
 
-  // The count is active students; the roster deliberately is not filtered, so a
-  // leaver is still "already on the roster" and re-importing them skips.
-  assert.equal(count(PAGE, "eq('status', 'active')"), 1)
+  // The count is active students — `app.active_students` behind the RPC, which is why
+  // this page no longer filters a status itself. The roster read deliberately is not
+  // filtered either, so a leaver is still "already on the roster" and re-importing
+  // them skips.
+  assert.equal(count(PAGE, 'centerStudentCount(supabase, centerId)'), 1)
+  assert.equal(count(PAGE, "eq('status', 'active')"), 0, 'the RPC counts, not the page')
   assert.ok(PAGE.includes('.limit(HINT_CEILING + 1)'))
 
   // A missing hint counts every line as new, which is the honest direction.

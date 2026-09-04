@@ -4519,6 +4519,13 @@ export const bn = {
      * two numeral systems would be harder to read than either convention alone.
      */
     placesLeft: (left: number, total: number) => `${total}-এর মধ্যে ${left}টি জায়গা খালি`,
+    /**
+     * এক শাখায় নিয়োজিত ম্যানেজারের জন্য একই লাইন — কেন আলাদা বাক্য, তা
+     * en.dashboard.placesPooled-এ লেখা আছে: উপরের সংখ্যাটি তাঁর শাখার, আর জায়গাগুলো
+     * পুরো প্রতিষ্ঠানের।
+     */
+    placesPooled: (left: number, total: number) =>
+      `পুরো প্রতিষ্ঠানে ${total}-এর মধ্যে ${left}টি জায়গা খালি`,
     /** The ceiling reached. See en.dashboard.placesFull for why it is its own sentence. */
     placesFull: 'এই প্ল্যানে শিক্ষার্থীর সব জায়গা পূরণ হয়ে গেছে',
     placesLink: 'প্ল্যান ও জায়গা',
@@ -6051,6 +6058,13 @@ export const bn = {
       title: 'শিক্ষার্থী',
       /** How much of the ceiling is spent — the same line the batch list shows. */
       used: (n: number, limit: number) => `${n}/${limit} জন শিক্ষার্থী`,
+      /**
+       * শাখায় বাঁধা ম্যানেজারের জন্য একই লাইন, সিলিং ছাড়া। নিচের তালিকা তখন এক শাখার,
+       * কিন্তু সিলিং পুরো প্রতিষ্ঠানের (§3.6) — দুটো সত্যি সংখ্যা জোড়া দিলে ২৬০টি খালি
+       * জায়গার কথা বলা হয় যা আদতে নেই। প্রতিষ্ঠানের হিসাব পাশের সতর্কবার্তায়, hq.poolNote
+       * সহ। অঙ্ক ASCII-তেই থাকে, ঘরের নিয়ম।
+       */
+      usedHere: (n: number) => `এই শাখায় ${n} জন শিক্ষার্থী`,
       /** On the button beside the heading. Short: it shares a row with the count. */
       new: 'নতুন',
       /**

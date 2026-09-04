@@ -63,6 +63,7 @@ import {
 } from '@/lib/settings/clash'
 import { readExamTypeUse, readSubjectUse, readTeacherUse } from '@/lib/settings/usage'
 import { asPreferredChannel } from '@/lib/students/channel'
+import { centerStudentCount } from '@/lib/students/headcount'
 import { STUDENT_STATUSES } from '@/lib/students/status'
 import type {
   BatchSlot,
@@ -286,6 +287,15 @@ function enrolmentRefusal(session: CenterSession, error: unknown): ActionState |
  * which had this function admitting every student on the tiers that charge for them.
  * `session.ceiling` is where the number lives for both kinds of plan, and it agrees
  * with `wouldExceed` exactly on the tiers that do have a cap.
+ *
+ * AND IT IS THE ONE ARM THAT DOES NOT COUNT THROUGH THE CALLER'S OWN CLIENT. Places pool
+ * across the organisation (§3.6) and `session.ceiling` is that one pooled number, while
+ * `students_branch_scope` narrows a select to the reader's branch — so for a manager
+ * pinned to Mirpur the two halves of this comparison came from different scopes, and the
+ * courtesy said "there is room" about an organisation that was full. 20260811000076 is
+ * the read that sees past the scope. The other two arms are correct as they stand:
+ * `subjects` is one catalogue for the organisation and is not branch-scoped, and
+ * `maxTeachers` is null on both tiers that have branches at all.
  */
 async function limitRefusal(
   session: CenterSession,
@@ -300,24 +310,29 @@ async function limitRefusal(
   // Supabase types narrow column names to whichever table is named, so a union
   // `from(table)` only admits the columns all three share — which excludes the
   // two we filter on.
-  const { count } =
+  //
+  // Each arm hands back the integer rather than the response it came in, because the
+  // student arm's does not arrive in one — an RPC returns the number itself, and
+  // destructuring `count` off a union of three unlike shapes is how the wider one loses
+  // its columns.
+  const count =
     table === 'students'
-      ? await supabase
-          .from('students')
-          .select('id', head)
-          .eq('coaching_center_id', centerId)
-          .eq('status', 'active')
+      ? await centerStudentCount(supabase, centerId)
       : table === 'teachers'
-        ? await supabase
-            .from('teachers')
-            .select('id', head)
-            .eq('coaching_center_id', centerId)
-            .eq('active', true)
-        : await supabase
-            .from('subjects')
-            .select('id', head)
-            .eq('coaching_center_id', centerId)
-            .eq('active', true)
+        ? (
+            await supabase
+              .from('teachers')
+              .select('id', head)
+              .eq('coaching_center_id', centerId)
+              .eq('active', true)
+          ).count
+        : (
+            await supabase
+              .from('subjects')
+              .select('id', head)
+              .eq('coaching_center_id', centerId)
+              .eq('active', true)
+          ).count
 
   const t = dict(session.locale).settings.errors
   if (count === null) return { error: t.limitUnknown }
@@ -2116,11 +2131,14 @@ export async function importStudents(
   // The cap applies to the paste as a whole. Letting the first 15 of 80 names
   // through and dropping the rest is worse than refusing: the owner has no way
   // to know which 65 are missing, and would have to diff two hundred lines.
-  const { count } = await supabase
-    .from('students')
-    .select('id', { count: 'exact', head: true })
-    .eq('coaching_center_id', centerId)
-    .eq('status', 'active')
+  //
+  // The ORGANISATION's headcount, through 20260811000076. A count through this caller's
+  // own client is their branch's (students_branch_scope) while `session.ceiling` below
+  // pools across the institution (§3.6), so a manager pinned to Mirpur was told 260
+  // lines would fit when five would. That paste is not partially created (§10): the
+  // 41st line raises CD001, `import_students` rolls the transaction back, and three
+  // hundred typed names are gone.
+  const count = await centerStudentCount(supabase, centerId)
 
   // Refused rather than read as zero, for the reason `limitRefusal` carries. A paste
   // is where it would cost the most: one failed count would not admit one row past

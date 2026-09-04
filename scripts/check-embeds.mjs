@@ -408,6 +408,15 @@ const closedRpcs = [
       p_max_attempts: 5,
     },
   ],
+  /*
+   * The organisation's headcount (migration 76). Harmless if it runs — a signed-out
+   * caller fails `app.is_staff_admin` and gets 42501 with no number in it — but the
+   * grant is what is being asked about, not the body: this one is `security definer`
+   * and takes a centre id, so an anon grant would put "how many students has this
+   * centre" behind a uuid guess. The nil uuid belongs to nobody, so the probe cannot
+   * count a real centre even if both fences were down.
+   */
+  ['center_student_count', { p_center_id: '00000000-0000-0000-0000-000000000000' }],
 ]
 
 console.log('\nServer-only RPCs, asked with the anon key:')
