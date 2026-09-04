@@ -1,10 +1,10 @@
 import type { createClient } from '../supabase/server.ts'
-import type { ExamTypeUse, SubjectUse } from './retire.ts'
+import type { ExamTypeUse, SubjectUse, TeacherUse } from './retire.ts'
 
 type Supabase = Awaited<ReturnType<typeof createClient>>
 
 /**
- * What is pointing at a centre's subjects and exam kinds.
+ * What is pointing at a centre's subjects, exam kinds and teachers.
  *
  * Read here rather than in either caller so that the settings list and the two
  * actions behind its buttons count the same things by the same names — the
@@ -16,15 +16,16 @@ type Supabase = Awaited<ReturnType<typeof createClient>>
  * dropped connection into permission to delete a subject that half the timetable
  * teaches, so every caller treats null as "not established" and refuses.
  *
- * There are two shapes of every read, and the reason is the caller: a list screen
- * needs every row's counts and would otherwise fire four queries per subject,
- * while an action needs one subject's counts exactly and should not drag the
- * centre's whole enrolment table over the wire to get them. The list reads a
- * single column and groups it; the action asks Postgres to count. They agree,
- * because they count the same rows under the same policies — and where a very
- * large centre could see a list read truncated by PostgREST's row ceiling, the
- * only consequence is a panel offering a removal that the action then refuses in
- * exact words. The action's count is the authority, and it runs on every write.
+ * There are two shapes of the subject and exam-kind reads, and the reason is the
+ * caller: a list screen needs every row's counts and would otherwise fire four
+ * queries per subject, while an action needs one subject's counts exactly and should
+ * not drag the centre's whole enrolment table over the wire to get them. The list
+ * reads a single column and groups it; the action asks Postgres to count. They agree,
+ * because they count the same rows under the same policies — and where a very large
+ * centre could see a list read truncated by PostgREST's row ceiling, the only
+ * consequence is a panel offering a removal that the action then refuses in exact
+ * words. The action's count is the authority, and it runs on every write. The teacher
+ * read at the bottom has only that second shape; its own note says why.
  */
 
 /** The counts for one subject, or null if any of them failed. */
@@ -174,4 +175,67 @@ export async function readExamTypeUses(
   }
 
   return uses
+}
+
+/**
+ * The counts for one teacher, or null if any of them failed.
+ *
+ * There is no `readTeacherUses` to match the two lists above, and the omission is
+ * the point: four counts per teacher on a roster of nine is thirty-six queries on a
+ * settings page, and the register table a real centre has after a year would put the
+ * one-column version past PostgREST's row ceiling. So the teachers screen offers the
+ * removal on what the row already knows — switched off, not you — and this read is
+ * the authority, once, behind the button. §20.4: the server decides.
+ */
+export async function readTeacherUse(
+  supabase: Supabase,
+  centerId: string,
+  teacherId: string,
+): Promise<TeacherUse | null> {
+  const head = { count: 'exact' as const, head: true }
+
+  // Four near-identical queries written out rather than looped over a table name.
+  // `check-scoping` only reads a quoted relation and cannot see a `.from(table)` taking
+  // a variable, and a query it cannot see is one it cannot prove names this centre — so
+  // the repetition is the gate working, not an oversight. (Nor may the sentence saying
+  // so write the call out: the gate reads comments too, and would go looking for a
+  // relation by that name.)
+  const [paid, attendance, exams, batches] = await Promise.all([
+    supabase
+      .from('salary_payments')
+      .select('id', head)
+      .eq('coaching_center_id', centerId)
+      .eq('teacher_id', teacherId),
+    supabase
+      .from('attendance_sessions')
+      .select('id', head)
+      .eq('coaching_center_id', centerId)
+      .eq('teacher_id', teacherId),
+    supabase
+      .from('exams')
+      .select('id', head)
+      .eq('coaching_center_id', centerId)
+      .eq('teacher_id', teacherId),
+    supabase
+      .from('batches')
+      .select('id', head)
+      .eq('coaching_center_id', centerId)
+      .eq('teacher_id', teacherId),
+  ])
+
+  if (
+    paid.count === null ||
+    attendance.count === null ||
+    exams.count === null ||
+    batches.count === null
+  ) {
+    return null
+  }
+
+  return {
+    paidCount: paid.count,
+    attendanceCount: attendance.count,
+    examCount: exams.count,
+    batchCount: batches.count,
+  }
 }

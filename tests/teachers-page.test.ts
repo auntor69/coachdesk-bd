@@ -29,8 +29,26 @@ const read = (...parts: string[]) => readFileSync(path.join(ROOT, ...parts), 'ut
 const HERE = ['src', 'app', '(app)', 'settings', 'teachers']
 const PAGE = read(...HERE, 'page.tsx')
 const LIST = read(...HERE, 'teacher-list.tsx')
+/** The write behind the buttons. Read for the removal section at the bottom. */
+const ACTIONS = read('src', 'app', '(app)', 'settings', 'actions.ts')
+const USAGE = read('src', 'lib', 'settings', 'usage.ts')
 
 const count = (hay: string, needle: string) => hay.split(needle).length - 1
+
+/**
+ * One exported action's source, and nothing after it.
+ *
+ * A bare `slice(indexOf(name))` runs to the end of the file, which for the last few
+ * actions means half the module — and seven actions in there open with the same
+ * `staffAdminWith('staff')` line, so an assertion that the guard is present would be
+ * satisfied by a different function's copy of it. Bounded at the next export.
+ */
+function action(name: string): string {
+  const start = ACTIONS.indexOf(`export async function ${name}(`)
+  assert.ok(start >= 0, `${name} exists`)
+  const after = ACTIONS.indexOf('\nexport async function ', start + 1)
+  return after < 0 ? ACTIONS.slice(start) : ACTIONS.slice(start, after)
+}
 
 /** See plan-page.test.ts: the lookbehind keeps `border-2` and `lg:col-span-N` out. */
 function ordersIn(source: string): string[] {
@@ -371,4 +389,194 @@ test('the label is written in both languages', () => {
   // Not the same word in both: the Bangla is the borrowed term this file already uses for
   // লগইন, and a shared string here would mean one of the two was never written.
   assert.notEqual(bn.teacherList.usernameLabel, en.teacherList.usernameLabel)
+})
+
+/* -------------------------------------------------------------------------- */
+/* Removing the record, which the screen could not do at all                   */
+/* -------------------------------------------------------------------------- */
+
+test('the removal is offered on the row, and never on the reader’s own', () => {
+  // The defect: the screen had an off switch and nothing else, so a duplicate teacher
+  // row sat on the roster for ever — and on a capped plan the owner had to look at it.
+  const toggle = LIST.lastIndexOf('{toggle}</div>')
+  const remove = LIST.indexOf('{remove}</div>')
+  assert.ok(toggle >= 0 && remove > toggle, 'below the switch, not above it')
+  assert.ok(LIST.includes('{!teacher.isSelf && ('), 'not on your own record')
+  assert.equal(count(LIST, '{remove}'), 1, 'one control, drawn once')
+
+  // A quiet underlined word that arms a step, the same shape as every other removal in
+  // settings — see list-row.tsx — and not a button sitting live next to Save.
+  assert.ok(LIST.includes('onClick={() => setRemoveRow(teacher.id)}'))
+  assert.ok(LIST.includes('{t.removeOpen}'))
+  assert.ok(LIST.includes('const armed = removeRow === teacher.id'))
+})
+
+test('a teacher who is still switched on is told the order, not hidden from', () => {
+  // The arm word is drawn on a live row too. Hiding it there would be tidier and worse:
+  // a control that only appears after an unrelated step is one an owner never finds,
+  // which is the whole reason this section exists.
+  const armed = LIST.indexOf('{!armed ? (')
+  const blocked = LIST.indexOf(') : teacher.active ? (', armed)
+  const confirm = LIST.indexOf('<form action={removeAction}', blocked)
+  assert.ok(armed >= 0 && blocked > armed && confirm > blocked, 'three states in order')
+
+  assert.ok(LIST.includes('{t.removeBlockedTitle}'))
+  assert.ok(LIST.includes('{t.removeNeedsOff}'))
+  assert.equal(count(LIST, '{t.keep}'), 2, 'a way out of both states')
+})
+
+test('the confirm step keeps the app’s button order', () => {
+  // Keep-it first and full width, remove second and narrow: the habit this product
+  // builds is "the wide one at the bottom is the one you press", and a confirm step is
+  // the worst place to break it. Matched with `\s+`, not `\n` — teacher-list.tsx is LF
+  // today and actions.ts next door is CRLF, and neither is read normalised here.
+  const keep = LIST.search(/variant="secondary"\s+onClick=\{\(\) => setRemoveRow\(null\)\}/)
+  const danger = LIST.indexOf('variant="danger"')
+  assert.ok(keep >= 0 && danger > keep, 'keep-it is first')
+  assert.ok(LIST.includes('{removePending ? t.removing : t.removeConfirm}'))
+  assert.ok(LIST.includes('className="self-start"'), 'and the danger one is narrow')
+  assert.equal(count(LIST, 'variant="danger"'), 1, 'one destructive submit on the screen')
+})
+
+test('the sixth form reports into the row, not into the banner', () => {
+  // The other five call setLast so the newest of them owns the banner at the top. This
+  // one must not: it either makes the row vanish, and there is nowhere for a sentence
+  // to sit, or it refuses about one teacher among nine. So the action goes into
+  // useActionState bare, with no wrapper.
+  assert.match(
+    LIST,
+    /useActionState<ActionState, FormData>\(\s+deleteTeacher,\s+null,\s+\)/,
+  )
+  assert.equal(count(LIST, "setLast('"), 5, 'still five, which is what makes that count mean something')
+  assert.ok(LIST.includes('{armed && removeState?.error && <Alert>{removeState.error}</Alert>}'))
+})
+
+test('the action refuses the two things the row knows before it counts anything', () => {
+  // §20.4: the panel hides the control on the reader's own row and explains the order on
+  // a live one, and neither of those is a permission — a Server Action is a public
+  // endpoint. Both facts are re-read from the row here.
+  const body = action('deleteTeacher')
+
+  assert.ok(body.includes("const session = await staffAdminWith('staff')"))
+  const self = body.indexOf('teacher.user_id === session.userId')
+  const off = body.indexOf('if (teacher.active)')
+  const count_ = body.indexOf('await readTeacherUse(supabase, centerId, teacher.id)')
+  assert.ok(self >= 0 && off > self && count_ > off, 'both guards, then the counts')
+  assert.ok(body.includes('t.teachers.errors.deleteSelf'))
+  assert.ok(body.includes('t.teachers.errors.deleteNeedsOff'))
+  assert.ok(body.includes('t.teachers.errors.deleteCheckFailed'), 'a failed count refuses')
+})
+
+test('all four verdicts are written out, so a fifth is a type error', () => {
+  const body = action('deleteTeacher')
+  const sw = body.indexOf('switch (teacherDeleteVerdict(use)) {')
+  assert.ok(sw >= 0, 'the verdict decides, not the action')
+
+  for (const [verdict, message] of [
+    ['paid', 'deletePaid(use.paidCount)'],
+    ['attendance', 'deleteAttendance(use.attendanceCount)'],
+    ['exams', 'deleteExams(use.examCount)'],
+    ['batches', 'deleteBatches(use.batchCount)'],
+  ]) {
+    assert.match(
+      body.slice(sw),
+      new RegExp(`case '${verdict}':\\s+return \\{ error: t\\.teachers\\.errors\\.${message.replace(/[().]/g, (c) => '\\' + c)} \\}`),
+      verdict,
+    )
+  }
+  assert.ok(body.slice(sw).includes("case 'ok':"), 'and no default')
+})
+
+test('the write is scoped, and the membership goes with it', () => {
+  const body = action('deleteTeacher')
+
+  // The teaching membership first, then the row. Switching a teacher off already
+  // deleted the membership — requiring `active === false` is what makes that true — so
+  // this is the belt on a row some older path left behind. A membership with no teacher
+  // row is app.has_role('teacher') returning true for somebody the centre cannot see.
+  //
+  // `search` and not `indexOf`, because this file reads bytes without normalising line
+  // endings and a `\n` between the two calls would find nothing in a CRLF checkout.
+  const member = body.indexOf("from('center_members')")
+  const row = body.search(/from\('teachers'\)\s+\.delete\(\)/)
+  assert.ok(member >= 0 && row > member, 'the access goes before the record')
+  assert.ok(body.includes(".eq('role', 'teacher')"), 'only the teaching membership')
+
+  assert.match(
+    body.slice(row),
+    /\.eq\('coaching_center_id', centerId\)\s+\.eq\('id', teacher\.id\)\s+\.select\('id'\)/,
+  )
+  assert.ok(body.includes('if (error || !gone || gone.length === 0)'))
+
+  // The screens whose numbers moved. The admin roster reads teacher names, and the pay
+  // screens read a rate that cascaded away with the row.
+  for (const path of [
+    '/settings/teachers',
+    '/settings/managers',
+    '/payroll',
+    '/teach',
+    '/settings/plan',
+  ]) {
+    assert.ok(body.includes(`revalidatePath('${path}')`), path)
+  }
+})
+
+test('the counts name the centre as well as the teacher', () => {
+  // Four tables, and every one of them filtered by the centre — not only by the teacher
+  // id, which arrives from a form. `check-scoping` also holds this, and it is asserted
+  // here because that gate cannot see whether the id was proved to be ours.
+  const body = USAGE.slice(USAGE.indexOf('export async function readTeacherUse'))
+  for (const table of ['salary_payments', 'attendance_sessions', 'exams', 'batches']) {
+    assert.match(
+      body,
+      new RegExp(
+        `from\\('${table}'\\)\\s+\\.select\\('id', head\\)\\s+\\.eq\\('coaching_center_id', centerId\\)\\s+\\.eq\\('teacher_id', teacherId\\)`,
+      ),
+      table,
+    )
+  }
+
+  // Null means a count did not run, and never zero: a `?? 0` here would read a dropped
+  // connection as permission to delete a teacher with a year of registers behind them.
+  assert.ok(body.includes('paid.count === null ||'))
+  assert.ok(body.includes('return null'))
+})
+
+test('the removal words are written in both languages', () => {
+  for (const d of [bn, en]) {
+    const l = d.teacherList
+    for (const key of [
+      'removeOpen',
+      'removeBlockedTitle',
+      'removeNeedsOff',
+      'removeHeading',
+      'removeWarning',
+      'removeConfirm',
+      'removing',
+      'keep',
+    ]) {
+      assert.ok(l[key as 'removeOpen'].length > 0, key)
+    }
+
+    // Removing the record and switching somebody off are different errands, so their
+    // words cannot be the same word — that is the confusion the whole section is about.
+    assert.notEqual(l.removeOpen, l.deactivate)
+    assert.notEqual(l.removeConfirm, l.deactivate)
+
+    const e = d.settings.teachers.errors
+    assert.ok(e.deleteSelf.length > 0)
+    assert.ok(e.deleteNeedsOff.length > 0)
+    assert.ok(e.deleteCheckFailed.length > 0)
+    assert.ok(e.deleteFailed.length > 0)
+
+    // The counted ones agree with one and with many, in a language where the noun does
+    // not inflect and in one where it does.
+    assert.notEqual(e.deletePaid(1), e.deletePaid(4))
+    assert.notEqual(e.deleteAttendance(1), e.deleteAttendance(210))
+    assert.notEqual(e.deleteExams(1), e.deleteExams(8))
+    assert.notEqual(e.deleteBatches(1), e.deleteBatches(4))
+    for (const n of [1, 4]) assert.ok(e.deleteBatches(n).includes(String(n)), 'the figure')
+  }
+  assert.notEqual(bn.teacherList.removeOpen, en.teacherList.removeOpen)
+  assert.notEqual(bn.settings.teachers.errors.deleteSelf, en.settings.teachers.errors.deleteSelf)
 })

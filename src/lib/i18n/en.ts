@@ -2561,6 +2561,26 @@ export const en: Dictionary = {
     deactivate: 'Turn this teacher off',
     reactivate: 'Turn back on',
     yourSeat: 'Your own record — this plan’s one seat.',
+    /*
+     * REMOVING THE RECORD, WHICH IS NOT TURNING SOMEBODY OFF. Off is the ordinary end
+     * of a job and every word above says so; this is for the row that should not exist
+     * — the name entered twice, the applicant who never came. So the arm word is quiet
+     * and the warning says out loud what off would have kept.
+     *
+     * The arm button is drawn for a teacher who is still switched on as well, and
+     * answers with removeNeedsOff. Hiding it there would mean an owner never learns
+     * the option exists until they happen to switch somebody off.
+     */
+    removeOpen: 'Remove this record',
+    removeBlockedTitle: 'This record cannot be removed',
+    removeNeedsOff:
+      'Turn them off first. That takes their login away, and then the record can go.',
+    removeHeading: 'Remove this teacher’s record for good?',
+    removeWarning:
+      'Their name leaves your teacher list and their seat goes back to your plan. Nothing they entered is touched, because a record with attendance, exams or salary behind it cannot be removed at all. Their login is not deleted — they may use it at another centre.',
+    removeConfirm: 'Yes, remove the record',
+    removing: 'Removing…',
+    keep: 'Keep the record',
   },
 
   teacherForm: {
@@ -4323,6 +4343,27 @@ export const en: Dictionary = {
         notFound: 'Teacher not found.',
         keepOwnSeat:
           'This is your own teacher record — the one seat this plan covers. Switch a colleague off instead.',
+        /*
+         * The eight refusals behind Remove, and every one of them names the switch
+         * instead. That is the point of the wording: turning a teacher off is the
+         * right ending for almost everybody, and removing the record is only for the
+         * row that should never have been made.
+         */
+        deleteSelf:
+          'This is your own teacher record, so you cannot remove it here. Ask another owner or manager to do it.',
+        deleteNeedsOff:
+          'Turn them off first. That takes their login away, and then their record can be removed.',
+        deletePaid: (n: number) =>
+          `${n} salary ${n === 1 ? 'payment has' : 'payments have'} been made to them, and your accounts keep those. Leave them turned off instead — that is how somebody who has left is recorded.`,
+        deleteAttendance: (n: number) =>
+          `They took ${n} ${n === 1 ? 'register' : 'registers'}. Removing the record would leave those with nobody's name on them, so leave them turned off instead.`,
+        deleteExams: (n: number) =>
+          `They set ${n} ${n === 1 ? 'exam' : 'exams'}. Removing the record would leave those with nobody's name on them, so leave them turned off instead.`,
+        deleteBatches: (n: number) =>
+          `${n} ${n === 1 ? 'batch is' : 'batches are'} still theirs. Give ${n === 1 ? 'it' : 'them'} to another teacher, then remove the record.`,
+        deleteCheckFailed:
+          'What this teacher’s record is tied to could not be checked, so nothing has been removed. Please try again in a moment.',
+        deleteFailed: 'The record could not be removed. Please try again.',
       },
     },
 

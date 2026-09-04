@@ -4179,6 +4179,32 @@ export const bn = {
      * simply not there — so it names the row rather than explaining a rule.
      */
     yourSeat: 'আপনার নিজের রেকর্ড — এই প্ল্যানের একটিমাত্র জায়গা।',
+    /*
+     * REMOVING THE RECORD, WHICH IS A DIFFERENT ERRAND FROM TURNING SOMEBODY OFF.
+     * Everything above treats "off" as the end of a job, and it is: the teacher who
+     * left in June keeps their name on last term's hajira. This is for the row that
+     * should never have been made — the name typed twice, the applicant who declined.
+     *
+     * So the arm word is quiet and separate ("রেকর্ডটি সরিয়ে ফেলুন", not "মুছুন"),
+     * and the warning names the three things that make removal impossible before the
+     * owner presses anything. A record with hajira, exams or salary behind it is
+     * refused outright, which is why the warning can promise nothing is touched.
+     */
+    removeOpen: 'রেকর্ডটি সরিয়ে ফেলুন',
+    removeBlockedTitle: 'এই রেকর্ডটি সরানো যাবে না',
+    /**
+     * Where the arm word is pressed on a teacher who is still switched on. The button
+     * is drawn there on purpose: an owner who never sees it never learns the option
+     * exists, so the answer teaches the order instead of hiding the control.
+     */
+    removeNeedsOff:
+      'আগে তাঁকে বন্ধ করুন। বন্ধ করলেই তাঁর লগইন চলে যায়, তারপর রেকর্ডটি সরানো যাবে।',
+    removeHeading: 'শিক্ষকের রেকর্ডটি একেবারে সরিয়ে ফেলবেন?',
+    removeWarning:
+      'তাঁর নাম শিক্ষক তালিকা থেকে চলে যাবে এবং প্ল্যানের জায়গাটি খালি হবে। তিনি যা যা লিখেছেন কিছুই মুছবে না — যাঁর হাজিরা, পরীক্ষা বা বেতন আছে তাঁর রেকর্ড সরানোই যায় না। লগইনটিও মুছে যাবে না; অন্য কোনো সেন্টারে তিনি সেটি ব্যবহার করতে পারেন।',
+    removeConfirm: 'হ্যাঁ, রেকর্ডটি সরিয়ে ফেলুন',
+    removing: 'সরানো হচ্ছে…',
+    keep: 'রেকর্ডটি থাকুক',
   },
 
   /**
@@ -6470,6 +6496,31 @@ export const bn = {
          */
         keepOwnSeat:
           'এটি আপনার নিজের শিক্ষক রেকর্ড — এই প্ল্যানে এই একটি জায়গাই আছে। অন্য কাউকে বন্ধ করুন।',
+        /*
+         * The eight refusals behind "রেকর্ডটি সরিয়ে ফেলুন", and each one points back
+         * at the switch. That is deliberate: বন্ধ করা is the right ending for almost
+         * everybody, and this whole control exists only for the row that was never a
+         * real appointment. So none of these says "no" without saying what to do.
+         *
+         * The first two are also refused by the screen — see teacherList.removeNeedsOff
+         * — and they are here as well because a Server Action is a public endpoint and
+         * a hidden button is not a permission (§20.4).
+         */
+        deleteSelf:
+          'এটি আপনার নিজের শিক্ষক রেকর্ড, তাই এখান থেকে সরানো যাবে না। অন্য কোনো মালিক বা ম্যানেজারকে বলুন।',
+        deleteNeedsOff:
+          'আগে তাঁকে বন্ধ করুন। তাতে তাঁর লগইন চলে যাবে, তারপর রেকর্ডটি সরানো যাবে।',
+        deletePaid: (n: number) =>
+          `তাঁকে ${n} বার বেতন দেওয়া হয়েছে, আর সেই হিসাব সেন্টারের খাতায় থাকবে। রেকর্ডটি বন্ধ অবস্থায় রেখে দিন — যিনি চলে গেছেন তাঁকে এভাবেই রাখা হয়।`,
+        deleteAttendance: (n: number) =>
+          `তিনি ${n} দিনের হাজিরা নিয়েছেন। রেকর্ড সরালে সেই হাজিরাগুলোতে আর কারও নাম থাকবে না, তাই বন্ধ অবস্থায় রেখে দিন।`,
+        deleteExams: (n: number) =>
+          `তিনি ${n}টি পরীক্ষা নিয়েছেন। রেকর্ড সরালে সেগুলোতে আর কারও নাম থাকবে না, তাই বন্ধ অবস্থায় রেখে দিন।`,
+        deleteBatches: (n: number) =>
+          `${n}টি ব্যাচ এখনও তাঁর নামে আছে। ব্যাচগুলো অন্য শিক্ষককে দিন, তারপর রেকর্ডটি সরান।`,
+        deleteCheckFailed:
+          'এই রেকর্ডের সঙ্গে কী কী যুক্ত আছে তা এখন দেখা গেল না, তাই কিছুই সরানো হয়নি। একটু পরে আবার চেষ্টা করুন।',
+        deleteFailed: 'রেকর্ডটি সরানো যায়নি। আবার চেষ্টা করুন।',
       },
     },
 

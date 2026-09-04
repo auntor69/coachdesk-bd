@@ -22,7 +22,7 @@
 import { useActionState, useState } from 'react'
 
 import { BranchPicker } from '@/components/branch-picker'
-import { Alert, Field } from '@/components/ui'
+import { Alert, Button, Field } from '@/components/ui'
 import { formatBdMobile } from '@/lib/bd/phone'
 import { MIN_PASSWORD } from '@/lib/auth/password'
 import type { BranchChoice } from '@/lib/branches'
@@ -35,6 +35,7 @@ import {
   toggleTeacherActive,
   resetTeacherPassword,
   giveTeacherLogin,
+  deleteTeacher,
   type ActionState,
 } from '../actions'
 
@@ -143,6 +144,17 @@ export function TeacherList({
    */
   const [loginRow, setLoginRow] = useState<string | null>(null)
 
+  /**
+   * Which row has its removal armed, and it is at most one.
+   *
+   * Per row for `loginRow`'s reason and one more of its own: this is the destructive
+   * control, so an armed confirm step must be visibly attached to the name it is
+   * about. It also carries the refusal — a removal that is refused changes nothing on
+   * screen, so the sentence explaining why has to appear inside the row that asked
+   * rather than in the banner at the top, which belongs to the five forms that save.
+   */
+  const [removeRow, setRemoveRow] = useState<string | null>(null)
+
   const [detailsState, detailsAction, detailsPending] = useActionState<
     ActionState,
     FormData
@@ -177,6 +189,19 @@ export function TeacherList({
       setLoginRow(String(formData.get('teacherId') ?? ''))
       return giveTeacherLogin(prev, formData)
     },
+    null,
+  )
+
+  /*
+   * The sixth form, and the one that stays out of `last`. The other five report into
+   * the banner above the list because each of them leaves the row where it was; this
+   * one either makes the row disappear — no sentence needed, and none that would have
+   * anywhere to sit — or refuses, and a refusal about one teacher among nine belongs
+   * beside that teacher. So it needs no wrapper: `removeRow` is already set by the
+   * button that armed the step.
+   */
+  const [removeState, removeAction, removePending] = useActionState<ActionState, FormData>(
+    deleteTeacher,
     null,
   )
 
@@ -257,6 +282,97 @@ export function TeacherList({
                 {teacher.active ? t.deactivate : t.reactivate}
               </button>
             </form>
+          )
+
+          /*
+           * Removing the record, which is not the same repair as the switch above it and
+           * is drawn to look like it: a quiet underlined word that arms a step, the way
+           * every other removal in settings does (see list-row.tsx, whose three-state
+           * shape this follows — armed-and-blocked, armed-and-confirming, or closed).
+           *
+           * The arm word is drawn for a teacher who is still switched on as well, and
+           * answers with `removeNeedsOff`. Hiding it there would be tidier and worse:
+           * the whole reason this control exists is that an owner reported not being
+           * able to find any way to delete a teacher, and a control that appears only
+           * after an unrelated step is one they never find either.
+           *
+           * Everything past those two facts is the server's. The row knows whether the
+           * teacher is off and whether they are the reader; it does not know how many
+           * registers they took, and counting that for every row would be four queries
+           * per teacher on a page that already does four. So `deleteTeacher` re-reads
+           * both facts and adds the four counts, and its refusal lands here.
+           */
+          const armed = removeRow === teacher.id
+          const remove = (
+            <>
+              {/* An error survives on screen because nothing moved: a refused removal
+                  leaves the row, this panel and this list exactly as they were. On
+                  success there is no row left to render it in. */}
+              {armed && removeState?.error && <Alert>{removeState.error}</Alert>}
+
+              {!armed ? (
+                <button
+                  type="button"
+                  onClick={() => setRemoveRow(teacher.id)}
+                  className="inline-flex min-h-tap items-center text-sm text-ink-faint
+                    underline"
+                >
+                  {t.removeOpen}
+                </button>
+              ) : teacher.active ? (
+                <>
+                  <p className="font-medium text-ink">{t.removeBlockedTitle}</p>
+                  <p className="mt-1 max-w-prose text-sm text-ink-soft">
+                    {t.removeNeedsOff}
+                  </p>
+                  <div className="mt-2">
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      onClick={() => setRemoveRow(null)}
+                    >
+                      {t.keep}
+                    </Button>
+                  </div>
+                </>
+              ) : (
+                <form action={removeAction} className="flex flex-col gap-3">
+                  <input type="hidden" name="teacherId" value={teacher.id} />
+
+                  <div>
+                    <p className="font-medium text-ink">{t.removeHeading}</p>
+                    <p className="mt-1 max-w-prose text-sm text-ink-soft">
+                      {t.removeWarning}
+                    </p>
+                  </div>
+
+                  {/* Keep-it first and full width, remove second and narrow, which is
+                      the order every confirm step in this app uses: the habit the
+                      product builds is "the wide one at the bottom is the one you
+                      press", and a confirm step is the worst place to break it.
+                      `self-start` is what keeps the second one narrow — a flex column
+                      stretches its children otherwise. */}
+                  <div className="flex flex-col gap-2">
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      onClick={() => setRemoveRow(null)}
+                      full
+                    >
+                      {t.keep}
+                    </Button>
+                    <Button
+                      type="submit"
+                      variant="danger"
+                      disabled={removePending}
+                      className="self-start"
+                    >
+                      {removePending ? t.removing : t.removeConfirm}
+                    </Button>
+                  </div>
+                </form>
+              )}
+            </>
           )
 
           /*
@@ -621,6 +737,14 @@ export function TeacherList({
                       it is not part of any of them, and it is not a thing to reach for
                       while correcting a spelling. */}
                   <div className="mt-4 border-t border-line pt-3">{toggle}</div>
+
+                  {/* And below it the record itself, for the row that should never have
+                      existed. Not offered on the reader's own — see deleteSelf — so the
+                      panel simply ends there rather than explaining a rule about a
+                      button that is not drawn. */}
+                  {!teacher.isSelf && (
+                    <div className="mt-4 border-t border-line pt-3">{remove}</div>
+                  )}
                 </details>
               )}
             </li>

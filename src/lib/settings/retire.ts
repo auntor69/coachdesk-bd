@@ -1,5 +1,6 @@
 /**
- * When a subject or an exam kind may be turned off, and when it may be removed.
+ * When a subject, an exam kind or a teacher's record may be turned off, and when it
+ * may be removed.
  *
  * Both lists were add-only for the product's whole life, which made every typo
  * permanent: "Physcis" went onto the batch, onto every exam sat in it, onto the
@@ -114,4 +115,53 @@ export type ExamTypeDeleteVerdict = 'ok' | 'exams'
  */
 export function examTypeDeleteVerdict(use: ExamTypeUse): ExamTypeDeleteVerdict {
   return use.examCount > 0 ? 'exams' : 'ok'
+}
+
+/** Everything in the centre that points at one teacher. */
+export type TeacherUse = {
+  /**
+   * Salary paid to them. `salary_payments.teacher_id` is the one NO ACTION key on
+   * the table, so this is the count the database itself would refuse — and
+   * migration 44 wrote down why: somebody who has been paid is marked as left, not
+   * deleted, because the payment is a line in the centre's accounts.
+   */
+  paidCount: number
+  /** Registers they took. `attendance_sessions.teacher_id` is `set null`. */
+  attendanceCount: number
+  /** Exams they set. `exams.teacher_id` is `set null`. */
+  examCount: number
+  /** Batches they teach. `batches.teacher_id` is `set null`. */
+  batchCount: number
+}
+
+/** Why a teacher's record cannot be removed, or 'ok' when nothing points at it. */
+export type TeacherDeleteVerdict = 'ok' | 'paid' | 'attendance' | 'exams' | 'batches'
+
+/**
+ * Whether a teacher's record can be removed outright.
+ *
+ * Ordered by finality rather than by what the owner can act on, which is the
+ * opposite of the subject rule above and deliberate. Three of these four keys are
+ * `set null`, so the database would let all three deletions through and quietly
+ * leave the registers taken and the papers set with nobody's name on them — the
+ * `examTypeDeleteVerdict` case again, a product decision and not a constraint. Only
+ * `batches` is repairable: hand the class to somebody else and come back. Naming
+ * the unrepairable reason first means an owner who reassigns four batches is not
+ * then told about eleven months of attendance.
+ *
+ * `teacher_permissions`, `teacher_subjects` and `salary_terms` cascade and are not
+ * counted: a tick, a subject link and a pay rate describe the appointment, so they
+ * end with it. That decision is the migrations', not this file's.
+ *
+ * Switching a teacher off is the ordinary end of an appointment and stays available
+ * for all four of these — see `toggleTeacherActive`, which is what takes their
+ * login away. This is for the row that should never have existed: the duplicate,
+ * the mistyped name entered twice, the person who never took a class.
+ */
+export function teacherDeleteVerdict(use: TeacherUse): TeacherDeleteVerdict {
+  if (use.paidCount > 0) return 'paid'
+  if (use.attendanceCount > 0) return 'attendance'
+  if (use.examCount > 0) return 'exams'
+  if (use.batchCount > 0) return 'batches'
+  return 'ok'
 }

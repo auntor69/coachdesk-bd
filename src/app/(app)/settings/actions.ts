@@ -53,6 +53,7 @@ import {
   examTypeDeleteVerdict,
   subjectDeleteVerdict,
   subjectOffVerdict,
+  teacherDeleteVerdict,
 } from '@/lib/settings/retire'
 import {
   firstClash,
@@ -60,7 +61,7 @@ import {
   proposedHours,
   type Booking,
 } from '@/lib/settings/clash'
-import { readExamTypeUse, readSubjectUse } from '@/lib/settings/usage'
+import { readExamTypeUse, readSubjectUse, readTeacherUse } from '@/lib/settings/usage'
 import { asPreferredChannel } from '@/lib/students/channel'
 import { STUDENT_STATUSES } from '@/lib/students/status'
 import type {
@@ -2974,6 +2975,122 @@ export async function toggleTeacherActive(
   revalidatePath('/settings/teachers')
   revalidatePath('/teach')
   return { ok: active ? t.teachers.activated : t.teachers.deactivated }
+}
+
+/**
+ * Remove a teacher's record for good.
+ *
+ * The screen has always had the off switch and nothing else, and off is the right
+ * verb for almost every ending: the teacher who left in June should keep their name
+ * on last term's registers and on the papers they set. What it is wrong for is the
+ * row that should never have existed — the name typed twice, the applicant who was
+ * entered before they declined, the duplicate made by the workaround this file's
+ * `giveTeacherLogin` docblock describes. Those rows sat switched off on the roster
+ * for ever, and on a capped plan the owner had to look at them.
+ *
+ * TWO GUARDS BEFORE ANY COUNTING, and both are the reader's own doing rather than
+ * history:
+ *
+ * They must be switched off first. That is not a formality — `toggleTeacherActive`'s
+ * off branch is what deletes their `center_members` teacher row, so requiring it
+ * means their access is provably gone before their record is, in a separate act the
+ * owner already understands. Deleting a live teacher would leave the membership
+ * behind, and a membership with no teacher row is `app.has_role('teacher')` returning
+ * true for somebody the centre cannot see: a login that still reaches the registers
+ * from a roster that no longer lists them. The membership delete below is a second
+ * belt on that same trouser, for a row some older path left behind.
+ *
+ * And never their own row, which is stricter than the off switch — that one only
+ * refuses self on a plan with no staff features. Deleting yourself is never the
+ * errand, and the way back is worse than the way back from switching yourself off.
+ *
+ * The auth account is deliberately left alone. It may be the same person's login at
+ * another centre — `profiles` is one row per human, not per appointment — so deleting
+ * it here would be this centre reaching across a tenant boundary. Leaving it also
+ * means re-adding the same teacher tomorrow reuses the login they already know, by
+ * the phone lookup in `giveTeacherLogin`.
+ */
+export async function deleteTeacher(
+  _prev: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
+  const session = await staffAdminWith('staff')
+  if (!isSession(session)) return session
+
+  const t = dict(session.locale).settings
+  const supabase = await createClient()
+  const centerId = session.active.centerId
+
+  const teacherId = String(formData.get('teacherId') ?? '')
+  if (!teacherId) return { error: t.teachers.errors.notFound }
+
+  const { data: teacher, error: teacherError } = await supabase
+    .from('teachers')
+    .select('id, user_id, active')
+    .eq('id', teacherId)
+    .eq('coaching_center_id', centerId)
+    .maybeSingle()
+
+  // Same reason as the off switch: "not found" on a failed read tells the owner the
+  // row is gone when it is still there, and the next thing they do is reload.
+  if (teacherError) return { error: t.errors.readFailed }
+
+  if (!teacher) return { error: t.teachers.errors.notFound }
+
+  if (teacher.user_id === session.userId) return { error: t.teachers.errors.deleteSelf }
+  if (teacher.active) return { error: t.teachers.errors.deleteNeedsOff }
+
+  // §20.4. The panel only offers this where the row it drew says off and not-you, and
+  // neither of those is where the refusals actually live: the counts are, and they are
+  // read here because a Server Action is a public endpoint and the list that hid the
+  // button is not a permission.
+  const use = await readTeacherUse(supabase, centerId, teacher.id)
+  if (!use) return { error: t.teachers.errors.deleteCheckFailed }
+
+  // Written out rather than defaulted, so a sixth TeacherDeleteVerdict is a type error
+  // here rather than a deletion that quietly starts going through.
+  switch (teacherDeleteVerdict(use)) {
+    case 'paid':
+      return { error: t.teachers.errors.deletePaid(use.paidCount) }
+    case 'attendance':
+      return { error: t.teachers.errors.deleteAttendance(use.attendanceCount) }
+    case 'exams':
+      return { error: t.teachers.errors.deleteExams(use.examCount) }
+    case 'batches':
+      return { error: t.teachers.errors.deleteBatches(use.batchCount) }
+    case 'ok':
+      break
+  }
+
+  // Their teaching membership, if switching them off did not already take it. Only
+  // that role: the same person may administer the centre, and this is not that.
+  if (teacher.user_id) {
+    await supabase
+      .from('center_members')
+      .delete()
+      .eq('coaching_center_id', centerId)
+      .eq('user_id', teacher.user_id)
+      .eq('role', 'teacher')
+  }
+
+  const { data: gone, error } = await supabase
+    .from('teachers')
+    .delete()
+    .eq('coaching_center_id', centerId)
+    .eq('id', teacher.id)
+    .select('id')
+
+  if (error || !gone || gone.length === 0) return { error: t.teachers.errors.deleteFailed }
+
+  revalidatePath('/settings/teachers')
+  // The admin roster reads its names out of `teachers`, and the pay screens read a
+  // rate that cascaded away with the row.
+  revalidatePath('/settings/managers')
+  revalidatePath('/payroll')
+  revalidatePath('/teach')
+  revalidatePath('/settings/plan')
+  revalidatePath('/settings')
+  return { ok: t.removed }
 }
 
 /**
