@@ -3,7 +3,9 @@ import Link from 'next/link'
 import { PageHeader } from '@/components/page-header'
 import { Card } from '@/components/ui'
 import { pageCapability, getSession } from '@/lib/auth/session'
+import { usernamesFor } from '@/lib/auth/username-login'
 import { branchChoicesFor } from '@/lib/branches'
+import { createAdminClient } from '@/lib/supabase/admin'
 import { createClient } from '@/lib/supabase/server'
 import { wouldExceed, hasStaff, overStaffSeats, planName, PLANS } from '@/lib/plans'
 import { PERMISSION_DEFAULTS } from '@/lib/permissions'
@@ -160,6 +162,27 @@ export default async function TeachersPage() {
    */
   const access = members && new Map(members.map((m) => [m.user_id, m.branch_id]))
 
+  /*
+   * And what each of them types to sign in, for the teachers whose account was minted
+   * against a name rather than a number (§5.2).
+   *
+   * THE DEFECT THIS FIXES. The username was shown once — in the sentence reporting the
+   * account had been made — and never again, so an owner who closed the panel could not
+   * tell the teacher what to type a week later. Their only route back was to reset a
+   * password for a login they could not name. Migration 38 wrote `profiles.username` for
+   * this read and nothing was doing it.
+   *
+   * A separate round trip and not a fifth slot in the Promise.all above, because it needs
+   * the ids that read returns. Single digits of teachers, on a settings page reached from a
+   * hub. See usernamesFor for why it goes past RLS and why the id list is the fence — the
+   * ids handed to it are the ones just read under this centre's own id.
+   */
+  const usernames = await usernamesFor(
+    // actor-less: a read of one column, and a read writes no audit row to name anybody on
+    createAdminClient(),
+    teachers.map((teacher) => teacher.user_id),
+  )
+
   const rows: TeacherRow[] = teachers.map((teacher) => {
     // PostgREST returns a to-one embed as an object and a to-many as an array,
     // and which one you get depends on whether it can see the unique constraint.
@@ -187,6 +210,9 @@ export default async function TeachersPage() {
       // No linked account means they cannot sign in yet — worth surfacing,
       // because an owner who added a teacher expects them to be able to log in.
       hasLogin: Boolean(teacher.user_id),
+      // And where there is one, what it is called. Null for an account that signs in with
+      // a phone number, which is the number already on the row.
+      username: teacher.user_id ? (usernames.get(teacher.user_id) ?? null) : null,
       // Compared on user_id rather than on the teacher row, because that is the
       // thing a person is: an owner can hold one teacher record here and another
       // at a second centre. Read by the trimmed list, which will not switch it

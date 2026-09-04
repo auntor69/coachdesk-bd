@@ -4078,6 +4078,13 @@ export const bn = {
     inactive: 'বন্ধ',
     /** A record with no account behind it — see teacherForm.loginNow. */
     noLogin: 'লগইন নেই',
+    /**
+     * Beside what they type to sign in. The borrowed word rather than a translation, the
+     * way this file already writes লগইন: "username" is what the login screen and everybody
+     * in the country calls it, and a coined Bangla term would name something the reader has
+     * never been asked for.
+     */
+    usernameLabel: 'ইউজারনেম',
     /*
      * The column heads over the list, from `lg` only and as a scanning aid — the strip
      * is aria-hidden, because three loose labels with nothing tying them to the cells
@@ -4347,13 +4354,16 @@ export const bn = {
       'তাঁর এখনো কোনো লগইন নেই। তাঁর মোবাইল নম্বর দিয়েই তিনি ঢুকবেন — এই পাসওয়ার্ডটি তাঁকে বলে দিন, পরে তিনি নিজেই বদলে নিতে পারবেন।',
     /**
      * And they have not, so §5.2's username is minted instead. Says that the username is
-     * coming rather than showing it: it does not exist until the form is submitted.
+     * coming rather than showing it: it does not exist until the form is submitted. Also
+     * says where it stays afterwards, because "it appears here" on its own read as once.
      */
     passwordHintUsername:
-      'তাঁর কোনো লগইন নেই, আর তাঁর সারিতে মোবাইল নম্বরও নেই — তাই তিনি একটি ইউজারনেম দিয়ে ঢুকবেন। নিয়োগ দেওয়ার পরেই সেটি এখানে দেখাবে, আর এই পাসওয়ার্ডের সঙ্গে সেটিও তাঁকে বলে দিতে হবে।',
+      'তাঁর কোনো লগইন নেই, আর তাঁর সারিতে মোবাইল নম্বরও নেই — তাই তিনি একটি ইউজারনেম দিয়ে ঢুকবেন। নিয়োগ দেওয়ার পরেই সেটি এখানে দেখাবে, আর পাশের তালিকায় তাঁর সারিতেও সেটি থেকে যাবে।',
     confirmTick: 'হ্যাঁ, এটি ঠিক মানুষ',
     submit: 'নিয়োগ দিন',
     branchTitle: 'তিনি কী দেখতে পাবেন',
+    /** Beside the username on an administrator's row — see teacherList.usernameLabel. */
+    usernameLabel: 'ইউজারনেম',
     removeTitle: 'নিয়োগ ফিরিয়ে নিন',
     removeButton: 'পরিচালক থেকে সরান',
     removeHint:

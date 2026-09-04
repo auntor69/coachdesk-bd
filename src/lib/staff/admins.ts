@@ -15,6 +15,11 @@
  * same `user_id`. So the roster is assembled by joining memberships to those two lists in
  * application code, and an administrator who is in neither has no name to show.
  *
+ * THE USERNAME IS THE EXCEPTION, and it comes in from outside. `profiles.username` is the
+ * only fact about an administrator that no readable table holds a copy of, so the page
+ * reads it with the service key and hands the map down — see usernamesFor for why that is
+ * a narrower answer than a read policy on `profiles` would be.
+ *
  * THAT IS ALSO WHY APPOINTMENT STARTS FROM A PERSON AND NOT FROM A PHONE BOX. A screen
  * that took a number would create administrators nobody can name a week later. Starting
  * from a row the centre has already written down means the name, the number and the
@@ -76,6 +81,15 @@ export type Administrator = {
   name: string | null
   /** What they are employed as, where that is recorded. */
   job: string | null
+  /**
+   * What they type to sign in, where that is a name rather than a number (§5.2).
+   *
+   * Null for an account that signs in with a phone number, and null when the caller did
+   * not look usernames up. This is the one fact about an appointment that is readable
+   * nowhere else: `appointManager` says the username once, in the sentence reporting the
+   * appointment, and an owner who reloaded the screen had no way back to it.
+   */
+  username: string | null
   /** The reader themselves, who is labelled rather than named. */
   isSelf: boolean
 }
@@ -129,6 +143,12 @@ export function administratorsFrom(
   members: readonly MemberRow[],
   people: readonly Person[],
   readerId: string,
+  /**
+   * `user_id` → username, for the rows whose login is a name. Optional because the join is
+   * the caller's to make: the map comes from `profiles` past RLS (see usernamesFor), which
+   * `node --test` has no key for and this pure function has no client to do.
+   */
+  usernames?: ReadonlyMap<string, string>,
 ): Administrator[] {
   const named = new Map<string, Person>()
   for (const person of people) {
@@ -150,6 +170,7 @@ export function administratorsFrom(
         capabilities: member.capabilities,
         name: person?.name ?? null,
         job: person?.role ?? null,
+        username: usernames?.get(member.userId) ?? null,
         isSelf: member.userId === readerId,
       }
     })

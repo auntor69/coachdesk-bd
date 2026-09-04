@@ -53,6 +53,14 @@ export type TeacherRow = {
   phone: string | null
   active: boolean
   hasLogin: boolean
+  /**
+   * What they type to sign in, for an account minted against their name (§5.2).
+   *
+   * Null where they sign in with the number already on the row, and null where there is no
+   * account at all. Read from `profiles` by the page, because it is the one fact about a
+   * login that is knowable nowhere else in the app — see usernamesFor.
+   */
+  username: string | null
   subjects: string[]
   /** Which subject ids they are linked to, for the tick list. */
   subjectIds: string[]
@@ -513,6 +521,18 @@ export function TeacherList({
                   {teacher.phone && (
                     <p className="num text-sm text-ink-soft">
                       {formatBdMobile(teacher.phone)}
+                    </p>
+                  )}
+                  {/* What they type, for the ones who type a name rather than a number,
+                      and on the row rather than behind the disclosure: an owner asked for
+                      it by a teacher on the phone should not have to open anything, and
+                      `break-all` because a thirty-character username in a 176px cell must
+                      wrap rather than end in an ellipsis — a login id cut short is the
+                      same defect in a new place. */}
+                  {teacher.username && (
+                    <p className="break-all text-sm text-ink-soft">
+                      <span className="text-ink-faint">{t.usernameLabel} </span>
+                      <span className="font-medium text-ink">{teacher.username}</span>
                     </p>
                   )}
                   {!teacher.hasLogin && <p className="text-xs text-late">{t.noLogin}</p>}

@@ -3,6 +3,7 @@ import Link from 'next/link'
 import { PageHeader } from '@/components/page-header'
 import { Card } from '@/components/ui'
 import { pageRole, getSession } from '@/lib/auth/session'
+import { usernamesFor } from '@/lib/auth/username-login'
 import { branchChoicesFor } from '@/lib/branches'
 import { dict, DEFAULT_LOCALE } from '@/lib/i18n'
 import { hasStaff, planName, PLANS } from '@/lib/plans'
@@ -12,6 +13,7 @@ import {
   type Person,
 } from '@/lib/staff/admins'
 import { jobTitle } from '@/lib/staff/roles'
+import { createAdminClient } from '@/lib/supabase/admin'
 import { createClient } from '@/lib/supabase/server'
 import { AppointManager } from './appoint-manager'
 import { ManagerRow } from './manager-row'
@@ -37,6 +39,11 @@ export async function generateMetadata() {
  * `center_members` carries a `user_id` and no name, and those two tables are the only
  * name-bearing rows a staff admin may read. So the roster is joined in application code
  * and somebody in neither list has no name to show. See lib/staff/admins.ts.
+ *
+ * THE ONE THING READ FROM `profiles` IS THE USERNAME, with the service key and one column,
+ * because it exists nowhere else and the row is the only place an owner can be told what a
+ * colleague types to sign in. A read policy on the table would have handed over four other
+ * columns to answer that — see usernamesFor.
  *
  * WHICH IS ALSO WHY THE APPOINTMENT STARTS FROM A PERSON. A form that took a phone number
  * would make administrators nobody can name a week later; a form that offers the people
@@ -180,7 +187,22 @@ export default async function ManagersPage() {
           })),
         ]
 
-  const admins = administratorsFrom(members, people ?? [], session.userId)
+  /*
+   * And what each of them types to sign in, for the ones appointed from an employee row
+   * with no phone number on it (§5.2). `appointManager` says the username once, in the
+   * sentence reporting the appointment, and an owner who reloaded this screen before
+   * writing it down had no way back to it — this is that way back.
+   *
+   * The ids are the memberships just read under this centre's own id, which is the whole of
+   * why a service-role read is safe here. See usernamesFor.
+   */
+  const usernames = await usernamesFor(
+    // actor-less: a read of one column, and a read writes no audit row to name anybody on
+    createAdminClient(),
+    members.map((member) => member.userId),
+  )
+
+  const admins = administratorsFrom(members, people ?? [], session.userId, usernames)
   const candidates = people === null ? null : candidatesFrom(people, members)
 
   /*

@@ -114,7 +114,9 @@ test('the reads and the gates the redesign moved past are unchanged', () => {
   assert.ok(PAGE.includes("from: 'teachers' as const"))
   assert.ok(PAGE.includes("from: 'employees' as const"))
   assert.ok(PAGE.includes('jobTitle(row.role, row.designation, d.settings.staff.roles)'))
-  assert.ok(PAGE.includes('administratorsFrom(members, people ?? [], session.userId)'))
+  assert.ok(
+    PAGE.includes('administratorsFrom(members, people ?? [], session.userId, usernames)'),
+  )
   assert.ok(PAGE.includes('candidatesFrom(people, members)'))
 
   // A pin onto a building the centre has closed reads as a closed branch and not as head
@@ -219,4 +221,46 @@ test('the save buttons are sized to themselves', () => {
   // Taking the appointment back keeps its own weight and its reassurance is capped.
   assert.ok(ROW.includes('<Button type="submit" variant="secondary" disabled={removing}>'))
   assert.ok(ROW.includes('className="mt-2 max-w-prose text-sm text-ink-soft"'))
+})
+
+/* -------------------------------------------------------------------------- */
+/* The username, which used to be shown once and then lost                    */
+/* -------------------------------------------------------------------------- */
+
+test('the page reads what each administrator types to sign in', () => {
+  // `appointManager` says the username once, in the sentence reporting the appointment, and
+  // an owner who reloaded before writing it down had no way back to it. This is that way
+  // back, and `profiles` is self-read so it is a service-role read of one column.
+  assert.ok(PAGE.includes("import { usernamesFor } from '@/lib/auth/username-login'"))
+  assert.ok(PAGE.includes("import { createAdminClient } from '@/lib/supabase/admin'"))
+  assert.ok(PAGE.includes('members.map((member) => member.userId),'))
+
+  // The marker sits inside the argument list on purpose: tests/admin-actor.test.ts walks up
+  // from the `createAdminClient()` line through comments only and stops at the first line of
+  // code. `\s+` rather than `\n`, because this file reads bytes without normalising CRLF.
+  assert.match(
+    PAGE,
+    /const usernames = await usernamesFor\(\s+\/\/ actor-less: [^\n]{8,}\s+createAdminClient\(\),/,
+  )
+
+  // The ids are the memberships already narrowed to this centre, which is the whole of the
+  // boundary on a query that consults no policy — and the map has to reach the roster.
+  const scoped = PAGE.indexOf(".eq('coaching_center_id', centerId)")
+  const read = PAGE.indexOf('const usernames = await usernamesFor(')
+  const join = PAGE.indexOf('administratorsFrom(')
+  assert.ok(scoped >= 0 && read > scoped, 'the ids are taken before the centre is fixed')
+  assert.ok(join > read, 'the map is read and then dropped')
+})
+
+test('the row shows the username under the name, labelled', () => {
+  // Under the name and the job line, where the row already answers "who is this": an owner
+  // asked for it over the phone should not have to open the edit panel to find it.
+  const name = ROW.indexOf('<p className="truncate font-medium text-ink">{name}</p>')
+  const shown = ROW.indexOf('{admin.username}')
+  assert.ok(name >= 0 && shown > name, 'the username is above the name')
+  assert.ok(ROW.includes('{admin.username && ('), 'drawn only where there is one')
+  assert.ok(ROW.includes('{t.usernameLabel} '), 'and labelled')
+
+  // `break-all` and not `truncate`: a login id cut short is the same defect in a new place.
+  assert.ok(ROW.includes('<p className="break-all text-sm text-ink-soft">'))
 })

@@ -299,3 +299,76 @@ test('the column heads are written in both languages and mean different things',
   assert.notEqual(bn.teacherList.colTeacher, en.teacherList.colTeacher)
   assert.notEqual(bn.teacherList.noExtras, en.teacherList.noExtras)
 })
+
+/* -------------------------------------------------------------------------- */
+/* The username, which used to be shown once and then lost                     */
+/* -------------------------------------------------------------------------- */
+
+test('the page reads what each teacher types to sign in', () => {
+  // The defect this section is about. `giveTeacherLogin` returned the minted username
+  // inside the sentence reporting the account was made, and that sentence is gone on the
+  // next render — so an owner who closed the panel could not tell the teacher what to type
+  // a week later, and their only route back was to reset a password for a login they could
+  // not name. Migration 38 wrote `profiles.username` for a screen to read, and no screen
+  // was reading it.
+  assert.ok(PAGE.includes("import { usernamesFor } from '@/lib/auth/username-login'"))
+  assert.ok(PAGE.includes("import { createAdminClient } from '@/lib/supabase/admin'"))
+  assert.ok(PAGE.includes('teachers.map((teacher) => teacher.user_id),'))
+
+  // Past RLS, because `profiles` is self-read and a policy wide enough to show a colleague
+  // their username would hand over four other columns with it — `is_platform_admin` among
+  // them. The marker is what tests/admin-actor.test.ts requires of a service-role client
+  // with nobody behind it, and it sits *inside* the argument list on purpose: that gate
+  // walks up from the `createAdminClient()` line through comment lines only and stops at
+  // the first line of code, so a marker above the `const` would be invisible to it.
+  //
+  // `\s+` and not `\n`, because this file is read without normalising line endings and a
+  // `\n` anchor would silently match nothing in a CRLF checkout.
+  assert.match(
+    PAGE,
+    /const usernames = await usernamesFor\(\s+\/\/ actor-less: [^\n]{8,}\s+createAdminClient\(\),/,
+  )
+
+  // The ids come from the read that is already filtered by this centre, which is the whole
+  // of the boundary on a query that consults no policy. Asserted as an ordering rather than
+  // as a string, because what matters is that the centre is fixed before the ids are taken.
+  const scoped = PAGE.indexOf(".eq('coaching_center_id', session.active.centerId)")
+  const read = PAGE.indexOf('const usernames = await usernamesFor(')
+  assert.ok(scoped >= 0 && read > scoped, 'the ids are taken before the centre is fixed')
+
+  // One entry per teacher, and null where there is no account — not a lookup on `''`, which
+  // would be a map hit if a profile row ever carried an empty id.
+  assert.ok(
+    PAGE.includes(
+      'username: teacher.user_id ? (usernames.get(teacher.user_id) ?? null) : null,',
+    ),
+  )
+})
+
+test('the row shows the username labelled, beside the number', () => {
+  // In the login cell, on the row itself: an owner asked for it by a teacher over the phone
+  // should not have to open a disclosure, and after the minting sentence has gone this row
+  // is the only thing in the app that can answer.
+  const cell = LIST.indexOf('<div className="shrink-0 text-right lg:w-44">')
+  const shown = LIST.indexOf('{teacher.username}')
+  assert.ok(cell >= 0 && shown > cell, 'the username is not in the login cell')
+  assert.ok(LIST.indexOf('{t.noLogin}') > shown, 'and above "no login", which is its absence')
+
+  // Drawn only where there is one — an account minted against a phone number has none —
+  // and labelled, because a bare lowercase word under a mobile number is not self-explaining.
+  assert.ok(LIST.includes('{teacher.username && ('))
+  assert.ok(LIST.includes('{t.usernameLabel} '))
+
+  // `break-all` and not `truncate`: the cell is 176px and a username runs to thirty
+  // characters, so truncating here would be this same defect in a new place — a login id
+  // the owner cannot read out.
+  assert.ok(LIST.includes('<p className="break-all text-sm text-ink-soft">'))
+  assert.ok(LIST.includes('username: string | null'), 'nullable, or a phone login draws "null"')
+})
+
+test('the label is written in both languages', () => {
+  for (const d of [bn, en]) assert.ok(d.teacherList.usernameLabel.length > 0)
+  // Not the same word in both: the Bangla is the borrowed term this file already uses for
+  // লগইন, and a shared string here would mean one of the two was never written.
+  assert.notEqual(bn.teacherList.usernameLabel, en.teacherList.usernameLabel)
+})

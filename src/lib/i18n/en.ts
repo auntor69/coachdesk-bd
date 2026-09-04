@@ -2508,6 +2508,14 @@ export const en: Dictionary = {
   teacherList: {
     inactive: 'Off',
     noLogin: 'No login',
+    /**
+     * Beside what a teacher types to sign in, on the row itself.
+     *
+     * Labelled rather than left bare: a lowercase word under a mobile number is not
+     * self-explaining, and this row is the only place in the app that can answer "what is
+     * their username" once the sentence that minted it has gone.
+     */
+    usernameLabel: 'Username',
     /*
      * The column heads, drawn only from `lg` and only as a scanning aid. Short because
      * they sit over three cells of a row and not over a table: "Batches and permissions"
@@ -2668,13 +2676,16 @@ export const en: Dictionary = {
       'They have no login yet. Their mobile number is what they will sign in with — tell them this password, and they can change it later.',
     /**
      * And they have not, so §5.2's username is minted instead. Says that the username is
-     * coming rather than showing it: it does not exist until the form is submitted.
+     * coming rather than showing it: it does not exist until the form is submitted. Also
+     * says where it stays afterwards, because "it appears here" on its own read as once.
      */
     passwordHintUsername:
-      'They have no login and no mobile number on their row, so they will sign in with a username. It appears here once you appoint them, and you will need to read it out to them along with this password.',
+      'They have no login and no mobile number on their row, so they will sign in with a username. It appears here once you appoint them, and stays on their row in the list beside this form.',
     confirmTick: 'Yes, this is the right person',
     submit: 'Appoint',
     branchTitle: 'What they can see',
+    /** Beside the username on an administrator's row — see teacherList.usernameLabel. */
+    usernameLabel: 'Username',
     removeTitle: 'Take the appointment back',
     removeButton: 'Remove as administrator',
     removeHint:
@@ -4468,7 +4479,9 @@ export const en: Dictionary = {
       appointed: (name: string) => `${name} can now administer this centre`,
       /**
        * And the same with the one thing the owner has to carry away from the screen. §5.2's
-       * username exists nowhere else a reader can find it, so the sentence is the delivery.
+       * username is not shown by the form that mints it, so the sentence is the delivery —
+       * it is on the administrator's row from the next render onwards, but an owner reading
+       * this one has the password in front of them and should write both down together.
        */
       appointedUsername: (name: string, username: string) =>
         `${name} can now administer this centre. They sign in with the username ${username} and the password you just set — write it down and give it to them.`,

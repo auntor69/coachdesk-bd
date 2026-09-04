@@ -13,9 +13,9 @@ import path from 'node:path'
  * makes with the service key. Migration 56 added the third source: the `x-app-actor`
  * header, which `createAdminClient(actor)` sends.
  *
- * WHY THIS IS A TEST AND NOT A CONVENTION. Passing the actor is one optional argument at
- * eleven call sites, and a twelfth added next month with the argument left off produces no
- * error, no failing gate and no visible symptom — just a plan change in the log with
+ * WHY THIS IS A TEST AND NOT A CONVENTION. Passing the actor is one optional argument at a
+ * dozen call sites, and a thirteenth added next month with the argument left off produces
+ * no error, no failing gate and no visible symptom — just a plan change in the log with
  * nobody's name on it, discovered during the support conversation the log exists for. So
  * the rule is held structurally, the way tests/read-only.test.ts holds the write check:
  * EVERY `createAdminClient()` CALL EITHER NAMES A HUMAN OR CARRIES AN `actor-less:`
@@ -91,11 +91,17 @@ function adminCalls(): Call[] {
 }
 
 /**
- * The calls that write with no human behind them, and why each has to.
+ * The calls with no human behind them, and why each has to be one.
  *
- * Not a list to shorten: naming somebody at any of these would be a lie about who did
- * it. A fourth entry means a fourth genuine machine, and writing the reason down is the
- * price of adding one.
+ * TWO KINDS, AND THE SECOND IS NOT A MACHINE. The first three are: work nobody asked for,
+ * or work asked for by an account that does not exist yet. The last two are reads — a
+ * screen showing an owner what a colleague types to sign in — and a read leaves no audit
+ * row for anybody to be named on, so an actor there would be a header sent to no reader.
+ *
+ * Not a list to shorten, and not one to lengthen carelessly either: a new entry is a claim
+ * that no human is behind the request, or that the request writes nothing. Writing the
+ * reason down beside it is the price of adding one, and `usernamesFor` is the boundary the
+ * two reads rest on — one column, for ids the caller read under its own centre id.
  */
 const ACTOR_LESS = [
   // The queue worker. `actor_role = 'service_role'` with a null actor is the truth.
@@ -107,6 +113,10 @@ const ACTOR_LESS = [
   // The phone gate in front of signup, for the same reason and one step earlier: a code is
   // issued to prove a number belongs to somebody who has no account yet.
   'src/lib/auth/otp-gate.ts',
+  // The two rosters that show a colleague's username, which `profiles` is self-read for.
+  // Reads, so there is no audit row and nothing to attribute.
+  'src/app/(app)/settings/teachers/page.tsx',
+  'src/app/(app)/settings/managers/page.tsx',
 ].sort()
 
 test('every service-role client either names its actor or explains itself', () => {

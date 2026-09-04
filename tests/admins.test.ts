@@ -115,6 +115,30 @@ test('a person with no account never names an administrator', () => {
   assert.equal(admins[0].name, null)
 })
 
+test('the username comes in from outside, keyed by the account', () => {
+  // `profiles` is self-read, so the map is the caller's to fetch (see usernamesFor) and this
+  // function has no client to do it with. Keyed by `user_id` and not by person, because a
+  // username belongs to an account — the same person may hold a row at a second centre.
+  const rows = [
+    member({ id: 'm1', userId: OWNER, role: 'owner' }),
+    member({ id: 'm2', userId: RUBEL }),
+  ]
+
+  const named = administratorsFrom(rows, [], OWNER, new Map([[RUBEL, 'rubel.math']]))
+  assert.deepEqual(
+    named.map((admin) => admin.username),
+    [null, 'rubel.math'],
+  )
+
+  // And no map at all is a screen that did not ask rather than one that found nothing: the
+  // argument is optional, so a missing map must read as null and not throw on `.get`.
+  const unasked = administratorsFrom(rows, [], OWNER)
+  assert.deepEqual(
+    unasked.map((admin) => admin.username),
+    [null, null],
+  )
+})
+
 test('the reader knows themselves', () => {
   const admins = administratorsFrom(
     [member({ id: 'm1', userId: OWNER, role: 'owner' }), member({ id: 'm2', userId: RUBEL })],

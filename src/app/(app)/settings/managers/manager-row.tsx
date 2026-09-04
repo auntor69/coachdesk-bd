@@ -105,6 +105,16 @@ export function ManagerRow({
           <p className="text-sm text-ink-soft">
             {[admin.job, branchLabel].filter(Boolean).join(' · ')}
           </p>
+          {/* What they type to sign in, where that is a name rather than a number. On the
+              row and not behind the panel, because an owner asked for it over the phone
+              should not have to open anything, and `break-all` because a login id that
+              ends in an ellipsis is the same defect as one shown only once. */}
+          {admin.username && (
+            <p className="break-all text-sm text-ink-soft">
+              <span className="text-ink-faint">{t.usernameLabel} </span>
+              <span className="font-medium text-ink">{admin.username}</span>
+            </p>
+          )}
         </div>
 
         <div className="flex shrink-0 flex-col items-end gap-1">

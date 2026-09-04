@@ -26,6 +26,7 @@ import {
 import {
   createUsernameLogin,
   isEmailTakenError,
+  usernamesFor,
 } from '../src/lib/auth/username-login.ts'
 
 /**
@@ -419,4 +420,88 @@ test('the account carries the name and the locale, and no phone', async () => {
     username: 'rahim',
     locale: 'en',
   })
+})
+
+/* -------------------------------------------------------------------------- */
+/* Reading it back, which is what makes the account usable a week later       */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * A `profiles` that answers `.select(...).in('id', ids)` and records what it was asked.
+ *
+ * What is being tested is as much the shape of the question as the answer: this read goes
+ * past RLS with the service key, so the columns it names and the ids it is given are the
+ * whole of its boundary.
+ */
+function fakeProfiles(rows: Array<{ id: string; username: string | null }>) {
+  const asked: Array<{ table: string; columns: string; column: string; ids: string[] }> = []
+
+  const admin = {
+    from(table: string) {
+      return {
+        select(columns: string) {
+          return {
+            in(column: string, ids: string[]) {
+              asked.push({ table, columns, column, ids })
+              return Promise.resolve({ data: rows.filter((row) => ids.includes(row.id)) })
+            },
+          }
+        },
+      }
+    },
+  }
+
+  return { admin: admin as unknown as Parameters<typeof usernamesFor>[0], asked }
+}
+
+test('the read asks for two columns of one table and nothing else', async () => {
+  // The security argument in one assertion. `profiles` also carries `full_name`, `phone`,
+  // `locale` and `is_platform_admin` — that last one would tell a centre owner which of
+  // their colleagues is the platform founder. A `select('*')` here would hand all four
+  // over to answer a question about a thirty-character string.
+  const { admin, asked } = fakeProfiles([])
+
+  await usernamesFor(admin, ['u1'])
+
+  assert.deepEqual(asked, [
+    { table: 'profiles', columns: 'id, username', column: 'id', ids: ['u1'] },
+  ])
+})
+
+test('a teacher with no username is absent rather than blank', async () => {
+  // Both cases are ordinary and both mean "nothing to show": an account minted against a
+  // phone number has no username at all, and a membership whose profile row never arrived
+  // has no row to read. An empty string in the map would draw a label over nothing.
+  const { admin } = fakeProfiles([
+    { id: 'u1', username: 'rahim' },
+    { id: 'u2', username: null },
+  ])
+
+  const found = await usernamesFor(admin, ['u1', 'u2', 'u3'])
+
+  assert.deepEqual([...found], [['u1', 'rahim']])
+  assert.equal(found.get('u2'), undefined)
+  assert.equal(found.get('u3'), undefined)
+})
+
+test('nulls and repeats never reach the query', async () => {
+  // Callers hand this a column: `teachers.user_id` is null for everybody with no account
+  // and the same id twice for nobody, but `center_members` and `teachers` are two lists of
+  // the same people. Filtering here is what keeps both call sites to one line.
+  const { admin, asked } = fakeProfiles([{ id: 'u1', username: 'rahim' }])
+
+  await usernamesFor(admin, [null, 'u1', 'u1', null])
+
+  assert.deepEqual(asked[0].ids, ['u1'])
+})
+
+test('a centre whose teachers have no accounts costs no round trip', async () => {
+  // And not merely as an optimisation: PostgREST renders an empty array as `in.()`, which
+  // is a parse error rather than a query that matches nothing.
+  const { admin, asked } = fakeProfiles([{ id: 'u1', username: 'rahim' }])
+
+  const found = await usernamesFor(admin, [null, null])
+
+  assert.equal(found.size, 0)
+  assert.deepEqual(asked, [])
 })
