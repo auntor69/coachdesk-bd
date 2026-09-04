@@ -980,8 +980,47 @@ try {
     Number((await client.query(sql, params)).rows[0].n)
   const studentsIn = (center) =>
     truth('select count(*)::int as n from students where coaching_center_id = $1', [center])
-  const namedAnywhere = (name) =>
-    truth('select count(*)::int as n from students where name = $1', [name])
+
+  /*
+   * HOW MANY STUDENTS THIS RUN CREATED UNDER A NAME, which is not the same question as
+   * how many carry it — and the difference is the whole point of running against the real
+   * database.
+   *
+   * `students` is not empty here the way pglite's is. There are three live centres in it,
+   * one of them a paying customer's, and on 2026-09-03 somebody there admitted a student
+   * called Nadia Islam. The assertion below used to read "no student anywhere is named
+   * Nadia Islam", which was a statement about a fixture when it was written and is a
+   * statement about a stranger's roster now: it went red on a real admission while every
+   * policy it was guarding worked perfectly. The next common name would have done it
+   * again.
+   *
+   * So each probe name is baselined before anything is imported, and every claim after
+   * that is a delta. A row landing sideways into a third centre still shows up, which is
+   * what "anywhere" was for. An unbaselined name throws rather than quietly baselining
+   * itself mid-run, because a lazy baseline taken after a successful insert would read as
+   * zero and pass forever.
+   */
+  const PROBE_NAMES = [
+    'Sabbir Ahmed',
+    'Nadia Islam',
+    '  ali   HASAN ',
+    'Farhana Akter',
+    'Anon Inserted',
+  ]
+  const namedBefore = new Map()
+  for (const name of PROBE_NAMES) {
+    namedBefore.set(
+      name,
+      await truth('select count(*)::int as n from students where name = $1', [name]),
+    )
+  }
+  const namedAnywhere = async (name) => {
+    if (!namedBefore.has(name)) {
+      throw new Error(`add ${JSON.stringify(name)} to PROBE_NAMES before asserting on it`)
+    }
+    const now = await truth('select count(*)::int as n from students where name = $1', [name])
+    return now - namedBefore.get(name)
+  }
 
   const beforeA = await studentsIn(centerA)
   const beforeB = await studentsIn(centerB)
