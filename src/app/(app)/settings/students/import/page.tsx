@@ -1,6 +1,5 @@
-import Link from 'next/link'
-
 import { Card } from '@/components/ui'
+import { PageHeader } from '@/components/page-header'
 import { pagePermission, getSession, isStaffAdmin } from '@/lib/auth/session'
 import { openAsk } from '@/lib/billing/asks'
 import { createClient } from '@/lib/supabase/server'
@@ -86,15 +85,10 @@ export default async function ImportStudentsPage() {
   if (batches === null || studentCount === null) {
     return (
       <div className="flex flex-col gap-5">
-        <div>
-          <Link
-            href="/settings/students"
-            className="inline-flex min-h-tap items-center text-ink-soft hover:text-ink"
-          >
-            ← {d.settings.students.title}
-          </Link>
-          <h1 className="mt-1 text-xl font-bold text-ink lg:text-2xl">{t.title}</h1>
-        </div>
+        <PageHeader
+          title={t.title}
+          back={{ href: '/settings/students', label: d.settings.students.title }}
+        />
         <Card className="max-w-2xl border-late/30 bg-late/5">
           <p className="font-medium text-ink">{t.unreadable}</p>
         </Card>
@@ -136,16 +130,11 @@ export default async function ImportStudentsPage() {
 
   return (
     <div className="flex flex-col gap-5">
-      <div>
-        <Link
-          href="/settings/students"
-          className="inline-flex min-h-tap items-center text-ink-soft hover:text-ink"
-        >
-          ← {d.settings.students.title}
-        </Link>
-        <h1 className="mt-1 text-xl font-bold text-ink lg:text-2xl">{t.title}</h1>
-        <p className="mt-1 max-w-2xl text-sm text-ink-soft">{t.body}</p>
-      </div>
+      <PageHeader
+        title={t.title}
+        back={{ href: '/settings/students', label: d.settings.students.title }}
+        subtitle={t.body}
+      />
 
       {/*
        * FULL AND UNABLE TO BUY ITS WAY OUT is the only state that takes the paste box

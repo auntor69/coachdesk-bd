@@ -1,6 +1,7 @@
 import Link from 'next/link'
 
 import { Card } from '@/components/ui'
+import { PageHeader } from '@/components/page-header'
 import { pageRole, getSession } from '@/lib/auth/session'
 import { isHqMember } from '@/lib/branches'
 import { dict, DEFAULT_LOCALE } from '@/lib/i18n'
@@ -75,15 +76,9 @@ export default async function BranchesPage() {
    */
   if (!has(session.plan, 'multipleBranches')) {
     return (
-      <div className="flex max-w-2xl flex-col gap-5">
-        <Link
-          href="/settings"
-          className="inline-flex min-h-tap items-center text-ink-soft hover:text-ink"
-        >
-          ← {d.settings.hub.title}
-        </Link>
-        <h1 className="text-xl font-bold text-ink lg:text-2xl">{t.title}</h1>
-        <Card>
+      <div className="flex flex-col gap-5">
+        <PageHeader title={t.title} back={{ href: '/settings', label: d.settings.hub.title }} />
+        <Card className="max-w-2xl">
           <h2 className="font-semibold text-ink">{t.lockedTitle}</h2>
           <p className="mt-1 text-sm text-ink-soft">
             {t.lockedBody(
@@ -117,15 +112,9 @@ export default async function BranchesPage() {
    */
   if (branches === null) {
     return (
-      <div className="flex max-w-2xl flex-col gap-5">
-        <Link
-          href="/settings"
-          className="inline-flex min-h-tap items-center text-ink-soft hover:text-ink"
-        >
-          ← {d.settings.hub.title}
-        </Link>
-        <h1 className="text-xl font-bold text-ink lg:text-2xl">{t.title}</h1>
-        <Card className="border-late/30 bg-late/5">
+      <div className="flex flex-col gap-5">
+        <PageHeader title={t.title} back={{ href: '/settings', label: d.settings.hub.title }} />
+        <Card className="max-w-2xl border-late/30 bg-late/5">
           <p className="font-medium text-ink">{d.settings.listUnreadable}</p>
         </Card>
       </div>
@@ -187,129 +176,122 @@ export default async function BranchesPage() {
       : t.addCost(formatTaka(nextCost))
 
   return (
-    <div className="flex flex-col gap-5 xl:grid xl:grid-cols-12 xl:items-start xl:gap-6">
-      <div
-        className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between
-          sm:gap-6 xl:order-1 xl:col-span-12"
-      >
-        <div className="min-w-0">
-          <Link
-            href="/settings"
-            className="inline-flex min-h-tap items-center text-ink-soft hover:text-ink"
-          >
-            ← {d.settings.hub.title}
-          </Link>
-          <h1 className="mt-1 text-xl font-bold text-ink lg:text-2xl">{t.title}</h1>
-          <p className="mt-1 text-ink-soft">
-            {rows.length === 0 ? t.subtitle : t.count(activeCount)}
-          </p>
-        </div>
+    <div className="flex flex-col gap-5">
+      <PageHeader
+        title={t.title}
+        back={{ href: '/settings', label: d.settings.hub.title }}
+        subtitle={rows.length === 0 ? t.subtitle : t.count(activeCount)}
+        /* §8.3's comparison, in the bar rather than under the last row — it used to be
+           below every building, on the screen where an owner has just finished naming
+           them. Only the head office, and only once there is something to compare: the
+           table itself refuses a pinned manager, and a door into a refusal is worse than
+           no door. A plain underlined word, because the primary action on this screen is
+           the form in the rail. */
+        actions={
+          rows.length > 0 &&
+          isHq && (
+            <Link
+              href="/hq"
+              className="inline-flex min-h-tap items-center font-medium text-brand-800
+                underline underline-offset-4 hover:text-brand-900 lg:min-h-0"
+            >
+              {d.hq.title} →
+            </Link>
+          )
+        }
+      />
 
-        {/* §8.3's comparison, beside the heading rather than under the last row — it used
-            to be below every building, on the screen where an owner has just finished
-            naming them. Only the head office, and only once there is something to
-            compare: the table itself refuses a pinned manager, and a door into a refusal
-            is worse than no door. A plain underlined word, because the primary action on
-            this screen is the form in the rail. */}
-        {rows.length > 0 && isHq && (
-          <Link
-            href="/hq"
-            className="inline-flex min-h-tap shrink-0 items-center font-medium
-              text-brand-800 underline underline-offset-4 hover:text-brand-900"
-          >
-            {d.hq.title} →
-          </Link>
-        )}
-      </div>
+      <div className="flex flex-col gap-5 xl:grid xl:grid-cols-12 xl:items-start xl:gap-6">
+        {/* Whose decision this is, said before the row rather than after a refused tap.
+            The policies would refuse the write anyway; a manager who read "could not
+            save" would go looking for a bug instead of for the head office.
 
-      {/* Whose decision this is, said before the row rather than after a refused tap.
-          The policies would refuse the write anyway; a manager who read "could not
-          save" would go looking for a bug instead of for the head office.
-
-          In the rail's place from `xl` and first on a phone: this reader has no form to
-          be shown, and the sentence explaining that is what the width beside their one
-          row is for. */}
-      {!isHq && (
-        <Card className="xl:order-3 xl:col-span-5">
-          <h2 className="font-semibold text-ink">{t.mineTitle}</h2>
-          <p className="mt-1 text-sm text-ink-soft">{t.mineBody}</p>
-        </Card>
-      )}
-
-      {/* The list column. `contents` below `xl`, so the stack on a phone is one column
-          with one gap and not a box inside a box. */}
-      <div className="contents xl:order-2 xl:col-span-7 xl:flex xl:flex-col xl:gap-4">
-        {rows.length === 0 && isHq && (
-          <Card>
-            <h2 className="font-semibold text-ink">{t.emptyTitle}</h2>
-            <p className="mt-1 text-sm text-ink-soft">{t.emptyBody}</p>
+            In the rail's place from `xl` and first on a phone: this reader has no form to
+            be shown, and the sentence explaining that is what the width beside their one
+            row is for. */}
+        {!isHq && (
+          <Card className="xl:order-2 xl:col-span-5">
+            <h2 className="font-semibold text-ink">{t.mineTitle}</h2>
+            <p className="mt-1 text-sm text-ink-soft">{t.mineBody}</p>
           </Card>
         )}
 
-        {rows.length > 0 && (
-          <ul className="flex flex-col gap-2">
-            {rows.map((row) =>
-              isHq ? (
-                <BranchRow
-                  key={row.id}
-                  branch={row}
-                  countNoun={t.students(row.studentCount ?? 0)}
-                  t={d.branchForm}
-                  common={d.common}
-                />
-              ) : (
-                /* The same row without the way in. Not `BranchRow` with a flag: the
-                   whole of that component below the header is forms, and a version of
-                   it that hides them would be two components sharing a file. */
-                <li
-                  key={row.id}
-                  id={`branch-${row.id}`}
-                  className="flex scroll-mt-20 items-center justify-between gap-3
-                    rounded-xl border border-line bg-white px-4 py-3 lg:scroll-mt-4"
-                >
-                  <div className="min-w-0">
-                    <p className="flex items-center gap-2 font-medium text-ink">
-                      <span className="truncate">{row.name}</span>
-                      {!row.active && (
-                        <span
-                          className="shrink-0 rounded-full bg-surface-alt px-2 py-0.5
-                            text-xs font-semibold text-ink-faint"
-                        >
-                          {d.branchForm.off}
-                        </span>
+        {/* The list column. `contents` below `xl`, so the stack on a phone is one column
+            with one gap and not a box inside a box. */}
+        <div className="contents xl:order-1 xl:col-span-7 xl:flex xl:flex-col xl:gap-4">
+          {rows.length === 0 && isHq && (
+            <Card>
+              <h2 className="font-semibold text-ink">{t.emptyTitle}</h2>
+              <p className="mt-1 text-sm text-ink-soft">{t.emptyBody}</p>
+            </Card>
+          )}
+
+          {rows.length > 0 && (
+            <ul className="flex flex-col gap-2">
+              {rows.map((row) =>
+                isHq ? (
+                  <BranchRow
+                    key={row.id}
+                    branch={row}
+                    countNoun={t.students(row.studentCount ?? 0)}
+                    t={d.branchForm}
+                    common={d.common}
+                  />
+                ) : (
+                  /* The same row without the way in. Not `BranchRow` with a flag: the
+                     whole of that component below the header is forms, and a version of
+                     it that hides them would be two components sharing a file. */
+                  <li
+                    key={row.id}
+                    id={`branch-${row.id}`}
+                    className="flex scroll-mt-20 items-center justify-between gap-3
+                      rounded-xl border border-line bg-white px-4 py-3"
+                  >
+                    <div className="min-w-0">
+                      <p className="flex items-center gap-2 font-medium text-ink">
+                        <span className="truncate">{row.name}</span>
+                        {!row.active && (
+                          <span
+                            className="shrink-0 rounded-full bg-surface-alt px-2 py-0.5
+                              text-xs font-semibold text-ink-faint"
+                          >
+                            {d.branchForm.off}
+                          </span>
+                        )}
+                      </p>
+                      {row.address && (
+                        <p className="truncate text-sm text-ink-soft">{row.address}</p>
                       )}
-                    </p>
-                    {row.address && (
-                      <p className="truncate text-sm text-ink-soft">{row.address}</p>
+                    </div>
+                    {row.studentCount !== null && (
+                      <span className="shrink-0 text-sm text-ink-soft">
+                        <span className="num">{row.studentCount}</span>{' '}
+                        {t.students(row.studentCount)}
+                      </span>
                     )}
-                  </div>
-                  {row.studentCount !== null && (
-                    <span className="shrink-0 text-sm text-ink-soft">
-                      <span className="num">{row.studentCount}</span>{' '}
-                      {t.students(row.studentCount)}
-                    </span>
-                  )}
-                </li>
-              ),
-            )}
-          </ul>
+                  </li>
+                ),
+              )}
+            </ul>
+          )}
+        </div>
+
+        {/* The rail, and it does not scroll away from a list of eleven buildings: the
+            question "what does the next one cost" is asked at the bottom of the list as
+            often as at the top. Last on a phone, where a form above six rows would put
+            the building being typed in over the six already there. `top-16` is the sticky
+            page bar plus 8px — see components/page-header.tsx. */}
+        {isHq && costLine && (
+          <div className="xl:sticky xl:top-16 xl:order-3 xl:col-span-5">
+            <AddBranch
+              title={t.addTitle}
+              costLine={costLine}
+              t={d.branchForm}
+              common={d.common}
+            />
+          </div>
         )}
       </div>
-
-      {/* The rail, and it does not scroll away from a list of eleven buildings: the
-          question "what does the next one cost" is asked at the bottom of the list as
-          often as at the top. Last on a phone, where a form above six rows would put the
-          building being typed in over the six that are already there. */}
-      {isHq && costLine && (
-        <div className="xl:sticky xl:top-8 xl:order-4 xl:col-span-5">
-          <AddBranch
-            title={t.addTitle}
-            costLine={costLine}
-            t={d.branchForm}
-            common={d.common}
-          />
-        </div>
-      )}
     </div>
   )
 }

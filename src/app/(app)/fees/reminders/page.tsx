@@ -1,6 +1,7 @@
 import Link from 'next/link'
 
 import { Card } from '@/components/ui'
+import { PageHeader } from '@/components/page-header'
 import { pageCapability, getSession } from '@/lib/auth/session'
 import { createClient } from '@/lib/supabase/server'
 import { pageAll, type PageFailure } from '@/lib/supabase/page'
@@ -90,25 +91,22 @@ export default async function RemindersPage() {
   /**
    * The letterhead and the way out, written once for all three of this page's screens.
    *
-   * The link is at the top now. It was the last thing on the page, which on a centre
-   * with forty families to chase put the only way back below forty rows — and the fee
-   * board it returns to needs neither of the reads below, so it is a real place to be
+   * The link is in the bar now, at the top. It was the last thing on the page, which on a
+   * centre with forty families to chase put the only way back below forty rows — and the
+   * fee board it returns to needs neither of the reads below, so it is a real place to be
    * sent from a screen that failed rather than a dead end.
+   *
+   * A fragment held in a const, and every one of the three uses puts it directly in the
+   * screen's own tall column. It cannot be wrapped in a box of its own or dropped into the
+   * grid as a cell: a sticky box only travels inside its containing block, and either of
+   * those gives it one about 90px tall.
    */
-  const header = (
-    <>
-      <Link
-        href="/fees"
-        className="inline-flex min-h-tap items-center font-medium text-brand-700"
-      >
-        ← {t.backToBoard}
-      </Link>
-
-      <div>
-        <h1 className="text-xl font-bold text-ink lg:text-2xl">{t.title}</h1>
-        <p className="mt-1 text-ink-soft">{t.subtitle}</p>
-      </div>
-    </>
+  const bar = (
+    <PageHeader
+      title={t.title}
+      back={{ href: '/fees', label: t.backToBoard }}
+      subtitle={t.subtitle}
+    />
   )
 
   /**
@@ -119,13 +117,14 @@ export default async function RemindersPage() {
    * folded into it. Every figure on this page is a claim about who to message, and
    * there is no honest version of that claim built on a read that did not arrive.
    *
-   * Capped and one column: an 8/4 split with an empty rail beside one sentence is
-   * most of a laptop screen saying nothing.
+   * One column, and the cap is on the card rather than on the column: an 8/4 split with
+   * an empty rail beside one sentence is most of a laptop screen saying nothing, and a bar
+   * capped at 672px would stop short of the workspace edges the other two shapes reach.
    */
   const refusal = (problem: PageFailure) => (
-    <div className="flex flex-col gap-4 lg:max-w-2xl">
-      {header}
-      <Card className="border-late/30 bg-late/5">
+    <div className="flex flex-col gap-5">
+      {bar}
+      <Card className="max-w-2xl border-late/30 bg-late/5">
         <p className="font-medium text-ink">
           {problem === 'tooLarge' ? t.tooLarge : t.unreadable}
         </p>
@@ -309,7 +308,7 @@ export default async function RemindersPage() {
    * forgotten — a count of families is what accounts for the rest of the register.
    */
   const counted = (held > 0 || waiting > 0) && (
-    <p className="order-4 num text-sm text-ink-faint">
+    <p className="order-3 num text-sm text-ink-faint">
       {held > 0 && t.heldCount(held)}
       {held > 0 && waiting > 0 && ' · '}
       {waiting > 0 && t.waitingCount(waiting)}
@@ -318,7 +317,7 @@ export default async function RemindersPage() {
 
   /** Owed, due, and impossible to message — a data problem, with the door to its fix. */
   const missing = unreachable.length > 0 && (
-    <Card className="order-5">
+    <Card className="order-4">
       <p className="num font-medium text-ink">
         {t.unreachableTitle(unreachable.length)}
       </p>
@@ -344,9 +343,9 @@ export default async function RemindersPage() {
    */
   if (emptyReason !== null) {
     return (
-      <div className="flex flex-col gap-4 lg:max-w-2xl">
-        {header}
-        <Card>
+      <div className="flex flex-col gap-5">
+        {bar}
+        <Card className="max-w-2xl">
           <p className="font-medium text-ink">{t.noneTitle}</p>
           <p className="mt-1 text-sm text-ink-soft">{t.noneBecause[emptyReason]}</p>
         </Card>
@@ -357,68 +356,76 @@ export default async function RemindersPage() {
   }
 
   return (
-    /*
-     * TWO LAYOUTS OUT OF ONE DOM, the arrangement steps 2 to 5 of §20.8 use: each block
-     * carries an `order-N` matching the sequence a phone draws it in, and the rail is
-     * `display: contents` below `lg`, so on a phone it generates no box and every block
-     * is a direct child of the one column again.
-     *
-     * Eight columns of work beside four of what is at stake, and the rail sticks. The
-     * fault it fixes: an owner working down forty families had the count, the amount and
-     * the families with no number on file scroll away above and below the list — and the
-     * amount is the thing that decides whether the next twenty minutes are worth it.
-     *
-     * The rail is written FIRST and drawn second, which is not a contradiction: `order`
-     * moves nothing for a keyboard or a screen reader. Written last, the way to reach
-     * "add numbers" would be a hundred and twenty chips of tabbing.
-     */
-    <div className="flex flex-col gap-5 lg:grid lg:grid-cols-12 lg:items-start lg:gap-6">
-      <div className="order-1 flex flex-col gap-4 lg:col-span-12">{header}</div>
+    <div className="flex flex-col gap-5">
+      {bar}
 
-      <div
-        className="contents lg:sticky lg:top-8 lg:order-3 lg:col-span-4 lg:flex
-          lg:flex-col lg:gap-5"
-      >
-        <Card className="order-2 border-brand-200 bg-brand-50">
-          <p className="text-sm font-medium text-brand-800">{t.dueTitle}</p>
-          {/* Still two nodes: the count is the largest thing on the screen and the
-              word beside it is not, so this one sentence keeps its markup where
-              the rest of the page gave it up. Both languages read
-              number-then-word. */}
-          <p className="mt-1 text-brand-900">
-            <span className="num text-4xl font-bold">{due}</span>
-            <span className="ml-2 font-semibold">{t.people(due)}</span>
-          </p>
-          <p className="num mt-2 text-sm text-brand-800">
-            {formatTaka(atStake)} {t.atStake}
-          </p>
-        </Card>
+      {/*
+       * TWO LAYOUTS OUT OF ONE DOM, the arrangement steps 2 to 5 of §20.8 use: each block
+       * carries an `order-N` matching the sequence a phone draws it in, and the rail is
+       * `display: contents` below `lg`, so on a phone it generates no box and every block
+       * is a direct child of the one column again.
+       *
+       * Eight columns of work beside four of what is at stake, and the rail sticks. The
+       * fault it fixes: an owner working down forty families had the count, the amount and
+       * the families with no number on file scroll away above and below the list — and the
+       * amount is the thing that decides whether the next twenty minutes are worth it.
+       *
+       * The rail is written FIRST and drawn second, which is not a contradiction: `order`
+       * moves nothing for a keyboard or a screen reader. Written last, the way to reach
+       * "add numbers" would be a hundred and twenty chips of tabbing.
+       *
+       * The grid is nested under the bar rather than holding it as a twelfth-column cell,
+       * because a sticky box only travels inside its containing block and a cell's block is
+       * one grid row. That is also why the phone sequence starts at one and not at two: the
+       * letterhead was the first of five blocks, and the four left renumbered down.
+       */}
+      <div className="flex flex-col gap-5 lg:grid lg:grid-cols-12 lg:items-start lg:gap-6">
+        {/* `top-16` is the page bar's 56px plus 8px — see components/page-header.tsx. */}
+        <div
+          className="contents lg:sticky lg:top-16 lg:order-2 lg:col-span-4 lg:flex
+            lg:flex-col lg:gap-5"
+        >
+          <Card className="order-1 border-brand-200 bg-brand-50">
+            <p className="text-sm font-medium text-brand-800">{t.dueTitle}</p>
+            {/* Still two nodes: the count is the largest thing on the screen and the
+                word beside it is not, so this one sentence keeps its markup where
+                the rest of the page gave it up. Both languages read
+                number-then-word. */}
+            <p className="mt-1 text-brand-900">
+              <span className="num text-4xl font-bold">{due}</span>
+              <span className="ml-2 font-semibold">{t.people(due)}</span>
+            </p>
+            <p className="num mt-2 text-sm text-brand-800">
+              {formatTaka(atStake)} {t.atStake}
+            </p>
+          </Card>
 
-        {counted}
-        {missing}
-      </div>
+          {counted}
+          {missing}
+        </div>
 
-      {/* The list and the one sentence about what its messages will be missing, in one
-          block so the note cannot end up in a column away from the rows it is about.
-          Unconditional on `groups` now, because the return above took the empty case. */}
-      <div className="order-3 flex flex-col gap-3 lg:order-2 lg:col-span-8">
-        {/* Before the first tap, because every tap sends a real message from the owner's
-            own handset. Grey and not amber, on the rule the fee board's chase note
-            follows: the worklist is right, the amounts are right, and this is the one
-            part of what goes out that is missing. */}
-        {centerError && <p className="text-sm text-ink-soft">{d.chase.payUnreadable}</p>}
+        {/* The list and the one sentence about what its messages will be missing, in one
+            block so the note cannot end up in a column away from the rows it is about.
+            Unconditional on `groups` now, because the return above took the empty case. */}
+        <div className="order-2 flex flex-col gap-3 lg:order-1 lg:col-span-8">
+          {/* Before the first tap, because every tap sends a real message from the owner's
+              own handset. Grey and not amber, on the rule the fee board's chase note
+              follows: the worklist is right, the amounts are right, and this is the one
+              part of what goes out that is missing. */}
+          {centerError && <p className="text-sm text-ink-soft">{d.chase.payUnreadable}</p>}
 
-        <ReminderList
-          groups={groups}
-          center={center}
-          locale={locale}
-          words={{
-            t: d.chaseList,
-            chase: d.chase,
-            channels: d.channels,
-            common: d.common,
-          }}
-        />
+          <ReminderList
+            groups={groups}
+            center={center}
+            locale={locale}
+            words={{
+              t: d.chaseList,
+              chase: d.chase,
+              channels: d.channels,
+              common: d.common,
+            }}
+          />
+        </div>
       </div>
     </div>
   )

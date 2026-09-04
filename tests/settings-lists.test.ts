@@ -46,6 +46,14 @@ const count = (hay: string, needle: string) => hay.split(needle).length - 1
 
 test('both screens are a list and a rail from xl and one column below it', () => {
   for (const [name, page] of PAGES) {
+    // The grid is nested under the page bar now, not the page's own root: a sticky box
+    // only travels inside its containing block, so a bar dropped into the grid as a
+    // twelfth-column cell would stick for one grid row and leave with it.
+    assert.ok(
+      page.includes(`    <div className="flex flex-col gap-5">
+      <PageHeader`),
+      `${name}: the bar is the first child of the page's own column`,
+    )
     assert.ok(
       page.includes(
         '<div className="flex flex-col gap-5 xl:grid xl:grid-cols-12' +
@@ -53,9 +61,11 @@ test('both screens are a list and a rail from xl and one column below it', () =>
       ),
       `${name}: a stack on a phone, a grid from xl, and the rail not stretched`,
     )
-    assert.ok(page.includes('<div className="min-w-0 xl:col-span-12">'), name)
     assert.ok(page.includes('<ul className="flex flex-col gap-2 xl:col-span-7">'), name)
-    assert.ok(page.includes('<div className="xl:sticky xl:top-8 xl:col-span-5">'), name)
+    // 56px of bar and 8px of air. The bar paints over the rail, so a rail at `top-8`
+    // would have its first line covered — page-header.test.ts holds the repo-wide half
+    // of that, across every rail in the app at once.
+    assert.ok(page.includes('<div className="xl:sticky xl:top-16 xl:col-span-5">'), name)
 
     // 5 of 12 at `lg` is 279px — narrower than the same form on a phone.
     assert.doesNotMatch(page, /lg:grid-cols/, name)
@@ -65,23 +75,27 @@ test('both screens are a list and a rail from xl and one column below it', () =>
   }
 })
 
-test('every heading on both screens is the size the app uses on a desktop', () => {
+test('every shape of both screens is titled by the bar and nothing else', () => {
   for (const [name, page] of PAGES) {
-    // Two returns each — the list, and the read that did not arrive — and the h1 in
-    // the second was the one that kept being forgotten.
-    assert.equal(count(page, '<h1'), 2, name)
-    assert.equal(count(page, 'lg:text-2xl'), 2, `${name}: including the refusal's`)
-    assert.ok(
-      page.includes('<h1 className="mt-1 text-xl font-bold text-ink lg:text-2xl">'),
-      name,
-    )
-    assert.ok(
-      page.includes('<h1 className="text-xl font-bold text-ink lg:text-2xl">'),
-      name,
+    // Two returns each — the list, and the read that did not arrive — and the heading
+    // in the second was the one that kept being forgotten. Both are the bar's now, so
+    // neither screen writes an `<h1>` or its desktop size at all.
+    assert.equal(count(page, '<PageHeader'), 2, `${name}: including the refusal's`)
+    assert.equal(count(page, '<h1'), 0, `${name}: the bar owns the heading`)
+    assert.doesNotMatch(page, /lg:text-2xl/, name)
+    assert.equal(
+      count(page, "back={{ href: '/settings', label: d.settings.hub.title }}"),
+      2,
+      `${name}: and the way out is on both`,
     )
 
-    // One sentence in a card 1,216px wide was a sentence nobody could find the end of.
-    assert.ok(page.includes('<div className="flex max-w-2xl flex-col gap-5">'), name)
+    // The column is uncapped so the bar reaches the workspace edges; the sentence is
+    // capped instead, because one line in a card 1,216px wide has no findable end.
+    assert.doesNotMatch(page, /max-w-2xl flex-col/, name)
+    assert.ok(
+      page.includes('<Card className="max-w-2xl border-late/30 bg-late/5">'),
+      name,
+    )
     assert.ok(page.includes('{d.settings.listUnreadable}'), name)
   }
 })

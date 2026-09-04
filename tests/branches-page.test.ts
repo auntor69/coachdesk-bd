@@ -9,11 +9,16 @@
  * `xl` and not `lg`: five of twelve at `lg` is 279px, and a form in it would be narrower
  * than the same form on a phone.
  *
- * THE ORDER IS THE TEST. Four grid children, and their source order is not their painted
- * order: the pinned manager's card is written second so a phone reads "whose decision this
- * is" before the one row it is allowed to see, and painted third so it fills the rail's
+ * THE ORDER IS THE TEST. Three grid children, and their source order is not their painted
+ * order: the pinned manager's card is written first so a phone reads "whose decision this
+ * is" before the one row it is allowed to see, and painted second so it fills the rail's
  * place instead of leaving a five-column hole. `xl:order-N` is the only thing holding that,
  * and nothing else in the repo would notice it being shuffled.
+ *
+ * THE BAND IS THE PAGE BAR NOW (§20.1). The count and the door to §8.3's comparison used to
+ * be a twelfth-column cell of the grid; they are the bar's title, subtitle and action, above
+ * the grid entirely — a sticky box only travels inside its containing block, and a grid cell's
+ * block is one grid row.
  *
  * §38 is the other half: a redesign must not have moved a gate, a read, or the delete this
  * screen has never offered.
@@ -56,22 +61,25 @@ test('the screen is one column on a phone and a list with a rail from xl', () =>
   )
 
   // Seven and five of twelve: 699px of list and 492px of form at 2xl, and the form is
-  // capped by its own content rather than by the column.
-  assert.deepEqual(variantsIn(PAGE, 'col-span'), ['12', '5', '7', '5'])
+  // capped by its own content rather than by the column. Three cells, not four — the
+  // band that used to take all twelve is the page bar now, above the grid entirely.
+  assert.deepEqual(variantsIn(PAGE, 'col-span'), ['5', '7', '5'])
   assert.doesNotMatch(PAGE, /lg:grid-cols-12/, 'not at lg — 279px is a squeeze, not a rail')
+  assert.doesNotMatch(PAGE, /xl:col-span-12/, 'nothing spans the grid it is no longer in')
 
   // The rail does not scroll away from a list of eleven buildings: "what does the next one
-  // cost" is asked at the bottom of the list as often as at the top.
-  assert.ok(PAGE.includes('<div className="xl:sticky xl:top-8 xl:order-4 xl:col-span-5">'))
+  // cost" is asked at the bottom of the list as often as at the top. `top-16` because the
+  // bar above it is 56px of sticky furniture and paints over this.
+  assert.ok(PAGE.includes('<div className="xl:sticky xl:top-16 xl:order-3 xl:col-span-5">'))
 })
 
 test('source order and painted order differ, and only for the pinned manager', () => {
-  // Written: band, the card for a reader with no controls, the list, the form.
-  // Painted: band, the list, that card in the rail's place, the form.
-  assert.deepEqual(variantsIn(PAGE, 'order'), ['1', '3', '2', '4'])
+  // Written: the card for a reader with no controls, the list, the form.
+  // Painted: the list, that card in the rail's place, the form.
+  assert.deepEqual(variantsIn(PAGE, 'order'), ['2', '1', '3'])
 
-  const card = PAGE.indexOf('<Card className="xl:order-3 xl:col-span-5">')
-  const list = PAGE.indexOf('<div className="contents xl:order-2 xl:col-span-7')
+  const card = PAGE.indexOf('<Card className="xl:order-2 xl:col-span-5">')
+  const list = PAGE.indexOf('<div className="contents xl:order-1 xl:col-span-7')
   assert.ok(card > 0 && list > card, 'the sentence before the row it explains, on a phone')
 
   // `contents` below `xl`, so the phone stack is one column with one gap rather than a box
@@ -80,35 +88,43 @@ test('source order and painted order differ, and only for the pinned manager', (
   assert.equal(count(PAGE, 'className="contents'), 1)
 })
 
-test('the band carries the count and the one door to the comparison', () => {
-  assert.ok(
-    PAGE.includes('className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between'),
-    'a row from sm, like every other header band in the app',
-  )
-  assert.ok(PAGE.includes('sm:gap-6 xl:order-1 xl:col-span-12"'), 'and the full width of the grid')
-
-  // §8.3's comparison used to sit below the last building, on the screen where an owner has
-  // just finished naming them. One door, and only where it opens on something: the table
-  // refuses a pinned manager, and a door into a refusal is worse than no door.
+test('the bar carries the count and the one door to the comparison', () => {
+  // §8.3's comparison is the bar's action now. It used to sit below the last building, on
+  // the screen where an owner has just finished naming them. One door, and only where it
+  // opens on something: the table refuses a pinned manager, and a door into a refusal is
+  // worse than no door.
   assert.equal(count(PAGE, 'href="/hq"'), 1)
-  assert.ok(PAGE.includes('{rows.length > 0 && isHq && ('))
+  assert.ok(PAGE.includes('rows.length > 0 &&\n          isHq && ('))
   assert.ok(PAGE.includes('{d.hq.title} →'))
 
-  // The subtitle answers "how many are open", not "how many rows are below".
-  assert.ok(PAGE.includes('{rows.length === 0 ? t.subtitle : t.count(activeCount)}'))
+  // The subtitle answers "how many are open", not "how many rows are below", and it is
+  // the bar's rather than a `<p>` of the page's own.
+  assert.ok(PAGE.includes('subtitle={rows.length === 0 ? t.subtitle : t.count(activeCount)}'))
   assert.ok(PAGE.includes('const activeCount = rows.filter((row) => row.active).length'))
+
+  // The band this replaced was a `sm:flex-row` header row of its own, and leaving it in
+  // place under the bar would title the screen twice.
+  assert.doesNotMatch(PAGE, /sm:items-end sm:justify-between/)
 })
 
-test('every shape of the screen has a heading, in one hand', () => {
-  // Three returns draw their own: locked plan, failed read, the list. The locked one had no
-  // <h1> at all before this, so the reader who cannot use the screen could not see which
-  // screen was refusing them.
-  assert.equal(count(PAGE, 'text-xl font-bold text-ink lg:text-2xl'), 3)
-  assert.doesNotMatch(PAGE, /font-bold text-ink"/, 'no heading left in the old hand')
+test('every shape of the screen is titled by the bar, in one hand', () => {
+  // Three returns — locked plan, failed read, the list — and each draws the bar. The
+  // locked one had no heading at all before this, so the reader who cannot use the screen
+  // could not see which screen was refusing them.
+  assert.equal(count(PAGE, '<PageHeader'), 3)
+  assert.equal(count(PAGE, '<h1'), 0, 'the bar owns the heading')
+  assert.doesNotMatch(PAGE, /text-xl font-bold text-ink/, 'no heading left in the old hand')
+  assert.equal(
+    count(PAGE, "back={{ href: '/settings', label: d.settings.hub.title }}"),
+    3,
+    'and each keeps the way back',
+  )
 
-  // A one-sentence refusal is capped rather than set across 1,216px.
-  assert.equal(count(PAGE, 'flex max-w-2xl flex-col gap-5'), 2)
-  assert.equal(count(PAGE, '← {d.settings.hub.title}'), 3, 'and each keeps the way back')
+  // A one-sentence refusal is capped on the card rather than on the column, so the bar
+  // above it still reaches the workspace edges.
+  assert.doesNotMatch(PAGE, /max-w-2xl flex-col/)
+  assert.ok(PAGE.includes('<Card className="max-w-2xl">'))
+  assert.ok(PAGE.includes('<Card className="max-w-2xl border-late/30 bg-late/5">'))
 })
 
 /* -------------------------------------------------------------------------- */
@@ -121,12 +137,13 @@ test('both shapes of a row are the fragment target the branches table links to',
   assert.ok(ROW.includes('id={`branch-${branch.id}`}'))
   assert.ok(PAGE.includes('id={`branch-${row.id}`}'))
 
-  // A phone has a sticky header over the workspace, and a jump that lands the row
-  // underneath it looks like a jump to the wrong row.
+  // 80px clears both sticky headers: the phone's shell header, and the 56px page bar a
+  // desktop now has. One value at every width, which is why neither file overrides it
+  // past `lg` any more — the old `lg:scroll-mt-4` landed the row under the new bar.
   assert.equal(count(ROW, 'scroll-mt-20'), 1)
   assert.equal(count(PAGE, 'scroll-mt-20'), 1)
-  assert.equal(count(ROW, 'lg:scroll-mt-4'), 1)
-  assert.equal(count(PAGE, 'lg:scroll-mt-4'), 1)
+  assert.doesNotMatch(ROW, /lg:scroll-mt/)
+  assert.doesNotMatch(PAGE, /lg:scroll-mt/)
 })
 
 test('two open rows cannot collide on a DOM id', () => {

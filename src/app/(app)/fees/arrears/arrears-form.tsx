@@ -208,8 +208,11 @@ export function ArrearsForm({
         THE RAIL, and from `lg` it does not scroll away with the column. The result of
         the press is drawn here too, beside the button that caused it rather than at the
         top of a screen whose bottom the owner is standing at.
+
+        `top-16` and not `top-8`: 64px is the page bar's 56px plus 8px, so the first line
+        in here is not the line the bar covers. See components/page-header.tsx.
       */}
-      <div className="flex flex-col gap-4 lg:sticky lg:top-8 lg:col-span-4">
+      <div className="flex flex-col gap-4 lg:sticky lg:top-16 lg:col-span-4">
         {state?.error && <Alert>{state.error}</Alert>}
         {state?.warn && <Alert tone="warn">{state.warn}</Alert>}
         {state?.ok && (

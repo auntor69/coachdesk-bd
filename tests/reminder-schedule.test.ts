@@ -395,7 +395,9 @@ function addDay(isoDate: string, delta: number): string {
 /* -------------------------------------------------------------------------- */
 
 const ROOT = path.join(import.meta.dirname, '..')
-const read = (...parts: string[]) => readFileSync(path.join(ROOT, ...parts), 'utf8')
+/** CRLF out, because a `\n` anchor in a CRLF file silently matches nothing. */
+const read = (...parts: string[]) =>
+  readFileSync(path.join(ROOT, ...parts), 'utf8').replaceAll('\r\n', '\n')
 
 const PAGE = read('src', 'app', '(app)', 'fees', 'reminders', 'page.tsx')
 const LIST = read('src', 'app', '(app)', 'fees', 'reminder-list.tsx')
@@ -409,14 +411,12 @@ const EMPTY_AT = PAGE.indexOf('if (emptyReason !== null) {')
 const RENDER = PAGE.slice(GRID_AT)
 const EMPTY = PAGE.slice(EMPTY_AT, GRID_AT)
 
-const HEAD_AT = RENDER.indexOf(
-  '<div className="order-1 flex flex-col gap-4 lg:col-span-12">{header}</div>',
-)
+const HEAD_AT = PAGE.indexOf('  const bar = (\n    <PageHeader')
 const RAIL_AT = RENDER.indexOf(
-  'className="contents lg:sticky lg:top-8 lg:order-3 lg:col-span-4 lg:flex',
+  'className="contents lg:sticky lg:top-16 lg:order-2 lg:col-span-4 lg:flex',
 )
 const WORK_AT = RENDER.indexOf(
-  '<div className="order-3 flex flex-col gap-3 lg:order-2 lg:col-span-8">',
+  '<div className="order-2 flex flex-col gap-3 lg:order-1 lg:col-span-8">',
 )
 
 const RAIL = RENDER.slice(RAIL_AT, WORK_AT)
@@ -432,26 +432,35 @@ test('the worklist takes eight columns and what is at stake four beside it', () 
   // WhatsApp, copy the number — is about 409px, which wraps inside span-7's 401px at
   // the `lg` boundary and fits span-8's 461px. The rail's figure is a bare count.
   assert.ok(GRID_AT > 0, 'the grid is not the shape it was')
-  assert.ok(HEAD_AT > 0, 'the letterhead does not span twelve')
-  assert.ok(RAIL_AT > HEAD_AT, 'the rail is not written after the letterhead')
+  assert.ok(HEAD_AT > 0, 'the letterhead is not the page bar')
+  assert.ok(HEAD_AT < GRID_AT, 'the bar is written after the grid it sits above')
+  assert.ok(RAIL_AT >= 0, 'the rail is not the shape it was')
   assert.ok(WORK_AT > RAIL_AT, 'the rail is not written before the list')
 
   assert.match(RAIL, /lg:col-span-4/)
   assert.match(WORK, /lg:col-span-8/)
+
+  // The letterhead is the bar and the bar is above the grid, so nothing spans twelve
+  // any more. A `col-span-12` cell would be a sticky box in a one-row containing block.
+  assert.doesNotMatch(PAGE, /col-span-12/)
 })
 
 test('the rail is written first and drawn second, so a keyboard reaches it in three tabs', () => {
   // `order` moves nothing for a keyboard or a screen reader — the DOM does. Written
   // after the list, "add numbers" would be a hundred and twenty chips of tabbing away.
-  assert.match(RAIL, /lg:order-3/)
-  assert.match(WORK, /lg:order-2/)
-  assert.deepEqual(ordersIn(RENDER), ['1', '2', '3'])
+  assert.match(RAIL, /lg:order-2/)
+  assert.match(WORK, /lg:order-1/)
+  // Four blocks, not five: the letterhead was `order-1` and it is the bar now, so the
+  // phone sequence renumbered down rather than starting at two.
+  assert.deepEqual(ordersIn(RENDER), ['1', '2'])
+  assert.deepEqual(ordersIn(PAGE), ['3', '4', '1', '2'])
 })
 
 test('the rail sticks, and nothing sticks on a phone', () => {
-  // `lg:top-8` lines up with main's own `lg:py-8`, and the mobile header that would
-  // occlude it is `lg:hidden`. A second sticky thing on a phone fights the fixed nav.
-  assert.match(RAIL, /lg:sticky lg:top-8/)
+  // `lg:top-16` is the 56px page bar and 8px of air; the bar paints over this rail, so
+  // `top-8` would tuck the count under it. The mobile header that would occlude it is
+  // `lg:hidden`, and a second sticky thing on a phone fights the fixed nav.
+  assert.match(RAIL, /lg:sticky lg:top-16/)
   assert.doesNotMatch(RENDER, /(?<!lg:)sticky/, 'something sticks on a phone')
 })
 
@@ -459,8 +468,8 @@ test('the rail is `contents` on a phone, so its blocks interleave with the list'
   // Below `lg` the wrapper generates no box, so the hero lands above the first row and
   // the two asides below the last one — the phone order, out of the same DOM.
   assert.match(RAIL, /className="contents lg:sticky/)
-  assert.equal(PAGE.split('className="order-4 num text-sm text-ink-faint"').length - 1, 1)
-  assert.equal(PAGE.split('<Card className="order-5">').length - 1, 1)
+  assert.equal(PAGE.split('className="order-3 num text-sm text-ink-faint"').length - 1, 1)
+  assert.equal(PAGE.split('<Card className="order-4">').length - 1, 1)
 
   // Drawn from the shared consts, so the empty screen and this one cannot disagree.
   for (const block of ['{counted}', '{missing}']) {
@@ -479,6 +488,26 @@ test('what is at stake is drawn once, in the rail, and never beside the rows', (
   assert.doesNotMatch(WORK, /t\.dueTitle|atStake|heldCount|unreachableTitle/)
 })
 
+test('all three shapes of the screen are titled by the same bar', () => {
+  // One `PageHeader`, held in a const and put in each of the three returns — the two
+  // refusals and the worklist. Written once is the point: the screen that failed used to
+  // be the one whose heading went missing.
+  assert.equal(PAGE.split('<PageHeader').length - 1, 1)
+  assert.equal(PAGE.split('{bar}').length - 1, 3)
+  assert.equal(PAGE.split('<h1').length - 1, 0, 'the bar owns the heading')
+  assert.ok(PAGE.includes("back={{ href: '/fees', label: t.backToBoard }}"))
+  assert.ok(PAGE.includes('subtitle={t.subtitle}'))
+
+  // Each `{bar}` is a direct child of that screen's own tall column: a sticky box only
+  // travels inside its containing block, so a wrapper of its own would pin it for about
+  // 90px and then let it leave. The two refusals cap the card instead of the column, so
+  // the bar reaches the workspace edges on all three.
+  assert.equal(PAGE.split('<div className="flex flex-col gap-5">\n        {bar}').length - 1, 1)
+  assert.equal(PAGE.split('<div className="flex flex-col gap-5">\n      {bar}').length - 1, 2)
+  assert.doesNotMatch(PAGE, /lg:max-w-2xl/)
+  assert.equal(PAGE.split('max-w-2xl').length - 1, 2, 'one cap per refusal, on the card')
+})
+
 test('the note about the missing payment number sits with the rows, once, above them', () => {
   // Every tap sends a real message from the owner's own handset, so this is a thing to
   // know before the first one — and in the list's own column, not the rail's.
@@ -495,26 +524,19 @@ test('the day with nobody to remind is its own capped screen, not an empty rail'
   // An 8/4 split with one sentence in it is most of a laptop saying nothing, and
   // `chaseEmptyReason` is null exactly when `due` is — so past this return there are rows.
   assert.ok(EMPTY_AT > 0 && EMPTY_AT < GRID_AT, 'the empty screen is not before the grid')
-  assert.match(EMPTY, /className="flex flex-col gap-4 lg:max-w-2xl"/)
+  assert.match(EMPTY, /className="flex flex-col gap-5"/)
   assert.match(EMPTY, /\{t\.noneBecause\[emptyReason\]\}/)
   assert.equal(PAGE.split('{t.noneBecause[emptyReason]}').length - 1, 1)
   assert.doesNotMatch(RENDER, /noneBecause/, 'a reason to stop is drawn inside the grid')
 
-  // Both counted blocks come back, from the same consts the rail draws.
+  // The cap is on the card, not on the column: the bar above it reaches the workspace
+  // edges on this screen exactly as it does on the worklist.
+  assert.match(EMPTY, /<Card className="max-w-2xl">/)
+
+  // Both counted blocks come back, from the same consts the rail draws. They keep the
+  // rail's `order-N`, which in a one-column flex parent sorts them to where they were
+  // written anyway — so one definition cannot drift from the other.
   assert.ok(EMPTY.includes('{counted}') && EMPTY.includes('{missing}'))
-
-  // Two one-sentence screens, both capped: this one and the read that failed.
-  assert.equal(PAGE.split('lg:max-w-2xl').length - 1, 2)
-})
-
-test('the letterhead is written once and the way out is at the top of all three screens', () => {
-  // It was the last element on the page, which on a centre with forty families to chase
-  // put the only way back below forty rows.
-  assert.equal(PAGE.split('{t.backToBoard}').length - 1, 1)
-  assert.equal(PAGE.split('{t.subtitle}').length - 1, 1)
-  assert.equal(PAGE.split('{header}').length - 1, 3)
-  assert.ok(PAGE.indexOf('{t.backToBoard}') < PAGE.indexOf('{t.title}'))
-  assert.match(PAGE, /className="text-xl font-bold text-ink lg:text-2xl">\{t\.title\}/)
 })
 
 test('the list is still frozen on mount, and rows dim instead of vanishing', () => {

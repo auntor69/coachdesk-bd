@@ -69,26 +69,33 @@ test('a log line is three aligned columns from lg', () => {
   assert.ok(PAGE.includes('{hasFigures && ('))
 })
 
-test('the filter sits on the heading and is not a screen-wide select', () => {
-  assert.ok(
-    PAGE.includes(
-      '<div className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between xl:gap-6">',
-    ),
-    'beside the title from xl, its own row below it where the subtitle needs the space',
-  )
-  assert.ok(PAGE.includes('font-medium text-ink sm:w-64'), 'and capped even in its own row')
-  assert.ok(PAGE.includes('<label className="flex min-w-0 flex-1 flex-col gap-1.5 sm:flex-none">'))
+test('the filter rides in the page bar and is not a screen-wide select', () => {
+  // §20.1's bar, with the screen's one control as its action. It used to be a `xl:flex-row`
+  // heading band of the page's own, which put the filter beside the title only from `xl`
+  // and scrolled it away from the log it filters at every width.
+  assert.ok(PAGE.includes('<PageHeader'))
+  assert.equal(count('<PageHeader'), 1, 'one screen, one bar')
+  assert.equal(count('<h1'), 0, 'the bar owns the heading')
+  assert.ok(PAGE.includes("back={{ href: '/settings', label: d.settings.hub.title }}"))
+  assert.ok(PAGE.includes('subtitle={t.subtitle}'))
+  assert.ok(!PAGE.includes('xl:items-end xl:justify-between'), 'the old band is gone')
+
+  // Label-less, because the bar is one line tall and a stacked label would make it two —
+  // which would slide the bar over the first line of every sticky rail in the app. The
+  // `aria-label` is what a screen reader arriving at the select alone reads.
+  assert.ok(PAGE.includes('aria-label={t.filterLabel}'))
+  assert.ok(!PAGE.includes('<label className="flex min-w-0 flex-1 flex-col gap-1.5'))
+
+  // Capped so a table name cannot push the button off the line: 176px on a phone, 256px
+  // once there is room. The button never shrinks.
+  assert.ok(PAGE.includes('min-h-tap max-w-44 rounded-xl'))
+  assert.ok(PAGE.includes('font-medium text-ink sm:max-w-64'))
+  assert.ok(PAGE.includes('min-h-tap shrink-0 rounded-xl bg-brand-600'))
 
   // Still a plain GET with a button, and still dropping the cursor when it is applied.
-  assert.ok(PAGE.includes('<form method="get" className="flex items-end gap-2">'))
-  assert.ok(PAGE.includes('<button\n            type="submit"'))
+  assert.ok(PAGE.includes('<form method="get" className="flex items-center gap-2">'))
+  assert.ok(PAGE.includes('<button\n              type="submit"'))
   assert.ok(PAGE.includes('{t.show}'))
-
-  assert.ok(PAGE.includes('<h1 className="mt-1 text-xl font-bold text-ink lg:text-2xl">'))
-  assert.equal(count('<h1'), 1, 'one screen, one heading')
-  assert.ok(
-    PAGE.includes('className="inline-flex min-h-tap items-center text-ink-soft hover:text-ink"'),
-  )
 })
 
 test('the paragraphs are capped and the pager is not parked in a far corner', () => {

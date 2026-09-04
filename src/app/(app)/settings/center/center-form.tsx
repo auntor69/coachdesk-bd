@@ -186,11 +186,12 @@ export function CenterForm({
         The consequence of the edits, so never above them: below the fields on a
         phone, and beside them from `xl`, where it is the point of the screen that
         the message changes as the name is typed. Sticky, because the fields it
-        answers do not all fit beside it at once.
+        answers do not all fit beside it at once, and `top-16` because 64px is the
+        sticky page bar plus 8px — see components/page-header.tsx.
       */}
       <div
         className="rounded-2xl border border-line bg-brand-50/40 p-5 xl:sticky
-          xl:top-8 xl:col-span-5"
+          xl:top-16 xl:col-span-5"
       >
         <p className="text-sm font-medium text-ink-soft">
           {fill(t.previewTitle, { month: example.monthLabel })}

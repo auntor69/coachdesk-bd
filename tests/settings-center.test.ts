@@ -43,7 +43,7 @@ test('the fields and the message they make are side by side from xl', () => {
   assert.ok(FORM.includes('<div className="flex flex-col gap-4 xl:col-span-7">'))
   assert.ok(
     FORM.includes(`        className="rounded-2xl border border-line bg-brand-50/40 p-5 xl:sticky
-          xl:top-8 xl:col-span-5"`),
+          xl:top-16 xl:col-span-5"`),
     'sticky, because the fields it answers do not all fit beside it at once',
   )
 
@@ -67,18 +67,18 @@ test('the save button is a phone button on a phone and not a 550px one on a desk
   assert.ok(FORM.indexOf('{pending ? common.saving : common.save}') < FORM.indexOf('{preview.body}'))
 })
 
-test('the way back is the one the other twenty-five settings screens use', () => {
+test('the furniture is the page bar the other settings screens use', () => {
+  assert.ok(PAGE.includes('<PageHeader'))
+  assert.equal(count(PAGE, '<PageHeader'), 1, 'one screen, one bar')
+  assert.equal(count(PAGE, '<h1'), 0, 'the bar owns the heading')
   assert.ok(
-    PAGE.includes(
-      'className="inline-flex min-h-tap items-center text-ink-soft hover:text-ink"',
-    ),
-    'and a tap target a thumb can hit, which the old text-sm link was not',
+    PAGE.includes("back={{ href: '/settings', label: dict(locale).settings.hub.title }}"),
+    'and the way back is the crumb every other settings screen puts there',
   )
-  assert.ok(PAGE.includes('<h1 className="mt-1 text-xl font-bold text-ink lg:text-2xl">'))
-  assert.equal(count(PAGE, '<h1'), 1, 'one screen, one heading')
+  assert.ok(PAGE.includes('subtitle={t.subtitle}'))
 
   // Neither card is a page: a manager's whole screen is three short lines, and the
-  // refusal is one.
+  // refusal is one. Capped on the card so the bar still reaches the workspace edges.
   assert.ok(PAGE.includes('<Card className="max-w-2xl border-late/30 bg-late/5">'))
   assert.ok(PAGE.includes('<Card className="max-w-2xl">'))
 })

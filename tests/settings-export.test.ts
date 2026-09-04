@@ -68,22 +68,37 @@ test('a row of cards is one height, so the buttons land on one line', () => {
 })
 
 test('the month picker is a month wide and the prose is a sentence wide', () => {
-  assert.ok(SRC.includes('<form method="get" className="flex max-w-sm items-end gap-2">'))
+  // In the bar now, so its width is the select's own rather than a `max-w-sm` on a row
+  // of its own: 176px holds "সেপ্টেম্বর ২০২৬", and the button beside it never shrinks.
+  assert.ok(SRC.includes('<form method="get" className="flex items-center gap-2">'))
+  assert.ok(SRC.includes('min-h-tap max-w-44 rounded-xl border-2 border-line'))
+  assert.equal(count(SRC, 'max-w-44'), 1)
+  assert.doesNotMatch(SRC, /max-w-sm/, 'the picker is not a row of its own any more')
+
   assert.ok(SRC.includes('<p className="max-w-2xl text-sm text-ink-faint">{t.opensIn}</p>'))
   assert.ok(SRC.includes('<Card className="max-w-2xl">'), 'the paywall is two sentences')
   assert.equal(count(SRC, 'max-w-2xl'), 2, 'the card grid is capped by its columns')
-  assert.equal(count(SRC, 'max-w-sm'), 1)
 })
 
-test('the furniture is the one the other settings screens use', () => {
-  assert.ok(
-    SRC.includes(
-      'className="inline-flex min-h-tap items-center text-ink-soft hover:text-ink"',
-    ),
+test('the furniture is the page bar the other settings screens use', () => {
+  // Both arms — the paywall and the five links — and the month rides on the second's.
+  assert.equal(count(SRC, '<PageHeader'), 2, 'the paywall arm has its own')
+  assert.equal(count(SRC, '<h1'), 0, 'the bar owns the heading')
+  assert.equal(
+    count(SRC, "back={{ href: '/settings', label: d.settings.hub.title }}"),
+    2,
+    'and each keeps the way back',
   )
-  assert.ok(SRC.includes('<h1 className="mt-1 text-xl font-bold text-ink lg:text-2xl">'))
-  assert.equal(count(SRC, '<h1'), 2, 'the paywall arm has its own')
-  assert.equal(count(SRC, '<h2'), 1, 'one per card, inside the map')
+  assert.ok(SRC.includes('subtitle={t.subtitle}'))
+
+  // The paywall's own title is an `<h2>` inside its card, because the bar above it is
+  // the `<h1>` — five report cards plus that one.
+  assert.equal(count(SRC, '<h2'), 2, 'one per card inside the map, plus the paywall')
+  assert.ok(SRC.includes('<h2 className="font-semibold text-ink">{t.lockedTitle}</h2>'))
+
+  // Label-less in the bar, so it stays one line: a stacked label would make it two and
+  // slide it over the first line of every sticky rail in the app.
+  assert.ok(SRC.includes('aria-label={t.month}'))
 })
 
 /* -------------------------------------------------------------------------- */

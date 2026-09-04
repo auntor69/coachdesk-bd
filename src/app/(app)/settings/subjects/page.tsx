@@ -1,6 +1,5 @@
-import Link from 'next/link'
-
 import { Card } from '@/components/ui'
+import { PageHeader } from '@/components/page-header'
 import { pageRole, getSession } from '@/lib/auth/session'
 import { createClient } from '@/lib/supabase/server'
 import { dict, localName, DEFAULT_LOCALE } from '@/lib/i18n'
@@ -41,6 +40,12 @@ export async function generateMetadata() {
  * made a 1,216px row out of a name and a batch count, and put the add form under
  * however many subjects the centre teaches. The form is 386px beside the list now,
  * which is what two name fields want. `xl` and not `lg`, where five of twelve is 279px.
+ *
+ * THE FIRST SCREEN TO CARRY THE PAGE BAR (§20.1), so the arithmetic is written here
+ * rather than repeated. The bar has to be a child of the page's own column and not a
+ * cell of the grid — a sticky box only travels inside its containing block, and a
+ * `col-span-12` cell's block is one grid row — so the grid is now nested under it. The
+ * rail moves to `top-16` for the same reason: 56px of bar, 8px of air.
  */
 export default async function SubjectsPage() {
   const session = await pageRole('manager')
@@ -74,15 +79,9 @@ export default async function SubjectsPage() {
    */
   if (subjects === null) {
     return (
-      <div className="flex max-w-2xl flex-col gap-5">
-        <Link
-          href="/settings"
-          className="inline-flex min-h-tap items-center text-ink-soft hover:text-ink"
-        >
-          ← {d.settings.hub.title}
-        </Link>
-        <h1 className="text-xl font-bold text-ink lg:text-2xl">{t.title}</h1>
-        <Card className="border-late/30 bg-late/5">
+      <div className="flex flex-col gap-5">
+        <PageHeader title={t.title} back={{ href: '/settings', label: d.settings.hub.title }} />
+        <Card className="max-w-2xl border-late/30 bg-late/5">
           <p className="font-medium text-ink">{d.settings.listUnreadable}</p>
         </Card>
       </div>
@@ -147,81 +146,76 @@ export default async function SubjectsPage() {
   const onReason = atCap ? capSentence : null
 
   return (
-    <div className="flex flex-col gap-5 xl:grid xl:grid-cols-12 xl:items-start xl:gap-6">
-      <div className="min-w-0 xl:col-span-12">
-        <Link
-          href="/settings"
-          className="inline-flex min-h-tap items-center text-ink-soft hover:text-ink"
-        >
-          ← {d.settings.hub.title}
-        </Link>
-        <h1 className="mt-1 text-xl font-bold text-ink lg:text-2xl">{t.title}</h1>
-        <p className="mt-1 text-ink-soft">
-          {quota === null ? t.count(activeCount) : t.used(activeCount, quota)}
-        </p>
-      </div>
+    <div className="flex flex-col gap-5">
+      <PageHeader
+        title={t.title}
+        back={{ href: '/settings', label: d.settings.hub.title }}
+        subtitle={quota === null ? t.count(activeCount) : t.used(activeCount, quota)}
+      />
 
-      {rows.length > 0 && (
-        <ul className="flex flex-col gap-2 xl:col-span-7">
-          {rows.map((subject) => {
-            // The reader's own name first, the other one under it when the owner
-            // typed both. Not `name_bn || name`, which showed a Bangla subject
-            // name to an English reader and put the English one in the small grey
-            // line below it.
-            const primary = localName(subject, locale)
-            const use = uses ? (uses.get(subject.id) ?? emptySubjectUse()) : null
-            return (
-              <SettingsListRow
-                key={subject.id}
-                id={subject.id}
-                idField="subjectId"
-                name={primary}
-                nameBn={subject.name_bn ?? ''}
-                otherName={locale === 'en' ? subject.name_bn : subject.name}
-                active={subject.active}
-                count={use ? use.batchCount : null}
-                countNoun={t.batches(use?.batchCount ?? 0)}
-                blockedReason={removeReason(use)}
-                offBlockedReason={offReason(use)}
-                onBlockedReason={onReason}
-                rename={renameSubject}
-                setActive={setSubjectActive}
-                remove={deleteSubject}
-                nameLabel={t.nameLabel}
-                placeholder="Mathematics"
-                placeholderBn="গণিত"
-                t={d.settingsListRow}
-                common={d.common}
-              />
-            )
-          })}
-        </ul>
-      )}
-
-      {/* The rail, and it stays put past a list of twenty: the question a long
-          subject list raises is "is the one I want already here", which is asked at
-          the bottom of it as often as at the top. Last on a phone, where a form above
-          the list would be a name being typed over the names already there.
-
-          With no rows at all it is the only thing under the heading and sits at the
-          left of the grid, 386px wide — which is a form, not an empty column with a
-          form parked off to one side of it. */}
-      <div className="xl:sticky xl:top-8 xl:col-span-5">
-        {atCap ? (
-          <Card>
-            <p className="font-medium text-ink">{t.capTitle}</p>
-            <p className="mt-1 text-sm text-ink-soft">{capSentence}</p>
-          </Card>
-        ) : (
-          <QuickAdd
-            action={createSubject}
-            common={d.common}
-            label={t.nameLabel}
-            hint={t.nameHint}
-            placeholder="Mathematics"
-            placeholderBn="গণিত"
-          />
+      <div className="flex flex-col gap-5 xl:grid xl:grid-cols-12 xl:items-start xl:gap-6">
+        {rows.length > 0 && (
+          <ul className="flex flex-col gap-2 xl:col-span-7">
+            {rows.map((subject) => {
+              // The reader's own name first, the other one under it when the owner
+              // typed both. Not `name_bn || name`, which showed a Bangla subject
+              // name to an English reader and put the English one in the small grey
+              // line below it.
+              const primary = localName(subject, locale)
+              const use = uses ? (uses.get(subject.id) ?? emptySubjectUse()) : null
+              return (
+                <SettingsListRow
+                  key={subject.id}
+                  id={subject.id}
+                  idField="subjectId"
+                  name={primary}
+                  nameBn={subject.name_bn ?? ''}
+                  otherName={locale === 'en' ? subject.name_bn : subject.name}
+                  active={subject.active}
+                  count={use ? use.batchCount : null}
+                  countNoun={t.batches(use?.batchCount ?? 0)}
+                  blockedReason={removeReason(use)}
+                  offBlockedReason={offReason(use)}
+                  onBlockedReason={onReason}
+                  rename={renameSubject}
+                  setActive={setSubjectActive}
+                  remove={deleteSubject}
+                  nameLabel={t.nameLabel}
+                  placeholder="Mathematics"
+                  placeholderBn="গণিত"
+                  t={d.settingsListRow}
+                  common={d.common}
+                />
+              )
+            })}
+          </ul>
         )}
+
+        {/* The rail, and it stays put past a list of twenty: the question a long
+            subject list raises is "is the one I want already here", which is asked at
+            the bottom of it as often as at the top. Last on a phone, where a form above
+            the list would be a name being typed over the names already there.
+
+            With no rows at all it is the only thing under the heading and sits at the
+            left of the grid, 386px wide — which is a form, not an empty column with a
+            form parked off to one side of it. */}
+        <div className="xl:sticky xl:top-16 xl:col-span-5">
+          {atCap ? (
+            <Card>
+              <p className="font-medium text-ink">{t.capTitle}</p>
+              <p className="mt-1 text-sm text-ink-soft">{capSentence}</p>
+            </Card>
+          ) : (
+            <QuickAdd
+              action={createSubject}
+              common={d.common}
+              label={t.nameLabel}
+              hint={t.nameHint}
+              placeholder="Mathematics"
+              placeholderBn="গণিত"
+            />
+          )}
+        </div>
       </div>
     </div>
   )

@@ -66,12 +66,10 @@ export function BranchRow({
     /*
      * The fragment target §8.3's table links to. `scroll-mt` because a phone has a sticky
      * header over the workspace, and a jump that lands the row underneath it looks like a
-     * jump to the wrong row.
+     * jump to the wrong row. A desktop has one too now — the page bar — so the offset no
+     * longer shrinks past `lg`: 80px clears its 56px.
      */
-    <li
-      id={`branch-${branch.id}`}
-      className="scroll-mt-20 rounded-xl border border-line bg-white lg:scroll-mt-4"
-    >
+    <li id={`branch-${branch.id}`} className="scroll-mt-20 rounded-xl border border-line bg-white">
       <div className="flex items-center justify-between gap-3 px-4 py-3">
         <div className="min-w-0">
           <p className="flex items-center gap-2 font-medium text-ink">

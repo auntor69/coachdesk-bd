@@ -70,12 +70,21 @@ test('the not-live banner is above every figure it is the caveat on', () => {
   )
 })
 
-test('the furniture is the one the other twenty-five settings screens use', () => {
+test('the furniture is the page bar the other settings screens use', () => {
+  assert.equal(count(PAGE, '<PageHeader'), 1, 'one screen, one bar')
+  assert.equal(count(PAGE, '<h1'), 0, 'the bar owns the heading')
+  assert.ok(PAGE.includes("back={{ href: '/settings', label: d.settings.hub.title }}"))
+
+  // No subtitle on the bar — the whole call is one line — because the balance is the
+  // first thing under it and is what an owner opened this screen for. A sentence between
+  // the two would be read once and then be in the way of the figure every time after.
+  // (`OptOutList` takes a `subtitle` of its own; this is the bar's.)
   assert.ok(
-    PAGE.includes('className="inline-flex min-h-tap items-center text-ink-soft hover:text-ink"'),
+    PAGE.includes(
+      "<PageHeader title={t.title}" +
+        " back={{ href: '/settings', label: d.settings.hub.title }} />",
+    ),
   )
-  assert.ok(PAGE.includes('<h1 className="mt-1 text-xl font-bold text-ink lg:text-2xl">'))
-  assert.equal(count(PAGE, '<h1'), 1, 'one screen, one heading')
 
   // A sentence about a dropped read is a sentence, not a page-wide banner.
   assert.ok(PAGE.includes('<Card className="max-w-2xl">'))

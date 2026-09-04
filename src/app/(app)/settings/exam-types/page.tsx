@@ -1,6 +1,5 @@
-import Link from 'next/link'
-
 import { Card } from '@/components/ui'
+import { PageHeader } from '@/components/page-header'
 import { pageRole, getSession } from '@/lib/auth/session'
 import { createClient } from '@/lib/supabase/server'
 import { dict, localName, DEFAULT_LOCALE } from '@/lib/i18n'
@@ -69,15 +68,9 @@ export default async function ExamTypesPage() {
    */
   if (examTypes === null) {
     return (
-      <div className="flex max-w-2xl flex-col gap-5">
-        <Link
-          href="/settings"
-          className="inline-flex min-h-tap items-center text-ink-soft hover:text-ink"
-        >
-          ← {d.settings.hub.title}
-        </Link>
-        <h1 className="text-xl font-bold text-ink lg:text-2xl">{t.title}</h1>
-        <Card className="border-late/30 bg-late/5">
+      <div className="flex flex-col gap-5">
+        <PageHeader title={t.title} back={{ href: '/settings', label: d.settings.hub.title }} />
+        <Card className="max-w-2xl border-late/30 bg-late/5">
           <p className="font-medium text-ink">{d.settings.listUnreadable}</p>
         </Card>
       </div>
@@ -104,64 +97,62 @@ export default async function ExamTypesPage() {
   }
 
   return (
-    <div className="flex flex-col gap-5 xl:grid xl:grid-cols-12 xl:items-start xl:gap-6">
-      <div className="min-w-0 xl:col-span-12">
-        <Link
-          href="/settings"
-          className="inline-flex min-h-tap items-center text-ink-soft hover:text-ink"
-        >
-          ← {d.settings.hub.title}
-        </Link>
-        <h1 className="mt-1 text-xl font-bold text-ink lg:text-2xl">{t.title}</h1>
-        <p className="mt-1 text-ink-soft">{t.subtitle}</p>
-      </div>
+    <div className="flex flex-col gap-5">
+      <PageHeader
+        title={t.title}
+        back={{ href: '/settings', label: d.settings.hub.title }}
+        subtitle={t.subtitle}
+      />
 
-      {rows.length > 0 && (
-        <ul className="flex flex-col gap-2 xl:col-span-7">
-          {rows.map((type) => {
-            const primary = localName(type, locale)
-            const use = uses ? (uses.get(type.id) ?? { examCount: 0 }) : null
-            return (
-              <SettingsListRow
-                key={type.id}
-                id={type.id}
-                idField="examTypeId"
-                name={primary}
-                nameBn={type.name_bn ?? ''}
-                otherName={locale === 'en' ? type.name_bn : type.name}
-                active={type.active}
-                count={use ? use.examCount : null}
-                countNoun={t.exams(use?.examCount ?? 0)}
-                blockedReason={removeReason(use)}
-                // Nothing to refuse either way: no plan counts exam kinds, and a
-                // kind that leaves the picker takes nothing with it.
-                offBlockedReason={null}
-                onBlockedReason={null}
-                rename={renameExamType}
-                setActive={setExamTypeActive}
-                remove={deleteExamType}
-                nameLabel={t.nameLabel}
-                placeholder="Weekly Test"
-                placeholderBn="সাপ্তাহিক পরীক্ষা"
-                t={d.settingsListRow}
-                common={d.common}
-              />
-            )
-          })}
-        </ul>
-      )}
+      <div className="flex flex-col gap-5 xl:grid xl:grid-cols-12 xl:items-start xl:gap-6">
+        {rows.length > 0 && (
+          <ul className="flex flex-col gap-2 xl:col-span-7">
+            {rows.map((type) => {
+              const primary = localName(type, locale)
+              const use = uses ? (uses.get(type.id) ?? { examCount: 0 }) : null
+              return (
+                <SettingsListRow
+                  key={type.id}
+                  id={type.id}
+                  idField="examTypeId"
+                  name={primary}
+                  nameBn={type.name_bn ?? ''}
+                  otherName={locale === 'en' ? type.name_bn : type.name}
+                  active={type.active}
+                  count={use ? use.examCount : null}
+                  countNoun={t.exams(use?.examCount ?? 0)}
+                  blockedReason={removeReason(use)}
+                  // Nothing to refuse either way: no plan counts exam kinds, and a
+                  // kind that leaves the picker takes nothing with it.
+                  offBlockedReason={null}
+                  onBlockedReason={null}
+                  rename={renameExamType}
+                  setActive={setExamTypeActive}
+                  remove={deleteExamType}
+                  nameLabel={t.nameLabel}
+                  placeholder="Weekly Test"
+                  placeholderBn="সাপ্তাহিক পরীক্ষা"
+                  t={d.settingsListRow}
+                  common={d.common}
+                />
+              )
+            })}
+          </ul>
+        )}
 
-      {/* The rail, sticky past a long list and last on a phone, for the reasons the
-          subject screen's own carries. No cap card to swap for: a centre may name as
-          many kinds of exam as it holds. */}
-      <div className="xl:sticky xl:top-8 xl:col-span-5">
-        <QuickAdd
-          action={createExamType}
-          common={d.common}
-          label={t.nameLabel}
-          placeholder="Weekly Test"
-          placeholderBn="সাপ্তাহিক পরীক্ষা"
-        />
+        {/* The rail, sticky past a long list and last on a phone, for the reasons the
+            subject screen's own carries. No cap card to swap for: a centre may name as
+            many kinds of exam as it holds. `top-16` is the sticky page bar plus 8px —
+            see components/page-header.tsx. */}
+        <div className="xl:sticky xl:top-16 xl:col-span-5">
+          <QuickAdd
+            action={createExamType}
+            common={d.common}
+            label={t.nameLabel}
+            placeholder="Weekly Test"
+            placeholderBn="সাপ্তাহিক পরীক্ষা"
+          />
+        </div>
       </div>
     </div>
   )

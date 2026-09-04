@@ -305,7 +305,7 @@ const LIST_AT = RENDER.indexOf('overflow-hidden rounded-2xl')
  * thrown away the four classes in front of it.
  */
 const RAIL_AT = RENDER.indexOf(
-  '<div className="flex flex-col gap-4 lg:sticky lg:top-8 lg:col-span-4">',
+  '<div className="flex flex-col gap-4 lg:sticky lg:top-16 lg:col-span-4">',
 )
 const ROWS_AT = RENDER.indexOf('const ArrearsRows = memo(')
 
@@ -326,7 +326,10 @@ test('the boxes take eight columns and the figure four, and the figure stays put
 
   assert.match(RENDER, /lg:grid lg:grid-cols-12 lg:items-start lg:gap-6/)
   assert.match(LIST, /border border-line bg-white\s+lg:col-span-8/)
-  assert.match(RAIL, /flex flex-col gap-4 lg:sticky lg:top-8 lg:col-span-4/)
+  // `top-16` and not `top-8`: the page bar is 56px of sticky furniture at `lg`, and it
+  // paints over this rail, so a total pinned 8px from the top would sit under it.
+  // page-header.test.ts holds the repo-wide half of that, across every rail at once.
+  assert.match(RAIL, /flex flex-col gap-4 lg:sticky lg:top-16 lg:col-span-4/)
 
   // The month and the deadline are two selects set once before any typing starts, so
   // they go side by side rather than taking two lines of a full-width card.
@@ -336,6 +339,8 @@ test('the boxes take eight columns and the figure four, and the figure stays put
 
   // Sticky from `lg` and not before it. A phone already has the shell's nav fixed to
   // the bottom of the screen, and the figure is next to the button there anyway.
+  // (A bare `sticky` in a comment in the source trips this too, which is why the note
+  // above the rail says "the page bar's 56px" rather than "the sticky page bar".)
   assert.doesNotMatch(RENDER, /(?<!lg:)sticky/)
 })
 

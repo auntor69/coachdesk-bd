@@ -1,6 +1,5 @@
-import Link from 'next/link'
-
 import { Card } from '@/components/ui'
+import { PageHeader } from '@/components/page-header'
 import { pageRole, getSession } from '@/lib/auth/session'
 import { createClient } from '@/lib/supabase/server'
 import { pageAll, worstFailure } from '@/lib/supabase/page'
@@ -158,15 +157,7 @@ export default async function SmsSettingsPage() {
 
   return (
     <div className="flex flex-col gap-5">
-      <div>
-        <Link
-          href="/settings"
-          className="inline-flex min-h-tap items-center text-ink-soft hover:text-ink"
-        >
-          ← {d.settings.hub.title}
-        </Link>
-        <h1 className="mt-1 text-xl font-bold text-ink lg:text-2xl">{t.title}</h1>
-      </div>
+      <PageHeader title={t.title} back={{ href: '/settings', label: d.settings.hub.title }} />
 
       {/* Above the figures rather than between two of them: it is the caveat on
           every number below it, and a reader who meets it after the tallies has

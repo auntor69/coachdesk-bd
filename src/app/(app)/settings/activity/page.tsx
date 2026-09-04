@@ -2,6 +2,7 @@ import Link from 'next/link'
 import type { Route } from 'next'
 
 import { Alert, Card } from '@/components/ui'
+import { PageHeader } from '@/components/page-header'
 import { getSession, pageRole } from '@/lib/auth/session'
 import { createClient } from '@/lib/supabase/server'
 import { dict, DEFAULT_LOCALE, type Dictionary, type Locale } from '@/lib/i18n'
@@ -249,32 +250,22 @@ export default async function ActivityPage({
 
   return (
     <div className="flex flex-col gap-4">
-      {/* The heading and the one control on it, side by side from `xl`: a select for one
-          of seventeen table names has never wanted the width of the screen, and the log
-          under it does. Below `xl` the form is its own row, because the subtitle beside
-          it would wrap to three lines to make room. */}
-      <div className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between xl:gap-6">
-        <div className="min-w-0">
-          <Link
-            href="/settings"
-            className="inline-flex min-h-tap items-center text-ink-soft hover:text-ink"
-          >
-            ← {d.settings.hub.title}
-          </Link>
-          <h1 className="mt-1 text-xl font-bold text-ink lg:text-2xl">{t.title}</h1>
-          <p className="text-sm text-ink-soft">{t.subtitle}</p>
-        </div>
-
-        {/* Submitting drops the cursor on purpose: a filter applied halfway down the log
-            would start from a timestamp that has nothing to do with the new list. */}
-        <form method="get" className="flex items-end gap-2">
-          <label className="flex min-w-0 flex-1 flex-col gap-1.5 sm:flex-none">
-            <span className="font-medium text-ink">{t.filterLabel}</span>
+      <PageHeader
+        title={t.title}
+        back={{ href: '/settings', label: d.settings.hub.title }}
+        subtitle={t.subtitle}
+        /* The one control on this screen, in the bar. Submitting drops the cursor on
+           purpose: a filter applied halfway down the log would start from a timestamp
+           that has nothing to do with the new list. Label-less for the bar's one line —
+           the options are table names and the button says what it does. */
+        actions={
+          <form method="get" className="flex items-center gap-2">
             <select
               name="entity"
+              aria-label={t.filterLabel}
               defaultValue={entity ?? ''}
-              className="min-h-tap w-full rounded-xl border-2 border-line bg-white px-3
-                font-medium text-ink sm:w-64"
+              className="min-h-tap max-w-44 rounded-xl border-2 border-line bg-white px-3
+                font-medium text-ink sm:max-w-64"
             >
               <option value="">{t.filterAll}</option>
               {AUDITED_TABLES.map((table) => (
@@ -283,15 +274,16 @@ export default async function ActivityPage({
                 </option>
               ))}
             </select>
-          </label>
-          <button
-            type="submit"
-            className="min-h-tap rounded-xl bg-brand-600 px-5 font-semibold text-white"
-          >
-            {t.show}
-          </button>
-        </form>
-      </div>
+            <button
+              type="submit"
+              className="min-h-tap shrink-0 rounded-xl bg-brand-600 px-5 font-semibold
+                text-white"
+            >
+              {t.show}
+            </button>
+          </form>
+        }
+      />
 
       {page.error !== null && <Alert>{t.unreadable}</Alert>}
 

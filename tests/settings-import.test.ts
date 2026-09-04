@@ -133,14 +133,22 @@ test('the right half is the batches, the warning, then the button', () => {
 })
 
 test('the page caps its prose and its two refusals', () => {
-  assert.equal(count(PAGE, 'max-w-2xl'), 3, 'the subtitle and both dead ends')
+  assert.equal(count(PAGE, 'max-w-2xl'), 2, 'both dead ends')
   assert.ok(PAGE.includes('<Card className="max-w-2xl border-late/30 bg-late/5">'))
   assert.ok(PAGE.includes('<Card className="max-w-2xl">'))
-  assert.ok(PAGE.includes('<p className="mt-1 max-w-2xl text-sm text-ink-soft">{t.body}</p>'))
 
-  // Both arms name the screen that refused, at the size the other settings screens use.
-  assert.equal(count(PAGE, '<h1 className="mt-1 text-xl font-bold text-ink lg:text-2xl">'), 2)
-  assert.equal(count(PAGE, '<h1'), 2)
+  // The sentence under the title is the bar's subtitle now, which caps itself at 672px
+  // — so the page no longer writes a `max-w-2xl` for it.
+  assert.ok(PAGE.includes('subtitle={t.body}'))
+
+  // Both arms name the screen that refused, and the bar is what names it.
+  assert.equal(count(PAGE, '<PageHeader'), 2)
+  assert.equal(count(PAGE, '<h1'), 0, 'the bar owns the heading')
+  assert.equal(
+    count(PAGE, "back={{ href: '/settings/students', label: d.settings.students.title }}"),
+    2,
+    'and the way back is to the roster, not to the settings hub',
+  )
 })
 
 /* -------------------------------------------------------------------------- */

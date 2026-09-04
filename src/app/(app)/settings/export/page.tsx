@@ -1,6 +1,7 @@
 import Link from 'next/link'
 
 import { Card } from '@/components/ui'
+import { PageHeader } from '@/components/page-header'
 import { pageRole, getSession } from '@/lib/auth/session'
 import { has, planName, PLANS } from '@/lib/plans'
 import { currentPeriodMonth, addMonths, formatMonth, formatDate, todayInDhaka } from '@/lib/bd/time'
@@ -26,13 +27,12 @@ const MONTH_RE = /^\d{4}-\d{2}-01$/
  * spreadsheet on a 375px phone is a table nobody can read. The file is the artefact,
  * and the file opens in the app that is good at this.
  *
- * TWO COLUMNS OF CARDS FROM `xl` (§20.8.11), AND A MONTH PICKER A MONTH WIDE. Five
- * descriptions down a 1,216px page is a menu that scrolls for no reason, and the
- * control that decides what all five buttons will download scrolls off the top of it.
- * At `xl` the two columns are 472px each and the whole screen is one view: the month
- * stays in sight, and the body text — which is how an owner picks a sheet — stays at a
- * width somebody reads rather than scans. The order is unchanged, so the money sheets
- * still come before the teaching ones on a phone and on a desktop alike.
+ * TWO COLUMNS OF CARDS FROM `xl` (§20.8.11), AND THE MONTH IN THE PAGE BAR. Five
+ * descriptions down a 1,216px page is a menu that scrolls for no reason, and the control
+ * that decides what all five buttons download used to scroll off the top of them. At `xl`
+ * the two columns are 472px each and the whole screen is one view; the month now sits in
+ * the bar (§20.1), so it is still there at the fifth card. The order is unchanged, so the
+ * money sheets still come before the teaching ones on a phone and on a desktop alike.
  *
  * PLAIN `<a>`, NOT `<Link>`. The client router intercepts a `<Link>` and tries to
  * render the destination as a route; there is no route here, there is a response with
@@ -63,24 +63,15 @@ export default async function ExportPage({
   const d = dict(locale)
   const t = d.settings.export
 
-  const back = (
-    <Link
-      href="/settings"
-      className="inline-flex min-h-tap items-center text-ink-soft hover:text-ink"
-    >
-      ← {d.settings.hub.title}
-    </Link>
-  )
-
   // Before the month arithmetic and before anything else is drawn. A locked screen
   // does not need a month list, and building one to throw away is work done for a
   // page that cannot use it.
   if (!has(session.plan, 'exportReports')) {
     return (
-      <div className="flex flex-col gap-4">
-        {back}
+      <div className="flex flex-col gap-5">
+        <PageHeader title={t.title} back={{ href: '/settings', label: d.settings.hub.title }} />
         <Card className="max-w-2xl">
-          <h1 className="font-semibold text-ink">{t.lockedTitle}</h1>
+          <h2 className="font-semibold text-ink">{t.lockedTitle}</h2>
           <p className="mt-1 text-sm text-ink-soft">
             {t.lockedBody(
               planName(session.plan, locale),
@@ -117,38 +108,40 @@ export default async function ExportPage({
 
   return (
     <div className="flex flex-col gap-5">
-      <div>
-        {back}
-        <h1 className="mt-1 text-xl font-bold text-ink lg:text-2xl">{t.title}</h1>
-        <p className="mt-1 text-ink-soft">{t.subtitle}</p>
-      </div>
-
-      {/* Capped at the width of what it asks: one month, and a button to fetch it.
-          Left uncapped it becomes a dropdown a metre wide holding "সেপ্টেম্বর ২০২৬". */}
-      <form method="get" className="flex max-w-sm items-end gap-2">
-        <label className="flex min-w-0 flex-1 flex-col gap-1.5">
-          <span className="font-medium text-ink">{t.month}</span>
-          <select
-            name="month"
-            defaultValue={month}
-            className="min-h-tap w-full rounded-xl border-2 border-line bg-white px-3
-              font-medium text-ink"
-          >
-            {months.map((m) => (
-              <option key={m.value} value={m.value}>
-                {m.label}
-              </option>
-            ))}
-          </select>
-        </label>
-        <button
-          type="submit"
-          className="inline-flex min-h-tap shrink-0 items-center rounded-xl border-2
-            border-brand-500 bg-brand-50 px-4 font-medium text-brand-800"
-        >
-          {t.show}
-        </button>
-      </form>
+      <PageHeader
+        title={t.title}
+        back={{ href: '/settings', label: d.settings.hub.title }}
+        subtitle={t.subtitle}
+        /* The month rides in the bar, which is the reason the bar exists on this
+           screen: it decides what all five buttons download, and it used to scroll off
+           the top of them. Inline and label-less because the bar is one line tall — the
+           options read "সেপ্টেম্বর ২০২৬", so the control says what it is, and the
+           `aria-label` says it to a screen reader arriving at the select alone. */
+        actions={
+          <form method="get" className="flex items-center gap-2">
+            <select
+              name="month"
+              aria-label={t.month}
+              defaultValue={month}
+              className="min-h-tap max-w-44 rounded-xl border-2 border-line bg-white px-3
+                font-medium text-ink"
+            >
+              {months.map((m) => (
+                <option key={m.value} value={m.value}>
+                  {m.label}
+                </option>
+              ))}
+            </select>
+            <button
+              type="submit"
+              className="inline-flex min-h-tap shrink-0 items-center rounded-xl border-2
+                border-brand-500 bg-brand-50 px-4 font-medium text-brand-800"
+            >
+              {t.show}
+            </button>
+          </form>
+        }
+      />
 
       <ul className="flex flex-col gap-3 xl:grid xl:grid-cols-2 xl:gap-4">
         {REPORT_IDS.map((id) => {
