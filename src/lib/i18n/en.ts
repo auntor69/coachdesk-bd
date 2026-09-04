@@ -154,6 +154,20 @@ export const en: Dictionary = {
     home: 'Back to my screen',
   },
 
+  noCenter: {
+    title: 'No centre has this login switched on',
+    body:
+      'Your centre made this login, so it only opens their screens — and no centre '
+      + 'has it switched on right now. Nothing you did is lost: the attendance you '
+      + 'took and the marks you entered are still in that centre’s records. Ask '
+      + 'whoever runs it to switch you back on and this login works as before.',
+    refused: 'A login your centre made cannot open a new centre.',
+    signUpOwn: 'Want your own batches? Sign out and sign up with your own phone number.',
+    expected:
+      'Expecting your centre here? Nobody has switched your access on there yet. '
+      + 'Sign out and ask whoever runs it.',
+  },
+
   offline: {
     banner: 'No connection — what you type is kept on this phone and sent when it returns',
     title: 'No connection',

@@ -33,7 +33,7 @@ import {
 } from '@/lib/auth/otp-gate'
 import { MAX_NAME } from '@/lib/limits'
 import { digits } from '@/lib/bd/time'
-import { DEFAULT_LOCALE } from '@/lib/i18n'
+import { DEFAULT_LOCALE, dict } from '@/lib/i18n'
 import { nameTooLong, passwordTooShort } from '@/lib/i18n/messages'
 
 export type FormState = {
@@ -413,6 +413,18 @@ export async function createCenter(
   const session = await getSession()
   if (!session) {
     redirect('/login')
+  }
+
+  /*
+   * The onboarding screen does not draw this form for a centre-issued login, and that
+   * is not what stops one getting here: a Server Action is a public endpoint, so the
+   * only reason the screen and the action agree is that both ask. `bootstrap_center`
+   * asks a third time (20260811000077) and is the one that cannot be routed around —
+   * the anon key reaches that RPC directly. This is here so the refusal arrives as a
+   * sentence under the field rather than as a Postgres error string.
+   */
+  if (session.username) {
+    return { error: dict(session.locale).noCenter.refused, field: 'center' }
   }
 
   const centerName = String(formData.get('centerName') ?? '').trim()

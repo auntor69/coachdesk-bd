@@ -369,6 +369,31 @@ export const bn = {
   },
 
   /**
+   * A signed-in account that no centre has switched on — /onboarding's other reader.
+   *
+   * `toggleTeacherActive` deletes the `center_members` row when a teacher is switched
+   * off, which is the ordinary end of a term, so this person is not rare. Their session
+   * has no membership, `homePathForRole(null)` sends them to /onboarding, and until this
+   * group existed the screen greeted them by name over a form for founding a coaching
+   * centre. `refused` is why that form is not there; `expected` is the same sentence's
+   * job for the teacher whose login is their own number, who still gets the form because
+   * their account is genuinely theirs.
+   */
+  noCenter: {
+    title: 'কোনো সেন্টারে এই লগইনটি চালু নেই',
+    body:
+      'আপনার সেন্টার এই লগইনটি তৈরি করেছে, তাই এটি শুধু তাদের স্ক্রিনই খোলে — আর এখন কোনো '
+      + 'সেন্টারে এটি চালু নেই। আপনার কোনো কাজ হারায়নি: যে হাজিরা নিয়েছেন আর যে নম্বর '
+      + 'তুলেছেন সব ওই সেন্টারের রেকর্ডেই আছে। যিনি সেন্টার চালান তাঁকে আবার চালু করে দিতে '
+      + 'বলুন, তাহলেই এই লগইন আগের মতো কাজ করবে।',
+    refused: 'সেন্টারের তৈরি করা লগইন দিয়ে নতুন সেন্টার খোলা যায় না।',
+    signUpOwn: 'নিজের ব্যাচ চালাতে চান? লগআউট করে নিজের ফোন নম্বর দিয়ে সাইন আপ করুন।',
+    expected:
+      'নিজের সেন্টারে ঢোকার কথা ছিল? সেখানে এখনো আপনার প্রবেশ চালু করা হয়নি। লগআউট করে '
+      + 'যিনি সেন্টার চালান তাঁকে বলুন।',
+  },
+
+  /**
    * What the app says when the network is gone.
    *
    * `banner` appears on every screen; the rest is the /offline page, which the service

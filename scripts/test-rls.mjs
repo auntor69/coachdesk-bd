@@ -15465,6 +15465,73 @@ check(
   ceilHelpers.filter((name) => !helperReach.has(name)).join(', '),
 )
 
+// --- A centre-issued login cannot found a centre (20260811000077) -----------
+//
+// `toggleTeacherActive` deletes the `center_members` row when a teacher is switched
+// off, so the ordinary end of a term leaves a working staff login with no membership
+// at all — and `homePathForRole(null)` sends exactly that session to /onboarding, the
+// create-a-coaching-centre form. The screen and the Server Action both refuse it now,
+// and neither is a fence: `bootstrap_center` is granted to `authenticated`, so a
+// browser holding the anon key can POST to the RPC directly. This is the check that
+// holds, asked of real Postgres because a `raise exception` inside a definer function
+// is not something reading the source can prove.
+
+const probeAccount = async (email, username) =>
+  (
+    await db.query(
+      `insert into auth.users (id, email, raw_user_meta_data)
+       values (gen_random_uuid(), $1, $2) returning id`,
+      [email, JSON.stringify(username ? { full_name: 'Probe', username } : { full_name: 'Probe' })],
+    )
+  ).rows[0].id
+
+const FOUND = `select public.bootstrap_center('Probe Coaching', null, 'Probe', false)`
+
+const staffLogin = await probeAccount('zzprobe@user.coachdesk.invalid', 'zzprobe')
+check(
+  'a login the centre minted cannot create a centre of its own',
+  await deniedAsUser(db, staffLogin, FOUND),
+)
+
+// The two arms of the guard, one at a time, because either alone would leave a way
+// through. The address is authoritative — it is what signs the person in — and
+// `profiles.username` is 20260811000038's readable copy of it. A generator bug that
+// produced a shape the constraint refuses is the realistic disagreement: that trigger
+// leaves the column NULL rather than failing account creation, so the login works and
+// the copy says nothing.
+const bareAddress = await probeAccount('zzbare@user.coachdesk.invalid', null)
+check(
+  'including one whose profile never got the readable copy',
+  await deniedAsUser(db, bareAddress, FOUND),
+)
+
+const strayColumn = await probeAccount('8801799000001@phone.coachdesk.invalid', 'zzstray')
+check(
+  'and one whose profile carries a username against a phone address',
+  await deniedAsUser(db, strayColumn, FOUND),
+)
+
+// The person is not refused, only the credential — this is the ordinary signup, and it
+// is also the check that fails if anybody ever narrows the pattern to the `.invalid`
+// suffix the two synthetic domains share.
+const ownNumber = await probeAccount('8801799000002@phone.coachdesk.invalid', null)
+let founded = null
+try {
+  founded = (await asUser(db, ownNumber, (tx) => tx.query(FOUND))).rows[0].bootstrap_center
+} catch (error) {
+  founded = `refused: ${error.message}`
+}
+check(
+  'while somebody signing up with their own number still can',
+  typeof founded === 'string' && founded.includes('-'),
+  String(founded),
+)
+
+check(
+  'and the one-centre-per-owner rule still runs behind the new guard',
+  await deniedAsUser(db, ownNumber, FOUND),
+)
+
 console.log(`\n${passed} passed, ${failed} failed`)
 await db.close()
 process.exit(failed ? 1 : 0)
