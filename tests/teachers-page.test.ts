@@ -580,3 +580,36 @@ test('the removal words are written in both languages', () => {
   assert.notEqual(bn.teacherList.removeOpen, en.teacherList.removeOpen)
   assert.notEqual(bn.settings.teachers.errors.deleteSelf, en.settings.teachers.errors.deleteSelf)
 })
+
+test('the removal words say the person is out, and claim nothing about their login', () => {
+  // AN OWNER READ THE OLD WARNING AND ASKED WHAT IT MEANT. It ended "their login is not
+  // deleted — they may use it at another centre", which is frightening in the one place a
+  // reader is deciding whether to press a red button, irrelevant to the decision, and for
+  // a teacher with no phone number simply untrue: `giveTeacherLogin` can only re-find an
+  // existing account by phone, so a username-only login is not reachable from anywhere.
+  //
+  // The auth account does survive, and deliberately — `profiles` is one row per human, not
+  // per appointment, and deleting it here would be this centre reaching across a tenant
+  // boundary to break somebody else's teacher. That belongs in deleteTeacher's docblock,
+  // which is where it is. A confirm screen gets the fact the owner needs instead.
+  for (const [name, d] of [['en', en], ['bn', bn]] as const) {
+    const l = d.teacherList
+    for (const key of ['removeWarning', 'removeNeedsOff'] as const) {
+      const said = l[key]
+      for (const claim of [/another cent/i, /অন্য.{0,12}সেন্টার/, /elsewhere/i]) {
+        assert.doesNotMatch(said, claim, `${name}.${key} sends the login somewhere else`)
+      }
+      for (const claim of [/login/i, /লগইন/]) {
+        assert.doesNotMatch(said, claim, `${name}.${key} talks about the login again`)
+      }
+    }
+
+    // And both say the thing that replaced it: the person is out of this centre. Off is
+    // what does it — `toggleTeacherActive` deletes the centre_members row — so the order
+    // sentence and the confirm sentence have to agree about that, or the owner is told the
+    // access ends at two different moments.
+    for (const key of ['removeWarning', 'removeNeedsOff'] as const) {
+      assert.match(l[key], /cent|সেন্টার/, `${name}.${key} never says whose access ended`)
+    }
+  }
+})

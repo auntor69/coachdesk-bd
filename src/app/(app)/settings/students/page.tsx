@@ -2,6 +2,7 @@ import Link from 'next/link'
 
 import { PageHeader } from '@/components/page-header'
 import { Card } from '@/components/ui'
+import { EyeIcon, PencilIcon } from '@/components/icons'
 import { SearchBox, SearchEmpty } from '@/components/search-box'
 import { PlacesWarning } from '@/components/places-warning'
 import { Th, Td } from '@/components/table'
@@ -30,26 +31,37 @@ export async function generateMetadata() {
  * brand-coloured button is a screen nobody can read, and the one thing on a roster row
  * that should draw the eye is a child's name.
  *
- * `whitespace-nowrap` because the Bangla labels are longer than the English ones and
- * the sheet's cell is 14% of 640px — a button that wraps in one language is a row that
- * is a different height in one language.
+ * `whitespace-nowrap` because the Bangla labels are longer than the English ones — a
+ * button that wraps in one language is a row that is a different height in one language.
  */
 const ROW_BUTTON =
-  'inline-flex min-h-tap shrink-0 items-center justify-center whitespace-nowrap ' +
+  'inline-flex min-h-tap shrink-0 items-center justify-center whitespace-nowrap gap-1.5 ' +
   'rounded-xl border-2 border-line bg-white px-3 font-medium text-ink hover:border-brand-300'
 
 /**
- * The same button on the wide sheet, 36px instead of 48.
+ * The same button on the wide sheet, square, holding a shape instead of a word.
  *
- * `min-h-tap` is 3rem, which would add 24px to every row of a sheet whose whole reason
- * for existing is that §20.7 wants forty of them on a screen rather than eight. The
- * sheet only draws from `xl`, where the pointer is a mouse, and 36px still clears the
- * 24px floor — while below `xl`, where a thumb is doing the work, the cards keep the
- * full tap target.
+ * WHY THE SHEET DRAWS ICONS WHERE THE CARDS DRAW WORDS. The sheet used to carry one
+ * button where the card carries two, on the reasoning that the name in the first cell is
+ * visibly a link and so already is the other one. That was wrong, and an owner said so:
+ * reading a record and rewriting one are two errands, and leaving the reader to work out
+ * that a coloured name is the second of them is the same "I found it by being an
+ * engineer" problem the buttons were added to fix. Two *worded* buttons would want about
+ * 150px of a 640px sheet, which is width off a child's name; two squares want 80px, so
+ * both errands fit and every other column keeps its share.
+ *
+ * The word is not dropped, it is moved: `aria-label` says it to a screen reader and
+ * `title` says it on hover — and the sheet only draws from `xl`, where there is a pointer
+ * to hover with. Below that the cards draw the same pair with the words still on them,
+ * because that is where the report came from and where a thumb is doing the work.
+ *
+ * 36px square rather than `min-h-tap`'s 3rem: 48 would add 24px to every row of a sheet
+ * whose whole reason for existing is that §20.7 wants forty of them on a screen rather
+ * than eight, and 36 still clears the floor a pointer needs.
  */
-const SHEET_BUTTON =
-  'inline-flex min-h-9 shrink-0 items-center justify-center whitespace-nowrap ' +
-  'rounded-xl border-2 border-line bg-white px-3 font-medium text-ink hover:border-brand-300'
+const SHEET_ICON =
+  'inline-flex size-9 shrink-0 items-center justify-center ' +
+  'rounded-xl border-2 border-line bg-white text-ink hover:border-brand-300'
 
 /**
  * The roster.
@@ -492,12 +504,12 @@ export default async function StudentsPage({
                     to every laptop. `table-fixed` with the widths named here rather than
                     left to the browser, so one long school name cannot re-shape the sheet.
 
-                    The sixth column is the button, and the 14% it costs came out of the
-                    name and the batches — the two whose headings have the most slack over
-                    their share, and whose contents truncate either way. The guardian's
-                    number keeps its 19% because 'Guardian’s number' is the longest heading
-                    on the sheet and a thead that wraps is a column that truncates its own
-                    name.
+                    The sixth column is the two buttons, and the 15% it costs came out of
+                    the name, the batches and the class — the three whose headings have the
+                    most slack over their share, and whose contents truncate either way.
+                    The guardian's number keeps its 19% because 'Guardian’s number' is the
+                    longest heading on the sheet and a thead that wraps is a column that
+                    truncates its own name.
                   */}
                   <div className="hidden xl:block">
                     <table className="w-full table-fixed border-collapse text-sm">
@@ -505,17 +517,17 @@ export default async function StudentsPage({
                         <tr className="border-b-2 border-line text-left align-bottom">
                           <Th className="w-[24%]">{t.colName}</Th>
                           <Th className="w-[16%]">{t.colBatches}</Th>
-                          <Th className="w-[17%]">{t.colClass}</Th>
+                          <Th className="w-[16%]">{t.colClass}</Th>
                           <Th className="w-[19%]" num>
                             {t.colPhone}
                           </Th>
                           <Th className="w-[10%]" num>
                             {t.colCode}
                           </Th>
-                          {/* Read aloud and never drawn: the cell holds one button that
-                              says what it does, and a word above it would be the widest
-                              thing in the narrowest column. */}
-                          <Th className="w-[14%]" right>
+                          {/* Read aloud and never drawn: the two buttons under it say what
+                              they do, and a word above them would be the widest thing in
+                              the narrowest column. */}
+                          <Th className="w-[15%]" right>
                             <span className="sr-only">{t.colActions}</span>
                           </Th>
                         </tr>
@@ -569,25 +581,33 @@ export default async function StudentsPage({
                             <Td num>
                               <span className="block truncate text-ink-faint">{row.code}</span>
                             </Td>
-                            {/* One button, not the card's two: the name in the first cell
-                                is visibly a link on this sheet and says what it does by
-                                being one, so the cell carries whichever of the two the
-                                name does not — Edit for an owner or manager, View for a
-                                teacher who may only read. Two buttons here would want
-                                150px of a 640px sheet. */}
+                            {/* Both errands, the same two the card offers: the eye for
+                                every reader of this screen, the pencil only for the ones
+                                the edit screen admits. `justify-end` because the column is
+                                right-aligned and two squares in a flex row would otherwise
+                                sit left of the heading they belong under. `print:hidden` —
+                                a printed roster is a list to read. */}
                             <Td right>
-                              {mayEdit ? (
+                              <div className="flex items-center justify-end gap-1 print:hidden">
                                 <Link
-                                  href={`/settings/students/${row.id}`}
-                                  className={SHEET_BUTTON}
+                                  href={`/students/${row.id}`}
+                                  className={SHEET_ICON}
+                                  aria-label={t.rowView}
+                                  title={t.rowView}
                                 >
-                                  {t.rowEdit}
+                                  <EyeIcon />
                                 </Link>
-                              ) : (
-                                <Link href={`/students/${row.id}`} className={SHEET_BUTTON}>
-                                  {t.rowView}
-                                </Link>
-                              )}
+                                {mayEdit && (
+                                  <Link
+                                    href={`/settings/students/${row.id}`}
+                                    className={SHEET_ICON}
+                                    aria-label={t.rowEdit}
+                                    title={t.rowEdit}
+                                  >
+                                    <PencilIcon />
+                                  </Link>
+                                )}
+                              </div>
                             </Td>
                           </tr>
                         ))}
@@ -667,12 +687,16 @@ export default async function StudentsPage({
                             </div>
                           </div>
 
-                          {/* Both neutral, and neither of them brand-filled: three hundred
-                              rows of a coloured button is a screen nobody can read, and the
-                              one thing on this row that should draw the eye is a child's
-                              name. `print:hidden` — a printed roster is a list to read. */}
+                          {/* The same two shapes as the sheet, with the words kept: there
+                              is room for both at 320px, and an icon beside its label is
+                              what teaches the icon on the sheet. Both neutral, and neither
+                              brand-filled: three hundred rows of a coloured button is a
+                              screen nobody can read, and the one thing on this row that
+                              should draw the eye is a child's name. `print:hidden` — a
+                              printed roster is a list to read. */}
                           <div className="mt-3 flex items-center gap-2 print:hidden">
                             <Link href={`/students/${row.id}`} className={ROW_BUTTON}>
+                              <EyeIcon />
                               {t.rowView}
                             </Link>
                             {mayEdit && (
@@ -680,6 +704,7 @@ export default async function StudentsPage({
                                 href={`/settings/students/${row.id}`}
                                 className={ROW_BUTTON}
                               >
+                                <PencilIcon />
                                 {t.rowEdit}
                               </Link>
                             )}

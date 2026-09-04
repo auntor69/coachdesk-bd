@@ -4196,12 +4196,17 @@ export const bn = {
      * Where the arm word is pressed on a teacher who is still switched on. The button
      * is drawn there on purpose: an owner who never sees it never learns the option
      * exists, so the answer teaches the order instead of hiding the control.
+     *
+     * "তাঁর লগইন চলে যায়" was the wrong claim and is gone — see en.ts. Off deletes the
+     * centre_members row, so what ends is their way into *this* centre; the account
+     * itself is untouched, and saying otherwise in the sentence that teaches the order
+     * would be teaching the wrong order.
      */
     removeNeedsOff:
-      'আগে তাঁকে বন্ধ করুন। বন্ধ করলেই তাঁর লগইন চলে যায়, তারপর রেকর্ডটি সরানো যাবে।',
+      'আগে তাঁকে বন্ধ করুন। বন্ধ করলেই আপনার সেন্টারে তাঁর প্রবেশ শেষ হয়ে যায়, তারপর রেকর্ডটি সরানো যাবে।',
     removeHeading: 'শিক্ষকের রেকর্ডটি একেবারে সরিয়ে ফেলবেন?',
     removeWarning:
-      'তাঁর নাম শিক্ষক তালিকা থেকে চলে যাবে এবং প্ল্যানের জায়গাটি খালি হবে। তিনি যা যা লিখেছেন কিছুই মুছবে না — যাঁর হাজিরা, পরীক্ষা বা বেতন আছে তাঁর রেকর্ড সরানোই যায় না। লগইনটিও মুছে যাবে না; অন্য কোনো সেন্টারে তিনি সেটি ব্যবহার করতে পারেন।',
+      'তাঁর নাম শিক্ষক তালিকা থেকে চলে যাবে এবং প্ল্যানের জায়গাটি খালি হবে। তিনি যা যা লিখেছেন কিছুই মুছবে না — যাঁর হাজিরা, পরীক্ষা বা বেতন আছে তাঁর রেকর্ড সরানোই যায় না। তিনি আর আপনার সেন্টারে ঢুকতে পারবেন না — সেটি তাঁকে বন্ধ করার সময়ই শেষ হয়ে গেছে।',
     removeConfirm: 'হ্যাঁ, রেকর্ডটি সরিয়ে ফেলুন',
     removing: 'সরানো হচ্ছে…',
     keep: 'রেকর্ডটি থাকুক',

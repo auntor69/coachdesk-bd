@@ -31,6 +31,13 @@ const read = (...parts: string[]) => readFileSync(path.join(ROOT, ...parts), 'ut
 
 const PAGE = read('src', 'app', '(app)', 'settings', 'students', 'page.tsx')
 
+/** The two shapes the sheet draws instead of words — see `icons.tsx`. */
+const ICONS = read('src', 'components', 'icons.tsx')
+/** The same file with its prose taken off: a docblock naming a tag is not that tag. */
+const ICON_CODE = ICONS.replace(/\/\*[\s\S]*?\*\//g, '')
+
+const count = (haystack: string, needle: string) => haystack.split(needle).length - 1
+
 const GRID_AT = PAGE.indexOf('<div className="flex flex-col gap-5 lg:grid')
 const RENDER = PAGE.slice(GRID_AT)
 
@@ -172,7 +179,7 @@ test('the sheet is fixed, its columns are shared out by hand, and they add up', 
 
   // The guardian's number keeps its share whatever else is re-cut: 'Guardian’s number' is
   // the longest heading on the sheet, and a thead that wraps is a column that truncates
-  // its own name. The button's 14% came out of the name and the batches instead.
+  // its own name. The buttons' 15% came out of the name, the batches and the class instead.
   const phone = TABLE.match(/<Th className="w-\[(\d+)%\]" num>\s+\{t\.colPhone\}/)
   assert.ok(phone && Number(phone[1]) >= 19, 'the guardian’s number lost width')
 
@@ -194,42 +201,51 @@ test('every row draws its own way in, rather than leaving it to be discovered', 
     'the card is a link again, and nothing on it says so')
   assert.match(CARDS, /<div className="rounded-xl border border-line bg-white px-4 py-3">/)
 
-  // Below `xl` both buttons, because that is where the report came from and where a
-  // thumb is doing the work. The full tap target there and a shorter one on the sheet:
-  // 3rem on forty rows is 24px of extra height each, on the one shape whose reason for
-  // existing is that §20.7 wants forty rows visible.
-  assert.match(CARDS, /className=\{ROW_BUTTON\}>\s+\{t\.rowView\}/)
-  assert.match(CARDS, /className=\{ROW_BUTTON\}\s*>\s+\{t\.rowEdit\}/)
+  // Below `xl` the words stay on the buttons, with the icon beside them — there is room
+  // for both at 320px, and an icon next to its label is what teaches the bare icon on the
+  // sheet. The full tap target there and a shorter one on the sheet: 3rem on forty rows is
+  // 24px of extra height each, on the one shape whose reason for existing is that §20.7
+  // wants forty rows visible.
+  assert.match(CARDS, /className=\{ROW_BUTTON\}>\s+<EyeIcon \/>\s+\{t\.rowView\}/)
+  assert.match(CARDS, /className=\{ROW_BUTTON\}\s*>\s+<PencilIcon \/>\s+\{t\.rowEdit\}/)
   assert.match(PAGE, /const ROW_BUTTON =\s+'inline-flex min-h-tap /)
-  assert.match(PAGE, /const SHEET_BUTTON =\s+'inline-flex min-h-9 /)
-  assert.doesNotMatch(CARDS, /SHEET_BUTTON/, 'the cards use the sheet’s smaller target')
+  assert.match(PAGE, /const SHEET_ICON =\s+'inline-flex size-9 /)
+  assert.doesNotMatch(CARDS, /SHEET_ICON/, 'the cards use the sheet’s smaller target')
   assert.doesNotMatch(TABLE, /\{ROW_BUTTON\}/, 'the sheet uses the card’s taller row')
+
+  // One import for both shapes, so the eye on the card and the eye on the sheet cannot
+  // become two different eyes.
+  assert.match(PAGE, /import \{ EyeIcon, PencilIcon \} from '@\/components\/icons'/)
 
   // Neither is brand-filled. Three hundred rows of a coloured button is a screen nobody
   // can read, and the name is the thing on the row that should draw the eye.
-  for (const [name, decl] of [
-    ['ROW_BUTTON', PAGE.slice(PAGE.indexOf('const ROW_BUTTON ='), PAGE.indexOf('const SHEET_BUTTON ='))],
-    ['SHEET_BUTTON', PAGE.slice(PAGE.indexOf('const SHEET_BUTTON ='), PAGE.indexOf('const SHEET_BUTTON =') + 400)],
-  ] as const) {
+  const DECLS = {
+    ROW_BUTTON: PAGE.slice(PAGE.indexOf('const ROW_BUTTON ='), PAGE.indexOf('/**', PAGE.indexOf('const ROW_BUTTON ='))),
+    SHEET_ICON: PAGE.slice(PAGE.indexOf('const SHEET_ICON ='), PAGE.indexOf('const SHEET_ICON =') + 220),
+  }
+  for (const [name, decl] of Object.entries(DECLS)) {
+    assert.ok(decl.length > 40, `${name} is not declared where this test looks`)
     assert.match(decl, /border-line bg-white/, `${name} is not the quiet one`)
     assert.doesNotMatch(decl, /bg-brand-600/, `${name} shouts`)
-    // A button that wraps in Bangla and not in English is a row that is a different
-    // height in one language — and in the sheet's cell it is 14% of 640px.
-    assert.match(decl, /whitespace-nowrap/, `${name} may wrap`)
   }
+  // Only the worded one can wrap, and a button that wraps in Bangla and not in English is
+  // a row that is a different height in one language. The square one holds a shape.
+  assert.match(DECLS.ROW_BUTTON, /whitespace-nowrap/, 'the worded button may wrap')
+  assert.doesNotMatch(DECLS.SHEET_ICON, /px-3/, 'the square button is not square')
 
-  // The sheet's sixth heading is read aloud and never drawn: the cell holds one button
-  // that says what it does, and a word above it would be the widest thing in the
-  // narrowest column. Asserted as the whole cell, so a visible label added beside the
-  // screen-reader one fails too.
+  // The sheet's sixth heading is read aloud and never drawn: the two buttons under it say
+  // what they do, and a word above them would be the widest thing in the narrowest
+  // column. Asserted as the whole cell, so a visible label added beside the screen-reader
+  // one fails too.
   assert.match(
     TABLE,
     /<Th className="w-\[\d+%\]" right>\s+<span className="sr-only">\{t\.colActions\}<\/span>\s+<\/Th>/,
   )
 
-  // A printed roster is a list to read, so the buttons come off the paper — as the two
-  // GET controls in the rail already do.
+  // A printed roster is a list to read, so the buttons come off the paper in both shapes —
+  // as the two GET controls in the rail already do.
   assert.match(CARDS, /className="mt-3 flex items-center gap-2 print:hidden">/)
+  assert.match(TABLE, /className="flex items-center justify-end gap-1 print:hidden">/)
 
   // The name stays a link on the card too — the same destination as View, kept because a
   // name that opens a record is the gesture every reader already knows. Coloured like a
@@ -248,30 +264,51 @@ test('every row draws its own way in, rather than leaving it to be discovered', 
   }
 })
 
-test('the sheet offers Edit to whoever may edit, and View to whoever may not', () => {
+test('both shapes offer View to every reader and Edit only to whoever may edit', () => {
   // §20.4 in its smallest form. The edit screen is `pageRole('manager')` while this one
   // opens on `can_manage_students` — 20260811000019 gives that box SELECT and INSERT and
   // deliberately no UPDATE — so a permitted teacher may read a student and admit one and
   // not rewrite a guardian's number. A button to a refusal is worse than no button.
   assert.match(PAGE, /const mayEdit =[\s\S]{0,600}isStaffAdmin\(session\)/)
 
-  // The sheet swaps one for the other rather than drawing an empty cell for a teacher.
-  assert.match(
-    TABLE,
-    /\{mayEdit \? \(\s+<Link\s+href=\{`\/settings\/students\/\$\{row\.id\}`\}/,
-    'the sheet’s Edit is not gated, or does not go to the edit screen',
-  )
-  assert.match(TABLE, /\) : \(\s+<Link href=\{`\/students\/\$\{row\.id\}`\}/, 'a teacher gets no button')
+  // THE DEFECT THIS FIXES was reported by the same owner as the one above: the sheet drew
+  // one button where the card drew two, on the reasoning that the coloured name in the
+  // first cell was already the other one. Reading a record and rewriting one are two
+  // errands, and a reader who has to deduce the second from a text colour has not been
+  // offered it. So the sheet gates only Edit now, exactly as the card does — no ternary
+  // that swaps one control for the other.
+  assert.doesNotMatch(TABLE, /\{mayEdit \? \(/, 'the sheet still swaps one button for the other')
+  for (const [name, shape] of [['table', TABLE], ['cards', CARDS]] as const) {
+    const view = shape.indexOf(name === 'table' ? 'aria-label={t.rowView}' : '{t.rowView}')
+    const edit = shape.indexOf(name === 'table' ? 'aria-label={t.rowEdit}' : '{t.rowEdit}')
+    assert.ok(view > 0 && edit > view, `the ${name} shape does not draw View then Edit`)
+    assert.match(shape.slice(view, edit), /\{mayEdit && \(/, `the ${name} shape’s Edit is not gated`)
+    assert.doesNotMatch(shape.slice(0, view), /mayEdit/, `the ${name} shape’s View is gated`)
+  }
 
-  // The card gates only Edit: View is for everybody who can open this screen at all.
-  const view = CARDS.indexOf('{t.rowView}')
-  const edit = CARDS.indexOf('{t.rowEdit}')
-  assert.ok(view > 0 && edit > view, 'the card draws View then Edit')
-  assert.match(CARDS.slice(view, edit), /\{mayEdit && \(/, 'the card’s Edit is not gated')
-  assert.doesNotMatch(CARDS.slice(0, view), /mayEdit/, 'the card’s View is gated')
+  // And the sheet's two say their names, because they draw no word. An icon-only link with
+  // no accessible name is read out as its own href — "slash settings slash students slash
+  // a uuid" — and `title` is what a mouse gets, on the one shape that only exists where
+  // there is a pointer to hover with.
+  for (const key of ['rowView', 'rowEdit'] as const) {
+    assert.equal(count(TABLE, `aria-label={t.${key}}`), 1, `the sheet’s ${key} has no name`)
+    assert.equal(count(TABLE, `title={t.${key}}`), 1, `the sheet’s ${key} has no hover name`)
+  }
+  // The shapes themselves are hidden from the name, or a screen reader gets two.
+  assert.match(ICON_CODE, /aria-hidden="true"/)
+  assert.match(ICON_CODE, /focusable="false"/)
+  assert.doesNotMatch(ICON_CODE, /<title>/, 'an icon names itself, and now the button has two names')
+  // `currentColor`, so the shape follows the button's hover instead of sitting one colour
+  // inside a box that moved.
+  assert.match(ICON_CODE, /stroke="currentColor"/)
+  assert.doesNotMatch(ICON_CODE, /'use client'/, 'the icons are server components')
+  // One svg wrapper for both, so the pair cannot drift into two stroke weights.
+  assert.equal(count(ICON_CODE, '<svg'), 1, 'the two icons no longer share one svg')
 
   // Every Edit href in the file is the edit screen, and every View href the student's
-  // page: two routes that differ by one path segment, in a file that writes both.
+  // page: two routes that differ by one path segment, in a file that writes both. The
+  // sheet's `aria-label`s and `title`s are caught by this too, which is the point — a
+  // pencil that opens the read-only page is a button that lies.
   for (const [label, href] of [
     ['{t.rowEdit}', '/settings/students/${row.id}'],
     ['{t.rowView}', '/students/${row.id}'],
@@ -370,9 +407,11 @@ test('both languages have the sheet’s headings, the scope label and the row bu
       assert.ok((t[key] as string).length <= 20, `${name}.${key} is too long for a heading`)
     }
 
-    // And the two buttons have to fit 14% of it, side by side on a 320px card.
+    // And the two buttons have to fit side by side on a 320px card, each now carrying an
+    // icon as well as its word — 22px per button that the label used to have. The sheet no
+    // longer constrains them at all: there they are read out, not drawn.
     for (const key of ['rowView', 'rowEdit'] as const) {
-      assert.ok((t[key] as string).length <= 12, `${name}.${key} is too long for a row button`)
+      assert.ok((t[key] as string).length <= 10, `${name}.${key} is too long for a row button`)
     }
     assert.notEqual(t.rowView, t.rowEdit, `${name} gives both buttons the same label`)
   }

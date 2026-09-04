@@ -2570,14 +2570,31 @@ export const en: Dictionary = {
      * The arm button is drawn for a teacher who is still switched on as well, and
      * answers with removeNeedsOff. Hiding it there would mean an owner never learns
      * the option exists until they happen to switch somebody off.
+     *
+     * NEITHER SENTENCE TALKS ABOUT THE LOGIN ANY MORE, and an owner read the version
+     * that did and asked what on earth it meant. It said "their login is not deleted —
+     * they may use it at another centre", which was three wrongs at once. It was
+     * frightening, in the one place a reader is deciding whether to press a red button.
+     * It was irrelevant: `deleteTeacher` deletes the centre_members row, so the account
+     * has no way back into this centre and RLS would refuse it if it tried. And for a
+     * teacher with no phone number it was simply false — `giveTeacherLogin` can only
+     * re-find an existing account by phone, so a username-only login is not reachable
+     * from anywhere else at all.
+     *
+     * What is true is that the auth account survives, deliberately: `profiles` is one
+     * row per human, not per appointment, and deleting it here would be this centre
+     * reaching across a tenant boundary to break somebody else's teacher. That is a
+     * fact about our schema and not a fact the owner needs, so it lives in
+     * deleteTeacher's docblock. What the owner needs is that the person cannot get in,
+     * which is the sentence that replaced it.
      */
     removeOpen: 'Remove this record',
     removeBlockedTitle: 'This record cannot be removed',
     removeNeedsOff:
-      'Turn them off first. That takes their login away, and then the record can go.',
+      'Turn them off first. That ends their access to your centre, and then the record can go.',
     removeHeading: 'Remove this teacher’s record for good?',
     removeWarning:
-      'Their name leaves your teacher list and their seat goes back to your plan. Nothing they entered is touched, because a record with attendance, exams or salary behind it cannot be removed at all. Their login is not deleted — they may use it at another centre.',
+      'Their name leaves your teacher list and their seat goes back to your plan. Nothing they entered is touched, because a record with attendance, exams or salary behind it cannot be removed at all. They cannot reach your centre either way — that ended when you turned them off.',
     removeConfirm: 'Yes, remove the record',
     removing: 'Removing…',
     keep: 'Keep the record',
