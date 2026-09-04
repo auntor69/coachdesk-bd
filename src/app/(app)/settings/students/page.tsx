@@ -22,6 +22,34 @@ export async function generateMetadata() {
 }
 
 /**
+ * The way into one student, drawn instead of left for the reader to discover.
+ *
+ * Quiet on purpose: neutral border, no fill, `font-medium`. Three hundred rows of a
+ * brand-coloured button is a screen nobody can read, and the one thing on a roster row
+ * that should draw the eye is a child's name.
+ *
+ * `whitespace-nowrap` because the Bangla labels are longer than the English ones and
+ * the sheet's cell is 14% of 640px — a button that wraps in one language is a row that
+ * is a different height in one language.
+ */
+const ROW_BUTTON =
+  'inline-flex min-h-tap shrink-0 items-center justify-center whitespace-nowrap ' +
+  'rounded-xl border-2 border-line bg-white px-3 font-medium text-ink hover:border-brand-300'
+
+/**
+ * The same button on the wide sheet, 36px instead of 48.
+ *
+ * `min-h-tap` is 3rem, which would add 24px to every row of a sheet whose whole reason
+ * for existing is that §20.7 wants forty of them on a screen rather than eight. The
+ * sheet only draws from `xl`, where the pointer is a mouse, and 36px still clears the
+ * 24px floor — while below `xl`, where a thumb is doing the work, the cards keep the
+ * full tap target.
+ */
+const SHEET_BUTTON =
+  'inline-flex min-h-9 shrink-0 items-center justify-center whitespace-nowrap ' +
+  'rounded-xl border-2 border-line bg-white px-3 font-medium text-ink hover:border-brand-300'
+
+/**
  * The roster.
  *
  * Shows the guardian's number on every row on purpose: it is the field most
@@ -186,6 +214,18 @@ export default async function StudentsPage({
   const pressure = capacityPressure(session.ceiling, activeCount)
   const warnPlaces = isStaffAdmin(session)
 
+  /**
+   * Whether to draw the Edit button on a row.
+   *
+   * The same set as the `pageRole('manager')` on the edit screen itself, which is
+   * stricter than the `can_manage_students` that opens this one: 20260811000019 gives
+   * that box SELECT and INSERT and deliberately no UPDATE, so a permitted teacher may
+   * read a student and admit one and not rewrite a guardian's number. Their row still
+   * gets View — the record is theirs to read — and no button to a screen that would
+   * refuse them.
+   */
+  const mayEdit = isStaffAdmin(session)
+
   // The two problem sets, kept as lists rather than counts, because each one is now
   // both a number on a card and the list that card opens. Two predicates written twice
   // would eventually disagree, and the way that failure shows up is a card promising
@@ -264,19 +304,12 @@ export default async function StudentsPage({
       <PageHeader
         title={t.title}
         back={{ href: '/settings', label: d.settings.hub.title }}
-        /* The ceiling they are paying for, and how to open a name. Every reader who gets
-           this far can open a student, so the hint is unconditional — it was gated on
-           `mayEdit` when the row was an edit link. Phone and laptop only: from `xl` the
-           name is a link in a table and says so by being one, and "tap a student" on a
-           desk is the giant-phone tell. */
-        subtitle={
-          <>
-            {t.used(activeCount, limit)}
-            {rows.length > 0 && (
-              <span className="text-ink-faint xl:hidden"> · {t.openHint}</span>
-            )}
-          </>
-        }
+        /* The ceiling they are paying for, and nothing else. There used to be a line
+           here telling the reader to tap a student, because tapping a student was the
+           only way in and nothing on the row said so. Every row now carries the button
+           instead, which is the honest fix: an instruction that teaches an invisible
+           control is a control that should have been drawn. */
+        subtitle={t.used(activeCount, limit)}
         actions={
           <Link
             href="/settings/students/new"
@@ -412,19 +445,32 @@ export default async function StudentsPage({
                     469px at `lg`, so a table drawn at `lg` would ship a sideways scrollbar
                     to every laptop. `table-fixed` with the widths named here rather than
                     left to the browser, so one long school name cannot re-shape the sheet.
+
+                    The sixth column is the button, and the 14% it costs came out of the
+                    name and the batches — the two whose headings have the most slack over
+                    their share, and whose contents truncate either way. The guardian's
+                    number keeps its 19% because 'Guardian’s number' is the longest heading
+                    on the sheet and a thead that wraps is a column that truncates its own
+                    name.
                   */}
                   <div className="hidden xl:block">
                     <table className="w-full table-fixed border-collapse text-sm">
                       <thead>
                         <tr className="border-b-2 border-line text-left align-bottom">
-                          <Th className="w-[28%]">{t.colName}</Th>
-                          <Th className="w-[24%]">{t.colBatches}</Th>
-                          <Th className="w-[18%]">{t.colClass}</Th>
+                          <Th className="w-[24%]">{t.colName}</Th>
+                          <Th className="w-[16%]">{t.colBatches}</Th>
+                          <Th className="w-[17%]">{t.colClass}</Th>
                           <Th className="w-[19%]" num>
                             {t.colPhone}
                           </Th>
-                          <Th className="w-[11%]" num>
+                          <Th className="w-[10%]" num>
                             {t.colCode}
+                          </Th>
+                          {/* Read aloud and never drawn: the cell holds one button that
+                              says what it does, and a word above it would be the widest
+                              thing in the narrowest column. */}
+                          <Th className="w-[14%]" right>
+                            <span className="sr-only">{t.colActions}</span>
                           </Th>
                         </tr>
                       </thead>
@@ -477,6 +523,26 @@ export default async function StudentsPage({
                             <Td num>
                               <span className="block truncate text-ink-faint">{row.code}</span>
                             </Td>
+                            {/* One button, not the card's two: the name in the first cell
+                                is visibly a link on this sheet and says what it does by
+                                being one, so the cell carries whichever of the two the
+                                name does not — Edit for an owner or manager, View for a
+                                teacher who may only read. Two buttons here would want
+                                150px of a 640px sheet. */}
+                            <Td right>
+                              {mayEdit ? (
+                                <Link
+                                  href={`/settings/students/${row.id}`}
+                                  className={SHEET_BUTTON}
+                                >
+                                  {t.rowEdit}
+                                </Link>
+                              ) : (
+                                <Link href={`/students/${row.id}`} className={SHEET_BUTTON}>
+                                  {t.rowView}
+                                </Link>
+                              )}
+                            </Td>
                           </tr>
                         ))}
                       </tbody>
@@ -488,22 +554,34 @@ export default async function StudentsPage({
                   <ul className="flex flex-col gap-2 xl:hidden">
                     {shown.map((row) => (
                       <li key={row.id}>
-                        {/* The row opens the student, not the edit form. This is the only
-                            roster in the app, so it is the only way anybody reaches a
-                            student; editing is one tap further, and the field most likely to
-                            be wrong — the guardian's number — is printed right here, so an
-                            owner checking the list never taps in until they have found the
-                            row to fix. A permitted teacher may read a student they may not
-                            edit. */}
-                        <Link
-                          href={`/students/${row.id}`}
-                          className="block rounded-xl border border-line bg-white px-4 py-3
-                            hover:border-brand-300 active:bg-brand-50"
-                        >
+                        {/*
+                          THE CARD IS NOT A LINK ANY MORE, and that is the whole change.
+                          The whole card used to be one, with nothing on it saying so — an
+                          owner reported that clicking a student's name was the only way
+                          into their record and that they found it by being an engineer.
+                          A control nobody can see is a control nobody uses.
+
+                          So the row draws its two ways in: View, which every reader of
+                          this screen may take, and Edit, only for the owners and managers
+                          the edit screen admits. The name stays a link on top of them —
+                          it is the same destination as View, kept because a name that
+                          opens a record is the one gesture every reader already knows,
+                          and now it is coloured like a link instead of hiding inside one.
+
+                          It also un-buries the guardian's number: text inside a link
+                          cannot be selected on a phone, and that number is what this
+                          list gets read for.
+                        */}
+                        <div className="rounded-xl border border-line bg-white px-4 py-3">
                           <div className="flex items-start justify-between gap-3">
                             <div className="min-w-0">
-                              <p className="truncate font-medium text-ink">
-                                {row.name}
+                              <p className="truncate font-medium">
+                                <Link
+                                  href={`/students/${row.id}`}
+                                  className="text-brand-800 hover:underline"
+                                >
+                                  {row.name}
+                                </Link>
                                 {!row.active && (
                                   <span className="ml-2 text-sm text-ink-faint">{t.inactive}</span>
                                 )}
@@ -542,7 +620,25 @@ export default async function StudentsPage({
                               )}
                             </div>
                           </div>
-                        </Link>
+
+                          {/* Both neutral, and neither of them brand-filled: three hundred
+                              rows of a coloured button is a screen nobody can read, and the
+                              one thing on this row that should draw the eye is a child's
+                              name. `print:hidden` — a printed roster is a list to read. */}
+                          <div className="mt-3 flex items-center gap-2 print:hidden">
+                            <Link href={`/students/${row.id}`} className={ROW_BUTTON}>
+                              {t.rowView}
+                            </Link>
+                            {mayEdit && (
+                              <Link
+                                href={`/settings/students/${row.id}`}
+                                className={ROW_BUTTON}
+                              >
+                                {t.rowEdit}
+                              </Link>
+                            )}
+                          </div>
+                        </div>
                       </li>
                     ))}
                   </ul>

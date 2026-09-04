@@ -6076,7 +6076,8 @@ export const bn = {
        * Active students only. Somebody who has left has no batch because they left.
        */
       noBatch: (n: number) => `${n} জন কোনো ব্যাচে নেই`,
-      noBatchBody: 'ব্যাচ ছাড়া হাজিরাও হবে না, ফির বিলও হবে না। নাম ট্যাপ করে ব্যাচে ভর্তি করুন।',
+      noBatchBody:
+        'ব্যাচ ছাড়া হাজিরাও হবে না, ফির বিলও হবে না। শিক্ষার্থীকে খুলে ব্যাচে ভর্তি করুন।',
       /**
        * What turns either warning from a number into an afternoon's work: it filters
        * the list to exactly the students that card counted. Without it, "১২ জন কোনো
@@ -6088,12 +6089,13 @@ export const bn = {
        * our filter, this describes what the owner wanted to look at.
        */
       showCurrent: 'বর্তমান শিক্ষার্থী',
-      /** The five headings of the wide sheet, in its column order. */
+      /** The sheet's headings. `colActions` is read aloud and never drawn — see en.ts. */
       colName: 'নাম',
       colBatches: 'ব্যাচ',
       colClass: 'শ্রেণি · স্কুল',
       colPhone: 'অভিভাবকের নম্বর',
       colCode: 'আইডি',
+      colActions: 'শিক্ষার্থী খুলুন',
       emptyTitle: 'এখনও কোনো শিক্ষার্থী নেই',
       emptyBody:
         'শিক্ষার্থী যোগ করলে হাজিরা, পরীক্ষার নম্বর আর ফি — সব এখানে আসবে।',
@@ -6104,6 +6106,9 @@ export const bn = {
       noBatchRow: 'কোনো ব্যাচে নেই',
       /** The guardian asked not to be texted. See channels for where that is set. */
       smsOff: 'SMS বন্ধ',
+      /** The two buttons on every row. Edit is drawn only where it would be allowed. */
+      rowView: 'দেখুন',
+      rowEdit: 'সম্পাদনা',
 
       newTitle: 'নতুন শিক্ষার্থী',
       capTitle: 'এই প্ল্যানে আর শিক্ষার্থী যোগ করা যাবে না',
@@ -6157,19 +6162,6 @@ export const bn = {
       /** See en.settings.students.studentUnreadable — nobody has been removed. */
       studentUnreadable:
         'এই শিক্ষার্থীর তথ্য এখন পড়া গেল না, তাই ফর্মটি দেখানো হয়নি। তালিকা থেকে বাদ দেওয়া হয়েছে, তা নয় — কোনো কিছু বদলায়নি। একটু পরে আবার চেষ্টা করুন।',
-      /**
-       * On the roster row, telling the reader the row is worth tapping — and where
-       * it goes, which changed. The row used to open the edit form, so this used to
-       * promise a correction; it now opens the student's own page, and the edit form
-       * is a button on it. The rewrite is the honest half of that move: a hint
-       * offering to fix a number, on a row that answers a question instead, is how a
-       * reader learns to stop reading the hints.
-       *
-       * Shown to everyone with rows now, not only to whoever may edit. A teacher the
-       * owner ticked can read this list and cannot change it, and until the student's
-       * page existed their rows did nothing when tapped.
-       */
-      openHint: 'হাজিরা, ফল আর ফি দেখতে শিক্ষার্থীর নামে ট্যাপ করুন',
       unreadable:
         'তালিকা এখন পড়া গেল না, তাই দেখানো হচ্ছে না — আপনার শিক্ষার্থীরা ঠিকই আছে। একটু পরে আবার চেষ্টা করুন।',
       tooLarge:

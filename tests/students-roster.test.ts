@@ -167,8 +167,14 @@ test('the sheet is fixed, its columns are shared out by hand, and they add up', 
   assert.match(TABLE, /<table className="w-full table-fixed border-collapse text-sm">/)
 
   const widths = [...TABLE.matchAll(/<Th className="w-\[(\d+)%\]"/g)].map((m) => Number(m[1]))
-  assert.equal(widths.length, 5, `${widths.length} headings carry a width, expected 5`)
+  assert.equal(widths.length, 6, `${widths.length} headings carry a width, expected 6`)
   assert.equal(widths.reduce((a, b) => a + b, 0), 100, 'the columns do not add up to 100%')
+
+  // The guardian's number keeps its share whatever else is re-cut: 'Guardian’s number' is
+  // the longest heading on the sheet, and a thead that wraps is a column that truncates
+  // its own name. The button's 14% came out of the name and the batches instead.
+  const phone = TABLE.match(/<Th className="w-\[(\d+)%\]" num>\s+\{t\.colPhone\}/)
+  assert.ok(phone && Number(phone[1]) >= 19, 'the guardian’s number lost width')
 
   // The name is the link and the row is not: a stretched overlay would make the
   // guardian's number unselectable, and that number is what the sheet is read for.
@@ -180,17 +186,107 @@ test('the sheet is fixed, its columns are shared out by hand, and they add up', 
   assert.match(PAGE, /import \{ Th, Td \} from '@\/components\/table'/)
 })
 
-test('the hint that says to tap a student is not shown where the name is a link', () => {
-  // "Tap a student" on a desk is the giant-phone tell §26 names, and from `xl` the name
-  // says what it does by being a link. It is the bar's subtitle now rather than a line
-  // under a hand-rolled heading, so it sits above the grid the rest of this file slices.
-  const at = PAGE.indexOf('t.openHint')
-  assert.ok(at > 0 && at < GRID_AT, 'the hint is gone, or it is no longer in the bar')
-  assert.match(PAGE.slice(at - 80, at), /xl:hidden/, 'the hint is shown beside the table')
+test('every row draws its own way in, rather than leaving it to be discovered', () => {
+  // THE DEFECT THIS FIXES was reported by an owner: the only way into a student's record
+  // was to click their name, and they said they found it by being an engineer. So the
+  // whole card is no longer one big invisible link, and both shapes carry a button.
+  assert.doesNotMatch(CARDS, /<Link\s+href=\{`\/students\/\$\{row\.id\}`\}\s+className="block rounded-xl/,
+    'the card is a link again, and nothing on it says so')
+  assert.match(CARDS, /<div className="rounded-xl border border-line bg-white px-4 py-3">/)
 
-  // And only where there are rows: "tap a student" over an empty roster is an instruction
-  // to do something the screen is not offering.
-  assert.match(PAGE, /\{rows\.length > 0 && \(\s+<span className="text-ink-faint xl:hidden">/)
+  // Below `xl` both buttons, because that is where the report came from and where a
+  // thumb is doing the work. The full tap target there and a shorter one on the sheet:
+  // 3rem on forty rows is 24px of extra height each, on the one shape whose reason for
+  // existing is that §20.7 wants forty rows visible.
+  assert.match(CARDS, /className=\{ROW_BUTTON\}>\s+\{t\.rowView\}/)
+  assert.match(CARDS, /className=\{ROW_BUTTON\}\s*>\s+\{t\.rowEdit\}/)
+  assert.match(PAGE, /const ROW_BUTTON =\s+'inline-flex min-h-tap /)
+  assert.match(PAGE, /const SHEET_BUTTON =\s+'inline-flex min-h-9 /)
+  assert.doesNotMatch(CARDS, /SHEET_BUTTON/, 'the cards use the sheet’s smaller target')
+  assert.doesNotMatch(TABLE, /\{ROW_BUTTON\}/, 'the sheet uses the card’s taller row')
+
+  // Neither is brand-filled. Three hundred rows of a coloured button is a screen nobody
+  // can read, and the name is the thing on the row that should draw the eye.
+  for (const [name, decl] of [
+    ['ROW_BUTTON', PAGE.slice(PAGE.indexOf('const ROW_BUTTON ='), PAGE.indexOf('const SHEET_BUTTON ='))],
+    ['SHEET_BUTTON', PAGE.slice(PAGE.indexOf('const SHEET_BUTTON ='), PAGE.indexOf('const SHEET_BUTTON =') + 400)],
+  ] as const) {
+    assert.match(decl, /border-line bg-white/, `${name} is not the quiet one`)
+    assert.doesNotMatch(decl, /bg-brand-600/, `${name} shouts`)
+    // A button that wraps in Bangla and not in English is a row that is a different
+    // height in one language — and in the sheet's cell it is 14% of 640px.
+    assert.match(decl, /whitespace-nowrap/, `${name} may wrap`)
+  }
+
+  // The sheet's sixth heading is read aloud and never drawn: the cell holds one button
+  // that says what it does, and a word above it would be the widest thing in the
+  // narrowest column. Asserted as the whole cell, so a visible label added beside the
+  // screen-reader one fails too.
+  assert.match(
+    TABLE,
+    /<Th className="w-\[\d+%\]" right>\s+<span className="sr-only">\{t\.colActions\}<\/span>\s+<\/Th>/,
+  )
+
+  // A printed roster is a list to read, so the buttons come off the paper — as the two
+  // GET controls in the rail already do.
+  assert.match(CARDS, /className="mt-3 flex items-center gap-2 print:hidden">/)
+
+  // The name stays a link on the card too — the same destination as View, kept because a
+  // name that opens a record is the gesture every reader already knows. Coloured like a
+  // link now, instead of hiding inside one.
+  const cardName = CARDS.slice(0, CARDS.indexOf('row.batchNames'))
+  assert.match(cardName, /className="text-brand-800 hover:underline"/)
+
+  // And the hint that told the reader to tap is gone, in both dictionaries: an
+  // instruction that teaches an invisible control is a control that should be drawn.
+  assert.doesNotMatch(PAGE, /openHint/)
+  for (const [name, dict] of [['en', en], ['bn', bn]] as const) {
+    assert.ok(
+      !('openHint' in dict.settings.students),
+      `${name} still carries the hint the button replaced`,
+    )
+  }
+})
+
+test('the sheet offers Edit to whoever may edit, and View to whoever may not', () => {
+  // §20.4 in its smallest form. The edit screen is `pageRole('manager')` while this one
+  // opens on `can_manage_students` — 20260811000019 gives that box SELECT and INSERT and
+  // deliberately no UPDATE — so a permitted teacher may read a student and admit one and
+  // not rewrite a guardian's number. A button to a refusal is worse than no button.
+  assert.match(PAGE, /const mayEdit =[\s\S]{0,600}isStaffAdmin\(session\)/)
+
+  // The sheet swaps one for the other rather than drawing an empty cell for a teacher.
+  assert.match(
+    TABLE,
+    /\{mayEdit \? \(\s+<Link\s+href=\{`\/settings\/students\/\$\{row\.id\}`\}/,
+    'the sheet’s Edit is not gated, or does not go to the edit screen',
+  )
+  assert.match(TABLE, /\) : \(\s+<Link href=\{`\/students\/\$\{row\.id\}`\}/, 'a teacher gets no button')
+
+  // The card gates only Edit: View is for everybody who can open this screen at all.
+  const view = CARDS.indexOf('{t.rowView}')
+  const edit = CARDS.indexOf('{t.rowEdit}')
+  assert.ok(view > 0 && edit > view, 'the card draws View then Edit')
+  assert.match(CARDS.slice(view, edit), /\{mayEdit && \(/, 'the card’s Edit is not gated')
+  assert.doesNotMatch(CARDS.slice(0, view), /mayEdit/, 'the card’s View is gated')
+
+  // Every Edit href in the file is the edit screen, and every View href the student's
+  // page: two routes that differ by one path segment, in a file that writes both.
+  for (const [label, href] of [
+    ['{t.rowEdit}', '/settings/students/${row.id}'],
+    ['{t.rowView}', '/students/${row.id}'],
+  ] as const) {
+    for (const shape of [TABLE, CARDS]) {
+      let at = shape.indexOf(label)
+      while (at > 0) {
+        assert.ok(
+          shape.slice(Math.max(0, at - 220), at).includes(`href={\`${href}\`}`),
+          `${label} does not go to ${href}`,
+        )
+        at = shape.indexOf(label, at + 1)
+      }
+    }
+  }
 })
 
 test('putting the leavers aside is offered only when there are some', () => {
@@ -251,10 +347,13 @@ test('nothing about who may read what has moved', () => {
   assert.match(PAGE, /const warnPlaces =[\s\S]{0,200}isStaffAdmin\(session\)/)
 })
 
-test('both languages have the sheet’s headings and the scope label', () => {
+test('both languages have the sheet’s headings, the scope label and the row buttons', () => {
+  const HEADINGS = ['colName', 'colBatches', 'colClass', 'colPhone', 'colCode'] as const
+  const WORDS = [...HEADINGS, 'showCurrent', 'colActions', 'rowView', 'rowEdit'] as const
+
   for (const [name, dict] of [['en', en], ['bn', bn]] as const) {
     const t = dict.settings.students
-    for (const key of ['showCurrent', 'colName', 'colBatches', 'colClass', 'colPhone', 'colCode'] as const) {
+    for (const key of WORDS) {
       const value = t[key]
       assert.equal(typeof value, 'string', `${name}.settings.students.${key} is missing`)
       assert.ok((value as string).trim().length > 1, `${name}.${key} is too short to be a word`)
@@ -266,13 +365,20 @@ test('both languages have the sheet’s headings and the scope label', () => {
 
     // A heading has to fit its share of 640px: 'Guardian’s number' is the longest at
     // 19%, and a sentence in the thead is a column that truncates its own name.
-    for (const key of ['colName', 'colBatches', 'colClass', 'colPhone', 'colCode'] as const) {
+    // `colActions` is exempt — it is read aloud and never drawn.
+    for (const key of HEADINGS) {
       assert.ok((t[key] as string).length <= 20, `${name}.${key} is too long for a heading`)
     }
+
+    // And the two buttons have to fit 14% of it, side by side on a 320px card.
+    for (const key of ['rowView', 'rowEdit'] as const) {
+      assert.ok((t[key] as string).length <= 12, `${name}.${key} is too long for a row button`)
+    }
+    assert.notEqual(t.rowView, t.rowEdit, `${name} gives both buttons the same label`)
   }
 
   // Bangla in Bangla. A heading left in English is the half-and-half screen.
-  for (const key of ['showCurrent', 'colName', 'colBatches', 'colClass', 'colPhone', 'colCode'] as const) {
+  for (const key of WORDS) {
     assert.doesNotMatch(bn.settings.students[key] as string, /[A-Za-z]/, `bn.${key} is English`)
   }
 })

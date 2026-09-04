@@ -3972,7 +3972,7 @@ export const en: Dictionary = {
       noBatch: (n: number) =>
         `${n} ${n === 1 ? 'student is' : 'students are'} in no batch`,
       noBatchBody:
-        'With no batch there is no attendance and no fee bill. Tap a name to enrol them.',
+        'With no batch there is no attendance and no fee bill. Open a student to enrol them.',
       /**
        * What turns either warning from a number into an afternoon's work.
        *
@@ -3989,12 +3989,17 @@ export const en: Dictionary = {
        * the list an owner wanted in the first place.
        */
       showCurrent: 'Current students',
-      /** The five headings of the wide sheet, in its column order. */
+      /**
+       * The sheet's headings, in its column order. The last is for a screen reader
+       * only: the column holds one button that says what it does, and a heading over
+       * it would be the widest thing in the narrowest column.
+       */
       colName: 'Name',
       colBatches: 'Batches',
       colClass: 'Class · school',
       colPhone: 'Guardian’s number',
       colCode: 'ID',
+      colActions: 'Open a student',
       emptyTitle: 'No students yet',
       emptyBody:
         'Add students and attendance, exam marks and fees all start landing here.',
@@ -4002,6 +4007,20 @@ export const en: Dictionary = {
       noPhone: 'No number',
       noBatchRow: 'In no batch',
       smsOff: 'SMS off',
+      /**
+       * The two little buttons on every row.
+       *
+       * An owner reported that the only way into a student's record was to click
+       * their name, and said they found it by being an engineer. A control nobody
+       * can see is a control nobody uses, so the way in is now drawn as a button on
+       * every row — which is also what let the hint above the list go.
+       *
+       * View is offered to every reader of this screen. Edit only to the owners and
+       * managers the edit screen admits: a permitted teacher may read a student they
+       * may not change, and a button to a refusal is worse than no button.
+       */
+      rowView: 'View',
+      rowEdit: 'Edit',
 
       newTitle: 'New student',
       capTitle: 'This plan has no room for another student',
@@ -4098,7 +4117,6 @@ export const en: Dictionary = {
        */
       studentUnreadable:
         'This student’s details could not be read just now, so this form is not shown — they are still on the roster and nothing about them has changed. Please try again in a moment.',
-      openHint: 'Tap a student to see their attendance, results and fees',
       /**
        * The roster read is the headcount, the plan usage and both warning cards, so a
        * failed one hides the two problems this screen exists to surface. Said plainly
