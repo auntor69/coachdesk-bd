@@ -2,6 +2,7 @@ import Link from 'next/link'
 import { forbidden, notFound } from 'next/navigation'
 
 import { Card } from '@/components/ui'
+import { PageHeader } from '@/components/page-header'
 import {
   pageRole,
   getSession,
@@ -89,19 +90,14 @@ export default async function AttendancePage({
    * nothing later goes back and asks for it.
    *
    * `t.unreadable` is the register's own sentence and already says the true thing:
-   * nothing has been lost. No name above it, unlike the scope refusal below, because
-   * the name is what did not arrive.
+   * nothing has been lost. The heading is the screen's own name and not the batch's,
+   * unlike the scope refusal below, because the name is what did not arrive.
    */
   if (batchError) {
     return (
       <div className="flex flex-col gap-4">
-        <Link
-          href="/teach"
-          className="inline-flex min-h-tap items-center text-ink-soft hover:text-ink"
-        >
-          ← {t.title}
-        </Link>
-        <Card className="border-late/30 bg-late/5">
+        <PageHeader title={t.rosterTitle} back={{ href: '/teach', label: t.title }} />
+        <Card className="max-w-2xl border-late/30 bg-late/5">
           <p className="font-medium text-ink">{t.unreadable}</p>
         </Card>
       </div>
@@ -155,14 +151,8 @@ export default async function AttendancePage({
   if (!isAdmin && unreadable) {
     return (
       <div className="flex flex-col gap-4">
-        <Link
-          href="/teach"
-          className="inline-flex min-h-tap items-center text-ink-soft hover:text-ink"
-        >
-          ← {t.title}
-        </Link>
-        <h1 className="text-xl font-bold text-ink">{batch.name}</h1>
-        <Card className="border-late/30 bg-late/5">
+        <PageHeader title={batch.name} back={{ href: '/teach', label: t.title }} />
+        <Card className="max-w-2xl border-late/30 bg-late/5">
           <p className="font-medium text-ink">{t.unreadable}</p>
         </Card>
       </div>
@@ -259,16 +249,10 @@ export default async function AttendancePage({
   if (enrollments === null || existingError) {
     return (
       <div className="flex flex-col gap-4">
-        <Link
-          href="/teach"
-          className="inline-flex min-h-tap items-center text-ink-soft hover:text-ink"
-        >
-          ← {t.title}
-        </Link>
         {/* Named, because the batch read did arrive and a teacher who tapped one of
             four batches needs to know this is about that one. */}
-        <h1 className="text-xl font-bold text-ink">{batch.name}</h1>
-        <Card className="border-late/30 bg-late/5">
+        <PageHeader title={batch.name} back={{ href: '/teach', label: t.title }} />
+        <Card className="max-w-2xl border-late/30 bg-late/5">
           <p className="font-medium text-ink">{t.unreadable}</p>
         </Card>
       </div>
@@ -476,44 +460,53 @@ export default async function AttendancePage({
    */
   const mayEnrol = students.length === 0 ? await canManageStudents() : false
 
+  /*
+   * The batch is the heading, and everything that identifies the day is the line under
+   * it (§20.1). Three facts were three stacked paragraphs — subject, slot, date — and
+   * they are one sentence, because a reader checks them together or not at all.
+   *
+   * THE REGISTER IS CAPPED. A row is a number, a name and four 44px buttons; across
+   * 1,216px that is a name at the far left and the tap targets 900px away, forty times
+   * over. There is no second subject to put in a rail either: the notices below are the
+   * same errand a minute later, and they say "save the register first" until it is
+   * saved. So the width goes back rather than being filled — §20.8's last idiom, the
+   * same call /teach and the timetable made.
+   *
+   * The cap is on the blocks and never on this column, because the bar bleeds to the
+   * workspace edges and a capped root would stop its border 672px in.
+   */
   return (
     <div className="flex flex-col gap-4">
-      <div>
-        <Link
-          href="/teach"
-          className="inline-flex min-h-tap items-center text-ink-soft
-            hover:text-ink"
-        >
-          ← {t.title}
-        </Link>
-        <h1 className="mt-1 text-xl font-bold text-ink">{batch.name}</h1>
-        <p className="mt-0.5 text-ink-soft">
-          {[
-            localName(subject, locale),
-            <BatchSlot
-              key="slot"
-              slot={batch.slot}
-              start={batch.start_time}
-              end={batch.end_time}
-              locale={locale}
-            />,
-          ]
-            .filter(Boolean)
-            .map((part, i) => (
-              <span key={i}>
-                {i > 0 && ' · '}
-                {part}
-              </span>
-            ))}
-        </p>
-        <p className="mt-0.5 text-sm text-ink-faint">
-          {formatDate(sessionDate, locale)}
-          {sessionDate !== today && ` — ${t.pastDate}`}
-        </p>
-      </div>
+      <PageHeader
+        title={batch.name}
+        back={{ href: '/teach', label: t.title }}
+        subtitle={
+          <>
+            {[
+              localName(subject, locale),
+              <BatchSlot
+                key="slot"
+                slot={batch.slot}
+                start={batch.start_time}
+                end={batch.end_time}
+                locale={locale}
+              />,
+              formatDate(sessionDate, locale),
+            ]
+              .filter(Boolean)
+              .map((part, i) => (
+                <span key={i}>
+                  {i > 0 && ' · '}
+                  {part}
+                </span>
+              ))}
+            {sessionDate !== today && ` — ${t.pastDate}`}
+          </>
+        }
+      />
 
       {verdict === 'future' ? (
-        <Card>
+        <Card className="max-w-2xl">
           <h2 className="font-semibold text-ink">{t.futureTitle}</h2>
           <p className="mt-1 text-sm text-ink-soft">{t.futureBody}</p>
           <Link
@@ -525,7 +518,7 @@ export default async function AttendancePage({
           </Link>
         </Card>
       ) : !writable ? (
-        <Card>
+        <Card className="max-w-2xl">
           <h2 className="font-semibold text-ink">{t.closedTitle}</h2>
           <p className="mt-1 text-sm text-ink-soft">{t.closedBody}</p>
           <div className="flex flex-col">
@@ -548,7 +541,7 @@ export default async function AttendancePage({
           </div>
         </Card>
       ) : students.length === 0 ? (
-        <Card>
+        <Card className="max-w-2xl">
           <h2 className="font-semibold text-ink">{t.noStudentsTitle}</h2>
           <p className="mt-1 text-sm text-ink-soft">{t.noStudentsBody}</p>
           {/* The door, for the reader who can walk through it. Without it this card
@@ -569,7 +562,7 @@ export default async function AttendancePage({
           )}
         </Card>
       ) : (
-        <>
+        <div className="flex max-w-2xl flex-col gap-4">
           {/* Section 6.3: the manager's access is not removed, and it is visibly not
               the default. Above the register rather than beside the button, because it
               has to be read before the first tap and not after forty of them — and
@@ -657,7 +650,7 @@ export default async function AttendancePage({
               {t.lastClass(formatDate(lastClass, locale))} →
             </Link>
           )}
-        </>
+        </div>
       )}
     </div>
   )

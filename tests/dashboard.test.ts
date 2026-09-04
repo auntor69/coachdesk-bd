@@ -71,10 +71,14 @@ test('the wrappers disappear on a phone and become columns on a laptop', () => {
     assert.match(decl, /lg:flex lg:flex-col/, `${wrapper} never becomes a column`)
   }
 
-  // The header and the setup card are grid items in their own right and span the lot: a
-  // greeting in an eight-column column is a greeting with a third of the page beside it.
-  assert.match(RENDER, /className="order-1 lg:col-span-12"/)
+  // The setup card is a grid item in its own right and spans the lot: an instruction in an
+  // eight-column column is an instruction with a third of the page beside it. The greeting
+  // no longer has a cell of its own — it is the page bar, which sits above the grid,
+  // because a sticky box only travels inside its containing block and a cell's block is one
+  // grid row.
+  assert.doesNotMatch(RENDER, /className="order-1 lg:col-span-12"/)
   assert.match(RENDER, /className="order-2 lg:col-span-12"/)
+  assert.equal(RENDER.split('lg:col-span-12').length - 1, 1)
 
   // And the wrappers need their own `lg:order`, because a grid item with none is 0 and
   // would draw before the header. Below `lg` they have no box, so nothing collides.
@@ -99,15 +103,37 @@ test('every block has a place in the phone order, and no two share one', () => {
     assert.ok(n <= allowed, `order-${value} is used ${n} times, expected at most ${allowed}`)
   }
 
-  // 1 to 12 with nothing missing, then `last` for the arrears table. A gap here is a block
-  // that was deleted without its neighbours being renumbered, which is survivable — but it
-  // is also how a fourteenth block ends up quietly reusing a free number later.
+  // 2 to 12 with nothing missing, then `last` for the arrears table. There is no `order-1`
+  // any more — that was the greeting's own cell, and the page bar above the grid replaced
+  // it; the rest were left at the numbers they had rather than shifted down, because only
+  // their relative order matters and renumbering eleven blocks to reclaim a 1 is eleven
+  // chances to swap two of them. A gap anywhere else is a block that was deleted without
+  // its neighbours being renumbered, which is survivable — but it is also how a fourteenth
+  // block ends up quietly reusing a free number later.
   const used = [...counts.keys()]
-  for (let n = 1; n <= 12; n += 1) {
+  assert.ok(!used.includes('1'), 'the greeting is a grid cell again, so it scrolls away')
+  for (let n = 2; n <= 12; n += 1) {
     assert.ok(used.includes(String(n)), `no block is order-${n}`)
   }
   assert.ok(used.includes('last'), 'nothing is order-last')
-  assert.equal(used.length, 13, `${used.length} distinct positions, expected 13`)
+  assert.equal(used.length, 12, `${used.length} distinct positions, expected 12`)
+})
+
+test('the greeting is the page bar, and nothing else on the screen is an h1', () => {
+  // The bar owns the h1, so the arrears table's own title stays an h2. It carries no crumb:
+  // this is the screen every other one comes back to.
+  assert.equal(PAGE.split('<PageHeader').length - 1, 1)
+  assert.equal(PAGE.split('<h1').length - 1, 0)
+  assert.doesNotMatch(PAGE, /text-xl font-bold text-ink lg:text-2xl/)
+  assert.match(
+    PAGE,
+    /<PageHeader title=\{greetingFor\(session\)\} subtitle=\{session\.active\.centerName\} \/>/,
+  )
+  assert.doesNotMatch(PAGE, /<PageHeader[\s\S]{0,120}back=/)
+
+  // Above the grid rather than inside it, and the grid nested under the page's own column.
+  assert.ok(PAGE.indexOf('<PageHeader') < PAGE.indexOf('lg:grid-cols-12'))
+  assert.match(PAGE, /return \(\r?\n\s+<div className="flex flex-col gap-5">/)
 })
 
 test('the order a column is written in is the order it draws', () => {

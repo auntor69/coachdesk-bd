@@ -1,7 +1,7 @@
 import Link from 'next/link'
 
 import { Card } from '@/components/ui'
-import { greetingFor } from '@/components/app-shell'
+import { PageHeader } from '@/components/page-header'
 import { pageRole, getSession, isStaffAdmin, myTeacherIds } from '@/lib/auth/session'
 import { createClient } from '@/lib/supabase/server'
 import { BatchSlot } from '@/lib/bd/schedule'
@@ -180,8 +180,8 @@ export default async function TeachPage() {
   if (batchRows === null) {
     return (
       <div className="flex flex-col gap-5">
-        <h1 className="text-xl font-bold text-ink">{greetingFor(session)}</h1>
-        <Card className="border-late/30 bg-late/5">
+        <PageHeader title={t.title} />
+        <Card className="max-w-2xl border-late/30 bg-late/5">
           <p className="font-medium text-ink">{t.batchesUnreadable}</p>
         </Card>
       </div>
@@ -280,16 +280,27 @@ export default async function TeachPage() {
               : t.allTaken
             : t.emptyToday
 
+  /*
+   * THE SCREEN'S NAME AND NOT THE GREETING (§20.1). This page opened with "Good morning,
+   * Rahim" — which is also what the dashboard's bar says, so the two screens an owner moves
+   * between were titled the same thing, and the reader's own name is already in the sidebar's
+   * account block and behind the phone header's initial. The tally goes under the bar: it is
+   * the sentence a teacher acts on, and it is read once rather than kept on screen.
+   *
+   * THE LIST IS CAPPED, NOT SPLIT. A day is two to six rows and there is no second subject
+   * to put beside them — the other batches are a closed disclosure, which is a line of chrome
+   * in a rail rather than rail content. So the width goes back rather than being filled: at
+   * 1,216px a row put a batch name at the far left and its Take button 900px away, and the
+   * cap is on each block rather than on the column because the bar bleeds to the workspace
+   * edges (§20.1). The timetable screen made the same call for the same reason.
+   */
   return (
     <div className="flex flex-col gap-5">
-      <div>
-        <h1 className="text-xl font-bold text-ink">{greetingFor(session)}</h1>
-        <p className="mt-1 text-ink-soft">{summary}</p>
-      </div>
+      <PageHeader title={t.title} subtitle={summary} />
 
       {rows.length === 0 &&
         (isAdmin ? (
-          <Card>
+          <Card className="max-w-2xl">
             <h2 className="font-semibold text-ink">{t.firstBatchTitle}</h2>
             <p className="mt-1 text-sm text-ink-soft">{t.firstBatchBody}</p>
             <Link
@@ -306,14 +317,14 @@ export default async function TeachPage() {
              reads this screen a door that answers 403 — and told them to make a
              batch, which is not a thing a teacher does. This one names who
              does. */
-          <Card>
+          <Card className="max-w-2xl">
             <h2 className="font-semibold text-ink">{t.noBatchesTitle}</h2>
             <p className="mt-1 text-sm text-ink-soft">{t.noBatchesBody}</p>
           </Card>
         ))}
 
       {todayRows.length > 0 && (
-        <ul className="flex flex-col gap-3">
+        <ul className="flex max-w-2xl flex-col gap-3">
           {todayRows.map((row) => (
             <li key={row.id}>
               <Link
@@ -406,7 +417,7 @@ export default async function TeachPage() {
       )}
 
       {otherRows.length > 0 && (
-        <details className="rounded-2xl border border-line bg-white p-4">
+        <details className="max-w-2xl rounded-2xl border border-line bg-white p-4">
           <summary className="min-h-tap cursor-pointer font-medium text-ink-soft">
             {t.otherBatches} (<span className="num">{otherRows.length}</span>)
           </summary>

@@ -155,45 +155,73 @@ test('a branch name opens its record, and only where there is one to open', () =
 /* The letterhead, and the two columns under the table                        */
 /* -------------------------------------------------------------------------- */
 
-test('the level is named in the header, next to the month picker', () => {
-  assert.ok(
-    PAGE.includes('className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between'),
-    'the letterhead is a row from sm',
-  )
+/** The letterhead alone — Shell's own bar, below it in the file, cannot answer for this. */
+const BAR = PAGE.slice(PAGE.indexOf('const header = ('), PAGE.indexOf('if (profitRows'))
+
+test('the letterhead is the page bar, and the level is the line under it', () => {
+  // Two bars in the file and no heading left in the old hand: the letterhead for the three
+  // arms that have a month to pick, and Shell's for the two refusals that do not.
+  assert.equal(count(PAGE, '<PageHeader'), 2)
+  assert.equal(count(PAGE, '<h1'), 0)
+  assert.doesNotMatch(PAGE, /text-xl font-bold text-ink lg:text-2xl/)
+  assert.ok(PAGE.includes("import { PageHeader } from '@/components/page-header'"))
 
   // §20.6: "the reader must never be in doubt which level they are reading". Every figure
   // on this screen is an aggregate of buildings, and the sidebar's centre name looks the
   // same on the branch-level screens beside it.
-  assert.ok(PAGE.includes('{t.level(session.active.centerName)}'))
-  const level = PAGE.indexOf('{t.level(session.active.centerName)}')
-  const title = PAGE.indexOf('>{t.title}</h1>')
-  assert.ok(level < title, 'the level above the title, like a letterhead')
+  //
+  // UNDER THE BAR AND NOT IN IT. The bar is one line and its `<h1>` truncates, so a level
+  // appended to the title is the half that gets cut — which is the doubt this line exists
+  // to remove. `title={t.title}` exactly, so nothing can be smuggled into the heading.
+  assert.ok(BAR.includes('title={t.title}'))
+  assert.match(BAR, /subtitle=\{[\s\S]{0,200}\{t\.level\(session\.active\.centerName\)\}/)
+  assert.ok(BAR.includes('{t.subtitle}'), 'the sentence under the level went with it')
 
-  // The picker beside the heading rather than under it: it is the one control here, and
-  // the table below wants the height.
-  const form = PAGE.indexOf('<form method="get"')
-  assert.ok(form > title)
-  assert.ok(PAGE.includes('className="flex shrink-0 items-end gap-2"'))
-  assert.ok(PAGE.includes('sm:w-44 sm:flex-none'), 'and capped, not stretched to the gap')
+  // And the way back out, from every one of the five shapes.
+  assert.equal(count(PAGE, "back={{ href: '/dashboard'"), 2)
+})
 
-  // Still a GET form with a submit button — Android Chrome fires no navigation on a bare
-  // <select> change, which is why the button is not decoration.
-  assert.ok(PAGE.includes('name="month"'))
+test('the month picker is the bar own action, capped and label-less', () => {
+  // The one control on the screen, at the far end of the line rather than under the title.
+  assert.match(BAR, /actions=\{\n\s+<form method="get" className="flex items-center gap-2">/)
+
+  // A 56px bar has no room for a word above a select, so the control says what it is to a
+  // screen reader instead — and the table's caption names the month again beside the
+  // figures, which is where a sighted reader checks it.
+  assert.match(BAR, /name="month"\n\s+aria-label=\{t\.monthLabel\}\n\s+defaultValue=\{month\}/)
+  assert.doesNotMatch(BAR, /\{t\.monthLabel\}<\/span>/, 'a visible label is back in the bar')
+
+  // Capped and not stretched: `w-full` inside `actions` is a select as wide as the line is
+  // long, and twelve month names do not need 400px.
+  assert.match(BAR, /min-h-tap max-w-44 rounded-xl border-2 border-line bg-white px-3/)
+  assert.match(BAR, /sm:max-w-56/)
+
+  // Still one GET form with a submit button — the month lands in a bookmarkable URL, and
+  // Android Chrome fires no navigation on a bare <select> change, so the button is not
+  // decoration.
+  assert.equal(count(PAGE, '<form method="get"'), 1)
   assert.ok(PAGE.includes('type="submit"'))
 })
 
 test('every shape of this screen draws the same heading', () => {
   // Five returns: locked plan, pinned manager, failed read, no branches, the table. The
-  // refusals get theirs from Shell and the other three from the letterhead.
-  assert.equal(count(PAGE, 'text-xl font-bold text-ink lg:text-2xl'), 2)
-  assert.doesNotMatch(PAGE, /font-bold text-ink"/, 'no heading left in the old hand')
+  // three that carry the picker share the letterhead; the two refusals get Shell's bar,
+  // which is a `PageHeader` and not a crumb and an `<h1>` of its own — a wrapper of its own
+  // would give the sticky bar a containing block 90px tall.
+  assert.equal(count(PAGE, 'refusal={{ home: d.shell.nav.home, title: t.title }}'), 2)
+  assert.equal(count(PAGE, '{header}'), 3)
+  assert.ok(PAGE.includes('title={refusal.title}'))
 
   // A one-sentence refusal is capped rather than set across 1,216px — the opposite
   // mistake to §26's narrow column, and just as bad to read. Four cards: locked, pinned,
   // the failed read and the organisation with no branches yet.
   assert.equal(count(PAGE, '<Card className="max-w-2xl'), 4)
-  assert.equal(count(PAGE, 'refusal={{ home: d.shell.nav.home, title: t.title }}'), 2)
-  assert.equal(count(PAGE, 'max-w-prose'), 1, 'and the subtitle too')
+
+  // THE CAP IS ON THE CARD AND NEVER ON SHELL'S COLUMN. The bar bleeds `lg:-mx-8` to reach
+  // the workspace edges, so a capped page root would stop its background 672px into a
+  // 1,216px screen and leave the border hanging in mid-air.
+  assert.ok(PAGE.includes('<div className="flex flex-col gap-6">'))
+  assert.doesNotMatch(PAGE, /flex flex-col gap-6[^"]*max-w-/)
 })
 
 test('what the table means and what to do about it are two columns from lg', () => {

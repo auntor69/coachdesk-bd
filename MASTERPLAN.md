@@ -2037,10 +2037,10 @@ but no row to hang it on — every revenue row is a bill against a child);
 the interface (the frame §20 describes is built — sidebar, wide workspace, a real
 navigation — and so are all nine of §20.8's steps, so every screen a centre uses daily has
 a shape of its own at 1,216px rather than a phone's column stretched to fit. What is partial
-is the page furniture: `components/page-header.tsx` exists and thirty screens draw it, so on
-the rest — the dashboard, the teaching screens, the exams, the notices and the reports — the
+is the page furniture: `components/page-header.tsx` exists and thirty-four screens draw it, so on
+the rest — the exams, the notices, the at-risk list and the reports — the
 heading still scrolls away with the first ten rows. §20.8 steps 1–9 ✅, §20.1's bar adopted
-on thirty screens of the forty-nine under `(app)`, five of which are print sheets that must
+on thirty-four screens of the forty-nine under `(app)`, five of which are print sheets that must
 never have it).
 
 **Not built ❌** — the five
@@ -2271,9 +2271,10 @@ last. Colours and corner radii are not the problem, and changing them is not the
 1,216px rather than a phone's column stretched to fit, the bulk-import screen included —
 it was a step 5 workflow step 5 did not reach, and it is now the paste and everything read
 back off it in seven columns beside the batches it joins in five. The page-furniture bar
-§20.1 asks for exists too, as `components/page-header.tsx`, and thirty screens draw it —
-every one of the money screens and every one of the settings screens. What remains is the
-daily-work half: the dashboard, the two teaching screens, the four exam screens, the notices,
+§20.1 asks for exists too, as `components/page-header.tsx`, and thirty-four screens draw it —
+every one of the money screens, every one of the settings screens, the board, the branch
+comparison and the two teaching screens. What remains is the
+narrower half: the four exam screens, the notices,
 the at-risk list, the progress report and the two account screens. A heading that scrolls
 away is now the exception rather than the rule.
 
@@ -2913,15 +2914,35 @@ built the shell and left the bar inside it undrawn, so every screen wrote its ow
 a crumb, an `<h1>` and a subtitle in a `<div>` at the top of the column — which scrolled away
 with the first ten rows. At 1,216px that costs a reader forty rows into the arrears register the
 one thing they need on screen: which month they are writing, and the way back to the board.
-`components/page-header.tsx` is that block in one place, and thirty screens draw it. The first ten
+`components/page-header.tsx` is that block in one place, and thirty-four screens draw it. The first ten
 were the one-list screens — subjects, exam kinds, branches, the centre's details, SMS, the download
 screen, the activity log, the bulk import and the chase list — and the twenty after them are every
 screen that handles money or settings: the fee board, the arrears register, the one-off charge, the
 month close, the waivers, spending, the wage bill, the month's payslips, the settings hub, the plan
 screen, and the batch, student, staff, teacher and manager screens with their new-and-edit forms.
-Each drops its hand-rolled block, its now-unused `Link` import, and
+The four after those are the daily-work screens, and they are where the bar was hardest to place:
+the board, the branch comparison, the day's classes and one batch's register. Each drops its
+hand-rolled block, its now-unused `Link` import, and
 where it had one the `max-w-2xl` on its root column — which moves onto the card, so the bar still
 reaches the workspace edges while the prose stays a sentence wide.
+
+The four daily-work screens also settled what the bar's title is for, because each of them had
+been titled by something other than the screen. The board and the day's classes both opened with
+"Good morning, Rahim" — the same sentence on two screens a teaching owner moves between, and the
+reader's own name is already in the sidebar's account block — so the greeting stays the board's
+alone and the classes screen is titled by what it is. The branch comparison keeps the §20.6 level
+line, but under the bar rather than in it: the heading is one truncating line, so a level appended
+to it is the half that gets cut, which is the doubt that line exists to remove. And the register
+folded three stacked paragraphs — subject, slot, date — into one subtitle sentence, because a
+reader checks those together or not at all.
+
+Neither of the two teaching screens gained a rail, and the reason is the general one. A day is
+two to six rows and the other batches are a closed disclosure, which is a line of chrome rather
+than rail content; a register is forty rows of a name and four 44px buttons, and the notices under
+it are the same errand a minute later — they say "save the register first" until it is saved. So
+both went back to a `max-w-2xl` column rather than being spread over 1,216px, which is §20.8's
+last idiom read the other way round: the defect there was never that the rows were too narrow,
+and here it was that a tap target sat 900px from the name it belongs to.
 
 Two properties of it are contracts on the rest of the app rather than details of the component,
 and §20.1 states both: it returns a fragment, because a sticky box only travels inside its

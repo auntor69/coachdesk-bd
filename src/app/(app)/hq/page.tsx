@@ -2,6 +2,7 @@ import Link from 'next/link'
 import { forbidden } from 'next/navigation'
 
 import { Card } from '@/components/ui'
+import { PageHeader } from '@/components/page-header'
 import { PlacesWarning } from '@/components/places-warning'
 import { Th, Td } from '@/components/table'
 import { pageRole, getSession } from '@/lib/auth/session'
@@ -214,42 +215,39 @@ export default async function HqPage({
   })
 
   /*
-   * The letterhead. The month picker sits beside the title rather than under it because it
-   * is the one control on the screen and the table below wants every pixel of the height.
+   * The letterhead is the page bar (§20.1), sticky from `lg`. This screen earns that more
+   * than most: nine columns overflow 704px, so an owner reading the last building's profit
+   * has scrolled both ways, and the month picker is the one control they came back for.
+   *
+   * THE LEVEL GOES UNDER THE BAR, NOT IN THE TITLE. The bar is one line and its heading
+   * truncates, so a level appended to the title is the half that gets cut — which is
+   * precisely the doubt §20.6 asks this line to remove. Below the bar it is a whole
+   * sentence at every width, and it leads the subtitle in ink rather than trailing it.
+   *
+   * The picker stays a plain GET form so the month lands in a bookmarkable URL, and the
+   * button is not decoration: Android Chrome fires no navigation on a bare <select>
+   * change. Label-less in the bar, where the table's own caption names the month again.
    */
   const header = (
-    <div
-      className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between
-        sm:gap-6"
-    >
-      <div className="min-w-0">
-        <Link
-          href="/dashboard"
-          className="inline-flex min-h-tap items-center font-medium text-brand-700"
-        >
-          ← {d.shell.nav.home}
-        </Link>
-        {/* §20.6, and the whole reason the line exists: this product draws the same five
-            figures at two levels, and the sidebar's centre name looks identical on the
-            branch-level screens beside this one. */}
-        <p className="text-sm font-medium text-ink-soft">
-          {t.level(session.active.centerName)}
-        </p>
-        <h1 className="mt-1 text-xl font-bold text-ink lg:text-2xl">{t.title}</h1>
-        <p className="mt-1 max-w-prose text-sm text-ink-soft">{t.subtitle}</p>
-      </div>
-
-      {/* A plain GET form, so the month lands in a URL that can be bookmarked. The
-          button is not decoration — Android Chrome fires no navigation on a bare
-          <select> change. */}
-      <form method="get" className="flex shrink-0 items-end gap-2">
-        <label className="flex min-w-0 flex-1 flex-col gap-1.5 sm:w-44 sm:flex-none">
-          <span className="font-medium text-ink">{t.monthLabel}</span>
+    <PageHeader
+      title={t.title}
+      back={{ href: '/dashboard', label: d.shell.nav.home }}
+      subtitle={
+        <>
+          <span className="font-medium text-ink">
+            {t.level(session.active.centerName)}
+          </span>{' '}
+          — {t.subtitle}
+        </>
+      }
+      actions={
+        <form method="get" className="flex items-center gap-2">
           <select
             name="month"
+            aria-label={t.monthLabel}
             defaultValue={month}
-            className="min-h-tap w-full rounded-xl border-2 border-line bg-white px-3
-              font-medium text-ink"
+            className="min-h-tap max-w-44 rounded-xl border-2 border-line bg-white px-3
+              font-medium text-ink sm:max-w-56"
           >
             {months.map((m) => (
               <option key={m.value} value={m.value}>
@@ -257,16 +255,16 @@ export default async function HqPage({
               </option>
             ))}
           </select>
-        </label>
-        <button
-          type="submit"
-          className="inline-flex min-h-tap shrink-0 items-center rounded-xl border-2
-            border-brand-500 bg-brand-50 px-4 font-medium text-brand-800"
-        >
-          {t.show}
-        </button>
-      </form>
-    </div>
+          <button
+            type="submit"
+            className="inline-flex min-h-tap shrink-0 items-center rounded-xl border-2
+              border-brand-500 bg-brand-50 px-4 font-medium text-brand-800"
+          >
+            {t.show}
+          </button>
+        </form>
+      }
+    />
   )
 
   if (profitRows === null || branches === null) {
@@ -659,10 +657,11 @@ export default async function HqPage({
 /**
  * The page's frame, in one place because five returns need it.
  *
- * `refusal` is for the two shapes that draw no letterhead of their own — the locked and
- * the pinned card, which have no month picker to hang one under. The three that do build
- * their own band, back-link included, so the title can sit next to the picker rather than
- * above a control it belongs beside.
+ * `refusal` is for the two shapes that have no month to pick — the locked and the pinned
+ * card — and it now draws the same bar as the other three rather than a crumb and a heading
+ * of its own. The bar sits here rather than in each arm because `PageHeader` returns a
+ * fragment: its `<header>` is a direct child of this column either way, which is the whole
+ * condition for a sticky box travelling the length of the page.
  */
 function Shell({
   refusal,
@@ -674,15 +673,10 @@ function Shell({
   return (
     <div className="flex flex-col gap-6">
       {refusal && (
-        <div>
-          <Link
-            href="/dashboard"
-            className="inline-flex min-h-tap items-center font-medium text-brand-700"
-          >
-            ← {refusal.home}
-          </Link>
-          <h1 className="mt-1 text-xl font-bold text-ink lg:text-2xl">{refusal.title}</h1>
-        </div>
+        <PageHeader
+          title={refusal.title}
+          back={{ href: '/dashboard', label: refusal.home }}
+        />
       )}
       {children}
     </div>
