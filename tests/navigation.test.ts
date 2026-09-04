@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { existsSync, readFileSync } from 'node:fs'
+import { existsSync, readdirSync, readFileSync } from 'node:fs'
 import path from 'node:path'
 
 import { en } from '../src/lib/i18n/en.ts'
@@ -348,3 +348,106 @@ test('the phone sheet works before the bundle arrives', () => {
   assert.match(NAV_MODULE, /<summary/)
   assert.doesNotMatch(NAV_MODULE, /useState|onClick/)
 })
+
+/* -------------------------------------------------------------------------- */
+/* The other direction: the way back out of a screen                          */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * What a screen demands of its reader, as a rank plus the two things rank does not imply.
+ *
+ * `pageRole('teacher')` and `pageCenter()` are the same demand — teacher is the lowest
+ * role — so both are 0: any member of the centre. A roster permission sits at 1 because a
+ * staff-admin clears it without the box being ticked, and `pageCapability` defaults to
+ * `minimum: 'manager'`, so it is a rank of 2 *and* a capability, which rank alone never
+ * grants below owner.
+ */
+type Guard = { rank: number; permission?: string; capability?: string }
+
+function guardOf(body: string): Guard | null {
+  const role = body.match(/await pageRole\('(\w+)'\)/)?.[1]
+  if (role) return { rank: role === 'owner' ? 3 : role === 'manager' ? 2 : 0 }
+
+  const permission = body.match(/await pagePermission\('(\w+)'\)/)?.[1]
+  if (permission) return { rank: 1, permission }
+
+  const capability = body.match(/await pageCapability\('(\w+)'\)/)?.[1]
+  if (capability) return { rank: 2, capability }
+
+  if (/await (pageCenter|getSession)\(\)/.test(body)) return { rank: 0 }
+  return null
+}
+
+/** Does a reader who cleared `from` necessarily clear `to`? */
+function reaches(from: Guard, to: Guard): boolean {
+  if (from.rank < to.rank) return false
+  if (to.permission && from.rank < 2 && from.permission !== to.permission) return false
+  if (to.capability && from.rank < 3 && from.capability !== to.capability) return false
+  return true
+}
+
+/** Every screen under (app): its route, its own function's body, and its guard. */
+const SCREENS = (function walk(dir: string): { route: string; body: string }[] {
+  const out: { route: string; body: string }[] = []
+  for (const entry of readdirSync(dir, { withFileTypes: true })) {
+    const full = path.join(dir, entry.name)
+    if (entry.isDirectory()) out.push(...walk(full))
+    else if (entry.name === 'page.tsx') {
+      const source = readFileSync(full, 'utf8').replaceAll('\r\n', '\n')
+      const from = source.search(/^export default (async )?function/m)
+      const rest = source.slice(Math.max(from, 0))
+      const close = rest.search(/^\}$/m)
+      out.push({
+        route:
+          '/' +
+          path
+            .relative(path.join(ROOT, 'src', 'app', '(app)'), full)
+            .replaceAll('\\', '/')
+            .replace(/\/?page\.tsx$/, ''),
+        body: close < 0 ? rest : rest.slice(0, close),
+      })
+    }
+  }
+  return out
+})(path.join(ROOT, 'src', 'app', '(app)'))
+
+test('every screen carries a way back that its own reader can open', () => {
+  /*
+   * THE DEFECT THIS CAUGHT. `/students/[studentId]` opens to `pageRole('teacher')` and
+   * crumbed to `/settings/students`, which is `pagePermission('can_manage_students')` — a
+   * box an owner ticks per teacher. A teacher without it reaches a child from the
+   * dashboard's at-risk card, which is drawn off the risk view's rows rather than a role,
+   * and the one link out of that screen answered "you do not have access to this".
+   *
+   * Which is the same rule the menu already keeps in the other direction: a row is a
+   * promise that a screen will open, and so is a crumb. The menu's half is above; this is
+   * the half nothing was holding, and it is the half a *narrowed* reader meets, because
+   * every screen here is one the reader was allowed into.
+   *
+   * A crumb chosen at runtime is out of scope by construction — that shape is the fix, and
+   * which check it turns on is asserted where the check is, on the screen's own test.
+   */
+  const guards = new Map(SCREENS.map((s) => [s.route, guardOf(s.body)]))
+  const offenders: string[] = []
+
+  for (const { route, body } of SCREENS) {
+    const from = guards.get(route)
+    assert.ok(from, `${route}: no guard this test knows how to read`)
+
+    const targets = new Set<string>()
+    for (const m of body.matchAll(/back=\{\{\s*href: '([^']+)'/g)) targets.add(m[1])
+    for (const m of body.matchAll(/^ {2}const \w+ = \{ href: '([^']+)' as const/gm)) {
+      targets.add(m[1])
+    }
+    for (const m of body.matchAll(/<Link\s+href="([^"]+)"[\s\S]{0,200}?←/g)) targets.add(m[1])
+
+    for (const target of targets) {
+      const to = guards.get(target)
+      if (!to || reaches(from, to)) continue
+      offenders.push(`${route} -> ${target}`)
+    }
+  }
+
+  assert.deepEqual(offenders, [])
+})
+

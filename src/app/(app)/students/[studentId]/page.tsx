@@ -4,7 +4,13 @@ import { notFound } from 'next/navigation'
 import { Card } from '@/components/ui'
 import { PageHeader } from '@/components/page-header'
 import { RiskLevelChip, RiskReasons } from '@/components/risk-list'
-import { pageRole, isStaffAdmin, canReadFees, getSession } from '@/lib/auth/session'
+import {
+  pageRole,
+  isStaffAdmin,
+  canReadFees,
+  canManageStudents,
+  getSession,
+} from '@/lib/auth/session'
 import { createClient } from '@/lib/supabase/server'
 import { has } from '@/lib/plans'
 import { formatBdMobile } from '@/lib/bd/phone'
@@ -145,6 +151,24 @@ export default async function StudentProfilePage({
   const mayOpenReceipts = staffAdmin
   const receiptsPrint = staffAdmin && has(session.plan, 'printedReceipts')
 
+  /*
+   * WHERE THE CRUMB GOES, WHICH IS NOT ALWAYS THE ROSTER.
+   *
+   * This screen's floor is a teacher; the roster behind `← Student roster` is
+   * `can_manage_students`, a box an owner ticks per teacher. So a teacher without it —
+   * who reaches this child from the dashboard's at-risk card, which is drawn for whoever
+   * the risk view returns rows to — was being offered a crumb that answers with "you do
+   * not have access to this". Same rule as the receipt link above, on the same page: no
+   * tap on this screen lands on a door that refuses the reader who was shown it.
+   *
+   * The dashboard is where that card is, and it is the one screen every reader who clears
+   * this floor can open. Free for a staff-admin, and for a teacher it is the query
+   * `canReadFees` already paid for.
+   */
+  const back = (await canManageStudents())
+    ? { href: '/settings/students' as const, label: t.roster }
+    : { href: '/dashboard' as const, label: d.shell.nav.home }
+
   const { data: student, error: studentError } = await supabase
     .from('students')
     .select(
@@ -182,7 +206,7 @@ export default async function StudentProfilePage({
       // The bar carries the screen's generic name rather than the student's, because the
       // student's name is exactly what did not arrive.
       <div className="flex flex-col gap-5">
-        <PageHeader title={t.title} back={{ href: '/settings/students', label: t.roster }} />
+        <PageHeader title={t.title} back={back} />
         <Card className="max-w-2xl border-late/30 bg-late/5">
           <p className="font-medium text-ink">{t.unreadable}</p>
         </Card>
@@ -431,7 +455,7 @@ export default async function StudentProfilePage({
             )}
           </>
         }
-        back={{ href: '/settings/students', label: t.roster }}
+        back={back}
         subtitle={
           <>
             {[student.class_level, student.institution].filter(Boolean).join(' · ')}

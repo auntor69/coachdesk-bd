@@ -871,7 +871,7 @@ test('layout: the name stays on screen, and the way to edit it is beside the nam
     /return \(\s+<div className="flex flex-col gap-5">\s+(\{\/\*[\s\S]*?\*\/\}\s+)?<PageHeader/,
   )
   assert.match(head, /\{student\.name\}/, 'the bar does not carry the name')
-  assert.match(head, /back=\{\{ href: '\/settings\/students', label: t\.roster \}\}/)
+  assert.match(head, /back=\{back\}/)
 
   // Forty rows into the fee list is where somebody on the phone to a guardian is, so the
   // three facts that identify the record travel with them: the name, whether the student
@@ -890,6 +890,29 @@ test('layout: the name stays on screen, and the way to edit it is beside the nam
   // The bar is the page's heading, so the page keeps none of its own — two <h1>s is what
   // a screen reader then lists as the title of one screen.
   assert.doesNotMatch(PROFILE, /<h1/, 'the page draws a second heading beside the bar')
+})
+
+test('the crumb goes somewhere the reader can actually open', () => {
+  // This page's floor is a teacher and the roster is `can_manage_students`, a box an owner
+  // ticks per teacher — so the crumb cannot be the roster for everybody. A teacher without
+  // the box reaches this child from the dashboard's at-risk card, which is drawn off the
+  // risk view's own rows rather than a role, and `← Student roster` answered them with "you
+  // do not have access to this". The rule is the one the receipt link on this same page
+  // already followed: no tap here lands on a door that refuses the reader who was shown it.
+  assert.match(
+    PROFILE,
+    /const back = \(await canManageStudents\(\)\)\n\s+\? \{ href: '\/settings\/students' as const, label: t\.roster \}\n\s+: \{ href: '\/dashboard' as const, label: d\.shell\.nav\.home \}/,
+  )
+  assert.match(PROFILE, /canManageStudents,\n/, 'the check is not imported')
+
+  // Both arms take the same crumb, the failed read included: that arm is the one a teacher
+  // is most likely to be looking at, since half of what it reports is a narrowed read.
+  assert.equal(PROFILE.split('back={back}').length - 1, 2)
+  assert.doesNotMatch(
+    PROFILE,
+    /back=\{\{ href: '\/settings\/students'/,
+    'an arm still crumbs to the roster unconditionally',
+  )
 })
 
 test('layout: one column on a phone, seven and five from lg', () => {
@@ -989,5 +1012,5 @@ test('layout: a read that failed is one capped column, not an empty rail', () =>
   assert.doesNotMatch(wall, /lg:grid-cols-12/, 'the failure is not a twelve-column grid')
   // The way out stays, so the reader is not stranded on it — and it is the bar's crumb
   // now, which is also this arm's heading: the page that refused has to say which page.
-  assert.match(wall, /<PageHeader title=\{t\.title\} back=\{\{ href: '\/settings\/students'/)
+  assert.match(wall, /<PageHeader title=\{t\.title\} back=\{back\} \/>/)
 })
