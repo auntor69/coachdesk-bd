@@ -1,7 +1,10 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { readFileSync, readdirSync } from 'node:fs'
+import { existsSync, readFileSync, readdirSync } from 'node:fs'
 import path from 'node:path'
+
+import { bn } from '../src/lib/i18n/bn.ts'
+import { en } from '../src/lib/i18n/en.ts'
 
 /**
  * Read-only enforcement, checked the only way it can be: structurally.
@@ -17,6 +20,12 @@ import path from 'node:path'
  * So the rule these tests hold is deliberately about the source: EVERY ACTION MODULE
  * UNDER (app) EITHER RUNS THE CHECK OR SAYS WHY IT DOES NOT. The three that do not are
  * named below with the reason, and adding a fourth means writing the reason down.
+ *
+ * AND THE OTHER HALF, at the bottom of this file: EVERY SCREEN THAT CAN REACH ONE OF
+ * THOSE WRITES ASKS WHETHER THE CENTRE MAY SAVE. The fence above holds, but a screen that
+ * does not ask draws the form anyway — so a manager opened Add Student, filled in twelve
+ * fields with a family at the desk, and learned the subscription had lapsed by pressing
+ * save. The fence refusing is not the same as the reader being told.
  *
  * `requireWritable` cannot be imported here — it lives in src/lib/auth/session.ts, which
  * pulls in the Supabase server client and next/headers. That is also why the pure part
@@ -217,4 +226,238 @@ test('the banner explains what the refusal only names', () => {
   // print:hidden, like the header and the nav. A receipt handed to a parent is not the
   // place to tell them the centre owes us money.
   assert.match(shell, /border-late\/40 bg-late\/5 px-4 py-3 print:hidden/)
+})
+
+/* -------------------------------------------------------------------------- */
+/* The other half: which screens ask before drawing a form                    */
+/* -------------------------------------------------------------------------- */
+
+const SRC = path.join(ROOT, 'src')
+/** Absolute path in, CRLF out — a `\n` anchor in a CRLF file silently matches nothing. */
+const readAt = (file: string) => readFileSync(file, 'utf8').replaceAll('\r\n', '\n')
+const rel = (file: string) => path.relative(ROOT, file).split(path.sep).join('/')
+
+/** Every module that refuses a lapsed centre, discovered rather than listed. */
+const GUARDED = new Set(actionModules(APP).filter((file) => /requireWritable\(/.test(read(file))))
+
+/** An import specifier as written, resolved to a file on disk, or null if it leaves src. */
+function resolveImport(from: string, spec: string): string | null {
+  let base: string
+  if (spec.startsWith('@/')) base = path.join(SRC, spec.slice(2))
+  else if (spec.startsWith('.')) base = path.resolve(path.dirname(from), spec)
+  else return null
+
+  for (const candidate of [
+    `${base}.ts`,
+    `${base}.tsx`,
+    path.join(base, 'index.ts'),
+    path.join(base, 'index.tsx'),
+  ]) {
+    if (existsSync(candidate)) return candidate
+  }
+  return null
+}
+
+/**
+ * Every module a screen pulls in, transitively — because the action is almost never
+ * imported by the page. `settings/students/new/page.tsx` renders `./student-form`, and the
+ * form is what imports `createStudent`. A walk one level deep would find nothing on the
+ * screens that matter most.
+ *
+ * WHAT IT CANNOT SEE, and it is a real gap rather than an oversight: a screen whose only
+ * door to a write is a `<Link>` imports nothing guarded, so the roster — whose New button,
+ * paste-box tile and per-row Edit all lead somewhere else — is not in the set below. The
+ * alternative rule, "every screen that links to a write screen must ask", would flag the
+ * dashboard for linking to fees, which is not a defect: the screen at the end of that link
+ * explains itself. So link-only doors are held by their own screens' tests — see
+ * students-roster.test.ts, "a lapsed centre keeps the list and loses all three doors".
+ */
+function closure(entry: string): string[] {
+  const seen = new Set<string>()
+  const queue = [entry]
+  while (queue.length > 0) {
+    const file = queue.pop()!
+    if (seen.has(file)) continue
+    seen.add(file)
+    for (const m of readAt(file).matchAll(/from '([^']+)'/g)) {
+      const next = resolveImport(file, m[1])
+      if (next && !seen.has(next)) queue.push(next)
+    }
+  }
+  return [...seen].map(rel)
+}
+
+const PAGES = sourceFiles(APP).filter((f) => f.endsWith('/page.tsx'))
+
+/** The screens that can reach a write a lapsed centre would be refused. */
+const WRITE_SCREENS = PAGES.filter((file) =>
+  closure(path.join(ROOT, file)).some((dep) => GUARDED.has(dep)),
+)
+
+/**
+ * The sweep, screen by screen, and the list only ever shrinks.
+ *
+ * Every name here draws a control whose action `requireWritable` refuses, without first
+ * asking whether the centre can save — so the form is drawn, filled in, and refused. They
+ * are listed rather than tolerated in bulk so that a screen cannot join them silently: a
+ * new form wired to a guarded action fails this gate on the day it is written, which is
+ * the only day its author is holding the context needed to fix it.
+ *
+ * NOTHING MAY BE ADDED TO THIS LIST. A screen leaves it by branching on `session.access`.
+ */
+const PENDING: string[] = [
+  'src/app/(app)/exams/[examId]/edit/page.tsx',
+  'src/app/(app)/exams/[examId]/page.tsx',
+  'src/app/(app)/exams/new/page.tsx',
+  'src/app/(app)/fees/arrears/page.tsx',
+  'src/app/(app)/fees/charge/page.tsx',
+  'src/app/(app)/fees/page.tsx',
+  'src/app/(app)/fees/reminders/page.tsx',
+  'src/app/(app)/fees/scholarships/page.tsx',
+  'src/app/(app)/notices/page.tsx',
+  'src/app/(app)/progress/page.tsx',
+  'src/app/(app)/settings/batches/[batchId]/page.tsx',
+  'src/app/(app)/settings/batches/new/page.tsx',
+  'src/app/(app)/settings/branches/page.tsx',
+  'src/app/(app)/settings/center/page.tsx',
+  'src/app/(app)/settings/exam-types/page.tsx',
+  'src/app/(app)/settings/managers/page.tsx',
+  'src/app/(app)/settings/sms/page.tsx',
+  'src/app/(app)/settings/staff/new/page.tsx',
+  'src/app/(app)/settings/staff/page.tsx',
+  'src/app/(app)/settings/subjects/page.tsx',
+  'src/app/(app)/settings/teachers/new/page.tsx',
+  'src/app/(app)/settings/teachers/page.tsx',
+  'src/app/(app)/teach/[batchId]/page.tsx',
+]
+
+test('every screen that can reach a guarded write asks whether the centre may save', () => {
+  // Sanity, for the reason the walk above has one: a discovery that quietly found nothing
+  // would pass every screen in the app.
+  assert.ok(WRITE_SCREENS.length >= 20, `only ${WRITE_SCREENS.length} screens reach a write`)
+
+  const asks = (file: string) => /session\.access\s*(?:===|!==)/.test(read(file))
+
+  const offenders = WRITE_SCREENS.filter((f) => !asks(f) && !PENDING.includes(f)).sort()
+  assert.deepEqual(offenders, [], 'these screens draw a form a lapsed centre cannot save')
+
+  // And the list is a debt, not a shape: a name that has been fixed comes off it, or the
+  // next reader learns nothing from what is left.
+  const settled = PENDING.filter((f) => asks(f)).sort()
+  assert.deepEqual(settled, [], 'these screens now ask, so they no longer belong in PENDING')
+
+  // A name that no longer names a screen reaching a write is stale the other way — the
+  // route was renamed or the form moved — and would go on excusing nothing.
+  const stale = PENDING.filter((f) => !WRITE_SCREENS.includes(f)).sort()
+  assert.deepEqual(stale, [], 'these PENDING entries no longer name a write screen')
+})
+
+test('the screens that ask do it with the standing, not with a role', () => {
+  /*
+   * The mistake this catches is one already in this codebase: `fees/page.tsx` gates its
+   * write controls on `isStaffAdmin(session)`, which is a role, and a role answers a
+   * different question — an owner of a lapsed centre is a staff admin all day.
+   *
+   * So a screen that consults `access` must compare it against the union's own members.
+   * `access` is `'full' | 'read_only'`; a typo compares against a string it can never be,
+   * and TypeScript is happy because both sides are strings.
+   */
+  for (const file of WRITE_SCREENS) {
+    for (const m of read(file).matchAll(/\.access\s*(?:===|!==)\s*'([^']*)'/g)) {
+      assert.ok(
+        m[1] === 'full' || m[1] === 'read_only',
+        `${file}: compares access against '${m[1]}', which it can never be`,
+      )
+    }
+  }
+})
+
+/* -------------------------------------------------------------------------- */
+/* What is drawn where the form was                                           */
+/* -------------------------------------------------------------------------- */
+
+const NOTE = read('src', 'components', 'read-only-note.tsx')
+/** The same file with its prose taken off: a docblock naming a class is not that class. */
+const NOTE_CODE = NOTE.replace(/\/\*[\s\S]*?\*\//g, '')
+
+test('the note is one sentence of furniture, not a second alert', () => {
+  // A server component: this is furniture, and a directive here would pull it into the
+  // client bundle on every screen that draws it.
+  assert.doesNotMatch(NOTE_CODE, /use client/)
+
+  // `Dictionary['readOnly']` and not a pair of strings, so a caller passes `d.readOnly`
+  // and cannot hand it the wrong two sentences.
+  assert.match(NOTE, /t: Dictionary\['readOnly'\]/)
+  assert.match(NOTE, /\{t\.noFormTitle\}/)
+  assert.match(NOTE, /\{t\.noFormBody\}/)
+
+  /*
+   * NEITHER TINTED NOR AN ALERT, and that is the decision most likely to be "fixed" by a
+   * later pass. The shell's banner at the top of the same screen is the alert: it says
+   * which of the two states this is, when the coverage ran out, and what to do — with the
+   * buttons. A second red box for the same fact reads as two separate things going wrong,
+   * and §4.4's one-ask-per-screen rule is the one that holds the trial notice back while
+   * that banner is up.
+   */
+  assert.doesNotMatch(NOTE_CODE, /role="alert"/)
+  assert.doesNotMatch(NOTE_CODE, /aria-live/)
+  assert.doesNotMatch(NOTE_CODE, /border-late|bg-late|text-late/)
+  assert.match(NOTE_CODE, /rounded-2xl border border-line bg-surface-alt/)
+
+  // And it names no date and no state: the banner above does both, and this one sentence
+  // is drawn on a dozen screens whose reader already knows which one they opened.
+  assert.doesNotMatch(NOTE_CODE, /paidThrough|trialEndsAt|status ===/)
+})
+
+test('every screen that draws the note draws the shared one', () => {
+  const drawn = sourceFiles(SRC).filter((f) => /<ReadOnlyNote\b/.test(read(f)))
+  assert.ok(drawn.length >= 3, `only ${drawn.length} screens draw the note`)
+
+  for (const file of drawn) {
+    const source = read(file)
+    assert.match(
+      source,
+      /import \{ ReadOnlyNote \} from '@\/components\/read-only-note'/,
+      `${file}: draws the note without importing it`,
+    )
+    // The whole dictionary group, so the two sentences travel together.
+    assert.match(source, /<ReadOnlyNote t=\{d\.readOnly\}/, `${file}: passes the note something else`)
+    // Capped, because it stands where a form stood and 1,216px of one sentence is not a
+    // paragraph anybody reads. On the note and not on the column that holds the bar — see
+    // page-header.test.ts for what a capped column does to that bar's background.
+    assert.match(
+      source,
+      /<ReadOnlyNote t=\{d\.readOnly\} className="max-w-2xl" \/>/,
+      `${file}: the note is not capped`,
+    )
+  }
+})
+
+test('both languages say it, and neither suggests the records are gone', () => {
+  for (const [name, dict] of [['en', en], ['bn', bn]] as const) {
+    const t = dict.readOnly
+    for (const [key, least] of [['noFormTitle', 20], ['noFormBody', 90]] as const) {
+      assert.equal(typeof t[key], 'string', `${name}.readOnly.${key} is missing`)
+      assert.ok(
+        t[key].trim().length >= least,
+        `${name}.readOnly.${key} is ${t[key].trim().length} characters — too short to say it`,
+      )
+    }
+
+    // The half of §4.4 a reader panics about: nothing recorded has changed, and all of it
+    // still reads. A sentence that left that out would have an owner believe the term's
+    // register had been taken away over an unpaid bill.
+    assert.match(
+      t.noFormBody,
+      /still reads|দেখা যাবে/,
+      `${name}.readOnly.noFormBody does not say the records are still there`,
+    )
+
+    // And the title points up rather than repeating what the banner already dated.
+    assert.doesNotMatch(
+      t.noFormTitle,
+      /\d/,
+      `${name}.readOnly.noFormTitle names a figure the banner above already names`,
+    )
+  }
 })

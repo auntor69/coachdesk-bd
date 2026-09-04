@@ -1,5 +1,6 @@
 import { Card } from '@/components/ui'
 import { PageHeader } from '@/components/page-header'
+import { ReadOnlyNote } from '@/components/read-only-note'
 import { pagePermission, getSession, isStaffAdmin } from '@/lib/auth/session'
 import { openAsk } from '@/lib/billing/asks'
 import { createClient } from '@/lib/supabase/server'
@@ -32,6 +33,28 @@ export default async function ImportStudentsPage() {
   const locale = session.locale
   const d = dict(locale)
   const t = d.settings.import
+
+  /*
+   * A lapsed centre gets no paste box, and this is the arm that costs the most to have
+   * been missing: §10 forbids a partial import, so `importStudents` refuses the paste
+   * whole — three hundred typed lines and an afternoon, saved nowhere. Before the three
+   * reads below, none of which have anything to tell this reader.
+   *
+   * Ahead of the full-and-cannot-buy card further down for the same reason the
+   * add-student screen puts it ahead of its own: places bought while the subscription is
+   * lapsed are capacity nobody can use, and the bill is the one ask worth making.
+   */
+  if (session.access !== 'full') {
+    return (
+      <div className="flex flex-col gap-5">
+        <PageHeader
+          title={t.title}
+          back={{ href: '/settings/students', label: d.settings.students.title }}
+        />
+        <ReadOnlyNote t={d.readOnly} className="max-w-2xl" />
+      </div>
+    )
+  }
 
   const [{ data: batches }, studentCount, { data: roster }] =
     await Promise.all([

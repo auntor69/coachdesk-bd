@@ -326,6 +326,35 @@ test('both shapes offer View to every reader and Edit only to whoever may edit',
   }
 })
 
+test('a lapsed centre keeps the list and loses all three doors out of it', () => {
+  /*
+   * §4.4: read-only is a discomfort, not a locked door — the register keeps reading, and
+   * what stops is saving. So the sheet, the cards, the counts and the two filters are
+   * untouched here, and what goes is every control that leads to a refusal.
+   *
+   * All three actions behind them run `requireWritable`: `createStudent`, `importStudents`
+   * and `updateStudent`. This screen used to offer all three, so a lapsed centre reached
+   * the admit form, filled in twelve fields with a family at the desk, and learned the
+   * subscription had lapsed by pressing save. See tests/read-only.test.ts for the
+   * repo-wide half of this rule.
+   */
+  assert.match(PAGE, /const mayWrite = session\.access === 'full'/)
+
+  // The New button in the bar, and the paste box below it.
+  assert.match(PAGE, /actions=\{\s*mayWrite && \(\s*<Link\s+href="\/settings\/students\/new"/)
+  assert.match(PAGE, /\{mayWrite && \(\s*<Link\s+href="\/settings\/students\/import"/)
+
+  // And Edit, which was already narrowed to a role: both have to hold, because an owner of
+  // a lapsed centre passes `isStaffAdmin` all day and the edit form would still refuse.
+  assert.match(PAGE, /const mayEdit = isStaffAdmin\(session\) && mayWrite/)
+
+  // The list is not gated on it anywhere. A read-only roster that hid its own rows would
+  // be the opposite of what §4.4 promises, and this is the one assertion that would catch
+  // somebody "finishing" the gating above by wrapping the sheet in it too.
+  assert.doesNotMatch(TABLE, /mayWrite/, 'the sheet itself is gated on standing')
+  assert.doesNotMatch(CARDS, /mayWrite/, 'the cards themselves are gated on standing')
+})
+
 test('putting the leavers aside is offered only when there are some', () => {
   // The count in the heading said 280 of 312 while the list under it was all 312, and
   // there was no way at all to narrow it.

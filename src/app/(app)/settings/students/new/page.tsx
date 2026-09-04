@@ -2,6 +2,7 @@ import Link from 'next/link'
 
 import { PageHeader } from '@/components/page-header'
 import { PlacesWarning } from '@/components/places-warning'
+import { ReadOnlyNote } from '@/components/read-only-note'
 import { Card } from '@/components/ui'
 import { pagePermission, getSession, isStaffAdmin } from '@/lib/auth/session'
 import { normalizeBdMobile } from '@/lib/bd/phone'
@@ -61,6 +62,37 @@ export default async function NewStudentPage() {
   const locale = session.locale
   const d = dict(locale)
   const t = d.settings.students
+
+  /** The same bar on all three shapes of the screen. */
+  const head = (
+    <PageHeader title={t.newTitle} back={{ href: '/settings/students', label: t.title }} />
+  )
+
+  /*
+   * THIRD SHAPE, AND IT IS FIRST BECAUSE IT ANSWERS BEFORE THE OTHER TWO CAN.
+   *
+   * `createStudent` runs `requireWritable`, so a lapsed centre cannot admit anybody —
+   * and this screen was drawing the whole form anyway, twelve fields wide, with a family
+   * at the desk. See components/read-only-note.tsx.
+   *
+   * ABOVE `atLimit` ON PURPOSE, even though both are true of a full lapsed centre. The
+   * at-limit arm's ask is "buy more places", and places bought on a lapsed subscription
+   * are capacity nobody can use until the bill is settled — so this is §4.4's own rule
+   * about one ask per screen, the same one that holds the trial notice back while the
+   * banner is up. The bill wins.
+   *
+   * Before every query, unlike the two arms below: nothing here reads a headcount, a
+   * batch list or an open purchase, so a read-only centre costs four round trips fewer
+   * rather than four wasted ones.
+   */
+  if (session.access !== 'full') {
+    return (
+      <div className="flex flex-col gap-5">
+        {head}
+        <ReadOnlyNote t={d.readOnly} className="max-w-2xl" />
+      </div>
+    )
+  }
 
   const [{ data: batches }, studentCount, branches] = await Promise.all([
     supabase
@@ -169,11 +201,6 @@ export default async function NewStudentPage() {
       ].filter(Boolean)
       return { id: batch.id, label: parts.join(' · ') }
     })
-
-  /** The same bar on both shapes of the screen. */
-  const head = (
-    <PageHeader title={t.newTitle} back={{ href: '/settings/students', label: t.title }} />
-  )
 
   if (atLimit) {
     return (

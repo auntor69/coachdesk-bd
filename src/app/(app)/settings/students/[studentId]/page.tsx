@@ -1,4 +1,5 @@
 import { PageHeader } from '@/components/page-header'
+import { ReadOnlyNote } from '@/components/read-only-note'
 import { Card } from '@/components/ui'
 import { pageRole, getSession } from '@/lib/auth/session'
 import { branchChoicesFor } from '@/lib/branches'
@@ -40,6 +41,29 @@ export default async function StudentPage({
   const d = dict(locale)
   const t = d.settings.students
 
+  const back = { href: '/settings/students' as const, label: t.title }
+
+  /*
+   * `updateStudent` runs `requireWritable`, so nothing on this form can be saved by a
+   * lapsed centre — and this screen is nothing but the form.
+   *
+   * Before the reads, and nothing readable is lost by that: everything this form holds
+   * is on the student's own profile screen, which is a read and stays open. The roster
+   * this crumb goes back to still draws View beside every name, and it draws no Edit
+   * while the centre is read-only, so the ordinary way here is closed too — what is left
+   * is a stale tab or a typed address, and neither wants two queries first.
+   */
+  if (session.access !== 'full') {
+    return (
+      <div className="flex flex-col gap-5">
+        {/* The screen's name and not the student's, for the same reason the failed read
+            below uses it: the row has not been asked for. */}
+        <PageHeader title={t.editTitle} back={back} />
+        <ReadOnlyNote t={d.readOnly} className="max-w-2xl" />
+      </div>
+    )
+  }
+
   const [{ data: student, error: studentError }, { data: batches }, branches] =
     await Promise.all([
       supabase
@@ -68,8 +92,6 @@ export default async function StudentPage({
       // correction from moving them; see BranchPicker.
       branchChoicesFor(supabase, session),
     ])
-
-  const back = { href: '/settings/students' as const, label: t.title }
 
   /*
    * The read that failed, ahead of the row that is not there — because `notFound`

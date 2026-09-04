@@ -132,23 +132,42 @@ test('the right half is the batches, the warning, then the button', () => {
   assert.equal(count(FORM, 'type="submit"'), 4, 'add, buy, ask, withdraw')
 })
 
-test('the page caps its prose and its two refusals', () => {
-  assert.equal(count(PAGE, 'max-w-2xl'), 2, 'both dead ends')
+test('the page caps its prose and its three refusals', () => {
+  assert.equal(count(PAGE, 'max-w-2xl'), 3, 'read-only, unreadable, and full-with-nothing-to-buy')
   assert.ok(PAGE.includes('<Card className="max-w-2xl border-late/30 bg-late/5">'))
   assert.ok(PAGE.includes('<Card className="max-w-2xl">'))
+  assert.ok(PAGE.includes('<ReadOnlyNote t={d.readOnly} className="max-w-2xl" />'))
 
   // The sentence under the title is the bar's subtitle now, which caps itself at 672px
   // — so the page no longer writes a `max-w-2xl` for it.
   assert.ok(PAGE.includes('subtitle={t.body}'))
 
-  // Both arms name the screen that refused, and the bar is what names it.
-  assert.equal(count(PAGE, '<PageHeader'), 2)
+  // Every arm names the screen that refused, and the bar is what names it.
+  assert.equal(count(PAGE, '<PageHeader'), 3)
   assert.equal(count(PAGE, '<h1'), 0, 'the bar owns the heading')
   assert.equal(
     count(PAGE, "back={{ href: '/settings/students', label: d.settings.students.title }}"),
-    2,
+    3,
     'and the way back is to the roster, not to the settings hub',
   )
+})
+
+test('a lapsed centre never sees the paste box, and pays nothing to find out', () => {
+  // §10 is the whole cost of this arm having been missing: `importStudents` refuses the
+  // paste whole rather than in part, so a read-only centre typed three hundred lines and
+  // saved none of them.
+  const lapsed = at(PAGE, "if (session.access !== 'full') {")
+  assert.ok(PAGE.includes("import { ReadOnlyNote } from '@/components/read-only-note'"))
+
+  // Before all three reads: the arm has nothing to learn from any of them.
+  for (const query of ['.from(\'batches\')', 'centerStudentCount(supabase', '.from(\'students\')']) {
+    assert.ok(lapsed < at(PAGE, query), `${query} runs for a centre that cannot write`)
+  }
+
+  // And above the full-and-cannot-buy card, for the reason the add-student screen orders
+  // its own two arms the same way: places bought on a lapsed subscription are capacity
+  // nobody can use until the bill is settled, so the bill is the one ask worth making.
+  assert.ok(lapsed < at(PAGE, 'room === 0 && forSale === null'))
 })
 
 /* -------------------------------------------------------------------------- */

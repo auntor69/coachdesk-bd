@@ -478,6 +478,19 @@ export const bn = {
      * whole billing state is a form alert nobody finishes reading.
      */
     refused: 'এখন শুধু দেখা যাবে — এটা সেভ হয়নি। কী করতে হবে স্ক্রিনের উপরে লেখা আছে।',
+    /**
+     * Where a form would have been, drawn by `components/read-only-note.tsx`.
+     *
+     * `refused` above is what a form says after the fact; this is instead of the form.
+     * Names neither the state nor the date — the banner above does both and holds the
+     * buttons — and names no particular write either, because twelve screens draw this
+     * one sentence and the reader already knows which one they opened.
+     */
+    noFormTitle: 'এই সেন্টারে এখন নতুন কিছু সেভ হবে না',
+    noFormBody:
+      'তাই ফর্মটি এখানে নেই — লিখলেও সেভ করার সময় নেওয়া হবে না। কেন, আর কী করতে '
+      + 'হবে, তা স্ক্রিনের উপরে লেখা আছে। আগে যা তোলা হয়েছে তার কিছুই বদলায়নি, সব '
+      + 'দেখা যাবে।',
   },
 
   /**

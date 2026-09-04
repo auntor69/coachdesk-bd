@@ -200,6 +200,20 @@ export const en: Dictionary = {
     refused:
       'You can look, but nothing new will save — this was not saved. What to do about '
       + 'it is at the top of the screen.',
+    /**
+     * Drawn where a form would have been, by `components/read-only-note.tsx`.
+     *
+     * Says nothing about which of the two states caused it and names no date: the banner
+     * at the top of the same screen does both, and has the buttons. Neither does it name
+     * the thing that is missing — "no student can be added" would be wrong on the eleven
+     * other screens that draw this — because the reader is standing on that screen and
+     * knows what they came to do.
+     */
+    noFormTitle: 'Nothing new will save at this centre right now',
+    noFormBody:
+      'So the form is not here — anything typed into it would be refused when you '
+      + 'pressed save. Why, and what to do about it, is at the top of this screen. '
+      + 'Nothing already recorded has changed and all of it still reads.',
   },
 
   /**

@@ -7,7 +7,7 @@ import { bn } from '../src/lib/i18n/bn.ts'
 import { en } from '../src/lib/i18n/en.ts'
 
 /**
- * Admitting one student: the two shapes of the screen, and the one bug that is invisible.
+ * Admitting one student: the three shapes of the screen, and the one bug that is invisible.
  *
  * THREE THINGS ARE GUARDED HERE, and they fail in three different ways.
  *
@@ -15,6 +15,10 @@ import { en } from '../src/lib/i18n/en.ts'
  * one DOM, `order-N` per block, two wrappers that are `display: contents` below `lg`. A
  * block with no order lands at 0, above the heading; a reused number swaps two blocks.
  * That one is at least visible to whoever opens the page.
+ *
+ * The third shape is the lapsed centre, and it fails in the most expensive way of the
+ * three: `createStudent` runs `requireWritable`, so the form drawn to a read-only centre
+ * is twelve fields somebody fills in with a family at the desk to be refused on save.
  *
  * §3.4 is a business rule and fails quietly. The refusal used to end with "ask for more
  * places on the plan screen" — the journey the masterplan opens by forbidding, because it
@@ -43,6 +47,9 @@ const ACTIONS = read('src', 'app', '(app)', 'settings', 'plan', 'actions.ts')
 
 /** The at-limit shape, from its early return to the end of it. */
 const WALL_AT = PAGE.indexOf('if (atLimit) {')
+/** The lapsed-centre shape, which is written first because it answers first. */
+const LAPSED_AT = PAGE.indexOf("if (session.access !== 'full') {")
+const LAPSED = PAGE.slice(LAPSED_AT, PAGE.indexOf('const [{ data: batches }'))
 /** The ordinary shape: the grid that opens it to the end of the component. */
 const GRID_AT = PAGE.indexOf('<div className="flex flex-col gap-5 lg:grid')
 const WALL = PAGE.slice(WALL_AT, GRID_AT)
@@ -56,7 +63,7 @@ function ordersIn(source: string): string[] {
   return [...source.matchAll(/(?<=["\s])order-(\d+|last)\b/g)].map((m) => m[1])
 }
 
-test('the screen has two shapes and the wall is the narrow one', () => {
+test('the screen has three shapes and the wall is the narrow one', () => {
   assert.ok(WALL_AT > 0, 'the at-limit early return is not where this test expects it')
   assert.ok(GRID_AT > WALL_AT, 'the grid should be written after the early return')
 
@@ -67,11 +74,31 @@ test('the screen has two shapes and the wall is the narrow one', () => {
   assert.match(WALL, /<Card className="max-w-2xl">/)
   assert.doesNotMatch(WALL, /lg:grid-cols-12/, 'the wall is not a twelve-column grid')
 
-  // And the bar is the same JSX on both, so a back link cannot go missing from one.
+  // And the bar is the same JSX on all three, so a back link cannot go missing from one.
   assert.equal([...PAGE.matchAll(/const head = \(/g)].length, 1)
   assert.match(PAGE, /const head = \(\s+<PageHeader title=\{t\.newTitle\}/)
-  assert.equal([...PAGE.matchAll(/\{head\}/g)].length, 2)
+  assert.equal([...PAGE.matchAll(/\{head\}/g)].length, 3)
   assert.match(WALL, /\{head\}/)
+})
+
+test('a lapsed centre gets no form, and is told that before the wall is', () => {
+  // `createStudent` runs requireWritable, so the form could only ever be filled in and
+  // refused — with a family at the desk, which is the whole cost of this screen's version
+  // of the defect.
+  assert.ok(LAPSED_AT > 0, 'the read-only arm is gone from the add-student screen')
+  assert.match(LAPSED, /\{head\}/, 'the arm draws no heading, so nothing names the screen')
+  assert.match(LAPSED, /<ReadOnlyNote t=\{d\.readOnly\}/)
+  assert.match(PAGE, /import \{ ReadOnlyNote \} from '@\/components\/read-only-note'/)
+
+  // Above the at-limit wall, whose ask is "buy more places" — capacity nobody can use
+  // until the bill is settled. Same one-ask-per-screen rule the shell applies to the
+  // trial notice, and the bill wins.
+  assert.ok(LAPSED_AT < WALL_AT, 'the wall answers a lapsed centre before the bill does')
+
+  // And before every read, so the arm costs no round trips rather than four wasted ones.
+  for (const query of ['centerStudentCount(supabase', 'branchChoicesFor(supabase', 'openAsk(supabase']) {
+    assert.ok(PAGE.indexOf(query) > LAPSED_AT, `${query} runs for a centre that cannot write`)
+  }
 })
 
 test('the render is one column on a phone and twelve from lg up', () => {

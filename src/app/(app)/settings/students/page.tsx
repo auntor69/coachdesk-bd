@@ -260,6 +260,17 @@ export default async function StudentsPage({
   const warnPlaces = isStaffAdmin(session)
 
   /**
+   * Whether to draw a door into any of the three write screens.
+   *
+   * All three actions behind them run `requireWritable`, so on a lapsed centre the
+   * admit form, the paste box and the edit form each refuse — and this screen was
+   * offering all three. Same rule as the crumbs and the capability links: a control
+   * that leads to a refusal is worse than no control. The list itself is untouched,
+   * because §4.4 is explicit that the register keeps reading.
+   */
+  const mayWrite = session.access === 'full'
+
+  /**
    * Whether to draw the Edit button on a row.
    *
    * The same set as the `pageRole('manager')` on the edit screen itself, which is
@@ -269,7 +280,7 @@ export default async function StudentsPage({
    * gets View — the record is theirs to read — and no button to a screen that would
    * refuse them.
    */
-  const mayEdit = isStaffAdmin(session)
+  const mayEdit = isStaffAdmin(session) && mayWrite
 
   // The two problem sets, kept as lists rather than counts, because each one is now
   // both a number on a card and the list that card opens. Two predicates written twice
@@ -362,13 +373,15 @@ export default async function StudentsPage({
            in the rail. */
         subtitle={pooled ? t.used(activeCount, limit) : t.usedHere(activeCount)}
         actions={
-          <Link
-            href="/settings/students/new"
-            className="inline-flex min-h-tap items-center justify-center rounded-xl
-              bg-brand-600 px-5 font-semibold text-white hover:bg-brand-700"
-          >
-            {t.new}
-          </Link>
+          mayWrite && (
+            <Link
+              href="/settings/students/new"
+              className="inline-flex min-h-tap items-center justify-center rounded-xl
+                bg-brand-600 px-5 font-semibold text-white hover:bg-brand-700"
+            >
+              {t.new}
+            </Link>
+          )
         }
       />
 
@@ -405,23 +418,29 @@ export default async function StudentsPage({
             the register and pastes it. Kept in front of the owner rather than hidden
             behind the one-at-a-time form, because 200 students typed one by one is
             an evening nobody spends.
+
+            Gone on a lapsed centre — §10 refuses a paste whole rather than in part, so
+            this door leads to an afternoon's typing and nothing saved. A `false` child
+            costs no gap in this column, so the three blocks below keep their order.
           */}
-          <Link
-            href="/settings/students/import"
-            className="order-3 flex min-h-tap items-center justify-between gap-3
-              rounded-xl border-2 border-dashed border-line bg-white px-4 py-3
-              hover:border-brand-300"
-          >
-            <span>
-              <span className="block font-medium text-ink">{t.importTitle}</span>
-              <span className="block text-sm text-ink-soft">
-                {t.importBody(MAX_IMPORT_ROWS)}
+          {mayWrite && (
+            <Link
+              href="/settings/students/import"
+              className="order-3 flex min-h-tap items-center justify-between gap-3
+                rounded-xl border-2 border-dashed border-line bg-white px-4 py-3
+                hover:border-brand-300"
+            >
+              <span>
+                <span className="block font-medium text-ink">{t.importTitle}</span>
+                <span className="block text-sm text-ink-soft">
+                  {t.importBody(MAX_IMPORT_ROWS)}
+                </span>
               </span>
-            </span>
-            <span aria-hidden className="shrink-0 text-lg text-brand-700">
-              →
-            </span>
-          </Link>
+              <span aria-hidden className="shrink-0 text-lg text-brand-700">
+                →
+              </span>
+            </Link>
+          )}
 
           {missingPhone > 0 && (
             <Card className="order-4 border-late/30 bg-late/5">
