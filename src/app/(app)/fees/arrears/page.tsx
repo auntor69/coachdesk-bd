@@ -1,5 +1,4 @@
-import Link from 'next/link'
-
+import { PageHeader } from '@/components/page-header'
 import { Card } from '@/components/ui'
 import { pageCapability, getSession } from '@/lib/auth/session'
 import { createClient } from '@/lib/supabase/server'
@@ -75,17 +74,13 @@ export default async function ArrearsPage() {
     return { value, label: formatMonth(value, locale) }
   })
 
+  const back = { href: '/fees' as const, label: t.backToFees }
+
   /** The screen with no form on it. See the guard below for why all three refuse. */
   const refusal = (problem: PageFailure) => (
-    <div className="flex flex-col gap-4 lg:max-w-2xl">
-      <Link
-        href="/fees"
-        className="inline-flex min-h-tap items-center font-medium text-brand-700"
-      >
-        ← {t.backToFees}
-      </Link>
-      <h1 className="text-xl font-bold text-ink lg:text-2xl">{t.title}</h1>
-      <Card className="border-late/30 bg-late/5">
+    <div className="flex flex-col gap-4">
+      <PageHeader title={t.title} back={back} />
+      <Card className="max-w-2xl border-late/30 bg-late/5">
         <p className="font-medium text-ink">
           {problem === 'tooLarge' ? t.tooLarge : t.unreadable}
         </p>
@@ -213,17 +208,7 @@ export default async function ArrearsPage() {
 
   return (
     <div className="flex flex-col gap-4 lg:gap-6">
-      <Link
-        href="/fees"
-        className="inline-flex min-h-tap items-center font-medium text-brand-700"
-      >
-        ← {t.backToFees}
-      </Link>
-
-      <div>
-        <h1 className="text-xl font-bold text-ink lg:text-2xl">{t.title}</h1>
-        <p className="mt-1 text-sm text-ink-soft">{t.subtitle}</p>
-      </div>
+      <PageHeader title={t.title} back={back} subtitle={t.subtitle} />
 
       {rows.length === 0 ? (
         // Capped, like the at-limit shape of the add-student screen: one sentence

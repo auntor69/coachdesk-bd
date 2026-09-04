@@ -1,5 +1,6 @@
 import Link from 'next/link'
 
+import { PageHeader } from '@/components/page-header'
 import { PlacesWarning } from '@/components/places-warning'
 import { Card } from '@/components/ui'
 import { pagePermission, getSession, isStaffAdmin } from '@/lib/auth/session'
@@ -162,27 +163,20 @@ export default async function NewStudentPage() {
       return { id: batch.id, label: parts.join(' · ') }
     })
 
-  /** The same header on both shapes of the screen. */
+  /** The same bar on both shapes of the screen. */
   const head = (
-    <div>
-      <Link
-        href="/settings/students"
-        className="inline-flex min-h-tap items-center text-ink-soft hover:text-ink"
-      >
-        ← {t.title}
-      </Link>
-      <h1 className="mt-1 text-xl font-bold text-ink">{t.newTitle}</h1>
-    </div>
+    <PageHeader title={t.newTitle} back={{ href: '/settings/students', label: t.title }} />
   )
 
   if (atLimit) {
     return (
-      // One column and capped, because there is one thing to read. A 7/5 split with an
-      // empty rail beside it would be a third of the screen saying nothing.
-      <div className="flex max-w-2xl flex-col gap-5">
+      // One column, and the cap on the card rather than the column: there is one thing to
+      // read, and a 7/5 split with an empty rail beside it would be a third of the screen
+      // saying nothing.
+      <div className="flex flex-col gap-5">
         {head}
 
-        <Card>
+        <Card className="max-w-2xl">
           {/*
            * Two openings, because the two tiers have different ways out: a teacher plan
            * is full and wants changing, a centre has used the places it bought and wants
@@ -311,76 +305,82 @@ export default async function NewStudentPage() {
   /*
    * The dashboard's arrangement, for its reasons (see /dashboard/page.tsx): one DOM, two
    * layouts. Below `lg` the two wrappers are `display: contents`, so every block is a
-   * direct child of the single column and `order-N` puts it in reading order; from `lg`
-   * the wrappers become the columns themselves and each block's number applies inside
-   * its own.
+   * direct child of the single column and its order number puts it in reading order; from
+   * `lg` the wrappers become the columns themselves and each block's number applies
+   * inside its own.
    *
-   * The warning is order-2, above the form, and that is the whole reason the numbers are
-   * not in source order: eighteen students short of the ceiling is something to read
-   * before typing a name, not after submitting one.
+   * The warning sits above the form, and that is the whole reason the numbers are not in
+   * source order: eighteen students short of the ceiling is something to read before
+   * typing a name, not after submitting one.
    */
   return (
-    <div className="flex flex-col gap-5 lg:grid lg:grid-cols-12 lg:items-start lg:gap-6">
-      <div className="order-1 lg:col-span-12">{head}</div>
+    <div className="flex flex-col gap-5">
+      {head}
 
-      <div className="contents lg:order-2 lg:col-span-7 lg:flex lg:flex-col lg:gap-5">
-        <div className="order-3">
-          <StudentForm
-            t={d.studentForm}
-            common={d.common}
-            batches={batchOptions}
-            branchPick={d.branchPick}
-            branches={branches}
-          />
+      {/* The grid is nested under the bar rather than holding it as a twelfth-column
+          cell: a sticky box only travels inside its containing block, and a grid cell's
+          block is one grid row. */}
+      <div className="flex flex-col gap-5 lg:grid lg:grid-cols-12 lg:items-start lg:gap-6">
+        <div className="contents lg:order-2 lg:col-span-7 lg:flex lg:flex-col lg:gap-5">
+          <div className="order-3">
+            <StudentForm
+              t={d.studentForm}
+              common={d.common}
+              batches={batchOptions}
+              branchPick={d.branchPick}
+              branches={branches}
+            />
+          </div>
         </div>
-      </div>
 
-      <div className="contents lg:order-3 lg:col-span-5 lg:flex lg:flex-col lg:gap-5">
-        {/*
-         * Null while there is room, so nothing is drawn and nothing costs a gap. Staff
-         * admins only, and the reason is the door rather than the news: it ends in a
-         * link to /settings/plan, which a teacher on `can_manage_students` would be
-         * refused at. Their version of this warning is the form saying no.
-         */}
-        {isStaffAdmin(session) && (
-          <PlacesWarning
-            className="order-2"
-            pressure={capacityPressure(session.ceiling, studentCount ?? 0)}
-            t={d.dashboard}
-          />
-        )}
+        <div className="contents lg:order-3 lg:col-span-5 lg:flex lg:flex-col lg:gap-5">
+          {/*
+           * Null while there is room, so nothing is drawn and nothing costs a gap. Staff
+           * admins only, and the reason is the door rather than the news: it ends in a
+           * link to /settings/plan, which a teacher on `can_manage_students` would be
+           * refused at. Their version of this warning is the form saying no.
+           */}
+          {isStaffAdmin(session) && (
+            <PlacesWarning
+              className="order-2"
+              pressure={capacityPressure(session.ceiling, studentCount ?? 0)}
+              t={d.dashboard}
+            />
+          )}
 
-        {/* The same tile as the roster's, word for word: 200 students typed one at a
-            time is an evening nobody spends, and this form is where somebody finds that
-            out on student four. */}
-        <Link
-          href="/settings/students/import"
-          className="order-4 flex min-h-tap items-center justify-between gap-3 rounded-xl
-            border-2 border-dashed border-line bg-white px-4 py-3
-            hover:border-brand-300"
-        >
-          <span>
-            <span className="block font-medium text-ink">{t.importTitle}</span>
-            <span className="block text-sm text-ink-soft">
-              {t.importBody(MAX_IMPORT_ROWS)}
+          {/* The same tile as the roster's, word for word: 200 students typed one at a
+              time is an evening nobody spends, and this form is where somebody finds
+              that out on student four. */}
+          <Link
+            href="/settings/students/import"
+            className="order-4 flex min-h-tap items-center justify-between gap-3
+              rounded-xl border-2 border-dashed border-line bg-white px-4 py-3
+              hover:border-brand-300"
+          >
+            <span>
+              <span className="block font-medium text-ink">{t.importTitle}</span>
+              <span className="block text-sm text-ink-soft">
+                {t.importBody(MAX_IMPORT_ROWS)}
+              </span>
             </span>
-          </span>
-          <span aria-hidden className="shrink-0 text-lg text-brand-700">
-            →
-          </span>
-        </Link>
+            <span aria-hidden className="shrink-0 text-lg text-brand-700">
+              →
+            </span>
+          </Link>
 
-        {/*
-         * What saving this actually does, in two sentences — both of which exist on the
-         * roster as a problem to fix afterwards. A guardian's number that reaches nobody
-         * and a student in no batch are the two ways a record looks finished and is not,
-         * and this is the one moment where saying so costs nobody an afternoon.
-         */}
-        <Card className="order-5">
-          <h2 className="font-semibold text-ink">{t.savesTitle}</h2>
-          <p className="mt-2 text-sm text-ink-soft">{t.savesPhone}</p>
-          <p className="mt-2 text-sm text-ink-soft">{t.savesBatch}</p>
-        </Card>
+          {/*
+           * What saving this actually does, in two sentences — both of which exist on
+           * the roster as a problem to fix afterwards. A guardian's number that reaches
+           * nobody and a student in no batch are the two ways a record looks finished
+           * and is not, and this is the one moment where saying so costs nobody an
+           * afternoon.
+           */}
+          <Card className="order-5">
+            <h2 className="font-semibold text-ink">{t.savesTitle}</h2>
+            <p className="mt-2 text-sm text-ink-soft">{t.savesPhone}</p>
+            <p className="mt-2 text-sm text-ink-soft">{t.savesBatch}</p>
+          </Card>
+        </div>
       </div>
     </div>
   )

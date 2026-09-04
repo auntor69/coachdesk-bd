@@ -234,7 +234,7 @@ const ROW = read(...HERE, 'scholarship-row.tsx')
 const RENDER = PAGE.slice(
   PAGE.indexOf('<div className="flex flex-col gap-5 lg:grid lg:grid-cols-12 lg:items-start lg:gap-6">'),
 )
-const HEAD_AT = RENDER.indexOf('<div className="order-1 flex flex-col gap-4 lg:col-span-12">')
+const HEAD_AT = PAGE.indexOf('<PageHeader')
 const RAIL_AT = RENDER.indexOf(
   '<div className="contents lg:order-3 lg:col-span-5 lg:flex lg:flex-col lg:gap-5">',
 )
@@ -256,17 +256,23 @@ test('the awards and what they cost sit side by side from lg', () => {
   // The whole point of the redesign: "sibling, 50% of the fee" level with "sibling, 12
   // bills, 9,000" instead of three screens above it.
   assert.ok(RENDER.startsWith('<div className="flex flex-col gap-5 lg:grid'))
-  assert.ok(HEAD_AT >= 0, 'letterhead spans twelve')
+  assert.ok(HEAD_AT >= 0, 'the screen lost its page bar')
   assert.ok(RAIL_AT >= 0, 'rail takes five')
   assert.ok(LIST_AT >= 0, 'awards list takes seven')
-  assert.ok(HEAD_AT < RAIL_AT && RAIL_AT < LIST_AT, 'head, then rail, then list')
+  assert.ok(RAIL_AT < LIST_AT, 'rail, then list')
+
+  // The bar is above the grid and not a twelfth-column cell inside it: a sticky box only
+  // travels inside its containing block, and a grid cell's block is one grid row.
+  assert.ok(HEAD_AT < PAGE.indexOf('lg:grid-cols-12'), 'the bar is inside the grid')
+  assert.doesNotMatch(RENDER, /lg:col-span-12/)
 })
 
 test('the rail is written first and drawn second', () => {
   // order moves nothing for a keyboard, so naming a waiver has to come before the edit
-  // button of every award the centre has ever granted.
-  assert.deepEqual(ordersIn(RENDER), ['1', '2', '4', '3'])
-  assert.deepEqual([...ordersIn(RENDER)].sort(), ['1', '2', '3', '4'])
+  // button of every award the centre has ever granted. There is no `order-1` any more —
+  // that was the letterhead's own cell, and the bar above the grid replaced it.
+  assert.deepEqual(ordersIn(RENDER), ['2', '4', '3'])
+  assert.deepEqual([...ordersIn(RENDER)].sort(), ['2', '3', '4'])
   assert.ok(RENDER.includes('lg:order-3 lg:col-span-5'))
   assert.ok(RENDER.includes('lg:order-2 lg:col-span-7'))
 })
@@ -336,12 +342,15 @@ test('both refusals are written in both languages, and say something else', () =
   assert.notEqual(bn.scholarships.unreadable, en.scholarships.unreadable)
 })
 
-test('the letterhead is drawn once, in the hand the other screens use', () => {
-  assert.equal(count(PAGE, 'text-xl font-bold text-ink lg:text-2xl'), 1)
-  assert.equal(count(RENDER, '<h1'), 1)
-  const back = RENDER.indexOf('href="/fees"')
-  assert.ok(back >= 0, 'the way back to the board is on the page')
-  assert.ok(back < RENDER.indexOf('<h1'), 'back link on top')
+test('the letterhead is the page bar, and the way back is in it', () => {
+  // One bar, and it owns the h1 — so the two headings inside the grid are h2s.
+  assert.equal(count(PAGE, '<PageHeader'), 1)
+  assert.equal(count(PAGE, '<h1'), 0)
+  assert.equal(count(PAGE, 'text-xl font-bold text-ink lg:text-2xl'), 0)
+
+  // The crumb is the bar's, so it stays on screen while a hundred awards scroll past.
+  assert.ok(PAGE.includes("back={{ href: '/fees', label: t.backLink }}"))
+  assert.equal(count(PAGE, 'href="/fees"'), 0, 'no hand-rolled back link left behind')
 })
 
 test('the row still opens into the same form, and the rule is still frozen', () => {

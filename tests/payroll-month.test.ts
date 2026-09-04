@@ -542,6 +542,12 @@ const RAIL_AT = SHEET.indexOf(
 const MAIN_AT = SHEET.indexOf('<div className="order-4 flex flex-col gap-3 lg:order-3')
 const REG_AT = SHEET.indexOf('<div className="order-5 flex flex-col gap-3 lg:col-span-12">')
 const HEAD = SHEET.slice(0, RAIL_AT)
+
+/** The main arm's bar, above the grid. `lastIndexOf` keeps the locked arm's own out. */
+const BAR = PAGE.slice(
+  PAGE.lastIndexOf('<PageHeader'),
+  PAGE.indexOf('<div className="flex flex-col gap-4 lg:grid'),
+)
 const RAIL = SHEET.slice(RAIL_AT, MAIN_AT)
 const MAIN = SHEET.slice(MAIN_AT, REG_AT)
 const REGISTER = SHEET.slice(REG_AT)
@@ -581,12 +587,18 @@ test('shape: the figures are written before the people and drawn after them', ()
 })
 
 test('shape: every block has a place in the phone order, and no two share one', () => {
-  // Furniture, header, figures, people, register — read in that order on a phone, which is
-  // what the month costs first and the audit trail last.
-  assert.equal(ordersIn(HEAD).join(), '1,2')
+  // Figures, people, register — read in that order on a phone, which is what the month cost
+  // first and the audit trail last. Nothing above them inside the grid any more: the
+  // letterhead and the month picker are in the bar, which sits above the grid rather than
+  // in a cell of it, because a sticky box only travels inside its containing block.
+  assert.equal(ordersIn(HEAD).join(), '')
   assert.equal(ordersIn(RAIL).join(), '3')
   assert.equal(ordersIn(MAIN).join(), '4')
   assert.equal(ordersIn(REGISTER).join(), '5')
+
+  // One full-width cell, and it is the register: the heading's has gone.
+  assert.equal(SHEET.split('lg:col-span-12').length - 1, 1)
+  assert.match(REGISTER, /lg:col-span-12/)
 
   const all = ordersIn(SHEET)
   assert.equal(new Set(all).size, all.length, 'two blocks are fighting over one place')
@@ -630,22 +642,31 @@ test('shape: one card to a row, because the form inside it has four money boxes'
   assert.doesNotMatch(MAIN, /grid-cols-\d/, 'the pay cards went two abreast')
 })
 
-test('shape: the month picker is still a plain GET form, and says the month once', () => {
-  assert.match(HEAD, /<form\r?\n\s+method="get"/, 'the month picker is no longer a GET form')
-  assert.match(HEAD, /name="month"\r?\n\s+defaultValue=\{month\}/)
+test('shape: the month picker is still a plain GET form, in the bar, said once', () => {
+  assert.match(BAR, /actions=\{\s+<form method="get"/, 'the month picker left the bar')
+  assert.match(BAR, /name="month"\r?\n\s+aria-label=\{t\.month\}\r?\n\s+defaultValue=\{month\}/)
 
   // The submit button is load-bearing and looks like decoration: Android Chrome fires no
   // navigation on a bare <select> change.
-  assert.match(HEAD, /<button\r?\n\s+type="submit"/)
+  assert.match(BAR, /<button\r?\n\s+type="submit"/)
+
+  // Capped, because the bar is one line deep and a month select is the widest thing in it.
+  assert.match(BAR, /min-h-tap max-w-44 rounded-xl border-2 border-line bg-white px-3/)
+  assert.match(BAR, /sm:max-w-56/)
 
   // And the month is named once. The select already reads "August 2026" in the reader's own
   // script, so the paragraph that used to sit under it was the same fact twice.
   assert.doesNotMatch(SHEET, /\{formatMonth\(month, locale\)\}/)
 
   // The way back is not gated on writing: a lapsed centre may read the month, and the
-  // agreements behind it, either way. The whole row, because a gate goes in front of what
-  // it gates and a slice starting at the link would miss it.
-  assert.doesNotMatch(HEAD, /canWrite/, 'the way back got gated on writing')
+  // agreements behind it, either way.
+  assert.doesNotMatch(BAR, /canWrite/, 'the way back got gated on writing')
+
+  // Both arms draw a bar, and it owns the h1 — so the locked arm's own title is an h2.
+  assert.equal(PAGE.split('<PageHeader').length - 1, 2)
+  assert.equal(PAGE.split('<h1').length - 1, 0)
+  assert.doesNotMatch(PAGE, /text-xl font-bold text-ink lg:text-2xl/)
+  assert.doesNotMatch(PAGE, /<BackToFees/, 'a hand-rolled crumb is back above the bar')
 })
 
 test('shape: nothing about who may read or write this has moved', () => {

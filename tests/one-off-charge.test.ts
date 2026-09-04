@@ -324,19 +324,27 @@ test('the schedule is a band inside the fee card, not a tile inside it', () => {
   assert.match(FEE, /CHARGE_CATEGORIES\.map/)
 })
 
-test('the letterhead says what the screen is, and no card is a metre wide', () => {
-  assert.equal(
-    PAGE.split('className="text-xl font-bold text-ink lg:text-2xl">{t.title}').length - 1,
-    1,
-  )
+test('the letterhead is the page bar, and no card is a metre wide', () => {
+  // One bar, and it owns the h1 — so the empty-batch card's own title is an h2.
+  assert.equal(PAGE.split('<PageHeader').length - 1, 1)
+  assert.equal(PAGE.split('<h1').length - 1, 0)
+  assert.equal(PAGE.split('text-xl font-bold text-ink lg:text-2xl').length - 1, 0)
   assert.equal(PAGE.split('{t.subtitle}').length - 1, 1)
-  assert.equal(PAGE.split('{t.backToFees}').length - 1, 1, 'a way back went missing')
+  assert.equal(
+    PAGE.split("back={{ href: '/fees', label: t.backToFees }}").length - 1,
+    1,
+    'a way back went missing',
+  )
 
   // The picker, the refusal, "choose a batch" and the empty batch — four one-sentence
-  // cards, none of them stretched across a laptop.
+  // cards, none of them stretched across a laptop. The cap is on each card rather than on
+  // the page, or the bar's `lg:-mx-8` background would stop 672px into the workspace.
   assert.equal(PAGE.split('lg:max-w-2xl').length - 1, 4)
+  assert.doesNotMatch(PAGE, /flex max-w-2xl flex-col/)
 
-  // The picker's button beside its select from `sm`, full width under it on a phone.
+  // The picker's button beside its select from `sm`, full width under it on a phone. It
+  // stays a card of its own rather than moving into the bar: unlike the month pickers on
+  // /fees/close and /expenses it carries a label and a sentence saying what it narrows.
   assert.match(PAGE, /method="get"/)
   assert.match(PAGE, /sm:flex-row sm:items-end sm:gap-3/)
   assert.match(PAGE, /className="mt-3 w-full sm:mt-0 sm:w-auto"/)

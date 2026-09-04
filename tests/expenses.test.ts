@@ -314,9 +314,9 @@ const PAGE = readFileSync(
  * everything on a Linux checkout.
  */
 const SHEET = PAGE.slice(PAGE.indexOf('<div className="flex flex-col gap-4 xl:grid'))
+const BAR = PAGE.slice(0, PAGE.indexOf('<div className="flex flex-col gap-4 xl:grid'))
 const RAIL_AT = SHEET.indexOf('<div className="contents xl:order-3 xl:col-span-4')
 const MAIN_AT = SHEET.indexOf('<div className="contents xl:order-2 xl:col-span-8')
-const HEAD = SHEET.slice(0, RAIL_AT)
 const RAIL = SHEET.slice(RAIL_AT, MAIN_AT)
 const MAIN = SHEET.slice(MAIN_AT)
 
@@ -344,11 +344,12 @@ test('shape: one column on a phone, twelve from xl, and the month gets eight', (
 })
 
 test('shape: every block has a place in the phone order, and no two share one', () => {
-  // Two full-width rows, then one block in each column. Per column the numbers must
-  // ascend in source order or the phone and the laptop disagree about what follows what.
-  assert.equal(ordersIn(HEAD).join(), '1,2')
+  // One block in each column now: the letterhead and the month picker were two full-width
+  // rows above them, and both are the bar's. Per column the numbers must ascend in source
+  // order or the phone and the laptop disagree about what follows what.
   assert.equal(ordersIn(RAIL).join(), '3')
   assert.equal(ordersIn(MAIN).join(), '4')
+  assert.doesNotMatch(SHEET, /xl:col-span-12/)
 
   const all = ordersIn(SHEET)
   assert.equal(new Set(all).size, all.length, 'two blocks are fighting over one place')
@@ -423,21 +424,31 @@ test('shape: the three answers are still three, and the form is still gated', ()
   assert.match(RAIL, /<ExpenseForm/)
 })
 
-test('shape: the month picker is still a plain GET form, and says the month once', () => {
-  assert.match(HEAD, /<form\r?\n\s+method="get"/, 'the month picker is no longer a GET form')
-  assert.match(HEAD, /name="month"\r?\n\s+defaultValue=\{month\}/)
+test('shape: the month picker is still a plain GET form, in the bar', () => {
+  // In the bar's own `actions` slot now rather than a twelfth-column row of its own, so it
+  // stays on screen while a month of vouchers scrolls past.
+  assert.match(BAR, /actions=\{\s+<form method="get" className="flex items-center gap-2">/)
+  assert.match(BAR, /name="month"\s+aria-label=\{t\.month\}\s+defaultValue=\{month\}/)
 
   // The submit button is load-bearing and looks like decoration: Android Chrome fires no
   // navigation on a bare <select> change.
-  assert.match(HEAD, /<button\r?\n\s+type="submit"/)
+  assert.match(BAR, /<button\r?\n\s+type="submit"/)
 
-  // `w-full` below `sm` so the controls take a line of their own rather than squeezing the
-  // month down to eighty pixels beside the way back.
-  assert.match(HEAD, /w-full min-w-0 items-end justify-end gap-2 sm:w-auto sm:flex-1/)
+  // Label-less with an `aria-label`, because the bar is one line deep at `lg:min-h-14` and
+  // every sticky rail in the app starts at `top-16` below it. The select is capped rather
+  // than left to grow: a month name in Bangla beside a long centre title otherwise pushes
+  // the crumb off a phone.
+  assert.match(BAR, /min-h-tap max-w-44 rounded-xl border-2 border-line bg-white px-3/)
+  assert.match(BAR, /sm:max-w-56/)
 
   // And the month is named once. The select already reads "August 2026" in the reader's
   // own script, so the sentence that used to sit under it was the same fact twice.
   assert.doesNotMatch(SHEET, /\{formatMonth\(month, locale\)\}/)
+
+  // Both arms draw a bar, and it owns the h1 — so the locked arm's own title is an h2.
+  assert.equal(PAGE.split('<PageHeader').length - 1, 2)
+  assert.equal(PAGE.split('<h1').length - 1, 0)
+  assert.doesNotMatch(PAGE, /text-xl font-bold text-ink lg:text-2xl/)
 })
 
 test('shape: nothing about who may read or write this has moved', () => {

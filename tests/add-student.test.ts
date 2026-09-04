@@ -60,15 +60,18 @@ test('the screen has two shapes and the wall is the narrow one', () => {
   assert.ok(WALL_AT > 0, 'the at-limit early return is not where this test expects it')
   assert.ok(GRID_AT > WALL_AT, 'the grid should be written after the early return')
 
-  // One column and capped. A 7/5 split with an empty rail beside a single card is a
-  // third of a laptop screen saying nothing.
-  assert.match(WALL, /<div className="flex max-w-2xl flex-col gap-5">/)
+  // One column and capped — on the card rather than on the column, or the bar's
+  // `lg:-mx-8` background would stop 672px into a 1,216px workspace. A 7/5 split with an
+  // empty rail beside a single card is a third of a laptop screen saying nothing.
+  assert.match(WALL, /<div className="flex flex-col gap-5">/)
+  assert.match(WALL, /<Card className="max-w-2xl">/)
   assert.doesNotMatch(WALL, /lg:grid-cols-12/, 'the wall is not a twelve-column grid')
 
-  // And the header is the same JSX on both, so a back link cannot go missing from one.
+  // And the bar is the same JSX on both, so a back link cannot go missing from one.
   assert.equal([...PAGE.matchAll(/const head = \(/g)].length, 1)
+  assert.match(PAGE, /const head = \(\s+<PageHeader title=\{t\.newTitle\}/)
+  assert.equal([...PAGE.matchAll(/\{head\}/g)].length, 2)
   assert.match(WALL, /\{head\}/)
-  assert.match(RENDER, /\{head\}/)
 })
 
 test('the render is one column on a phone and twelve from lg up', () => {
@@ -87,8 +90,9 @@ test('the render is one column on a phone and twelve from lg up', () => {
   assert.match(RENDER, /lg:col-span-7/)
   assert.match(RENDER, /lg:col-span-5/)
 
-  // The header spans the lot rather than sitting above a seven-column column.
-  assert.match(RENDER, /className="order-1 lg:col-span-12"/)
+  // No twelfth-column cell for the heading any more: the bar sits above the grid, because
+  // a sticky box only travels inside its containing block and a cell's is one grid row.
+  assert.doesNotMatch(RENDER, /lg:col-span-12/)
 })
 
 test('the wrappers disappear on a phone and become columns on a laptop', () => {
@@ -116,12 +120,16 @@ test('every block has a place in the phone order, and no two share one', () => {
     assert.equal(n, 1, `order-${value} is used ${n} times`)
   }
 
-  // 1 to 5 with nothing missing: header, warning, form, import door, saves card.
+  // 2 to 5 with nothing missing: warning, form, import door, saves card. There is no
+  // `order-1` any more — that was the heading's twelfth-column cell, and the bar above
+  // the grid replaced it. The numbers were left where they were rather than shifted down,
+  // because only their relative order matters and renumbering four blocks to save a 1 is
+  // four chances to swap two of them.
   const used = [...counts.keys()]
-  for (let n = 1; n <= 5; n += 1) {
+  for (let n = 2; n <= 5; n += 1) {
     assert.ok(used.includes(String(n)), `no block is order-${n}`)
   }
-  assert.equal(used.length, 5, `${used.length} distinct positions, expected 5`)
+  assert.equal(used.length, 4, `${used.length} distinct positions, expected 4`)
 })
 
 test('the warning draws above the form on a phone, and each column draws as written', () => {

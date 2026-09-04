@@ -1,5 +1,4 @@
-import Link from 'next/link'
-
+import { PageHeader } from '@/components/page-header'
 import { Card } from '@/components/ui'
 import { pageCapability, getSession } from '@/lib/auth/session'
 import { branchChoicesFor } from '@/lib/branches'
@@ -34,18 +33,12 @@ export default async function NewTeacherPage() {
   // link this build still renders.
   if (!hasStaff(session.plan)) {
     return (
-      // Capped: a refusal is two sentences, and two sentences set across 1,216px is §26's
-      // defect inside out. The heading was missing altogether, so a bookmark landed a
-      // reader on a card about their plan with nothing above it naming the screen.
-      <div className="flex max-w-2xl flex-col gap-5">
-        <Link
-          href="/settings"
-          className="inline-flex min-h-tap items-center text-ink-soft hover:text-ink"
-        >
-          ← {d.settings.hub.title}
-        </Link>
-        <h1 className="text-xl font-bold text-ink lg:text-2xl">{t.newTitle}</h1>
-        <Card>
+      <div className="flex flex-col gap-5">
+        <PageHeader
+          title={t.newTitle}
+          back={{ href: '/settings', label: d.settings.hub.title }}
+        />
+        <Card className="max-w-2xl">
           <h2 className="font-semibold text-ink">{t.soloTitle}</h2>
           <p className="mt-1 text-sm text-ink-soft">
             {t.soloBody(
@@ -100,21 +93,14 @@ export default async function NewTeacherPage() {
 
   return (
     <div className="flex flex-col gap-5">
-      <div>
-        <Link
-          href="/settings/teachers"
-          className="inline-flex min-h-tap items-center text-ink-soft hover:text-ink"
-        >
-          ← {t.title}
-        </Link>
-        <h1 className="mt-1 text-xl font-bold text-ink lg:text-2xl">{t.newTitle}</h1>
-        {/* The same line the list carries, in the same words: how many teachers there
-            are, and out of how many where a tier caps them. An owner adding somebody is
-            the reader most likely to want it. */}
-        <p className="mt-1 text-ink-soft">
-          {limit === null ? t.count(active) : t.used(active, limit)}
-        </p>
-      </div>
+      <PageHeader
+        title={t.newTitle}
+        back={{ href: '/settings/teachers', label: t.title }}
+        /* The same line the list carries, in the same words: how many teachers there are,
+           and out of how many where a tier caps them. An owner adding somebody is the
+           reader most likely to want it. */
+        subtitle={limit === null ? t.count(active) : t.used(active, limit)}
+      />
 
       {atLimit ? (
         <Card className="max-w-3xl">

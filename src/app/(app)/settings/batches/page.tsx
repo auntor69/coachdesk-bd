@@ -1,5 +1,6 @@
 import Link from 'next/link'
 
+import { PageHeader } from '@/components/page-header'
 import { Card } from '@/components/ui'
 import { pagePermission, canManageStudents, isStaffAdmin, getSession } from '@/lib/auth/session'
 import { createClient } from '@/lib/supabase/server'
@@ -75,15 +76,12 @@ export default async function BatchesPage() {
    */
   if (batches === null) {
     return (
-      <div className="flex max-w-2xl flex-col gap-5">
-        <Link
-          href="/settings"
-          className="inline-flex min-h-tap items-center text-ink-soft hover:text-ink"
-        >
-          ← {d.settings.hub.title}
-        </Link>
-        <h1 className="text-xl font-bold text-ink lg:text-2xl">{t.title}</h1>
-        <Card className="border-late/30 bg-late/5">
+      <div className="flex flex-col gap-5">
+        <PageHeader
+          title={t.title}
+          back={{ href: '/settings', label: d.settings.hub.title }}
+        />
+        <Card className="max-w-2xl border-late/30 bg-late/5">
           <p className="font-medium text-ink">{d.settings.listUnreadable}</p>
         </Card>
       </div>
@@ -125,39 +123,34 @@ export default async function BatchesPage() {
   const limit = capIsQuota(session.plan, 'maxBatches') ? session.plan.maxBatches : null
 
   return (
-    /* The cap is on the page and not the list, so the heading, the count and the
-       button that opens a batch stay the width of the rows they belong to. It lifts
-       at `2xl`, which is where the list becomes two columns and the button belongs at
-       the far edge again. */
-    <div className="flex max-w-2xl flex-col gap-5 2xl:max-w-none">
-      <div>
-        <Link
-          href="/settings"
-          className="inline-flex min-h-tap items-center text-ink-soft hover:text-ink"
-        >
-          ← {d.settings.hub.title}
-        </Link>
-        <div className="mt-1 flex items-end justify-between gap-3">
-          <div>
-            <h1 className="text-xl font-bold text-ink lg:text-2xl">{t.title}</h1>
-            <p className="mt-1 text-ink-soft">
-              {limit === null ? t.count(activeCount) : t.used(activeCount, limit)}
-            </p>
-          </div>
+    /* The cap is on the list and not the page, so the bar still reaches the workspace
+       edges while the rows stay the width they are legible at. It lifts at `2xl`, which is
+       where the list becomes two columns. */
+    <div className="flex flex-col gap-5">
+      <PageHeader
+        title={t.title}
+        back={{ href: '/settings', label: d.settings.hub.title }}
+        /* The count, and the hint in the same line rather than a third one under it —
+           only where tapping a row does something. A promise the rows do not keep is
+           worse than no promise. */
+        subtitle={
+          <>
+            {limit === null ? t.count(activeCount) : t.used(activeCount, limit)}
+            {mayEdit && rows.length > 0 && (
+              <span className="text-ink-faint"> · {t.editHint}</span>
+            )}
+          </>
+        }
+        actions={
           <Link
             href="/settings/batches/new"
-            className="inline-flex min-h-tap shrink-0 items-center justify-center
-              rounded-xl bg-brand-600 px-5 font-semibold text-white"
+            className="inline-flex min-h-tap items-center justify-center rounded-xl
+              bg-brand-600 px-5 font-semibold text-white hover:bg-brand-700"
           >
             {t.new}
           </Link>
-        </div>
-        {/* Only where it is true. A row that does nothing when tapped is a smaller
-            disappointment than a line of copy that promised it would. */}
-        {mayEdit && rows.length > 0 && (
-          <p className="mt-2 text-sm text-ink-faint">{t.editHint}</p>
-        )}
-      </div>
+        }
+      />
 
       {rows.length === 0 ? (
         <Card className="max-w-2xl">
@@ -165,7 +158,10 @@ export default async function BatchesPage() {
           <p className="mt-1 text-sm text-ink-soft">{t.emptyBody}</p>
         </Card>
       ) : (
-        <ul className="flex flex-col gap-2 2xl:grid 2xl:grid-cols-2 2xl:gap-3">
+        <ul
+          className="flex max-w-2xl flex-col gap-2 2xl:grid 2xl:max-w-none
+            2xl:grid-cols-2 2xl:gap-3"
+        >
           {rows.map((row) => {
             const body = (
               <>

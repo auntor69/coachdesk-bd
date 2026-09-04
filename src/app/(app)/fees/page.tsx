@@ -1,6 +1,7 @@
 import { forbidden } from 'next/navigation'
 import Link from 'next/link'
 
+import { PageHeader } from '@/components/page-header'
 import { Card } from '@/components/ui'
 import { SearchBox, SearchEmpty } from '@/components/search-box'
 import { pageCenter, getSession, isStaffAdmin, canReadFees } from '@/lib/auth/session'
@@ -456,14 +457,11 @@ export default async function FeesPage({
 
   if (boardProblem !== null) {
     return (
-      // Capped and one column: a 7/5 split with an empty rail beside one sentence is
-      // most of a laptop screen saying nothing.
-      <div className="flex max-w-2xl flex-col gap-5">
-        <div>
-          <h1 className="text-xl font-bold text-ink lg:text-2xl">{t.title}</h1>
-          <p className="mt-1 text-ink-soft">{t.subtitle}</p>
-        </div>
-        <Card className="border-late/30 bg-late/5">
+      // One column, and the cap on the card rather than the column: a 7/5 split with an
+      // empty rail beside one sentence is most of a laptop screen saying nothing.
+      <div className="flex flex-col gap-5">
+        <PageHeader title={t.title} subtitle={t.subtitle} />
+        <Card className="max-w-2xl border-late/30 bg-late/5">
           <p className="font-medium text-ink">
             {boardProblem === 'tooLarge' ? t.tooLarge : t.unreadable}
           </p>
@@ -473,315 +471,317 @@ export default async function FeesPage({
   }
 
   return (
-    /*
-     * TWO LAYOUTS OUT OF ONE DOM, the arrangement steps 2 to 5 of §20.8 use: every block
-     * carries an `order-N` matching the sequence a phone draws it in, and the two column
-     * wrappers are `display: contents` below `lg`, so on a phone they generate no box and
-     * each block is a direct child of the one column again. From `lg` the wrappers become
-     * columns and each child's order still ascends inside its own, so one number does both
-     * jobs and there is no second ordering to keep in step.
-     *
-     * Seven columns of the work — the chase door, the board, the search over it — beside
-     * five of what the money is: the outstanding total, the once-a-month generator and the
-     * three doors that raise a bill the generator never will. Seven and five and not eight
-     * and four because the rail holds a 4xl figure and a form, and a figure that wraps is
-     * a figure nobody can read at a glance.
-     *
-     * The rail is written FIRST, and that is not the same as ordering it first: `order`
-     * moves nothing for a keyboard or a screen reader. Written last, a phone would tab
-     * through three hundred payment forms to reach the generator.
-     *
-     * What did change on the phone: the three setup doors were three bare links between
-     * the generator and the board, so every reader scrolled past a hundred and fifty
-     * pixels of monthly errands to reach the list they came for. They are one card below
-     * the board now.
-     */
-    <div className="flex flex-col gap-5 lg:grid lg:grid-cols-12 lg:items-start lg:gap-6">
-      <div className="order-1 lg:col-span-12">
-        <h1 className="text-xl font-bold text-ink lg:text-2xl">{t.title}</h1>
-        <p className="mt-1 text-ink-soft">{t.subtitle}</p>
-      </div>
+    <div className="flex flex-col gap-5">
+      <PageHeader title={t.title} subtitle={t.subtitle} />
 
-      <div className="contents lg:order-3 lg:col-span-5 lg:flex lg:flex-col lg:gap-5">
-        <Card className="order-2 border-brand-200 bg-brand-50">
-          <p className="text-sm font-medium text-brand-800">{t.outstanding}</p>
-          <p className="num mt-1 text-4xl font-bold text-brand-900">
-            {formatTaka(outstanding)}
-          </p>
-          {/* Directly under the figure, not at the foot of the card. This total is
-              a subset — the view inner-joins students and runs security_invoker, so
-              a teacher's board carries their own batches and nothing else — and a
-              fee number that is quietly short is worse than no number. Whoever
-              reads it has to see the boundary in the same glance as the amount. */}
-          {!canWrite && (
-            <p className="mt-1 text-sm font-medium text-brand-700">{t.yoursOnly}</p>
-          )}
-          {/* Two counts of people, so both stay in ASCII in either language — the
-              owner reads them next to money they will reconcile against a wallet
-              statement, and a figure that changes script between screens is a
-              figure they have to translate before they can trust it. `.num` on the
-              paragraph does the alignment for both. */}
-          <p className="num mt-2 text-sm text-brand-800">
-            {t.unpaidCount(unpaid.length)} · {t.overdueCount(overdue.length)}
-          </p>
-          {/* A dash, not a nought, when that one-row sum did not arrive — and the line
-              still drawn, because an owner who took ৳40,000 this month and finds the line
-              gone will read the absence as the figure. A month genuinely without takings
-              keeps no line at all: nought collected on the first of the month is the
-              ordinary state, and a ৳0 beside it says nothing the empty space does not. */}
-          {(collected === null || collected > 0) && (
-            <p className="mt-1 text-sm text-brand-800">
-              {t.collectedThisMonth}{' '}
-              <span className="num font-semibold">
-                {collected === null ? '—' : formatTaka(collected)}
-              </span>
+      {/*
+       * TWO LAYOUTS OUT OF ONE DOM, the arrangement steps 2 to 5 of §20.8 use: every block
+       * carries an `order-N` matching the sequence a phone draws it in, and the two column
+       * wrappers are `display: contents` below `lg`, so on a phone they generate no box and
+       * each block is a direct child of the one column again. From `lg` the wrappers become
+       * columns and each child's order still ascends inside its own, so one number does both
+       * jobs and there is no second ordering to keep in step.
+       *
+       * Seven columns of the work — the chase door, the board, the search over it — beside
+       * five of what the money is: the outstanding total, the once-a-month generator and the
+       * three doors that raise a bill the generator never will. Seven and five and not eight
+       * and four because the rail holds a 4xl figure and a form, and a figure that wraps is
+       * a figure nobody can read at a glance.
+       *
+       * The rail is written FIRST, and that is not the same as ordering it first: `order`
+       * moves nothing for a keyboard or a screen reader. Written last, a phone would tab
+       * through three hundred payment forms to reach the generator.
+       *
+       * What did change on the phone: the three setup doors were three bare links between
+       * the generator and the board, so every reader scrolled past a hundred and fifty
+       * pixels of monthly errands to reach the list they came for. They are one card below
+       * the board now.
+       *
+       * Nested under the bar rather than holding it as a twelfth-column cell: a sticky box
+       * only travels inside its containing block, and a grid cell's block is one grid row.
+       */}
+      <div className="flex flex-col gap-5 lg:grid lg:grid-cols-12 lg:items-start lg:gap-6">
+        <div className="contents lg:order-3 lg:col-span-5 lg:flex lg:flex-col lg:gap-5">
+          <Card className="order-2 border-brand-200 bg-brand-50">
+            <p className="text-sm font-medium text-brand-800">{t.outstanding}</p>
+            <p className="num mt-1 text-4xl font-bold text-brand-900">
+              {formatTaka(outstanding)}
             </p>
-          )}
-          {credit > 0 && (
-            <p className="mt-1 text-sm text-brand-800">
-              <span className="num font-semibold">{formatTaka(credit)}</span>{' '}
-              {t.inCredit}
+            {/* Directly under the figure, not at the foot of the card. This total is
+                a subset — the view inner-joins students and runs security_invoker, so
+                a teacher's board carries their own batches and nothing else — and a
+                fee number that is quietly short is worse than no number. Whoever
+                reads it has to see the boundary in the same glance as the amount. */}
+            {!canWrite && (
+              <p className="mt-1 text-sm font-medium text-brand-700">{t.yoursOnly}</p>
+            )}
+            {/* Two counts of people, so both stay in ASCII in either language — the
+                owner reads them next to money they will reconcile against a wallet
+                statement, and a figure that changes script between screens is a
+                figure they have to translate before they can trust it. `.num` on the
+                paragraph does the alignment for both. */}
+            <p className="num mt-2 text-sm text-brand-800">
+              {t.unpaidCount(unpaid.length)} · {t.overdueCount(overdue.length)}
             </p>
-          )}
-          {/* The way out of this card and into the month's takings. Inside it rather
-              than beside it, because the register is what explains the figure above —
-              an owner who wants to know where "collected this month" came from is
-              already looking here. Staff-admin only, like the collecting half of the
-              board: a teacher reads what their own students owe, not the centre's
-              month. The month is named in the URL so the link is bookmarkable and
-              still means this month when it is followed next week. */}
-          {canWrite && (
-            <p className="mt-3 flex flex-col gap-1">
-              <Link
-                href={`/fees/register?month=${thisMonth}`}
-                className="inline-flex min-h-tap items-center font-medium
-                  text-brand-800 underline"
-              >
-                {t.registerLink} →
-              </Link>
-              {/* And the month as a whole, which is the other question this card
-                  provokes. The register says where the money came from; this says
-                  whether it was enough — what was owed when the month started, what
-                  is left, and what share of the book came in. Not plan-gated, unlike
-                  the register: see the note at the head of that page. */}
-              <Link
-                href={`/fees/close?month=${thisMonth}`}
-                className="inline-flex min-h-tap items-center font-medium
-                  text-brand-800 underline"
-              >
-                {t.closeLink} →
-              </Link>
-              {/* And the money that went the other way, which is the half of the month
-                  this card cannot see. Third and last of the three, because the two
-                  above answer questions about the figure printed above them and this
-                  one changes what that figure means: ৳40,000 collected is a good month
-                  or a bad one depending on what the rent was. Here rather than in the
-                  bottom bar because five staff-admin tabs already fill that at 320px,
-                  and ungated like the register's own link — see the head of the
-                  spending page for why a plan that cannot open it is told so there
-                  rather than shown a dead end here. */}
-              <Link
-                href={`/expenses?month=${thisMonth}`}
-                className="inline-flex min-h-tap items-center font-medium
-                  text-brand-800 underline"
-              >
-                {t.spendingLink} →
-              </Link>
-              {/* And the third term of the same subtraction. Spending and salaries are
-                  both money going out, but a centre's wage bill is not a bill it pays
-                  once — it is an agreement standing behind every month, which is why it
-                  has a screen rather than a category on the one above. Last of the four,
-                  because it is the only one that is not about this month at all. No
-                  `month` in the URL for the same reason: an agreement is not a month. */}
-              <Link
-                href="/payroll"
-                className="inline-flex min-h-tap items-center font-medium
-                  text-brand-800 underline"
-              >
-                {t.payrollLink} →
-              </Link>
-            </p>
-          )}
-        </Card>
-
-        {/* Both of these move money or send messages, so both are staff-admin
-            only — and absent rather than disabled, because a control a teacher can
-            see and never use is a support question every month. */}
-        {canWrite && (
-          <InvoiceGenerator
-            months={months}
-            defaultMonth={thisMonth}
-            openByDefault={rows.length === 0}
-            locale={locale}
-            t={d.invoices}
-            common={d.common}
-            className="order-3"
-          />
-        )}
-
-        {/* The three ways a bill gets raised that the generator never will, in one card
-            rather than three bare links stacked between the generator and the board.
-            Underlined text and no borders, like the four links in the total card — a
-            bordered row inside a card is the nested container §20.7 says to avoid, and
-            three of them would out-shout the board.
-
-            Order 6, so on a phone these come after the list: old dues are loaded once,
-            a season's exam fee a few times a year, and an award named when it is agreed.
-            None of the three is why anyone opened this screen today. */}
-        {canWrite && (
-          <Card className="order-6 flex flex-col gap-1">
-            <p className="text-sm font-medium text-ink-soft">{t.otherBillsTitle}</p>
-            {/* What was already owed before any of this existed. A centre that loads
-                three batches this week and two more next month needs it the second
-                time as well, so it never hides once the board has rows. */}
-            <Link
-              href="/fees/arrears"
-              className="inline-flex min-h-tap items-center font-medium
-                text-brand-800 underline"
-            >
-              {t.arrearsLink} →
-            </Link>
-            {/* Admission, registration, exam and form fees (§9.7) — the one that is not
-                about monthly tuition at all, and used every season rather than once. */}
-            <Link
-              href="/fees/charge"
-              className="inline-flex min-h-tap items-center font-medium
-                text-brand-800 underline"
-            >
-              {t.chargeLink} →
-            </Link>
-            {/* Not a way a bill gets raised — a way one gets smaller. Named waivers are
-                maintained here and then picked on any row's waiver panel, so the door is
-                beside the other two rather than inside a row nobody has opened yet.
-                Unconditional: a centre with no awards named is exactly the centre that
-                has not found this screen. */}
-            <Link
-              href="/fees/scholarships"
-              className="inline-flex min-h-tap items-center font-medium
-                text-brand-800 underline"
-            >
-              {t.scholarshipsLink} →
-            </Link>
-          </Card>
-        )}
-      </div>
-
-      <div className="contents lg:order-2 lg:col-span-7 lg:flex lg:flex-col lg:gap-5">
-        {/* Only once something is owed. On an all-paid board it would be a link to
-            a screen that can only say "nothing to do", which the empty board
-            already says. */}
-        {canWrite && unpaid.length > 0 && (
-          <ReminderEntry dueToday={dueToday} t={d.reminders} className="order-4" />
-        )}
-
-        {/* The board and the two sentences about what is missing from it, in one block
-            so the notes cannot end up in a different column from the rows they are
-            about. `gap-3` and not the column's `gap-5`: a note explaining the list is
-            not a separate panel. */}
-        <div className="order-5 flex flex-col gap-3">
-          {/* Said once here rather than on two hundred rows. What is missing from each of
-              them is the "last chased" line, and a row with no such line is exactly a row
-              for a family nobody has contacted — so the one thing an owner cannot see is
-              the thirty they saw to this morning. Grey and not amber: the board above it is
-              right, every figure on it is real, and this is the one part that is absent. */}
-          {canWrite && chaseProblem !== null && (
-            <p className="text-sm text-ink-soft">
-              {chaseProblem === 'tooLarge' ? t.chaseHistoryTooLarge : t.chaseHistoryUnreadable}
-            </p>
-          )}
-
-          {/* And the other half of what a reminder says. The chips below still open the
-              message, still record the chase, and still name the amount and the deadline
-              — what a dropped read takes out is the line telling a parent where to send
-              it, which `walletText` blanks for a centre that never set one up as well.
-              Said here, once, because the chips cannot say it: the owner is the only
-              person who can tell those two apart, and only if somebody tells them. */}
-          {canWrite && centerError && unpaid.length > 0 && (
-            <p className="text-sm text-ink-soft">{d.chase.payUnreadable}</p>
-          )}
-
-          {rows.length === 0 ? (
-            <Card>
-              <p className="font-medium text-ink">{t.emptyTitle}</p>
-              <p className="mt-1 text-sm text-ink-soft">
-                {canWrite ? t.emptyBody : t.emptyBodyReadOnly}
+            {/* A dash, not a nought, when that one-row sum did not arrive — and the line
+                still drawn, because an owner who took ৳40,000 this month and finds the line
+                gone will read the absence as the figure. A month genuinely without takings
+                keeps no line at all: nought collected on the first of the month is the
+                ordinary state, and a ৳0 beside it says nothing the empty space does not. */}
+            {(collected === null || collected > 0) && (
+              <p className="mt-1 text-sm text-brand-800">
+                {t.collectedThisMonth}{' '}
+                <span className="num font-semibold">
+                  {collected === null ? '—' : formatTaka(collected)}
+                </span>
               </p>
-            </Card>
-          ) : (
-            <>
-              {/* Directly above the list it filters, and below every figure it does
-                  not. Nothing is preserved through it because this page has no other
-                  search param — the month on the register's links is built fresh from
-                  `thisMonth`, not read from the URL. */}
-              <SearchBox
-                q={query}
-                t={d.search}
-                count={{ shown: shown.length, total: rows.length }}
-              />
+            )}
+            {credit > 0 && (
+              <p className="mt-1 text-sm text-brand-800">
+                <span className="num font-semibold">{formatTaka(credit)}</span>{' '}
+                {t.inCredit}
+              </p>
+            )}
+            {/* The way out of this card and into the month's takings. Inside it rather
+                than beside it, because the register is what explains the figure above —
+                an owner who wants to know where "collected this month" came from is
+                already looking here. Staff-admin only, like the collecting half of the
+                board: a teacher reads what their own students owe, not the centre's
+                month. The month is named in the URL so the link is bookmarkable and
+                still means this month when it is followed next week. */}
+            {canWrite && (
+              <p className="mt-3 flex flex-col gap-1">
+                <Link
+                  href={`/fees/register?month=${thisMonth}`}
+                  className="inline-flex min-h-tap items-center font-medium
+                    text-brand-800 underline"
+                >
+                  {t.registerLink} →
+                </Link>
+                {/* And the month as a whole, which is the other question this card
+                    provokes. The register says where the money came from; this says
+                    whether it was enough — what was owed when the month started, what
+                    is left, and what share of the book came in. Not plan-gated, unlike
+                    the register: see the note at the head of that page. */}
+                <Link
+                  href={`/fees/close?month=${thisMonth}`}
+                  className="inline-flex min-h-tap items-center font-medium
+                    text-brand-800 underline"
+                >
+                  {t.closeLink} →
+                </Link>
+                {/* And the money that went the other way, which is the half of the month
+                    this card cannot see. Third and last of the three, because the two
+                    above answer questions about the figure printed above them and this
+                    one changes what that figure means: ৳40,000 collected is a good month
+                    or a bad one depending on what the rent was. Here rather than in the
+                    bottom bar because five staff-admin tabs already fill that at 320px,
+                    and ungated like the register's own link — see the head of the
+                    spending page for why a plan that cannot open it is told so there
+                    rather than shown a dead end here. */}
+                <Link
+                  href={`/expenses?month=${thisMonth}`}
+                  className="inline-flex min-h-tap items-center font-medium
+                    text-brand-800 underline"
+                >
+                  {t.spendingLink} →
+                </Link>
+                {/* And the third term of the same subtraction. Spending and salaries are
+                    both money going out, but a centre's wage bill is not a bill it pays
+                    once — it is an agreement standing behind every month, which is why it
+                    has a screen rather than a category on the one above. Last of the four,
+                    because it is the only one that is not about this month at all. No
+                    `month` in the URL for the same reason: an agreement is not a month. */}
+                <Link
+                  href="/payroll"
+                  className="inline-flex min-h-tap items-center font-medium
+                    text-brand-800 underline"
+                >
+                  {t.payrollLink} →
+                </Link>
+              </p>
+            )}
+          </Card>
 
-              {shown.length === 0 ? (
-                /* Not `t.emptyTitle`. "No fees are outstanding" under a filtered list
-                   is the app telling an owner the centre is settled up because they
-                   mistyped a name — see SearchEmpty. */
-                <SearchEmpty t={d.search} />
-              ) : (
-                <ul className="flex flex-col gap-2">
-                  {shown.map((row) => (
-                    <PaymentRow
-                      key={row.id}
-                      row={row}
-                      center={centerPay}
-                      awards={awards}
-                      locale={locale}
-                      readOnly={!canWrite}
-                      // One object built once for the whole board. Seven groups of words
-                      // reach every row, and React sends each distinct value down once
-                      // however many rows share it.
-                      words={{
-                        t: d.feeRow,
-                        chase: d.chase,
-                        channels: d.channels,
-                        cancel: d.cancel,
-                        refund: d.refund,
-                        discount: d.discount,
-                        common: d.common,
-                      }}
-                    />
-                  ))}
-                </ul>
-              )}
-            </>
+          {/* Both of these move money or send messages, so both are staff-admin
+              only — and absent rather than disabled, because a control a teacher can
+              see and never use is a support question every month. */}
+          {canWrite && (
+            <InvoiceGenerator
+              months={months}
+              defaultMonth={thisMonth}
+              openByDefault={rows.length === 0}
+              locale={locale}
+              t={d.invoices}
+              common={d.common}
+              className="order-3"
+            />
+          )}
+
+          {/* The three ways a bill gets raised that the generator never will, in one card
+              rather than three bare links stacked between the generator and the board.
+              Underlined text and no borders, like the four links in the total card — a
+              bordered row inside a card is the nested container §20.7 says to avoid, and
+              three of them would out-shout the board.
+
+              Order 6, so on a phone these come after the list: old dues are loaded once,
+              a season's exam fee a few times a year, and an award named when it is agreed.
+              None of the three is why anyone opened this screen today. */}
+          {canWrite && (
+            <Card className="order-6 flex flex-col gap-1">
+              <p className="text-sm font-medium text-ink-soft">{t.otherBillsTitle}</p>
+              {/* What was already owed before any of this existed. A centre that loads
+                  three batches this week and two more next month needs it the second
+                  time as well, so it never hides once the board has rows. */}
+              <Link
+                href="/fees/arrears"
+                className="inline-flex min-h-tap items-center font-medium
+                  text-brand-800 underline"
+              >
+                {t.arrearsLink} →
+              </Link>
+              {/* Admission, registration, exam and form fees (§9.7) — the one that is not
+                  about monthly tuition at all, and used every season rather than once. */}
+              <Link
+                href="/fees/charge"
+                className="inline-flex min-h-tap items-center font-medium
+                  text-brand-800 underline"
+              >
+                {t.chargeLink} →
+              </Link>
+              {/* Not a way a bill gets raised — a way one gets smaller. Named waivers are
+                  maintained here and then picked on any row's waiver panel, so the door is
+                  beside the other two rather than inside a row nobody has opened yet.
+                  Unconditional: a centre with no awards named is exactly the centre that
+                  has not found this screen. */}
+              <Link
+                href="/fees/scholarships"
+                className="inline-flex min-h-tap items-center font-medium
+                  text-brand-800 underline"
+              >
+                {t.scholarshipsLink} →
+              </Link>
+            </Card>
           )}
         </div>
 
-        {/* Under the board, never above it. These are bills that are already off every
-            total — nothing here is owed and nothing here is to be chased — so they must
-            not compete with the list of families who do owe money.
+        <div className="contents lg:order-2 lg:col-span-7 lg:flex lg:flex-col lg:gap-5">
+          {/* Only once something is owed. On an all-paid board it would be a link to
+              a screen that can only say "nothing to do", which the empty board
+              already says. */}
+          {canWrite && unpaid.length > 0 && (
+            <ReminderEntry dueToday={dueToday} t={d.reminders} className="order-4" />
+          )}
 
-            Open for the first handful, folded past that. A cancelled bill leaves the
-            board the instant the revalidation lands, so this list appearing is the only
-            confirmation the tap gets; on the day an owner closes a batch and cancels
-            thirty, that stops being true and burying the board would be the worse
-            failure. The count is in the summary either way, so nothing is hidden. */}
-        {shownCancelled.length > 0 && (
-          <details
-            open={shownCancelled.length <= CANCELLED_OPEN_UP_TO}
-            className="order-7"
-          >
-            <summary
-              className="flex min-h-tap cursor-pointer list-none items-center
-                font-medium text-ink-soft"
+          {/* The board and the two sentences about what is missing from it, in one block
+              so the notes cannot end up in a different column from the rows they are
+              about. `gap-3` and not the column's `gap-5`: a note explaining the list is
+              not a separate panel. */}
+          <div className="order-5 flex flex-col gap-3">
+            {/* Said once here rather than on two hundred rows. What is missing from each of
+                them is the "last chased" line, and a row with no such line is exactly a row
+                for a family nobody has contacted — so the one thing an owner cannot see is
+                the thirty they saw to this morning. Grey and not amber: the board above it is
+                right, every figure on it is real, and this is the one part that is absent. */}
+            {canWrite && chaseProblem !== null && (
+              <p className="text-sm text-ink-soft">
+                {chaseProblem === 'tooLarge' ? t.chaseHistoryTooLarge : t.chaseHistoryUnreadable}
+              </p>
+            )}
+
+            {/* And the other half of what a reminder says. The chips below still open the
+                message, still record the chase, and still name the amount and the deadline
+                — what a dropped read takes out is the line telling a parent where to send
+                it, which `walletText` blanks for a centre that never set one up as well.
+                Said here, once, because the chips cannot say it: the owner is the only
+                person who can tell those two apart, and only if somebody tells them. */}
+            {canWrite && centerError && unpaid.length > 0 && (
+              <p className="text-sm text-ink-soft">{d.chase.payUnreadable}</p>
+            )}
+
+            {rows.length === 0 ? (
+              <Card>
+                <p className="font-medium text-ink">{t.emptyTitle}</p>
+                <p className="mt-1 text-sm text-ink-soft">
+                  {canWrite ? t.emptyBody : t.emptyBodyReadOnly}
+                </p>
+              </Card>
+            ) : (
+              <>
+                {/* Directly above the list it filters, and below every figure it does
+                    not. Nothing is preserved through it because this page has no other
+                    search param — the month on the register's links is built fresh from
+                    `thisMonth`, not read from the URL. */}
+                <SearchBox
+                  q={query}
+                  t={d.search}
+                  count={{ shown: shown.length, total: rows.length }}
+                />
+
+                {shown.length === 0 ? (
+                  /* Not `t.emptyTitle`. "No fees are outstanding" under a filtered list
+                     is the app telling an owner the centre is settled up because they
+                     mistyped a name — see SearchEmpty. */
+                  <SearchEmpty t={d.search} />
+                ) : (
+                  <ul className="flex flex-col gap-2">
+                    {shown.map((row) => (
+                      <PaymentRow
+                        key={row.id}
+                        row={row}
+                        center={centerPay}
+                        awards={awards}
+                        locale={locale}
+                        readOnly={!canWrite}
+                        // One object built once for the whole board. Seven groups of words
+                        // reach every row, and React sends each distinct value down once
+                        // however many rows share it.
+                        words={{
+                          t: d.feeRow,
+                          chase: d.chase,
+                          channels: d.channels,
+                          cancel: d.cancel,
+                          refund: d.refund,
+                          discount: d.discount,
+                          common: d.common,
+                        }}
+                      />
+                    ))}
+                  </ul>
+                )}
+              </>
+            )}
+          </div>
+
+          {/* Under the board, never above it. These are bills that are already off every
+              total — nothing here is owed and nothing here is to be chased — so they must
+              not compete with the list of families who do owe money.
+
+              Open for the first handful, folded past that. A cancelled bill leaves the
+              board the instant the revalidation lands, so this list appearing is the only
+              confirmation the tap gets; on the day an owner closes a batch and cancels
+              thirty, that stops being true and burying the board would be the worse
+              failure. The count is in the summary either way, so nothing is hidden. */}
+          {shownCancelled.length > 0 && (
+            <details
+              open={shownCancelled.length <= CANCELLED_OPEN_UP_TO}
+              className="order-7"
             >
-              {t.cancelledCount(shownCancelled.length)}
-            </summary>
-            <p className="mb-2 text-sm text-ink-faint">{t.cancelledBody}</p>
-            <ul className="flex flex-col gap-2">
-              {shownCancelled.map((bill) => (
-                <CancelledRow key={bill.id} bill={bill} locale={locale} t={d.cancel} />
-              ))}
-            </ul>
-          </details>
-        )}
+              <summary
+                className="flex min-h-tap cursor-pointer list-none items-center
+                  font-medium text-ink-soft"
+              >
+                {t.cancelledCount(shownCancelled.length)}
+              </summary>
+              <p className="mb-2 text-sm text-ink-faint">{t.cancelledBody}</p>
+              <ul className="flex flex-col gap-2">
+                {shownCancelled.map((bill) => (
+                  <CancelledRow key={bill.id} bill={bill} locale={locale} t={d.cancel} />
+                ))}
+              </ul>
+            </details>
+          )}
+        </div>
       </div>
     </div>
   )

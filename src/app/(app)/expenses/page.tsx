@@ -1,5 +1,6 @@
 import Link from 'next/link'
 
+import { PageHeader } from '@/components/page-header'
 import { Card } from '@/components/ui'
 import { Th, Td } from '@/components/table'
 import { pageCapability, getSession } from '@/lib/auth/session'
@@ -96,14 +97,17 @@ export default async function ExpensesPage({
   const d = dict(locale)
   const t = d.expenses
 
+  /** The way out, in one place because the locked branch and the screen both need it. */
+  const back = { href: '/fees' as const, label: t.backToFees }
+
   // Before the query, like the register's own plan branch: this return draws none of
   // the month, so reading it would be work for a screen that cannot show it.
   if (!has(session.plan, 'centerWideReporting')) {
     return (
       <div className="flex flex-col gap-4">
-        <BackToFees label={t.backToFees} />
-        <Card>
-          <h1 className="font-semibold text-ink">{t.lockedTitle}</h1>
+        <PageHeader title={t.title} back={back} />
+        <Card className="max-w-2xl">
+          <h2 className="font-semibold text-ink">{t.lockedTitle}</h2>
           <p className="mt-1 text-sm text-ink-soft">
             {t.lockedBody(planName(session.plan, locale), planName(PLANS.center, locale))}
           </p>
@@ -165,37 +169,28 @@ export default async function ExpensesPage({
   })
 
   return (
-    // One column to xl, then eight of the month beside four of the form. `xl` and not
-    // `lg`, unlike every other split screen here: the table below needs 36rem and eight
-    // of twelve columns is 469px at `lg`, so a rail there would hand a laptop a
-    // horizontal scrollbar it does not have today. See the roster, which gates its own
-    // table the same way and for the same arithmetic.
-    <div className="flex flex-col gap-4 xl:grid xl:grid-cols-12 xl:items-start xl:gap-6">
-      {/* The way back and the month being read, on one row. The month used to be a form
-          of its own with `formatMonth` printed again underneath it; the select says
-          "August 2026" in the reader's own script, so the sentence under it was the same
-          fact twice. The register keeps its month line because that one prints and the
-          select does not. */}
-      <div
-        className="order-1 flex flex-wrap items-end justify-between gap-x-4 gap-y-2
-          xl:col-span-12"
-      >
-        <BackToFees label={t.backToFees} />
+    <div className="flex flex-col gap-4">
+      <PageHeader
+        title={t.title}
+        back={back}
+        subtitle={t.subtitle}
+        /* The month being read, in the bar's own slot for it. A plain GET form, like the
+           register's: no client component, and the month ends up in a URL that can be
+           bookmarked or shared. The button is not decoration — Android Chrome fires no
+           navigation on a bare <select> change.
 
-        {/* A plain GET form, like the register's: no client component, and the month ends
-            up in a URL that can be bookmarked or shared. The button is not decoration —
-            Android Chrome fires no navigation on a bare <select> change. */}
-        <form
-          method="get"
-          className="flex w-full min-w-0 items-end justify-end gap-2 sm:w-auto sm:flex-1"
-        >
-          <label className="flex min-w-0 flex-1 flex-col gap-1.5 sm:w-56 sm:flex-none">
-            <span className="font-medium text-ink">{t.month}</span>
+           Label-less with an `aria-label`: the select says "August 2026" in the reader's
+           own script, so a "Month" caption above it was the same fact twice, and the bar
+           is one line deep. The register keeps its printed month line because that one
+           prints and this select does not. */
+        actions={
+          <form method="get" className="flex items-center gap-2">
             <select
               name="month"
+              aria-label={t.month}
               defaultValue={month}
-              className="min-h-tap w-full rounded-xl border-2 border-line bg-white px-3
-                font-medium text-ink"
+              className="min-h-tap max-w-44 rounded-xl border-2 border-line bg-white px-3
+                font-medium text-ink sm:max-w-56"
             >
               {months.map((m) => (
                 <option key={m.value} value={m.value}>
@@ -203,216 +198,210 @@ export default async function ExpensesPage({
                 </option>
               ))}
             </select>
-          </label>
-          <button
-            type="submit"
-            className="inline-flex min-h-tap shrink-0 items-center rounded-xl border-2
-              border-brand-500 bg-brand-50 px-4 font-medium text-brand-800"
-          >
-            {t.show}
-          </button>
-        </form>
-      </div>
+            <button
+              type="submit"
+              className="min-h-tap shrink-0 rounded-xl border-2 border-brand-500
+                bg-brand-50 px-4 font-medium text-brand-800"
+            >
+              {t.show}
+            </button>
+          </form>
+        }
+      />
 
-      <header className="order-2 xl:col-span-12">
-        <h1 className="text-xl font-bold text-ink lg:text-2xl">{t.title}</h1>
-        <p className="text-sm text-ink-soft">{t.subtitle}</p>
-      </header>
+      {/* One column to xl, then eight of the month beside four of the form. `xl` and not
+          `lg`, unlike every other split screen here: the table below needs 36rem and eight
+          of twelve columns is 469px at `lg`, so a rail there would hand a laptop a
+          horizontal scrollbar it does not have today. See the roster, which gates its own
+          table the same way and for the same arithmetic.
 
-      {/* The form's column, written before the month it adds to, because `order` moves
-          nothing for a keyboard or a screen reader and the other column is a table of
-          voucher links. A read-only centre keeps the list and loses the form: the action
-          would refuse the write anyway — `requireWritable` is in front of it — and a form
-          that submits into a refusal is a worse way to learn that the subscription lapsed
-          than the sentence the shell is already showing. */}
-      <div className="contents xl:order-3 xl:col-span-4 xl:flex xl:flex-col xl:gap-4">
-        {session.access === 'full' && (
-          <Card className="order-3">
-            <ExpenseForm
-              t={d.expenseForm}
-              categories={t.categories}
-              methods={d.feeRow.methods}
-              common={d.common}
-              // Computed here, once, on the server: see the form's own note on why a
-              // client component must not read the clock in Dhaka.
-              today={todayInDhaka()}
-              branchPick={d.branchPick}
-              branches={branches}
-            />
-          </Card>
-        )}
-      </div>
-
-      <div className="contents xl:order-2 xl:col-span-8 xl:flex xl:flex-col xl:gap-4">
-        {/* One ordered block and a ternary inside it, not three blocks sharing a number:
-            the month is either a failed read, an empty month or a list with figures over
-            it, and all three land in the same place. */}
-        <div className="order-4 flex flex-col gap-4">
-          {problem !== null ? (
-            /* Nothing drawn, not even a zero: every figure below would be a claim about
-               what the centre spent, and we did not read it. Same call as the register. */
-            <Card className="border-late/30 bg-late/5">
-              <p className="font-medium text-ink">
-                {problem === 'tooLarge' ? t.tooLarge : t.unreadable}
-              </p>
+          Nested under the bar rather than holding it as a twelfth-column cell: a sticky
+          box only travels inside its containing block, and a grid cell's block is one grid
+          row. */}
+      <div className="flex flex-col gap-4 xl:grid xl:grid-cols-12 xl:items-start xl:gap-6">
+        {/* The form's column, written before the month it adds to, because `order` moves
+            nothing for a keyboard or a screen reader and the other column is a table of
+            voucher links. A read-only centre keeps the list and loses the form: the action
+            would refuse the write anyway — `requireWritable` is in front of it — and a form
+            that submits into a refusal is a worse way to learn that the subscription lapsed
+            than the sentence the shell is already showing. */}
+        <div className="contents xl:order-3 xl:col-span-4 xl:flex xl:flex-col xl:gap-4">
+          {session.access === 'full' && (
+            <Card className="order-3">
+              <ExpenseForm
+                t={d.expenseForm}
+                categories={t.categories}
+                methods={d.feeRow.methods}
+                common={d.common}
+                // Computed here, once, on the server: see the form's own note on why a
+                // client component must not read the clock in Dhaka.
+                today={todayInDhaka()}
+                branchPick={d.branchPick}
+                branches={branches}
+              />
             </Card>
-          ) : rows.length === 0 ? (
-            <Card>
-              <p className="text-ink-soft">{t.empty}</p>
-            </Card>
-          ) : (
-            <>
-              {/* THE FIGURES ABOVE THE ROWS, which is the change on this screen. The
-                  by-category breakdown is the only part of this page that answers a
-                  question an owner actually arrives with — "what is rent costing us",
-                  "why was this month dearer" — and it used to be under the table, so on a
-                  month with sixty vouchers it was two screens of scrolling past the
-                  evidence to reach the summary of it. The rows are the working; this is
-                  the answer, and the answer goes first.
-
-                  A grid and not the register's wrapped band: twelve categories with names
-                  like "printing and photocopying" would wrap into a ragged four-line
-                  block, where a grid puts them in even columns whatever their names. */}
-              <section className="rounded-xl border border-line bg-white p-4">
-                <div className="flex flex-wrap items-baseline justify-between gap-x-5 gap-y-1">
-                  <h2 className="font-medium text-ink-soft">{t.total}</h2>
-                  <p className="num text-3xl font-bold text-ink">{formatTaka(tally.total)}</p>
-                </div>
-                <p className="text-sm text-ink-faint">{t.entries(tally.entries)}</p>
-
-                {/* What the profit line takes off and what it leaves to payroll, under the
-                    sum they make, and only in a month with a salary row in it. A month
-                    without one gets neither line and no note: the total is then the whole
-                    answer, and "৳0 left to payroll" is a figure an owner would stop and
-                    check for nothing. The register hides "paid back" the same way. */}
-                {tally.deferredToPayroll !== 0 && (
-                  <>
-                    <dl
-                      className="mt-2 flex flex-wrap gap-x-5 gap-y-1 border-t border-line
-                        pt-2 text-sm"
-                    >
-                      <div className="flex items-baseline gap-2">
-                        <dt className="text-ink-soft">{t.counted}</dt>
-                        <dd className="num font-semibold text-ink">
-                          {formatTaka(tally.counted)}
-                        </dd>
-                      </div>
-                      <div className="flex items-baseline gap-2">
-                        <dt className="text-ink-soft">{t.deferred}</dt>
-                        <dd className="num font-semibold text-ink">
-                          {formatTaka(tally.deferredToPayroll)}
-                        </dd>
-                      </div>
-                    </dl>
-                    {/* The sentence those two lines are not enough on their own to say,
-                        beside them rather than at the foot of the section. Not a warning
-                        colour: nothing is wrong, and a centre that also uses the payroll
-                        screen is doing exactly the right thing. What it prevents is an
-                        owner reading their profit as higher than it was because the wages
-                        are written down in one place only. */}
-                    <p className="mt-2 text-sm text-ink-soft">
-                      {t.deferredNote(formatTaka(tally.deferredToPayroll))}
-                    </p>
-                  </>
-                )}
-
-                <h3 className="mt-3 border-t border-line pt-3 font-medium text-ink">
-                  {t.byCategory}
-                </h3>
-                {/* No boxes inside the box (§20.7): a bordered tile in a bordered section
-                    is the nested container the directive names, and there would be up to
-                    twelve of them. The count under each figure is what makes it checkable
-                    — ৳9,000 of transport is one hired bus or nine rickshaw fares, and the
-                    owner knows which of those they expected. */}
-                <dl className="mt-2 grid grid-cols-2 gap-x-5 gap-y-3 sm:grid-cols-3 xl:grid-cols-4">
-                  {tally.byCategory.map((c) => (
-                    <div key={c.category}>
-                      <dt className="text-sm text-ink-soft">{t.categories[c.category]}</dt>
-                      <dd className="num font-semibold text-ink">{formatTaka(c.amount)}</dd>
-                      <dd className="text-xs text-ink-faint">{t.entries(c.entries)}</dd>
-                    </div>
-                  ))}
-                </dl>
-              </section>
-
-              {/* overflow-x-auto on a phone: six columns do not fit 320px, and a table that
-                  squeezes a taka figure onto two lines is a table nobody checks. The
-                  negative margin takes it to the screen edge below xl and is given back
-                  inside the column, where bleeding 16px would put its border in the gap. */}
-              <div className="-mx-4 overflow-x-auto px-4 xl:mx-0 xl:px-0">
-                <table className="w-full min-w-[36rem] border-collapse text-sm">
-                  <thead>
-                    <tr className="border-b-2 border-line text-left align-bottom">
-                      <Th>{t.colDate}</Th>
-                      <Th num>{t.colVoucher}</Th>
-                      <Th>{t.colCategory}</Th>
-                      <Th>{t.colNote}</Th>
-                      <Th>{t.colMethod}</Th>
-                      <Th num right>{t.colAmount}</Th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {rows.map((r) => (
-                      <tr key={r.id} className="border-b border-line align-top">
-                        <Td num>{formatDate(r.date, locale)}</Td>
-                        {/* The voucher number is the way to the printable, and this is the
-                            only way in: the form's action answers with a finished sentence
-                            and no id, and every voucher of the month is already here. */}
-                        <Td num>
-                          <Link
-                            href={`/expenses/voucher/${r.id}`}
-                            className="font-medium text-brand-700 underline"
-                          >
-                            {r.voucherNo}
-                          </Link>
-                        </Td>
-                        <Td>
-                          {t.categories[r.category]}
-                          {/* On the row and not only in the foot: an owner scanning for
-                              "what do we pay every month" is reading down this column. */}
-                          {r.recurring && (
-                            <span className="ml-1.5 text-ink-faint">{t.recurringMark}</span>
-                          )}
-                        </Td>
-                        <Td>{r.note ?? '—'}</Td>
-                        <Td>
-                          {d.feeRow.methods[r.method]}
-                          {r.reference && (
-                            <span className="num ml-1.5 text-ink-faint">{r.reference}</span>
-                          )}
-                        </Td>
-                        <Td num right>
-                          {/* The word above the figure, not beside it, so a narrow column
-                              cannot push it off the end. Words and not a colour: these
-                              screens are read on cheap phones in bad light. */}
-                          {r.correction && (
-                            <span className="block font-medium text-ink-soft">
-                              {t.correctionLabel}
-                            </span>
-                          )}
-                          {formatTaka(r.amount)}
-                        </Td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </>
           )}
+        </div>
+
+        <div className="contents xl:order-2 xl:col-span-8 xl:flex xl:flex-col xl:gap-4">
+          {/* One ordered block and a ternary inside it, not three blocks sharing a number:
+              the month is either a failed read, an empty month or a list with figures over
+              it, and all three land in the same place. */}
+          <div className="order-4 flex flex-col gap-4">
+            {problem !== null ? (
+              /* Nothing drawn, not even a zero: every figure below would be a claim about
+                 what the centre spent, and we did not read it. Same call as the register. */
+              <Card className="border-late/30 bg-late/5">
+                <p className="font-medium text-ink">
+                  {problem === 'tooLarge' ? t.tooLarge : t.unreadable}
+                </p>
+              </Card>
+            ) : rows.length === 0 ? (
+              <Card>
+                <p className="text-ink-soft">{t.empty}</p>
+              </Card>
+            ) : (
+              <>
+                {/* THE FIGURES ABOVE THE ROWS, which is the change on this screen. The
+                    by-category breakdown is the only part of this page that answers a
+                    question an owner actually arrives with — "what is rent costing us",
+                    "why was this month dearer" — and it used to be under the table, so on a
+                    month with sixty vouchers it was two screens of scrolling past the
+                    evidence to reach the summary of it. The rows are the working; this is
+                    the answer, and the answer goes first.
+
+                    A grid and not the register's wrapped band: twelve categories with names
+                    like "printing and photocopying" would wrap into a ragged four-line
+                    block, where a grid puts them in even columns whatever their names. */}
+                <section className="rounded-xl border border-line bg-white p-4">
+                  <div className="flex flex-wrap items-baseline justify-between gap-x-5 gap-y-1">
+                    <h2 className="font-medium text-ink-soft">{t.total}</h2>
+                    <p className="num text-3xl font-bold text-ink">{formatTaka(tally.total)}</p>
+                  </div>
+                  <p className="text-sm text-ink-faint">{t.entries(tally.entries)}</p>
+
+                  {/* What the profit line takes off and what it leaves to payroll, under the
+                      sum they make, and only in a month with a salary row in it. A month
+                      without one gets neither line and no note: the total is then the whole
+                      answer, and "৳0 left to payroll" is a figure an owner would stop and
+                      check for nothing. The register hides "paid back" the same way. */}
+                  {tally.deferredToPayroll !== 0 && (
+                    <>
+                      <dl
+                        className="mt-2 flex flex-wrap gap-x-5 gap-y-1 border-t border-line
+                          pt-2 text-sm"
+                      >
+                        <div className="flex items-baseline gap-2">
+                          <dt className="text-ink-soft">{t.counted}</dt>
+                          <dd className="num font-semibold text-ink">
+                            {formatTaka(tally.counted)}
+                          </dd>
+                        </div>
+                        <div className="flex items-baseline gap-2">
+                          <dt className="text-ink-soft">{t.deferred}</dt>
+                          <dd className="num font-semibold text-ink">
+                            {formatTaka(tally.deferredToPayroll)}
+                          </dd>
+                        </div>
+                      </dl>
+                      {/* The sentence those two lines are not enough on their own to say,
+                          beside them rather than at the foot of the section. Not a warning
+                          colour: nothing is wrong, and a centre that also uses the payroll
+                          screen is doing exactly the right thing. What it prevents is an
+                          owner reading their profit as higher than it was because the wages
+                          are written down in one place only. */}
+                      <p className="mt-2 text-sm text-ink-soft">
+                        {t.deferredNote(formatTaka(tally.deferredToPayroll))}
+                      </p>
+                    </>
+                  )}
+
+                  <h3 className="mt-3 border-t border-line pt-3 font-medium text-ink">
+                    {t.byCategory}
+                  </h3>
+                  {/* No boxes inside the box (§20.7): a bordered tile in a bordered section
+                      is the nested container the directive names, and there would be up to
+                      twelve of them. The count under each figure is what makes it checkable
+                      — ৳9,000 of transport is one hired bus or nine rickshaw fares, and the
+                      owner knows which of those they expected. */}
+                  <dl className="mt-2 grid grid-cols-2 gap-x-5 gap-y-3 sm:grid-cols-3 xl:grid-cols-4">
+                    {tally.byCategory.map((c) => (
+                      <div key={c.category}>
+                        <dt className="text-sm text-ink-soft">{t.categories[c.category]}</dt>
+                        <dd className="num font-semibold text-ink">{formatTaka(c.amount)}</dd>
+                        <dd className="text-xs text-ink-faint">{t.entries(c.entries)}</dd>
+                      </div>
+                    ))}
+                  </dl>
+                </section>
+
+                {/* overflow-x-auto on a phone: six columns do not fit 320px, and a table that
+                    squeezes a taka figure onto two lines is a table nobody checks. The
+                    negative margin takes it to the screen edge below xl and is given back
+                    inside the column, where bleeding 16px would put its border in the gap. */}
+                <div className="-mx-4 overflow-x-auto px-4 xl:mx-0 xl:px-0">
+                  <table className="w-full min-w-[36rem] border-collapse text-sm">
+                    <thead>
+                      <tr className="border-b-2 border-line text-left align-bottom">
+                        <Th>{t.colDate}</Th>
+                        <Th num>{t.colVoucher}</Th>
+                        <Th>{t.colCategory}</Th>
+                        <Th>{t.colNote}</Th>
+                        <Th>{t.colMethod}</Th>
+                        <Th num right>{t.colAmount}</Th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {rows.map((r) => (
+                        <tr key={r.id} className="border-b border-line align-top">
+                          <Td num>{formatDate(r.date, locale)}</Td>
+                          {/* The voucher number is the way to the printable, and this is the
+                              only way in: the form's action answers with a finished sentence
+                              and no id, and every voucher of the month is already here. */}
+                          <Td num>
+                            <Link
+                              href={`/expenses/voucher/${r.id}`}
+                              className="font-medium text-brand-700 underline"
+                            >
+                              {r.voucherNo}
+                            </Link>
+                          </Td>
+                          <Td>
+                            {t.categories[r.category]}
+                            {/* On the row and not only in the foot: an owner scanning for
+                                "what do we pay every month" is reading down this column. */}
+                            {r.recurring && (
+                              <span className="ml-1.5 text-ink-faint">{t.recurringMark}</span>
+                            )}
+                          </Td>
+                          <Td>{r.note ?? '—'}</Td>
+                          <Td>
+                            {d.feeRow.methods[r.method]}
+                            {r.reference && (
+                              <span className="num ml-1.5 text-ink-faint">{r.reference}</span>
+                            )}
+                          </Td>
+                          <Td num right>
+                            {/* The word above the figure, not beside it, so a narrow column
+                                cannot push it off the end. Words and not a colour: these
+                                screens are read on cheap phones in bad light. */}
+                            {r.correction && (
+                              <span className="block font-medium text-ink-soft">
+                                {t.correctionLabel}
+                              </span>
+                            )}
+                            {formatTaka(r.amount)}
+                          </Td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </>
+            )}
+          </div>
         </div>
       </div>
     </div>
-  )
-}
-
-/** The way back, in one place because the locked branch and the screen both need it. */
-function BackToFees({ label }: { label: string }) {
-  return (
-    <Link
-      href="/fees"
-      className="inline-flex min-h-tap items-center font-medium text-brand-700"
-    >
-      ← {label}
-    </Link>
   )
 }

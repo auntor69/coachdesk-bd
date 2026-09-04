@@ -1,5 +1,6 @@
 import Link from 'next/link'
 
+import { PageHeader } from '@/components/page-header'
 import { Card } from '@/components/ui'
 import { pageRole, getSession } from '@/lib/auth/session'
 import { createClient } from '@/lib/supabase/server'
@@ -583,7 +584,12 @@ export default async function PlanPage() {
     }) ?? null
 
   return (
-    <div className="flex flex-col gap-5 lg:grid lg:grid-cols-12 lg:items-start lg:gap-6">
+    <div className="flex flex-col gap-5">
+      <PageHeader
+        title={t.title}
+        back={{ href: '/settings', label: dict(locale).settings.hub.title }}
+      />
+
       {/*
         TWO COLUMNS FROM `lg` UP, one on a phone, out of one DOM — the arrangement the
         dashboard proved (§20.8 step 2). Every block carries an `order-N` matching the
@@ -591,295 +597,484 @@ export default async function PlanPage() {
         below the breakpoint so they generate no box and their children are flex items of
         this one column again. `lg:items-start` or the shorter column stretches to the
         taller one and the rail ends in a foot of white.
+
+        The grid is nested under the bar rather than holding it as a twelfth-column cell:
+        a sticky box only travels inside its containing block, and a grid cell's block is
+        one grid row.
       */}
-      <div className="order-1 lg:col-span-12">
-        <Link
-          href="/settings"
-          className="inline-flex min-h-tap items-center text-ink-soft hover:text-ink"
-        >
-          ← {dict(locale).settings.hub.title}
-        </Link>
+      <div className="flex flex-col gap-5 lg:grid lg:grid-cols-12 lg:items-start lg:gap-6">
+        <div className="order-1 lg:col-span-12">
+          {/*
+            §20.4'S FIRST QUESTION, ANSWERED IN THREE FIGURES rather than in a clause of a
+            subtitle: what they are on, what it costs, and the date the money runs to.
+            That date is what an owner opens this screen for, and until now it was printed
+            inside the subscription card — which a manager never sees, and which an owner
+            on a tier with nothing left to sell is not shown either.
 
-        <h1 className="text-xl font-bold text-ink lg:text-2xl">{t.title}</h1>
-
-        {/*
-          §20.4'S FIRST QUESTION, ANSWERED IN THREE FIGURES rather than in a clause of a
-          subtitle: what they are on, what it costs, and the date the money runs to.
-          That date is what an owner opens this screen for, and until now it was printed
-          inside the subscription card — which a manager never sees, and which an owner
-          on a tier with nothing left to sell is not shown either.
-
-          Ruled rather than boxed: one container with two dividers, not three cards
-          (§20.7). Stacked below `sm`, because three figures across a 375px screen is
-          three columns of wrapped words.
-        */}
-        <dl
-          className="mt-3 grid divide-y divide-line rounded-xl border border-line
-            bg-white sm:grid-cols-3 sm:divide-x sm:divide-y-0"
-        >
-          <Fact label={t.factPlan} value={planName(plan, locale)} />
-          <Fact label={t.factPrice} value={priceLine(plan, t)} />
-          <Fact
-            label={t.factPaid}
-            value={
-              session.active.paidThrough
-                ? formatDate(session.active.paidThrough, locale)
-                : t.factPaidNone
-            }
-            // Amber only where the product is actually withholding something. The shell
-            // says why in a banner; this says which date it happened after.
-            tone={session.access === 'read_only' ? 'late' : 'ink'}
-          />
-        </dl>
-      </div>
-
-      <div className="contents lg:order-2 lg:col-span-7 lg:flex lg:flex-col lg:gap-5">
-        <Card className="order-2">
-          <h2 className="font-semibold text-ink">{t.usageTitle}</h2>
-          <dl className="mt-2 flex flex-col gap-1.5">
-            {usage.map((row) => {
-              /*
-                FULL AND OVER, SAID ON THE ROW. A line reading "30 / 30" is the reason
-                this screen gets opened, and it looked like every other line on it —
-                the reader had to compare the two figures themselves, on every row, to
-                find the one that had run out. Over is a real state and not an
-                impossible one: a centre moved down a tier keeps its students, and the
-                teachers row is drawn specifically to say so.
-              */
-              const { used, limit } = row
-              const full = used !== null && limit !== null && used >= limit
-              const over = used !== null && limit !== null && used > limit
-              return (
-                <div
-                  key={row.label}
-                  className="flex items-baseline justify-between gap-4"
-                >
-                  <dt className="text-ink-soft">{row.label}</dt>
-                  {/*
-                    The count is always shown, cap or no cap. It used to be replaced by
-                    the words "no limit" on the centre tiers, which meant the block
-                    titled "what is being used now" showed an owner nothing they were
-                    using — and on those tiers the student count is the figure their
-                    bill is worked out from, so it is the one number they came for.
-                  */}
-                  <dd
-                    className={`num font-semibold ${
-                      over ? 'text-absent' : full ? 'text-late' : 'text-ink'
-                    }`}
-                  >
-                    {used === null ? '—' : digits(used, locale)}
-                    {limit === null ? (
-                      <span className="ml-1 font-medium text-ink-soft">
-                        · {t.noCap}
-                      </span>
-                    ) : (
-                      `/${digits(limit, locale)}`
-                    )}
-                    {full && (
-                      <span className="ml-2 text-xs font-medium">
-                        {over ? t.capOver : t.capFull}
-                      </span>
-                    )}
-                  </dd>
-                </div>
-              )
-            })}
+            Ruled rather than boxed: one container with two dividers, not three cards
+            (§20.7). Stacked below `sm`, because three figures across a 375px screen is
+            three columns of wrapped words.
+          */}
+          <dl
+            className="mt-3 grid divide-y divide-line rounded-xl border border-line
+              bg-white sm:grid-cols-3 sm:divide-x sm:divide-y-0"
+          >
+            <Fact label={t.factPlan} value={planName(plan, locale)} />
+            <Fact label={t.factPrice} value={priceLine(plan, t)} />
+            <Fact
+              label={t.factPaid}
+              value={
+                session.active.paidThrough
+                  ? formatDate(session.active.paidThrough, locale)
+                  : t.factPaidNone
+              }
+              // Amber only where the product is actually withholding something. The shell
+              // says why in a banner; this says which date it happened after.
+              tone={session.access === 'read_only' ? 'late' : 'ink'}
+            />
           </dl>
-          {plan.maxStudentsPerBatch !== null && (
-            <p className="mt-2 text-sm text-ink-faint">
-              {t.perBatchCap(plan.maxStudentsPerBatch)}
-            </p>
-          )}
-          {plan.maxBatches !== null && has(plan, 'multipleBranches') && (
-            <p className="mt-2 text-sm text-ink-faint">
-              {t.perBranchBatches(plan.maxBatches)}
-            </p>
-          )}
-        </Card>
+        </div>
 
-        {/*
-          Directly under the counts, because the row that says "118 / 120 students" is
-          where an owner learns they need this — and drawn only on a tier that sells
-          places, since on the teacher tiers the ceiling moves by changing plan and the
-          card below already says so.
-        */}
-        {sellsPlaces && (
-          <Card className="order-3">
-            <h2 className="font-semibold text-ink">{t.places.title}</h2>
-            <p className="mt-1 text-sm text-ink-soft">{t.places.body}</p>
-
-            {/*
-              ABOVE THE BUY FORM, because it is the same purchase with the decision already
-              made. An owner who scrolls past this to type a number into the box below has
-              bought the places without closing the ask, and the manager in Mirpur is still
-              being told HQ has been asked.
-            */}
-            {asks === null && (
-              <p className="mt-3 text-sm text-ink-soft">{t.places.asksUnreadable}</p>
+        <div className="contents lg:order-2 lg:col-span-7 lg:flex lg:flex-col lg:gap-5">
+          <Card className="order-2">
+            <h2 className="font-semibold text-ink">{t.usageTitle}</h2>
+            <dl className="mt-2 flex flex-col gap-1.5">
+              {usage.map((row) => {
+                /*
+                  FULL AND OVER, SAID ON THE ROW. A line reading "30 / 30" is the reason
+                  this screen gets opened, and it looked like every other line on it —
+                  the reader had to compare the two figures themselves, on every row, to
+                  find the one that had run out. Over is a real state and not an
+                  impossible one: a centre moved down a tier keeps its students, and the
+                  teachers row is drawn specifically to say so.
+                */
+                const { used, limit } = row
+                const full = used !== null && limit !== null && used >= limit
+                const over = used !== null && limit !== null && used > limit
+                return (
+                  <div
+                    key={row.label}
+                    className="flex items-baseline justify-between gap-4"
+                  >
+                    <dt className="text-ink-soft">{row.label}</dt>
+                    {/*
+                      The count is always shown, cap or no cap. It used to be replaced by
+                      the words "no limit" on the centre tiers, which meant the block
+                      titled "what is being used now" showed an owner nothing they were
+                      using — and on those tiers the student count is the figure their
+                      bill is worked out from, so it is the one number they came for.
+                    */}
+                    <dd
+                      className={`num font-semibold ${
+                        over ? 'text-absent' : full ? 'text-late' : 'text-ink'
+                      }`}
+                    >
+                      {used === null ? '—' : digits(used, locale)}
+                      {limit === null ? (
+                        <span className="ml-1 font-medium text-ink-soft">
+                          · {t.noCap}
+                        </span>
+                      ) : (
+                        `/${digits(limit, locale)}`
+                      )}
+                      {full && (
+                        <span className="ml-2 text-xs font-medium">
+                          {over ? t.capOver : t.capFull}
+                        </span>
+                      )}
+                    </dd>
+                  </div>
+                )
+              })}
+            </dl>
+            {plan.maxStudentsPerBatch !== null && (
+              <p className="mt-2 text-sm text-ink-faint">
+                {t.perBatchCap(plan.maxStudentsPerBatch)}
+              </p>
             )}
+            {plan.maxBatches !== null && has(plan, 'multipleBranches') && (
+              <p className="mt-2 text-sm text-ink-faint">
+                {t.perBranchBatches(plan.maxBatches)}
+              </p>
+            )}
+          </Card>
 
-            {askRows.length > 0 && (
-              <div className="mt-4 border-t border-line pt-3">
-                <h3 className="font-medium text-ink">{t.places.asksTitle}</h3>
-                <p className="mt-1 text-sm text-ink-soft">{t.places.asksBody}</p>
-                <div className="mt-2 flex flex-col gap-2">
-                  {askRows.map((row) => (
-                    <AskRow
-                      key={row.id}
-                      id={row.id}
-                      line={row.line}
-                      buy={row.buy}
-                      decline={t.places.askDecline}
-                    />
-                  ))}
+          {/*
+            Directly under the counts, because the row that says "118 / 120 students" is
+            where an owner learns they need this — and drawn only on a tier that sells
+            places, since on the teacher tiers the ceiling moves by changing plan and the
+            card below already says so.
+          */}
+          {sellsPlaces && (
+            <Card className="order-3">
+              <h2 className="font-semibold text-ink">{t.places.title}</h2>
+              <p className="mt-1 text-sm text-ink-soft">{t.places.body}</p>
+
+              {/*
+                ABOVE THE BUY FORM, because it is the same purchase with the decision already
+                made. An owner who scrolls past this to type a number into the box below has
+                bought the places without closing the ask, and the manager in Mirpur is still
+                being told HQ has been asked.
+              */}
+              {asks === null && (
+                <p className="mt-3 text-sm text-ink-soft">{t.places.asksUnreadable}</p>
+              )}
+
+              {askRows.length > 0 && (
+                <div className="mt-4 border-t border-line pt-3">
+                  <h3 className="font-medium text-ink">{t.places.asksTitle}</h3>
+                  <p className="mt-1 text-sm text-ink-soft">{t.places.asksBody}</p>
+                  <div className="mt-2 flex flex-col gap-2">
+                    {askRows.map((row) => (
+                      <AskRow
+                        key={row.id}
+                        id={row.id}
+                        line={row.line}
+                        buy={row.buy}
+                        decline={t.places.askDecline}
+                      />
+                    ))}
+                  </div>
                 </div>
-              </div>
-            )}
+              )}
 
-            {buysError && (
-              <p className="mt-3 text-sm text-ink-soft">{t.places.unreadable}</p>
-            )}
+              {buysError && (
+                <p className="mt-3 text-sm text-ink-soft">{t.places.unreadable}</p>
+              )}
 
-            {buys && buys.length > 0 && (
-              <div className="mt-4 border-t border-line pt-3">
-                <h3 className="font-medium text-ink">{t.places.waitingTitle}</h3>
-                <div className="mt-2 flex flex-col gap-2">
-                  {buys.map((buy) => (
+              {buys && buys.length > 0 && (
+                <div className="mt-4 border-t border-line pt-3">
+                  <h3 className="font-medium text-ink">{t.places.waitingTitle}</h3>
+                  <div className="mt-2 flex flex-col gap-2">
+                    {buys.map((buy) => (
+                      <OpenPurchase
+                        key={buy.id}
+                        id={buy.id}
+                        line={t.placesLine(buy.quantity, formatTaka(Number(buy.amount_bdt)))}
+                        note={null}
+                        expiresAt={buy.expires_at}
+                        salesPhone={salesPhone}
+                        locale={locale}
+                        t={t}
+                      />
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              <BuyPlaces
+                ceiling={paidCeiling.ceiling}
+                locale={locale}
+                words={t.places}
+              />
+            </Card>
+          )}
+
+          {/*
+            WHERE THE PLAN ITSELF IS PAID FOR — and, for a trial centre, the one control on
+            this page that ends the trial without the founder having to ring back. Under the
+            places card because places are the more frequent errand for a centre already
+            paying; above the receipts because this is the money going out, not the paperwork
+            coming back.
+
+            Drawn only when there is something to sell: a free tier with no upward move left
+            (coverage still running, so a move would be mid-term) has nothing here, and a
+            card offering a ৳0 renewal would be worse than no card.
+          */}
+          {subscribes && (
+            <Card className="order-4" id="pay">
+              <h2 className="font-semibold text-ink">{t.subscribe.title}</h2>
+              <p className="mt-1 text-sm text-ink-soft">{t.subscribe.body}</p>
+
+              {/* The one fact an owner comes to this card for. `paid_through` is the last
+                  day covered, so it is printed as a day and not a month. */}
+              <p className="mt-2 text-sm font-medium text-ink">
+                {session.active.paidThrough
+                  ? t.subscribe.coveredUntil(
+                      formatDate(session.active.paidThrough, locale),
+                    )
+                  : t.subscribe.notCovered}
+              </p>
+
+              {subsError && (
+                <p className="mt-3 text-sm text-ink-soft">{t.subscribe.unreadable}</p>
+              )}
+
+              {open && (
+                <div className="mt-4 border-t border-line pt-3">
+                  <h3 className="font-medium text-ink">{t.subscribe.waitingTitle}</h3>
+                  <div className="mt-2">
                     <OpenPurchase
-                      key={buy.id}
-                      id={buy.id}
-                      line={t.placesLine(buy.quantity, formatTaka(Number(buy.amount_bdt)))}
-                      note={null}
-                      expiresAt={buy.expires_at}
+                      id={open.id}
+                      line={t.subscribe.waitingLine(
+                        digits(open.quantity, locale),
+                        formatTaka(Number(open.amount_bdt)),
+                        open.covers_period_end
+                          ? formatDate(open.covers_period_end, locale)
+                          : '—',
+                      )}
+                      note={
+                        open.target_plan
+                          ? t.subscribe.waitingPlan(
+                              planName(planFor(open.target_plan), locale),
+                            )
+                          : null
+                      }
+                      expiresAt={open.expires_at}
                       salesPhone={salesPhone}
                       locale={locale}
                       t={t}
                     />
-                  ))}
+                  </div>
                 </div>
+              )}
+
+              {/* No form while one is open, because the action refuses a second one — and a
+                  form that exists only to be rejected is a worse answer than the row above
+                  it and the cancel button under that. */}
+              {!subsError && !open && counts && (
+                <BuySubscription
+                  plan={plan.id}
+                  plans={subChoices}
+                  months={monthChoices}
+                  students={counts.students}
+                  teachers={counts.teachers}
+                  branches={counts.branches}
+                  from={from}
+                  locale={locale}
+                  words={{
+                    planLabel: t.subscribe.planLabel,
+                    monthsLabel: t.subscribe.monthsLabel,
+                    quote: t.subscribe.quote,
+                    submit: t.subscribe.submit,
+                    submitting: t.subscribe.submitting,
+                  }}
+                />
+              )}
+              {!subsError && !open && !counts && (
+                <p className="mt-3 text-sm text-ink-soft">
+                  {t.subscribe.priceUnreadable}
+                </p>
+              )}
+            </Card>
+          )}
+
+          {/*
+            §20.4'S FOURTH AND FIFTH QUESTIONS, WHICH THE FOUR CARDS BELOW NEVER ANSWERED:
+            what changes if I move up, and what will it cost. The difference itself, and one
+            figure for the price — from the same `priceLine` the list uses, so the two cannot
+            disagree. Absent on the top tier, where there is nothing above to move onto.
+          */}
+          {nextUp && (
+            <Card className="order-5">
+              <div className="flex flex-wrap items-baseline justify-between gap-x-4">
+                <h2 className="font-semibold text-ink">
+                  {t.nextTitle(planName(nextUp, locale))}
+                </h2>
+                <p className="num font-bold text-brand-800">{priceLine(nextUp, t)}</p>
               </div>
-            )}
 
-            <BuyPlaces
-              ceiling={paidCeiling.ceiling}
-              locale={locale}
-              words={t.places}
-            />
-          </Card>
-        )}
+              {nextAdds.length > 0 && (
+                <>
+                  <p className="mt-3 text-sm font-medium text-ink-soft">{t.nextAdds}</p>
+                  <ul className="mt-1 flex flex-col gap-1">
+                    {nextAdds.map((key) => (
+                      <li key={key} className="flex gap-2 text-ink">
+                        <span aria-hidden className="text-present">
+                          +
+                        </span>
+                        {labels[key]}
+                      </li>
+                    ))}
+                  </ul>
+                </>
+              )}
 
-        {/*
-          WHERE THE PLAN ITSELF IS PAID FOR — and, for a trial centre, the one control on
-          this page that ends the trial without the founder having to ring back. Under the
-          places card because places are the more frequent errand for a centre already
-          paying; above the receipts because this is the money going out, not the paperwork
-          coming back.
+              {nextRaises.length > 0 && (
+                <>
+                  <p className="mt-4 text-sm font-medium text-ink-soft">
+                    {t.nextRaises}
+                  </p>
+                  <dl className="mt-1 flex flex-col gap-1">
+                    {nextRaises.map(([label, from, to]) => (
+                      <div
+                        key={label}
+                        className="flex items-baseline justify-between gap-4"
+                      >
+                        <dt className="text-ink-soft">{label}</dt>
+                        {/* The arrow is not `aria-hidden`, unlike the ticks and crosses in
+                            the feature lists. Those repeat what their list is headed with;
+                            this one carries the sentence — hidden, the row reads "5 100". */}
+                        <dd className="num font-semibold text-ink">
+                          <span className="font-normal text-ink-faint">
+                            {from === null ? t.noCap : digits(from, locale)}
+                          </span>
+                          <span className="mx-1.5 text-ink-faint">→</span>
+                          {to === null ? t.noCap : digits(to, locale)}
+                        </dd>
+                      </div>
+                    ))}
+                  </dl>
+                </>
+              )}
 
-          Drawn only when there is something to sell: a free tier with no upward move left
-          (coverage still running, so a move would be mid-term) has nothing here, and a
-          card offering a ৳0 renewal would be worse than no card.
-        */}
-        {subscribes && (
-          <Card className="order-4" id="pay">
-            <h2 className="font-semibold text-ink">{t.subscribe.title}</h2>
-            <p className="mt-1 text-sm text-ink-soft">{t.subscribe.body}</p>
+              {/*
+                ONE PRIMARY ACTION (§20.4), and it points at the control rather than being a
+                second copy of it: an owner who can pay for this month has a priced dropdown
+                a few inches up, and two ways to buy the same month is how somebody buys it
+                twice. On a phone that jump is worth having — the form it lands on is three
+                cards away — and on a laptop the target is already beside this block.
+              */}
+              <a
+                href={selfServe ? '#pay' : '#ask'}
+                className="mt-4 inline-flex min-h-tap items-center justify-center
+                  rounded-xl bg-brand-600 px-5 font-semibold text-white"
+              >
+                {selfServe ? t.nextGo : t.nextAsk}
+              </a>
+            </Card>
+          )}
 
-            {/* The one fact an owner comes to this card for. `paid_through` is the last
-                day covered, so it is printed as a day and not a month. */}
-            <p className="mt-2 text-sm font-medium text-ink">
-              {session.active.paidThrough
-                ? t.subscribe.coveredUntil(
-                    formatDate(session.active.paidThrough, locale),
-                  )
-                : t.subscribe.notCovered}
-            </p>
+          {/*
+            THE FOUR TIERS, FOLDED AWAY ON A TIER THAT IS ALREADY PAID FOR. §20.4: "a centre
+            already paying us has chosen its plan and is now managing its size" — a plan grid
+            in its face is a question it answered months ago, and it was the tallest thing on
+            this screen. Open on the free tier, where choosing is the whole errand.
 
-            {subsError && (
-              <p className="mt-3 text-sm text-ink-soft">{t.subscribe.unreadable}</p>
-            )}
-
-            {open && (
-              <div className="mt-4 border-t border-line pt-3">
-                <h3 className="font-medium text-ink">{t.subscribe.waitingTitle}</h3>
-                <div className="mt-2">
-                  <OpenPurchase
-                    id={open.id}
-                    line={t.subscribe.waitingLine(
-                      digits(open.quantity, locale),
-                      formatTaka(Number(open.amount_bdt)),
-                      open.covers_period_end
-                        ? formatDate(open.covers_period_end, locale)
-                        : '—',
+            Kept rather than deleted (§38). It is the only place the product says what all
+            four tiers are for, the block above only describes the next one, and a reader
+            comparing two rungs further up has nowhere else to look.
+          */}
+          <details
+            className="order-6 rounded-2xl border border-line bg-white p-5 shadow-sm"
+            open={plan.pricing === 'free'}
+          >
+            <summary className="min-h-tap cursor-pointer font-semibold text-ink">
+              {t.ladderAll}
+            </summary>
+            <ul className="mt-3 flex flex-col gap-2">
+              {LADDER.map((tier) => {
+                const isCurrent = tier.id === plan.id
+                return (
+                  <li
+                    key={tier.id}
+                    className={`rounded-xl border p-4 ${
+                      isCurrent ? 'border-brand-500 bg-brand-50' : 'border-line'
+                    }`}
+                  >
+                    <div className="flex items-baseline justify-between gap-3">
+                      <p className="font-semibold text-ink">
+                        {planName(tier, locale)}
+                      </p>
+                      <p className="num shrink-0 text-sm font-medium text-brand-800">
+                        {priceLine(tier, t)}
+                      </p>
+                    </div>
+                    <p className="mt-1 text-sm text-ink-soft">
+                      {ladderLine(tier, t)}
+                    </p>
+                    {isCurrent && (
+                      <p className="mt-1 text-xs font-medium text-brand-700">
+                        {t.current}
+                      </p>
                     )}
-                    note={
-                      open.target_plan
-                        ? t.subscribe.waitingPlan(
-                            planName(planFor(open.target_plan), locale),
-                          )
-                        : null
-                    }
-                    expiresAt={open.expires_at}
-                    salesPhone={salesPhone}
-                    locale={locale}
-                    t={t}
-                  />
-                </div>
-              </div>
-            )}
+                  </li>
+                )
+              })}
+            </ul>
+          </details>
 
-            {/* No form while one is open, because the action refuses a second one — and a
-                form that exists only to be rejected is a worse answer than the row above
-                it and the cancel button under that. */}
-            {!subsError && !open && counts && (
-              <BuySubscription
-                plan={plan.id}
-                plans={subChoices}
-                months={monthChoices}
-                students={counts.students}
-                teachers={counts.teachers}
-                branches={counts.branches}
-                from={from}
-                locale={locale}
-                words={{
-                  planLabel: t.subscribe.planLabel,
-                  monthsLabel: t.subscribe.monthsLabel,
-                  quote: t.subscribe.quote,
-                  submit: t.subscribe.submit,
-                  submitting: t.subscribe.submitting,
-                }}
-              />
-            )}
-            {!subsError && !open && !counts && (
-              <p className="mt-3 text-sm text-ink-soft">
-                {t.subscribe.priceUnreadable}
-              </p>
-            )}
-          </Card>
-        )}
+          {/* Last in the column and wrapped for its order, because `PriceCalculator`
+              renders its own `Card` and takes no class of its own. */}
+          <div className="order-7">
+            <PriceCalculator t={dict(locale).planCalc} locale={locale} />
+          </div>
+        </div>
 
         {/*
-          §20.4'S FOURTH AND FIFTH QUESTIONS, WHICH THE FOUR CARDS BELOW NEVER ANSWERED:
-          what changes if I move up, and what will it cost. The difference itself, and one
-          figure for the price — from the same `priceLine` the list uses, so the two cannot
-          disagree. Absent on the top tier, where there is nothing above to move onto.
+          THE RAIL: what has been paid, what the plan holds, and how to reach us. Beside the
+          working column on a laptop rather than a screen further down, and after it on a
+          phone — none of it is why somebody opened this screen, and all of it is what they
+          check once they are here.
         */}
-        {nextUp && (
-          <Card className="order-5">
-            <div className="flex flex-wrap items-baseline justify-between gap-x-4">
-              <h2 className="font-semibold text-ink">
-                {t.nextTitle(planName(nextUp, locale))}
-              </h2>
-              <p className="num font-bold text-brand-800">{priceLine(nextUp, t)}</p>
-            </div>
+        <div className="contents lg:order-3 lg:col-span-5 lg:flex lg:flex-col lg:gap-5">
+          {/*
+            Under the places card and not inside it, because it is not about places: the monthly
+            subscription money lands in the same table, so a শিক্ষক প্রো centre has receipts to
+            print without ever buying a single place.
 
-            {nextAdds.length > 0 && (
+            Drawn only when there is something to draw, or when the read broke. A card headed
+            "what we have received" with nothing under it is the trial centre being told, on the
+            pricing screen, that they have paid us nothing — which they know, and which is the
+            one sentence this screen should not open with.
+          */}
+          {isOwner && (settledError || (receipts !== null && receipts.length > 0)) && (
+            <Card className="order-8">
+              <h2 className="font-semibold text-ink">{t.paid.title}</h2>
+              {settledError ? (
+                <p className="mt-1 text-sm text-ink-soft">{t.paid.unreadable}</p>
+              ) : (
+                <>
+                  <p className="mt-1 text-sm text-ink-soft">{t.paid.body}</p>
+                  <div className="mt-3 flex flex-col gap-2">
+                    {receipts?.map((r) => (
+                      <Link
+                        key={r.id}
+                        href={`/settings/plan/receipt/${r.id}`}
+                        className={`flex min-h-tap flex-col justify-center rounded-xl border p-3
+                          ${r.credit ? 'border-late/40 bg-late/5' : 'border-line bg-surface-alt'}`}
+                      >
+                        <div className="flex items-baseline justify-between gap-3">
+                          <span className="font-medium text-ink">{r.what}</span>
+                          {/* Toned rather than coloured, and the sign is in the string: a
+                              credit among receipts has to be legible as the odd one out at a
+                              glance, and green or red would both say the wrong thing about
+                              money the centre is owed. */}
+                          <span
+                            className={`num shrink-0 font-bold
+                              ${r.credit ? 'text-late' : 'text-ink'}`}
+                          >
+                            {r.taka}
+                          </span>
+                        </div>
+                        <div className="mt-0.5 flex items-baseline justify-between gap-3">
+                          <span className="num text-sm text-ink-soft">{r.day}</span>
+                          <span className="num shrink-0 text-sm text-brand-700 underline">
+                            {r.number}
+                          </span>
+                        </div>
+                      </Link>
+                    ))}
+                  </div>
+                </>
+              )}
+            </Card>
+          )}
+
+          <Card className="order-9">
+            <h2 className="font-semibold text-ink">{t.haveTitle}</h2>
+            <ul className="mt-2 flex flex-col gap-1">
+              {have.map((key) => (
+                <li key={key} className="flex gap-2 text-ink">
+                  <span aria-hidden className="text-present">
+                    ✓
+                  </span>
+                  {labels[key]}
+                </li>
+              ))}
+            </ul>
+
+            {/* Named, not hidden. A feature an owner cannot see they are missing is a
+                feature they cannot decide to pay for — and one they discover by
+                tapping is a feature they experience as broken. */}
+            {lack.length > 0 && (
               <>
-                <p className="mt-3 text-sm font-medium text-ink-soft">{t.nextAdds}</p>
-                <ul className="mt-1 flex flex-col gap-1">
-                  {nextAdds.map((key) => (
-                    <li key={key} className="flex gap-2 text-ink">
-                      <span aria-hidden className="text-present">
-                        +
+                <h2 className="mt-4 font-semibold text-ink">{t.lackTitle}</h2>
+                <ul className="mt-2 flex flex-col gap-1">
+                  {lack.map((key) => (
+                    <li key={key} className="flex gap-2 text-ink-soft">
+                      <span aria-hidden className="text-ink-faint">
+                        ✕
                       </span>
                       {labels[key]}
                     </li>
@@ -888,269 +1083,77 @@ export default async function PlanPage() {
               </>
             )}
 
-            {nextRaises.length > 0 && (
-              <>
-                <p className="mt-4 text-sm font-medium text-ink-soft">
-                  {t.nextRaises}
-                </p>
-                <dl className="mt-1 flex flex-col gap-1">
-                  {nextRaises.map(([label, from, to]) => (
-                    <div
-                      key={label}
-                      className="flex items-baseline justify-between gap-4"
-                    >
-                      <dt className="text-ink-soft">{label}</dt>
-                      {/* The arrow is not `aria-hidden`, unlike the ticks and crosses in
-                          the feature lists. Those repeat what their list is headed with;
-                          this one carries the sentence — hidden, the row reads "5 100". */}
-                      <dd className="num font-semibold text-ink">
-                        <span className="font-normal text-ink-faint">
-                          {from === null ? t.noCap : digits(from, locale)}
-                        </span>
-                        <span className="mx-1.5 text-ink-faint">→</span>
-                        {to === null ? t.noCap : digits(to, locale)}
-                      </dd>
-                    </div>
-                  ))}
-                </dl>
-              </>
-            )}
-
-            {/*
-              ONE PRIMARY ACTION (§20.4), and it points at the control rather than being a
-              second copy of it: an owner who can pay for this month has a priced dropdown
-              a few inches up, and two ways to buy the same month is how somebody buys it
-              twice. On a phone that jump is worth having — the form it lands on is three
-              cards away — and on a laptop the target is already beside this block.
-            */}
-            <a
-              href={selfServe ? '#pay' : '#ask'}
-              className="mt-4 inline-flex min-h-tap items-center justify-center
-                rounded-xl bg-brand-600 px-5 font-semibold text-white"
-            >
-              {selfServe ? t.nextGo : t.nextAsk}
-            </a>
+            <p className="mt-3 text-xs text-ink-faint">{t.onlyBuilt}</p>
           </Card>
-        )}
 
-        {/*
-          THE FOUR TIERS, FOLDED AWAY ON A TIER THAT IS ALREADY PAID FOR. §20.4: "a centre
-          already paying us has chosen its plan and is now managing its size" — a plan grid
-          in its face is a question it answered months ago, and it was the tallest thing on
-          this screen. Open on the free tier, where choosing is the whole errand.
+          <Card className="order-last" id="ask">
+            <h2 className="font-semibold text-ink">{t.contactTitle}</h2>
+            <p className="mt-1 text-sm text-ink-soft">{t.contactBody}</p>
 
-          Kept rather than deleted (§38). It is the only place the product says what all
-          four tiers are for, the block above only describes the next one, and a reader
-          comparing two rungs further up has nowhere else to look.
-        */}
-        <details
-          className="order-6 rounded-2xl border border-line bg-white p-5 shadow-sm"
-          open={plan.pricing === 'free'}
-        >
-          <summary className="min-h-tap cursor-pointer font-semibold text-ink">
-            {t.ladderAll}
-          </summary>
-          <ul className="mt-3 flex flex-col gap-2">
-            {LADDER.map((tier) => {
-              const isCurrent = tier.id === plan.id
-              return (
-                <li
-                  key={tier.id}
-                  className={`rounded-xl border p-4 ${
-                    isCurrent ? 'border-brand-500 bg-brand-50' : 'border-line'
-                  }`}
-                >
-                  <div className="flex items-baseline justify-between gap-3">
-                    <p className="font-semibold text-ink">
-                      {planName(tier, locale)}
-                    </p>
-                    <p className="num shrink-0 text-sm font-medium text-brand-800">
-                      {priceLine(tier, t)}
-                    </p>
-                  </div>
-                  <p className="mt-1 text-sm text-ink-soft">
-                    {ladderLine(tier, t)}
-                  </p>
-                  {isCurrent && (
-                    <p className="mt-1 text-xs font-medium text-brand-700">
-                      {t.current}
-                    </p>
-                  )}
-                </li>
-              )
-            })}
-          </ul>
-        </details>
-
-        {/* Last in the column and wrapped for its order, because `PriceCalculator`
-            renders its own `Card` and takes no class of its own. */}
-        <div className="order-7">
-          <PriceCalculator t={dict(locale).planCalc} locale={locale} />
-        </div>
-      </div>
-
-      {/*
-        THE RAIL: what has been paid, what the plan holds, and how to reach us. Beside the
-        working column on a laptop rather than a screen further down, and after it on a
-        phone — none of it is why somebody opened this screen, and all of it is what they
-        check once they are here.
-      */}
-      <div className="contents lg:order-3 lg:col-span-5 lg:flex lg:flex-col lg:gap-5">
-        {/*
-          Under the places card and not inside it, because it is not about places: the monthly
-          subscription money lands in the same table, so a শিক্ষক প্রো centre has receipts to
-          print without ever buying a single place.
-
-          Drawn only when there is something to draw, or when the read broke. A card headed
-          "what we have received" with nothing under it is the trial centre being told, on the
-          pricing screen, that they have paid us nothing — which they know, and which is the
-          one sentence this screen should not open with.
-        */}
-        {isOwner && (settledError || (receipts !== null && receipts.length > 0)) && (
-          <Card className="order-8">
-            <h2 className="font-semibold text-ink">{t.paid.title}</h2>
-            {settledError ? (
-              <p className="mt-1 text-sm text-ink-soft">{t.paid.unreadable}</p>
+            {isOwner ? (
+              <>
+                {/* Grey, above the form, and the form stays. `asked` being null used to
+                    mean both "nothing pending" and "the pending read fell over", and
+                    the component switches on exactly that — so a dropped read hid an
+                    open request and its withdraw button, leaving an owner sure we never
+                    got it. The form is safe to leave up: the write upserts on
+                    coaching_center_id, so filing again replaces the request rather than
+                    adding a second one. What is not safe is the silence. */}
+                {askedError && (
+                  <p className="mt-3 text-sm text-ink-soft">{t.pendingUnreadable}</p>
+                )}
+                <UpgradeRequest
+                  choices={choices}
+                  suggested={suggested}
+                  pendingLine={pendingLine}
+                  pendingNote={asked?.note ?? null}
+                  words={t.upgrade}
+                />
+              </>
             ) : (
-              <>
-                <p className="mt-1 text-sm text-ink-soft">{t.paid.body}</p>
-                <div className="mt-3 flex flex-col gap-2">
-                  {receipts?.map((r) => (
-                    <Link
-                      key={r.id}
-                      href={`/settings/plan/receipt/${r.id}`}
-                      className={`flex min-h-tap flex-col justify-center rounded-xl border p-3
-                        ${r.credit ? 'border-late/40 bg-late/5' : 'border-line bg-surface-alt'}`}
-                    >
-                      <div className="flex items-baseline justify-between gap-3">
-                        <span className="font-medium text-ink">{r.what}</span>
-                        {/* Toned rather than coloured, and the sign is in the string: a
-                            credit among receipts has to be legible as the odd one out at a
-                            glance, and green or red would both say the wrong thing about
-                            money the centre is owed. */}
-                        <span
-                          className={`num shrink-0 font-bold
-                            ${r.credit ? 'text-late' : 'text-ink'}`}
-                        >
-                          {r.taka}
-                        </span>
-                      </div>
-                      <div className="mt-0.5 flex items-baseline justify-between gap-3">
-                        <span className="num text-sm text-ink-soft">{r.day}</span>
-                        <span className="num shrink-0 text-sm text-brand-700 underline">
-                          {r.number}
-                        </span>
-                      </div>
-                    </Link>
-                  ))}
-                </div>
-              </>
+              /* A manager gets the sentence rather than a form that would be refused.
+                 Whoever pays for this decides what it costs — the same line
+                 `upgrade_requests_owner_insert` draws in the database. */
+              <p className="mt-3 text-sm text-ink-faint">{t.upgrade.ownerOnly}</p>
+            )}
+
+            {salesPhone && (
+              <div
+                className="mt-4 flex flex-wrap gap-2 border-t border-line pt-3"
+              >
+                <a
+                  // wa.me wants the number without the +, exactly as the fee chips do.
+                  href={`https://wa.me/${salesPhone.slice(1)}?text=${encodeURIComponent(salesMessage)}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex min-h-tap items-center rounded-xl border-2
+                    border-brand-500 bg-brand-50 px-4 font-medium text-brand-800"
+                >
+                  {t.contactWhatsapp}
+                </a>
+                <a
+                  // The number is printed rather than hidden behind "Call", because
+                  // `tel:` opens nothing on a laptop and this is the one control on the
+                  // one screen where a centre decides to start paying us. A dead button
+                  // here is a lost sale; the digits work on any device. ASCII in both
+                  // languages — it is dialled, not read as prose.
+                  href={`tel:${salesPhone}`}
+                  className="inline-flex min-h-tap items-center rounded-xl border-2
+                    border-line px-4 font-medium text-ink-soft"
+                >
+                  {t.contactCall}
+                  {/* `ml-1` and not a JSX space. This anchor is an inline-flex, and a
+                      space there is worth exactly zero pixels — measured: 152.03px wide
+                      with the space, 152.03px without, 156.03px with this margin. The
+                      at-risk row spaces the same two parts with a plain JSX space and is
+                      right to, because that anchor is an inline-block, where the space
+                      is 3.27px of real layout. */}
+                  <span className="num ml-1">{formatBdMobile(salesPhone)}</span>
+                </a>
+              </div>
             )}
           </Card>
-        )}
-
-        <Card className="order-9">
-          <h2 className="font-semibold text-ink">{t.haveTitle}</h2>
-          <ul className="mt-2 flex flex-col gap-1">
-            {have.map((key) => (
-              <li key={key} className="flex gap-2 text-ink">
-                <span aria-hidden className="text-present">
-                  ✓
-                </span>
-                {labels[key]}
-              </li>
-            ))}
-          </ul>
-
-          {/* Named, not hidden. A feature an owner cannot see they are missing is a
-              feature they cannot decide to pay for — and one they discover by
-              tapping is a feature they experience as broken. */}
-          {lack.length > 0 && (
-            <>
-              <h2 className="mt-4 font-semibold text-ink">{t.lackTitle}</h2>
-              <ul className="mt-2 flex flex-col gap-1">
-                {lack.map((key) => (
-                  <li key={key} className="flex gap-2 text-ink-soft">
-                    <span aria-hidden className="text-ink-faint">
-                      ✕
-                    </span>
-                    {labels[key]}
-                  </li>
-                ))}
-              </ul>
-            </>
-          )}
-
-          <p className="mt-3 text-xs text-ink-faint">{t.onlyBuilt}</p>
-        </Card>
-
-        <Card className="order-last" id="ask">
-          <h2 className="font-semibold text-ink">{t.contactTitle}</h2>
-          <p className="mt-1 text-sm text-ink-soft">{t.contactBody}</p>
-
-          {isOwner ? (
-            <>
-              {/* Grey, above the form, and the form stays. `asked` being null used to
-                  mean both "nothing pending" and "the pending read fell over", and
-                  the component switches on exactly that — so a dropped read hid an
-                  open request and its withdraw button, leaving an owner sure we never
-                  got it. The form is safe to leave up: the write upserts on
-                  coaching_center_id, so filing again replaces the request rather than
-                  adding a second one. What is not safe is the silence. */}
-              {askedError && (
-                <p className="mt-3 text-sm text-ink-soft">{t.pendingUnreadable}</p>
-              )}
-              <UpgradeRequest
-                choices={choices}
-                suggested={suggested}
-                pendingLine={pendingLine}
-                pendingNote={asked?.note ?? null}
-                words={t.upgrade}
-              />
-            </>
-          ) : (
-            /* A manager gets the sentence rather than a form that would be refused.
-               Whoever pays for this decides what it costs — the same line
-               `upgrade_requests_owner_insert` draws in the database. */
-            <p className="mt-3 text-sm text-ink-faint">{t.upgrade.ownerOnly}</p>
-          )}
-
-          {salesPhone && (
-            <div
-              className="mt-4 flex flex-wrap gap-2 border-t border-line pt-3"
-            >
-              <a
-                // wa.me wants the number without the +, exactly as the fee chips do.
-                href={`https://wa.me/${salesPhone.slice(1)}?text=${encodeURIComponent(salesMessage)}`}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="inline-flex min-h-tap items-center rounded-xl border-2
-                  border-brand-500 bg-brand-50 px-4 font-medium text-brand-800"
-              >
-                {t.contactWhatsapp}
-              </a>
-              <a
-                // The number is printed rather than hidden behind "Call", because
-                // `tel:` opens nothing on a laptop and this is the one control on the
-                // one screen where a centre decides to start paying us. A dead button
-                // here is a lost sale; the digits work on any device. ASCII in both
-                // languages — it is dialled, not read as prose.
-                href={`tel:${salesPhone}`}
-                className="inline-flex min-h-tap items-center rounded-xl border-2
-                  border-line px-4 font-medium text-ink-soft"
-              >
-                {t.contactCall}
-                {/* `ml-1` and not a JSX space. This anchor is an inline-flex, and a
-                    space there is worth exactly zero pixels — measured: 152.03px wide
-                    with the space, 152.03px without, 156.03px with this margin. The
-                    at-risk row spaces the same two parts with a plain JSX space and is
-                    right to, because that anchor is an inline-block, where the space
-                    is 3.27px of real layout. */}
-                <span className="num ml-1">{formatBdMobile(salesPhone)}</span>
-              </a>
-            </div>
-          )}
-        </Card>
+        </div>
       </div>
     </div>
   )

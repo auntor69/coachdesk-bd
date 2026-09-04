@@ -51,16 +51,16 @@ test('the list is one column at every width, and says so', () => {
 })
 
 test('adding somebody and the payroll are both beside the heading', () => {
-  const head = PAGE.indexOf(
-    'className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between',
-  )
-  assert.ok(head >= 0, 'the letterhead is a row from sm')
+  // In the bar's own `actions` slot now, so both stay on screen while fourteen rows
+  // scroll past. They used to be in a hand-rolled letterhead row that also carried the h1.
+  const bar = PAGE.lastIndexOf('<PageHeader')
+  assert.ok(bar >= 0, 'the list lost its page bar')
 
   const add = PAGE.indexOf('href="/settings/staff/new"')
   const payroll = PAGE.indexOf('href="/payroll"')
   const list = PAGE.indexOf('<StaffRow')
 
-  assert.ok(add > head && payroll > add, 'add first, then the payroll: the sequence')
+  assert.ok(add > bar && payroll > add, 'add first, then the payroll: the sequence')
   assert.ok(payroll < list, 'and both above the list rather than under fourteen rows')
 
   // One door to each. Two would be two things to keep in step.
@@ -71,22 +71,27 @@ test('adding somebody and the payroll are both beside the heading', () => {
   // asks for one unambiguous primary action per screen.
   assert.ok(PAGE.includes('border-dashed border-brand-300'))
   assert.equal(count(PAGE, 'border-dashed'), 1)
-  assert.ok(PAGE.includes('font-medium text-brand-800\n              underline'))
+  assert.ok(PAGE.includes('underline underline-offset-4'))
 })
 
 test('all three shapes of this screen draw the same heading', () => {
   // Three returns — the locked plan, the failed read, the list — and the locked one had
   // no h1 at all, so a bookmark landed a reader on a card about their plan with nothing
-  // above it saying which screen had refused them.
-  assert.equal(count(PAGE, 'text-xl font-bold text-ink lg:text-2xl'), 3)
-  assert.equal(count(PAGE, '>{t.title}</h1>'), 3)
-  assert.doesNotMatch(PAGE, /font-bold text-ink"/, 'no heading left in the old hand')
+  // above it saying which screen had refused them. The bar carries it on all three now
+  // and owns the h1, so a card's own title is an h2.
+  assert.equal(count(PAGE, '<PageHeader'), 3)
+  assert.equal(count(PAGE, 'title={t.title}'), 3)
+  assert.equal(count(PAGE, '<h1'), 0)
+  assert.doesNotMatch(PAGE, /text-xl font-bold text-ink lg:text-2xl/)
 })
 
 test('a one-sentence refusal is capped rather than set across the page', () => {
   // §26 is a narrow column stretched; the opposite mistake is one sentence set 1,216px
-  // wide. Both refusals are one sentence.
-  assert.equal(count(PAGE, 'flex max-w-2xl flex-col gap-5'), 2)
+  // wide. Both refusals are one sentence — and the cap is on the card rather than the
+  // column, or the bar's `lg:-mx-8` background would stop 672px into the workspace.
+  assert.equal(count(PAGE, 'flex flex-col gap-5'), 3)
+  assert.doesNotMatch(PAGE, /flex max-w-2xl flex-col/)
+  assert.equal(count(PAGE, '<Card className="max-w-2xl'), 2)
   assert.equal(count(PAGE, '<Card className="max-w-3xl">'), 1)
 })
 

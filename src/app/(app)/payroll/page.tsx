@@ -1,5 +1,6 @@
 import Link from 'next/link'
 
+import { PageHeader } from '@/components/page-header'
 import { Card } from '@/components/ui'
 import { getSession, pageCapability } from '@/lib/auth/session'
 import { formatDate, todayInDhaka } from '@/lib/bd/time'
@@ -70,14 +71,21 @@ export default async function PayrollPage() {
   const d = dict(locale)
   const t = d.payroll
 
+  /** The way out, in one place because all three endings of this screen need it. */
+  const back = { href: '/fees' as const, label: t.backToFees }
+
   // Before the query, like the spending screen's own plan branch: this return draws
   // none of the bill, so reading it would be work for a screen that cannot show it.
   if (!has(session.plan, 'centerWideReporting')) {
     return (
+      // One column, and the cap on the card rather than the column: there is one thing to
+      // read here, and a 7/5 split with an empty rail beside it is most of a laptop screen
+      // saying nothing.
       <div className="flex flex-col gap-4">
-        <BackToFees label={t.backToFees} />
-        <Card>
-          <h1 className="font-semibold text-ink">{t.lockedTitle}</h1>
+        <PageHeader title={t.title} back={back} />
+        <Card className="max-w-2xl">
+          {/* An h2, because the bar above owns the h1 now. */}
+          <h2 className="font-semibold text-ink">{t.lockedTitle}</h2>
           <p className="mt-1 text-sm text-ink-soft">
             {t.lockedBody(planName(session.plan, locale), planName(PLANS.center, locale))}
           </p>
@@ -135,9 +143,8 @@ export default async function PayrollPage() {
   if (terms === null || employees === null || teachers === null) {
     return (
       <div className="flex flex-col gap-4">
-        <BackToFees label={t.backToFees} />
-        <h1 className="text-xl font-bold text-ink lg:text-2xl">{t.title}</h1>
-        <Card className="border-late/30 bg-late/5">
+        <PageHeader title={t.title} back={back} />
+        <Card className="max-w-2xl border-late/30 bg-late/5">
           <p className="font-medium text-ink">{t.unreadable}</p>
         </Card>
       </div>
@@ -210,213 +217,203 @@ export default async function PayrollPage() {
   const canWrite = session.access === 'full'
 
   return (
-    // One column on a phone, then seven of the bill beside five of everything that is not
-    // the bill — the fee board's split, for the same reason: the rail holds a form. `lg`
-    // and not the spending screen's `xl`, because the rows here are cards rather than a
-    // 36rem table, so a narrow column wraps a card instead of scrolling a table sideways.
-    <div className="flex flex-col gap-4 lg:grid lg:grid-cols-12 lg:items-start lg:gap-6">
-      {/*
-        The way back and the way on, on one row.
-
-        THE WAY THROUGH TO A MONTH, and the two screens are not the same question. What is
-        agreed here is a standing figure with no month attached and no money moved; the
-        profit line subtracts `salary_payments`, which is what that screen writes. An owner
-        who agreed fourteen figures and never opened it has a wage bill on paper and a
-        payroll term of zero in every month's profit.
-
-        A door and not an underlined line of text, and at the top rather than adrift above
-        the form: agreeing a salary is what a centre does twice a year, and paying one is
-        what it does every month, so the monthly errand is the one that gets the button. No
-        `?month=` — that screen opens on this month by itself, and a link carrying one would
-        go stale in a bookmark. Not gated on `canWrite`: a read-only centre can read the
-        month, and the figures are part of what they need to decide whether to renew.
-      */}
-      <div
-        className="order-1 flex flex-wrap items-center justify-between gap-x-4 gap-y-2
-          lg:col-span-12"
-      >
-        <BackToFees label={t.backToFees} />
-        <Link
-          href="/payroll/pay"
-          className="inline-flex min-h-tap items-center rounded-xl border-2 border-brand-500
-            bg-brand-50 px-4 font-medium text-brand-800"
-        >
-          {t.payLink} →
-        </Link>
-      </div>
-
-      <header className="order-2 lg:col-span-12">
-        <h1 className="text-xl font-bold text-ink lg:text-2xl">{t.title}</h1>
-        <p className="text-sm text-ink-soft">{t.subtitle}</p>
-      </header>
-
-      {/* The rail, written before the bill because `order` moves nothing for a keyboard or
-          a screen reader and this column holds the form. What it carries, top to bottom: the
-          figure the bill comes to, the form that adds to it, and the people it has missed. */}
-      <div className="contents lg:order-3 lg:col-span-5 lg:flex lg:flex-col lg:gap-4">
-        {/*
-          THE FIGURES ABOVE THE ROWS ON A PHONE AND BESIDE THEM ON A LAPTOP, which is the
-          change on this screen: this section used to be under the cards, so a centre with
-          twenty agreements scrolled past all twenty to reach what they add up to. Every
-          figure in it is either what the total covers or what it does not — `tallyBill`
-          returns five numbers instead of one because a bill of four monthly agreements and
-          two per-class ones has a total over four of its six rows.
-
-          `rows.length` tested here as well as below rather than one ternary wrapping both:
-          the bill and its total are in different columns now, and a ternary cannot span two.
-        */}
-        {rows.length > 0 && (
-          <section className="order-3 rounded-xl border border-line bg-white p-4">
-            {tally.monthlyCount > 0 ? (
-              <>
-                <h2 className="font-medium text-ink-soft">{t.monthlyTotal}</h2>
-                <p className="num text-3xl font-bold text-ink">{formatTaka(tally.monthly)}</p>
-                <p className="text-sm text-ink-faint">{t.monthlyCount(tally.monthlyCount)}</p>
-              </>
-            ) : (
-              /* Not a ৳0 total. Every row here is per-class, and zero over teachers who
-                 are certainly paid something is a figure an owner would stop and check
-                 for nothing. */
-              <p className="text-ink-soft">{t.noMonthly}</p>
-            )}
-
-            {/* Only when there is any, like the spending screen's deferred lines: in a
-                bill with no per-class agreements these two would be a zero and a
-                paragraph about nothing. */}
-            {tally.perClassCount > 0 && (
-              <div className="mt-3 border-t border-line pt-3">
-                <p className="font-medium text-ink">
-                  {t.perClassCount(tally.perClassCount)}
-                </p>
-                <p className="mt-1 text-sm text-ink-soft">{t.perClassNote}</p>
-              </div>
-            )}
-
-            {/* The one thing on this page that is a fault rather than a fact, so it is the
-                one thing drawn in the warning colour. A rule and coloured words rather than
-                a tinted box: a bordered panel inside a bordered section is the nested
-                container §20.7 forbids, and the colour is doing the work either way.
-                Words as well as colour — these screens are read in bad light. */}
-            {tally.goneCount > 0 && (
-              <div className="mt-3 border-t border-late/40 pt-3">
-                <p className="font-medium text-late">{t.goneCount(tally.goneCount)}</p>
-                <p className="mt-1 text-sm text-ink-soft">{t.goneNote}</p>
-              </div>
-            )}
-          </section>
-        )}
-
-        {/* A read-only centre keeps the bill and loses the form, the same call the
-            spending screen makes: `requireWritable` is in front of the action, and a form
-            that submits into a refusal is a worse way to learn the subscription lapsed
-            than the sentence the shell is already showing. */}
-        {canWrite && (
-          <Card className="order-4">
-            <TermsForm
-              people={pickable}
-              bases={t.bases}
-              t={d.salaryForm}
-              common={d.common}
-              // Computed here, once, on the server: a client component that read the
-              // clock would render one date on the server and another in the browser for
-              // six hours out of every twenty-four. See ExpenseForm's own note.
-              today={todayInDhaka()}
-            />
-          </Card>
-        )}
-
-        {/*
-          WHO HAS BEEN MISSED, which is the question this screen is actually opened with the
-          first time. The bill cannot ask it: an absent row looks like an absent person.
-          Last in the rail and last on a phone, because on a centre's first visit the bill is
-          empty and this list is most of the screen, and on every later visit the bill is
-          what they came for.
-        */}
-        {missing.length > 0 && (
-          <section
-            className="order-6 rounded-xl border border-dashed border-line bg-surface-alt
-              p-4"
+    <div className="flex flex-col gap-4">
+      <PageHeader
+        title={t.title}
+        back={back}
+        subtitle={t.subtitle}
+        /*
+         * THE WAY THROUGH TO A MONTH, and the two screens are not the same question. What
+         * is agreed here is a standing figure with no month attached and no money moved;
+         * the profit line subtracts `salary_payments`, which is what that screen writes.
+         * An owner who agreed fourteen figures and never opened it has a wage bill on
+         * paper and a payroll term of zero in every month's profit.
+         *
+         * A door and not an underlined line of text, and in the bar rather than adrift
+         * above the form: agreeing a salary is what a centre does twice a year, and paying
+         * one is what it does every month, so the monthly errand is the one that gets the
+         * button — and in the bar it stays on screen while the bill scrolls. No `?month=`
+         * — that screen opens on this month by itself, and a link carrying one would go
+         * stale in a bookmark. Not gated on `canWrite`: a read-only centre can read the
+         * month, and the figures are part of what they need to decide whether to renew.
+         */
+        actions={
+          <Link
+            href="/payroll/pay"
+            className="inline-flex min-h-tap items-center rounded-xl border-2 border-brand-500
+              bg-brand-50 px-4 font-medium text-brand-800"
           >
-            <h2 className="font-medium text-ink">{t.missingTitle}</h2>
-            <p className="mt-1 text-sm text-ink-soft">{t.missingBody}</p>
-            <ul className="mt-2 flex flex-col gap-1">
-              {missing.map((p) => (
-                <li key={`${p.kind}:${p.id}`} className="text-sm text-ink">
-                  {p.name}
-                  <span className="ml-2 text-ink-faint">{p.job ?? t.teacherJob}</span>
-                </li>
-              ))}
-            </ul>
-          </section>
-        )}
-      </div>
+            {t.payLink} →
+          </Link>
+        }
+      />
 
-      <div className="contents lg:order-2 lg:col-span-7 lg:flex lg:flex-col lg:gap-4">
-        {/* One ordered block and a ternary inside it: the bill is either a centre with no
-            agreements yet or a list of them, and both land in the same place. */}
-        <div className="order-5 flex flex-col gap-3">
-          {rows.length === 0 ? (
-            <Card>
-              <p className="text-ink-soft">{t.empty}</p>
+      {/* One column on a phone, then seven of the bill beside five of everything that is
+          not the bill — the fee board's split, for the same reason: the rail holds a form.
+          `lg` and not the spending screen's `xl`, because the rows here are cards rather
+          than a 36rem table, so a narrow column wraps a card instead of scrolling a table
+          sideways.
+
+          Nested under the bar rather than holding it as a twelfth-column cell: a sticky
+          box only travels inside its containing block, and a grid cell's block is one grid
+          row. */}
+      <div className="flex flex-col gap-4 lg:grid lg:grid-cols-12 lg:items-start lg:gap-6">
+        {/* The rail, written before the bill because `order` moves nothing for a keyboard or
+            a screen reader and this column holds the form. What it carries, top to bottom: the
+            figure the bill comes to, the form that adds to it, and the people it has missed. */}
+        <div className="contents lg:order-3 lg:col-span-5 lg:flex lg:flex-col lg:gap-4">
+          {/*
+            THE FIGURES ABOVE THE ROWS ON A PHONE AND BESIDE THEM ON A LAPTOP, which is the
+            change on this screen: this section used to be under the cards, so a centre with
+            twenty agreements scrolled past all twenty to reach what they add up to. Every
+            figure in it is either what the total covers or what it does not — `tallyBill`
+            returns five numbers instead of one because a bill of four monthly agreements and
+            two per-class ones has a total over four of its six rows.
+
+            `rows.length` tested here as well as below rather than one ternary wrapping both:
+            the bill and its total are in different columns now, and a ternary cannot span two.
+          */}
+          {rows.length > 0 && (
+            <section className="order-3 rounded-xl border border-line bg-white p-4">
+              {tally.monthlyCount > 0 ? (
+                <>
+                  <h2 className="font-medium text-ink-soft">{t.monthlyTotal}</h2>
+                  <p className="num text-3xl font-bold text-ink">{formatTaka(tally.monthly)}</p>
+                  <p className="text-sm text-ink-faint">{t.monthlyCount(tally.monthlyCount)}</p>
+                </>
+              ) : (
+                /* Not a ৳0 total. Every row here is per-class, and zero over teachers who
+                   are certainly paid something is a figure an owner would stop and check
+                   for nothing. */
+                <p className="text-ink-soft">{t.noMonthly}</p>
+              )}
+
+              {/* Only when there is any, like the spending screen's deferred lines: in a
+                  bill with no per-class agreements these two would be a zero and a
+                  paragraph about nothing. */}
+              {tally.perClassCount > 0 && (
+                <div className="mt-3 border-t border-line pt-3">
+                  <p className="font-medium text-ink">
+                    {t.perClassCount(tally.perClassCount)}
+                  </p>
+                  <p className="mt-1 text-sm text-ink-soft">{t.perClassNote}</p>
+                </div>
+              )}
+
+              {/* The one thing on this page that is a fault rather than a fact, so it is the
+                  one thing drawn in the warning colour. A rule and coloured words rather than
+                  a tinted box: a bordered panel inside a bordered section is the nested
+                  container §20.7 forbids, and the colour is doing the work either way.
+                  Words as well as colour — these screens are read in bad light. */}
+              {tally.goneCount > 0 && (
+                <div className="mt-3 border-t border-late/40 pt-3">
+                  <p className="font-medium text-late">{t.goneCount(tally.goneCount)}</p>
+                  <p className="mt-1 text-sm text-ink-soft">{t.goneNote}</p>
+                </div>
+              )}
+            </section>
+          )}
+
+          {/* A read-only centre keeps the bill and loses the form, the same call the
+              spending screen makes: `requireWritable` is in front of the action, and a form
+              that submits into a refusal is a worse way to learn the subscription lapsed
+              than the sentence the shell is already showing. */}
+          {canWrite && (
+            <Card className="order-4">
+              <TermsForm
+                people={pickable}
+                bases={t.bases}
+                t={d.salaryForm}
+                common={d.common}
+                // Computed here, once, on the server: a client component that read the
+                // clock would render one date on the server and another in the browser for
+                // six hours out of every twenty-four. See ExpenseForm's own note.
+                today={todayInDhaka()}
+              />
             </Card>
-          ) : (
-            <>
-              <h2 className="font-medium text-ink">{t.billTitle}</h2>
+          )}
 
-              {/* Two cards abreast wherever there is room for two, one where there is not.
-                  Each card is a name, a figure, a line of small print and a verb — a shape
-                  that wastes two thirds of its width on a wide row, and a centre with twenty
-                  agreements was scrolling all twenty. The middle step back to one column is
-                  not fussiness: from `lg` this column is 401px, and half of that is narrower
-                  than the phone the card was drawn for. */}
-              <ul className="grid gap-2 sm:grid-cols-2 lg:grid-cols-1 xl:grid-cols-2">
-                {rows.map((row) => (
-                  <TermsRow
-                    key={row.termsId}
-                    termsId={row.termsId}
-                    name={row.name ?? d.common.unknown}
-                    job={row.job ?? t.teacherJob}
-                    gone={row.gone}
-                    offLabel={t.inactive}
-                    // The figure the row prints, built here because both shapes of it take
-                    // an argument and `T` maps a function leaf to `never`. A per-class row
-                    // shows a rate and says so in words: ৳350 printed where the row above
-                    // prints ৳13,000 is a teacher who looks very cheap.
-                    figure={
-                      row.basis === PER_CLASS_BASIS
-                        ? row.perClass === null
-                          ? '—'
-                          : t.perClassRate(formatTaka(row.perClass))
-                        : formatTaka(row.net)
-                    }
-                    // How the salary is worked out and the day it began, joined here the way
-                    // the staff list joins its own small print: `since` takes an argument, so
-                    // the row cannot be handed the words to build it for itself. The basis is
-                    // in the faint line rather than beside the figure — under a per-class
-                    // figure that already says "per class" it would be the same word twice.
-                    meta={`${t.bases[row.basis]} · ${t.since(formatDate(row.since, locale))}`}
-                    note={row.note}
-                    canWrite={canWrite}
-                    t={d.salaryRow}
-                  />
+          {/*
+            WHO HAS BEEN MISSED, which is the question this screen is actually opened with the
+            first time. The bill cannot ask it: an absent row looks like an absent person.
+            Last in the rail and last on a phone, because on a centre's first visit the bill is
+            empty and this list is most of the screen, and on every later visit the bill is
+            what they came for.
+          */}
+          {missing.length > 0 && (
+            <section
+              className="order-6 rounded-xl border border-dashed border-line bg-surface-alt
+                p-4"
+            >
+              <h2 className="font-medium text-ink">{t.missingTitle}</h2>
+              <p className="mt-1 text-sm text-ink-soft">{t.missingBody}</p>
+              <ul className="mt-2 flex flex-col gap-1">
+                {missing.map((p) => (
+                  <li key={`${p.kind}:${p.id}`} className="text-sm text-ink">
+                    {p.name}
+                    <span className="ml-2 text-ink-faint">{p.job ?? t.teacherJob}</span>
+                  </li>
                 ))}
               </ul>
-            </>
+            </section>
           )}
+        </div>
+
+        <div className="contents lg:order-2 lg:col-span-7 lg:flex lg:flex-col lg:gap-4">
+          {/* One ordered block and a ternary inside it: the bill is either a centre with no
+              agreements yet or a list of them, and both land in the same place. */}
+          <div className="order-5 flex flex-col gap-3">
+            {rows.length === 0 ? (
+              <Card>
+                <p className="text-ink-soft">{t.empty}</p>
+              </Card>
+            ) : (
+              <>
+                <h2 className="font-medium text-ink">{t.billTitle}</h2>
+
+                {/* Two cards abreast wherever there is room for two, one where there is not.
+                    Each card is a name, a figure, a line of small print and a verb — a shape
+                    that wastes two thirds of its width on a wide row, and a centre with twenty
+                    agreements was scrolling all twenty. The middle step back to one column is
+                    not fussiness: from `lg` this column is 401px, and half of that is narrower
+                    than the phone the card was drawn for. */}
+                <ul className="grid gap-2 sm:grid-cols-2 lg:grid-cols-1 xl:grid-cols-2">
+                  {rows.map((row) => (
+                    <TermsRow
+                      key={row.termsId}
+                      termsId={row.termsId}
+                      name={row.name ?? d.common.unknown}
+                      job={row.job ?? t.teacherJob}
+                      gone={row.gone}
+                      offLabel={t.inactive}
+                      // The figure the row prints, built here because both shapes of it take
+                      // an argument and `T` maps a function leaf to `never`. A per-class row
+                      // shows a rate and says so in words: ৳350 printed where the row above
+                      // prints ৳13,000 is a teacher who looks very cheap.
+                      figure={
+                        row.basis === PER_CLASS_BASIS
+                          ? row.perClass === null
+                            ? '—'
+                            : t.perClassRate(formatTaka(row.perClass))
+                          : formatTaka(row.net)
+                      }
+                      // How the salary is worked out and the day it began, joined here the way
+                      // the staff list joins its own small print: `since` takes an argument, so
+                      // the row cannot be handed the words to build it for itself. The basis is
+                      // in the faint line rather than beside the figure — under a per-class
+                      // figure that already says "per class" it would be the same word twice.
+                      meta={`${t.bases[row.basis]} · ${t.since(formatDate(row.since, locale))}`}
+                      note={row.note}
+                      canWrite={canWrite}
+                      t={d.salaryRow}
+                    />
+                  ))}
+                </ul>
+              </>
+            )}
+          </div>
         </div>
       </div>
     </div>
-  )
-}
-
-/** The way back, in one place because the locked branch and the screen both need it. */
-function BackToFees({ label }: { label: string }) {
-  return (
-    <Link
-      href="/fees"
-      className="inline-flex min-h-tap items-center font-medium text-brand-700"
-    >
-      ← {label}
-    </Link>
   )
 }

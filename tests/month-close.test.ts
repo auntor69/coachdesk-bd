@@ -567,8 +567,9 @@ test('shape: the month takes seven columns and the figures beside it five', () =
 test('shape: every block has a place in the phone order', () => {
   // Three 3s and they are one place: the failed read, the quiet month and the collected
   // figure are three exclusive drawings of the same block, so they share a number on
-  // purpose. Everything after them ascends.
-  assert.deepEqual(ordersIn(SHEET), ['1', '2', '3', '3', '3', '4', '5', '6'])
+  // purpose. Everything after them ascends. There is no `order-1` any more — that was the
+  // month picker's own cell, and it is in the bar's `actions` now.
+  assert.deepEqual(ordersIn(SHEET), ['2', '3', '3', '3', '4', '5', '6'])
 })
 
 test('shape: the figure and the ledger are drawn once each, from the tested function', () => {
@@ -608,17 +609,23 @@ test('shape: the message tally survives a month whose money could not be added u
 })
 
 test('shape: the letterhead says whose month it is, and what the screen is', () => {
-  // It gets screenshotted and sent to somebody who was not in the conversation. The centre
-  // name is the heading; the fallback is the session's own copy of it.
+  // It gets screenshotted and sent to somebody who was not in the conversation, and a print
+  // draws no page bar at all — so whose month it is and which month it is are written into
+  // the sheet itself rather than left to the bar above it. The centre name is the heading;
+  // the fallback is the session's own copy of it. An h2, because the bar owns the h1.
+  assert.match(SHEET, /<header className="order-2 lg:col-span-12">/)
   assert.match(SHEET, /\{center\?\.name \?\? session\.active\.centerName\}/)
-  assert.match(SHEET, /\{t\.title\} · \{formatMonth\(month, locale\)\}/)
+  assert.match(SHEET, /<p className="font-medium text-ink-soft">\{formatMonth\(month, locale\)\}<\/p>/)
   assert.match(SHEET, /\{t\.subtitle\}/, 'the line that says what the figures are went')
+  assert.doesNotMatch(PAGE, /<h1/)
 
-  // A plain GET form, so the month is in a URL that can be shared. The submit button is
+  // A plain GET form, so the month is in a URL that can be shared, and in the bar's own
+  // slot now rather than a twelfth-column cell of its own. The submit button is
   // load-bearing: Android Chrome fires no navigation on a bare <select> change.
-  assert.match(SHEET, /<form\r?\n\s+method="get"/)
-  assert.match(SHEET, /name="month"\r?\n\s+defaultValue=\{month\}/)
-  assert.match(SHEET, /<button\r?\n\s+type="submit"/)
+  const BAR = PAGE.slice(0, PAGE.indexOf('<div className="flex flex-col gap-4 lg:grid'))
+  assert.match(BAR, /actions=\{\r?\n\s+<form method="get"/)
+  assert.match(BAR, /name="month"\r?\n\s+aria-label=\{t\.month\}\r?\n\s+defaultValue=\{month\}/)
+  assert.match(BAR, /<button\r?\n\s+type="submit"/)
 })
 
 test('shape: nothing about who may read this has moved', () => {

@@ -449,7 +449,11 @@ const PAGE = readFileSync(
 const SHEET = PAGE.slice(PAGE.indexOf('<div className="flex flex-col gap-4 lg:grid'))
 const RAIL_AT = SHEET.indexOf('<div className="contents lg:order-3 lg:col-span-5')
 const MAIN_AT = SHEET.indexOf('<div className="contents lg:order-2 lg:col-span-7')
-const HEAD = SHEET.slice(0, RAIL_AT)
+/** The main arm's bar, above the grid. `lastIndexOf` keeps the two refusal arms' out. */
+const BAR = PAGE.slice(
+  PAGE.lastIndexOf('<PageHeader'),
+  PAGE.indexOf('<div className="flex flex-col gap-4 lg:grid'),
+)
 const RAIL = SHEET.slice(RAIL_AT, MAIN_AT)
 const MAIN = SHEET.slice(MAIN_AT)
 
@@ -477,9 +481,14 @@ test('shape: one column on a phone, twelve from lg, and the bill gets seven', ()
 })
 
 test('shape: every block has a place in the phone order, and no two share one', () => {
-  // Two full-width rows, three blocks in the rail, one in the main column. Per column the
-  // numbers must ascend in source order or the phone and the laptop disagree.
-  assert.equal(ordersIn(HEAD).join(), '1,2')
+  // Three blocks in the rail, one in the main column, and nothing above either of them
+  // inside the grid: the letterhead and the door onwards are in the bar, which sits above
+  // the grid rather than in a twelfth-column cell of it, because a sticky box only travels
+  // inside its containing block and a grid cell's block is one grid row. The rail keeps 3,
+  // 4, 6 rather than being renumbered from 1 — only the relative order matters, and moving
+  // four numbers down to reclaim a 1 is four chances to swap two of them.
+  assert.equal(ordersIn(SHEET.slice(0, RAIL_AT)).join(), '')
+  assert.doesNotMatch(SHEET, /lg:col-span-12/)
   assert.equal(ordersIn(RAIL).join(), '3,4,6')
   assert.equal(ordersIn(MAIN).join(), '5')
 
@@ -537,17 +546,26 @@ test('shape: the cards go two abreast wherever two fit, and one where they do no
 })
 
 test('shape: the way on is a door, and who has been missed is still asked', () => {
-  // A bordered link and not an underlined line of text. Paying a salary is the monthly
-  // errand and agreeing one is the twice-a-year errand, so this is the one with the button.
-  assert.match(HEAD, /href="\/payroll\/pay"/)
-  assert.match(HEAD, /rounded-xl border-2 border-brand-500/)
-  assert.match(HEAD, /\{t\.payLink\} →/)
+  // A bordered link and not an underlined line of text, and in the bar rather than adrift
+  // above the form. Paying a salary is the monthly errand and agreeing one is the
+  // twice-a-year errand, so this is the one with the button — and in the bar it is still
+  // there once twenty agreements have scrolled past.
+  assert.match(BAR, /href="\/payroll\/pay"/)
+  assert.match(BAR, /rounded-xl border-2 border-brand-500/)
+  assert.match(BAR, /\{t\.payLink\} →/)
+  assert.match(BAR, /actions=\{\s+<Link/)
 
   // Not gated on canWrite: a read-only centre can read the month, and the figures are part
-  // of what they need to decide whether to renew. The whole row and not the door onwards —
-  // a gate is written in front of what it gates, so a slice starting at the href misses it.
-  const row = HEAD.slice(HEAD.indexOf('<BackToFees'), HEAD.indexOf('<header'))
-  assert.doesNotMatch(row, /canWrite/, 'the way to the month got gated on writing')
+  // of what they need to decide whether to renew. Sliced from `actions={` rather than
+  // searched whole, so the comment above it saying so does not answer for the code.
+  const door = BAR.slice(BAR.indexOf('actions={'))
+  assert.doesNotMatch(door, /canWrite/, 'the way to the month got gated on writing')
+
+  // One bar per arm, and it owns the h1 — so the total's own heading is an h2.
+  assert.equal(PAGE.split('<PageHeader').length - 1, 3)
+  assert.equal(PAGE.split('<h1').length - 1, 0)
+  assert.doesNotMatch(PAGE, /text-xl font-bold text-ink lg:text-2xl/)
+  assert.doesNotMatch(PAGE, /<BackToFees/, 'a hand-rolled crumb is back above the bar')
 
   // And the list of people with no agreement is still drawn, last.
   assert.match(RAIL, /\{missing\.length > 0 && \(/)

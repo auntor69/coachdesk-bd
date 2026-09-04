@@ -50,24 +50,29 @@ test('the page holds no grid, because the form is the thing that splits', () => 
 
 test('both shapes of this screen draw the same heading', () => {
   // The plan refusal had no h1 at all, so a bookmark landed a reader on a card about
-  // their plan with nothing above it naming the screen that had refused them.
-  assert.equal(count(PAGE, 'text-xl font-bold text-ink lg:text-2xl'), 2)
-  assert.equal(count(PAGE, '>{t.newTitle}</h1>'), 2)
-  assert.doesNotMatch(PAGE, /font-bold text-ink"/, 'no heading left in the old hand')
+  // their plan with nothing above it naming the screen that had refused them. The bar
+  // carries it on both now, and owns the h1, so a card's own title is an h2.
+  assert.equal(count(PAGE, '<PageHeader'), 2)
+  assert.equal(count(PAGE, 'title={t.newTitle}'), 2)
+  assert.equal(count(PAGE, '<h1'), 0)
+  assert.doesNotMatch(PAGE, /text-xl font-bold text-ink lg:text-2xl/)
 })
 
 test('the two refusals are capped, each the way its twin on the list is', () => {
   // A refusal is two sentences. `max-w-2xl` for the plan card, and the seat-limit card
-  // takes the `max-w-3xl` its identical twin on the list screen already had.
-  assert.equal(count(PAGE, 'flex max-w-2xl flex-col gap-5'), 1)
+  // takes the `max-w-3xl` its identical twin on the list screen already had. The cap is
+  // on the card and not the column, or the bar's background would stop 672px in.
+  assert.equal(count(PAGE, '<Card className="max-w-2xl'), 1)
+  assert.doesNotMatch(PAGE, /flex max-w-2xl flex-col/)
   assert.equal(count(PAGE, '<Card className="max-w-3xl">'), 1)
   assert.ok(LIST.includes('<Card className="max-w-3xl">'), 'and the list says it too')
 })
 
 test('the seat count is the line the list already carries', () => {
   // Same words, same two shapes: a bare count where the tier is uncapped, x of y where
-  // it is not. An owner adding somebody is the reader most likely to want it.
-  assert.ok(PAGE.includes('{limit === null ? t.count(active) : t.used(active, limit)}'))
+  // it is not. An owner adding somebody is the reader most likely to want it, and it is
+  // the bar's subtitle now rather than a line under a hand-rolled heading.
+  assert.ok(PAGE.includes('subtitle={limit === null ? t.count(active) : t.used(active, limit)}'))
   assert.ok(LIST.includes('t.count(activeCount) : t.used(activeCount, limit)'))
   assert.ok(PAGE.includes('const limit = session.plan.maxTeachers'))
   assert.ok(PAGE.includes('const active = teacherCount ?? 0'))

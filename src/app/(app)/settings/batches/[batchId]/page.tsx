@@ -1,5 +1,4 @@
-import Link from 'next/link'
-
+import { PageHeader } from '@/components/page-header'
 import { Card } from '@/components/ui'
 import { pageRole, getSession } from '@/lib/auth/session'
 import { branchChoicesFor } from '@/lib/branches'
@@ -80,14 +79,7 @@ export default async function BatchPage({
   // below and the array above has no room left for it.
   const { data: batch, error: batchError } = batchRow
 
-  const back = (
-    <Link
-      href="/settings/batches"
-      className="inline-flex min-h-tap items-center text-ink-soft hover:text-ink"
-    >
-      ← {t.title}
-    </Link>
-  )
+  const back = { href: '/settings/batches' as const, label: t.title }
 
   /*
    * The read that failed, ahead of the row that is not there — see the same pair on
@@ -102,7 +94,7 @@ export default async function BatchPage({
   if (batchError) {
     return (
       <div className="flex flex-col gap-5">
-        {back}
+        <PageHeader title={t.editTitle} back={back} />
         <Card className="max-w-2xl border-late/30 bg-late/5">
           <p className="font-medium text-ink">{t.batchUnreadable}</p>
         </Card>
@@ -115,7 +107,7 @@ export default async function BatchPage({
   if (!batch) {
     return (
       <div className="flex flex-col gap-5">
-        {back}
+        <PageHeader title={t.editTitle} back={back} />
         <p className="max-w-2xl text-ink">{t.errors.notFound}</p>
       </div>
     )
@@ -163,13 +155,7 @@ export default async function BatchPage({
 
   return (
     <div className="flex flex-col gap-5">
-      <div>
-        {back}
-        <h1 className="mt-1 truncate text-xl font-bold text-ink lg:text-2xl">
-          {batch.name}
-        </h1>
-        <p className="mt-1 text-ink-soft">{t.editTitle}</p>
-      </div>
+      <PageHeader title={batch.name} back={back} subtitle={t.editTitle} />
 
       <BatchEditForm
         t={d.batchForm}

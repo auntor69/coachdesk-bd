@@ -47,15 +47,18 @@ const FORMS: [string, string][] = [
 /* -------------------------------------------------------------------------- */
 
 test('the list keeps a row legible and splits in two at 2xl', () => {
+  // The cap is on the list and not on the page, or the bar's `lg:-mx-8` background would
+  // stop 672px into a 1,216px workspace. It lifts at `2xl`, which is where the list
+  // becomes two columns.
+  assert.ok(LIST.includes('<div className="flex flex-col gap-5">'))
+  assert.doesNotMatch(LIST, /flex max-w-2xl flex-col gap-5/)
   assert.ok(
-    LIST.includes('<div className="flex max-w-2xl flex-col gap-5 2xl:max-w-none">'),
-    'the cap is on the page, so the heading and the button match the rows',
-  )
-  assert.ok(
-    LIST.includes('<ul className="flex flex-col gap-2 2xl:grid 2xl:grid-cols-2 2xl:gap-3">'),
+    LIST.includes(`          className="flex max-w-2xl flex-col gap-2 2xl:grid 2xl:max-w-none
+            2xl:grid-cols-2 2xl:gap-3"`),
+    'the cap and the split both live on the <ul> now',
   )
   assert.equal(count(LIST, '2xl:h-full'), 2, 'both arms, or the pair in a row step apart')
-  assert.equal(count(LIST, 'max-w-2xl'), 3, 'both wrappers and the empty state')
+  assert.equal(count(LIST, 'max-w-2xl'), 3, 'the list, the empty state and the failed read')
   assert.ok(LIST.includes('<Card className="max-w-2xl">'))
 
   // Not at `xl`: 960px of content makes two 468px columns, and the days-and-teacher
@@ -63,8 +66,10 @@ test('the list keeps a row legible and splits in two at 2xl', () => {
   assert.doesNotMatch(LIST, /(?<!2)xl:grid-cols-2/)
   assert.doesNotMatch(LIST, /(?<=["\s`])order-\d/)
 
-  assert.equal(count(LIST, '<h1'), 2, 'the unreadable arm has its own')
-  assert.equal(count(LIST, '<h1 className="text-xl font-bold text-ink lg:text-2xl">'), 2)
+  // Both arms draw the bar, and it owns the h1 — so the empty state's own title is an h2.
+  assert.equal(count(LIST, '<PageHeader'), 2, 'the unreadable arm has its own')
+  assert.equal(count(LIST, '<h1'), 0)
+  assert.doesNotMatch(LIST, /text-xl font-bold text-ink lg:text-2xl/)
 })
 
 test('both forms are two columns from xl and capped below it', () => {
@@ -135,23 +140,28 @@ test('the two forms ask for the same things in the same order', () => {
 })
 
 test('the furniture is the one the other settings screens use', () => {
-  for (const [which, src] of [
-    ['list', LIST],
-    ['new', NEW],
-    ['edit', EDIT],
-  ] as [string, string][]) {
-    assert.ok(
-      src.includes(
-        'className="inline-flex min-h-tap items-center text-ink-soft hover:text-ink"',
-      ),
-      which,
-    )
-    assert.match(src, /lg:text-2xl/, which)
+  // The bar on every arm of all three screens, each with the crumb that belongs to it,
+  // and the h1 is the bar's on all of them. A hand-rolled letterhead on one of the six
+  // would be a heading that scrolls away on that one screen only.
+  for (const [which, src, bars] of [
+    ['list', LIST, 2],
+    ['new', NEW, 1],
+    ['edit', EDIT, 3],
+  ] as [string, string, number][]) {
+    assert.equal(count(src, '<PageHeader'), bars, which)
+    assert.equal(count(src, 'back='), bars, `${which}: every arm offers the way back`)
+    assert.equal(count(src, '<h1'), 0, which)
+    assert.doesNotMatch(src, /text-xl font-bold text-ink lg:text-2xl/, which)
+    assert.doesNotMatch(src, /inline-flex min-h-tap items-center text-ink-soft/, which)
   }
-  assert.ok(NEW.includes('<h1 className="mt-1 text-xl font-bold text-ink lg:text-2xl">'))
-  assert.ok(EDIT.includes('<h1 className="mt-1 truncate text-xl font-bold text-ink lg:text-2xl">'))
-  assert.equal(count(NEW, '<h1'), 1)
-  assert.equal(count(EDIT, '<h1'), 1)
+
+  // The crumb points one level up, not to the hub, on the two screens under the list.
+  assert.ok(NEW.includes("back={{ href: '/settings/batches', label: t.title }}"))
+  assert.ok(EDIT.includes("const back = { href: '/settings/batches' as const, label: t.title }"))
+
+  // And the edit screen leads with the batch's own name, with what the screen is for
+  // under it: a reader who came from a list of fourteen wants to know which row opened.
+  assert.ok(EDIT.includes('<PageHeader title={batch.name} back={back} subtitle={t.editTitle} />'))
 })
 
 /* -------------------------------------------------------------------------- */

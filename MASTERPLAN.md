@@ -2037,9 +2037,11 @@ but no row to hang it on — every revenue row is a bill against a child);
 the interface (the frame §20 describes is built — sidebar, wide workspace, a real
 navigation — and so are all nine of §20.8's steps, so every screen a centre uses daily has
 a shape of its own at 1,216px rather than a phone's column stretched to fit. What is partial
-is the page furniture: `components/page-header.tsx` exists and ten screens draw it, so on
-the rest the heading still scrolls away with the first ten rows. §20.8 steps 1–9 ✅, §20.1's
-bar adopted on ten screens of about forty).
+is the page furniture: `components/page-header.tsx` exists and thirty screens draw it, so on
+the rest — the dashboard, the teaching screens, the exams, the notices and the reports — the
+heading still scrolls away with the first ten rows. §20.8 steps 1–9 ✅, §20.1's bar adopted
+on thirty screens of the forty-nine under `(app)`, five of which are print sheets that must
+never have it).
 
 **Not built ❌** — the five
 `teacher_permissions` booleans folded into the capability vocabulary — they work, and
@@ -2269,9 +2271,11 @@ last. Colours and corner radii are not the problem, and changing them is not the
 1,216px rather than a phone's column stretched to fit, the bulk-import screen included —
 it was a step 5 workflow step 5 did not reach, and it is now the paste and everything read
 back off it in seven columns beside the batches it joins in five. The page-furniture bar
-§20.1 asks for exists too, as `components/page-header.tsx`, and ten screens draw it. What
-remains is adopting it on the rest: a heading that scrolls away is now the exception rather
-than the rule, but it is still what most screens do.
+§20.1 asks for exists too, as `components/page-header.tsx`, and thirty screens draw it —
+every one of the money screens and every one of the settings screens. What remains is the
+daily-work half: the dashboard, the two teaching screens, the four exam screens, the notices,
+the at-risk list, the progress report and the two account screens. A heading that scrolls
+away is now the exception rather than the rule.
 
 ### 20.1 Desktop is not a large phone ✅
 
@@ -2909,9 +2913,13 @@ built the shell and left the bar inside it undrawn, so every screen wrote its ow
 a crumb, an `<h1>` and a subtitle in a `<div>` at the top of the column — which scrolled away
 with the first ten rows. At 1,216px that costs a reader forty rows into the arrears register the
 one thing they need on screen: which month they are writing, and the way back to the board.
-`components/page-header.tsx` is that block in one place, and ten screens draw it: subjects, exam
-kinds, branches, the centre's details, SMS, the download screen, the activity log, the bulk
-import and the chase list. Each drops its hand-rolled block, its now-unused `Link` import, and
+`components/page-header.tsx` is that block in one place, and thirty screens draw it. The first ten
+were the one-list screens — subjects, exam kinds, branches, the centre's details, SMS, the download
+screen, the activity log, the bulk import and the chase list — and the twenty after them are every
+screen that handles money or settings: the fee board, the arrears register, the one-off charge, the
+month close, the waivers, spending, the wage bill, the month's payslips, the settings hub, the plan
+screen, and the batch, student, staff, teacher and manager screens with their new-and-edit forms.
+Each drops its hand-rolled block, its now-unused `Link` import, and
 where it had one the `max-w-2xl` on its root column — which moves onto the card, so the bar still
 reaches the workspace edges while the prose stays a sentence wide.
 
@@ -2921,8 +2929,12 @@ containing block; and it is one line of 56px, which is why every sticky rail in 
 from `top-8` to `top-16` in the same change. A filter that moves into the bar therefore goes in
 label-less with an `aria-label` — the activity log's table picker and the download screen's month
 are both that shape now — and a fragment target's `scroll-mt` is `scroll-mt-20` at every width
-rather than `lg:scroll-mt-4`, because 56px of bar now sits over the anchor it jumps to. What is
-left is the same edit on the remaining screens; no screen may be left drawing its own `<h1>` and
+rather than `lg:scroll-mt-4`, because 56px of bar now sits over the anchor it jumps to. On the
+grid-rooted screens the bar is hoisted out of the grid and the grid nested under it, which retires
+the `order-1 lg:col-span-12` heading cell those screens carried — the remaining `order-N` are left
+at the numbers they had rather than renumbered from 1, because only their relative order matters
+and moving six blocks down to reclaim a 1 is six chances to swap two of them. What is
+left is the same edit on the daily-work screens; no screen may be left drawing its own `<h1>` and
 `tests/page-header.test.ts` fails the build if one is.
 
 ### 20.9 The rule that outranks everything above

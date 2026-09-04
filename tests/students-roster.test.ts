@@ -39,7 +39,6 @@ const RAIL_AT = RENDER.indexOf('contents lg:order-3 lg:col-span-4')
 // `order-6`, and a slice that begins at the class itself hands it the start of a string.
 const MAIN_AT = RENDER.indexOf('<div className="order-6 flex flex-col gap-3 lg:order-2 lg:col-span-8">')
 
-const HEAD = RENDER.slice(0, RAIL_AT)
 const RAIL = RENDER.slice(RAIL_AT, MAIN_AT)
 const MAIN = RENDER.slice(MAIN_AT)
 
@@ -74,8 +73,9 @@ test('one column on a phone, twelve from lg, and the roster gets eight of them',
   assert.match(RENDER, /lg:col-span-8/)
   assert.match(RENDER, /lg:col-span-4/)
 
-  // The header spans the lot rather than sitting above an eight-column column.
-  assert.match(HEAD, /className="order-1 lg:col-span-12"/)
+  // No twelfth-column cell for the heading any more: the bar sits above the grid, because
+  // a sticky box only travels inside its containing block and a cell's is one grid row.
+  assert.doesNotMatch(RENDER, /lg:col-span-12/)
 
   // The rail is written first so a phone's DOM order is its reading order.
   assert.ok(RAIL_AT < MAIN_AT, 'the rail must be written before the roster')
@@ -104,12 +104,16 @@ test('every block has a place in the phone order, and no two share one', () => {
 
   for (const [value, n] of counts) assert.equal(n, 1, `order-${value} is used ${n} times`)
 
-  // 1 to 6: header, places warning, paste door, two problem cards, roster.
+  // 2 to 6 with nothing missing: places warning, paste door, two problem cards, roster.
+  // There is no `order-1` any more — that was the heading's twelfth-column cell, and the
+  // bar above the grid replaced it. The numbers were left where they were rather than
+  // shifted down, because only their relative order matters and renumbering five blocks to
+  // save a 1 is five chances to swap two of them.
   const used = [...counts.keys()]
-  for (let n = 1; n <= 6; n += 1) {
+  for (let n = 2; n <= 6; n += 1) {
     assert.ok(used.includes(String(n)), `no block is order-${n}`)
   }
-  assert.equal(used.length, 6, `${used.length} distinct positions, expected 6`)
+  assert.equal(used.length, 5, `${used.length} distinct positions, expected 5`)
 
   // Per column the numbers still apply at `lg`, so a column whose numbers do not ascend
   // in source order is a phone and a laptop that disagree.
@@ -178,10 +182,15 @@ test('the sheet is fixed, its columns are shared out by hand, and they add up', 
 
 test('the hint that says to tap a student is not shown where the name is a link', () => {
   // "Tap a student" on a desk is the giant-phone tell §26 names, and from `xl` the name
-  // says what it does by being a link.
-  const at = HEAD.indexOf('t.openHint')
-  assert.ok(at > 0, 'the hint is gone')
-  assert.match(HEAD.slice(at - 80, at), /xl:hidden/, 'the hint is shown beside the table')
+  // says what it does by being a link. It is the bar's subtitle now rather than a line
+  // under a hand-rolled heading, so it sits above the grid the rest of this file slices.
+  const at = PAGE.indexOf('t.openHint')
+  assert.ok(at > 0 && at < GRID_AT, 'the hint is gone, or it is no longer in the bar')
+  assert.match(PAGE.slice(at - 80, at), /xl:hidden/, 'the hint is shown beside the table')
+
+  // And only where there are rows: "tap a student" over an empty roster is an instruction
+  // to do something the screen is not offering.
+  assert.match(PAGE, /\{rows\.length > 0 && \(\s+<span className="text-ink-faint xl:hidden">/)
 })
 
 test('putting the leavers aside is offered only when there are some', () => {

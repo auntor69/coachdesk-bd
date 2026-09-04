@@ -1,5 +1,6 @@
 import Link from 'next/link'
 
+import { PageHeader } from '@/components/page-header'
 import { Card } from '@/components/ui'
 import { pageCapability, getSession } from '@/lib/auth/session'
 import { createClient } from '@/lib/supabase/server'
@@ -291,37 +292,23 @@ export default async function MonthClosePage({
   const showMessages = sent.total > 0 || showLedger
 
   return (
-    // One column on a phone; from lg the month itself is seven columns wide beside five of
-    // the figures that make it mean something, with what the product did and where to go
-    // next on the row under them. Four grid items and no `contents` wrapper: nothing here
-    // has to interleave with anything, so the phone order is the source order.
-    <div className="flex flex-col gap-4 lg:grid lg:grid-cols-12 lg:items-start lg:gap-6">
-      {/* The way back and the month being read, on one row — every finance screen's shape.
-          A plain GET form: no client component, no JavaScript, and the month ends up in a
-          URL that can be bookmarked or shared. The submit button is not decoration —
-          Android Chrome fires no navigation on a bare <select> change. */}
-      <div
-        className="order-1 flex flex-wrap items-end justify-between gap-x-4 gap-y-2
-          lg:col-span-12"
-      >
-        <Link
-          href="/fees"
-          className="inline-flex min-h-tap items-center font-medium text-brand-700"
-        >
-          ← {t.backToFees}
-        </Link>
-
-        <form
-          method="get"
-          className="flex w-full min-w-0 items-end justify-end gap-2 sm:w-auto sm:flex-1"
-        >
-          <label className="flex min-w-0 flex-1 flex-col gap-1.5 sm:w-56 sm:flex-none">
-            <span className="font-medium text-ink">{t.month}</span>
+    <div className="flex flex-col gap-4">
+      <PageHeader
+        title={t.title}
+        back={{ href: '/fees', label: t.backToFees }}
+        /* The month being read, in the bar's own slot for it. A plain GET form: no client
+           component, no JavaScript, and the month ends up in a URL that can be bookmarked
+           or shared. The submit button is not decoration — Android Chrome fires no
+           navigation on a bare <select> change. Label-less with an `aria-label`, because
+           the bar is one line and every sticky rail in the app starts below it. */
+        actions={
+          <form method="get" className="flex items-center gap-2">
             <select
               name="month"
+              aria-label={t.month}
               defaultValue={month}
-              className="min-h-tap w-full rounded-xl border-2 border-line bg-white px-3
-                font-medium text-ink"
+              className="min-h-tap max-w-44 rounded-xl border-2 border-line bg-white px-3
+                font-medium text-ink sm:max-w-56"
             >
               {months.map((option) => (
                 <option key={option.value} value={option.value}>
@@ -329,144 +316,153 @@ export default async function MonthClosePage({
                 </option>
               ))}
             </select>
-          </label>
-          <button
-            type="submit"
-            className="inline-flex min-h-tap shrink-0 items-center rounded-xl border-2
-              border-brand-500 bg-brand-50 px-4 font-medium text-brand-800"
-          >
-            {t.show}
-          </button>
-        </form>
-      </div>
+            <button
+              type="submit"
+              className="min-h-tap shrink-0 rounded-xl border-2 border-brand-500
+                bg-brand-50 px-4 font-medium text-brand-800"
+            >
+              {t.show}
+            </button>
+          </form>
+        }
+      />
 
-      {/* The letterhead, and it now says what the screen is as well as whose month it is:
-          this page gets sent to somebody who was not in the conversation more often than
-          any other, and the subtitle was written for it and never drawn. */}
-      <header className="order-2 lg:col-span-12">
-        <h1 className="text-xl font-bold text-ink lg:text-2xl">
-          {center?.name ?? session.active.centerName}
-        </h1>
-        <p className="font-medium text-ink-soft">
-          {t.title} · {formatMonth(month, locale)}
-        </p>
-        <p className="text-sm text-ink-faint">{t.subtitle}</p>
-      </header>
+      {/* One column on a phone; from lg the month itself is seven columns wide beside five
+          of the figures that make it mean something, with what the product did and where to
+          go next on the row under them. No `contents` wrapper: nothing here has to
+          interleave with anything, so the phone order is the source order.
 
-      {ledgerProblem !== null ? (
-        /* No figures at all rather than the ones that happen to have arrived. Half a
-           ledger is not a cautious version of a ledger — it is a wrong one, and this is
-           the screen whose numbers get quoted back at us across a table. Full width,
-           because there is nothing to put beside a sentence saying the month cannot be
-           added up. */
-        <Card className="order-3 border-late/30 bg-late/5 lg:col-span-12">
-          <p className="font-medium text-ink">
-            {ledgerProblem === 'tooLarge' ? t.tooLarge : t.unreadable}
-          </p>
-        </Card>
-      ) : nothingHappened ? (
-        <Card className="order-3 lg:col-span-12">
-          <p className="text-ink-soft">{t.empty}</p>
-        </Card>
-      ) : (
-        <>
-          {/* The figure the conversation turns on, in the largest type on the screen.
-              Money in ASCII in both languages — it gets checked against a bKash
-              statement, and a total in Bangla numerals is one the owner has to
-              translate before they can compare it. */}
-          <Card className="order-3 border-brand-200 bg-brand-50 lg:col-span-7">
-            <p className="text-sm font-medium text-brand-800">{t.collected}</p>
-            <p className="num mt-1 text-4xl font-bold text-brand-900">
-              {formatTaka(m.collected)}
+          Nested under the bar rather than holding it as a twelfth-column cell: a sticky box
+          only travels inside its containing block, and a grid cell's block is one grid
+          row. */}
+      <div className="flex flex-col gap-4 lg:grid lg:grid-cols-12 lg:items-start lg:gap-6">
+        {/* The letterhead. This page gets sent to somebody who was not in the
+            conversation more often than any other, so whose month it is and which month
+            it is are written into the screen itself rather than left to a bar that a
+            screenshot might crop and a print never draws. */}
+        <header className="order-2 lg:col-span-12">
+          <h2 className="text-xl font-bold text-ink lg:text-2xl">
+            {center?.name ?? session.active.centerName}
+          </h2>
+          <p className="font-medium text-ink-soft">{formatMonth(month, locale)}</p>
+          <p className="text-sm text-ink-faint">{t.subtitle}</p>
+        </header>
+
+        {ledgerProblem !== null ? (
+          /* No figures at all rather than the ones that happen to have arrived. Half a
+             ledger is not a cautious version of a ledger — it is a wrong one, and this is
+             the screen whose numbers get quoted back at us across a table. Full width,
+             because there is nothing to put beside a sentence saying the month cannot be
+             added up. */
+          <Card className="order-3 border-late/30 bg-late/5 lg:col-span-12">
+            <p className="font-medium text-ink">
+              {ledgerProblem === 'tooLarge' ? t.tooLarge : t.unreadable}
             </p>
-            {/* Only when there is some, and directly under the figure rather than at
-                the foot of the card. This is the honest half of the big number: money
-                handed over this month against a later month's bill is collection, and
-                it is not this month's collection. Without this line the rate below
-                looks wrong to the one person who can check it. */}
-            {m.advance > 0 && (
-              <p className="mt-1 text-sm text-brand-800">
-                <span className="num font-semibold">{formatTaka(m.advance)}</span>{' '}
-                {t.advance}
+          </Card>
+        ) : nothingHappened ? (
+          <Card className="order-3 lg:col-span-12">
+            <p className="text-ink-soft">{t.empty}</p>
+          </Card>
+        ) : (
+          <>
+            {/* The figure the conversation turns on, in the largest type on the screen.
+                Money in ASCII in both languages — it gets checked against a bKash
+                statement, and a total in Bangla numerals is one the owner has to
+                translate before they can compare it. */}
+            <Card className="order-3 border-brand-200 bg-brand-50 lg:col-span-7">
+              <p className="text-sm font-medium text-brand-800">{t.collected}</p>
+              <p className="num mt-1 text-4xl font-bold text-brand-900">
+                {formatTaka(m.collected)}
               </p>
-            )}
-            <p className="num mt-2 text-sm font-medium text-brand-800">
-              {m.collectionRatePct === null
-                ? t.rateNone
-                : `${t.rate} ${m.collectionRatePct}%`}
-            </p>
-          </Card>
+              {/* Only when there is some, and directly under the figure rather than at
+                  the foot of the card. This is the honest half of the big number: money
+                  handed over this month against a later month's bill is collection, and
+                  it is not this month's collection. Without this line the rate below
+                  looks wrong to the one person who can check it. */}
+              {m.advance > 0 && (
+                <p className="mt-1 text-sm text-brand-800">
+                  <span className="num font-semibold">{formatTaka(m.advance)}</span>{' '}
+                  {t.advance}
+                </p>
+              )}
+              <p className="num mt-2 text-sm font-medium text-brand-800">
+                {m.collectionRatePct === null
+                  ? t.rateNone
+                  : `${t.rate} ${m.collectionRatePct}%`}
+              </p>
+            </Card>
 
-          {/* The three that make the big one mean something. A ৳47,000 month is a
-              different story depending on whether ৳60,000 was owed at the start — so
-              they are beside the figure on a laptop and not somewhere under it. */}
-          <Card className="order-4 lg:col-span-5">
-            <dl className="flex flex-col gap-2">
-              <Figure label={t.opening} amount={m.opening} />
-              <Figure label={t.billed} amount={m.billed} />
-              <Figure label={t.closing} amount={m.closing} strong />
-            </dl>
-            {m.credit > 0 && (
-              <div className="mt-3 border-t border-line pt-3">
-                <dl className="flex flex-col gap-2">
-                  <Figure label={t.credit} amount={m.credit} />
-                </dl>
-                {/* The only reason the four figures above will not add up, said where
-                    somebody who has just tried to add them is looking. */}
-                <p className="mt-1.5 text-sm text-ink-soft">{t.creditNote}</p>
-              </div>
-            )}
-          </Card>
-        </>
-      )}
-
-      {/* The work the product did, counted and not characterised — see the note at the head
-          of this file for why it says no more than this. Four kinds and a total, because the
-          total on its own is the number that gets doubted: "ninety-one messages" invites
-          "ninety-one of what", and the four answers are four different reasons this product
-          is worth paying for. The breakdown only when more than one kind happened; with one
-          kind it is the total written twice. */}
-      {showMessages && (
-        <Card className={`order-5 ${showLedger ? 'lg:col-span-7' : 'lg:col-span-12'}`}>
-          <p className="text-ink">
-            {sent.total > 0 ? t.messagesSent(sent.total) : t.messagesNone}
-          </p>
-          {sent.lines.length > 1 && (
-            <dl className="mt-2 flex flex-col gap-1 border-t border-line pt-2 text-sm">
-              {sent.lines.map((line) => (
-                <div key={line.kind} className="flex items-baseline justify-between gap-4">
-                  <dt className="text-ink-soft">{t.messageKinds[line.kind]}</dt>
-                  <dd className="num font-semibold text-ink">{digits(line.n, locale)}</dd>
+            {/* The three that make the big one mean something. A ৳47,000 month is a
+                different story depending on whether ৳60,000 was owed at the start — so
+                they are beside the figure on a laptop and not somewhere under it. */}
+            <Card className="order-4 lg:col-span-5">
+              <dl className="flex flex-col gap-2">
+                <Figure label={t.opening} amount={m.opening} />
+                <Figure label={t.billed} amount={m.billed} />
+                <Figure label={t.closing} amount={m.closing} strong />
+              </dl>
+              {m.credit > 0 && (
+                <div className="mt-3 border-t border-line pt-3">
+                  <dl className="flex flex-col gap-2">
+                    <Figure label={t.credit} amount={m.credit} />
+                  </dl>
+                  {/* The only reason the four figures above will not add up, said where
+                      somebody who has just tried to add them is looking. */}
+                  <p className="mt-1.5 text-sm text-ink-soft">{t.creditNote}</p>
                 </div>
-              ))}
-            </dl>
-          )}
-        </Card>
-      )}
+              )}
+            </Card>
+          </>
+        )}
 
-      {/* Where the two obvious next questions go, beside the messages rather than under
-          everything: "where did that come from" is the register, the same month by the same
-          +06:00 boundary so the two pages cannot disagree about what July was, and "what
-          does this cost" is the plan page — which an owner who has just read their own month
-          is the one person in this product for whom it is worth opening. */}
-      {showLedger && (
-        <nav className="order-6 flex flex-col gap-1 lg:col-span-5">
-          <Link
-            href={`/fees/register?month=${month}`}
-            className="inline-flex min-h-tap items-center font-medium text-brand-700
-              underline"
-          >
-            {t.registerLink} →
-          </Link>
-          <Link
-            href="/settings/plan"
-            className="inline-flex min-h-tap items-center font-medium text-brand-700
-              underline"
-          >
-            {t.planLink} →
-          </Link>
-        </nav>
-      )}
+        {/* The work the product did, counted and not characterised — see the note at the head
+            of this file for why it says no more than this. Four kinds and a total, because the
+            total on its own is the number that gets doubted: "ninety-one messages" invites
+            "ninety-one of what", and the four answers are four different reasons this product
+            is worth paying for. The breakdown only when more than one kind happened; with one
+            kind it is the total written twice. */}
+        {showMessages && (
+          <Card className={`order-5 ${showLedger ? 'lg:col-span-7' : 'lg:col-span-12'}`}>
+            <p className="text-ink">
+              {sent.total > 0 ? t.messagesSent(sent.total) : t.messagesNone}
+            </p>
+            {sent.lines.length > 1 && (
+              <dl className="mt-2 flex flex-col gap-1 border-t border-line pt-2 text-sm">
+                {sent.lines.map((line) => (
+                  <div key={line.kind} className="flex items-baseline justify-between gap-4">
+                    <dt className="text-ink-soft">{t.messageKinds[line.kind]}</dt>
+                    <dd className="num font-semibold text-ink">{digits(line.n, locale)}</dd>
+                  </div>
+                ))}
+              </dl>
+            )}
+          </Card>
+        )}
+
+        {/* Where the two obvious next questions go, beside the messages rather than under
+            everything: "where did that come from" is the register, the same month by the same
+            +06:00 boundary so the two pages cannot disagree about what July was, and "what
+            does this cost" is the plan page — which an owner who has just read their own month
+            is the one person in this product for whom it is worth opening. */}
+        {showLedger && (
+          <nav className="order-6 flex flex-col gap-1 lg:col-span-5">
+            <Link
+              href={`/fees/register?month=${month}`}
+              className="inline-flex min-h-tap items-center font-medium text-brand-700
+                underline"
+            >
+              {t.registerLink} →
+            </Link>
+            <Link
+              href="/settings/plan"
+              className="inline-flex min-h-tap items-center font-medium text-brand-700
+                underline"
+            >
+              {t.planLink} →
+            </Link>
+          </nav>
+        )}
+      </div>
     </div>
   )
 }

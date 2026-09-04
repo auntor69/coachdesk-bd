@@ -47,7 +47,9 @@ test('the roster and the form are two columns from xl, and twelve of them', () =
   // rows want and the form gets 386px at `xl` rather than 1,184.
   assert.equal(count(PAGE, 'xl:col-span-7'), 1)
   assert.equal(count(PAGE, 'xl:col-span-5'), 1)
-  assert.equal(count(PAGE, 'xl:col-span-12'), 1, 'the letterhead spans both')
+  // No twelfth-column cell for the heading any more: the bar sits above the grid, because
+  // a sticky box only travels inside its containing block and a cell's is one grid row.
+  assert.equal(count(PAGE, 'xl:col-span-12'), 0)
 
   // `xl` and not `lg`, deliberately: five of twelve is 279px at `lg`.
   assert.doesNotMatch(PAGE, /lg:grid-cols-12/)
@@ -55,8 +57,8 @@ test('the roster and the form are two columns from xl, and twelve of them', () =
 })
 
 test('nothing on this screen is reordered, because nothing needs to be', () => {
-  // Two blocks under a letterhead, written in the order they are read. `order-N` would be
-  // a number to keep in step for no gain — and it moves neither keyboard nor screen-reader
+  // Two blocks under the bar, written in the order they are read. `order-N` would be a
+  // number to keep in step for no gain — and it moves neither keyboard nor screen-reader
   // order, so a screen that does not need it should not carry it.
   assert.deepEqual(ordersIn(PAGE), [])
 
@@ -70,14 +72,19 @@ test('nothing on this screen is reordered, because nothing needs to be', () => {
 test('all three shapes of this screen draw the same heading', () => {
   // Three returns — the locked plan, the failed read, the list — and the locked one had no
   // h1 at all, so a bookmark landed a reader on a card about their plan with nothing above
-  // it naming the screen that had refused them.
-  assert.equal(count(PAGE, 'text-xl font-bold text-ink lg:text-2xl'), 3)
-  assert.equal(count(PAGE, '>{t.title}</h1>'), 3)
-  assert.doesNotMatch(PAGE, /font-bold text-ink"/, 'no heading left in the old hand')
+  // it naming the screen that had refused them. One `bar` const now serves all three, so
+  // the three cannot drift; the two that are not the locked branch share the object.
+  assert.equal(count(PAGE, '<PageHeader'), 2)
+  assert.equal(count(PAGE, '{bar}'), 2)
+  assert.equal(count(PAGE, '<h1'), 0)
+  assert.doesNotMatch(PAGE, /text-xl font-bold text-ink lg:text-2xl/)
 })
 
 test('a one-sentence refusal is capped rather than set across the page', () => {
-  assert.equal(count(PAGE, 'flex max-w-2xl flex-col gap-5'), 2)
+  // The cap is on the card and not on the column, or the bar's `lg:-mx-8` background would
+  // stop 672px into a 1,216px workspace.
+  assert.equal(count(PAGE, '<Card className="max-w-2xl'), 2)
+  assert.doesNotMatch(PAGE, /flex max-w-2xl flex-col/)
 })
 
 test('the list gets no strip of column heads, unlike the two long rosters', () => {

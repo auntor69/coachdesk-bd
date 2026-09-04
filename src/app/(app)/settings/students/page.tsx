@@ -1,5 +1,6 @@
 import Link from 'next/link'
 
+import { PageHeader } from '@/components/page-header'
 import { Card } from '@/components/ui'
 import { SearchBox, SearchEmpty } from '@/components/search-box'
 import { PlacesWarning } from '@/components/places-warning'
@@ -128,16 +129,11 @@ export default async function StudentsPage({
   if (!('rows' in students)) {
     return (
       <div className="flex flex-col gap-5">
-        <div>
-          <Link
-            href="/settings"
-            className="inline-flex min-h-tap items-center text-ink-soft hover:text-ink"
-          >
-            ← {d.settings.hub.title}
-          </Link>
-          <h1 className="mt-1 text-xl font-bold text-ink">{t.title}</h1>
-        </div>
-        <Card className="border-late/30 bg-late/5">
+        <PageHeader
+          title={t.title}
+          back={{ href: '/settings', label: d.settings.hub.title }}
+        />
+        <Card className="max-w-2xl border-late/30 bg-late/5">
           <p className="font-medium text-ink">
             {students.failed === 'tooLarge' ? t.tooLarge : t.unreadable}
           </p>
@@ -264,295 +260,297 @@ export default async function StudentsPage({
     : kept.filter((r) => matchesSearch([r.name, r.code, r.guardianPhone], terms))
 
   return (
-    <div className="flex flex-col gap-5 lg:grid lg:grid-cols-12 lg:items-start lg:gap-6">
-      <div className="order-1 lg:col-span-12">
-        <Link
-          href="/settings"
-          className="inline-flex min-h-tap items-center text-ink-soft hover:text-ink"
-        >
-          ← {d.settings.hub.title}
-        </Link>
-        <div className="mt-1 flex items-end justify-between gap-3">
-          <div>
-            <h1 className="text-xl font-bold text-ink">{t.title}</h1>
-            <p className="mt-1 text-ink-soft">{t.used(activeCount, limit)}</p>
-            {/* Every reader who gets this far can open a student, so the hint is
-                unconditional now — it was gated on `mayEdit` when the row was an
-                edit link and a teacher's row did nothing when tapped. Phone and
-                laptop only: from `xl` the name is a link in a table and says so by
-                being one, and "tap a student" on a desk is the giant-phone tell. */}
+    <div className="flex flex-col gap-5">
+      <PageHeader
+        title={t.title}
+        back={{ href: '/settings', label: d.settings.hub.title }}
+        /* The ceiling they are paying for, and how to open a name. Every reader who gets
+           this far can open a student, so the hint is unconditional — it was gated on
+           `mayEdit` when the row was an edit link. Phone and laptop only: from `xl` the
+           name is a link in a table and says so by being one, and "tap a student" on a
+           desk is the giant-phone tell. */
+        subtitle={
+          <>
+            {t.used(activeCount, limit)}
             {rows.length > 0 && (
-              <p className="text-sm text-ink-faint xl:hidden">{t.openHint}</p>
+              <span className="text-ink-faint xl:hidden"> · {t.openHint}</span>
             )}
-          </div>
+          </>
+        }
+        actions={
           <Link
             href="/settings/students/new"
-            className="inline-flex min-h-tap shrink-0 items-center justify-center
-              rounded-xl bg-brand-600 px-5 font-semibold text-white"
+            className="inline-flex min-h-tap items-center justify-center rounded-xl
+              bg-brand-600 px-5 font-semibold text-white hover:bg-brand-700"
           >
             {t.new}
           </Link>
-        </div>
-      </div>
+        }
+      />
 
-      {/*
-        THE RAIL, and it is written before the roster on purpose.
-        `contents` below `lg` puts these four straight into the page column, where
-        `order-N` decides what the reader sees first — but `order` moves nothing for a
-        keyboard or a screen reader, which follow the DOM. Written after the list, a
-        phone would tab through three hundred student links before reaching "Show
-        these". So the DOM order here is the phone's reading order, 2 to 6, and the two
-        wrappers swap themselves into columns from `lg` with `lg:order`.
-      */}
-      <div className="contents lg:order-3 lg:col-span-4 lg:flex lg:flex-col lg:gap-5">
-        {/* Above the paste door on purpose: 200 names against 40 places is the import
-            that stops half way, and this is the sentence that gets read first. Null
-            while there is room, and a null child costs no gap. */}
-        {warnPlaces && (
-          <PlacesWarning className="order-2" pressure={pressure} t={d.dashboard} />
-        )}
-
+      {/* The grid is nested under the bar rather than holding it as a twelfth-column
+          cell: a sticky box only travels inside its containing block, and a grid cell's
+          block is one grid row. */}
+      <div className="flex flex-col gap-5 lg:grid lg:grid-cols-12 lg:items-start lg:gap-6">
         {/*
-          The way a centre actually gets its students in: somebody sits down with
-          the register and pastes it. Kept in front of the owner rather than hidden
-          behind the one-at-a-time form, because 200 students typed one by one is
-          an evening nobody spends.
+          THE RAIL, and it is written before the roster on purpose.
+          `contents` below `lg` puts these four straight into the page column, where
+          `order-N` decides what the reader sees first — but `order` moves nothing for a
+          keyboard or a screen reader, which follow the DOM. Written after the list, a
+          phone would tab through three hundred student links before reaching "Show
+          these". So the DOM order here is the phone's reading order, 2 to 6, and the two
+          wrappers swap themselves into columns from `lg` with `lg:order`.
         */}
-        <Link
-          href="/settings/students/import"
-          className="order-3 flex min-h-tap items-center justify-between gap-3
-            rounded-xl border-2 border-dashed border-line bg-white px-4 py-3
-            hover:border-brand-300"
-        >
-          <span>
-            <span className="block font-medium text-ink">{t.importTitle}</span>
-            <span className="block text-sm text-ink-soft">
-              {t.importBody(MAX_IMPORT_ROWS)}
+        <div className="contents lg:order-3 lg:col-span-4 lg:flex lg:flex-col lg:gap-5">
+          {/* Above the paste door on purpose: 200 names against 40 places is the import
+              that stops half way, and this is the sentence that gets read first. Null
+              while there is room, and a null child costs no gap. */}
+          {warnPlaces && (
+            <PlacesWarning className="order-2" pressure={pressure} t={d.dashboard} />
+          )}
+
+          {/*
+            The way a centre actually gets its students in: somebody sits down with
+            the register and pastes it. Kept in front of the owner rather than hidden
+            behind the one-at-a-time form, because 200 students typed one by one is
+            an evening nobody spends.
+          */}
+          <Link
+            href="/settings/students/import"
+            className="order-3 flex min-h-tap items-center justify-between gap-3
+              rounded-xl border-2 border-dashed border-line bg-white px-4 py-3
+              hover:border-brand-300"
+          >
+            <span>
+              <span className="block font-medium text-ink">{t.importTitle}</span>
+              <span className="block text-sm text-ink-soft">
+                {t.importBody(MAX_IMPORT_ROWS)}
+              </span>
             </span>
-          </span>
-          <span aria-hidden className="shrink-0 text-lg text-brand-700">
-            →
-          </span>
-        </Link>
+            <span aria-hidden className="shrink-0 text-lg text-brand-700">
+              →
+            </span>
+          </Link>
 
-        {missingPhone > 0 && (
-          <Card className="order-4 border-late/30 bg-late/5">
-            <p className="font-medium text-ink">{t.missingPhone(missingPhone)}</p>
-            <p className="mt-1 text-sm text-ink-soft">{t.missingPhoneBody}</p>
-            <WarningFilter
-              value="no-phone"
-              active={show === 'no-phone'}
-              q={query}
-              showThese={t.showThese}
-              clear={d.search.clear}
-            />
-          </Card>
-        )}
-
-        {/* Amber, like the missing number, and for the same reason: neither is an error
-            — a name can legitimately sit on the roster for a day before it is sorted —
-            but both stop the product working for that student until somebody acts. */}
-        {noBatch > 0 && (
-          <Card className="order-5 border-late/30 bg-late/5">
-            <p className="font-medium text-ink">{t.noBatch(noBatch)}</p>
-            <p className="mt-1 text-sm text-ink-soft">{t.noBatchBody}</p>
-            <WarningFilter
-              value="no-batch"
-              active={show === 'no-batch'}
-              q={query}
-              showThese={t.showThese}
-              clear={d.search.clear}
-            />
-          </Card>
-        )}
-      </div>
-
-      {/* THE ROSTER ITSELF, eight columns of it from `lg`. One ordered block rather
-          than three, because the box, the scope control and the list are one thing:
-          each of the first two narrows what the third shows, and a full flex gap
-          between them on a phone would read as three unrelated cards. No `contents`
-          wrapper either — there is one block in this column, so the block is the
-          column. */}
-      <div className="order-6 flex flex-col gap-3 lg:order-2 lg:col-span-8">
-        {rows.length === 0 ? (
-          <Card>
-            <h2 className="font-semibold text-ink">{t.emptyTitle}</h2>
-            <p className="mt-1 text-sm text-ink-soft">{t.emptyBody}</p>
-          </Card>
-        ) : (
-          <>
-            <SearchBox
-              q={query}
-              t={d.search}
-              keep={{ show }}
-              narrowed={show !== null}
-              count={{ shown: shown.length, total: rows.length }}
-            />
-
-            {/* Only while there is somebody to put aside, and only while neither
-                problem filter is on — both of those are active-only already, so
-                "current students" on top of one would narrow nothing, and tapping it
-                would quietly drop the filter the reader is actually looking at. */}
-            {leftCount > 0 && (show === null || show === 'current') && (
-              <ScopeFilter
-                active={show === 'current'}
+          {missingPhone > 0 && (
+            <Card className="order-4 border-late/30 bg-late/5">
+              <p className="font-medium text-ink">{t.missingPhone(missingPhone)}</p>
+              <p className="mt-1 text-sm text-ink-soft">{t.missingPhoneBody}</p>
+              <WarningFilter
+                value="no-phone"
+                active={show === 'no-phone'}
                 q={query}
-                showCurrent={t.showCurrent}
+                showThese={t.showThese}
                 clear={d.search.clear}
               />
-            )}
+            </Card>
+          )}
 
-            {shown.length === 0 ? (
-              /* Not `t.emptyTitle` — "no students yet" under a filtered roster would
-                 read as a lost database rather than a mistyped name. */
-              <SearchEmpty t={d.search} />
-            ) : (
-              <>
-                {/*
-                  A REAL TABLE FROM `xl`, AND NO EARLIER. §20.7 wants forty rows on a
-                  screen, and five columns need about 700px before a Bangla name starts
-                  meeting the ellipsis: the 8-of-12 column has 640px at `xl` and only
-                  469px at `lg`, so a table drawn at `lg` would ship a sideways scrollbar
-                  to every laptop. `table-fixed` with the widths named here rather than
-                  left to the browser, so one long school name cannot re-shape the sheet.
-                */}
-                <div className="hidden xl:block">
-                  <table className="w-full table-fixed border-collapse text-sm">
-                    <thead>
-                      <tr className="border-b-2 border-line text-left align-bottom">
-                        <Th className="w-[28%]">{t.colName}</Th>
-                        <Th className="w-[24%]">{t.colBatches}</Th>
-                        <Th className="w-[18%]">{t.colClass}</Th>
-                        <Th className="w-[19%]" num>
-                          {t.colPhone}
-                        </Th>
-                        <Th className="w-[11%]" num>
-                          {t.colCode}
-                        </Th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {shown.map((row) => (
-                        <tr key={row.id} className="border-b border-line align-top">
-                          <Td>
-                            {/* The name is the link and the row is not: a stretched
-                                overlay would make the guardian's number unselectable, and
-                                that number is what this sheet gets read for. */}
-                            <Link
-                              href={`/students/${row.id}`}
-                              className="block truncate font-medium text-brand-800
-                                hover:underline"
-                            >
-                              {row.name}
-                            </Link>
-                            {!row.active && (
-                              <span className="block text-xs text-ink-faint">{t.inactive}</span>
-                            )}
-                          </Td>
-                          <Td>
-                            <span className="block truncate text-ink-soft">
-                              {row.batchNames.length > 0
-                                ? row.batchNames.join(' · ')
-                                : row.active && (
-                                    <span className="font-medium text-late">
-                                      {t.noBatchRow}
-                                    </span>
-                                  )}
-                            </span>
-                          </Td>
-                          <Td>
-                            <span className="block truncate text-ink-soft">
-                              {[row.classLevel, row.institution].filter(Boolean).join(' · ')}
-                            </span>
-                          </Td>
-                          <Td num>
-                            <span className="block truncate text-ink-soft">
-                              {row.guardianPhone ? (
-                                formatBdMobile(row.guardianPhone)
-                              ) : (
-                                <span className="font-medium text-absent">{t.noPhone}</span>
-                              )}
-                            </span>
-                            {row.smsOptOut && (
-                              <span className="block text-xs text-ink-faint">{t.smsOff}</span>
-                            )}
-                          </Td>
-                          <Td num>
-                            <span className="block truncate text-ink-faint">{row.code}</span>
-                          </Td>
+          {/* Amber, like the missing number, and for the same reason: neither is an error
+              — a name can legitimately sit on the roster for a day before it is sorted —
+              but both stop the product working for that student until somebody acts. */}
+          {noBatch > 0 && (
+            <Card className="order-5 border-late/30 bg-late/5">
+              <p className="font-medium text-ink">{t.noBatch(noBatch)}</p>
+              <p className="mt-1 text-sm text-ink-soft">{t.noBatchBody}</p>
+              <WarningFilter
+                value="no-batch"
+                active={show === 'no-batch'}
+                q={query}
+                showThese={t.showThese}
+                clear={d.search.clear}
+              />
+            </Card>
+          )}
+        </div>
+
+        {/* THE ROSTER ITSELF, eight columns of it from `lg`. One ordered block rather
+            than three, because the box, the scope control and the list are one thing:
+            each of the first two narrows what the third shows, and a full flex gap
+            between them on a phone would read as three unrelated cards. No `contents`
+            wrapper either — there is one block in this column, so the block is the
+            column. */}
+        <div className="order-6 flex flex-col gap-3 lg:order-2 lg:col-span-8">
+          {rows.length === 0 ? (
+            <Card>
+              <h2 className="font-semibold text-ink">{t.emptyTitle}</h2>
+              <p className="mt-1 text-sm text-ink-soft">{t.emptyBody}</p>
+            </Card>
+          ) : (
+            <>
+              <SearchBox
+                q={query}
+                t={d.search}
+                keep={{ show }}
+                narrowed={show !== null}
+                count={{ shown: shown.length, total: rows.length }}
+              />
+
+              {/* Only while there is somebody to put aside, and only while neither
+                  problem filter is on — both of those are active-only already, so
+                  "current students" on top of one would narrow nothing, and tapping it
+                  would quietly drop the filter the reader is actually looking at. */}
+              {leftCount > 0 && (show === null || show === 'current') && (
+                <ScopeFilter
+                  active={show === 'current'}
+                  q={query}
+                  showCurrent={t.showCurrent}
+                  clear={d.search.clear}
+                />
+              )}
+
+              {shown.length === 0 ? (
+                /* Not `t.emptyTitle` — "no students yet" under a filtered roster would
+                   read as a lost database rather than a mistyped name. */
+                <SearchEmpty t={d.search} />
+              ) : (
+                <>
+                  {/*
+                    A REAL TABLE FROM `xl`, AND NO EARLIER. §20.7 wants forty rows on a
+                    screen, and five columns need about 700px before a Bangla name starts
+                    meeting the ellipsis: the 8-of-12 column has 640px at `xl` and only
+                    469px at `lg`, so a table drawn at `lg` would ship a sideways scrollbar
+                    to every laptop. `table-fixed` with the widths named here rather than
+                    left to the browser, so one long school name cannot re-shape the sheet.
+                  */}
+                  <div className="hidden xl:block">
+                    <table className="w-full table-fixed border-collapse text-sm">
+                      <thead>
+                        <tr className="border-b-2 border-line text-left align-bottom">
+                          <Th className="w-[28%]">{t.colName}</Th>
+                          <Th className="w-[24%]">{t.colBatches}</Th>
+                          <Th className="w-[18%]">{t.colClass}</Th>
+                          <Th className="w-[19%]" num>
+                            {t.colPhone}
+                          </Th>
+                          <Th className="w-[11%]" num>
+                            {t.colCode}
+                          </Th>
                         </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-
-                {/* The same rows as cards, below `xl`. A card can put the guardian's
-                    number on a line of its own at 320px, which no five-column sheet can. */}
-                <ul className="flex flex-col gap-2 xl:hidden">
-                  {shown.map((row) => (
-                    <li key={row.id}>
-                      {/* The row opens the student, not the edit form. This is the only
-                          roster in the app, so it is the only way anybody reaches a
-                          student; editing is one tap further, and the field most likely to
-                          be wrong — the guardian's number — is printed right here, so an
-                          owner checking the list never taps in until they have found the
-                          row to fix. A permitted teacher may read a student they may not
-                          edit. */}
-                      <Link
-                        href={`/students/${row.id}`}
-                        className="block rounded-xl border border-line bg-white px-4 py-3
-                          hover:border-brand-300 active:bg-brand-50"
-                      >
-                        <div className="flex items-start justify-between gap-3">
-                          <div className="min-w-0">
-                            <p className="truncate font-medium text-ink">
-                              {row.name}
+                      </thead>
+                      <tbody>
+                        {shown.map((row) => (
+                          <tr key={row.id} className="border-b border-line align-top">
+                            <Td>
+                              {/* The name is the link and the row is not: a stretched
+                                  overlay would make the guardian's number unselectable, and
+                                  that number is what this sheet gets read for. */}
+                              <Link
+                                href={`/students/${row.id}`}
+                                className="block truncate font-medium text-brand-800
+                                  hover:underline"
+                              >
+                                {row.name}
+                              </Link>
                               {!row.active && (
-                                <span className="ml-2 text-sm text-ink-faint">{t.inactive}</span>
+                                <span className="block text-xs text-ink-faint">{t.inactive}</span>
                               )}
-                            </p>
-                            {row.batchNames.length > 0 ? (
-                              <p className="truncate text-sm text-ink-soft">
-                                {row.batchNames.join(' · ')}
+                            </Td>
+                            <Td>
+                              <span className="block truncate text-ink-soft">
+                                {row.batchNames.length > 0
+                                  ? row.batchNames.join(' · ')
+                                  : row.active && (
+                                      <span className="font-medium text-late">
+                                        {t.noBatchRow}
+                                      </span>
+                                    )}
+                              </span>
+                            </Td>
+                            <Td>
+                              <span className="block truncate text-ink-soft">
+                                {[row.classLevel, row.institution].filter(Boolean).join(' · ')}
+                              </span>
+                            </Td>
+                            <Td num>
+                              <span className="block truncate text-ink-soft">
+                                {row.guardianPhone ? (
+                                  formatBdMobile(row.guardianPhone)
+                                ) : (
+                                  <span className="font-medium text-absent">{t.noPhone}</span>
+                                )}
+                              </span>
+                              {row.smsOptOut && (
+                                <span className="block text-xs text-ink-faint">{t.smsOff}</span>
+                              )}
+                            </Td>
+                            <Td num>
+                              <span className="block truncate text-ink-faint">{row.code}</span>
+                            </Td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+
+                  {/* The same rows as cards, below `xl`. A card can put the guardian's
+                      number on a line of its own at 320px, which no five-column sheet can. */}
+                  <ul className="flex flex-col gap-2 xl:hidden">
+                    {shown.map((row) => (
+                      <li key={row.id}>
+                        {/* The row opens the student, not the edit form. This is the only
+                            roster in the app, so it is the only way anybody reaches a
+                            student; editing is one tap further, and the field most likely to
+                            be wrong — the guardian's number — is printed right here, so an
+                            owner checking the list never taps in until they have found the
+                            row to fix. A permitted teacher may read a student they may not
+                            edit. */}
+                        <Link
+                          href={`/students/${row.id}`}
+                          className="block rounded-xl border border-line bg-white px-4 py-3
+                            hover:border-brand-300 active:bg-brand-50"
+                        >
+                          <div className="flex items-start justify-between gap-3">
+                            <div className="min-w-0">
+                              <p className="truncate font-medium text-ink">
+                                {row.name}
+                                {!row.active && (
+                                  <span className="ml-2 text-sm text-ink-faint">{t.inactive}</span>
+                                )}
                               </p>
-                            ) : (
-                              // The count above says how many; this says which. Amber
-                              // rather than the missing number's red, so a row carrying
-                              // both problems still reads as two.
-                              row.active && (
-                                <p className="truncate text-sm font-medium text-late">
-                                  {t.noBatchRow}
+                              {row.batchNames.length > 0 ? (
+                                <p className="truncate text-sm text-ink-soft">
+                                  {row.batchNames.join(' · ')}
                                 </p>
-                              )
-                            )}
-                            <p className="truncate text-sm text-ink-faint">
-                              {[row.classLevel, row.institution].filter(Boolean).join(' · ')}
-                            </p>
-                          </div>
-                          <div className="shrink-0 text-right">
-                            <p className="num text-sm text-ink-soft">
-                              {row.guardianPhone ? (
-                                formatBdMobile(row.guardianPhone)
                               ) : (
-                                <span className="font-medium text-absent">{t.noPhone}</span>
+                                // The count above says how many; this says which. Amber
+                                // rather than the missing number's red, so a row carrying
+                                // both problems still reads as two.
+                                row.active && (
+                                  <p className="truncate text-sm font-medium text-late">
+                                    {t.noBatchRow}
+                                  </p>
+                                )
                               )}
-                            </p>
-                            {row.smsOptOut && (
-                              <p className="text-xs text-ink-faint">{t.smsOff}</p>
-                            )}
-                            {row.code && (
-                              <p className="num text-xs text-ink-faint">{row.code}</p>
-                            )}
+                              <p className="truncate text-sm text-ink-faint">
+                                {[row.classLevel, row.institution].filter(Boolean).join(' · ')}
+                              </p>
+                            </div>
+                            <div className="shrink-0 text-right">
+                              <p className="num text-sm text-ink-soft">
+                                {row.guardianPhone ? (
+                                  formatBdMobile(row.guardianPhone)
+                                ) : (
+                                  <span className="font-medium text-absent">{t.noPhone}</span>
+                                )}
+                              </p>
+                              {row.smsOptOut && (
+                                <p className="text-xs text-ink-faint">{t.smsOff}</p>
+                              )}
+                              {row.code && (
+                                <p className="num text-xs text-ink-faint">{row.code}</p>
+                              )}
+                            </div>
                           </div>
-                        </div>
-                      </Link>
-                    </li>
-                  ))}
-                </ul>
-              </>
-            )}
-          </>
-        )}
+                        </Link>
+                      </li>
+                    ))}
+                  </ul>
+                </>
+              )}
+            </>
+          )}
+        </div>
       </div>
     </div>
   )

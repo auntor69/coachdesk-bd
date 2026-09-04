@@ -51,15 +51,16 @@ test('the roster is one column at every width, and says so', () => {
 })
 
 test('adding a teacher is beside the heading, not under the last row', () => {
-  const head = PAGE.indexOf(
-    'className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between',
-  )
-  assert.ok(head >= 0, 'the letterhead is a row from sm')
+  // In the bar's own `actions` slot now, so it stays on screen while nine names scroll
+  // past. It used to be in a hand-rolled letterhead row that also carried the h1.
+  const bar = PAGE.lastIndexOf('<PageHeader')
+  assert.ok(bar >= 0, 'the roster lost its page bar')
 
   const add = PAGE.indexOf('href="/settings/teachers/new"')
   const list = PAGE.indexOf('<TeacherList')
-  assert.ok(add > head, 'the add link is inside the letterhead')
+  assert.ok(add > bar, 'the add link is inside the bar')
   assert.ok(add < list, 'and above the list rather than below it')
+  assert.match(PAGE, /actions=\{\s+staff &&\s+!atLimit && \(/)
 
   // One door to the add form. Two would be two things to keep in step.
   assert.equal(count(PAGE, 'href="/settings/teachers/new"'), 1)
@@ -68,7 +69,6 @@ test('adding a teacher is beside the heading, not under the last row', () => {
 test('the refusal that replaces the add button is where the button was', () => {
   // A capped tier that has filled its seats gets the cap card. Above the list, because
   // it answers the question the reader arrived with.
-  assert.ok(PAGE.includes('{staff && !atLimit && ('))
   assert.ok(PAGE.includes('{staff && atLimit && ('))
   const cap = PAGE.indexOf('{t.capTitle}')
   const list = PAGE.indexOf('<TeacherList')
@@ -82,16 +82,22 @@ test('the refusal that replaces the add button is where the button was', () => {
 test('all three shapes of this screen draw the same heading', () => {
   // Three returns — the failed read, the one-seat plan, the roster — and the solo one
   // had no h1 at all, so a bookmark landed a reader on a card with nothing above it
-  // saying which screen had refused them.
-  assert.equal(count(PAGE, 'text-xl font-bold text-ink lg:text-2xl'), 3)
-  assert.equal(count(PAGE, '>{t.title}</h1>'), 3)
-  assert.doesNotMatch(PAGE, /font-bold text-ink"/, 'no heading left in the old hand')
+  // saying which screen had refused them. The bar carries it on all three now, and
+  // owns the h1, so a hand-rolled heading beside it would be two titles.
+  assert.equal(count(PAGE, '<PageHeader'), 3)
+  assert.equal(count(PAGE, 'title={t.title}'), 3)
+  assert.equal(count(PAGE, "back={{ href: '/settings', label: d.settings.hub.title }}"), 3)
+  assert.equal(count(PAGE, '<h1'), 0)
+  assert.doesNotMatch(PAGE, /text-xl font-bold text-ink lg:text-2xl/)
 })
 
 test('a one-sentence refusal is capped rather than set across the page', () => {
   // §26: the defect this whole step is about is a narrow column stretched, and the
-  // opposite mistake is one sentence set 1,216px wide.
-  assert.equal(count(PAGE, 'flex max-w-2xl flex-col gap-5'), 2)
+  // opposite mistake is one sentence set 1,216px wide. The cap is on the card and not
+  // on the column, or the bar's `lg:-mx-8` background would stop 672px in.
+  assert.equal(count(PAGE, 'flex flex-col gap-5'), 3)
+  assert.doesNotMatch(PAGE, /flex max-w-2xl flex-col/)
+  assert.equal(count(PAGE, '<Card className="max-w-2xl'), 2)
   assert.equal(count(PAGE, '<Card className="max-w-3xl">'), 3)
 })
 

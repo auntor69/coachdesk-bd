@@ -31,6 +31,8 @@ const read = (...parts: string[]) => readFileSync(path.join(ROOT, ...parts), 'ut
 
 const PAGE = read('src', 'app', '(app)', 'fees', 'page.tsx')
 
+const count = (hay: string, needle: string) => hay.split(needle).length - 1
+
 const GRID_AT = PAGE.indexOf('<div className="flex flex-col gap-5 lg:grid')
 const RENDER = PAGE.slice(GRID_AT)
 
@@ -39,7 +41,6 @@ const RENDER = PAGE.slice(GRID_AT)
 const RAIL_AT = RENDER.indexOf('<div className="contents lg:order-3 lg:col-span-5')
 const MAIN_AT = RENDER.indexOf('<div className="contents lg:order-2 lg:col-span-7')
 
-const HEAD = RENDER.slice(0, RAIL_AT)
 const RAIL = RENDER.slice(RAIL_AT, MAIN_AT)
 const MAIN = RENDER.slice(MAIN_AT)
 
@@ -55,8 +56,11 @@ test('one column on a phone, twelve from lg, and the board gets seven of them', 
     /^<div className="flex flex-col gap-5 lg:grid lg:grid-cols-12 lg:items-start lg:gap-6">/,
   )
 
-  // The heading spans the lot rather than sitting above a seven-column column.
-  assert.match(HEAD, /className="order-1 lg:col-span-12"/)
+  // No twelfth-column cell for the heading any more: the bar sits above the grid, because
+  // a sticky box only travels inside its containing block and a cell's is one grid row.
+  assert.doesNotMatch(RENDER, /lg:col-span-12/)
+  assert.equal(count(PAGE, '<PageHeader title={t.title} subtitle={t.subtitle} />'), 2)
+  assert.equal(count(PAGE, '<h1'), 0)
 
   // Seven and five, not the dashboard's 8/4: the rail carries a 4xl figure and a form,
   // and a total that wraps onto two lines is not a total anybody reads at a glance.
@@ -79,12 +83,16 @@ test('every block has a place in the phone order, and no two share one', () => {
 
   for (const [value, n] of counts) assert.equal(n, 1, `order-${value} is used ${n} times`)
 
-  // 1 to 7: heading, the total, the generator, the chase door, the board, the three
-  // other ways a bill is raised, the cancelled fold-out.
-  for (let n = 1; n <= 7; n += 1) {
+  // 2 to 7 with nothing missing: the total, the generator, the chase door, the board, the
+  // three other ways a bill is raised, the cancelled fold-out. There is no `order-1` any
+  // more — that was the heading's twelfth-column cell, and the bar above the grid replaced
+  // it. The numbers were left where they were rather than shifted down, because only their
+  // relative order matters and renumbering six blocks to save a 1 is six chances to swap
+  // two of them.
+  for (let n = 2; n <= 7; n += 1) {
     assert.ok([...counts.keys()].includes(String(n)), `no block is order-${n}`)
   }
-  assert.equal(counts.size, 7, `${counts.size} distinct positions, expected 7`)
+  assert.equal(counts.size, 6, `${counts.size} distinct positions, expected 6`)
 
   // Per column the numbers still apply at `lg`, so a column whose numbers do not ascend
   // in source order is a phone and a laptop that disagree. The rail's 2, 3, 6 and the
@@ -147,8 +155,17 @@ test('the three setup doors are one card, not three stacked links', () => {
 test('a board that could not be read is one capped column', () => {
   const wall = PAGE.slice(PAGE.indexOf('if (boardProblem !== null) {'), GRID_AT)
   assert.ok(wall.length > 100, 'the failed-read return is not where this test expects it')
-  assert.match(wall, /<div className="flex max-w-2xl flex-col gap-5">/)
+  // One column, and the cap on the card rather than the column: a 7/5 split with an empty
+  // rail beside one sentence is most of a laptop screen saying nothing, and a cap on the
+  // column would stop the bar's `lg:-mx-8` background 672px into a 1,216px workspace.
+  assert.match(wall, /<div className="flex flex-col gap-5">/)
+  assert.match(wall, /<Card className="max-w-2xl border-late\/30 bg-late\/5">/)
+  assert.doesNotMatch(wall, /flex max-w-2xl flex-col/)
   assert.doesNotMatch(wall, /lg:grid-cols-12/, 'the failure is a twelve-column grid')
+
+  // And it draws the same bar as the board, so a reader who bookmarked this screen is
+  // told which one refused them.
+  assert.match(wall, /<PageHeader title=\{t\.title\} subtitle=\{t\.subtitle\} \/>/)
 
   // And it still says which of the two failures happened, and still takes the generator
   // off the page with everything else.

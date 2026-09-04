@@ -2,6 +2,7 @@ import Link from 'next/link'
 import { forbidden } from 'next/navigation'
 import type { Route } from 'next'
 
+import { PageHeader } from '@/components/page-header'
 import {
   pageCenter,
   isStaffAdmin,
@@ -505,41 +506,41 @@ export default async function SettingsPage() {
 
   return (
     <div className="flex flex-col gap-6">
-      <div
-        className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between
-          sm:gap-6"
-      >
-        <div className="min-w-0">
-          <h1 className="text-xl font-bold text-ink lg:text-2xl">{t.title}</h1>
-          <p className="mt-1 truncate text-ink-soft">{session.active.centerName}</p>
-        </div>
+      <PageHeader
+        title={t.title}
+        /* No crumb: this is where the nav sends people, so there is no level above it.
+           The centre's name under the title rather than beside it — on a phone the two
+           of them on one line left about nine characters for each. */
+        subtitle={session.active.centerName}
+        /* Whose credits they are. A teacher cannot top them up, cannot open the ledger
+           the "details" link points at, and does not need to know what the centre has
+           left — the send screen tells them the cost of the message in front of them,
+           which is the only balance question they have.
 
-        {/* Whose credits they are. A teacher cannot top them up, cannot open the
-            ledger the "details" link points at, and does not need to know what the
-            centre has left — the send screen tells them the cost of the message in
-            front of them, which is the only balance question they have.
-
-            In the band rather than in a Card of its own: one number does not need
-            1,216px of white box, and beside the centre's name it reads as another
-            fact about the centre, which is what it is. */}
-        {staff && (
-          <div className="flex shrink-0 items-end gap-4">
-            <div>
-              <p className="text-sm text-ink-soft">{t.smsCredits}</p>
-              <p className="num mt-0.5 text-xl font-bold text-ink">
-                {session.active.smsCreditBalance}
+           In the bar rather than in a Card of its own: one number does not need 1,216px
+           of white box, and up here it reads as another fact about the centre, which is
+           what it is. Label and figure on one line, because the bar is one line and
+           every sticky rail in the app starts below it. */
+        actions={
+          staff && (
+            <>
+              <p className="flex items-baseline gap-2">
+                <span className="text-sm text-ink-soft">{t.smsCredits}</span>
+                <span className="num text-xl font-bold text-ink">
+                  {session.active.smsCreditBalance}
+                </span>
               </p>
-            </div>
-            <Link
-              href="/settings/sms"
-              className="inline-flex min-h-tap items-center text-sm font-medium
-                text-brand-700 hover:text-brand-900"
-            >
-              {t.details}
-            </Link>
-          </div>
-        )}
-      </div>
+              <Link
+                href="/settings/sms"
+                className="inline-flex min-h-tap items-center text-sm font-medium
+                  text-brand-700 hover:text-brand-900 lg:min-h-0"
+              >
+                {t.details}
+              </Link>
+            </>
+          )
+        }
+      />
 
       {/* Two columns from `xl`, and the shorter group not stretched by the taller.
           Source order is reading order — centre and people first, because the row an

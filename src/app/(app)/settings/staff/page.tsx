@@ -1,5 +1,6 @@
 import Link from 'next/link'
 
+import { PageHeader } from '@/components/page-header'
 import { Card } from '@/components/ui'
 import { pageCapability, getSession } from '@/lib/auth/session'
 import { formatDate, todayInDhaka } from '@/lib/bd/time'
@@ -65,19 +66,16 @@ export default async function StaffPage() {
    */
   if (!has(session.plan, 'staffManagement')) {
     return (
-      // Capped rather than stretched: §26's defect is a narrow column blown up to fill a
-      // monitor, and its opposite is one sentence set across 1,216px. A refusal is one
-      // sentence. The heading was missing here, so a reader arriving on a bookmark got a
-      // card about their plan with nothing above it naming the screen that refused them.
-      <div className="flex max-w-2xl flex-col gap-5">
-        <Link
-          href="/settings"
-          className="inline-flex min-h-tap items-center text-ink-soft hover:text-ink"
-        >
-          ← {d.settings.hub.title}
-        </Link>
-        <h1 className="text-xl font-bold text-ink lg:text-2xl">{t.title}</h1>
-        <Card>
+      // Capped on the card and not on the column, so the bar still reaches the workspace
+      // edges while the sentence stays a sentence wide. §26's defect is a narrow column
+      // blown up to fill a monitor, and its opposite is one line of prose set across
+      // 1,216px. A refusal is one sentence, and it says which screen refused.
+      <div className="flex flex-col gap-5">
+        <PageHeader
+          title={t.title}
+          back={{ href: '/settings', label: d.settings.hub.title }}
+        />
+        <Card className="max-w-2xl">
           <h2 className="font-semibold text-ink">{t.lockedTitle}</h2>
           <p className="mt-1 text-sm text-ink-soft">
             {t.lockedBody(planName(session.plan, locale), planName(PLANS.center, locale))}
@@ -122,15 +120,12 @@ export default async function StaffPage() {
    */
   if (employees === null) {
     return (
-      <div className="flex max-w-2xl flex-col gap-5">
-        <Link
-          href="/settings"
-          className="inline-flex min-h-tap items-center text-ink-soft hover:text-ink"
-        >
-          ← {d.settings.hub.title}
-        </Link>
-        <h1 className="text-xl font-bold text-ink lg:text-2xl">{t.title}</h1>
-        <Card className="border-late/30 bg-late/5">
+      <div className="flex flex-col gap-5">
+        <PageHeader
+          title={t.title}
+          back={{ href: '/settings', label: d.settings.hub.title }}
+        />
+        <Card className="max-w-2xl border-late/30 bg-late/5">
           <p className="font-medium text-ink">{d.settings.listUnreadable}</p>
         </Card>
       </div>
@@ -195,49 +190,37 @@ export default async function StaffPage() {
      * spends it on three aligned cells and an opened panel on two columns of fields.
      */
     <div className="flex flex-col gap-5">
-      <div
-        className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between
-          sm:gap-6"
-      >
-        <div className="min-w-0">
-          <Link
-            href="/settings"
-            className="inline-flex min-h-tap items-center text-ink-soft hover:text-ink"
-          >
-            ← {d.settings.hub.title}
-          </Link>
-          <h1 className="mt-1 text-xl font-bold text-ink lg:text-2xl">{t.title}</h1>
-          <p className="mt-1 text-ink-soft">
-            {rows.length === 0 ? t.subtitle : t.count(activeCount)}
-          </p>
-        </div>
-
-        {/* Both ways on from here, beside the heading rather than under the last row: on
-            a centre with fourteen people they were below all fourteen, and adding
-            somebody is the reason most visits happen. The order between them is still
-            the sequence the app assumes — a centre writes its people down first and
-            agrees their salaries afterwards — and the payroll stays a plain underlined
-            link, because there is one thing to do on this screen and adding somebody
-            is it. */}
-        <div className="flex shrink-0 flex-col gap-2 sm:items-end">
-          <Link
-            href="/settings/staff/new"
-            className="flex min-h-tap items-center justify-center rounded-xl border-2
-              border-dashed border-brand-300 bg-brand-50/50 px-5 font-medium
-              text-brand-700 hover:bg-brand-50"
-          >
-            <span aria-hidden>+&nbsp;</span>
-            {t.new}
-          </Link>
-          <Link
-            href="/payroll"
-            className="inline-flex min-h-tap items-center font-medium text-brand-800
-              underline"
-          >
-            {t.payrollLink} →
-          </Link>
-        </div>
-      </div>
+      <PageHeader
+        title={t.title}
+        back={{ href: '/settings', label: d.settings.hub.title }}
+        subtitle={rows.length === 0 ? t.subtitle : t.count(activeCount)}
+        /* Both ways on from here, in the bar rather than under the last row: on a centre
+           with fourteen people they were below all fourteen, and adding somebody is the
+           reason most visits happen. The order between them is still the sequence the app
+           assumes — a centre writes its people down first and agrees their salaries
+           afterwards — and the payroll stays a plain underlined link, because there is one
+           thing to do on this screen and adding somebody is it. */
+        actions={
+          <>
+            <Link
+              href="/settings/staff/new"
+              className="flex min-h-tap items-center justify-center rounded-xl border-2
+                border-dashed border-brand-300 bg-brand-50/50 px-5 font-medium
+                text-brand-700 hover:bg-brand-50"
+            >
+              <span aria-hidden>+&nbsp;</span>
+              {t.new}
+            </Link>
+            <Link
+              href="/payroll"
+              className="inline-flex min-h-tap items-center font-medium text-brand-800
+                underline underline-offset-4 hover:text-brand-900 lg:min-h-0"
+            >
+              {t.payrollLink} →
+            </Link>
+          </>
+        }
+      />
 
       {rows.length === 0 ? (
         <Card className="max-w-3xl">

@@ -1,5 +1,4 @@
-import Link from 'next/link'
-
+import { PageHeader } from '@/components/page-header'
 import { Card } from '@/components/ui'
 import { pageRole, getSession } from '@/lib/auth/session'
 import { branchChoicesFor } from '@/lib/branches'
@@ -70,14 +69,7 @@ export default async function StudentPage({
       branchChoicesFor(supabase, session),
     ])
 
-  const back = (
-    <Link
-      href="/settings/students"
-      className="inline-flex min-h-tap items-center text-ink-soft hover:text-ink"
-    >
-      ← {t.title}
-    </Link>
-  )
+  const back = { href: '/settings/students' as const, label: t.title }
 
   /*
    * The read that failed, ahead of the row that is not there — because `notFound`
@@ -98,8 +90,11 @@ export default async function StudentPage({
   if (studentError) {
     return (
       <div className="flex flex-col gap-5">
-        {back}
-        <Card className="border-late/30 bg-late/5">
+        {/* The screen's own name, because the student's has not arrived: a bar reading
+            the centre's roster and nothing else is the honest title for a read that
+            failed. */}
+        <PageHeader title={t.editTitle} back={back} />
+        <Card className="max-w-2xl border-late/30 bg-late/5">
           <p className="font-medium text-ink">{t.studentUnreadable}</p>
         </Card>
       </div>
@@ -112,8 +107,8 @@ export default async function StudentPage({
   if (!student) {
     return (
       <div className="flex flex-col gap-5">
-        {back}
-        <p className="text-ink">{t.errors.notFound}</p>
+        <PageHeader title={t.editTitle} back={back} />
+        <p className="max-w-2xl text-ink">{t.errors.notFound}</p>
       </div>
     )
   }
@@ -154,11 +149,8 @@ export default async function StudentPage({
   if (batches === null) {
     return (
       <div className="flex flex-col gap-5">
-        <div>
-          {back}
-          <h1 className="mt-1 truncate text-xl font-bold text-ink">{student.name}</h1>
-        </div>
-        <Card className="border-late/30 bg-late/5">
+        <PageHeader title={student.name} back={back} subtitle={t.editTitle} />
+        <Card className="max-w-2xl border-late/30 bg-late/5">
           <p className="font-medium text-ink">{t.batchesUnreadable}</p>
         </Card>
       </div>
@@ -167,11 +159,7 @@ export default async function StudentPage({
 
   return (
     <div className="flex flex-col gap-5">
-      <div>
-        {back}
-        <h1 className="mt-1 truncate text-xl font-bold text-ink">{student.name}</h1>
-        <p className="mt-1 text-ink-soft">{t.editTitle}</p>
-      </div>
+      <PageHeader title={student.name} back={back} subtitle={t.editTitle} />
 
       <StudentEditForm
         t={d.studentForm}

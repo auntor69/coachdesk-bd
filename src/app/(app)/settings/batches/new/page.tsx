@@ -1,5 +1,6 @@
 import Link from 'next/link'
 
+import { PageHeader } from '@/components/page-header'
 import { Card } from '@/components/ui'
 import { pagePermission, getSession } from '@/lib/auth/session'
 import { branchChoicesFor, mayChooseBranch } from '@/lib/branches'
@@ -97,15 +98,7 @@ export default async function NewBatchPage() {
 
   return (
     <div className="flex flex-col gap-5">
-      <div>
-        <Link
-          href="/settings/batches"
-          className="inline-flex min-h-tap items-center text-ink-soft hover:text-ink"
-        >
-          ← {t.title}
-        </Link>
-        <h1 className="mt-1 text-xl font-bold text-ink lg:text-2xl">{t.newTitle}</h1>
-      </div>
+      <PageHeader title={t.newTitle} back={{ href: '/settings/batches', label: t.title }} />
 
       {atLimit ? (
         <Card className="max-w-2xl">

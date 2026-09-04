@@ -107,37 +107,45 @@ test('the row is one component now, and it is the row that was there before', ()
   assert.ok(PAGE.includes('<p className="truncate text-sm text-ink-soft">{item.hint}</p>'))
 })
 
-test('the heading is in the app own hand and the centre is named under it', () => {
-  assert.equal(count(PAGE, '<h1'), 1, 'one screen, one heading')
-  assert.ok(PAGE.includes('<h1 className="text-xl font-bold text-ink lg:text-2xl">{t.title}</h1>'))
-  assert.ok(PAGE.includes('{session.active.centerName}'))
+test('the heading is the page bar, and the centre is named under it', () => {
+  // One bar, and it owns the h1: the hub is where the nav sends people, so there is no
+  // level above it and no crumb. `subtitle` rather than a second line inside a
+  // hand-rolled band, because on a phone the title and the centre name on one line left
+  // about nine characters for each.
+  assert.equal(count(PAGE, '<PageHeader'), 1, 'one screen, one bar')
+  assert.equal(count(PAGE, '<h1'), 0)
+  assert.doesNotMatch(PAGE, /text-xl font-bold text-ink lg:text-2xl/)
+  assert.ok(PAGE.includes('subtitle={session.active.centerName}'))
 
-  assert.ok(
-    PAGE.includes('className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between'),
-    'a row from sm, like every other header band in the app',
-  )
+  // And the letterhead row it replaced is gone rather than left under the bar.
+  assert.doesNotMatch(PAGE, /flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between/)
 })
 
-test('the credit balance is a fact in the band, not a card of its own', () => {
+test('the credit balance is a fact in the bar, not a card of its own', () => {
   // One number in a white box 1,216px wide was the widest thing on the screen saying
-  // the least. In the band it reads as another fact about the centre, which it is.
+  // the least. In the bar it reads as another fact about the centre, which it is.
   assert.doesNotMatch(PAGE, /<Card/, 'and the import went with it')
   assert.doesNotMatch(PAGE, /from '@\/components\/ui'/)
 
   assert.ok(PAGE.includes('{t.smsCredits}'))
   assert.ok(PAGE.includes('{session.active.smsCreditBalance}'))
-  assert.ok(PAGE.includes('className="num mt-0.5 text-xl font-bold text-ink"'), 'not 2xl — the h1')
+
+  // Label and figure on one line: the bar is one line deep at `lg:min-h-14`, and every
+  // sticky rail in the app starts at `top-16` below it.
+  assert.ok(PAGE.includes('<p className="flex items-baseline gap-2">'))
+  assert.ok(PAGE.includes('className="num text-xl font-bold text-ink"'), 'not 2xl — the h1')
 
   // Still the one door to the ledger, because that is where credits are bought, and
-  // still tall enough to hit with a thumb.
+  // still tall enough to hit with a thumb on a phone.
   assert.equal(count(PAGE, 'href="/settings/sms"'), 1)
   assert.ok(PAGE.includes('{t.details}'))
   assert.ok(PAGE.includes('inline-flex min-h-tap items-center text-sm font-medium'))
 
-  // And the whole block only for a reader who can spend them. A teacher is told the
-  // cost of the message in front of them on the send screen, which is the only
-  // balance question they have.
-  const band = PAGE.indexOf('{staff && (')
+  // And the whole block only for a reader who can spend them, in the bar's own slot. A
+  // teacher is told the cost of the message in front of them on the send screen, which
+  // is the only balance question they have.
+  assert.match(PAGE, /actions=\{\s+staff && \(/)
+  const band = PAGE.indexOf('staff && (')
   assert.ok(band > 0 && band < PAGE.indexOf('{t.smsCredits}'))
 })
 

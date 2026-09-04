@@ -1,5 +1,6 @@
 import Link from 'next/link'
 
+import { PageHeader } from '@/components/page-header'
 import { Card } from '@/components/ui'
 import { pageCapability, getSession } from '@/lib/auth/session'
 import { branchChoicesFor } from '@/lib/branches'
@@ -124,17 +125,15 @@ export default async function TeachersPage() {
    */
   if (teachers === null || allSubjects === null) {
     return (
-      // Capped rather than stretched: one sentence set across 1,216px is the defect
-      // §26 names, and a refusal is one sentence.
-      <div className="flex max-w-2xl flex-col gap-5">
-        <Link
-          href="/settings"
-          className="inline-flex min-h-tap items-center text-ink-soft hover:text-ink"
-        >
-          ← {d.settings.hub.title}
-        </Link>
-        <h1 className="text-xl font-bold text-ink lg:text-2xl">{t.title}</h1>
-        <Card className="border-late/30 bg-late/5">
+      // Capped on the card and not on the column, so the bar still reaches the workspace
+      // edges: one sentence set across 1,216px is the defect §26 names, and a refusal is
+      // one sentence.
+      <div className="flex flex-col gap-5">
+        <PageHeader
+          title={t.title}
+          back={{ href: '/settings', label: d.settings.hub.title }}
+        />
+        <Card className="max-w-2xl border-late/30 bg-late/5">
           <p className="font-medium text-ink">{d.settings.listUnreadable}</p>
         </Card>
       </div>
@@ -236,18 +235,12 @@ export default async function TeachersPage() {
   // whether this screen has a job.
   if (!staff && !overStaffSeats(session.plan, activeCount)) {
     return (
-      <div className="flex max-w-2xl flex-col gap-5">
-        <Link
-          href="/settings"
-          className="inline-flex min-h-tap items-center text-ink-soft hover:text-ink"
-        >
-          ← {d.settings.hub.title}
-        </Link>
-        {/* The heading the other two shapes draw. It was missing here, so a reader
-            landing on a bookmark was told about their plan by a card with nothing
-            above it saying which screen had refused them. */}
-        <h1 className="text-xl font-bold text-ink lg:text-2xl">{t.title}</h1>
-        <Card>
+      <div className="flex flex-col gap-5">
+        <PageHeader
+          title={t.title}
+          back={{ href: '/settings', label: d.settings.hub.title }}
+        />
+        <Card className="max-w-2xl">
           <h2 className="font-semibold text-ink">{t.soloTitle}</h2>
           <p className="mt-1 text-sm text-ink-soft">
             {t.soloBody(
@@ -283,39 +276,29 @@ export default async function TeachersPage() {
      * side rather than a stack taller than the screen.
      */
     <div className="flex flex-col gap-5">
-      <div
-        className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between
-          sm:gap-6"
-      >
-        <div className="min-w-0">
-          <Link
-            href="/settings"
-            className="inline-flex min-h-tap items-center text-ink-soft hover:text-ink"
-          >
-            ← {dict(locale).settings.hub.title}
-          </Link>
-          <h1 className="mt-1 text-xl font-bold text-ink lg:text-2xl">{t.title}</h1>
-          <p className="mt-1 text-ink-soft">
-            {limit === null ? t.count(activeCount) : t.used(activeCount, limit)}
-          </p>
-        </div>
-
-        {/* The one thing to do here, beside the heading rather than under the last row:
-            on a centre with nine teachers it was below all nine, and adding somebody is
-            the reason most visits happen. Nothing at all on a plan with no staff
-            features — the card below already says the way out is down, not up. */}
-        {staff && !atLimit && (
-          <Link
-            href="/settings/teachers/new"
-            className="flex min-h-tap shrink-0 items-center justify-center rounded-xl
-              border-2 border-dashed border-brand-300 bg-brand-50/50 px-5 font-medium
-              text-brand-700 hover:bg-brand-50"
-          >
-            <span aria-hidden>+&nbsp;</span>
-            {t.new}
-          </Link>
-        )}
-      </div>
+      <PageHeader
+        title={t.title}
+        back={{ href: '/settings', label: d.settings.hub.title }}
+        subtitle={limit === null ? t.count(activeCount) : t.used(activeCount, limit)}
+        /* The one thing to do here, in the bar rather than under the last row: on a centre
+           with nine teachers it was below all nine, and adding somebody is the reason most
+           visits happen. Nothing at all on a plan with no staff features — the card below
+           already says the way out is down, not up. */
+        actions={
+          staff &&
+          !atLimit && (
+            <Link
+              href="/settings/teachers/new"
+              className="flex min-h-tap items-center justify-center rounded-xl border-2
+                border-dashed border-brand-300 bg-brand-50/50 px-5 font-medium
+                text-brand-700 hover:bg-brand-50"
+            >
+              <span aria-hidden>+&nbsp;</span>
+              {t.new}
+            </Link>
+          )
+        }
+      />
 
       {/* Why this list is here at all, above the list rather than under it: on a
           plan with no staff features the only reason to draw one is to get back

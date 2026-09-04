@@ -206,8 +206,10 @@ test('every screen that draws the bar imports it from the one place', () => {
   const users = TSX.filter((f) => f.source.includes('<PageHeader'))
   // A floor and not a target: it goes up as the rest of §20.8's screens are converted,
   // and it is here so a refactor that quietly unhooks the bar from most of the app is a
-  // failure rather than a diff nobody reads.
-  assert.ok(users.length >= 9, `only ${users.length} screens carry the bar`)
+  // failure rather than a diff nobody reads. Thirty screens carry it as this is written,
+  // out of forty-nine under `(app)` — and a handful of those may never have it, because a
+  // printed sheet draws no bar and `PageHeader` is `print:hidden`.
+  assert.ok(users.length >= 30, `only ${users.length} screens carry the bar`)
 
   for (const { path: file, source } of users) {
     assert.ok(

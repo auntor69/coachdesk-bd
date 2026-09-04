@@ -1,5 +1,4 @@
-import Link from 'next/link'
-
+import { PageHeader } from '@/components/page-header'
 import { Card } from '@/components/ui'
 import { pageCapability, getSession } from '@/lib/auth/session'
 import { todayInDhaka } from '@/lib/bd/time'
@@ -50,18 +49,12 @@ export default async function NewStaffPage() {
   // regardless — see caller() there for why the page cannot be the fence.
   if (!has(session.plan, 'staffManagement')) {
     return (
-      // Capped, and carrying the heading this shape never had: a refusal is two sentences,
-      // and a bookmark used to land a reader on a card about their plan with nothing above
-      // it naming the screen that had refused them.
-      <div className="flex max-w-2xl flex-col gap-5">
-        <Link
-          href="/settings"
-          className="inline-flex min-h-tap items-center text-ink-soft hover:text-ink"
-        >
-          ← {d.settings.hub.title}
-        </Link>
-        <h1 className="text-xl font-bold text-ink lg:text-2xl">{t.newTitle}</h1>
-        <Card>
+      <div className="flex flex-col gap-5">
+        <PageHeader
+          title={t.newTitle}
+          back={{ href: '/settings', label: d.settings.hub.title }}
+        />
+        <Card className="max-w-2xl">
           <h2 className="font-semibold text-ink">{t.lockedTitle}</h2>
           <p className="mt-1 text-sm text-ink-soft">
             {t.lockedBody(planName(session.plan, locale), planName(PLANS.center, locale))}
@@ -87,15 +80,7 @@ export default async function NewStaffPage() {
 
   return (
     <div className="flex flex-col gap-5">
-      <div>
-        <Link
-          href="/settings/staff"
-          className="inline-flex min-h-tap items-center text-ink-soft hover:text-ink"
-        >
-          ← {t.title}
-        </Link>
-        <h1 className="mt-1 text-xl font-bold text-ink lg:text-2xl">{t.newTitle}</h1>
-      </div>
+      <PageHeader title={t.newTitle} back={{ href: '/settings/staff', label: t.title }} />
 
       <EmployeeForm
         t={d.staffForm}

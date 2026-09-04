@@ -400,17 +400,21 @@ test('a slot that already holds a bill has a figure in it and no box', () => {
   assert.match(ROWS, /aria-label=\{fill\(amountFor, \{ name: row\.name \}\)\}/)
 })
 
-test('the letterhead says what the screen is, and the empty card is not a metre wide', () => {
-  // Both of them, counted rather than matched: the refused screen writes its own h1 and
-  // a mutation to either one leaves the other standing to answer for it.
-  assert.equal(
-    PAGE.split('className="text-xl font-bold text-ink lg:text-2xl">{t.title}').length - 1,
-    2,
-  )
+test('the bar says what the screen is on both shapes, and the empty card is not a metre wide', () => {
+  // Two bars and one crumb: the refused screen draws its own, and a mutation to either
+  // one leaves the other standing to answer for it.
+  assert.equal(PAGE.split('<PageHeader').length - 1, 2)
+  assert.equal(PAGE.split('back={back}').length - 1, 2, 'a way back went missing')
+  assert.equal(PAGE.split("{ href: '/fees' as const, label: t.backToFees }").length - 1, 1)
   assert.equal(PAGE.split('{t.subtitle}').length - 1, 1)
-  assert.equal(PAGE.split('{t.backToFees}').length - 1, 2, 'a way back went missing')
+  // The bar owns the title on every screen that has one; a hand-rolled h1 beside it is
+  // two titles and only one of them scrolls away.
+  assert.equal(PAGE.split('<h1').length - 1, 0)
   assert.match(PAGE, /<Card className="lg:max-w-2xl">/)
-  assert.match(PAGE, /flex flex-col gap-4 lg:max-w-2xl/)
+  // The refusal gave its column cap up to its card, or the bar's background would stop
+  // 672px into a 1,216px workspace.
+  assert.match(PAGE, /<Card className="max-w-2xl border-late\/30/)
+  assert.doesNotMatch(PAGE, /flex flex-col gap-4 lg:max-w-2xl/)
 })
 
 test('§38: the reads, the gate and the months are the ones that were there', () => {

@@ -50,14 +50,19 @@ test('the page holds no grid, because the form is where the width is spent', () 
 
 test('both shapes of this screen draw the same heading', () => {
   // The locked shape had no h1 at all, so a bookmark landed a reader on a card about
-  // their plan with nothing above it naming the screen that had refused them.
-  assert.equal(count(PAGE, 'text-xl font-bold text-ink lg:text-2xl'), 2)
-  assert.equal(count(PAGE, '>{t.newTitle}</h1>'), 2)
-  assert.doesNotMatch(PAGE, /font-bold text-ink"/, 'no heading left in the old hand')
+  // their plan with nothing above it naming the screen that had refused them. The bar
+  // carries it on both now, and owns the h1, so a card's own title is an h2.
+  assert.equal(count(PAGE, '<PageHeader'), 2)
+  assert.equal(count(PAGE, 'title={t.newTitle}'), 2)
+  assert.equal(count(PAGE, '<h1'), 0)
+  assert.doesNotMatch(PAGE, /text-xl font-bold text-ink lg:text-2xl/)
 })
 
 test('the refusal is capped rather than set across the page', () => {
-  assert.equal(count(PAGE, 'flex max-w-2xl flex-col gap-5'), 1)
+  // On the card and not on the column, or the bar's `lg:-mx-8` background would stop
+  // 672px into a 1,216px workspace.
+  assert.equal(count(PAGE, '<Card className="max-w-2xl'), 1)
+  assert.doesNotMatch(PAGE, /flex max-w-2xl flex-col/)
 })
 
 test('there is no seat count here, because staff are not priced per head', () => {

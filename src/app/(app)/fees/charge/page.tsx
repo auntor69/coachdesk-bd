@@ -1,5 +1,4 @@
-import Link from 'next/link'
-
+import { PageHeader } from '@/components/page-header'
 import { Button, Card } from '@/components/ui'
 import { pageCapability, getSession } from '@/lib/auth/session'
 import { createClient } from '@/lib/supabase/server'
@@ -140,17 +139,11 @@ export default async function ChargePage({
 
   const header = (
     <>
-      <Link
-        href="/fees"
-        className="inline-flex min-h-tap items-center font-medium text-brand-700"
-      >
-        ← {t.backToFees}
-      </Link>
-
-      <div>
-        <h1 className="text-xl font-bold text-ink lg:text-2xl">{t.title}</h1>
-        <p className="mt-1 text-sm text-ink-soft">{t.subtitle}</p>
-      </div>
+      <PageHeader
+        title={t.title}
+        back={{ href: '/fees', label: t.backToFees }}
+        subtitle={t.subtitle}
+      />
 
       {/* A plain GET, so the chosen batch is in the URL and the roster below is what the
           server read for it. Its own form element: this cannot be nested inside the
