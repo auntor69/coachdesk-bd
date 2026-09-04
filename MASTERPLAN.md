@@ -1221,7 +1221,7 @@ none of those are needed to collect a fee or tell a parent about an exam.
 
 ## 8. Institution: real branches
 
-### 8.1 What a branch is ⚠️
+### 8.1 What a branch is ✅
 
 An Institution is one organisation with several physical locations under one owner,
 one bill, and one shared pool of student places. A branch is not a tag on a
@@ -1237,13 +1237,27 @@ composite is the part that matters: it makes it structurally impossible to attac
 one centre's row to another centre's branch, which a plain `branch_id` FK would
 happily allow.
 
-**The gap is that nothing reads it.** `branch_id` is loaded into the session and
-then never used again — three references in the whole of `src/`, all in one file.
-The branches RLS policy is centre-wide: any member of the organisation can read
-and write every branch's rows. So today an Institution is a Center with a table
-nobody consults, and a branch manager can see every branch.
+Five more tables carry it now — `employees`, `expenses`, and the three money
+snapshots `fee_invoices`, `fee_payments`, `salary_payments`, which record the branch
+a figure belongs to at the moment it is written rather than inferring it later from a
+student who may since have transferred.
 
-### 8.2 What has to become branch-scoped ❌
+**And the database reads it.** One function decides, `app.branch_ok(center, branch)`:
+a member with no branch on their membership reaches every branch, a pinned member
+reaches only theirs and never an unfiled row, and a non-member is left to the
+permissive policies to refuse. HQ therefore wins over a pin — a person with two
+memberships in the same organisation, one pinned and one not, is HQ, because the
+function asks whether *any* of their memberships reaches the row. It is
+`security definer` so a restrictive policy can call it, and it returns one boolean
+about the caller's own membership, which they could read from their own row anyway.
+
+What is left is not in the database. It is the drill-down: a branch name opens that
+branch's record rather than that branch's workspace, because switching the scope of
+every branch-level screen needs `app.branch_ok` to read a *chosen* branch and not
+just a pinned one. §8.3 carries that as the open item, with the reason a `branch_id`
+in a query string cannot be it.
+
+### 8.2 What has to become branch-scoped ✅
 
 Students, batches, teachers, employees, attendance, exams, marks, fee invoices,
 fee payments, expenses, payroll, reports, dashboards, and permissions. The rule:
@@ -1259,6 +1273,58 @@ forgets will be a report — the screen where the leak is largest and least visi
 direction of a hostile client: a branch manager posting another branch's id, asking
 for another branch's student, another branch's payment total, another branch's
 payroll. The RLS suite gets a case per table, not one case for the idea.
+
+**This is built.** `20260811000053_branch_scoping.sql` adds **26 policies named
+`<table>_branch_scope`**, one per table above: `branches`, `center_members`,
+`teachers`, `teacher_permissions`, `teacher_subjects`, `employees`, `batches`,
+`batch_schedules`, `students`, `guardians`, `enrollments`, `student_transfers`,
+`attendance_sessions`, `attendance_records`, `absence_notices`, `exams`,
+`exam_results`, `result_notices`, `progress_updates`, `fee_invoices`,
+`fee_payments`, `fee_reminders`, `salary_terms`, `salary_payments`, `expenses`,
+`notices`.
+
+Every one of them is **RESTRICTIVE**, which is the design decision that made this
+safe to add late: a restrictive policy is ANDed with whatever permissive policies a
+table already carries, so the migration narrows all 102 of them without rewriting
+one. A capability or permission that was already refusing somebody keeps refusing
+them; branch is a second question asked after the first still passes.
+
+**Thirteen tables are deliberately unscoped**, each with its reason in the
+migration rather than by omission: one bill and one owner (`coaching_centers`,
+`subscriptions`, `payments`, `upgrade_requests`, `plan_allowances`); one person with
+many memberships (`profiles`); catalogues shared by the whole organisation
+(`subjects`, `exam_types`, `sms_templates`); one queue with one sender
+(`sms_dispatches`, `sms_logs`, `sms_credit_ledger`); and one stated deferral
+(`audit_log`, safe today only because `audit_log_owner_read` opens it to owners,
+and an owner is HQ by definition).
+
+**A row is filed under the branch that wrote it**, by trigger, on the six tables an
+add form creates: every form in this product posts a row with no branch on it, and a
+restrictive policy alone would have left a pinned manager able to read their branch
+and write nothing at all — refused at the insert, by a database error, on a form that
+never mentioned a branch. An HQ member's writes keep the null, deliberately.
+
+**Three number series became SECURITY DEFINER** in the same migration — receipt,
+salary voucher, expense voucher. A series belongs to the centre, and a branch-pinned
+caller taking `max(no) + 1` through their own policies gets their branch's maximum,
+so two branches would have issued the same receipt number on the same day.
+
+The leak suite `§8.2` asks for by name is in `scripts/test-rls.mjs`: two structurally
+identical branches inside one centre, a manager pinned to one, and then **a case per
+table** — their own row is visible, the other branch's is not — with the HQ control
+run over the same 26 tables, because if this migration had changed anything for an
+unpinned member it would have changed everything for every centre in the country,
+all of which are HQ-only today. Then the hostile half, each refusal paired with the
+write it must not break, and the per-table stamp assertions read back as superuser so
+they are about what landed rather than what the session can see. A table added to the
+schema without a decision about branches shows up there as a missing fixture key
+rather than as a leak in production.
+
+**Two open items, both named in the migration and both waiting on a screen:** a
+branch snapshot column on `sms_dispatches` and `sms_logs`, so a delivery report can
+be read per building after the fact, and a write-time branch column on `audit_log`.
+Neither is a hole in the rule above — the queue and the log are unscoped on purpose
+today — and each lands with the commit that builds the screen that needs it.
 
 ### 8.3 What HQ sees ✅
 
@@ -3101,3 +3167,4 @@ truths start.
 | 2026-09-04 | **§20.9's first obligation stops being aspirational.** Every screen returns early several times before the arm an owner with everything enabled sees, and the heading gate read each page as one string — so a paywall arm, a read-only arm, a narrowed-permission arm or a dropped read could ship with no heading and no gate would say so, which is the reader who most needs to be told which screen just refused them. `tests/page-header.test.ts` now slices each page's own default-exported function and walks its arms, counting a bar drawn inline, through a `{header}` const, through a local shell handed a refusal, or through a block an arm returns outright as `fees/arrears` does for three separate failed reads; a page written in a shape the walk cannot parse fails rather than passing quietly. All forty-nine screens were audited arm by arm first and only the five printed sheets came back bare, each naming what happened its own way — so they stay out, for the same reason they carry no bar at all. One finding is recorded open in §20.9 instead of fixed: `payroll`'s rail is three conditional blocks, so it is an empty column for a read-only centre that never hired anybody. 7 of 7 mutations caught. Counts: 1,418 RLS assertions, 1,549 unit tests, 75 migrations. |
 | 2026-09-04 | **A crumb is a promise too, and one of them was lying.** §20.9's persona pass found the student profile — open to any teacher — offering `← Student roster`, which is `can_manage_students`, a box an owner ticks per teacher. A teacher without it reaches a child from the dashboard's at-risk card, drawn off the risk view's own rows rather than a role, so the only way out of that screen answered "you do not have access to this"; the rule was already written three fields above it for the receipt link. The crumb is now chosen by `canManageStudents` — the roster for whoever holds it, the dashboard for whoever does not, which is where that card is and the one screen every reader of this page can open — and costs no query a staff-admin or a teacher was not already making. `tests/navigation.test.ts` gains the direction it never had: it held the menu to the screens it points at, and nothing held a screen's own way back. Every crumb target must now be openable by every reader the screen itself admits, with rank, roster permission and capability compared separately, because rank implies no capability below owner and a manager clears a roster box without it being ticked. All forty-two crumbs checked, that one was the only offender, and a screen whose guard the comparison cannot read fails rather than being skipped. 7 of 7 mutations caught. Counts: 1,418 RLS assertions, 1,551 unit tests, 75 migrations. |
 | 2026-09-04 | **Three links promised a screen that then refused the reader, and all three were gated on the role instead of the box.** The fee board put "Spending →" and "Salaries →" under the month's takings behind `canWrite`, which is `isStaffAdmin` — a role — while `/expenses` and `/payroll` are `pageCapability`, an independent tick per manager. So an owner who granted `fees` and left the two money-out boxes unticked was handing that manager a board they should read and two links that answer "you do not have access to this". `/settings/staff` offered the same salaries link on the same mistake: `staff` is writing down who works here, `payroll` is agreeing what they are paid. The third was not a capability — the new-batch screen's "add a subject first" card put its only button on `/settings/subjects`, which is manager-only, while the screen opens to a teacher holding `can_manage_batches`, a box that grants INSERT on batches and nothing on subjects; that teacher now reads a sentence naming who to ask, in both languages. **The gate is deliberately narrower than the crumb gate.** A crumb is one promise per screen and two guards can be compared; an in-page link cannot be, because the page guard is only a floor and the real gate is a local const no source-reading test can evaluate — an audit of all thirty-four such links returned thirty-one false positives on exactly that. So `tests/navigation.test.ts` holds the one class where the check is honest: a link into a `pageCapability` screen may only be drawn on a screen whose source asks about that capability, read as a question in the file rather than an answer in the JSX, with the screen's own test asserting which check was turned on. Eleven links in scope, owner-only screens exempt because nothing narrows an owner. The shell was already right — every capability row in `app-nav.tsx` carries a `when` — which is why the drift was in the page bodies. 10 of 10 mutations caught. Counts: 1,418 RLS assertions, 1,555 unit tests, 75 migrations. |
+| 2026-09-04 | **§8.1 and §8.2 were marked ⚠️ and ❌ on a product where branch scoping is built, tested and shipped — the drift §25 forbids, pointing the wrong way.** A section that says "not built" about something that is invites two failures: somebody builds it again, or somebody reads the marker as a live security finding and reports a hole that closed months ago. §8.1's body was the worse half, because it was specific: *"nothing reads it — three references in the whole of `src/`, all in one file"* and *"a branch manager can see every branch"*. Forty-five files in `src/` reference it, and a branch manager can see one branch. What `20260811000053_branch_scoping.sql` actually does is now written down: 26 policies named `<table>_branch_scope`, one per table §8.2 lists, every one of them **RESTRICTIVE** so it is ANDed with the 102 permissive policies already there rather than replacing one — which is what made it safe to add to a live schema, since a capability that was already refusing somebody keeps refusing them and branch is a second question asked after the first still passes. One function decides, `app.branch_ok(center, branch)`, and HQ wins over a pin because it asks whether *any* of the caller's memberships reaches the row. The thirteen unscoped tables are recorded with their categories — one bill and one owner, one person with many memberships, shared catalogues, one queue, one stated deferral — because a reader auditing the file should not have to treat its silence as a finding. Two things the migration had to fix on the way are recorded too: a trigger files a new row under the branch that wrote it, since every add form in this product posts a row with no branch and a restrictive policy alone would have left a pinned manager able to read their branch and write nothing at all; and three number series became `security definer`, because a branch-pinned caller taking `max(no) + 1` through their own policies gets their branch's maximum and two branches would have issued one receipt number twice. The leak suite §8.2 asks for by name is in `scripts/test-rls.mjs` and is a case per table in three directions — the pinned read, the HQ control over the same 26 tables, and the hostile write with each refusal paired with the write it must not break. **The two open items stay visible and are both waiting on a screen, not on a decision:** a branch snapshot column on `sms_dispatches` and `sms_logs`, and a write-time branch column on `audit_log`, which is safe today only because that table opens to owners and an owner is HQ by definition. §8.3's ⚠️ is untouched and is now the only one in §8: a branch name opens that branch's record rather than its workspace, because the drill-down needs `app.branch_ok` to read a *chosen* branch and a `branch_id` in a query string is the leak the section forbids. Documentation only — no code, no counts moved. |
