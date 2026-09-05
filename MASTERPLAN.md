@@ -22,6 +22,19 @@ needs an edit.
   teachers take attendance and managers handle money. Obsolete assumptions from
   the 2026-08-11 version are retired explicitly in §13 rather than deleted.
 
+- **Revised 2026-09-05 — one prepaid balance, burned by the day.** The money
+  model is now a single mechanism and it is stated once, in §11.6: *money in →
+  taka in the balance → each day takes its own cost off → when the balance
+  cannot cover the next day, saving stops until they top up.* Size changes the
+  daily rate and nothing else. There is no invoice, no due date, no coverage
+  period to lapse, no grace window, no credit in either direction, and no seat
+  to buy — purchased student capacity is retired in §18, along with the
+  contextual seat purchase that used to sit inside Add Student. §§3.3–3.7 now
+  point at §11.6 for the model and keep only what is still true of them.
+  Everything §2 sells is unchanged: the ৳1,999 floor, the marginal bands and the
+  teacher seat still compute the monthly figure a customer is quoted. That
+  figure is simply divided by thirty and taken a day at a time.
+
 ---
 
 ## 0. How to read this
@@ -204,7 +217,7 @@ and is a different product, not a bigger number (§2.5).
 | | |
 |---|---|
 | Batches | **100** |
-| Students | **purchased capacity** — see §3.3. *Never* "unlimited" |
+| Students | **no ceiling** — the roster sets the daily rate (§3.3). *Never* "unlimited" |
 | Students per batch | **no limit** |
 | Teachers | 2 included, then ৳100/seat/month |
 | Subjects | **200** — an abuse ceiling, not a feature (§2.7) |
@@ -214,8 +227,10 @@ and is a different product, not a bigger number (§2.5).
 grant permissions), centre-wide reporting.
 
 **Price:** a ৳1,999/month floor plus marginal per-student bands (§3.1) plus
-teacher seats. The floor is what a small centre pays; past roughly 80 students
-the usage bands overtake it and become the bill.
+teacher seats — and that monthly figure is then divided by thirty and taken off
+the balance a day at a time (§11.6). The floor is what a small centre pays, and
+it is the software fee: past roughly 80 students the usage bands overtake it and
+become the whole of the rate.
 
 ### 2.5 Institution — custom, from ৳4,999/month + student usage
 
@@ -240,41 +255,42 @@ ABC Education  (HQ: Dhaka)
 - Branch comparison (collection rate, attendance, headcount, arrears)
 - Organisation-wide student count and reporting
 - Organisation-wide fee and revenue visibility
-- **One shared organisation-wide student capacity pool** — §3.6, the most
-  important design decision in this section
+- **One balance and one head count for the whole organisation, never per branch**
+  — §3.6, the most important design decision in this section
 
 **Limits:**
 
 | | |
 |---|---|
 | Batches | **100 per branch**, not 100 in total |
-| Students | shared organisation-wide purchased capacity (§3.6) |
+| Students | no ceiling; one organisation-wide head count sets one rate (§3.6) |
 | Students per batch | no limit |
 | Teachers | 2 included org-wide, then ৳100/seat/month |
 | Subjects | 200 org-wide — abuse ceiling |
 | Branches | **3 included**, then ~৳750/branch/month |
 
 **Price:** *custom, from ৳4,999/month.* Quoted, not published as a fixed public
-number. The quote depends on branch count, capacity, and staff size. The engine
+number. The quote depends on branch count, roster size, and staff size. The engine
 computes a defensible starting figure — ৳4,999 floor, plus student bands, plus
 teacher seats, plus extra branches — and the founder can quote above it. The
 branch allowance and per-branch fee are named constants so a negotiated deal does
 not require a code change to *describe*, only to honour.
 
 **Do not price Institution as Center × branches.** Four branches is not four
-centres: it is one customer, one contract, one shared roster budget, and a
-reporting surface that no single centre needs. Multiplying tells a 4-branch
-institution to buy four accounts instead, which is exactly the outcome the
-shared pool (§3.6) exists to prevent.
+centres: it is one customer, one balance, one pooled roster, and a reporting
+surface that no single centre needs. Multiplying tells a 4-branch institution to
+buy four accounts instead — and four accounts would each pay their own ৳4,999
+floor and each start their bands again at ৳25, which is exactly the outcome the
+single pooled count (§3.6) exists to prevent.
 
 ### 2.6 Comparison table
 
 | | **Teacher Free** | **Pro trial** | **Teacher Pro** | **Coaching Center** | **Institution** |
 |---|---|---|---|---|---|
-| Price | ৳0 forever | ৳0, 14 days | ৳499/mo flat | from ৳1,999/mo + usage | from ৳4,999/mo + usage |
+| Price | ৳0 forever | ৳0, 14 days | ৳499/mo flat² | from ৳1,999/mo + usage² | from ৳4,999/mo + usage² |
 | Is it a plan? | yes | **no — a state** | yes | yes | yes |
 | Batches | 1 | 5 | 5 | 100 | 100 **per branch** |
-| Students | 30 | 150 | 150 | purchased capacity | shared org capacity |
+| Students | 30 | 150 | 150 | **no ceiling** — sets the rate | no ceiling, one org-wide count |
 | Students per batch | 30 | 30 | 30 | no limit | no limit |
 | Teachers | 1 | 1 | **1, at any price** | 2 + ৳100/seat | 2 + ৳100/seat |
 | Subjects | 1 | 5 | 5 | 200¹ | 200¹ |
@@ -293,6 +309,10 @@ shared pool (§3.6) exists to prevent.
 | Branch management + HQ | ❌ | ❌ | ❌ | ❌ | ✅ |
 
 ¹ Technical ceiling, never advertised. See §2.7.
+
+² Every paid figure is a *monthly* price, and no month is ever charged. It is
+divided by thirty and taken off the balance one day at a time (§11.6). Nothing on
+this table is a subscription that renews or lapses.
 
 Every paid tier is a strict feature superset of the one below it. A test asserts
 this, and it must keep passing: a tier that withholds something a cheaper tier
@@ -322,6 +342,11 @@ Check the list for duplicates."*
 
 ## 3. Money
 
+**Read §11.6 first.** It states the money model in one sentence — *money in → taka in the
+balance → each day takes its own cost off → when the balance cannot cover the next day,
+saving stops until they top up* — and everything in §3 is what goes into that daily figure.
+§3.1 and §3.2 compute the monthly price a customer is quoted; §11.6 divides it by thirty.
+
 ### 3.1 Marginal student pricing
 
 Per-student rates are **marginal bands**, the same shape as income tax. Each
@@ -334,200 +359,212 @@ band's rate applies only to the students inside it.
 | 301–600 | ৳12 |
 | 601+ | ৳8 |
 
-Marginal and not flat-per-tier, because with flat tiers a centre at 301 students
-would pay less than one at 300 — a pricing page that makes the founder look like
-they cannot count. Marginal bands make the bill continuous and always rising.
+Marginal and not flat-per-tier, because with flat tiers a centre at 101 students
+would pay **less** than one at 100 — 101 × ৳18 = ৳1,818 against 100 × ৳25 = ৳2,500 — a
+pricing page that makes the founder look like they cannot count. Marginal bands make the
+bill continuous and always rising. `plans.ts` has always implemented it correctly; the
+2026-09-05 directive's §5 *wording* described flat brackets, and this table is the one that
+is right.
 
 **These rates are uncalibrated.** The structure is sound; the numbers are a
 founder's judgement with no market survey behind them. The first twenty customers
 all sit in the first two bands, so ৳12 and ৳8 are theoretical until year two.
 Recorded as an open item in §11, not as a settled fact.
 
-**Worked bills** (Center, no extra teacher seats):
+**Worked bills** (Center, no extra teacher seats), with the daily figure they become:
 
-| Students | Bill | Which part bites |
-|---|---|---|
-| 50 | ৳1,999 | floor |
-| 79 | ৳1,999 | floor, just |
-| 100 | ৳2,500 | bands |
-| 150 | ৳3,400 | bands |
-| 300 | ৳6,100 | bands |
-| 600 | ৳9,700 | bands |
-| 1,200 | ৳14,500 | bands |
+| Students | Monthly | Per day | Which part bites |
+|---|---|---|---|
+| 50 | ৳1,999 | ৳66.63 | floor |
+| 79 | ৳1,999 | ৳66.63 | floor, just |
+| 100 | ৳2,500 | ৳83.33 | bands |
+| 150 | ৳3,400 | ৳113.33 | bands |
+| 300 | ৳6,100 | ৳203.33 | bands |
+| 600 | ৳9,700 | ৳323.33 | bands |
+| 1,200 | ৳14,500 | ৳483.33 | bands |
 
 ### 3.2 What the floor buys
 
 The floor is a minimum, not an add-on: the bill is
 `max(floor, bandSum(students)) + teacherSeats + branchFees`.
 
+**And the floor is the software fee.** There is no second product, no separate subscription
+and no "software charge plus seats" — a question the owner asked directly, and this is the
+answer. A centre of thirty students pays ৳1,999 a month for the software; a centre of three
+hundred pays ৳6,100 and the software is inside it.
+
 **A floor therefore already includes some students, and that number is derived,
 never typed.** At ৳1,999 the first band covers 79 students (79 × ৳25 = ৳1,975;
 the 80th tips it to ৳2,000). At Institution's ৳4,999 the floor covers 238.
 
-This matters for top-ups (§3.4): while the floor is biting, extra students cost
-the customer nothing extra per month, so charging for those seats would be
-billing twice for the same taka. The derived figure keeps that honest and cannot
-drift, because it is computed from the same bands the bill is.
+This matters for what §3.4 shows: while the floor is biting, an extra student changes the
+daily rate by nothing at all, so the rail says nothing rather than inventing a movement. The
+derived figure keeps that honest and cannot drift, because it is computed from the same bands
+the bill is.
 
-### 3.3 Student capacity — plan and capacity are separate concepts ✅
+### 3.3 There is no student ceiling on a per-student tier ⛔→✅
 
-**This is the central architectural decision of this revision.**
+**Rewritten 2026-09-05. Purchased student capacity is retired** (§18). What stood here was
+the central architectural decision of the previous revision — *the plan decides which
+features exist, the capacity decides how many students have been paid for, and they are two
+columns* — and it was the right decision for a model that sold seats. The daily balance
+does not sell seats, so there is nothing for a second column to hold.
 
 > **The plan decides which features and permissions exist.
-> The capacity decides how many students have been paid for.**
-> They are two columns, not one.
+> The roster decides what a day costs.**
+> There is no third number.
 
-For **Teacher Free** and **Teacher Pro**, the student ceiling is a plan cap: 30
-and 150, fixed, not purchasable. For **Center** and **Institution**, the ceiling
-is **purchased capacity** — a number the customer has paid for, stored per
-organisation, raised by paying, and never "unlimited".
+| Tier | Student ceiling |
+|---|---|
+| Teacher Free | **30** — a plan cap, fixed, not purchasable |
+| Teacher Pro | **150** — a plan cap, fixed, not purchasable |
+| Center, Institution | **none** |
 
-**"Unlimited students" is retired** (⛔, §13). It was never true: we bill per
-student, so a plan that promises unlimited students promises an unlimited bill and
-enforces nothing. Worse, it made the caps unenforceable by construction — there
-was no number for a check to compare against.
+The teacher caps stay because they are what makes the teacher tiers a smaller product; they
+are enforced at Layer 1 and nothing about them moves. What goes is the ceiling on the
+per-student tiers, and with it `student_capacity`, `StudentCeiling`'s `capacity` arm,
+`quoteSeats`, `capacityBands`, `nextSeatCostBdt` and the whole places-remaining vocabulary.
 
-**Why not just derive capacity from the last payment?** Because a payment is
-evidence of a past event and capacity is present state, and the two diverge the
-moment anything is refunded, corrected, or granted by hand. Capacity is stored;
-payments are the audit trail that explains it (§3.8). The invariant is that
-capacity equals the sum of the grants recorded against it, and that invariant is
-checkable.
+**"Unlimited students" is still retired, and this is not its return.** The old objection was
+that a plan promising unlimited students promises an unlimited bill and enforces nothing.
+Both halves are answered now rather than dodged: the bill is not unlimited because it is
+paid a day at a time out of money the centre has already handed over, and what is enforced
+is not a count but the balance — a centre with nothing left cannot save anything at all
+(§11.7). A ceiling was a proxy for the fence. The fence is now direct.
 
-**Two nulls that must not be confused.** `maxStudents === null` currently means
-"unlimited". After this change, Center and Institution have neither a number nor
-unlimited — they have "ask the capacity". The type must say so out loud rather
-than overloading `null`:
+**What this costs, stated plainly:** a bill that used to be bounded by a number the owner
+had bought is now bounded by their own roster. Two hundred students pasted in by mistake is
+two hundred students' worth of daily rate. The answer is not a ceiling — a ceiling with
+nothing to buy past it is a refusal with no way through — but **§20.5's obligation: the cost
+of growth is visible at the moment of growth, and days-left is on screen wherever the roster
+changes.** Plus the human path: deactivate the mistake, ring the founder, and the days come
+back as a grant with a reason (§11.8).
 
-```
-StudentCeiling =
-  | { kind: 'plan';     max: number }        // Free 30, Pro 150
-  | { kind: 'capacity'; purchased: number }  // Center, Institution
-```
+### 3.4 Adding one student: the cost is shown, never charged at the door ✅→⚠️
 
-A call site that forgets to handle `capacity` then fails to compile, instead of
-silently treating a paying centre as unlimited.
+**Rewritten 2026-09-05.** The rule that mattered survives word for word:
 
-### 3.4 Adding one student past capacity ✅
+> **The customer thinks about adding a student, never about managing seats.**
 
-The rule: **the customer thinks about adding a student, never about managing
-seats.** Capacity is our accounting concept and must not become their chore.
+What is retired is the machinery that used to honour it. There is no refusal at the door,
+no ৳18 marginal seat, no payment inside the dialog and no "automatically continue the
+student creation process", because there is nothing left to buy. §9's contextual purchase
+was the right answer to the wrong model, and the model changed underneath it.
 
-What must **not** happen, and is what a naive implementation produces:
+What must **not** happen is unchanged, and is now impossible by construction:
 
 > reach the limit → get refused → go to the plan page → work out how many seats
 > → pay → come back to students → find the button again → add the student
 
-The flow instead lives inside the add-student button:
+What happens instead:
 
 ```
-[+ Add Student]
-      │
-      ├── capacity available ──→ student form, as normal
-      │
-      └── capacity exhausted ──→ "You have used all 120 of your student places.
-                                  One more place costs ৳18."
-                                  [ Pay ৳18 and add the student ]
-                                        │
-                                    payment recorded
-                                        │
-                                  capacity 120 → 121
-                                        │
-                                  student form opens automatically
+[+ Add Student] ──→ student form, as normal. Always.
 ```
 
-The price shown is the **marginal cost of the next seat**, from the same bands
-the monthly bill uses: `bill(capacity + 1) − bill(capacity)`. At capacity 120
-that is ৳18. At capacity 300 it is ৳12. At capacity 50 it is **৳0**, because the
-৳1,999 floor already covers 79 students and charging again would be double
-billing — the dialog says the place is already paid for and opens the form.
+**And the rail beside it says what the roster now costs.** Not a price to pay — a
+consequence to see:
 
-Buyable one seat at a time, any number of times. The remainder of the current
-coverage period is not pro-rated: a seat bought on the 25th costs the same as one
-bought on the 1st. Deliberate — the amounts are ৳8–25, and a pro-rated line item
-costs more in confusion than it saves in taka. Flagged in §11 as a decision to
-revisit if a customer ever raises it.
+```
+101 students → ৳87.27/day
+357 days left · to 27 August 2027
+```
 
-### 3.5 Bulk import past capacity ✅
+That is the whole of §9's principle — *billing should happen exactly where the user
+encounters the need* — carried over into a model where the need is information rather than
+a transaction. §20.5 holds the interface obligation and §14 still forbids showing the band
+table: this is the owner's own number, not our pricing engine.
 
-Centres load students in bulk — from Excel, from a paper register typed up at
-night, up to about 500 at a time. The import must be billed as one transaction
-and must never be a way around capacity.
+**The floor is why the first eighty students are free of arithmetic.** ৳1,999 covers 79
+students, so a centre of fifty adding one more sees no change in the daily rate at all, and
+the rail says nothing rather than inventing a movement. `seatsCoveredByFloor()` derives the
+79 rather than storing it, for the reason its own docblock gives.
+
+### 3.5 Bulk import: no payment step, and the same all-or-nothing ✅→⚠️
+
+**Rewritten 2026-09-05.** Centres load students in bulk — from Excel, from a paper register
+typed up at night, up to about 500 at a time. Steps 4, 5 and 6 of the old order (price it,
+show the total, take payment) are gone with purchased capacity. Everything else stands, and
+the reason it stands has nothing to do with billing.
 
 **Order of operations, and none of it may be reordered:**
 
 1. **Parse and validate the whole paste.** Bad rows are shown to the owner.
-2. **Subtract rows already on the roster.** The import already matches on name +
-   guardian phone and skips duplicates; only genuinely new students consume
-   capacity, so an owner who pastes the same register twice is charged nothing the
-   second time.
-3. **Compute the capacity needed** — new students, minus places still free.
-4. **Price it from the same bands**, as one marginal calculation across the whole
-   block. Never per row in a loop; that is how rounding and band boundaries drift.
-5. **Show the total** with the breakdown, before any money moves.
-6. **Take payment.**
-7. **Only then create the students** — all of them.
+2. **Subtract rows already on the roster** — matched on name + guardian phone — so an owner
+   who pastes the same register twice creates nothing the second time.
+3. **Show what the paste does to the daily rate**, before anything is created:
+   `+180 students → ৳86.66/day becomes ৳197.30/day · 360 days left becomes 158`.
+   A single number that large has to be seen before it is true, and the band breakdown is
+   shown for the same reason it always was: an unexplained figure invites the suspicion it
+   was invented.
+4. **Create every validated student, or none of them.**
 
-**All or nothing, in both directions:**
+**All or nothing.** A partial import is the worst available outcome: the owner cannot tell
+which half arrived, re-pasting is the obvious next move, and re-pasting is when duplicate
+children appear in a roster whose head count sets the price.
 
-- Payment fails → **zero** students created. Not the ones that fit.
-- Payment succeeds → **every** validated student created, in one transaction.
-
-A partial import is the worst available outcome: the owner cannot tell which half
-arrived, re-pasting is the obvious next move, and re-pasting is when duplicate
-children appear in a roster that bills per child.
-
-**Worked example.** Capacity 120, all used. Import of 200 new students → capacity
-must reach 320.
+**Worked example**, now in rate rather than in seats. 120 students on the roster, a paste of
+180 new ones:
 
 ```
-bandSum(320) = 100×25 + 200×18 + 20×12 = ৳6,340
-bandSum(120) = 100×25 +  20×18          = ৳2,860
-additional capacity                     = ৳3,480
+monthly(120) = 100×25 + 20×18            = ৳2,860  → ৳95.33/day
+monthly(300) = 100×25 + 200×18           = ৳6,100  → ৳203.33/day
 ```
 
-Which reads, on screen, as: 180 places at ৳18 = ৳3,240, plus 20 places at ৳12 =
-৳240. The bands are shown because a single ৳3,480 invites the suspicion it was
-invented.
+Which reads on screen as: *180 more students takes you from ৳95 to ৳203 a day. Your ৳15,600
+balance goes from 163 days to 76 days — to 20 November 2026.* Then one button, and no money
+moves.
 
-### 3.6 Institution: one shared capacity pool ✅
+**The refusal that remains** is the balance, not the count: an import is a write, so a
+centre that cannot cover today cannot import at all (§4.4). And a centre that *can* cover
+today may still paste itself dry tomorrow — which is what step 3 exists to prevent, and
+§11.8's founder grant exists to repair.
 
-**Capacity belongs to the institution, never to a branch.**
+### 3.6 Institution: one balance, one head count, never per branch ✅
+
+**Amended 2026-09-05.** There is no capacity pool because there is no capacity — but the
+decision this section made survives intact and now applies to two things instead of one:
+**the head count that sets the daily rate, and the balance that pays it, both belong to the
+organisation and never to a branch.**
 
 What we must **not** build:
 
 ```
-Dhaka       = 1,200 seats
-Chattogram  =   700 seats
-Cumilla     =   400 seats
+Dhaka       = its own balance, its own rate
+Chattogram  = its own balance, its own rate
+Cumilla     = its own balance, its own rate
 ```
 
-Because branch populations move constantly — a batch opens in Chattogram, an SSC
-cohort graduates out of Cumilla — and per-branch quotas turn every ordinary
-enrolment into an HQ reallocation request. It creates administrative work that
-exists only because of how we chose to count.
+Because branch populations move constantly — a batch opens in Chattogram, an SSC cohort
+graduates out of Cumilla — and per-branch money turns every ordinary enrolment into an HQ
+reallocation request, plus three separate dry dates for one organisation to keep track of.
+It creates administrative work that exists only because of how we chose to count.
 
-Instead there is **one organisation-wide pool**:
+Instead there is **one organisation-wide figure**, with branches as its breakdown:
 
 ```
-Purchased capacity: 2,600
+2,600 students · ৳1,038/day · ৳311,400 balance · 300 days, to 2 July 2027
 
   Dhaka       1,300
   Chattogram    600
   Cumilla       500
   Sylhet        200
-  ─────────────────
-  Total       2,600 / 2,600  (full)
 ```
 
-Chattogram enrolling 100 more takes the organisation to 2,700 — one capacity
-purchase at HQ level, no reallocation between branches, no conversation about
-whose seats those were. **The seat belongs to the institution, not the branch.**
+Chattogram enrolling 100 more takes the organisation to 2,700 and the rate to ৳1,070/day
+from that day — no purchase at HQ, no reallocation between branches, no conversation about
+whose seats those were. **A branch manager cannot recharge and does not see the balance**
+(§3.7); what they see when it runs dry is the read-only note pointing at HQ.
 
-**And the number on the screen has to be that pool too, which took a migration to
-make possible.** `20260811000053` made every `select` on `students` RESTRICTIVE by
+`coaching_center_id` is already the organisation in this schema — branches are rows in
+`branches` — so one balance per organisation needs no new scoping and gets §12's existing
+fences for free.
+
+**And the head count on the screen has to be the pooled one, which took a migration to make
+possible — and it is now the input to the price, not just to a ceiling.**
+`20260811000053` made every `select` on `students` RESTRICTIVE by
 branch, so a count taken through a pinned manager's own client is their building's —
-correct for a roster, wrong beside a ceiling that pools. Five screens paired the two
+correct for a roster, wrong beside anything organisation-wide. Five screens paired the two
 and told a manager of Mirpur with 40 of the organisation's 300 students that 260
 places were free. The fence was never fooled (`app.guard_student_capacity()` counts
 past RLS under an advisory lock and raises `CD001`), so the cost was a promise the
@@ -537,54 +574,61 @@ database then broke — worst on a bulk paste, which §10 refuses whole. `public
 `app.is_staff_admin` or `app.can_manage_students` about the centre id it was handed
 before it counts, and raises `42501` otherwise — `scripts/check-scoping.mjs` names a
 definer function that trusts a centre id as the one hazard its parser cannot see. Every
-places figure in the product now reads through it, and `tests/pinned-manager.test.ts`
-sweeps `src/app` so a new screen cannot pair the pooled ceiling with a count of its own
-rows. Where a branch figure and the pooled one share a screen — the dashboard's student
+organisation-wide student figure in the product reads through it, `app.settle_billing`
+reads `app.active_students` directly because it runs as the definer already, and
+`tests/pinned-manager.test.ts`
+sweeps `src/app` so a new screen cannot pair an organisation-wide figure with a count of its
+own rows. Where a branch figure and the pooled one share a screen — the dashboard's student
 tile, the roster's heading — the pooled one says which it is (§9.1).
 
-### 3.7 Institution: branch staff and the billing owner ✅
+### 3.7 Institution: branch staff and the billing owner ✅→⚠️
 
-Branch staff press **+ Add Student** and should not have to know that billing
-architecture exists. But a branch manager is not the billing owner and must not be
-able to increase the organisation's monthly cost on their own signature.
+**Amended 2026-09-05.** Branch staff press **+ Add Student** and should not have to know
+that billing architecture exists. That now costs nothing to honour, because the door is
+never locked: the form opens for everybody, always, and the organisation's rate rises that
+day (§3.4).
 
-So the branch flow forks on *who* is looking:
+What survives is the constraint that mattered: **a branch manager is not the billing owner.**
+So the fork on *who is looking* is no longer about a refusal, it is about what a screen shows:
 
-| | capacity available | capacity exhausted |
+| | while the balance covers today | when it does not |
 |---|---|---|
-| **Branch manager** | student form, normally | "The organisation has used all 2,600 of its student places. Ask HQ to add capacity." + **[ Request 25 more places ]** |
-| **HQ admin** | student form, normally | the pay-and-continue dialog from §3.4 |
+| **Branch manager** | student form, normally. **No balance, no rate, no days-left figure** — money is not theirs to see or to spend. | the read-only note, saying HQ needs to recharge |
+| **HQ admin** | student form, plus the rate and days-left rail from §3.4 | the read-only note with the recharge screen behind it |
 
-The request is a real record, not an email: who asked, which branch, how many
-places, when, and its resolution. It appears on the HQ dashboard and in the
-founder panel. HQ approves it by paying; approval is what raises capacity.
+**The places request is retired** (§18). It existed so a branch manager could ask HQ to buy
+capacity; there is no capacity to buy, and a manager who needs the organisation topped up is
+making a phone call about money, which is what §11.8 says a phone call is for. Nothing
+replaces it, and that is a screen, a table and a resolution workflow deleted rather than
+rebuilt.
 
-**Capacity warnings**, organisation-wide, shown to HQ and to branch managers:
+**The warnings change what they count, and keep their thresholds.** Places remaining becomes
+**days remaining**, which is a better number in every way: it is exact, it moves for a reason
+the owner can see, and it says when rather than how much.
 
-```
-Student capacity   4,500
-Current students   4,280
-Remaining            220   (5%)
-```
-
-| Remaining | Behaviour |
+| Days left | Behaviour |
 |---|---|
-| ≤ 20% | notice on the HQ dashboard and on the students screen |
-| ≤ 5% | urgent — persistent banner, HQ told which branches are growing ✅ |
-| 0 | new student creation blocked; **[ Add capacity ]** is the only way forward |
+| ≤ 14 | notice on the dashboard and on the billing screen |
+| ≤ 7 | stronger notice, and the recharge screen leads with it |
+| ≤ 3 | urgent — persistent banner, the founder's number on it |
+| ≤ 1 | urgent, and the dry date is stated as a date |
+| 0 | read-only (§4.4). The banner is the only thing that changed on the screen. |
 
-Thresholds are constants, not literals sprinkled through screens, so they can be
-tuned without hunting.
+Thresholds are constants, not literals sprinkled through screens, so they can be tuned
+without hunting. Shown to HQ and to the owner; a branch manager gets the read-only note and
+not the countdown, for the same reason they do not see the balance.
 
 **Which branches are growing** is `branch_admissions_month` (20260811000072), drawn on
-`/hq` under the boxed warning and only there — the ≤ 20% row asks for a notice, and a box
-naming buildings under a notice would make the two levels read the same.
+`/hq` under the boxed warning and only there — the ≤ 14-day row asks for a notice, and a box
+naming buildings under a notice would make the two levels read the same. It is now a
+*cost* question rather than a capacity one — where did the daily rate go — and it answers it
+unchanged.
 
 It counts **still-active students grouped by the month they were admitted**, not admissions
 taken. A branch that admitted fifty in August and lost forty of them has not grown, and the
 view that counted admissions would put it top of the list. Counting the active ones buys the
 invariant that matters on this screen: every row added together is exactly the organisation's
-active head count, which is the pool figure printed beside it, so the two can never disagree.
+active head count, which is the organisation-wide figure printed beside it, so the two can never disagree.
 The cost is that the past is not fixed — a student admitted in March who leaves in October
 takes their row out of March — which is right for "where did the places we are using now go"
 and wrong for "how many families walked in in March", a question the roster answers.
@@ -714,8 +758,9 @@ One function, one place, consulted by the session and by nothing else:
 effectiveEntitlement(org, now):
 
   1. access:
-       status = suspended | cancelled  →  read-only
-       otherwise                       →  full
+       status = suspended | cancelled    →  read-only
+       dailyRate > 0 and balance < owed   →  read-only     (§11.7)
+       otherwise                          →  full
 
   2. plan:
        trial_ends_at > now
@@ -724,23 +769,44 @@ effectiveEntitlement(org, now):
 
   3. student ceiling:
        plan cap is a number             →  { plan, max }
-       plan is capacity-based           →  { capacity, org.student_capacity }
+       per-student tier                 →  { none }
 ```
 
-The rank test in step 2 is why a trial can only ever raise what is allowed, which is
-what lets the ceiling be resolved from the plan in force without a stale `trial_plan`
-taking places away. `app.admitted_ceiling` applies the same test in SQL (§4.5).
+Step 1 gained its second line on 2026-09-05 and lost a longer one: a coverage date
+plus a grace window used to sit there. The balance comparison is spelled out in
+§11.7 and is a *comparison*, not a state — so a centre lapses on the right day with
+no row written and no job run, exactly as a trial expires in §4.3.
+
+The rank test in step 2 is why a trial can only ever raise what is allowed. That
+still matters on the teacher tiers, where 30 and 150 are real ceilings and a stale
+`trial_plan` must never take places away from a trialling teacher.
+`app.admitted_ceiling` applies the same test in SQL (§4.5).
+
+**Step 3's second arm used to be `{ capacity, org.student_capacity }`.** On a
+per-student tier there is now no ceiling at all: the roster sets the daily rate
+instead of running out (§3.3), so there is nothing for the trigger to admit against
+and `student_capacity` is retired (§18). The arm stays in the type as `{ none }`
+rather than being deleted, because a Center that returns "no ceiling" and a Center
+whose ceiling could not be read must not collapse into the same answer.
 
 Everything downstream — every feature gate, every cap check, every permission
 helper — reads the *result*. None of them learns whether it was a trial, whether
-a payment lapsed, or which branch asked. That is what stops trial logic from
+the balance ran out, or which branch asked. That is what stops trial logic from
 metastasising into forty call sites.
 
 **Fail closed, in the established direction.** An unreadable organisation row
 resolves to Teacher Free, the most restrictive tier — never to the loosest. An
-unreadable *count* refuses the action rather than treating the count as zero,
-because one failed count would not let one extra student past a cap, it would let
-eighty.
+unreadable *count* on a capped tier refuses the action rather than treating the
+count as zero, because one failed count would not let one extra student past a cap,
+it would let eighty.
+
+**The rate is the one thing that fails closed by not being needed.** When
+`charged_through` is today — the ordinary case, every day, for every paying centre —
+`owed` is zero and step 1's second line is decided without the count running at all.
+So a transient count failure cannot lock out a centre that has paid. Where the rate
+genuinely is needed and cannot be read, the answer is read-only: that is the
+established direction, and it is one day's inconvenience against an unbounded free
+ride (§11.7).
 
 ### 4.3 Trial lifecycle ✅
 
@@ -786,47 +852,58 @@ on day 28. It sets no entitlement of its own — a trialling centre is on the Ce
 plan with a status that says nobody has paid yet. Do not merge the two clocks;
 they answer different questions, for different customers, on different timescales.
 
-### 4.4 Subscription lifecycle ✅
+### 4.4 Access is the balance, and the four statuses are what remains ⚠️
 
-The four statuses, and what each one must actually do:
+**Rewritten 2026-09-05.** Access used to be a date comparison against a coverage period,
+with a grace window behind it. It is now the balance comparison in §11.7, and the change
+runs in one direction: **coverage stops gating anything, and nothing else about read-only
+moves.**
 
-| Status | Access | Reached how |
+| Status | What it still does | Reached how |
 |---|---|---|
-| `trial` | full | signup, or the founder starting a sales trial |
-| `active` | full | a payment recorded, covering the current period |
-| `suspended` | **read-only** | coverage lapsed past the grace window, or by hand |
-| `cancelled` | **read-only** | the customer left |
+| `trial` | nothing to access — descriptive | signup, or the founder starting a sales trial |
+| `active` | nothing to access — descriptive | the ordinary state of a paying centre |
+| `suspended` | **read-only, by hand** | a founder decision |
+| `cancelled` | **read-only, by hand** | the customer left |
 
-**Read-only means read-only, not locked out.** Attendance history, marks, the fee
-board, and the roster all stay visible. What stops is *writing*: no new students,
-no attendance, no payments recorded, no messages sent. Plus a banner that says
-plainly what happened and how to fix it, with the founder's number on it.
+Two of the four are now descriptive, and that is the honest reading rather than a
+deletion (§38): a paying centre is `active` and a lapsed one is still `active` with a dry
+balance, because *lapsed* is no longer a state anybody stores. `suspended` and `cancelled`
+remain real and remain the two switches a human throws — a centre being cut off for a
+reason that is not money still has to be possible.
 
-Locking a lapsed customer out entirely is the wrong lever. Their data is their
-term's attendance and their outstanding fee book; taking it hostage turns a
-late-payment conversation into an angry one, and they will not come back. Read-only
-is uncomfortable enough — they cannot run the centre on it — without being a
-threat.
+**A sales trial is no longer a status either — it is granted days.** The founder advances
+`charged_through` thirty days with a written reason, and the trial ends by itself when the
+balance cannot carry the next day. One mechanism instead of two, and the trial burns like
+everything else so nothing has to remember to end it.
 
-**Coverage, and the grace window.** A payment records the period it covers. When
-today is past `covers_period_end` the account is in grace; past grace it is
-suspended. Grace is a constant (proposed: **7 days**) and the transition is
-computed from coverage, not from a flag somebody remembered to set.
+**Read-only means read-only, not locked out.** Attendance history, marks, the fee board and
+the roster all stay visible. What stops is *writing*: no new students, no attendance, no
+payments recorded, no messages sent. Plus a banner that says plainly what happened and how
+to fix it, with the founder's number on it — and, when a claim is in flight, that the money
+has been received and is being checked (§11.8).
 
-Built in `20260811000059`: `coaching_centers.paid_through` holds
-`max(payments.covers_period_end)`, maintained by a trigger and unwritable from a
-browser, and `src/lib/entitlement.ts` compares it against today in Dhaka with
-`GRACE_DAYS = 7`. The `status` column never moves on its own — the suspension is
-recomputed on every session, so it arrives on the right day whether or not anybody
-is watching and un-happens the moment a receipt is recorded. `suspended` therefore
-stays what it says in the table above: the one a person set by hand. A centre with
-no recorded coverage is not lapsed, which matters because the first paying customer
-has no row in `payments`.
+Locking a lapsed customer out entirely is the wrong lever. Their data is their term's
+attendance and their outstanding fee book; taking it hostage turns a late-payment
+conversation into an angry one, and they will not come back. Read-only is uncomfortable
+enough — they cannot run the centre on it — without being a threat. Under a prepaid
+balance this state is **routine rather than exceptional**, which is why the read-only sweep
+across every write screen matters more now than when it started, not less.
 
-**No dunning, no auto-charge, no card on file.** With customer counts under fifty
-the monthly bKash conversation is a feature: it is when churn gets caught. What
-must be automatic is only the *consequence* of non-payment, because that is the
-part a founder cannot be trusted to do consistently to a customer they like.
+**What `GRACE_DAYS` becomes: nothing.** Withdrawn on the owner's instruction. A charge
+allowed to sit unpaid is credit, and this is a prepaid product. `paid_through` and the
+trigger that maintains it (`20260811000059`) stay as *history* — a receipt still records
+what it was for — but they stop being read by the resolver, and a recharge writes no
+coverage period at all (§11.9). The two derivations must never both be live: the commit
+that lands the balance derivation is the commit that removes the date one, with its tests.
+
+**No dunning, no auto-charge, no card on file.** There is nothing to dun for: nothing is
+ever owed to us that has not already been paid. What the founder has instead is the
+recharge conversation, and under fifty customers that is a feature rather than a cost —
+it is when churn gets caught, and a customer who has not topped up in six weeks is
+visible without a report being written. What must be automatic is only the *consequence*
+of a dry balance, because that is the part a founder cannot be trusted to do consistently
+to a customer they like.
 
 ### 4.5 Downgrade and expiry — nothing is ever deleted ✅
 
@@ -854,20 +931,27 @@ read it as a billing state. They will read it as the software breaking.
 Which is why every one of those refusals is a screen and not a 403: each names the
 plan the reader is on, the plan the feature needs, and links to `/settings/plan`,
 where the ladder and this centre's own usage are. The two moments the tier actually
-moves say so without being asked — the read-only banner when coverage lapses (§4.4)
-and the trial banner for the fortnight and the week after it (§4.3).
+moves say so without being asked — the read-only banner when the balance runs out
+(§4.4, §11.7) and the trial banner for the fortnight and the week after it (§4.3).
 
 **A trial grants the trial tier's places, and the database agrees.** This was the one
 place the two halves of the product contradicted each other. `app.student_ceiling`
 resolves from the paid `plan` column, so a signup on their free fortnight of Pro was
 shown 150 places by the app and refused at 31 by the trigger — with a hint telling
 them to buy the places they had just been given. 20260811000060 splits the question
-in two: `app.student_ceiling` still says what was bought, which is what prices a
-purchase, and `app.admitted_ceiling` says what may be admitted right now, which is
-what the trigger reads. The rank test is native enum comparison (`trial_plan > plan`,
-the same guard `effectiveEntitlement` applies), so a stale trial cannot lower a
-ceiling and a centre still carrying its signup trial is never admitted Teacher Pro's
-150 students on a plan that includes 79.
+in two: `app.student_ceiling` says what the plan itself allows, and
+`app.admitted_ceiling` says what may be admitted right now, which is what the trigger
+reads. The rank test is native enum comparison (`trial_plan > plan`, the same guard
+`effectiveEntitlement` applies), so a stale trial cannot lower a ceiling and a
+teacher still carrying a signup trial is never refused at 31.
+
+**Both functions now only have teacher tiers to answer for.** They used to read
+`student_capacity` and take the greater of it and the plan's own included figure,
+which is what made a Center's ceiling a purchase. A per-student tier has no ceiling
+at all (§3.3), so on Center and Institution both functions say "no limit" and the
+trigger admits — the fence there is the daily rate, not a refusal. What must not
+happen is the removal being done by loosening the trigger: the ceiling arm stays, and
+it is the *tier* that stops having one (§18's landing order).
 
 
 ---
@@ -1210,13 +1294,15 @@ than rendering as a raw string. The edit form offers all six, `updateStudent`
 validates against the same list, and both dictionaries name them in plain words
 (`suspended` reads "Barred for now", not the database word).
 
-**Only `active` students are chargeable.** This is the sentence that makes capacity
-survivable: a centre that has taught for three years and accumulated eight hundred
+**Only `active` students are chargeable.** This is the sentence that makes per-student
+pricing survivable: a centre that has taught for three years and accumulated eight hundred
 former students is not billed for eight hundred. It is billed for the two hundred
-sitting in rooms this month. A student who leaves frees their seat; a student who
-returns takes one again, and if none is free the reactivation is refused with the
-top-up price beside it — the same dialog as adding a new student, because it is the
-same transaction.
+sitting in rooms this month. A student who leaves stops costing anything the next day;
+a student who returns starts costing again the day they are switched back on. **Neither
+is ever refused** — on a per-student tier there is no ceiling to be full (§3.3), so a
+reactivation is a rate change and not a transaction. On the two teacher tiers, where 30
+and 150 are real ceilings, a reactivation past the ceiling is still refused, and the way
+through is the tier above rather than a purchase at the door.
 
 ### 7.2 Branch transfer must not be a delete ✅
 
@@ -1320,9 +1406,9 @@ none of those are needed to collect a fee or tell a parent about an exam.
 ### 8.1 What a branch is ✅
 
 An Institution is one organisation with several physical locations under one owner,
-one bill, and one shared pool of student places. A branch is not a tag on a
-student and not a dropdown that filters a list. It is the scope that decides what
-a signed-in person can read at all.
+one balance, and one head count that prices all of them together (§3.6). A branch is
+not a tag on a student and not a dropdown that filters a list. It is the scope that
+decides what a signed-in person can read at all.
 
 **The groundwork is genuinely in place**, and it is better than it looks: a
 `branches` table with a unique `(id, coaching_center_id)` key, and `branch_id` on
@@ -1426,12 +1512,14 @@ today — and each lands with the commit that builds the screen that needs it.
 
 The organisation-wide view is the reason somebody buys this tier: revenue and
 expenses per branch, students per branch, collection rate per branch, and the
-shared capacity pool with what is left of it. A branch comparison table where the
-branches are rows, so the owner can see which one is carrying the others.
+organisation's own head count with what the day costs beside it. A branch comparison
+table where the branches are rows, so the owner can see which one is carrying the others.
 
-Built as `/hq`, off `branch_profit_month` and `branch_charges_month`, with the pool
-under the table rather than as a column in it — §17 forbids a per-branch quota and a
-column would invite one. Head office is a row like any branch, because a student filed
+Built as `/hq`, off `branch_profit_month` and `branch_charges_month`, with the
+organisation figure under the table rather than as a column in it — §17 forbids a
+per-branch quota and a column would invite one, which under the balance would be worse
+than before: a per-branch *price* would tell four branch managers they each have their own
+bill to manage, and there is one. Head office is a row like any branch, because a student filed
 there is a real student in no building. It has a nav tab under *Organisation* since
 §20.8 step 1, shown only to an HQ member who may read money on a plan with branches,
 and it is still reached from the dashboard's profit block and from the branches screen.
@@ -1729,7 +1817,8 @@ two. Recorded as a schema gap in §15, not papered over.
 ### 9.10 The dashboards ✅
 
 **Center:** this month's collection, outstanding, expenses, payroll, profit; the
-arrears list; places remaining.
+arrears list; and the one figure that is about us rather than about them — places
+remaining on a teacher tier, the balance with what today costs on a per-student one.
 
 **Institution HQ:** the same for the organisation, plus the branch comparison table
 of §8.3. HQ never has to open each branch to find out how the group is doing.
@@ -1740,15 +1829,23 @@ the discrepancy §9.1 exists to prevent. Outstanding is the largest figure on it
 it is the number the product is sold on, with the reminder door directly underneath: the
 one thing on an owner's home screen that brings money in rather than reporting on it.
 Collection, spending, payroll and profit come off `center_profit_month` in a single row
-already subtracted by Postgres, never re-added in JavaScript. Places remaining sits on
-every plan, including free, where the ceiling is nearest.
+already subtracted by Postgres, never re-added in JavaScript.
 
-The organisation's copy is the total row of `/hq`'s table, and the pool beneath it. Two
-figures there deliberately do not match their centre-dashboard counterparts and the
-screen says so in a legend: cash in is keyed to when the money arrived while the two bill
-columns are keyed to the month billed for, and the head count in the total row is the
-organisation's own rather than the sum of the column, because a student filed at head
-office is in one and not the other.
+The last figure is the one that changed shape with the balance, and it is two different
+sentences on two different kinds of plan. A teacher tier still has a ceiling, so it still
+reads as places remaining, and it sits on the free plan too because that is where the
+ceiling is nearest. A per-student tier has no ceiling to count down, so what stands there
+instead is the balance and today's rate — which is the same warning in a more honest
+form: an owner who is nearly out of places and an owner who is nearly out of money both
+need to know before saving stops, and only one of the two is now true (§11.7). Neither
+version is a bill: nothing is owed, and the number is what is left of money already paid.
+
+The organisation's copy is the total row of `/hq`'s table, with the organisation's own
+balance and rate beneath it. Two figures there deliberately do not match their
+centre-dashboard counterparts and the screen says so in a legend: cash in is keyed to when
+the money arrived while the two bill columns are keyed to the month billed for, and the
+head count in the total row is the organisation's own rather than the sum of the column,
+because a student filed at head office is in one and not the other.
 
 What the profit line cannot see, it warns about. A month with no payroll row reads as a
 month with no staff and nothing in the schema can tell those apart, so the card counts
@@ -1832,11 +1929,17 @@ account and API credentials are being arranged; until they exist:
 
 What gets built instead is the layer that will still be correct afterwards.
 
-### 11.2 Payment intents ✅
+### 11.2 Payment intents ✅ — and after 2026-09-05 there is one kind of purchase
 
-Every purchase — a subscription month, a single student place, a bulk-import block,
-an extra branch — creates a **payment intent** on the server before the customer is
-sent anywhere. The intent owns the amount. The browser never does.
+Every purchase creates a **payment intent** on the server before the customer is sent
+anywhere. The intent owns the amount. The browser never does.
+
+**The list of purchase kinds used to be four** — a subscription month, a single student
+place, a bulk-import block, an extra branch. It is now **one: a top-up of the balance.**
+Places are retired (§3.3), and a teacher seat or an extra branch is no longer bought at
+all — it raises the daily rate from the day it exists and the balance carries it (§11.6).
+That is the single largest simplification the prepaid model buys, and it lands on machinery
+that already exists rather than replacing it.
 
 States, and they are a state machine, not a status label:
 
@@ -1853,26 +1956,27 @@ pending → initiated → successful
 | org, purchase kind, quantity | what was bought |
 | `amount_bdt` computed server-side | §11.4 |
 | state, timestamps per transition | so a stuck payment is diagnosable |
-| provider, provider transaction id | reconciliation |
+| provider, provider transaction id | reconciliation — and under §11.9 this is the bKash TrxID the customer typed, which is why the claim needs no unique index of its own |
 | **idempotency key** | a retry, a double tap, or a webhook delivered twice must land once |
-| what it grants | the capacity or coverage that attaches **only** on `successful` |
-| the tier it moves onto, on a subscription only | so a renewal and a tier move are one purchase, settled one way |
+| what it grants | **the poisha credited, bonus included** — attached to the ledger **only** on `successful` |
+| the tier it moves onto, on a first paid top-up only | so a tier move and the money that pays for it are one purchase, settled one way |
 
 **Idempotency is keyed on the provider transaction id** with a unique index behind
 it, and the duplicate path reads back the original result rather than erroring. This
 pattern already exists in the codebase — the founder panel's manual payment
-recording does exactly this — so it is a reuse, not an invention.
+recording does exactly this — so it is a reuse, not an invention. **A recharge claim
+(§11.9) is one of these intents, not a second table**: the customer-declared TrxID is
+the provider transaction id, the founder's approval is the transition to `successful`,
+and the ledger entry is what `successful` grants.
 
-**A subscription may carry a tier** (`target_plan`), and then the settlement moves the
-plan before it raises the ceiling, because the ceiling is read off the plan. Null on
-every renewal, never the free tier, and never on a purchase of places, seats or a
-branch — a tier arriving on one of those would move the plan without anybody having
-paid a month for it. The tier the bill was computed from and the tier being bought must
-be the same tier, checked once as a column constraint and once where the quote is
-priced: quoting the tier a centre is on while asking for a better one is Centre money
-for Institution product. The read-back that answers a reused idempotency key compares
-the tier too, because at 400 students on one branch Centre and Institution bill the
-identical ৳7,300 a month, so purpose, quantity and amount cannot tell those two
+**An intent may carry a tier** (`target_plan`), and then the settlement moves the plan
+before it credits the balance, because the rate is read off the plan. Null on every
+ordinary top-up, never the free tier. The tier the amount was computed from and the tier
+being bought must be the same tier, checked once as a column constraint and once where
+the quote is priced: quoting the tier a centre is on while asking for a better one is
+Centre money for Institution product. The read-back that answers a reused idempotency key
+compares the tier too, because at 400 students on one branch Centre and Institution bill
+the identical ৳7,300 a month, so purpose, quantity and amount cannot tell those two
 purchases apart.
 
 ### 11.3 The provider interface ✅ (manual only)
@@ -1898,7 +2002,8 @@ interface so that switching to the API changes one file.
 | "payment succeeded" | trivially forged |
 | the amount | the price is ours to compute |
 | the plan | otherwise anyone is an Institution |
-| the student capacity | otherwise capacity is free |
+| the head count, and the daily rate derived from it | otherwise the rate is whatever the browser says it is |
+| the balance, and `charged_through` | they are the gate now (§11.7); both are server-maintained and neither is writable by `authenticated` |
 | the entitlement | it is derived, never submitted |
 | the branch id | otherwise branch isolation is a suggestion |
 
@@ -1912,111 +2017,626 @@ carrying its tier (§11.2); both are service-role writes past the billing guard,
 fence in §12.2 is unchanged and there are two doors through it rather than one. The
 panel must never grow a button that *says* a payment succeeded without one having. Its
 plan-change function deliberately does no limit enforcement and warns instead, because a
-founder moving a customer down a tier is a decision, not a validation error — and a
-customer moving *themselves* down is not offered at all, for a reason that has narrowed
-since `20260811000074`: the credit a mid-term downgrade owes now has a row to live on, so
-what is missing is not the row but the arithmetic — nothing works out what a centre's
-unused coverage is worth, and a number nobody can check is not a refund an owner should be
-able to ask for themselves (§9.2).
+founder moving a customer down a tier is a decision, not a validation error.
 
-### 11.6 The account balance 🚧
+**And a self-serve downgrade is still not offered, for a reason that changed on
+2026-09-05.** It used to be the arithmetic: a mid-term downgrade owed a credit for unused
+coverage and nothing could work out what that was worth. Under one balance there is no
+credit to compute — the rate simply changes from that day forward and the same taka lasts
+longer, which is the whole point of §11.6. What is left is not a money problem at all: a
+downgrade *removes features and branches from view*, and an owner tapping it on a phone to
+save money would find their four branches gone and their branch admins locked out. That is
+a conversation, not a button (§9.2). The founder panel keeps it, and the customer-facing
+answer is "call us" — which at fifty customers is also how we hear why.
 
-**Decided 2026-09-05, and it replaces the mechanism in §9's contextual purchase while
-keeping its principle.** A centre recharges its account; every charge the platform
-raises is deducted from that balance. One payment covers many purchases.
+### 11.6 One balance, burned by the day 🚧
 
-The reason is operational before it is UX. §11.3's manual provider means **a human
-being — the founder — verifies every single bKash transfer.** A centre buying thirty
-student places one at a time is thirty verifications; one ৳750 recharge is one. The
-customer's complaint ("paying again and again is hectic") and the founder's bottleneck
-are the same problem, and the balance is the same fix for both.
+**Decided 2026-09-05, and this is the whole money model. Every other subsection of §11
+is a fence on it or a screen over it.**
 
-It is also the metaphor every Bangladeshi phone user already holds. Recharge needs no
-explaining, and `রিচার্জ` is the word.
+> Money in → taka in the balance → each day takes its own cost off → when the balance
+> cannot cover the next day, saving stops until they top up. Size changes the daily
+> rate, nothing else.
+
+There is no invoice, no due date, no bill, no coverage period, no grace window, no
+credit in either direction, and no seat to buy. A centre holds taka; a day costs taka;
+the taka runs out. That is the entire mechanism, and it is the one every Bangladeshi
+phone user already holds: `রিচার্জ` needs no explaining.
+
+**The daily rate is the monthly price divided by thirty.** §3.1's marginal bands and
+§3.2's floor are unchanged — they still compute the figure a customer is *quoted*,
+because "৳2,600 a month" is how an owner thinks about cost. The product simply divides
+it and takes a day at a time:
+
+| | |
+|---|---|
+| 100 students, 3 teachers | `max(1999, 100 × 25) + 1 × 100` = **৳2,600/month** |
+| Divided by thirty | **৳86.66/day** (8,666 poisha) |
+| A ৳31,200 balance | **360 days — covers you to 31 August 2027** |
+
+**Price in months, bill in days.** Never lead with the daily rate: an owner comparing
+us with a competitor compares monthly figures, and ৳86.66 sounds like a trick. Days
+appear once the money is theirs, where they are the honest and useful unit.
+
+**Why days rather than a month, and why it is not a smaller version of the same thing:**
+
+- **Mid-month admission needs no arithmetic.** A student joining on the 9th is not a
+  pro-rata line on anything. The rate rises that day — 101 students is ৳2,618/month, so
+  ৳87.27/day — and days-left drops from 360 to 357. Nothing is invoiced, adjusted or
+  reconciled, because there was never a period to divide.
+- **A student leaving is rewarded the same day.** Tidying the register lowers tomorrow's
+  cost. Under a monthly bill, tidying it late in the month gains nothing, so nobody does
+  it and our head counts drift from reality.
+- **There is no billing boundary to game**, so §18's peak-active-count arithmetic is
+  retired rather than fixed. See §11.8.
+- **A tier or teacher change costs nothing to compute.** Yesterday's rate was
+  yesterday's; tomorrow's is tomorrow's. This closes §11.5's open item outright: nothing
+  needs to work out what a centre's unused coverage is worth, because coverage is not a
+  thing anyone holds.
+- **Read-only becomes a routine state rather than a failure.** §4.4's machinery — every
+  screen reads, nothing saves — is what a dry balance falls into, and it was built for
+  exactly this.
 
 **The rules, as decided:**
 
 | Question | Answer |
 |---|---|
-| Does credit expire? | **Never.** |
-| Is credit refundable? | **No** — stated on the recharge screen, before the tap. |
-| Does it pay the monthly subscription? | **Yes.** A centre with credit never lapses. |
-| Does it change the ৳1,999 floor or the bands? | **No.** §5 pricing is unchanged. |
+| Does the balance expire? | **Never.** |
+| Is it refundable? | **No** — said on the recharge screen, before the tap, in both languages. |
+| Can it go negative? | **Never by anything a customer does.** See §11.7. |
+| Is there a grace period? | **No.** Withdrawn on the owner's instruction: a charge allowed to sit unpaid is credit, and this is a prepaid product. What replaces it is warning early — the dry date is known exactly, so §20.4 warns at 14, 7, 3 and 1 days. |
+| What buys the software itself? | **The ৳1,999 floor is the software fee.** There is no second product and no separate subscription. The floor stops biting at 80 students, where the per-student charge overtakes it. |
+| Does a free plan burn anything? | **No.** `pricing === 'free'` is a zero daily rate, so Teacher Free never lapses and never sees a balance screen at all. No special case in the code — the arithmetic returns zero. |
+| Does Teacher Pro work the same way? | **Identically.** ৳499/month is 1,663 poisha/day. One billing model for every paid tier is the point. |
 
-That third answer is the one with reach. Coverage today ends on a date, and §4.4's
-read-only state is what a centre falls into when that date passes. Auto-deduction from a
-standing balance means most centres never reach it. The read-only work stays — a centre
-whose balance is empty is exactly the case it exists for — but it stops being the common
-path, which is the right shape for it to have.
+Non-refundable is not a trick; it is the only honest answer while §11.3's provider is a
+human with a personal bKash app, because a refund is a manual outbound transfer with no
+reconciliation behind it. It has to be said at the moment of payment or it becomes one.
 
-Non-refundable is not a trick: it is the only honest answer while the provider is a
-human with a personal bKash app, because a refund would be a manual outbound transfer
-with no reconciliation behind it. It has to be said plainly at the moment of payment,
-in both languages, or it is a trick.
+**The discount ladder is a recharge bonus, and it is a bonus on money, not on time.**
+Owners think in months, so the suggested amounts are one, three, six and twelve times
+their own monthly figure; the bonus is credit added on top:
 
-### 11.7 The balance is a ledger, and the fences on it
+| Suggested | Pay | Bonus | Credit | ≈ days at today's size |
+|---|---|---|---|---|
+| 1 month | ৳2,600 | — | ৳2,600 | 30 |
+| 3 months | ৳7,800 | 5% | ৳8,190 | 94 |
+| 6 months | ৳15,600 | 10% | ৳17,160 | 198 |
+| 12 months | ৳31,200 | 20% | ৳37,440 | 432 |
 
-**A balance is money, so it is a list of entries and never a column.** The stored
-number would be one bug away from wrong, and wrong in the direction of free product.
-`balance = sum(entries)`, the entries are append-only, and this is the discipline
-`fee_payments` has carried since `20260811000017` — a reuse, not an invention.
+A typed amount gets the highest band it reaches, which is what the owner asked for
+("discounts based on how many amount they want to recharge") and what the month labels
+describe. The bonus is a percentage of **money**, deliberately, because a bonus on
+*time* would have to pin the head count for the period and that is a second mechanism —
+committed capacity with overage — which this model exists to avoid. So a centre that
+buys twelve months and then triples in size has 20% more taka, not 432 more days, and
+the screen says so in those words: **"about 432 days at your current size"**, with the
+figure re-derived every day on the dashboard so the end is never a surprise.
 
-Each entry: the centre, a **signed integer** amount in whole taka, a kind
-(`recharge` | `place` | `subscription` | `adjustment`), what it paid for, an
-idempotency key, who made it, when. Integers only, no floats, ever.
+The one soft spot: the bands are measured in days at *today's* rate, so a centre that
+emptied its roster before recharging would reach 20% for less money. It is closed by
+the same human who verifies the transfer — §11.9's approval screen shows the size the
+quote was priced from beside the amount. When approval is ever automated, the band must
+move to a thirty-day high-water rate; until then, naming it here is the fence.
+
+
+### 11.7 The ledger, the two levers, and the fences on them
+
+**A balance is money, so it is a list of entries and never a column.** `balance =
+sum(entries)`, entries are append-only, and this is the discipline `fee_payments` has
+carried since `20260811000017` — a reuse, not an invention. A `balance_poisha` column on
+the centre is maintained by trigger *for reading*, the way `paid_through` already is
+(`20260811000059`), so a session guard costs one column and not a scan; a test asserts
+the column equals the sum, and the ledger is the one that is right.
+
+**Every entry carries where the balance stood on both sides of it.** `balance_before`
+and `balance_after`, with `balance_before + amount_poisha = balance_after` as a CHECK
+constraint — so the running total is not merely derivable from the list, it is *asserted
+by every row of it*, and an entry inserted out of order or written against a stale read
+fails at the database rather than leaving a ledger that only adds up if you squint.
+`sms_credit_ledger` (`20260811000001:622`) is the in-repo precedent and it stores only
+`balance_after`; this is that shape plus the half that makes the chain checkable.
+
+The row, in full, because a ledger missing one of these columns is a ledger that cannot
+answer a question somebody will ask:
+
+| Column | Why it is there |
+|---|---|
+| `id`, `coaching_center_id` | one entry, one organisation. Composite FK and RLS as everywhere else |
+| `kind` | the enum below. Never free text — a report groups by it |
+| `amount_poisha` | signed integer. A CHECK pins which sign each `kind` may carry, so a "recharge" can never be negative and a "daily charge" can never be positive |
+| `balance_before`, `balance_after` | the chain above |
+| `charge_date` | the Dhaka day a settlement is *for*, null on everything else. Unique per centre with `kind='daily_charge'` |
+| `price_version_id` | which published rate card produced the amount (§11.10). Required on a settlement and on a recharge; null on a founder adjustment, which is a decision and not a price |
+| `usage_students`, `usage_teachers`, `usage_branches` | the head counts the amount was computed from, snapshotted (§11.12). A rate nobody can reconstruct is a number a customer cannot dispute |
+| `description` | one sentence for the customer's own history screen, in the customer's language where it is generated and in the founder's words where a human typed it |
+| `payment_id`, `payment_intent_id`, `reverses_entry_id` | what this entry relates to. `reverses_entry_id` is how a correction points at what it corrects |
+| `created_by`, `actor` | the profile id where a human did it, and which of `system`/`founder`/`migration` it was. Both, because "the cron did it" and "nobody was signed in" are different answers |
+| `created_at` | `timestamptz`, insert-only |
+| `metadata jsonb` | the transaction id a claim arrived with, the reason a founder typed, the migration that wrote it. Never a figure the arithmetic reads — a number the balance depends on does not live in jsonb |
+
+The kinds, and the whole list, because an enum is where this stays honest:
+`recharge`, `promotion_bonus`, `daily_charge`, `founder_money_adjustment`,
+`founder_grant_days` *(no money; see the levers below)*, `refund`, `reversal`,
+`correction`, `settlement_failure` *(zero-amount, for the record)*,
+`settlement_retry`, `migration_opening_balance`.
+
+**A correction is a new entry, never an edit.** ৳500 credited twice is fixed by a
+`reversal` of −৳500 pointing at the duplicate through `reverses_entry_id` — so the
+mistake and its repair are both in the customer's history, which is what a customer
+ringing about a figure they screenshotted actually needs. §12's rule, in this table.
+
+**Amounts are poisha — hundredths of a taka — and integers.** ৳2,600 ÷ 30 is ৳86.666…,
+which is not a whole taka, so whole taka cannot be the unit. This corrects the earlier
+wording here. `dailyRatePoisha = floor(monthlyBdt × 100 / 30)`, floored so the rounding
+is always the customer's, and the ~20 poisha a month it gives away is below the
+resolution of anything anyone looks at. No floats, anywhere, ever.
+
+**Two levers, and each has exactly one job:**
+
+| | |
+|---|---|
+| `balance_poisha` | money available to settle days that are not yet paid for |
+| `charged_through` | the last Dhaka date that *is* paid for |
+
+`charged_through` moves forward two ways: by spending money, or by being granted. A
+trial, a goodwill extension or a closure allowance given forward is **days, not fake
+money** — it cannot be spent on anything else, it cannot be confused with taka a
+customer actually paid, and it costs nothing to represent. Money already burned that is
+being given back is a **money** adjustment. Both are founder-only, both require a
+written reason, both are audited (§10).
+
+**A day is a Dhaka calendar day**, and the SQL must say so:
+`(now() at time zone 'Asia/Dhaka')::date`. Never `current_date` — the database runs UTC,
+so between midnight and 6am in Dhaka `current_date` is yesterday, and a billing bug that
+only appears before dawn is the worst kind there is.
+
+**Settlement is a consequence of use, not a job.** §4.3 already states the principle for
+trials — *expiry is a comparison, not a cron job* — and this is the same call.
+`app.settle_billing(center)` is `security definer`, granted to `authenticated`, accepts
+no amount, verifies the caller's membership, and then:
+
+1. takes the per-centre advisory lock;
+2. computes today's rate from `app.active_students`, `app.active_teachers` and the branch
+   count — **the same functions the capacity trigger reads**, so there is one head count
+   in the system and not a billing copy of it;
+3. for every unsettled whole past day, inserts one charge at today's rate, for as long as
+   the balance affords it;
+4. for **today**, tops the charge up to today's rate if a smaller one was already taken;
+5. advances `charged_through` to the last day it actually paid for.
+
+`requireWritable` calls it, which is what closes the only gaming vector daily billing
+has. A fixed-hour job would charge a roster that had been emptied across midnight at the
+floor rate; taking the charge **at the first write of the day, from the size at that
+moment, and topping it up when the size grows**, makes a day's total the high-water rate
+for that day with no stored high-water mark to drift. To be charged the floor an owner
+must be empty when they start work, and an empty roster cannot take attendance, collect a
+fee, send an SMS or record a mark.
+
+A nightly cron calls the same function so that a centre nobody logged into still shows a
+current figure to its owner and to the founder panel. **It is not load-bearing.** If it
+never runs — no `CRON_SECRET`, a missed delivery, a Vercel outage — access is still
+correct, because access is a comparison and not a row.
+
+**Access is derived and never stored:**
+
+```
+owed   = greatest(0, today − charged_through) × dailyRate
+access = read_only  when status in ('suspended','cancelled')
+                    or  dailyRate > 0 and balance < owed
+         full       otherwise
+```
+
+A centre that never opens the app still lapses on exactly the right day, with no row
+written and no job run: `owed` grows by itself. And the common path —
+`charged_through = today`, so `owed = 0` — never needs the rate at all, which is why an
+unreadable head count cannot lock a paying centre out on a bad afternoon. Where the rate
+*is* needed and cannot be read, the answer is `read_only`, as everywhere else.
+
+**Charge the whole day or nothing.** ৳50 against an ৳86.66 day buys no day: the ৳50 stays
+theirs, the screen says "not enough for one day", and it is spendable the moment they top
+up. Letting the last day go through at whatever was left would put an amount in the ledger
+that matches no rate, and a ledger nobody can audit is not a ledger.
 
 The threats, and the fence for each:
 
 | Attack | Fence |
 |---|---|
-| Browser writes itself credit | **Only service_role inserts a `recharge`.** A customer submits a *claim* — "I sent ৳500, trxID `ABC123`" — into a review queue. The founder approves. Credit exists only after that. |
-| Same bKash transfer claimed twice, or fifty times | Unique index on the provider transaction id, **globally and not per centre**. One transfer, one credit, ever. The duplicate path reads back the original answer (§11.2). |
-| A debit edited or deleted to win capacity back | Immutability trigger, same shape as `app.guard_payment_immutable`: no UPDATE of an amount, no DELETE, for any role that is not service_role. |
-| Client supplies the amount | It never does. The server prices it (§11.4), and a check constraint pins the sign each kind may carry. |
-| Two "add student" requests race a ৳25 balance to −৳25 | The check and the debit are **one statement under a per-centre advisory lock**, the pattern `app.assign_receipt_no()` already uses. A balance that cannot go below zero is a database invariant, not a UI check. |
+| Browser writes itself credit | **`insert`, `update` and `delete` on the ledger are revoked from `authenticated` and `anon` outright.** Only service_role credits. A customer submits a *claim* — "I sent ৳7,800, trxID `ABC123`" — into a review queue; credit exists only after the founder approves it (§11.9). |
+| The same bKash transfer credited twice, or fifty times | Unique index on the provider transaction id, **globally and not per centre**, over *approved* claims only — so a claim rejected in error can be re-submitted, while an approved transfer can never be replayed. The duplicate path reads back the original answer (§11.2). |
+| A charge edited or deleted to win days back | Immutability trigger shaped exactly like `app.guard_payment_immutable` (`20260811000025:138`): no UPDATE of amount, kind, date or centre, no DELETE, for any role that is not service_role/postgres. Append-only means a correction is a counter-entry and never an edit. |
+| Client supplies the amount | It never does. `settle_billing` takes no amount and prices everything from the database; a recharge credits the amount on the **server-priced intent** (§11.4); a check constraint pins the sign each kind may carry. |
+| Two requests race the balance negative | Both take the per-centre advisory lock and the insert is conditional on the balance covering it, in one statement — the pattern `app.assign_receipt_no()` already uses. **Nothing a customer does can take the balance below zero; that is a database invariant, not a UI check.** A founder's correcting adjustment may, deliberately, and the account is read-only until it is positive again. |
 | Centre A spends centre B's balance | `coaching_center_id` scoping, composite foreign key, RLS — as everywhere else. |
-| Someone approves their own recharge claim | Platform-admin only, and the approver may not be the claimant. Both are written to the audit log (§10). |
-| The monthly deduction runs twice | Idempotent on (centre, month). A double cron delivery settles once. |
+| Someone approves their own recharge claim | Platform-admin only, and the approver may not be a member of the claiming centre. Both are written to the audit log (§10). |
+| The daily charge runs twice | A unique index on (centre, charge date) for the day's base charge, and the top-up path is convergent: it inserts only the difference between what today has been charged and what today costs, so a second call inserts nothing. A double cron delivery settles once. |
+| A hostile client calls `settle_billing` directly | It is `security definer` but takes only a centre id, verifies the caller's membership, and derives every figure itself. The worst it can do is charge the caller's own centre for a day it already owed. |
 
-**And the balance is not the gate.** Credit buys capacity; the capacity trigger from
-`20260811000036` is what refuses the 101st student. Two layers on purpose: if the
-balance were itself the fence, a balance bug would become a limits bug, and §2's rule —
-*"All restrictions MUST be genuinely enforced server-side"* — would rest on arithmetic
-instead of on a constraint.
+**The balance is now the gate, and that is a deliberate reversal.** The earlier note here
+said credit buys capacity and the capacity trigger from `20260811000036` refuses the 101st
+student, two layers on purpose. Purchased capacity is retired (§18), so there is no seat
+left to refuse — what refuses now is that a centre whose balance cannot cover today cannot
+save *anything*. That is a stronger fence and not a weaker one: one comparison instead of
+two stored numbers that had to agree, and it fails closed in the same direction §4.2 does.
+§2's rule still holds — *"All restrictions MUST be genuinely enforced server-side"* — and
+it holds at Layer 1, because the refusal lives in `requireWritable` and in the revoked
+grants on the ledger rather than in a screen.
 
-### 11.8 Two ways a clever owner gets product for free, and only one is real 🚧
+What does **not** change: §2.7's engineering ceilings. A hundred batches, two hundred
+subjects and the per-batch limit on the teacher tiers stay exactly where they are, at
+Layer 1, because they are guardrails against a pasted syllabus rather than a price.
 
-**Raised by the owner, 2026-09-05.** The question was whether a centre losing one
-student and gaining another would rename the existing record rather than pay for a
-seat, and it opens onto a real hole next door.
+### 11.8 What a clever owner can and cannot get for free
 
-**Recycling a seat is not the hole, because it is the deal.** Capacity is
-*concurrent*, not a lifetime allowance — the same thing every seat-priced product in
-the world sells. A student who leaves is marked with an exit status, the capacity
-trigger stops counting them (`status = 'active'` and nothing else), and the seat is
-free for the next child at no charge. A centre with 100 places may teach five hundred
-children over four years. That is what they bought.
+**Raised by the owner, 2026-09-05:** would a centre losing one student and gaining another
+just rename the existing record rather than pay again? Under the daily model the answer
+became a much better one than the fence I had drafted.
 
-So the rename gains them nothing on price. What it costs them is their own books: the
-new child inherits the old one's invoices, receipts, dues, attendance and marks. A
-family who paid nothing appears settled; a receipt issued to one household now reads
-under another's name. **The guard is therefore guidance, not a refusal** — and it must
-not be a refusal, because owners correct spellings of names constantly and blocking a
-typo fix to prevent a non-exploit is worse than the non-exploit.
+**Recycling a record gains nothing, because nothing is bought per child.** A hundred active
+students cost the same taka a day whoever they are. There is no seat to re-use, so there is
+no saving to chase, so there is nothing to defend against. The exploit was created by the
+model, and the model changed.
 
-The signal is narrow: **name and guardian phone both changed at once, on a student who
-has fee history.** That is not a correction, that is a different family. The save asks
-once — *"This looks like a new student. Rafid's ৳4,500 in dues and 3 receipts would
-move to Anika. Retire Rafid and admit Anika instead?"* — with the honest path as the
-first button, and it is written to the audit log whichever button is pressed.
+Which settles the owner's other proposal — locking the name at admission — as
+**unnecessary, and it would have been actively harmful.** Bangla/English transliteration and
+plain typos are endemic and the name is typed on a phone keyboard; it appears on every
+receipt, every exam sheet and every SMS a guardian reads; and it would not have stopped the
+abuse anyway, since a recycler simply does not edit the name. So the name stays editable,
+**every identity edit is written to the audit log with who and when and shown on the
+student's own record**, and the admission form carries a "check this is right" beat where it
+costs nothing.
 
-**The real hole is the billing date.** The moment a bill is computed from *active
-students right now*, a centre can retire two hundred students the night before,
-be billed for none, and re-admit them the morning after. Six lines of work for a free
-month. So the monthly charge is computed from the **peak active count over the billing
-period**, not the instant reading, and the count is recorded on the bill so the owner
-can see the figure they were charged for. A centre whose roster genuinely shrank pays
-less next month, which is correct; one that shrank for a night pays for the night.
+The "this looks like a different family" prompt survives, but for a **bookkeeping** reason
+and not a pricing one: dues, receipts, attendance and marks would silently move to the new
+child. The signal is narrow — name and guardian phone both changed at once, on a student who
+has fee history — the honest path is the first button, and both buttons are audited.
+
+**The peak-active-count arithmetic is retired, not fixed.** It existed because a monthly
+bill computed from *active students right now* could be dodged by emptying the roster the
+night before. Daily billing has no period boundary, so there is nothing to stand next to.
+§18 records it.
+
+The remaining ways to try, and what stops each:
+
+| Try | What stops it |
+|---|---|
+| Deactivate students while still teaching them | **The fence is that an unpaid student is unusable, not that we catch you.** A deactivated child takes no attendance, carries no fee row, receives no SMS and holds no exam mark. There is nothing to detect because there is nothing to gain. |
+| Empty the roster across midnight and refill at dawn | Settlement happens at the **first write of the day** and tops up when the size grows, so a day's charge is that day's high-water rate (§11.7). Being empty when work starts means not being able to work. |
+| Shrink first to reach a bigger recharge bonus | Named in §11.6 and fenced by the founder's eyes: the approval screen shows the size the quote was priced from, beside the amount. Automation would need a thirty-day high-water rate; manual approval does not. |
+| Buy twelve months, then triple in size | Not a hole. The bonus is 20% more **money**, not 432 more days, and the screen says "about 432 days at your current size" and re-derives it daily. |
+| Run an API request that credits the balance | Grants are revoked (§11.7). There is no endpoint, no Server Action and no RLS policy that lets `authenticated` write a ledger row at all. |
+
+**The closure case is real and it is answered by a human.** A centre shut for three weeks
+around Eid is charged for three weeks, and they will say so. A self-serve pause is
+deliberately **not built**: to have any fence at all a pause must make the account
+read-only, and once it does, a centre that pauses day by day pays only for days it writes —
+which cuts a fully-using customer's price by about a third and makes revenue
+unforecastable. So the answer is founder discretion: a money credit for days already
+burned, or granted days forward, each with a written reason, from the panel, on a phone call
+the founder actively wants at this scale. If it becomes a monthly conversation at fifty
+customers, a real pause with a per-year cap gets built then, and not before.
+
+**The founder-unavailable case is the worst experience in the model and it is not solved by
+credit.** A centre can run dry while its money sits unverified in the founder's bKash. What
+is built instead: warnings at 14, 7, 3 and 1 days (§20.4); the recharge screen saying
+plainly that verification is by hand and asking them to top up before they run out; and the
+read-only banner naming the claim in flight — *"we have your ৳7,800 from 2 hours ago and are
+checking it"* — with 01756211762 beside it. That is information, not credit. A self-serve
+emergency button is **not** built: the founder grants days in one tap instead, which is the
+same outcome for the customer, one door instead of two, and a human decision — which is
+what the owner asked the whole approval flow to be.
+
+### 11.9 The recharge, step by step 🚧
+
+**Designed by the owner, endorsed with six additions.** One screen, no separate
+calculator, and the calculator that exists today at §20.4 folds into it.
+
+1. The owner opens **Recharge**. It already knows their daily rate, days left and dry
+   date, and it shows what makes the rate up — their students, their teachers, their
+   branches. Not the band table (§14 forbids that); their own numbers.
+2. They pick one of the four suggested amounts (§11.6) or type their own. **The server
+   prices it** into a payment intent: amount to pay, bonus, credit, approximate days. The
+   intent records the head count it was priced from.
+3. The screen shows: send **exactly ৳7,800** to **01756211762** using **Send Money** in
+   bKash or Nagad, and put reference **`CD-7K2M`** — short, uppercase, from an alphabet
+   with no `0/O/1/I/L` in it.
+4. They send it, then enter the **transaction ID** and **the number they sent from**, and
+   tap Confirm. Both are required. *(Open question, and the only one that changes this
+   screen's shape: whether personal-to-personal Send Money offers a free-text reference
+   field at all. The design survives either answer because the transaction ID is the
+   required key and the reference code is the convenience.)*
+5. The claim is `submitted`. The screen says verification is by hand, gives a window
+   rather than a promise, says plainly that **nothing is lost while it is pending**, and
+   shows 01756211762.
+6. The **founder panel** lists submitted claims: centre, amount, bonus, credit,
+   transaction ID, sender's number, when, **and the centre's current size**. The founder
+   opens their own bKash app, checks, and approves or rejects.
+7. Approval, in one transaction: a `payments` row for the **money that actually arrived**
+   and a ledger `recharge` entry for the **credit granted**. Rejection needs a reason from
+   a short list, because a rejection without one becomes a phone call.
+
+The six additions to the owner's design, each with its reason:
+
+- **Transaction ID required, not just our reference code** — a personal Send Money may not
+  offer a reference field, and without a provider-side identifier there is nothing to make
+  unique.
+- **Sender's number recorded** — two ৳1,999 transfers in the same minute have to be
+  tellable apart.
+- **Transaction ID unique globally** (over approved claims) — the anti-replay fence
+  (§11.7).
+- **No half-hour promise** — a window, a live status, and the plain statement that nothing
+  is lost.
+- **Approval may override the amount** — customers send the wrong figure constantly. The
+  panel prices the bonus from what *arrived* and shows both numbers side by side.
+- **Rejection carries a reason.**
+
+**Cash received is not credit granted.** ৳7,800 arrives, ৳8,190 is credited. The founder's
+revenue reporting reads `payments`; the customer's balance reads the ledger; deferred
+revenue is the sum of unspent balances. Three genuinely different numbers, and the panel
+must not conflate them.
+
+A recharge `payments` row carries **no coverage period**, because a recharge covers no
+period — the same rule §3.8 already applies to a credit row. `paid_through` therefore stops
+being maintained by recharges and stops gating anything (§4.4).
+
+At most **three open claims per centre**. A centre with fifty is confused or is filling the
+queue, and both want stopping at the door.
+
+### 11.10 Prices have versions, and old entries are never repriced 🚧
+
+**The problem this exists for.** The bands in §3.1 are a founder's judgement with no
+market survey behind them (§14), so they *will* change — and the day they do, a centre
+holding ৳31,200 of credit bought at ৳25 has a reasonable expectation about what that
+money buys, while the ledger has two years of entries computed from a rate card that no
+longer exists. Without versions, a price change is a silent rewrite of history: last
+March's ৳86.66 day becomes unexplainable, and a customer who screenshotted their balance
+screen is holding a document the product now contradicts.
+
+**One published rate card at a time, seeded by migration.** `public.price_versions` —
+`id`, `effective_from date`, `student_bands jsonb`, `monthly_floor_poisha`,
+`teacher_seat_poisha`, `free_teacher_seats`, `branch_poisha`, `included_branches`,
+`published_at`, `note`. Select-only to `authenticated`; **no app write path at all**, for
+the reason `plan_allowances` already gives in its own migration: *repricing should be a
+reviewed diff, not an UPDATE somebody ran once.* A new price is a new migration and a new
+row, and the old row stays exactly as it was for ever.
+
+**And `plans.ts` is still the engine.** §17 says `src/lib/plans.ts` owns the numbers and
+that does not change — what changes is that `app.settle_billing` runs in SQL and cannot
+import TypeScript, so the rate has to exist in the database too. That is two copies of
+four numbers, which is the bug `seatsCoveredByFloor`'s docblock is written against, so it
+is closed the way this repo already closes it: **`tests/plan-allowances.test.ts` parses
+the seed statement out of the `.sql` file with a regex and compares it against
+`plans.ts`.** The price-version test is that test again, over the new table. A third copy
+of the numbers written into the test itself would pass while both of the others drifted —
+that sentence is in the existing test and it is the whole reason this pattern exists.
+
+**Which version an entry used is on the entry** (`price_version_id`, §11.7), on both
+sides: a settlement records the card it charged from, and a recharge records the card the
+quote was priced against. So "why was 14 March ৳86.66" is answered by joining two rows,
+for ever, without recomputing anything.
+
+**What a price rise does to money already paid, stated as policy because it is a promise:**
+
+| | |
+|---|---|
+| Credit already in the balance | **buys days at the new rate.** It is taka, not days, and §11.6 says so before the tap: *"about 432 days at your current size"* — size and rate both move |
+| Days already charged | **never repriced.** Settled entries are immutable (§11.7); a rate change is not retroactive and cannot be |
+| A quote already given | honoured for as long as the intent lives — `payment_intents.expires_at` is already 7 days |
+| A centre we have promised a rate to | `coaching_centers.price_version_lock` plus `price_lock_until`: a founder-only pin to one card with an expiry, audited, and it *cannot outlive its own date* — a lock with no expiry is a price we forgot we promised |
+
+**Announced, not sprung.** `effective_from` is a future date on the day the migration
+lands, and every centre with a live balance is told before it arrives — which is a founder
+obligation rather than a code path, and is written here so it is not discovered later.
+
+### 11.11 The bonus is a promotion, not a formula 🚧
+
+**§11.6's four amounts and 0/5/10/20% are an example of a promotion, not the definition
+of one.** They are today's offer. Written as a percentage in code they become a number
+nobody can change without a deploy, and — worse — a number in *two* places, because the
+recharge screen quotes it and the approval path credits it.
+
+`public.promotions`: `id`, `code`, `name`, `starts_at`, `ends_at`, `tiers jsonb`
+*(minimum poisha → bonus basis points)*, `price_version_id`, `active`, `created_by`,
+`created_at`. Basis points and not percent, because 2.5% is not an integer and this
+document has already decided floats have no place in the money path.
+
+**Three amounts, three columns, never one.** A recharge stores what arrived, what was
+credited, and how much of that was bonus:
+
+| | ৳7,800 sent |
+|---|---|
+| `payments.amount_bdt` | **৳7,800** — cash that actually reached a bKash account. This is revenue |
+| ledger `recharge` | **+৳7,800** — the money |
+| ledger `promotion_bonus` | **+৳390** — the gift, with `metadata.promotion_id` |
+| balance | **৳8,190** |
+
+Two entries and not one, because one entry of ৳8,190 makes the founder's own accounts
+unanswerable: cash received, credit granted and deferred revenue are three different
+numbers (§11.9) and a single row conflates all three. It also makes "how much have we
+given away this quarter" a `sum` rather than a reconstruction.
+
+**The browser never says what the bonus is.** The recharge screen *displays* a quote the
+server priced; the approval path re-derives the bonus from the amount that actually
+arrived and the promotion live at that moment, and writes both. A client-supplied bonus is
+in §11.4's list of things the server must never take, alongside a client-supplied amount.
+
+**A completed recharge is never re-priced.** Ending a promotion, editing its tiers or
+deleting the row changes nothing that has already been credited — the entries are
+immutable and the `promotion_id` in their metadata points at a row whose own history says
+what it was on the day. A promotion is edited by superseding it, for the same reason a
+price is (§11.10).
+
+**Who can create one:** platform admin only, audited (§10), and never the same person as
+the approver of a claim it applies to where that can be arranged. Nothing about a
+promotion is reachable from a centre's own session, read or write.
+
+### 11.12 What counts, and what every lifecycle event does to the count 🚧
+
+**One counting function, and billing does not get its own copy.** `app.active_students`,
+`app.active_teachers` and the branch count are what the capacity trigger already reads
+(§11.7 step 2), so there is one head count in this system. A billing-side count would be a
+second answer to the same question and the two would disagree the first week.
+
+**Active means active right now, never lifetime.** `app.active_teachers` already filters
+`and t.active`, and that is the rule for all three: a centre pays for what is switched on
+today. Every row below follows from that one sentence rather than from a special case.
+
+| Event | Effect on tomorrow's rate | Why |
+|---|---|---|
+| Student marked inactive | **drops** | The register is the truth. §11.6: tidying up lowers tomorrow's cost, which is the only reason anybody tidies up |
+| Student deleted | **drops** | Same as above. The owner's own design: a leaver is deleted and the cost goes with them |
+| Student re-admitted in July | **rises** | A returning child is a child. Their old record is reused (§7.1) so the history survives, and they count again from the day they are active again |
+| Student moved between branches | **no change** | One head count for the organisation (§3.6). A transfer is not a create and not a delete, and `20260811000053`'s trigger moves the row rather than copying it |
+| Duplicate records merged | **drops by one** | Two rows were two students to the counter, which is the honest reading while both were active. Merging is a correction and takes effect from the day it happens — **not backdated**, because a backdated head count would reprice settled days and §11.10 forbids that |
+| Teacher switched off | **drops** | The seat is genuinely freed the moment the switch flips — this is why `deleteTeacher` refusing on history bought nothing |
+| Teacher switched back on | **rises** | Same day, same rate |
+| Teacher record deleted | **no further change** | They were already off: removal is only permitted on an off teacher (§5.5), so the rate moved at the switch and not here |
+| Branch archived | **drops** | Institution's branch fee is per live branch. An archived branch's students are moved or deactivated first, so their count moves with them and not twice |
+| Bulk import of 200 | **rises, at once, for all 200** | All-or-nothing: the paste lands whole or not at all (§10), so there is no partial state to price. This is the one place the rate can jump without the owner meaning it to — §20.5's informed consent at the door is the fence, and a founder grant is the repair |
+| A create that failed halfway | **no change** | There is no halfway. Every create is one transaction |
+| Organisation moved to another plan | **rate changes tomorrow** | Yesterday was yesterday's rate (§11.6). Nothing is pro-rated because there is no period to divide |
+
+**Today's charge is the high-water of today, and that is the only stored-looking rule
+here.** §11.7 step 4: the first write of the day charges today at the size at that moment,
+and a later write tops it up if the size has grown. So a centre that adds forty students at
+noon pays today at forty-more, and a centre that deletes forty at noon pays today at the
+morning's size and the *lower* rate from tomorrow. Both directions are deliberate:
+
+- It cannot be bypassed, because it is one `insert … select` inside `settle_billing` under
+  the per-centre advisory lock, and `requireWritable` is the only door to a write.
+- It is **snapshotted on the entry** — `usage_students`, `usage_teachers`,
+  `usage_branches` (§11.7) — so no high-water mark is stored anywhere to drift, and the
+  billing history screen can show the count each day was charged at.
+- It is **visible to the customer**: §20.4's history lists each day with its count and its
+  rate. A charge a customer cannot reconstruct is a charge they have to trust us about.
+
+**If the count cannot be read, nothing is charged.** A failed count does not become zero
+and does not become yesterday's figure. The day is left unsettled, a
+`settlement_failure` entry records the attempt, and `charged_through` does not move —
+which means access stays whatever the *existing* `charged_through` already earned. §11.13
+is what happens next. Guessing here would be the one bug that charges a customer for a
+number nobody can explain.
+
+### 11.13 When settlement cannot be trusted 🚧
+
+**Access already survives this, and that is the design.** §11.7: access is
+`balance < owed` where `owed = (today − charged_through) × rate`, a comparison over two
+columns. So a settlement that never ran does not hand out free product — `owed` grows by
+itself — and a settlement that ran twice charges once, because the day's base charge is
+unique per `(centre, charge_date)`. The failure modes below are therefore about **the
+books**, not about the fence, and that is what makes them safe to repair by hand.
+
+**A settlement attempt has a status, and a failed one leaves a row.** Charging is one
+statement, so there is no half-charged day; what there is, is a day that could not be
+charged. `settlement_runs`: `id`, `coaching_center_id`, `charge_date`, `status`
+(`settled` / `insufficient_balance` / `usage_unavailable` / `error`), `attempt`,
+`price_version_id`, the three usage counts, `amount_poisha`, `error_detail`, `ran_by`
+(`system` / `founder` / `session`), `created_at`, unique on
+`(coaching_center_id, charge_date, attempt)`.
+
+Two of those four statuses are ordinary and must not read as alarms:
+
+| Status | What it is |
+|---|---|
+| `insufficient_balance` | **the product working.** The balance cannot cover a whole day (§11.7: charge the whole day or nothing), so nothing is charged and the centre is read-only until they top up. Expected, frequent, not an incident |
+| `usage_unavailable` | the count could not be read. **This is an incident**, and the only one that needs a human |
+| `error` | anything the function itself raised |
+| `settled` | the day was charged |
+
+**Reconciliation is a query, not a job.** Three questions, each answerable in SQL and each
+on the founder panel:
+
+1. Does `balance_poisha` equal `sum(amount_poisha)` for every centre? *(A trigger maintains
+   the column; this is the test that it is telling the truth.)*
+2. Does every row's `balance_before + amount_poisha` equal its `balance_after`, in
+   `created_at` order? *(The chain from §11.7.)*
+3. Is there a centre with a gap in its charged days — an unsettled past day behind a
+   settled one — or a `charged_through` that no run explains?
+
+Any answer that is not "none" is a **reconciliation alert** on the founder panel, and the
+panel is where it lives rather than an email, because an email nobody reads is worse than a
+figure on a screen the founder opens daily anyway.
+
+**A founder can retry one day, by hand, and it is the same function.** `settle_billing` is
+already idempotent per day, so a manual retry is a call with a written reason that inserts
+a new `settlement_runs` attempt — never an edit of the failed one, and never a path that
+writes a charge the function would not have written itself. The two levers (§11.7) remain
+the only way to *change* a figure, and both need a reason and are audited.
+
+**The cron is a convenience and says so out loud.** `/api/cron/settle` calls the same
+function for every centre so an owner who has not logged in still sees a current figure. It
+is not load-bearing: no `CRON_SECRET`, a missed delivery or a Vercel outage changes no
+access decision. The one thing it must never do is a *different* calculation from the
+session path — same function, one implementation, or the nightly figure and the on-use
+figure are two billing engines.
+
+**What is logged, and what is not.** A settlement failure logs the centre id, the date, the
+status and the SQLSTATE. It does not log a student's name, a guardian's phone number, a
+transaction id or a balance — a log is a place data leaks from, and none of those four are
+needed to fix a settlement.
+
+### 11.14 Off the postpaid model: what every old field becomes 🚧
+
+**There is a live customer on the old model.** UDVASH is a real centre with a real
+admission of 2026-09-03 in it, so this is not a greenfield switch — and §14's rule holds:
+*do not delete old billing data until the new system is verified, and do not leave two
+billing systems active accidentally.* The second half is the dangerous one, because the old
+model's fence and the new model's fence would both be live and would disagree on the day it
+mattered. That is why §16.1 step 24 deletes the `paid_through` derivation **in the same
+commit** that reads access from the balance.
+
+| Old | New | Disposition |
+|---|---|---|
+| `payments.amount_bdt` | unchanged — still the cash that arrived, still revenue | **preserve.** A recharge writes one of these too (§11.9) |
+| `payments.covers_period_start/end` | **nothing.** A recharge covers no period | **preserve the columns, stop writing them.** Historic rows keep their windows; the columns become read-only history. Dropping them would destroy the only record of what pre-balance customers were sold |
+| `coaching_centers.paid_through` | `charged_through` — a different question with a similar shape ("paid up to" vs "charged up to") | **archive.** Stops being read at step 24, stops being maintained when its trigger goes, kept as a column so the backfill is auditable |
+| `app.refresh_paid_through` + the derivation inside `platform_centers()` | one trigger from the ledger | **replace both.** Migration 74's own docblock records that `paid_through` is derived in *two* independent places; two becomes one, and the one lives with the ledger |
+| `GRACE_DAYS = 7` in `entitlement.ts` | **nothing.** No grace in any form (§17) | **delete, with its tests, in step 24** |
+| `coverageLapsed()` | `balance < owed` | **replace** |
+| `coaching_centers.status` | unchanged. `suspended`/`cancelled` still force read-only and still outrank a healthy balance | **preserve** |
+| `status = 'trial'` as access-granting | founder-granted days (§11.7), which is money-free and has an end date | **migrate:** any live `trial` centre gets granted days to the same end date, then reads as `active` |
+| `coaching_centers.student_capacity` | **nothing.** No seat to buy | **archive, last (§16.1 step 28)** |
+| `plan_allowances.included_students` | **nothing on a per-student tier.** Still the ceiling on the teacher tiers | **preserve** — §2.7's engineering ceilings do not move |
+| `subscriptions` (empty) | **nothing** | **leave.** §17 already records why: an empty table is a record of what was tried, and dropping one is a migration that cannot be undone |
+| `payment_intents.purpose`/`quantity`/`grants_capacity` | one purpose: a top-up | **preserve the columns**, and the enum keeps its old values so historic intents still read. New intents use the top-up purpose only (§11.2) |
+| `payment_intents.provider`/`provider_ref` | unchanged, and this is where a bKash trxID lives | **preserve.** §11.3's provider abstraction is already the right shape |
+| Negative `payments` rows (migration 74) | still how money owed back is recorded; a ledger `refund` entry accompanies it | **preserve** |
+
+**The opening balance, and it is deliberately generous.** Every centre with
+`paid_through` in the future has bought days nobody can take away, so the backfill is:
+
+```
+charged_through      = greatest(coalesce(paid_through, today), today)
+migration_opening_balance = 0
+```
+
+`greatest(…, today)` is the whole of the safety: a centre whose coverage already lapsed
+gets `charged_through = today` and owes nothing for the past, because charging a customer
+retroactively for days they were never billed for would be the worst possible first act of
+a new billing system. A centre with coverage to 30 September keeps every one of those days,
+as granted days rather than as money — they did not buy taka, they bought a period, and
+converting one into the other would invent a figure. One `migration_opening_balance` entry
+per centre, zero-amount where there is no money to carry, so **every centre has a first
+ledger row and none has a balance that came from nowhere.**
+
+**Verified before anything is deleted, in this order:**
+
+1. The ledger and the burn land additive (steps 21–22). Nothing reads them.
+2. `settle_billing` is run against every live centre on a **restored copy** of production,
+   and the resulting `charged_through` is diffed against `paid_through` centre by centre.
+   §24's rule — no production data in development — is why this is a restore into a
+   throwaway Supabase project and not a local dump anybody keeps.
+3. The two derivations are compared *in production* for at least one full day, with the old
+   one still the fence: `platform_centers()` gains a column showing what the balance
+   *would* say. A disagreement is a bug found before it locks anybody out.
+4. Only then step 24 flips the fence and deletes the old derivation.
+
+**Rollback is one revert, and that is a property of the order rather than a plan.** Steps
+21–23 add tables and a function and change no behaviour, so reverting them is dropping
+things nothing reads. Step 24 is the only irreversible-feeling commit, and even it is a
+`git revert` plus re-running the old trigger's backfill, because `paid_through` and the
+`payments` rows behind it are still there — which is the entire reason they are preserved
+rather than dropped.
 
 ---
 
@@ -2195,6 +2815,41 @@ parent summary. It is a working product and an advertisement at the same time, a
 the things it withholds are precisely the things that make a teacher look
 institutional in front of a parent.
 
+### 14.1 The pages that must exist before the first taka ❌
+
+**None of them exists.** `src/app` has no marketing or public route group at all — the
+whole product is behind a login — so today a customer sends ৳7,800 to a personal bKash
+number against no written terms whatsoever. That is the single largest non-technical risk
+in this document, and it is worse here than on an ordinary SaaS for one specific reason:
+**the balance is non-refundable and never expires** (§11.6). A non-refundable prepayment
+with no terms behind it is a dispute we would lose by having nothing to point at.
+
+| Page | Why it cannot wait |
+|---|---|
+| **Prepaid Billing Terms** | non-refundable, never expires, the daily burn, that the rate follows the centre's own size, that a promotion bonus is credit and not cash, what happens when the balance dries up (read-only, nothing deleted), and that verification is by hand within a stated window |
+| **Refund & Cancellation** | says plainly that credit is not refundable and what *is* offered instead — a founder adjustment where we got something wrong. §11.6 already commits to saying this before the tap; this is the page that tap links to |
+| **Terms of Service** | who may use it, one account per human, that a centre-issued login belongs to the centre, suspension grounds |
+| **Privacy Policy** | what is held about students and guardians, why, for how long, who inside a centre can see it, and that we do not send student records to any AI provider (§24). Minors' data is §7.6 and this is where a parent can read it |
+| **Acceptable Use** | no using guardian numbers for anything but this centre's own communication — which matters, because tap-to-send SMS makes a roster into a mailing list |
+| **Account Deletion & Data Export** | how a centre leaves with its data. The export screen already exists; the promise does not |
+| **Security & Contact** | how to report a vulnerability, and one real phone number — 01756211762 is already the number a customer chases a recharge on |
+
+**Consent is a row, not a checkbox.** `policy_acceptances`: `id`, `profile_id`,
+`coaching_center_id`, `policy_kind`, `policy_version`, `accepted_at`, and — only where
+there is a legal reason to hold it — `ip`. Versioned, because a term we change is a term
+somebody agreed to a different form of, and "they ticked a box once" is not an answer when
+the box has been re-worded twice. Recorded at signup and at the first recharge, and
+re-asked when a version changes. Nothing about a student or a guardian is in this table:
+the person accepting is the account holder, and a child cannot consent to a contract.
+
+**Written in both languages, and the Bangla is the one that matters** — the reader is a
+coaching-centre owner in Mymensingh, not a lawyer in Dhaka.
+
+**What these pages must not claim.** No certification, no standard, no compliance framework
+we have not actually been audited against (§24). "We encrypt data in transit and at rest" is
+true because Supabase does; "GDPR compliant" and "ISO 27001" are not ours to say and would
+be the kind of false statement that turns a small dispute into a large one.
+
 ---
 
 ## 15. Where the build actually is
@@ -2262,8 +2917,8 @@ four o'clock: the rule is enforced on the day rows, which are the last thing a s
 writes and so the only moment a batch's routine is whole, and stated a second time in
 the form so the refusal can name the batch, the day and the hour instead of raising
 (§7.3). And an owner five per cent from full is told which of their buildings the places
-went to, counted as students still on the register so the breakdown adds up to the pool
-figure beside it, and never as a quota (§3.7). And a student moving between branches is
+went to, counted as students still on the register so the breakdown adds up to the
+organisation-wide figure beside it, and never as a quota (§3.7). And a student moving between branches is
 one row with its `branch_id` changed rather than a new child with no history, with the
 move recorded by a trigger rather than by the code that saved it, so a move nobody
 logged is not a thing the app can produce (§7.2). And an owner can move their own centre
@@ -2314,6 +2969,29 @@ column: a `max-w-*` on the column holding the bar stops its full-bleed backgroun
 and leaves rows scrolling up through bare page either side. Its gate names the five
 exceptions rather than counting the adopters, so the next screen added without a heading
 fails a test instead of shipping (§20.1).
+And a register written with dashes now reads as columns rather than as one long name:
+`Rahim Ahmed - Abdul Karim - 01712345678` was arriving as a single student called
+"Rahim Ahmed - Abdul Karim" with no guardian — the father's name welded onto the child's,
+on every row of the paste, into the one field §7.1 makes unfixable after creation. A dash
+is a column only with space on both sides, in all three of hyphen, en dash and em dash,
+which is what keeps `Abdul-Karim` and `আব্দুল-করিম` one name; the same alphabet the phone
+finder already accepts *inside* a number, applied to the gap *between* fields (§21).
+
+**Two things this document had assumed about the code that turned out to be false**, both
+checked rather than reasoned about, and both recorded here so nobody spends a day
+implementing what is already there. **The search boxes make no requests to debounce.**
+`components/search-box.tsx` is a `<form method="get">` with `name="q"`, a `defaultValue`,
+a `maxLength`, `enterKeyHint="search"`, a visible submit and a second form for Clear — no
+JavaScript, no keystroke handler, and `lib/search.ts` filters in memory over rows the page
+had already fetched. So there is nothing to debounce and no request to abort, and adding a
+client-side search would *lose* three properties: the query is in the URL, so it is
+bookmarkable, shareable and survives a back button; it works with JavaScript off; and the
+service worker's shell can answer it. **And the paged reads refuse rather than truncate.**
+`lib/supabase/page.ts` holds `PAGE_SIZE = 1000` and `MAX_PAGED_ROWS = 20_000`, a
+`PageFailure` of `'unreadable' | 'tooLarge'` with `worstFailure()` letting `tooLarge` win,
+and a `pageOrNull` that returns null rather than a short list — because a query that
+outgrows its ceiling does not break, it starts lying, and every screen in this product
+already tells a failed read apart from an empty one.
 
 **Partly built ⚠️** — branches (isolation, money, staff, the HQ comparison and the growth
 breakdown yes; the drill-down into one branch's workspace no, because `app.branch_ok`
@@ -2325,7 +3003,21 @@ but nothing on the owner's own screen works out what their unused coverage is wo
 income with no student behind it (hall rent, book sales and the like have a category
 but no row to hang it on — every revenue row is a bill against a child).
 
-**Not built ❌** — the five
+**Not built ❌** — **the whole of the prepaid balance, which is to say every mechanism
+§§11.6–11.14 describe.** Stated plainly because the sections read like a description of
+something running: a grep for `settle_billing`, `balance_poisha`, `charged_through` and
+`billing_ledger` across `supabase/migrations`, `src` and `tests` returns nothing at all.
+What is live is the postpaid derivation §11.14 retires — `payments.covers_period_*` →
+`coaching_centers.paid_through` → `coverageLapsed()` with `GRACE_DAYS = 7` →
+`session.access` → `requireWritable`. So the ledger, `app.settle_billing`,
+`settlement_runs` and its three reconciliation queries, `price_versions`, `promotions`,
+the recharge claim and its founder queue, the two founder levers and the rebuilt billing
+screen are all design and not code, and §16.1 is the order they land in.
+The seven legal pages of §14.1 do not exist either — there is no public route group in
+`src/app` at all — and they are the one item on this list that must not wait for the
+screen above it: a non-refundable balance with no written terms is a problem the first
+taka creates. Observability (§34) is three files containing a `console.error` and one
+cron entry in `vercel.json`. Also: the five
 `teacher_permissions` booleans folded into the capability vocabulary — they work, and
 four `app.can_*` resolvers enforce them in the database, but they are still five
 columns rather than words in a `text[]`, and §6.2 says why that waits;
@@ -2376,6 +3068,11 @@ All twenty have landed. That is not the same as finished — §15 says what each
 partly built — but no step of the order is now waiting on another, which is why the work
 below it can be taken in the order of what the product most visibly lacks.
 
+**Steps 11, 12 and 14 describe a mechanism that no longer exists** (the top-up dialog, the
+priced import, the shared capacity pool as a quota). They are left in the table because it
+is a record of what was built and when, not a plan — and because the code they produced is
+what §18 now names for removal. The order that replaces them is below.
+
 **Core, and nothing beyond it:** the four plans, the trial, entitlement, capacity
 with atomic enforcement, single and bulk top-up, branch isolation, the shared pool,
 teacher accounts and usernames, phone-or-username sign-in, owner OTP,
@@ -2384,23 +3081,35 @@ refunds, expenses, employees, payroll, revenue and profit, the two dashboards, t
 audit log, payment intents, teacher clash detection, per-branch capacity *reporting*
 (never per-branch quotas).
 
-**High priority, straight after:** ~~an owner moving their own centre between tiers
-without a founder doing it for them~~ — **done**, and it did not wait on bKash, because
-the manual provider already settles a payment (§11.2). What it exposed instead is where
-the next window opens: one formula shared by the screen and the action, so a lapsed
-centre is billed from this month rather than from the month its coverage stopped. ~~And
-after that, the credit a mid-term move or a downgrade owes, which §9.2's positive-only
-`payments.amount_bdt` had nowhere to put~~ — **done** as well: a platform payment may now
-be negative, the founder writes one against a floor the database holds under a lock, and
-it prints as a credit note rather than as a receipt for minus money. What remains of that
-thread is the owner's half — a move *down* still needs somebody to work out what the
-unused coverage is worth, so the credit is a conversation with a row at the end of it
-rather than a refund an owner can ask for themselves.
+### 16.1 The order the prepaid balance lands in ⚠️ current work
 
-**Ahead of both of those now: the interface (§20).** It is the widest gap between what
-this product does and what it appears to be, its own order of work is §20.8, and it is a
-refactor of screens over rules that already hold rather than a single new rule — which is
-why it can be the priority without anything in §15 stopping working.
+**Decided 2026-09-05.** Sequenced on one rule: **every intermediate state must be safe,
+which means additive before subtractive.** Until step 28 the old capacity fence is still
+standing, so a half-landed balance can only ever be stricter than the model it replaces —
+never looser.
+
+| # | Step | Why here |
+|---|---|---|
+| 21 | The ledger: poisha, append-only, `balance_before`/`balance_after` chained by CHECK, immutability trigger, `balance_poisha` + `charged_through` on the centre row maintained by trigger, and the backfill (§11.14) | additive; nothing reads it yet, so it cannot lock anybody out while it is proven |
+| 21a | `price_versions`, seeded by migration, with the reconciliation test against `plans.ts` (§11.10) | step 22 charges from it, so it has to exist first — and the test has to exist before there are two copies of four numbers |
+| 22 | `app.settle_billing` — advisory lock, one row per (centre, Dhaka date), the high-water top-up, whole days only, usage snapshot and price version on every entry | the burn, still read by nothing |
+| 22a | `settlement_runs` and the three reconciliation queries on the founder panel (§11.13) | the same commit as the burn, because a failure with no row is a failure nobody finds |
+| 23 | The daily rate in `plans.ts`, **derived** from `monthlyBillBdt` and never typed in | `seatsCoveredByFloor`'s docblock sets the precedent: three numbers that must change together is a bug waiting |
+| 24 | `session.access` from the balance, **in the commit that deletes the `paid_through` derivation and `GRACE_DAYS`, with their tests** — after §11.14's four verification steps | the one step that is not additive, and the reason is §4.4: two live derivations of access would disagree on the day it mattered |
+| 25 | The recharge claim as a payment intent (§11.9), `promotions` (§11.11), the founder review queue, approval under `requirePlatformAdmin` with audit | money in. Before this, the only way to credit a balance is a founder writing SQL — which is exactly why 21–24 must be provably right first |
+| 25a | The seven legal pages and `policy_acceptances` (§14.1) | **the same week as step 25 and not later.** The first taka must not arrive against no written terms, and the recharge screen's non-refundable line has to link somewhere |
+| 26 | The two founder levers: a money adjustment and granted days, each with a written reason | the answer to every scenario §11.8 could not fence — a closure, a mis-paste, a founder who was asleep |
+| 27 | `/settings/billing` rebuilt on §20.4's five questions, with the day-by-day history showing each day's count and rate (§11.12); the plan page's 1,253 lines demolished; the calculator folded in | the screen can only be built once there is a balance to draw |
+| 28 | **Capacity retired in code** — §18's fourteen bullets, `student_capacity` last | subtractive, and deliberately after the burn is proven in production on a real centre |
+
+Steps 21–24 are one week's work and the whole of the risk. Step 28 is a day and cannot be
+started early: removing the ceiling before the rate is charged is the one ordering mistake
+that would give the product away.
+
+**Alongside, not after:** the read-only sweep on `fees`, `fees/reminders` and
+`teach/[batchId]`. Read-only stops being an edge case the day step 24 lands — a centre
+that has not topped up is read-only on an ordinary Tuesday — so the three screens a centre
+uses every day are the three that must not look broken in it (§4.4).
 
 **Future, documented and not built:** rooms and room double-booking, holiday
 calendars, term dates, an admissions pipeline, automated SMS and the parent summary
@@ -2420,13 +3129,16 @@ that a good idea has somewhere to live that is not the codebase.
 | No student or guardian panel | every parent-facing surface is a support channel and a privacy exposure; the parent's interface is a printed slip and an SMS |
 | Pro trial is a **state**, not a plan | a fifth `PlanId` would fork every gate in the app |
 | Teacher Pro is one teacher **at any price** | the wall between solo and organisation; making it purchasable rebuilds the tier overlap |
-| "Purchased capacity", never "unlimited students" | unlimited is a promise the pricing engine contradicts |
-| Capacity pools at the **organisation**, not the branch | a place is a licence, not a chair |
+| No student ceiling on a per-student tier, and never "unlimited students" | a ceiling was only ever a proxy for what growth costs; the daily rate says it directly, and "unlimited" is a promise the pricing engine contradicts |
+| The balance and the head count are the **organisation's**, never the branch's | one customer, one contract, one price — and a branch manager who could see or spend the balance is a second treasurer |
 | Batches cap **per branch** | rooms are physical |
-| Marginal bands, not flat per-tier rates | flat rates make 301 students cheaper than 300 |
+| Marginal bands, not flat per-tier rates | flat brackets make 101 students cheaper than 100 — ৳1,818 against ৳2,500 |
 | The floor applies to the **student charge**, not the total | otherwise teacher seats vanish inside it |
-| Top-up price = the increase in the monthly bill | it is ৳0 below the floor's covered seats, because those are already paid for |
+| Price in months, burn in days | an owner compares monthly figures with a competitor; days are the honest unit only once the money is theirs |
+| The daily rate is `floor(monthly × 100 / 30)` poisha | integers, and floored in the customer's favour: rounding up would make a year cost ৳434 more than twelve months and a 31-day month dearer than a 30-day one |
+| Settlement happens **on use**, and the cron is cosmetic | a job that does not run must never hand out free product, and a job that runs twice must never charge twice; a comparison plus one row per (centre, date) is both at once |
 | Trial expiry is a comparison, not a cron job | a cron that does not run hands out a free tier forever |
+| No grace, in any form | a charge allowed to sit unpaid is credit, and this is a prepaid product |
 | Suspended means **read-only**, not locked out | holding a centre's register hostage is how a customer becomes an enemy |
 | Limits apply to new actions, never retroactively | nobody's data disappears on a downgrade |
 | Refunds are counter-entries | the receipt in a parent's hand must stay findable |
@@ -2436,10 +3148,11 @@ that a good idea has somewhere to live that is not the codebase.
 | Zero SMS credits on every tier | correct behaviour while no gateway exists; a counter decrementing against nothing is a lie |
 | Teacher clashes are refused on the **day rows**, not on `batches` | the routine is written across two tables in three transactions, and the day rows are the last of them — checking anywhere earlier refuses saves that are legal two statements later |
 | Back-to-back classes are not a clash | overlap is half-open; a rule that refused them would be worked around within a week |
-| The growth breakdown counts **active students**, not admissions taken | a branch that admitted fifty and lost forty has not grown, and the active count makes the breakdown add up to the pool figure printed beside it |
+| The growth breakdown counts **active students**, not admissions taken | a branch that admitted fifty and lost forty has not grown, and the active count makes the breakdown add up to the organisation-wide figure printed beside it |
 | Views carry Supabase's default `anon` grant, and are protected by `security_invoker` | the privilege is not the fence — the caller's own policies are; and `check-embeds.mjs` can only verify a select shape it is allowed to ask for |
-| `subscriptions` stays empty; coverage is derived from the payments | what every member's session has to know is one date — is this centre paid up — and `coaching_centers.paid_through` is that date, maintained by trigger as `max(payments.covers_period_end)`. A subscription row would be a second answer to the same question, and the two would disagree the first time a payment was recorded out of order. The table's own columns date it: `billed_enrollments`, `unit_price_bdt`, `floor_price_bdt` and `renews_at` encode per-enrollment pricing that renews itself, which §3 replaced with marginal bands and a window bought outright. It is kept, unread, because dropping a table is a migration that cannot be undone and the columns are the record of what was tried |
-| A tier move is a purchase, not a setting | it moves the plan through `settle_payment_intent` like every other paid thing, so the billing guard stays the only fence and no browser is ever nearer the `plan` column than a form that asks |
+| `subscriptions` stays empty — and after 2026-09-05 so does the idea of a subscription | what every member's session has to know is now two numbers on the centre row, the balance and `charged_through`, both maintained by trigger from the ledger exactly as `paid_through` was maintained from the payments (§11.7). A subscription row would be a third answer to a question that already has one, and the two would disagree the first time an entry was written out of order. The table's own columns date it twice over: `billed_enrollments`, `unit_price_bdt`, `floor_price_bdt` and `renews_at` encode per-enrollment pricing that renews itself — §3 replaced the pricing with marginal bands, and §11.6 replaced the renewal with a balance that does not renew because it never expires. It is kept, unread, because dropping a table is a migration that cannot be undone and the columns are the record of what was tried |
+| A tier move rides on the money that pays for it | it moves the plan through `settle_payment_intent` like every other paid thing, so the billing guard stays the only fence and no browser is ever nearer the `plan` column than a form that asks. Under one balance a *renewal* no longer exists to ride on, so the tier moves on the first top-up that pays for it |
+| One purchase kind: a top-up | a seat, a branch and a place were three things to buy, three prices to keep honest and three ways to be refused at a door. They are now one thing the balance carries and a rate that changes (§11.2) |
 | `src/lib/plans.ts` owns the numbers | one pricing engine; this document defers to it |
 
 ---
@@ -2463,6 +3176,49 @@ Listed so a future reader does not resurrect them from an old commit or an old d
 - ⛔ `overLimit()` as the enforcement function name — it is `limitRefusal()`.
   `docs/PLANS-AND-MESSAGING.md` still says otherwise and is wrong.
 
+**Retired 2026-09-05 by the prepaid daily balance (§11.6).** All of these were correct for
+a model that sold coverage periods and seats. None of them survives the change, and each is
+named so the code that implements it can be found and removed rather than left to disagree
+with §11.
+
+- ⛔ **Purchased student capacity.** `coaching_centers.student_capacity`, the `capacity` arm
+  of `StudentCeiling`, `quoteSeats`, `capacityBands`, `capacityCostBdt`, `nextSeatCostBdt`,
+  `ASK_PLACES`, `capacityPressure` and every "places remaining" figure. Replaced by: there is
+  no ceiling on a per-student tier (§3.3).
+- ⛔ **The contextual seat purchase inside Add Student** — §9's *"automatically continue the
+  student creation process"*. The principle survives in §3.4 as information; the transaction
+  does not exist because there is nothing to buy.
+- ⛔ **The bulk-import payment step.** Steps 4–6 of the old §3.5.
+- ⛔ **The branch places request** and its resolution workflow (§3.7).
+- ⛔ **Coverage periods as the gate.** `payments.covers_period_start/end` and
+  `coaching_centers.paid_through` stay as *history* — a receipt records what it was for — but
+  the entitlement resolver stops reading them, and a recharge writes no period at all.
+- ⛔ **`GRACE_DAYS`, and grace in any form.** A charge allowed to sit unpaid is credit, and
+  this is a prepaid product. Replaced by warning at 14/7/3/1 days (§3.7).
+- ⛔ **Monthly invoices, bills, due dates and dunning.** There is no period to invoice.
+- ⛔ **The peak-active-count billing rule.** It fenced a month boundary; daily billing has
+  no boundary (§11.8).
+- ⛔ **A whole-taka balance ledger.** ৳2,600 ÷ 30 is not a whole taka. Poisha, integer
+  (§11.7).
+- ⛔ **Mid-term downgrade credit arithmetic** — §11.5's open item. Nothing needs to work out
+  what unused coverage is worth, because nobody holds coverage.
+- ⛔ **`status='trial'` as an access-granting state.** A sales trial is granted days on
+  `charged_through` (§4.4).
+- ⛔ **A self-serve grace or emergency button.** Not built, on the owner's instruction, and
+  the reason is recorded in §11.8 so it is not proposed again.
+- ⛔ **A self-serve holiday pause.** Not built; founder discretion instead, with the reason
+  in §11.8.
+- ⛔ **Three of the four purchase kinds.** A student place, a teacher seat and an extra
+  branch were each something to buy at a door that could refuse. Only a top-up remains
+  (§11.2); the other three are rate changes the balance carries. `teacherChargeBdt`,
+  `branchChargeBdt` and `nextBranchCostBdt` **survive** — they price the rate and answer
+  "what would the next one cost", which §3.4 says must be shown. What goes is the
+  transaction, not the arithmetic.
+- ⛔ **Coverage as what a settled intent grants.** `settle_payment_intent` stops writing a
+  period and starts writing a ledger entry. The tier move it also performs is unchanged.
+- ⛔ **Locking a student's name at admission to stop seat recycling.** There is no seat to
+  recycle. The name stays editable and identity edits are audited (§11.8).
+
 ---
 
 ## 19. Testing this document
@@ -2470,28 +3226,48 @@ Listed so a future reader does not resurrect them from an old commit or an old d
 A requirement without a test is a preference. The suites that keep this honest:
 
 **Pricing** — every band boundary (100, 101, 300, 301, 600, 601); the floor at 1, 50,
-79, 80; teacher seats at 0, 2, 3; Institution branches at 3 and 4; the top-up delta
-at 50, 120, 300, 600; the bulk delta across a band edge; monotonicity — the bill must
-never fall as students rise. And what a purchase may claim: a subscription priced at one
-tier and asked for another is not quoted, the free tier is never a target, no other kind
-of purchase carries a tier at all, and the two tiers that bill the same number at 400
-students are told apart before an idempotency key hands one back for the other.
+79, 80; teacher seats at 0, 2, 3; Institution branches at 3 and 4; the bulk delta across
+a band edge; monotonicity — the monthly figure must never fall as students rise. Then the
+daily rate on top of it: `floor(monthly × 100 / 30)` at every one of those sizes, never a
+float, never rounded up, and zero on both free tiers; thirty days of it never exceeding the
+month it came from; and the bonus ladder — ৳2,600 / ৳7,800 / ৳15,600 / ৳31,200 crediting
+৳2,600 / ৳8,190 / ৳17,160 / ৳37,440, a typed amount taking the highest band it reaches, and
+an amount below one month taking no bonus at all. And what a purchase may claim: an intent
+priced at one tier and asked for another is not quoted, the free tier is never a target, a
+tier moves only on a top-up that pays for it, and the two tiers that bill the same number at
+400 students are told apart before an idempotency key hands one back for the other.
 
-**Entitlement** — trial active, trial expired, paid, lapsed, suspended, cancelled,
-unknown plan, unreadable membership. Each asserts an entitlement, not a screen.
+**Entitlement** — trial active, trial expired, suspended, cancelled, unknown plan,
+unreadable membership. Then the balance, which is now the interesting half: a balance that
+covers today, a balance one poisha short of it, `charged_through` a week ahead because a
+founder granted days, and — the case that must never regress — **a free tier with an empty
+balance resolving to `full`**, because the rate is zero and zero is covered. Each asserts an
+entitlement, not a screen.
 
-**Capacity** — refusal at the ceiling; reactivating an inactive student refused when
-full; **two concurrent inserts at the last seat, exactly one succeeding**; bulk
-import of 500 rolling back to zero students when payment fails; a trialling teacher's
-thirty-first student admitted, the same insert refused the day the trial ends, and the
-thirty-one already on the roster untouched by either.
+**Settlement** — the fence that replaced the seat. One row per (centre, Dhaka date) under
+concurrency: two sessions opening at once charge the day once. A day charged small and then
+topped up as the roster grows, ending at that day's **high-water** rate, and the same day
+never charged twice. The midnight-empty-roster vector: a roster emptied and refilled pays
+the refilled rate. A balance that cannot cover a whole day charges nothing and leaves the
+remainder theirs. The Dhaka date, asserted from a UTC session between midnight and 6am,
+where `current_date` is yesterday. And the backfill:
+`charged_through = greatest(coalesce(paid_through, today), today)` charging nobody
+retroactively and starting nobody read-only.
+
+**Ceilings that remain** — refusal at 30 and at 150 on the teacher tiers; reactivating an
+inactive student refused when full; **two concurrent inserts at the last place, exactly one
+succeeding**; a trialling teacher's thirty-first student admitted, the same insert refused
+the day the trial ends, and the thirty-one already on the roster untouched by either. Plus
+the two that are no longer refusals: a Center admitting its 101st student is **allowed**,
+and a bulk import of 500 either creates all five hundred or none — with no payment step to
+fail (§3.5).
 
 **Branches** — a branch member cannot read, write, or report on another branch's
 students, batches, payments, expenses or payroll. One case per table, attempted as a
 hostile authenticated client. And the growth breakdown: a row per branch with head
 office among them, a student who has left removed from the month they were admitted in,
 a pinned manager reading their own branch and no other, and every row added together
-equalling the organisation's active head count — the pool figure printed beside it.
+equalling the organisation's active head count — the organisation-wide figure printed beside it.
 
 **Auth** — phone login still works; username login works; OTP expiry, attempt
 ceiling, resend cooldown, and the same number in three formats resolving to one;
@@ -2726,49 +3502,64 @@ teacher row rather than on the membership, and those three checks share one memo
 A gate that needed an `await` would put a round trip per row on the critical path of every
 screen in the product, which is why the test asserts there is not one.
 
-### 20.4 Plan and billing: six questions, in this order ✅
+### 20.4 Billing: five questions, in this order ⚠️ rebuilt on the balance
 
-Currently the worst screen in the product. It is a form; it should be an answer. It has to
-say, without being scrolled or clicked:
+**Rewritten 2026-09-05.** The old six questions were the right questions for a plan page.
+Under §11.6 there is no plan to manage and no renewal date to print, so the screen becomes an
+answer to five:
 
-1. **What am I on** — Teacher Pro, ৳499/month, renews 14 October 2026.
-2. **What am I using** — Students 87/150, Batches 3/5, Subjects 4/5, as figures against
-   their ceilings rather than as prose.
-3. **What do I have** — the features, not the flags.
-4. **What changes if I move up** — the difference, not two feature lists to diff by eye.
-5. **What will that cost** — one number.
-6. **What should I do next** — one primary action, and the rest visibly secondary.
+1. **How long have I got** — *143 days · covers you to 26 January 2027.* The headline, in the
+   reader's own numerals, and the only number most visits are for.
+2. **How much is left** — ৳12,400, and what a day costs: ৳86.66.
+3. **Why is it that much** — 100 students, 3 teachers, 1 branch. Their figures, not our bands.
+4. **How do I add more** — one primary action, four suggested amounts, the bonus stated.
+5. **What has happened to my money** — recharges with their receipts, days collapsed by month
+   (*September: 30 days, ৳2,600*), and any grant with the reason it was given.
+
+The old questions 1–2 (*what am I on*, *what am I using against ceilings*) are answered
+elsewhere or not at all: the tier is a line in question 3, and there are no ceilings left on a
+per-student tier to draw a bar against (§3.3). Question 4's *what changes if I move up* and 5's
+*what will that cost* survive **only on the teacher tiers**, where tiers are still a real
+choice — a Center has already chosen and is now managing its size, which is question 3.
 
 **Do not expose the billing engine.** §3.1's marginal bands are how we compute; they are
 not how a customer thinks. "First band 100 at ৳25, next band 200 at ৳18, rate each,
 teacher seat calculation" is our arithmetic showing through the glass. What the screen
 says is:
 
-> 120 students → estimated **৳3,060/month**. Includes 2 teacher accounts.
-> Additional teacher ৳100/month. `[View pricing details]`
+> 120 students, 3 teachers → **৳3,060/month**, about ৳102 a day. `[View pricing details]`
 
 The bands live behind that disclosure, in full, for the owner who wants to check the
 figure — and the disclosure is the same engine, never a second copy of the numbers. One
 pricing module answers the public calculator, the owner's screen and the founder's
 billing, because three places that each know the bands will disagree inside a month.
 
-**Center billing reads Students → Cost → Usage → Add capacity → Payment**, with
-`[Add students]` and `[Add teacher]` as the primary actions. Not a plan grid: a centre
-already paying us has chosen its plan and is now managing its size.
+**The countdown is the screen's second job**, on §3.7's thresholds: a notice at 14 days, a
+stronger one at 7, a persistent banner with the founder's number at 3, the dry date as a date
+at 1, and the read-only banner at 0. It appears on the dashboard as well, because a billing
+screen nobody opens warns nobody.
 
-**What shipped.** Question 1 is a three-fact strip under the heading — the tier, the price,
+**And the calculator folds in.** §11.9's recharge screen already has to show the rate, the
+days and the amounts; a separate calculator page would be a second place that prices the same
+thing. What was a `/settings/plan` calculator becomes the top half of `/settings/billing`.
+
+**What shipped on the old screen, and what of it survives.** Recorded because the rebuild has
+to keep the parts that were right rather than start from a blank file (§38). Question 1 was a
+three-fact strip under the heading — the tier, the price,
 and the date the money runs to — because the paid-through date used to be printed only
 inside the subscription card, which a manager cannot see and an owner with nothing left to
-buy never renders. Question 2's rows now say when a figure has met its ceiling and when it
-has passed one, in the reader's own numerals; "30 / 30" is the reason the screen gets opened
-and it looked like every other line on it. Question 4 is computed rather than compared: the
+buy never renders; **the strip survives, with days-left in place of the paid-through date.**
+Question 2's rows said when a figure had met its ceiling and when it
+had passed one, in the reader's own numerals; **that survives only for the teacher tiers.**
+Question 4 was computed rather than compared: the
 features the next tier adds, filtered from the same list and the same labels as the card in
 the rail, and the ceilings it raises — so a feature cannot be present in one list and absent
-from the other. Question 5 is that block's own heading, one figure from the same
-`priceLine()` the tier list uses. Question 6 is one anchor, to the purchase control below or
+from the other; **survives, teacher tiers only.** Question 5 was that block's own heading, one
+figure from the same
+`priceLine()` the tier list uses. Question 6 was one anchor, to the purchase control below or
 to the contact card, never a second priced dropdown beside the first. The four-tier grid
 §20.4 rejects still exists, folded into a disclosure that is open only on the free plan,
-where comparing tiers is the errand.
+where comparing tiers is the errand; **survives unchanged, for the same reason.**
 
 Two rules are enforced by the screen rather than merely respected by it. §33: the rate bands
 and the working moved behind the calculator's disclosure, which is where the tallest block on
@@ -2777,37 +3568,45 @@ drops any ceiling that is finite on a per-student tier, so "5 → 100 batches" a
 "5 → 200 subjects" never print — a centre told it is being given ninety-nine more batches has
 been sold a number we would refuse it at. `tests/plan-page.test.ts` asserts the second rule
 against `PLANS` itself rather than against the rendered string, so a tier that gains a finite
-cap fails there instead of quietly advertising it.
+cap fails there instead of quietly advertising it. **Both rules carry over to the rebuild and
+the test moves with them.**
 
-### 20.5 Buying happens where the need is met
+### 20.5 The cost of growth is visible where growth happens
 
-§3.4 and §3.5 already specify this and it is already built: the ceiling is met inside
-`[+ Add Student]` and inside the import, priced there, paid there, and the interrupted work
-continues by itself afterwards. What §20 adds is the interface obligation that makes it
-true rather than merely intended:
+**Rewritten 2026-09-05.** §9's principle was *billing should happen exactly where the user
+encounters the need*, and it was built: the ceiling was met inside `[+ Add Student]`, priced
+there, paid there, and the interrupted work continued by itself. There is no ceiling and no
+payment now (§3.3), so the principle carries over with the transaction removed — the need is
+to **know**, and knowing still has to happen in the same place:
 
-- **The work in hand is not lost.** Whatever the manager had already typed survives the
-  payment step and is still on the screen when it returns. A flow that clears the form has
+- **The rail beside the add-student form says what the roster costs.** `101 students →
+  ৳87.27/day · 357 days left`. Silent while the floor is biting, because a rate that has not
+  moved must not be reported as though it had (§3.2).
+- **The import quotes the change before it commits it** (§3.5, step 3). A paste that doubles
+  the daily rate is the one place in the product where an owner can hurt themselves quickly,
+  and it is the one place a number has to be read before a button is pressed.
+- **The work in hand is not lost.** Whatever the manager had already typed survives any
+  refusal and is still on the screen when it returns. A flow that clears the form has
   moved the friction rather than removed it. This is not free: React 19 resets every
   `<form action>` on submit, before the action runs and whatever it returns, so a refusal
   used to wipe the name, the guardian, the batch ticks and the four optional fields. The
   form holds its own values now, and remounts the ticks and the branch select on a refusal
   because those two are restored from mount-time defaults rather than from React state.
-- **The refusal names the price, not the constraint.** "You have used all 120 places. One
-  more costs ৳18." Never "capacity exceeded", which is our word for our problem.
-- **The dialog is a step, not a destination.** No navigation away, no new tab, nothing that
-  loses the thread. Settings → Plans → calculate → purchase → back → find the button again
-  is the specific experience this exists to prevent.
+  **This survives untouched** — the refusal it protects against is now the balance rather
+  than the ceiling, and the form does not care which.
+- **The refusal names what to do, not what we call it.** "Your balance covers up to today.
+  Recharge to keep saving." Never "capacity exceeded" or "entitlement lapsed", which are our
+  words for our problems.
+- **No navigation away.** Settings → Plans → calculate → purchase → back → find the button
+  again is the specific experience this exists to prevent, and it is prevented more completely
+  now than it was: there is nothing to go and buy mid-task.
 - **Zero is not reachable, so it is not said.** This bullet used to ask for the ৳0 place
-  below the floor's covered seats (§3.4) to open the form rather than a dialog asking for
-  nothing. It cannot happen: `studentCeiling` floors a centre's ceiling at the seats its
-  monthly floor already covers, so a centre is never refused while its next place is free —
-  there is no refusal below the floor to interrupt. Every band rate is ≥ ৳8, so the
-  marginal price at a real wall is never zero either. Kept as a record that the case was
-  checked rather than forgotten; a plan whose floor covers no students would bring it back.
-- **The import is all or nothing.** 500 rows short on capacity buy the shortfall in one
-  purchase, then the whole file lands. Partially created students are the failure mode this
-  is designed against, and the database enforces it in a single transaction.
+  below the floor's covered seats to open the form rather than a dialog asking for
+  nothing. It cannot happen, and now for a simpler reason: there is no dialog. Kept as a
+  record that the case was checked rather than forgotten.
+- **The import is all or nothing.** 500 rows land whole or not at all, in a single
+  transaction. Partially created students are the failure mode this is designed against, and
+  the database enforces it — unchanged by the money model, because it never was about money.
 
 ### 20.6 Organisation level and branch level are visibly different places
 
@@ -2821,8 +3620,9 @@ is how somebody reports a branch's profit as the organisation's. The level is st
 page's header bar, and the branch context persists visibly while they are inside it.
 
 Nothing here asks the owner to recalculate anything. A branch gaining a student changes the
-organisation's figures because the pool is one pool (§3.6) and the reporting is derived, not
-maintained by hand.
+organisation's figures because the head count is one head count (§3.6) — and, on a
+per-student tier, because that same student is on tomorrow's rate whichever building they
+sit in — and the reporting is derived, not maintained by hand.
 
 ### 20.7 House rules
 
@@ -2886,7 +3686,10 @@ door that chases it, whether the registers are in, who is drifting, and who owes
 when) beside four columns of *the centre* (the three counts, the places left, the month's
 profit, the branch comparison, and the two doors that tell families how the term went).
 That is §20.7's one primary action made structural: chasing money is in the wide column and
-everything quieter is beside it.
+everything quieter is beside it. The tile that says "places left" is the one of the four
+that does not survive §16.1's step 28 unchanged: on a per-student tier there is no ceiling
+to count down and what stands in its place is the balance with today's rate under it
+(§9.10). Same tile, same corner of the same rail, a different number in it.
 
 Three things worth recording, because they are decisions and not consequences:
 
@@ -3072,14 +3875,15 @@ Four decisions worth recording:
   *under* the table — five blocks of one or two sentences each, running the full 1,216px, one
   below the other — and they are two subjects: what the figures above mean (the legend, the
   dashed-column note, the payroll warning) and what §3.7 asks a head office to do about the
-  pool (the places left, which branches are growing, which ones are asking for more). Two
+  organisation's own figures (what is left of the balance and what a day costs, which branches
+  are growing, which ones are asking for more). Two
   columns from `lg`, and no `order-N` anywhere, because source order already is reading order.
 - **A count that fails is not a count of nobody, per branch and per column separately.** Both
   head queries run per building in the round that was already running for students, and each
   cell reads its own figure: a branch whose student count arrived and whose teacher count did
   not shows the students and a dash, never the number beside it. The foot's two figures are
-  the organisation's own unfiltered reads, because §17's pool is one allowance for the whole
-  organisation and the seats are counted the same way.
+  the organisation's own unfiltered reads, because §17 prices the whole organisation as one
+  and the seats are counted the same way.
 - **The branches screen was the one-column defect in its purest form**: a row 1,216px wide
   carrying a building's name and a head count, with the form for the next building below all
   six of them. The form is now the rail — 384px, which is what two fields and a price want —
@@ -3401,4 +4205,5 @@ truths start.
 | 2026-09-04 | **The pooled ceiling was being compared against one branch, and 20260811000076 is the missing half.** §3.6 is the rule this broke: a student place is a licence and licences pool across the organisation, so `session.ceiling` is one figure for the whole institution — while `20260811000053` made every `select` on `students` RESTRICTIVE by branch, so a count taken through a pinned manager's own client is one building's. Five sites paired them: the dashboard places line, the plan screen's usage table, the roster's warning, the add-student card, and both `limitRefusal` and `importStudents` inside `settings/actions.ts`. A manager of Mirpur with 40 of the organisation's 300 students read **260 of 300 places left** when there were five. **The fence never moved** — `app.guard_student_capacity()` counts past RLS under an advisory lock and raises `CD001`, and `test-rls.mjs` proves it — so nothing was over-admitted; what broke was the promise, worst on the bulk paste, where §10 refuses the whole list and three hundred typed lines are lost to a number the screen got wrong. **`public.center_student_count(uuid)` is a wrapper, not a new fence.** `app.active_students` was already the right count and already granted to `authenticated`, but `app` is not a schema PostgREST serves, so `src/` had never been able to ask; the counting function is untouched because three triggers depend on its volatility — row 200 of a 500-row import has to see rows 1..199. It is `security definer` with an empty search path, and because `scripts/check-scoping.mjs` names a definer function that trusts a centre id as the one hazard its parser cannot catch, the first thing the body does is ask `app.is_staff_admin` or `app.can_manage_students` about that id and raise `42501` otherwise. Standard SQLSTATE, not a `CD###`: `check-sql.mjs` requires every product code to be named in `src/lib`, and this is a refusal to read rather than one of the product's rules. Both revokes, and `check-embeds.mjs` now asks the live anon endpoint as well — 7/7 SHUT. **Where two scopes share a screen, the screen says so (§9.1).** The dashboard's student tile stays this building's on purpose, because `/hq` refuses a pinned manager and tells them their figures are on their dashboard, so the line beneath it reads "5 of 300 places left across the organisation" and carries the pool note. The roster drops the ceiling instead of pairing it — "40/300 students" is two true halves making a false claim in a subtitle with no room to explain itself — and names the branch, with the organisation's pressure in the rail. `?? 0` survives only where it hides a warning and never where it grants room: a failed count takes the paste box away and refuses both actions with `limitUnknown`, because one wrongly admitted row is one thing and eighty is another. **§20.9's branch-pinned manager now has a gate**, `tests/pinned-manager.test.ts`: it sweeps every `.ts`/`.tsx` under `src/app` for a places figure built from an unpooled count, holds the file list to exactly six so a seventh has to be justified, and asserts the qualifier wherever a branch count survives beside the pool. Negative-tested with a throwaway harness until all 25 mutations were caught, including a fabricated new screen. **A live check was also wrong about a real roster:** `test-rls-live.mjs` asserted no student anywhere is named *Nadia Islam*, which was a statement about a fixture when written and a statement about a paying customer's admission of 2026-09-03 by the time it went red — every policy it guarded was working. Probe names are baselined before the import now and every claim is a delta, and an unbaselined name throws rather than baselining itself mid-run. 12 new tests. Counts: 1,567 unit tests, 162 live RLS assertions, 76 migrations. |
 | 2026-09-04 | **The same owner came back to the two fixes above and was right about both.** The first was arithmetic dressed up as a design decision. The roster's desktop sheet shipped one button where the card shipped two, on the reasoning that the coloured name in the first cell was already the other one — and the answer to that is that reading a record and rewriting one are two errands, and a reader who has to deduce the second from a text colour has not been offered it. The 150px objection was real and the owner supplied the way past it: two squares carrying an eye and a pencil want 80px, so the sheet gates only `mayEdit` now, exactly as the card does, with no ternary swapping one control for the other. The actions column goes from 14% to 15% and the 1% comes off the class column; the name keeps its 24% and the guardian's number its 19%, which is the one width the sheet may never re-cut because `Guardian’s number` is its longest heading. Below `xl` the words stay, with the icon beside them — that is where the original report came from, where a thumb is doing the work, and where an icon next to its label is what teaches the bare icon on the sheet. **The first SVG in the product, so §20.7 now says when an icon is allowed** rather than leaving `decorative icons that label nothing` to be read as *no icons*: it must be the label, carry the word it replaced as both `aria-label` and `title` off the same dictionary key, be `aria-hidden` with no `<title>` inside the svg or a screen reader has two names for one control, appear only on a shape drawn where there is a pointer, and be repeated beside its word on the narrow shape. `components/icons.tsx` is two shapes sharing one `<svg>` wrapper — no icon package, and `currentColor` so the shape follows the button's hover instead of sitting one colour inside a box that moved. `rowView` and `rowEdit` also tighten from 12 characters to 10, because 22px per button that the label used to have now belongs to the icon. **The second was worse than a design mistake: the confirm screen for removing a teacher was making a claim that was frightening, irrelevant and, for some teachers, false.** It ended *"Their login is not deleted — they may use it at another centre"*, in the one place a reader is deciding whether to press a red button. Irrelevant, because `deleteTeacher` deletes the `center_members` row and RLS refuses the account thereafter — and the access had already ended one step earlier, since removal is only permitted on a teacher who is off and the off branch is what deletes that row. And false for a teacher with no phone number: `giveTeacherLogin` can only re-find an existing account by phone, so a username-only login is reachable from nowhere else at all. **The mechanism was right and is untouched (§38).** The auth account does survive deliberately — `profiles` is one row per human and not per appointment, so deleting it here would be this centre reaching across a tenant boundary to break somebody else's teacher — and that is a fact about our schema rather than a fact the owner needs, so it stays in `deleteTeacher`'s docblock and leaves the confirm screen. Both sentences now say the thing the owner needs instead: they cannot reach your centre either way, and that ended when you turned them off. Both languages, and the gate holds both — neither string may mention a login or another centre in either language, and both must name whose access ended, so the order sentence and the confirm sentence cannot drift into telling an owner the access ends at two different moments. Negative-tested with throwaway harnesses until all 22 roster mutations and all 6 copy mutations were caught. Counts: 1,568 unit tests, 162 live RLS assertions, 76 migrations. |
 | 2026-09-04 | **A staff login the centre minted was also a self-serve centre signup, and the teacher holding it had no way to sign out.** §5.5 records the whole of it. The mechanism is two features meeting: §5.1 issues a teacher a credential out of nothing but their name, with a password the manager chose and can still read off the roster, and switching that teacher off **deletes** their `center_members` row — so the ordinary end of a term, not a removal, leaves a working account with zero memberships, and `homePathForRole(null)` sends exactly that session to `/onboarding`. Nothing of the old centre was reachable: the membership was gone and RLS refused. What was reachable was `bootstrap_center`, which asked only whether the claimant already **owns** a centre. So every minted staff login could found its own, past §5.4's phone gate — that gate is on signup and this account was made by an admin call — with §4.3's 14-day Teacher Pro trial stamped on it, on a password somebody else knows. **The credential is refused, not the person:** a teacher who wants their own batches signs up with their own number and gets the form exactly as before, because refusing anyone who had ever been a member would have closed §2's Teacher Free tier against the very teacher §5.1 exists to accommodate. Three layers ask and only one is a fence — the screen does not draw the form, `createCenter` re-checks so the refusal arrives as a sentence under the field instead of a Postgres string, and `20260811000077` refuses inside the function, which is the one that counts because that RPC is `grant execute … to authenticated` and the anon key reaches it directly (§24). **Both signals, either one enough:** the login address, which is what actually signs the person in, `or` `profiles.username`, the copy migration 38's trigger writes and `app.guard_profile_identity` keeps a browser out of — so a disagreement between them refuses rather than admits. The domain literal is duplicated into SQL because Postgres has nowhere to import a constant from, and it is the username domain and not the shared `.invalid` suffix: `like '%.invalid'` would refuse every owner on the platform, which is why one of the five new pglite checks is a positive control that an ordinary phone signup still succeeds. **The other half is a button.** `/login` bounces a live session to `homePathFor`, which for a member-less account is this same page, so that reader could not reach a sign-out anywhere in the product; it is on both arms now, because one arm without it strands whichever reader gets that arm. The refusal arm is the first screen in `(auth)` to read `dict(session.locale)` — a signup has expressed no preference and gets Bangla, but this person has a profile with a locale in it — and it says what is actually missing rather than "try another centre", the sentence the teacher-removal thread deliberately stopped telling. 6 source-reading tests over the screen, the action and the comment-stripped migration, negative-tested until 25 of 25 mutations were caught, plus 5 checks against real Postgres proving each arm of the guard fires alone and the one-centre-per-owner rule still runs behind it, at 4 of 4. Counts: 1,423 pglite RLS checks, 1,574 unit tests, 162 live RLS assertions, 77 migrations. |
-| 2026-09-05 | **The read-only rollout, and the owner solved the billing hectic-ness better than the spec did.** §4.4's standing question moved from a hidden button to a whole arm on eighteen screens, above every read the arm would otherwise pay for: three of them keep a page bar and a note and nothing else, and two are mixed — /notices keeps the log of what the centre already told whom, and /settings/center keeps the centre's name and the wallet a parent sends fees to, because those are the two facts a lapsed owner reads out over the phone. §§11.6–11.8 are new and they came out of the owner's own reading of the product: a prepaid account balance replaces §9's pay-per-student mechanism, never expiring, non-refundable, and paying the monthly subscription too, so a centre with credit never reaches the read-only state at all. The balance is a ledger with an advisory lock and an immutability trigger rather than a column, and it is deliberately not the fence — capacity is. §11.8 separates the seat recycling the owner asked about, which is the deal being sold and only corrupts their own books, from the billing-date gaming next door to it, which is real and is answered by charging on the peak active count over the period rather than the instant reading. |
+| 2026-09-05 | **The read-only rollout, and the owner solved the billing hectic-ness better than the spec did.** §4.4's standing question moved from a hidden button to a whole arm on eighteen screens, above every read the arm would otherwise pay for: three of them keep a page bar and a note and nothing else, and two are mixed — /notices keeps the log of what the centre already told whom, and /settings/center keeps the centre's name and the wallet a parent sends fees to, because those are the two facts a lapsed owner reads out over the phone. §§11.6–11.8 are new and they came out of the owner's own reading of the product: a prepaid account balance replaces §9's pay-per-student mechanism, never expiring, non-refundable, and paying the monthly subscription too, so a centre with credit never reaches the read-only state at all. The balance is a ledger with an advisory lock and an immutability trigger rather than a column, and it is deliberately not the fence — capacity is. §11.8 separates the seat recycling the owner asked about, which is the deal being sold and only corrupts their own books, from the billing-date gaming next door to it, which is real and is answered by charging on the peak active count over the period rather than the instant reading. *(Three sentences of this row are superseded four days later by the row below: the balance **is** the fence, the ledger is poisha and not whole taka, the peak-active-count rule is retired, and "never reaches the read-only state at all" describes a centre with credit — a centre without it reaches read-only on an ordinary Tuesday.)* |
+| 2026-09-05 | **One prepaid balance, burned by the day — the money model is now a single mechanism, and this revision is the document catching up with that decision.** The owner asked for one solution rather than a set of them, twice, and was right that there were two: §5 priced a subscription with marginal bands while §9 sold student places as a separate contextual purchase, so the product had a monthly bill *and* a thing to buy, and the plan screen read as confusing because it was describing both. The model is now one sentence — **money in → taka in the balance → each day takes its own cost off → when the balance cannot cover the next day, saving stops until they top up** — with size changing the daily rate and nothing else. §11.6 holds it and every other section defers to it. **What went, and each of them was load-bearing somewhere:** purchased student capacity and its whole vocabulary of places (`student_capacity`, `quoteSeats`, `capacityBands`, `nextSeatCostBdt`, `ASK_PLACES`, `capacityPressure`), the contextual seat purchase inside Add Student, the bulk-import payment step, the branch places request, coverage periods as the gate, `GRACE_DAYS` and grace in any form, monthly invoices and due dates and dunning, the peak-active-count billing rule, the whole-taka ledger, mid-term downgrade credit arithmetic, `status='trial'` as access-granting, a self-serve grace button, a self-serve holiday pause, and name-locking — fourteen retirements listed in §18 with the code each one names. Three of the four purchase kinds go with them: a seat, a branch and a place were each a door that could refuse, and they are now rate changes the balance carries, which leaves §11.2's payment intent with exactly one kind and makes a recharge claim one of those intents rather than a second table. **What arrived:** poisha and integer arithmetic, because ৳2,600 ÷ 30 is neither a whole taka nor a whole poisha and `floor(monthly × 100 / 30)` is the only rounding that does not make a year dearer than twelve months; `app.settle_billing`, which charges whole past days at today's rate under a per-centre advisory lock and **tops today up if the roster grows**, so a day costs its own high-water rate with no high-water mark stored anywhere to drift; access as a comparison (`balance < owed`) so a centre lapses on the right day with no job run and no row written, exactly as a trial expires; two founder levers, a money adjustment and granted days, each needing a written reason and each audited, which is the answer to a Ramadan closure, a 200-row mis-paste and a founder who was asleep; and a discount ladder that is a bonus on the credit rather than a discounted rate, 0/5/10/20% at one/three/six/twelve months, so nothing has to remember which taka was bought at which price. **The one genuine gaming surface daily billing has is the midnight empty roster**, and it is closed by charging from the size at the first write of the day rather than at a fixed hour: to be charged the floor you must be empty when work starts, and an empty roster cannot take attendance, collect a fee or record a mark. **The cost of retiring capacity is stated rather than hidden:** a mis-paste is now an unbounded rate instead of a refusal, answered by §20.5's informed consent at the door and repaired by a founder grant. §16.1 is the order it lands in, and the rule behind that order is that every intermediate state must be safe — the ledger, the burn, the rate and the access derivation are additive, so until capacity is removed last the stricter fence is still standing. | 2026-09-05 | **A register written with dashes was welding the father's name onto the child's, and the accounting half of the prepaid model is now written down rather than assumed.** The defect first, because it is the one that was losing data: `COLUMN` in `lib/bd/roster.ts` was `/[,;\t|]/`, so `Rahim Ahmed - Abdul Karim - 01712345678` — which is how half the registers in this country are written — parsed as **one** field. The line imported cleanly: a student called "Rahim Ahmed - Abdul Karim", no guardian, the right phone number, no problem reported. On every row of the paste, into the one field §7.1 fixes at creation and never lets an owner edit. A dash is a column now only with **space on both sides**, which is not fussiness but the whole of the distinction: `Abdul-Karim Chowdhury` and `আব্দুল-করিম চৌধুরী` are one name and must stay one, so a dash between two letters is not a separator — the same rule a human reader applies. All three dashes, because a phone keyboard hands you whichever it likes: hyphen-minus off an English layout, en dash off a Bangla one, em dash out of Word. That is the same alphabet `isPhoneSeparator` already accepts *inside* a number, applied to the gap *between* fields. Six new test blocks: the four dash forms and a serial-prefixed one all yielding name, guardian and `+8801712345678`; the Bangla forms and a number typed `017 ১২৩৪ 5678`; both compound names surviving intact; a dash line with no guardian being a student and not a problem; and — the one that matters most — the five verdicts unchanged, since a separator changing must not change what the parser refuses. **Then §§11.10–11.14 and §14.1, which are the questions the money model raised and did not answer.** §11.10: prices have versions, `price_versions` is seeded by migration and select-only with no app write path, and the four numbers live in SQL *and* in `plans.ts` the way `plan_allowances` already does it — a test that regexes the seed statement out of the `.sql` file and compares it, because a third copy would pass while both of the others drifted. A settled day is never repriced, existing credit buys days at the new rate, and a quote is honoured while its intent lives. §11.11: the bonus is a **promotion**, a row with a code, a window and tiers in basis points, not a formula in a branch — and a recharge writes **two** ledger entries, the cash and the bonus, because ৳7,800 is revenue and ৳390 is not, and one merged ৳8,190 makes every revenue figure in the product a lie. The browser never says what the bonus is. §11.12: one counting function, the same one the capacity trigger reads, and a twelve-row table saying what each lifecycle event does to the count — a merge drops it and is **not** backdated, a branch archive drops it, a 200-row import raises it at once with §20.5's consent as the fence — plus the high-water rule with its three properties, and the flat refusal that if the count cannot be read then nothing is charged. §11.13: `settlement_runs`, four statuses, and `insufficient_balance` named explicitly as **the product working** rather than an incident, since it will be the most frequent row in the table; `usage_unavailable` is the only one that needs a human. Three reconciliation queries on the founder panel — the column against the sum, the `before + amount = after` chain in `created_at` order, and gaps in charged days — and a manual retry that is a new attempt through the same idempotent function with a written reason, never a second calculation. What must never be logged is named: no student name, no guardian number, no transaction id, no balance. §11.14: the fifteen-row old→new matrix, which is the only way step 24 is safe — preserve `payments.amount_bdt`, stop writing `covers_period_*`, archive `paid_through`, replace **both** of its derivations with one ledger trigger, delete `coverageLapsed` and `GRACE_DAYS` with their tests in that same commit, migrate `status='trial'` into granted days, and back-fill `charged_through = greatest(coalesce(paid_through, today), today)` with a zero `migration_opening_balance` per centre so every centre has a first ledger row and none has a balance that came from nowhere. Verified on a restore into a throwaway Supabase project, never on a local copy of production data. §14.1: seven legal pages led by **Prepaid Billing Terms**, `policy_acceptances` with a version per acceptance, both languages with Bangla the one that matters, and no compliance claim we have not been audited against. §16.1 gains four steps for all of it, and 25a — the legal pages — is pinned to the same week as step 25 rather than left to follow it, because the first taka must not arrive against nothing written. §15 also records two things this document had assumed about the code and that are false: the search boxes make no requests to debounce (a no-JavaScript GET form and an in-memory filter, and a client-side search would cost the URL state, the back button and the offline shell), and the paged reads already refuse rather than truncate. Counts: 1,423 pglite RLS checks, **1,599 unit tests**, 162 live RLS assertions, 77 migrations. Suite green. Next is step 21, the ledger. |
