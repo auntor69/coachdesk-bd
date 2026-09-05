@@ -65,6 +65,71 @@ test('a class or section column is not filed as the guardian', () => {
   assert.equal(row.guardianName, null)
 })
 
+test('a register written with dashes splits into columns like one written with commas', () => {
+  // The bug this fixes: `COLUMN` was /[,;\t|]/, so a dash-separated register was
+  // read as ONE field. The father's name arrived welded onto the child's — on
+  // every row of the paste — into a column §7.1 makes unfixable after creation.
+  for (const line of [
+    'Rahim Ahmed - Abdul Karim - 01712345678',
+    'Rahim Ahmed – Abdul Karim – 01712345678', // en dash, off a Bangla keyboard
+    'Rahim Ahmed — Abdul Karim — 01712345678', // em dash, out of Word
+    'Rahim Ahmed  -  Abdul Karim  -  01712345678', // sloppy spacing
+    '7। Rahim Ahmed - Abdul Karim - 01712345678', // and behind a serial
+  ]) {
+    const row = one(line)
+    assert.equal(row.problem, null, `problem on: ${line}`)
+    assert.equal(row.name, 'Rahim Ahmed', `name from: ${line}`)
+    assert.equal(row.guardianName, 'Abdul Karim', `guardian from: ${line}`)
+    assert.equal(row.phone, '+8801712345678', `phone from: ${line}`)
+  }
+})
+
+test('the dash forms work in Bangla too, and mixed numerals do not change the split', () => {
+  const row = one('রাফিদ হাসান - করিম মিয়া - ০১৭১২৩৪৫৬৭৮')
+  assert.equal(row.name, 'রাফিদ হাসান')
+  assert.equal(row.guardianName, 'করিম মিয়া')
+  assert.equal(row.phone, '+8801712345678')
+
+  // Bangla name, ASCII number, and the other way round: one line, two scripts.
+  const mixed = one('সাদিয়া আক্তার - Abdul Karim - 017 ১২৩৪ 5678')
+  assert.equal(mixed.name, 'সাদিয়া আক্তার')
+  assert.equal(mixed.guardianName, 'Abdul Karim')
+  assert.equal(mixed.phone, '+8801712345678')
+})
+
+test('a hyphen inside a name is part of the name, not a column rule', () => {
+  // The reason `COLUMN` insists on space either side. Compound names are ordinary
+  // here, and splitting one would file half a child as their own guardian.
+  const row = one('Abdul-Karim Chowdhury, Mohammad-Ali Chowdhury, 01712345678')
+  assert.equal(row.name, 'Abdul-Karim Chowdhury')
+  assert.equal(row.guardianName, 'Mohammad-Ali Chowdhury')
+
+  const bangla = one('আব্দুল-করিম চৌধুরী 01712345678')
+  assert.equal(bangla.name, 'আব্দুল-করিম চৌধুরী')
+  assert.equal(bangla.guardianName, null)
+})
+
+test('a dash-separated line with no guardian is a student, not a problem', () => {
+  const row = one('রাফিদ হাসান - 01712345678')
+  assert.equal(row.problem, null)
+  assert.equal(row.name, 'রাফিদ হাসান')
+  assert.equal(row.guardianName, null)
+})
+
+test('a dash register still refuses what a comma register refuses', () => {
+  // The separator changing must not change any of the five verdicts.
+  assert.equal(one('Rahim Ahmed - Abdul Karim').problem, 'no-phone')
+  assert.equal(one('Rahim Ahmed - Abdul Karim - 0212345678').problem, 'bad-phone')
+  assert.equal(one('Rahim Ahmed - ক্লাস ১০ - 01712345678').guardianName, null)
+  assert.equal(one('   Rahim Ahmed   -   Abdul Karim   -   01712345678   ').name, 'Rahim Ahmed')
+
+  const rows = parseRoster(
+    'Rahim Ahmed - Abdul Karim - 01712345678\n\n   \nRahim Ahmed - Abdul Karim - 01712345678',
+  )
+  assert.deepEqual(rows.map((r) => r.line), [1, 4])
+  assert.equal(rows[1].problem, 'duplicate')
+})
+
 test('a second mobile is taken out of the name and reported', () => {
   const row = one('রাফিদ হাসান 01712345678 01812345678')
   assert.equal(row.phone, '+8801712345678')

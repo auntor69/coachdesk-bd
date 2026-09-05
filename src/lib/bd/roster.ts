@@ -13,10 +13,14 @@
  *   ১২। রাফিদ হাসান — ০১৭১২৩৪৫৬৭৮
  *   01712345678  রাফিদ হাসান
  *   রাফিদ হাসান, করিম মিয়া, +880 1712-345678
+ *   রাফিদ হাসান - করিম মিয়া - 01712345678
  *
  * The rule is: find the mobile number anywhere in the line, take it out, and
  * whatever is left is the name. Column order therefore does not matter, which
- * matters because every register has a different one.
+ * matters because every register has a different one. What separates the columns
+ * does not matter either — a comma, a semicolon, a tab, a pipe, or a spaced dash
+ * (see `COLUMN`), because a register written with dashes is as common as one
+ * written with commas and neither owner thinks of it as a format.
  *
  * What it will NOT guess is a student code. A register's serial number is a
  * position in a notebook, not an identity — it changes the moment somebody
@@ -150,7 +154,29 @@ function stripSerial(remainder: string): string {
 /** Column punctuation, and the gap left behind where a phone number was. */
 const EDGE_JUNK = /^[\s,;:|\/\-–—.]+|[\s,;:|\/\-–—.]+$/g
 
-const COLUMN = /[,;\t|]/
+/**
+ * What separates one column from the next.
+ *
+ * A DASH WITH SPACE ON BOTH SIDES IS A COLUMN, and that is the whole of the second
+ * half of this pattern. Half the registers in the country are written with dashes
+ * rather than commas — `Rahim Ahmed - Abdul Karim - 01712345678` — and without this
+ * the line arrives as one student called "Rahim Ahmed - Abdul Karim" with no
+ * guardian: the father's name silently welded onto the child's, on every row of the
+ * paste, in a field the owner can no longer edit once the students exist (§7.1 fixes
+ * names at creation).
+ *
+ * SPACE ON BOTH SIDES, AND THAT IS NOT FUSSINESS. `Abdul-Karim` and `আব্দুল-করিম`
+ * are one name and must stay one name, so a dash between two letters is not a
+ * separator. Requiring the spaces is what tells a compound surname from a column
+ * rule — the same distinction a human reader makes and for the same reason.
+ *
+ * Three dash characters because a phone keyboard gives you whichever it feels like:
+ * hyphen-minus from an English layout, en dash from a Bangla one, em dash from
+ * anything that has been through Word. The phone finder already treats all three as
+ * separators *inside* a number (`isPhoneSeparator`), and this is the same alphabet
+ * applied to the gap *between* fields.
+ */
+const COLUMN = /[,;\t|]|\s+[-–—]\s+/
 
 function cleanNamePart(part: string): string {
   return part
