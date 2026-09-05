@@ -1,5 +1,6 @@
 import { Card } from '@/components/ui'
 import { PageHeader } from '@/components/page-header'
+import { ReadOnlyNote } from '@/components/read-only-note'
 import { pageRole, getSession } from '@/lib/auth/session'
 import { createClient } from '@/lib/supabase/server'
 import { dict, localName, DEFAULT_LOCALE } from '@/lib/i18n'
@@ -96,6 +97,14 @@ export default async function ExamTypesPage() {
     }
   }
 
+  /*
+   * §4.4, and the subject screen's shape for the subject screen's reason: the list of
+   * kinds is a read — it is the vocabulary every past exam and every SMS a guardian has
+   * already had was written in — and the three repairs behind each row plus the add box
+   * are the writes. So the names stay and the way in goes.
+   */
+  const mayWrite = session.access === 'full'
+
   return (
     <div className="flex flex-col gap-5">
       <PageHeader
@@ -126,6 +135,7 @@ export default async function ExamTypesPage() {
                   // kind that leaves the picker takes nothing with it.
                   offBlockedReason={null}
                   onBlockedReason={null}
+                  readOnly={!mayWrite}
                   rename={renameExamType}
                   setActive={setExamTypeActive}
                   remove={deleteExamType}
@@ -142,16 +152,21 @@ export default async function ExamTypesPage() {
 
         {/* The rail, sticky past a long list and last on a phone, for the reasons the
             subject screen's own carries. No cap card to swap for: a centre may name as
-            many kinds of exam as it holds. `top-16` is the sticky page bar plus 8px —
-            see components/page-header.tsx. */}
+            many kinds of exam as it holds. The one swap is §4.4's, and there is nothing
+            to weigh it against here for that same reason. `top-16` is the sticky page
+            bar plus 8px — see components/page-header.tsx. */}
         <div className="xl:sticky xl:top-16 xl:col-span-5">
-          <QuickAdd
-            action={createExamType}
-            common={d.common}
-            label={t.nameLabel}
-            placeholder="Weekly Test"
-            placeholderBn="সাপ্তাহিক পরীক্ষা"
-          />
+          {mayWrite ? (
+            <QuickAdd
+              action={createExamType}
+              common={d.common}
+              label={t.nameLabel}
+              placeholder="Weekly Test"
+              placeholderBn="সাপ্তাহিক পরীক্ষা"
+            />
+          ) : (
+            <ReadOnlyNote t={d.readOnly} className="max-w-2xl" />
+          )}
         </div>
       </div>
     </div>

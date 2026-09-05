@@ -312,11 +312,9 @@ const PENDING: string[] = [
   'src/app/(app)/fees/scholarships/page.tsx',
   'src/app/(app)/progress/page.tsx',
   'src/app/(app)/settings/branches/page.tsx',
-  'src/app/(app)/settings/exam-types/page.tsx',
   'src/app/(app)/settings/managers/page.tsx',
   'src/app/(app)/settings/sms/page.tsx',
   'src/app/(app)/settings/staff/page.tsx',
-  'src/app/(app)/settings/subjects/page.tsx',
   'src/app/(app)/settings/teachers/page.tsx',
   'src/app/(app)/teach/[batchId]/page.tsx',
 ]

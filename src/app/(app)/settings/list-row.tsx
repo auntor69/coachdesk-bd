@@ -14,6 +14,9 @@
  * The three refusals arrive as finished sentences from the server, computed by the
  * same `lib/settings/retire.ts` the actions call. So a button is never offered that
  * the action will decline; where one would be, the reason stands in its place.
+ *
+ * `readOnly` is the one refusal that takes the way in away instead of answering it,
+ * because it applies to all three panels at once. See its own note below.
  */
 import { useActionState, useState } from 'react'
 
@@ -36,6 +39,7 @@ export function SettingsListRow({
   blockedReason,
   offBlockedReason,
   onBlockedReason,
+  readOnly,
   rename,
   setActive,
   remove,
@@ -71,6 +75,13 @@ export function SettingsListRow({
   offBlockedReason: string | null
   /** Why turning it back on will be refused — the plan is full — or null. */
   onBlockedReason: string | null
+  /**
+   * The fourth refusal, and the only one that is not about this row: §4.4's lapsed
+   * centre, where every one of the three panels below would be declined by
+   * `requireWritable`. Not a reason string like the others, because there is nothing
+   * row-shaped to say — the way in goes instead, and the screen says why once.
+   */
+  readOnly: boolean
   rename: Action
   setActive: Action
   remove: Action
@@ -124,15 +135,23 @@ export function SettingsListRow({
           {/* A plain underlined word and not a button, for the reason CancelBill
               gives: the wide buttons in this app do the thing the screen is for,
               and the way into a panel that can destroy a row must not look like
-              one at arm's length. */}
-          <button
-            type="button"
-            onClick={() => setOpen(!open)}
-            className="inline-flex min-h-tap items-center text-sm font-medium
-              text-brand-700"
-          >
-            {open ? common.cancel : common.edit}
-          </button>
+              one at arm's length.
+
+              And gone entirely at a lapsed centre, rather than opening on three
+              refusals. Everything behind this word writes, so there is nothing to
+              show a reader who cannot save; the screen has already said so once,
+              where the add form was. This is also the whole of the fence in this
+              file — `open` has no other setter, so the panel below cannot draw. */}
+          {!readOnly && (
+            <button
+              type="button"
+              onClick={() => setOpen(!open)}
+              className="inline-flex min-h-tap items-center text-sm font-medium
+                text-brand-700"
+            >
+              {open ? common.cancel : common.edit}
+            </button>
+          )}
         </div>
       </div>
 

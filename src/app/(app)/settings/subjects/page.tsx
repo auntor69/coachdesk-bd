@@ -1,5 +1,6 @@
 import { Card } from '@/components/ui'
 import { PageHeader } from '@/components/page-header'
+import { ReadOnlyNote } from '@/components/read-only-note'
 import { pageRole, getSession } from '@/lib/auth/session'
 import { createClient } from '@/lib/supabase/server'
 import { dict, localName, DEFAULT_LOCALE } from '@/lib/i18n'
@@ -145,6 +146,16 @@ export default async function SubjectsPage() {
   // does not say.
   const onReason = atCap ? capSentence : null
 
+  /*
+   * §4.4, and a const rather than an arm because half this screen is a read: the list
+   * of subject names is what a centre's timetable is built from, and an owner ringing
+   * about the bill is as likely to be asked "do you teach chemistry" as anything else.
+   * So every name, every batch count and every off chip stays, and the four writes
+   * behind them go — `createSubject` from the rail, and the rename, off/on and remove
+   * inside each row's panel.
+   */
+  const mayWrite = session.access === 'full'
+
   return (
     <div className="flex flex-col gap-5">
       <PageHeader
@@ -177,6 +188,7 @@ export default async function SubjectsPage() {
                   blockedReason={removeReason(use)}
                   offBlockedReason={offReason(use)}
                   onBlockedReason={onReason}
+                  readOnly={!mayWrite}
                   rename={renameSubject}
                   setActive={setSubjectActive}
                   remove={deleteSubject}
@@ -200,7 +212,16 @@ export default async function SubjectsPage() {
             left of the grid, 386px wide — which is a form, not an empty column with a
             form parked off to one side of it. */}
         <div className="xl:sticky xl:top-16 xl:col-span-5">
-          {atCap ? (
+          {!mayWrite ? (
+            /* Before the cap card and not after it, which is the same call
+               `read-only.test.ts` makes for the two upsell screens: a centre whose
+               subscription has stopped is not short of subject places, and telling it
+               the plan is full points at a purchase that would buy capacity nobody can
+               use until the bill is settled. It stays in the rail and stays sticky,
+               because the question it answers — where did the Edit words go — is asked
+               at the bottom of a long list as much as at the top. */
+            <ReadOnlyNote t={d.readOnly} className="max-w-2xl" />
+          ) : atCap ? (
             <Card>
               <p className="font-medium text-ink">{t.capTitle}</p>
               <p className="mt-1 text-sm text-ink-soft">{capSentence}</p>

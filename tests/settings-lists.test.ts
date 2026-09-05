@@ -215,8 +215,9 @@ test('the subject cap, its two verdicts and its quota line are unchanged', () =>
   assert.ok(SUBJECTS.includes('{quota === null ? t.count(activeCount) : t.used(activeCount, quota)}'))
 
   // The cap card takes the rail's place rather than sitting under the list, and the
-  // form is gone while it is there.
-  assert.ok(SUBJECTS.includes('{atCap ? ('))
+  // form is gone while it is there. Second in the chain now, behind §4.4 — see the
+  // read-only test below for why the bill is the ask that comes first.
+  assert.ok(SUBJECTS.includes(') : atCap ? ('))
   assert.ok(SUBJECTS.includes('{t.capTitle}'))
 
   for (const verdict of ['subjectDeleteVerdict(use)', 'subjectOffVerdict(use)']) {
@@ -237,4 +238,57 @@ test('exam kinds still have no cap and refuse only the removal', () => {
   assert.ok(KINDS.includes('onBlockedReason={null}'))
   assert.ok(KINDS.includes(".order('sort_order', { ascending: true })"))
   assert.doesNotMatch(KINDS, /atCap|capIsQuota|maxSubjects/)
+})
+
+/* -------------------------------------------------------------------------- */
+/* §4.4: a centre that cannot save keeps both lists                           */
+/* -------------------------------------------------------------------------- */
+
+test('both screens keep every name and lose every way to change one', () => {
+  /*
+   * The mixed shape, not an arm: half of each screen is a read. The subject list is what
+   * a centre's timetable is built from and the kind list is the vocabulary every past
+   * exam and every SMS a guardian has already had was written in, so an owner ringing
+   * about the balance still needs to read both. What goes is the four writes behind them.
+   *
+   * Which is why neither file is in read-only.test.ts's `ARMED`, and why the ordering
+   * rule that walks it does not reach here — the assertions below stand in for it.
+   */
+  for (const [name, page] of PAGES) {
+    assert.ok(page.includes("const mayWrite = session.access === 'full'"), name)
+    assert.ok(page.includes('readOnly={!mayWrite}'), `${name}: and the rows are told`)
+    assert.ok(page.includes('<ReadOnlyNote t={d.readOnly} className="max-w-2xl" />'), name)
+
+    // The list is not gated on it. Three uses exactly: the declaration, the row prop,
+    // and the rail's swap — a fourth would most likely be a name being hidden.
+    assert.equal(count(page, 'mayWrite'), 3, `${name}: the names are not behind it`)
+
+    // No early return, so no second bar and no lost crumb: still two PageHeaders, the
+    // list still draws, and the failed read is still asked about first.
+    assert.doesNotMatch(page, /if \(session\.access !== 'full'\) \{/, name)
+    assert.ok(
+      page.indexOf('{d.settings.listUnreadable}') < page.indexOf('const mayWrite'),
+      `${name}: a list that did not load is answered before the balance is`,
+    )
+    assert.ok(page.indexOf('await Promise.all') < page.indexOf('const mayWrite'), name)
+  }
+
+  // Ahead of the cap card, which is the call read-only.test.ts makes for the two upsell
+  // screens: a centre whose credit ran out is not short of subject places, and offering
+  // a bigger plan points at a purchase that buys capacity nobody can use yet.
+  assert.ok(SUBJECTS.indexOf('<ReadOnlyNote') < SUBJECTS.indexOf(') : atCap ? ('))
+})
+
+test('the row hides the way in rather than opening on three refusals', () => {
+  // Everything behind the word writes, so there is nothing to show a reader who cannot
+  // save. `open` has no other setter, which is what makes this the whole fence — so the
+  // count is of `setOpen` and not of the one handler: a setter added anywhere else in
+  // the file, or on the same button under a second event, would open the panel for a
+  // reader the guard was meant to have stopped.
+  assert.ok(ROW.includes('{!readOnly && ('))
+  assert.ok(ROW.includes('readOnly: boolean'), 'required, so a third caller must decide')
+  assert.equal(count(ROW, 'setOpen'), 2, 'the declaration and one handler')
+
+  // The three row-shaped refusals are untouched: this one is not a reason string.
+  assert.doesNotMatch(ROW, /readOnlyReason|\{readOnly\}/)
 })
