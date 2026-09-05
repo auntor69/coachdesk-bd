@@ -1919,6 +1919,105 @@ what is missing is not the row but the arithmetic — nothing works out what a c
 unused coverage is worth, and a number nobody can check is not a refund an owner should be
 able to ask for themselves (§9.2).
 
+### 11.6 The account balance 🚧
+
+**Decided 2026-09-05, and it replaces the mechanism in §9's contextual purchase while
+keeping its principle.** A centre recharges its account; every charge the platform
+raises is deducted from that balance. One payment covers many purchases.
+
+The reason is operational before it is UX. §11.3's manual provider means **a human
+being — the founder — verifies every single bKash transfer.** A centre buying thirty
+student places one at a time is thirty verifications; one ৳750 recharge is one. The
+customer's complaint ("paying again and again is hectic") and the founder's bottleneck
+are the same problem, and the balance is the same fix for both.
+
+It is also the metaphor every Bangladeshi phone user already holds. Recharge needs no
+explaining, and `রিচার্জ` is the word.
+
+**The rules, as decided:**
+
+| Question | Answer |
+|---|---|
+| Does credit expire? | **Never.** |
+| Is credit refundable? | **No** — stated on the recharge screen, before the tap. |
+| Does it pay the monthly subscription? | **Yes.** A centre with credit never lapses. |
+| Does it change the ৳1,999 floor or the bands? | **No.** §5 pricing is unchanged. |
+
+That third answer is the one with reach. Coverage today ends on a date, and §4.4's
+read-only state is what a centre falls into when that date passes. Auto-deduction from a
+standing balance means most centres never reach it. The read-only work stays — a centre
+whose balance is empty is exactly the case it exists for — but it stops being the common
+path, which is the right shape for it to have.
+
+Non-refundable is not a trick: it is the only honest answer while the provider is a
+human with a personal bKash app, because a refund would be a manual outbound transfer
+with no reconciliation behind it. It has to be said plainly at the moment of payment,
+in both languages, or it is a trick.
+
+### 11.7 The balance is a ledger, and the fences on it
+
+**A balance is money, so it is a list of entries and never a column.** The stored
+number would be one bug away from wrong, and wrong in the direction of free product.
+`balance = sum(entries)`, the entries are append-only, and this is the discipline
+`fee_payments` has carried since `20260811000017` — a reuse, not an invention.
+
+Each entry: the centre, a **signed integer** amount in whole taka, a kind
+(`recharge` | `place` | `subscription` | `adjustment`), what it paid for, an
+idempotency key, who made it, when. Integers only, no floats, ever.
+
+The threats, and the fence for each:
+
+| Attack | Fence |
+|---|---|
+| Browser writes itself credit | **Only service_role inserts a `recharge`.** A customer submits a *claim* — "I sent ৳500, trxID `ABC123`" — into a review queue. The founder approves. Credit exists only after that. |
+| Same bKash transfer claimed twice, or fifty times | Unique index on the provider transaction id, **globally and not per centre**. One transfer, one credit, ever. The duplicate path reads back the original answer (§11.2). |
+| A debit edited or deleted to win capacity back | Immutability trigger, same shape as `app.guard_payment_immutable`: no UPDATE of an amount, no DELETE, for any role that is not service_role. |
+| Client supplies the amount | It never does. The server prices it (§11.4), and a check constraint pins the sign each kind may carry. |
+| Two "add student" requests race a ৳25 balance to −৳25 | The check and the debit are **one statement under a per-centre advisory lock**, the pattern `app.assign_receipt_no()` already uses. A balance that cannot go below zero is a database invariant, not a UI check. |
+| Centre A spends centre B's balance | `coaching_center_id` scoping, composite foreign key, RLS — as everywhere else. |
+| Someone approves their own recharge claim | Platform-admin only, and the approver may not be the claimant. Both are written to the audit log (§10). |
+| The monthly deduction runs twice | Idempotent on (centre, month). A double cron delivery settles once. |
+
+**And the balance is not the gate.** Credit buys capacity; the capacity trigger from
+`20260811000036` is what refuses the 101st student. Two layers on purpose: if the
+balance were itself the fence, a balance bug would become a limits bug, and §2's rule —
+*"All restrictions MUST be genuinely enforced server-side"* — would rest on arithmetic
+instead of on a constraint.
+
+### 11.8 Two ways a clever owner gets product for free, and only one is real 🚧
+
+**Raised by the owner, 2026-09-05.** The question was whether a centre losing one
+student and gaining another would rename the existing record rather than pay for a
+seat, and it opens onto a real hole next door.
+
+**Recycling a seat is not the hole, because it is the deal.** Capacity is
+*concurrent*, not a lifetime allowance — the same thing every seat-priced product in
+the world sells. A student who leaves is marked with an exit status, the capacity
+trigger stops counting them (`status = 'active'` and nothing else), and the seat is
+free for the next child at no charge. A centre with 100 places may teach five hundred
+children over four years. That is what they bought.
+
+So the rename gains them nothing on price. What it costs them is their own books: the
+new child inherits the old one's invoices, receipts, dues, attendance and marks. A
+family who paid nothing appears settled; a receipt issued to one household now reads
+under another's name. **The guard is therefore guidance, not a refusal** — and it must
+not be a refusal, because owners correct spellings of names constantly and blocking a
+typo fix to prevent a non-exploit is worse than the non-exploit.
+
+The signal is narrow: **name and guardian phone both changed at once, on a student who
+has fee history.** That is not a correction, that is a different family. The save asks
+once — *"This looks like a new student. Rafid's ৳4,500 in dues and 3 receipts would
+move to Anika. Retire Rafid and admit Anika instead?"* — with the honest path as the
+first button, and it is written to the audit log whichever button is pressed.
+
+**The real hole is the billing date.** The moment a bill is computed from *active
+students right now*, a centre can retire two hundred students the night before,
+be billed for none, and re-admit them the morning after. Six lines of work for a free
+month. So the monthly charge is computed from the **peak active count over the billing
+period**, not the instant reading, and the count is recorded on the bill so the owner
+can see the figure they were charged for. A centre whose roster genuinely shrank pays
+less next month, which is correct; one that shrank for a night pays for the night.
+
 ---
 
 ## 12. The security model
@@ -3302,3 +3401,4 @@ truths start.
 | 2026-09-04 | **The pooled ceiling was being compared against one branch, and 20260811000076 is the missing half.** §3.6 is the rule this broke: a student place is a licence and licences pool across the organisation, so `session.ceiling` is one figure for the whole institution — while `20260811000053` made every `select` on `students` RESTRICTIVE by branch, so a count taken through a pinned manager's own client is one building's. Five sites paired them: the dashboard places line, the plan screen's usage table, the roster's warning, the add-student card, and both `limitRefusal` and `importStudents` inside `settings/actions.ts`. A manager of Mirpur with 40 of the organisation's 300 students read **260 of 300 places left** when there were five. **The fence never moved** — `app.guard_student_capacity()` counts past RLS under an advisory lock and raises `CD001`, and `test-rls.mjs` proves it — so nothing was over-admitted; what broke was the promise, worst on the bulk paste, where §10 refuses the whole list and three hundred typed lines are lost to a number the screen got wrong. **`public.center_student_count(uuid)` is a wrapper, not a new fence.** `app.active_students` was already the right count and already granted to `authenticated`, but `app` is not a schema PostgREST serves, so `src/` had never been able to ask; the counting function is untouched because three triggers depend on its volatility — row 200 of a 500-row import has to see rows 1..199. It is `security definer` with an empty search path, and because `scripts/check-scoping.mjs` names a definer function that trusts a centre id as the one hazard its parser cannot catch, the first thing the body does is ask `app.is_staff_admin` or `app.can_manage_students` about that id and raise `42501` otherwise. Standard SQLSTATE, not a `CD###`: `check-sql.mjs` requires every product code to be named in `src/lib`, and this is a refusal to read rather than one of the product's rules. Both revokes, and `check-embeds.mjs` now asks the live anon endpoint as well — 7/7 SHUT. **Where two scopes share a screen, the screen says so (§9.1).** The dashboard's student tile stays this building's on purpose, because `/hq` refuses a pinned manager and tells them their figures are on their dashboard, so the line beneath it reads "5 of 300 places left across the organisation" and carries the pool note. The roster drops the ceiling instead of pairing it — "40/300 students" is two true halves making a false claim in a subtitle with no room to explain itself — and names the branch, with the organisation's pressure in the rail. `?? 0` survives only where it hides a warning and never where it grants room: a failed count takes the paste box away and refuses both actions with `limitUnknown`, because one wrongly admitted row is one thing and eighty is another. **§20.9's branch-pinned manager now has a gate**, `tests/pinned-manager.test.ts`: it sweeps every `.ts`/`.tsx` under `src/app` for a places figure built from an unpooled count, holds the file list to exactly six so a seventh has to be justified, and asserts the qualifier wherever a branch count survives beside the pool. Negative-tested with a throwaway harness until all 25 mutations were caught, including a fabricated new screen. **A live check was also wrong about a real roster:** `test-rls-live.mjs` asserted no student anywhere is named *Nadia Islam*, which was a statement about a fixture when written and a statement about a paying customer's admission of 2026-09-03 by the time it went red — every policy it guarded was working. Probe names are baselined before the import now and every claim is a delta, and an unbaselined name throws rather than baselining itself mid-run. 12 new tests. Counts: 1,567 unit tests, 162 live RLS assertions, 76 migrations. |
 | 2026-09-04 | **The same owner came back to the two fixes above and was right about both.** The first was arithmetic dressed up as a design decision. The roster's desktop sheet shipped one button where the card shipped two, on the reasoning that the coloured name in the first cell was already the other one — and the answer to that is that reading a record and rewriting one are two errands, and a reader who has to deduce the second from a text colour has not been offered it. The 150px objection was real and the owner supplied the way past it: two squares carrying an eye and a pencil want 80px, so the sheet gates only `mayEdit` now, exactly as the card does, with no ternary swapping one control for the other. The actions column goes from 14% to 15% and the 1% comes off the class column; the name keeps its 24% and the guardian's number its 19%, which is the one width the sheet may never re-cut because `Guardian’s number` is its longest heading. Below `xl` the words stay, with the icon beside them — that is where the original report came from, where a thumb is doing the work, and where an icon next to its label is what teaches the bare icon on the sheet. **The first SVG in the product, so §20.7 now says when an icon is allowed** rather than leaving `decorative icons that label nothing` to be read as *no icons*: it must be the label, carry the word it replaced as both `aria-label` and `title` off the same dictionary key, be `aria-hidden` with no `<title>` inside the svg or a screen reader has two names for one control, appear only on a shape drawn where there is a pointer, and be repeated beside its word on the narrow shape. `components/icons.tsx` is two shapes sharing one `<svg>` wrapper — no icon package, and `currentColor` so the shape follows the button's hover instead of sitting one colour inside a box that moved. `rowView` and `rowEdit` also tighten from 12 characters to 10, because 22px per button that the label used to have now belongs to the icon. **The second was worse than a design mistake: the confirm screen for removing a teacher was making a claim that was frightening, irrelevant and, for some teachers, false.** It ended *"Their login is not deleted — they may use it at another centre"*, in the one place a reader is deciding whether to press a red button. Irrelevant, because `deleteTeacher` deletes the `center_members` row and RLS refuses the account thereafter — and the access had already ended one step earlier, since removal is only permitted on a teacher who is off and the off branch is what deletes that row. And false for a teacher with no phone number: `giveTeacherLogin` can only re-find an existing account by phone, so a username-only login is reachable from nowhere else at all. **The mechanism was right and is untouched (§38).** The auth account does survive deliberately — `profiles` is one row per human and not per appointment, so deleting it here would be this centre reaching across a tenant boundary to break somebody else's teacher — and that is a fact about our schema rather than a fact the owner needs, so it stays in `deleteTeacher`'s docblock and leaves the confirm screen. Both sentences now say the thing the owner needs instead: they cannot reach your centre either way, and that ended when you turned them off. Both languages, and the gate holds both — neither string may mention a login or another centre in either language, and both must name whose access ended, so the order sentence and the confirm sentence cannot drift into telling an owner the access ends at two different moments. Negative-tested with throwaway harnesses until all 22 roster mutations and all 6 copy mutations were caught. Counts: 1,568 unit tests, 162 live RLS assertions, 76 migrations. |
 | 2026-09-04 | **A staff login the centre minted was also a self-serve centre signup, and the teacher holding it had no way to sign out.** §5.5 records the whole of it. The mechanism is two features meeting: §5.1 issues a teacher a credential out of nothing but their name, with a password the manager chose and can still read off the roster, and switching that teacher off **deletes** their `center_members` row — so the ordinary end of a term, not a removal, leaves a working account with zero memberships, and `homePathForRole(null)` sends exactly that session to `/onboarding`. Nothing of the old centre was reachable: the membership was gone and RLS refused. What was reachable was `bootstrap_center`, which asked only whether the claimant already **owns** a centre. So every minted staff login could found its own, past §5.4's phone gate — that gate is on signup and this account was made by an admin call — with §4.3's 14-day Teacher Pro trial stamped on it, on a password somebody else knows. **The credential is refused, not the person:** a teacher who wants their own batches signs up with their own number and gets the form exactly as before, because refusing anyone who had ever been a member would have closed §2's Teacher Free tier against the very teacher §5.1 exists to accommodate. Three layers ask and only one is a fence — the screen does not draw the form, `createCenter` re-checks so the refusal arrives as a sentence under the field instead of a Postgres string, and `20260811000077` refuses inside the function, which is the one that counts because that RPC is `grant execute … to authenticated` and the anon key reaches it directly (§24). **Both signals, either one enough:** the login address, which is what actually signs the person in, `or` `profiles.username`, the copy migration 38's trigger writes and `app.guard_profile_identity` keeps a browser out of — so a disagreement between them refuses rather than admits. The domain literal is duplicated into SQL because Postgres has nowhere to import a constant from, and it is the username domain and not the shared `.invalid` suffix: `like '%.invalid'` would refuse every owner on the platform, which is why one of the five new pglite checks is a positive control that an ordinary phone signup still succeeds. **The other half is a button.** `/login` bounces a live session to `homePathFor`, which for a member-less account is this same page, so that reader could not reach a sign-out anywhere in the product; it is on both arms now, because one arm without it strands whichever reader gets that arm. The refusal arm is the first screen in `(auth)` to read `dict(session.locale)` — a signup has expressed no preference and gets Bangla, but this person has a profile with a locale in it — and it says what is actually missing rather than "try another centre", the sentence the teacher-removal thread deliberately stopped telling. 6 source-reading tests over the screen, the action and the comment-stripped migration, negative-tested until 25 of 25 mutations were caught, plus 5 checks against real Postgres proving each arm of the guard fires alone and the one-centre-per-owner rule still runs behind it, at 4 of 4. Counts: 1,423 pglite RLS checks, 1,574 unit tests, 162 live RLS assertions, 77 migrations. |
+| 2026-09-05 | **The read-only rollout, and the owner solved the billing hectic-ness better than the spec did.** §4.4's standing question moved from a hidden button to a whole arm on eighteen screens, above every read the arm would otherwise pay for: three of them keep a page bar and a note and nothing else, and two are mixed — /notices keeps the log of what the centre already told whom, and /settings/center keeps the centre's name and the wallet a parent sends fees to, because those are the two facts a lapsed owner reads out over the phone. §§11.6–11.8 are new and they came out of the owner's own reading of the product: a prepaid account balance replaces §9's pay-per-student mechanism, never expiring, non-refundable, and paying the monthly subscription too, so a centre with credit never reaches the read-only state at all. The balance is a ledger with an advisory lock and an immutability trigger rather than a column, and it is deliberately not the fence — capacity is. §11.8 separates the seat recycling the owner asked about, which is the deal being sold and only corrupts their own books, from the billing-date gaming next door to it, which is real and is answered by charging on the peak active count over the period rather than the instant reading. |
