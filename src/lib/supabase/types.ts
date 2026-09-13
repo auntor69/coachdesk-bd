@@ -16,6 +16,7 @@ export type Json =
 export type AttendanceStatus = 'present' | 'absent' | 'late' | 'excused'
 export type AuditOperation = 'created' | 'updated' | 'deleted'
 export type BatchSlot = 'morning' | 'noon' | 'afternoon' | 'evening' | 'night'
+export type BillingEntryKind = 'recharge' | 'promotion_bonus' | 'daily_charge' | 'founder_money_adjustment' | 'founder_grant_days' | 'refund' | 'reversal' | 'correction' | 'settlement_failure' | 'settlement_retry' | 'migration_opening_balance'
 export type CenterStatus = 'trial' | 'active' | 'suspended' | 'cancelled'
 export type EmployeeRole = 'manager' | 'accountant' | 'receptionist' | 'coordinator' | 'office_assistant' | 'librarian' | 'lab_assistant' | 'it_support' | 'marketing' | 'driver' | 'cook' | 'cleaner' | 'security_guard' | 'other'
 export type EnrollmentStatus = 'active' | 'paused' | 'completed' | 'dropped'
@@ -421,6 +422,102 @@ export type Database = {
           },
         ]
       }
+      billing_ledger: {
+        Row: {
+          id: string
+          coaching_center_id: string
+          kind: BillingEntryKind
+          amount_poisha: number
+          balance_before: number
+          balance_after: number
+          charge_date: string | null
+          usage_students: number | null
+          usage_teachers: number | null
+          usage_branches: number | null
+          description: string | null
+          payment_id: string | null
+          payment_intent_id: string | null
+          reverses_entry_id: string | null
+          created_by: string | null
+          created_at: string
+          metadata: Json
+        }
+        Insert: {
+          id?: string
+          coaching_center_id: string
+          kind: BillingEntryKind
+          amount_poisha: number
+          balance_before: number
+          balance_after: number
+          charge_date?: string | null
+          usage_students?: number | null
+          usage_teachers?: number | null
+          usage_branches?: number | null
+          description?: string | null
+          payment_id?: string | null
+          payment_intent_id?: string | null
+          reverses_entry_id?: string | null
+          created_by?: string | null
+          created_at?: string
+          metadata?: Json
+        }
+        Update: {
+          id?: string
+          coaching_center_id?: string
+          kind?: BillingEntryKind
+          amount_poisha?: number
+          balance_before?: number
+          balance_after?: number
+          charge_date?: string | null
+          usage_students?: number | null
+          usage_teachers?: number | null
+          usage_branches?: number | null
+          description?: string | null
+          payment_id?: string | null
+          payment_intent_id?: string | null
+          reverses_entry_id?: string | null
+          created_by?: string | null
+          created_at?: string
+          metadata?: Json
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'billing_ledger_coaching_center_id_fkey'
+            columns: ['coaching_center_id']
+            isOneToOne: false
+            referencedRelation: 'coaching_centers'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'billing_ledger_created_by_fkey'
+            columns: ['created_by']
+            isOneToOne: false
+            referencedRelation: 'users'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'billing_ledger_intent_fkey'
+            columns: ['payment_intent_id', 'coaching_center_id']
+            isOneToOne: false
+            referencedRelation: 'payment_intents'
+            referencedColumns: ['id', 'coaching_center_id']
+          },
+          {
+            foreignKeyName: 'billing_ledger_payment_fkey'
+            columns: ['payment_id', 'coaching_center_id']
+            isOneToOne: false
+            referencedRelation: 'payments'
+            referencedColumns: ['id', 'coaching_center_id']
+          },
+          {
+            foreignKeyName: 'billing_ledger_reverses_fkey'
+            columns: ['reverses_entry_id', 'coaching_center_id']
+            isOneToOne: false
+            referencedRelation: 'billing_ledger'
+            referencedColumns: ['id', 'coaching_center_id']
+          },
+        ]
+      }
       branches: {
         Row: {
           id: string
@@ -609,6 +706,8 @@ export type Database = {
           trial_plan: PlanType | null
           trial_ends_at: string | null
           paid_through: string | null
+          balance_poisha: number
+          charged_through: string
         }
         Insert: {
           id?: string
@@ -629,6 +728,8 @@ export type Database = {
           trial_plan?: PlanType | null
           trial_ends_at?: string | null
           paid_through?: string | null
+          balance_poisha?: number
+          charged_through?: string
         }
         Update: {
           id?: string
@@ -649,6 +750,8 @@ export type Database = {
           trial_plan?: PlanType | null
           trial_ends_at?: string | null
           paid_through?: string | null
+          balance_poisha?: number
+          charged_through?: string
         }
         Relationships: [
           {
@@ -3112,6 +3215,7 @@ export type Database = {
       attendance_status: AttendanceStatus
       audit_operation: AuditOperation
       batch_slot: BatchSlot
+      billing_entry_kind: BillingEntryKind
       center_status: CenterStatus
       employee_role: EmployeeRole
       enrollment_status: EnrollmentStatus

@@ -15532,6 +15532,502 @@ check(
   await deniedAsUser(db, ownNumber, FOUND),
 )
 
+// ---------------------------------------------------------------------------
+// The prepaid balance (20260811000078).
+//
+// Nothing in the product reads this table yet — access still comes from `paid_through`
+// until §16.1 step 24 — so these assertions are the whole of what stands between a
+// wrong balance and a customer's money. Written now, against the migration, rather
+// than when something depends on it.
+//
+// Centre C, whose netted payment total the section above deliberately leaves at zero,
+// and which no coverage assertion below this line reads.
+// ---------------------------------------------------------------------------
+
+console.log('\nThe prepaid balance (money in, a day at a time out):')
+
+const entry = (center, kind, poisha) =>
+  asService(
+    `insert into billing_ledger (coaching_center_id, kind, amount_poisha, description)
+     values ($1, $2, $3, 'from the suite') returning id`,
+    [center, kind, poisha],
+  )
+
+const ledgerBalance = async (center) =>
+  Number(
+    (
+      await db.query('select balance_poisha from coaching_centers where id = $1', [center])
+    ).rows[0].balance_poisha,
+  )
+
+const ledgerRows = async (center) =>
+  (
+    await db.query(
+      `select kind, amount_poisha, balance_before, balance_after, charge_date
+         from billing_ledger where coaching_center_id = $1
+        order by created_at, id`,
+      [center],
+    )
+  ).rows
+
+// The migration's own work, on every centre that existed when it ran.
+check(
+  'every centre starts from a stated zero rather than from no rows at all',
+  (await n(
+    db,
+    `select count(*)::int as n from coaching_centers c
+      where not exists (
+        select 1 from billing_ledger l
+         where l.coaching_center_id = c.id
+           and l.kind = 'migration_opening_balance')`,
+  )) === 0,
+)
+check(
+  'and that opening row carries no money',
+  (await n(
+    db,
+    `select count(*)::int as n from billing_ledger
+      where kind = 'migration_opening_balance'
+        and (amount_poisha <> 0 or balance_before <> 0 or balance_after <> 0)`,
+  )) === 0,
+)
+// The backfill's whole purpose: step 22 charges from `charged_through + 1`, so a null or
+// a date in the past is a bill for every day since signup.
+check(
+  'no centre is charged for a day it spent on the old model',
+  (await n(
+    db,
+    `select count(*)::int as n from coaching_centers
+      where charged_through is null
+         or charged_through < (now() at time zone 'Asia/Dhaka')::date`,
+  )) === 0,
+)
+
+// --- The balance is arithmetic over the entries, not a number anybody supplies -------
+
+await entry(centerC, 'recharge', 250000)
+check(
+  'money in lands on the centre row, in poisha',
+  (await ledgerBalance(centerC)) === 250000,
+  String(await ledgerBalance(centerC)),
+)
+await entry(centerC, 'promotion_bonus', 12500)
+check(
+  'and a bonus is its own entry, so revenue and the gift never merge',
+  (await ledgerBalance(centerC)) === 262500,
+  String(await ledgerBalance(centerC)),
+)
+check(
+  'each entry opens where the one before it closed',
+  await (async () => {
+    const rows = await ledgerRows(centerC)
+    return rows.every((row, i) => {
+      const before = i === 0 ? 0 : Number(rows[i - 1].balance_after)
+      return (
+        Number(row.balance_before) === before &&
+        before + Number(row.amount_poisha) === Number(row.balance_after)
+      )
+    })
+  })(),
+)
+// §11.4, at the table rather than at the screen: a caller that names a balance is a
+// caller whose arithmetic somebody would have to trust.
+check(
+  'a writer cannot name the balance it is opening at',
+  await deniedAsService(
+    `insert into billing_ledger
+       (coaching_center_id, kind, amount_poisha, balance_before, balance_after)
+     values ($1, 'recharge', 100, 900000, 900100)`,
+    [centerC],
+  ),
+)
+check(
+  'nor the one it closes at',
+  await deniedAsService(
+    `insert into billing_ledger (coaching_center_id, kind, amount_poisha, balance_after)
+     values ($1, 'recharge', 100, 900000)`,
+    [centerC],
+  ),
+)
+check(
+  'and the refused writes left the balance alone',
+  (await ledgerBalance(centerC)) === 262500,
+  String(await ledgerBalance(centerC)),
+)
+
+// --- A day's cost, and the day it is about ------------------------------------------
+
+const charge = (center, date, poisha, students = 40) =>
+  asService(
+    `insert into billing_ledger
+       (coaching_center_id, kind, amount_poisha, charge_date,
+        usage_students, usage_teachers, usage_branches, description)
+     values ($1, 'daily_charge', $2, $3, $4, 3, 1, 'a day')`,
+    [center, -poisha, date, students],
+  )
+
+const chargedThrough = async (center) =>
+  (await db.query('select charged_through from coaching_centers where id = $1', [center])).rows[0]
+    .charged_through.toISOString()
+    .slice(0, 10)
+
+// The dates below are fixed rather than relative to today, so the assertions read as
+// arithmetic instead of as whatever the calendar says when the suite runs. That means
+// rolling centre C's starting line back behind them first — which only service_role can
+// do, and doing it here is the one place the guard's exemption is exercised from the role
+// production actually uses.
+await asService(`update coaching_centers set charged_through = '2026-08-31' where id = $1`, [
+  centerC,
+])
+check('the founder can move a starting line and a browser cannot', (await chargedThrough(centerC)) === '2026-08-31')
+
+await charge(centerC, '2026-09-01', 8666)
+check(
+  "a day's cost comes off the balance",
+  (await ledgerBalance(centerC)) === 253834,
+  String(await ledgerBalance(centerC)),
+)
+check(
+  'and it moves the line the next settlement charges from',
+  (await chargedThrough(centerC)) === '2026-09-01',
+)
+// The fence under `charged_through`: the advisory lock stops two runs at once, and this
+// stops a run today and a run tomorrow both deciding the same day is unpaid.
+check(
+  'the same day cannot be charged twice, however many times settlement runs',
+  await deniedAsService(
+    `insert into billing_ledger
+       (coaching_center_id, kind, amount_poisha, charge_date, usage_students, usage_teachers, usage_branches)
+     values ($1, 'daily_charge', -8666, '2026-09-01', 40, 3, 1)`,
+    [centerC],
+  ),
+)
+check(
+  'a second day is fine, which is what makes the first check about the date',
+  (await charge(centerC, '2026-09-02', 8666)) && (await ledgerBalance(centerC)) === 245168,
+  String(await ledgerBalance(centerC)),
+)
+// §11.14 in one line: a charge that has already been settled must not be re-settled by
+// a function that reads a date somebody rolled backwards.
+check(
+  'and charging an earlier day never drags the line backwards',
+  (await charge(centerC, '2026-08-20', 8666)) && (await chargedThrough(centerC)) === '2026-09-02',
+)
+
+// --- The sign belongs to the kind ---------------------------------------------------
+
+check(
+  'money arriving cannot be recorded as money leaving',
+  await deniedAsService(
+    `insert into billing_ledger (coaching_center_id, kind, amount_poisha)
+     values ($1, 'recharge', -50000)`,
+    [centerC],
+  ),
+)
+check(
+  "and a day's cost cannot be recorded as money arriving",
+  await deniedAsService(
+    `insert into billing_ledger
+       (coaching_center_id, kind, amount_poisha, charge_date, usage_students, usage_teachers, usage_branches)
+     values ($1, 'daily_charge', 8666, '2026-09-03', 40, 3, 1)`,
+    [centerC],
+  ),
+)
+check(
+  'a correction of nothing corrects nothing and is refused',
+  await deniedAsService(
+    `insert into billing_ledger (coaching_center_id, kind, amount_poisha, description)
+     values ($1, 'correction', 0, 'nothing to correct')`,
+    [centerC],
+  ),
+)
+check(
+  'a settlement that did not happen carries no money',
+  await deniedAsService(
+    `insert into billing_ledger (coaching_center_id, kind, amount_poisha, charge_date)
+     values ($1, 'settlement_failure', -8666, '2026-09-04')`,
+    [centerC],
+  ),
+)
+// The customer's own history has to be able to say "nothing was charged, we could not
+// read your roster" — a day with no row is indistinguishable from a day we forgot.
+check(
+  'but it does get a row, so a missed day is visible rather than absent',
+  (await asService(
+    `insert into billing_ledger (coaching_center_id, kind, amount_poisha, charge_date, description)
+     values ($1, 'settlement_failure', 0, '2026-09-04', 'roster unreadable') returning id`,
+    [centerC],
+  )) && (await ledgerBalance(centerC)) === 236502,
+  String(await ledgerBalance(centerC)),
+)
+
+// --- Nothing is lent, so nothing goes below nothing --------------------------------
+
+check(
+  'a charge the balance cannot cover is refused rather than borrowed against',
+  await deniedAsService(
+    `insert into billing_ledger
+       (coaching_center_id, kind, amount_poisha, charge_date, usage_students, usage_teachers, usage_branches)
+     values ($1, 'daily_charge', -900000, '2026-09-05', 40, 3, 1)`,
+    [centerC],
+  ),
+)
+check(
+  'the refusal left the balance and the line where they were',
+  (await ledgerBalance(centerC)) === 236502,
+  String(await ledgerBalance(centerC)),
+)
+// The exact figure is allowed: a centre that spends its last poisha has spent its last
+// poisha, and a floor that refused that would refuse the case it exists for.
+check(
+  'spending the balance down to nothing is allowed',
+  (await charge(centerC, '2026-09-06', 236502)) && (await ledgerBalance(centerC)) === 0,
+  String(await ledgerBalance(centerC)),
+)
+check(
+  'and one poisha past nothing is not',
+  await deniedAsService(
+    `insert into billing_ledger
+       (coaching_center_id, kind, amount_poisha, charge_date, usage_students, usage_teachers, usage_branches)
+     values ($1, 'daily_charge', -1, '2026-09-07', 40, 3, 1)`,
+    [centerC],
+  ),
+)
+
+// --- The snapshot travels with the charge ------------------------------------------
+
+check(
+  'a charge with no count behind it cannot be explained and is refused',
+  await deniedAsService(
+    `insert into billing_ledger (coaching_center_id, kind, amount_poisha, charge_date)
+     values ($1, 'daily_charge', -100, '2026-09-08')`,
+    [centerC],
+  ),
+)
+check(
+  'nor half a count',
+  await deniedAsService(
+    `insert into billing_ledger
+       (coaching_center_id, kind, amount_poisha, charge_date, usage_students)
+     values ($1, 'daily_charge', -100, '2026-09-08', 40)`,
+    [centerC],
+  ),
+)
+check(
+  'and a count with no charge behind it is a number nobody can check',
+  await deniedAsService(
+    `insert into billing_ledger
+       (coaching_center_id, kind, amount_poisha, usage_students, usage_teachers, usage_branches)
+     values ($1, 'recharge', 100, 40, 3, 1)`,
+    [centerC],
+  ),
+)
+check(
+  'money arriving is not about a day, so it may not name one',
+  await deniedAsService(
+    `insert into billing_ledger (coaching_center_id, kind, amount_poisha, charge_date)
+     values ($1, 'recharge', 100, '2026-09-09')`,
+    [centerC],
+  ),
+)
+check(
+  'and a day it is about must be named',
+  await deniedAsService(
+    `insert into billing_ledger
+       (coaching_center_id, kind, amount_poisha, usage_students, usage_teachers, usage_branches)
+     values ($1, 'daily_charge', -100, 40, 3, 1)`,
+    [centerC],
+  ),
+)
+
+// --- Append-only, for everybody, including us -------------------------------------
+
+const anyEntry = (
+  await db.query(
+    `select id from billing_ledger where coaching_center_id = $1 and kind = 'recharge' limit 1`,
+    [centerC],
+  )
+).rows[0].id
+
+// Stricter than `payments`, which lets service_role fix a founder's typo. Nothing types
+// a row here, so there is no mistake an UPDATE fixes that a compensating entry cannot.
+check(
+  'our own server key cannot rewrite an entry',
+  await deniedAsService('update billing_ledger set amount_poisha = 999999 where id = $1', [
+    anyEntry,
+  ]),
+)
+check(
+  'nor delete one',
+  await deniedAsService('delete from billing_ledger where id = $1', [anyEntry]),
+)
+check(
+  'nor move one to a different centre',
+  await deniedAsService('update billing_ledger set coaching_center_id = $2 where id = $1', [
+    anyEntry,
+    centerB,
+  ]),
+)
+check(
+  'and the owner cannot either',
+  await deniedAsUser(db, ownerC, 'update billing_ledger set amount_poisha = 999999 where id = $1', [
+    anyEntry,
+  ]),
+)
+check(
+  'the entry is untouched after all of that',
+  (await n(db, 'select amount_poisha::int as n from billing_ledger where id = $1', [
+    anyEntry,
+  ])) === 250000,
+)
+
+// --- Who can see a balance ---------------------------------------------------------
+
+check(
+  'the owner reads their own ledger',
+  (await asUser(db, ownerC, (tx) =>
+    n(tx, 'select count(*)::int as n from billing_ledger'),
+  )) > 0,
+)
+check(
+  "and sees nothing of another centre's",
+  (await asUser(db, ids.ownerA, (tx) =>
+    n(tx, 'select count(*)::int as n from billing_ledger where coaching_center_id = $1', [
+      centerC,
+    ]),
+  )) === 0,
+)
+// §2.4: what the centre pays us stays out of a manager's screens.
+check(
+  'a teacher at the centre reads none of it',
+  (await asUser(db, ids.karim, (tx) =>
+    n(tx, 'select count(*)::int as n from billing_ledger'),
+  )) === 0,
+)
+check(
+  'a signed-out request reads none of it',
+  (await asUser(db, null, (tx) =>
+    n(tx, 'select count(*)::int as n from billing_ledger'),
+  )) === 0,
+)
+check(
+  'and the founder reads every centre',
+  (await asUser(db, ids.founder, (tx) =>
+    n(tx, 'select count(*)::int as n from billing_ledger where coaching_center_id = $1', [
+      centerC,
+    ]),
+  )) > 0,
+)
+// Write is an absent grant, which is what makes the recharge screen a claim to be
+// approved rather than a form that credits itself.
+check(
+  'nobody with a browser can put money on their own balance',
+  await deniedAsUser(
+    db,
+    ownerC,
+    `insert into billing_ledger (coaching_center_id, kind, amount_poisha)
+     values ($1, 'recharge', 5000000)`,
+    [centerC],
+  ),
+)
+check(
+  'nor set the cached balance on the centre row directly',
+  await deniedAsUser(db, ownerC, 'update coaching_centers set balance_poisha = 9000000 where id = $1', [
+    centerC,
+  ]),
+)
+check(
+  'nor move the line that decides which days get charged',
+  await deniedAsUser(
+    db,
+    ownerC,
+    `update coaching_centers set charged_through = '2099-12-31' where id = $1`,
+    [centerC],
+  ),
+)
+
+// --- The cache and the entries cannot disagree ------------------------------------
+
+// §11.13's first reconciliation query, as an assertion. Every centre, not just the one
+// this section wrote to: the trigger runs on all of them or on none.
+check(
+  'the cached balance equals the sum of the entries behind it, for every centre',
+  (await n(
+    db,
+    `select count(*)::int as n
+       from coaching_centers c
+       left join (
+         select coaching_center_id, sum(amount_poisha) as total
+           from billing_ledger group by coaching_center_id
+       ) l on l.coaching_center_id = c.id
+      where c.balance_poisha <> coalesce(l.total, 0)`,
+  )) === 0,
+)
+// And the chain walk, in SQL rather than in JavaScript, so it covers every centre too.
+check(
+  'and no entry opens anywhere other than where the one before it closed',
+  (await n(
+    db,
+    `with walked as (
+       select coaching_center_id, balance_before, balance_after,
+              lag(balance_after) over (
+                partition by coaching_center_id order by created_at, id
+              ) as previous
+         from billing_ledger
+     )
+     select count(*)::int as n from walked
+      where balance_before <> coalesce(previous, 0)`,
+  )) === 0,
+)
+
+// --- A cross-centre entry cannot be assembled ------------------------------------
+
+// 20260811000005's composite references, on this table: centre C naming centre B's
+// payment would put another customer's money in its own history.
+const otherCentrePayment = (
+  await asService(
+    `insert into payments (coaching_center_id, amount_bdt, method, note)
+     values ($1, 1999, 'bkash', 'a receipt of its own') returning id`,
+    [centerB],
+  )
+).rows[0].id
+
+check(
+  "a centre cannot point an entry at another centre's payment",
+  await deniedAsService(
+    `insert into billing_ledger (coaching_center_id, kind, amount_poisha, payment_id)
+     values ($1, 'recharge', 199900, $2)`,
+    [centerC, otherCentrePayment],
+  ),
+)
+check(
+  'and cannot reverse an entry that is not its own',
+  await deniedAsService(
+    `insert into billing_ledger
+       (coaching_center_id, kind, amount_poisha, reverses_entry_id, description)
+     values ($1, 'reversal', -100, $2, 'not ours to reverse')`,
+    [centerB, anyEntry],
+  ),
+)
+check(
+  'a reversal of its own is recorded, which is how a mistake is undone',
+  (await asService(
+    `insert into billing_ledger
+       (coaching_center_id, kind, amount_poisha, reverses_entry_id, description)
+     values ($1, 'reversal', 5000, $2, 'charged a day we should not have') returning id`,
+    [centerC, anyEntry],
+  )) && (await ledgerBalance(centerC)) === 5000,
+  String(await ledgerBalance(centerC)),
+)
+check(
+  'and only a reversal or a correction may say what it is about',
+  await deniedAsService(
+    `insert into billing_ledger (coaching_center_id, kind, amount_poisha, reverses_entry_id)
+     values ($1, 'recharge', 100, $2)`,
+    [centerC, anyEntry],
+  ),
+)
+
 console.log(`\n${passed} passed, ${failed} failed`)
 await db.close()
 process.exit(failed ? 1 : 0)
