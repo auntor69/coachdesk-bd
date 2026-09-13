@@ -57,6 +57,27 @@ test('the screen refuses the form to a login the centre minted', () => {
   }
 })
 
+test('the founder is redirected rather than offered a centre', () => {
+  // The platform account holds no membership and no role, so without this branch it
+  // was greeted by the form that creates a coaching centre — and a centre founded
+  // from the founder login would put a customer's data on the one account that can
+  // already see every centre.
+  const redirectAt = PAGE.indexOf("if (session.isPlatformAdmin) redirect('/founder')")
+  assert.ok(redirectAt > 0, 'the platform-admin redirect is gone from this page')
+
+  // After the unreadable guard — a failed memberships read must not be read as "the
+  // founder signed in" — and before the form, so the founder never sees it.
+  const unreadable = PAGE.indexOf('session.membershipsUnreadable')
+  const form = PAGE.indexOf('<OnboardingForm />')
+  assert.ok(unreadable > 0 && redirectAt > unreadable, 'the redirect precedes the unreadable guard')
+  assert.ok(redirectAt < form, 'the founder can still be handed the create-a-centre form')
+
+  // And the two readers the page is *for* keep their arms: a minted login still
+  // gets the refusal and a real signup still gets the form.
+  assert.match(PAGE, /if \(session\.username\) \{/)
+  assert.match(PAGE, /<OnboardingForm \/>/)
+})
+
 test('both readers can leave, which is the part nothing else in the product offers', () => {
   assert.match(PAGE, /import \{ signOut \} from '\.\.\/actions'/)
   assert.match(PAGE, /<form action=\{signOut\}/)

@@ -58,6 +58,21 @@ export default async function OnboardingPage() {
   }
 
   /*
+   * THE FOUNDER NEVER SEES THIS FORM, and this redirect is the reason the platform
+   * account cannot own a coaching centre by accident. `is_platform_admin` is not a
+   * membership and not a role in any centre, so without this branch the founder
+   * account — which holds no centre — was greeted by the form that makes one, and a
+   * centre created from it would put a customer's data on the one login that can
+   * already see every centre. `/founder` is that account's home (homePathFor agrees),
+   * and a platform admin who also holds a membership never reaches here: the
+   * `session.active` branch above already sent them to their centre.
+   *
+   * Below the unreadable guard on purpose: a failed memberships read must not be
+   * read as "the founder signed in" any more than as "no centre".
+   */
+  if (session.isPlatformAdmin) redirect('/founder')
+
+  /*
    * THIS SCREEN HAS TWO READERS AND THEY WANT OPPOSITE THINGS.
    *
    * `session.username` is non-null exactly when the login address sits on the username

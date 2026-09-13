@@ -1194,7 +1194,9 @@ export async function pagePlatformAdmin(): Promise<Session> {
  * Split from `homePathFor` for the centre switcher, which needs the landing page
  * of the role the reader is switching *into*. It cannot ask for a fresh session to
  * find out: `getSession` is memoised per request, so the copy it would get back
- * still names the centre they just left.
+ * still names the centre they just left. It answers about memberships only — a
+ * platform admin is not a role in any centre, so the founder panel never comes
+ * from here.
  */
 export function homePathForRole(role: MemberRole | null): Route {
   if (!role) return '/onboarding'
@@ -1210,6 +1212,19 @@ export function homePathForRole(role: MemberRole | null): Route {
   }
 }
 
+/**
+ * Where a session lands after login.
+ *
+ * A platform admin with no active membership belongs on the founder panel, not on
+ * /onboarding — the founder account holds no centre and must not be handed the
+ * form that creates one, because a centre founded by the platform account would
+ * put customer data on the one login that can already see every centre (§11.5's
+ * separation, and the reason the panel row sits outside every group in Settings).
+ * The precedence is deliberate: a platform admin who *does* hold a membership is
+ * working in that centre and lands where that role lands, reaching the panel
+ * through the Settings row the way they always did.
+ */
 export function homePathFor(session: Session): Route {
+  if (!session.active && session.isPlatformAdmin) return '/founder'
   return homePathForRole(session.active?.role ?? null)
 }
