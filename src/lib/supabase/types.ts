@@ -441,6 +441,8 @@ export type Database = {
           created_by: string | null
           created_at: string
           metadata: Json
+          price_version_id: string | null
+          top_up: boolean
         }
         Insert: {
           id?: string
@@ -460,6 +462,8 @@ export type Database = {
           created_by?: string | null
           created_at?: string
           metadata?: Json
+          price_version_id?: string | null
+          top_up?: boolean
         }
         Update: {
           id?: string
@@ -479,6 +483,8 @@ export type Database = {
           created_by?: string | null
           created_at?: string
           metadata?: Json
+          price_version_id?: string | null
+          top_up?: boolean
         }
         Relationships: [
           {
@@ -508,6 +514,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: 'payments'
             referencedColumns: ['id', 'coaching_center_id']
+          },
+          {
+            foreignKeyName: 'billing_ledger_price_version_id_fkey'
+            columns: ['price_version_id']
+            isOneToOne: false
+            referencedRelation: 'price_versions'
+            referencedColumns: ['id']
           },
           {
             foreignKeyName: 'billing_ledger_reverses_fkey'
@@ -1871,6 +1884,51 @@ export type Database = {
         }
         Relationships: []
       }
+      price_versions: {
+        Row: {
+          id: string
+          effective_from: string
+          student_bands: Json
+          center_monthly_floor_poisha: number
+          institution_monthly_floor_poisha: number
+          teacher_plus_monthly_poisha: number
+          teacher_seat_poisha: number
+          free_teacher_seats: number
+          branch_poisha: number
+          included_branches: number
+          published_at: string
+          note: string | null
+        }
+        Insert: {
+          id?: string
+          effective_from: string
+          student_bands: Json
+          center_monthly_floor_poisha: number
+          institution_monthly_floor_poisha: number
+          teacher_plus_monthly_poisha: number
+          teacher_seat_poisha: number
+          free_teacher_seats: number
+          branch_poisha: number
+          included_branches: number
+          published_at?: string
+          note?: string | null
+        }
+        Update: {
+          id?: string
+          effective_from?: string
+          student_bands?: Json
+          center_monthly_floor_poisha?: number
+          institution_monthly_floor_poisha?: number
+          teacher_plus_monthly_poisha?: number
+          teacher_seat_poisha?: number
+          free_teacher_seats?: number
+          branch_poisha?: number
+          included_branches?: number
+          published_at?: string
+          note?: string | null
+        }
+        Relationships: []
+      }
       profiles: {
         Row: {
           id: string
@@ -3173,6 +3231,10 @@ export type Database = {
       platform_centers: {
         Args: Record<PropertyKey, never>
         Returns: { center_id: string; center_name: string; center_phone: string; bd_area: string; status: CenterStatus; plan: PlanType; created_at: string; owner_name: string; owner_phone: string; students: number; teachers: number; batches: number; sms_credit_balance: number; attendance_30d: number; exams_30d: number; fee_payments_30d: number; collected_30d: number; taps_30d: number; notes_30d: number; results_30d: number; absences_30d: number; sms_30d: number; last_active_at: string; paid_bdt: number; last_paid_at: string; paid_through: string; wants_plan: PlanType; wants_since: string; wants_note: string; asks_open: number; asks_places: number; asks_since: string; branches: number }[]
+      }
+      platform_reconciliation: {
+        Args: Record<PropertyKey, never>
+        Returns: { question: number; coaching_center_id: string; coaching_center_name: string; detail: string }[]
       }
       reap_stranded_sms: {
         Args: Record<PropertyKey, never>

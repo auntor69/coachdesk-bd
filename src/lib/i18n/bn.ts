@@ -7555,6 +7555,22 @@ export const bn = {
       asksPlaces: 'যত জায়গা চেয়েছে',
       asksSince: 'কবে থেকে অপেক্ষায়',
     },
+
+    /**
+     * §11.13's reconciliation, on the panel where it lives. The three questions
+     * are asked of every centre at once and the card answers with either the
+     * all-clear or the findings — a number in a sentence, never a bare count,
+     * because a number alone does not say "these are the books, and they hold"
+     * or "open them".
+     */
+    reconciliation: {
+      title: 'হিসাবের খাতা',
+      holds: 'তিনটি প্রশ্নের কোনো উত্তরেই গরমিল নেই — ব্যালান্স, চেইন আর লাইন সব মিলে যাচ্ছে।',
+      findings: (n: number) =>
+        `${digits(n, 'bn')} টি গরমিল পাওয়া গেছে — খাতা খুলে দেখুন।`,
+      question: (n: number): string =>
+        n === 1 ? `ক্যাশ বনাম খাতা` : n === 2 ? `চেইন` : `লাইন বনাম দেওয়া দিন`,
+    },
   },
 
   /**

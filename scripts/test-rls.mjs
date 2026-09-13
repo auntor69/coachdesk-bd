@@ -10,6 +10,7 @@
  * Run: node scripts/test-rls.mjs
  */
 import { bootDatabase, asUser, deniedAsUser } from './lib/pg-harness.mjs'
+import { readFileSync } from 'node:fs'
 
 const { db } = await bootDatabase()
 
@@ -15140,8 +15141,16 @@ console.log('\nThe prepaid balance (money in, a day at a time out):')
 
 const entry = (center, kind, poisha) =>
   asService(
-    `insert into billing_ledger (coaching_center_id, kind, amount_poisha, description)
-     values ($1, $2, $3, 'from the suite') returning id`,
+    // A recharge names the card it was priced from (migration 80's purpose
+    // check); every other kind carries none.
+    kind === 'recharge'
+      ? `insert into billing_ledger
+           (coaching_center_id, kind, amount_poisha, description, price_version_id)
+         values ($1, $2, $3, 'from the suite',
+                 (select id from price_versions order by effective_from desc limit 1))
+         returning id`
+      : `insert into billing_ledger (coaching_center_id, kind, amount_poisha, description)
+         values ($1, $2, $3, 'from the suite') returning id`,
     [center, kind, poisha],
   )
 
@@ -15249,12 +15258,16 @@ check(
 
 // --- A day's cost, and the day it is about ------------------------------------------
 
+// The founding card, priced into every charge since migration 80 made a
+// daily_charge name the rate it was computed from.
+const CARD = '(select id from price_versions order by effective_from desc limit 1)'
+
 const charge = (center, date, poisha, students = 40) =>
   asService(
     `insert into billing_ledger
        (coaching_center_id, kind, amount_poisha, charge_date,
-        usage_students, usage_teachers, usage_branches, description)
-     values ($1, 'daily_charge', $2, $3, $4, 3, 1, 'a day')`,
+        usage_students, usage_teachers, usage_branches, description, price_version_id)
+     values ($1, 'daily_charge', $2, $3, $4, 3, 1, 'a day', ${CARD})`,
     [center, -poisha, date, students],
   )
 
@@ -15289,8 +15302,8 @@ check(
   'the same day cannot be charged twice, however many times settlement runs',
   await deniedAsService(
     `insert into billing_ledger
-       (coaching_center_id, kind, amount_poisha, charge_date, usage_students, usage_teachers, usage_branches)
-     values ($1, 'daily_charge', -8666, '2026-09-01', 40, 3, 1)`,
+       (coaching_center_id, kind, amount_poisha, charge_date, usage_students, usage_teachers, usage_branches, price_version_id)
+     values ($1, 'daily_charge', -8666, '2026-09-01', 40, 3, 1, (select id from price_versions order by effective_from desc limit 1))`,
     [centerC],
   ),
 )
@@ -15320,8 +15333,8 @@ check(
   "and a day's cost cannot be recorded as money arriving",
   await deniedAsService(
     `insert into billing_ledger
-       (coaching_center_id, kind, amount_poisha, charge_date, usage_students, usage_teachers, usage_branches)
-     values ($1, 'daily_charge', 8666, '2026-09-03', 40, 3, 1)`,
+       (coaching_center_id, kind, amount_poisha, charge_date, usage_students, usage_teachers, usage_branches, price_version_id)
+     values ($1, 'daily_charge', 8666, '2026-09-03', 40, 3, 1, (select id from price_versions order by effective_from desc limit 1))`,
     [centerC],
   ),
 )
@@ -15359,8 +15372,8 @@ check(
   'a charge the balance cannot cover is refused rather than borrowed against',
   await deniedAsService(
     `insert into billing_ledger
-       (coaching_center_id, kind, amount_poisha, charge_date, usage_students, usage_teachers, usage_branches)
-     values ($1, 'daily_charge', -900000, '2026-09-05', 40, 3, 1)`,
+       (coaching_center_id, kind, amount_poisha, charge_date, usage_students, usage_teachers, usage_branches, price_version_id)
+     values ($1, 'daily_charge', -900000, '2026-09-05', 40, 3, 1, (select id from price_versions order by effective_from desc limit 1))`,
     [centerC],
   ),
 )
@@ -15380,8 +15393,8 @@ check(
   'and one poisha past nothing is not',
   await deniedAsService(
     `insert into billing_ledger
-       (coaching_center_id, kind, amount_poisha, charge_date, usage_students, usage_teachers, usage_branches)
-     values ($1, 'daily_charge', -1, '2026-09-07', 40, 3, 1)`,
+       (coaching_center_id, kind, amount_poisha, charge_date, usage_students, usage_teachers, usage_branches, price_version_id)
+     values ($1, 'daily_charge', -1, '2026-09-07', 40, 3, 1, (select id from price_versions order by effective_from desc limit 1))`,
     [centerC],
   ),
 )
@@ -15391,8 +15404,8 @@ check(
 check(
   'a charge with no count behind it cannot be explained and is refused',
   await deniedAsService(
-    `insert into billing_ledger (coaching_center_id, kind, amount_poisha, charge_date)
-     values ($1, 'daily_charge', -100, '2026-09-08')`,
+    `insert into billing_ledger (coaching_center_id, kind, amount_poisha, charge_date, price_version_id)
+     values ($1, 'daily_charge', -100, '2026-09-08', (select id from price_versions order by effective_from desc limit 1))`,
     [centerC],
   ),
 )
@@ -15400,8 +15413,8 @@ check(
   'nor half a count',
   await deniedAsService(
     `insert into billing_ledger
-       (coaching_center_id, kind, amount_poisha, charge_date, usage_students)
-     values ($1, 'daily_charge', -100, '2026-09-08', 40)`,
+       (coaching_center_id, kind, amount_poisha, charge_date, usage_students, price_version_id)
+     values ($1, 'daily_charge', -100, '2026-09-08', 40, (select id from price_versions order by effective_from desc limit 1))`,
     [centerC],
   ),
 )
@@ -15409,16 +15422,16 @@ check(
   'and a count with no charge behind it is a number nobody can check',
   await deniedAsService(
     `insert into billing_ledger
-       (coaching_center_id, kind, amount_poisha, usage_students, usage_teachers, usage_branches)
-     values ($1, 'recharge', 100, 40, 3, 1)`,
+       (coaching_center_id, kind, amount_poisha, usage_students, usage_teachers, usage_branches, price_version_id)
+     values ($1, 'recharge', 100, 40, 3, 1, (select id from price_versions order by effective_from desc limit 1))`,
     [centerC],
   ),
 )
 check(
   'money arriving is not about a day, so it may not name one',
   await deniedAsService(
-    `insert into billing_ledger (coaching_center_id, kind, amount_poisha, charge_date)
-     values ($1, 'recharge', 100, '2026-09-09')`,
+    `insert into billing_ledger (coaching_center_id, kind, amount_poisha, charge_date, price_version_id)
+     values ($1, 'recharge', 100, '2026-09-09', (select id from price_versions order by effective_from desc limit 1))`,
     [centerC],
   ),
 )
@@ -15426,8 +15439,8 @@ check(
   'and a day it is about must be named',
   await deniedAsService(
     `insert into billing_ledger
-       (coaching_center_id, kind, amount_poisha, usage_students, usage_teachers, usage_branches)
-     values ($1, 'daily_charge', -100, 40, 3, 1)`,
+       (coaching_center_id, kind, amount_poisha, usage_students, usage_teachers, usage_branches, price_version_id)
+     values ($1, 'daily_charge', -100, 40, 3, 1, (select id from price_versions order by effective_from desc limit 1))`,
     [centerC],
   ),
 )
@@ -15618,6 +15631,401 @@ check(
      values ($1, 'recharge', 100, $2)`,
     [centerC, anyEntry],
   ),
+)
+
+// ---------------------------------------------------------------------------
+// The burn — public.settle_billing, settlement_runs, and the reconciliation
+// (20260811000080 + 20260811000081, MASTERPLAN §11.7/§11.12/§11.13).
+//
+// Nothing in src/ calls the function yet (step 24 is what wires it to
+// requireWritable), so these assertions are the whole of what stands between
+// a wrong day's charge and a customer's money.
+//
+// What this cannot test: two sessions racing. PGlite is one connection, so the
+// advisory lock has nothing to serialise. The sequential half is covered — a
+// call after a call charges nothing the second time — and the concurrent half
+// rests on the lock being taken before the affordability read, which the
+// source assertions below check is in the file.
+//
+// The worked figures are the masterplan's own (§11.6): 60 students and 3
+// teachers on the Center plan bill max(199900, 60×2500) + 1×10000 = 209900
+// poisha a month → 6996 a day; at 100 students, 250000 + 10000 = 260000 → 8666.
+// ---------------------------------------------------------------------------
+
+console.log('\nThe burn (settle, top up, catch up, refuse):')
+
+const settleMigrations = [
+  'supabase/migrations/20260811000080_price_versions.sql',
+  'supabase/migrations/20260811000081_settle_billing.sql',
+]
+  // Prose taken off, the same way onboarding.test.ts reads a migration: a
+  // comment naming a rule is not the rule, and the header of 81 names
+  // `current_date` only to forbid it.
+  .map((f) => readFileSync(f, 'utf8').replace(/^\s*--.*$/gm, ''))
+  .join('\n')
+
+const today = (
+  await db.query(`select (now() at time zone 'Asia/Dhaka')::date as d`)
+).rows[0].d
+
+/**
+ * A centre straight from the fixture, named for the plan it burns on.
+ *
+ * `charged_through` is set to yesterday unless `seededToday` says otherwise:
+ * migration 78 gave every new centre today as a gift, and the ordinary tests
+ * here want a day that is owed. The gift has its own test.
+ */
+const burnCentre = async (plan, { recharge = 0, seededToday = false } = {}) => {
+  // The name is built here rather than in the SQL, because a parameter used
+  // both in a string concatenation and as the plan enum makes Postgres deduce
+  // two types for it and refuse the statement.
+  const name = `Burn ${plan} ${Math.random().toString(36).slice(2, 8)}`
+  const { rows } = await asService(
+    `insert into coaching_centers (name, plan, status, charged_through)
+     values ($1, $2, 'active', ${seededToday ? '$3' : '($3::date - 1)'})
+     returning id`,
+    [name, plan, today],
+  )
+  const id = rows[0].id
+  if (recharge > 0) await entry(id, 'recharge', recharge)
+  return id
+}
+
+// --- The source, because a bug here is a billing bug nobody can see ----------------
+
+check(
+  'the day is a Dhaka calendar day, never the database clock',
+  /at time zone 'Asia\/Dhaka'/.test(settleMigrations)
+    && !/current_date/.test(settleMigrations),
+)
+check(
+  'the lock is taken before the balance is read, in the trigger\'s own namespace',
+  settleMigrations.indexOf("hashtext('billing_ledger.balance')")
+    < settleMigrations.indexOf('select coalesce(pg_catalog.sum(l.amount_poisha), 0)'),
+)
+check(
+  'the function takes a centre and a caller, and never an amount',
+  /create or replace function public\.settle_billing\(\s*p_center uuid,\s*p_ran_by text default 'session'\s*\)/
+    .test(settleMigrations),
+)
+check(
+  'the base charge is unique per day and the top-up is a row of its own',
+  /create unique index billing_ledger_one_base_charge_per_day[\s\S]*?where kind = 'daily_charge' and not top_up/
+    .test(settleMigrations),
+)
+
+// --- The worked example: a day, charged whole and once -----------------------------
+
+// The masterplan's own figure (§11.6): 100 students, 3 teachers, one building.
+// The recharge rides along in burnCentre; the students and the seat are the
+// only things this test adds by hand.
+const burnExample = await burnCentre('center', { recharge: 250000 })
+await asService(
+  'update coaching_centers set student_capacity = 100 where id = $1',
+  [burnExample],
+)
+
+for (let i = 0; i < 60; i += 1) {
+  await asService(
+    `insert into students (coaching_center_id, name, guardian_phone)
+     values ($1, 'Student ' || $2, '01700000001')`,
+    [burnExample, String(i)],
+  )
+}
+for (let i = 0; i < 3; i += 1) {
+  await asService(
+    `insert into teachers (coaching_center_id, name) values ($1, 'Teacher ' || $2)`,
+    [burnExample, String(i)],
+  )
+}
+
+const firstSettle = (
+  await asService('select public.settle_billing($1) as out', [burnExample])
+).rows[0].out
+
+check(
+  'a day is charged whole, at the masterplan\'s own worked rate',
+  firstSettle.dailyPoisha === 6996 && firstSettle.days === 1 && firstSettle.status === 'settled',
+  JSON.stringify(firstSettle),
+)
+check(
+  'and the money left is the recharge less the day',
+  (await ledgerBalance(burnExample)) === 250000 - 6996,
+  String(await ledgerBalance(burnExample)),
+)
+check(
+  'the charge is a base row carrying the counts it was priced from',
+  (await n(
+    db,
+    `select count(*)::int as n from billing_ledger
+      where coaching_center_id = $1 and kind = 'daily_charge'
+        and not top_up and charge_date = $2
+        and usage_students = 60 and usage_teachers = 3 and usage_branches = 1`,
+    [burnExample, today],
+  )) === 1,
+)
+check(
+  'and charged_through has arrived at today',
+  (await n(
+    db,
+    'select count(*)::int as n from coaching_centers where id = $1 and charged_through = $2',
+    [burnExample, today],
+  )) === 1,
+)
+
+// --- Convergent: a second call charges nothing --------------------------------------
+
+const secondSettle = (
+  await asService('select public.settle_billing($1) as out', [burnExample])
+).rows[0].out
+check(
+  'the same day, asked again, charges nothing',
+  secondSettle.days === 0,
+  JSON.stringify(secondSettle),
+)
+check(
+  'and wrote no second row',
+  (await n(
+    db,
+    `select count(*)::int as n from billing_ledger
+      where coaching_center_id = $1 and kind = 'daily_charge' and charge_date = $2`,
+    [burnExample, today],
+  )) === 1,
+)
+
+// --- The high-water top-up (§11.7 step 4) --------------------------------------------
+
+for (let i = 60; i < 100; i += 1) {
+  await asService(
+    `insert into students (coaching_center_id, name, guardian_phone)
+     values ($1, 'Student ' || $2, '01700000001')`,
+    [burnExample, String(i)],
+  )
+}
+
+const toppedUp = (
+  await asService('select public.settle_billing($1) as out', [burnExample])
+).rows[0].out
+check(
+  'a roster that grew at noon tops the day up to the larger rate',
+  toppedUp.days === 1 && toppedUp.dailyPoisha === 8666,
+  JSON.stringify(toppedUp),
+)
+check(
+  'by exactly the difference, on a row of its own',
+  (await n(
+    db,
+    `select count(*)::int as n from billing_ledger
+      where coaching_center_id = $1 and kind = 'daily_charge' and top_up
+        and charge_date = $2 and amount_poisha = -(8666 - 6996)`,
+    [burnExample, today],
+  )) === 1,
+)
+check(
+  'and the day still has exactly one base charge',
+  (await n(
+    db,
+    `select count(*)::int as n from billing_ledger
+      where coaching_center_id = $1 and kind = 'daily_charge'
+        and not top_up and charge_date = $2`,
+    [burnExample, today],
+  )) === 1,
+)
+check(
+  'the balance agrees with both rows',
+  (await ledgerBalance(burnExample)) === 250000 - 8666,
+  String(await ledgerBalance(burnExample)),
+)
+
+// --- The runs: every attempt, including the ones that charged nothing ----------------
+
+check(
+  'the attempts are on the record, each with the counts it was priced from',
+  (await n(
+    db,
+    `select count(*)::int as n from app.settlement_runs
+      where coaching_center_id = $1 and charge_date = $2
+        and status = 'settled' and ran_by = 'session'
+        and usage_students in (60, 100) and usage_teachers = 3`,
+    [burnExample, today],
+  )) === 2,
+)
+
+// --- A day nobody can afford buys no day (§11.7) --------------------------------------
+
+const brokeCentre = await burnCentre('center')
+const brokeSettle = (
+  await asService('select public.settle_billing($1) as out', [brokeCentre])
+).rows[0].out
+check(
+  'a balance that cannot cover a whole day charges nothing at all',
+  brokeSettle.status === 'insufficient_balance' && brokeSettle.days === 0,
+  JSON.stringify(brokeSettle),
+)
+check(
+  'the money it did have stays theirs',
+  (await ledgerBalance(brokeCentre)) === 0,
+)
+check(
+  'the refusal is on the record rather than in nobody\'s log',
+  (await n(
+    db,
+    `select count(*)::int as n from app.settlement_runs
+      where coaching_center_id = $1 and charge_date = $2
+        and status = 'insufficient_balance' and amount_poisha = 0`,
+    [brokeCentre, today],
+  )) === 1,
+)
+
+// --- The opening day is a gift (§11.14) ------------------------------------------------
+
+const giftedCentre = await burnCentre('center', { recharge: 250000, seededToday: true })
+const giftedSettle = (
+  await asService('select public.settle_billing($1) as out', [giftedCentre])
+).rows[0].out
+check(
+  'a centre on its seeding day is charged nothing, balance or no balance',
+  giftedSettle.days === 0,
+  JSON.stringify(giftedSettle),
+)
+check(
+  'and nothing was written for a day it does not owe',
+  (await n(
+    db,
+    `select count(*)::int as n from billing_ledger
+      where coaching_center_id = $1 and kind = 'daily_charge'`,
+    [giftedCentre],
+  )) === 0,
+)
+
+// --- Teacher tiers ----------------------------------------------------------------------
+
+const plusCentre = await burnCentre('teacher_plus', { recharge: 50000 })
+const plusSettle = (
+  await asService('select public.settle_billing($1) as out', [plusCentre])
+).rows[0].out
+check(
+  'Teacher Pro is its flat figure over thirty, floored in the customer\'s favour',
+  plusSettle.dailyPoisha === Math.floor(49900 / 30) && plusSettle.days === 1,
+  JSON.stringify(plusSettle),
+)
+
+const freeSettle = (
+  await asService('select public.settle_billing($1) as out', [
+    await burnCentre('teacher_free'),
+  ])
+).rows[0].out
+check(
+  'the free tier burns nothing and writes nothing',
+  freeSettle.status === 'nothing_due' && freeSettle.dailyPoisha === 0,
+  JSON.stringify(freeSettle),
+)
+
+// --- Catch-up: days missed while nobody was looking -------------------------------------
+
+await asService(
+  'update coaching_centers set charged_through = ($2::date - 3) where id = $1',
+  [burnExample, today],
+)
+const caughtUp = (
+  await asService('select public.settle_billing($1) as out', [burnExample])
+).rows[0].out
+check(
+  'days missed while nobody was looking are charged at the current size',
+  caughtUp.days === 2,
+  JSON.stringify(caughtUp),
+)
+check(
+  'one row per day, and the series has no hole in it',
+  (await n(
+    db,
+    `select count(*)::int as n from billing_ledger
+      where coaching_center_id = $1 and kind = 'daily_charge'
+        and charge_date in (($2::date - 2), ($2::date - 1))`,
+    [burnExample, today],
+  )) === 2,
+)
+check(
+  'and charged_through has caught up to today again',
+  (await n(
+    db,
+    'select count(*)::int as n from coaching_centers where id = $1 and charged_through = $2',
+    [burnExample, today],
+  )) === 1,
+)
+
+// --- The fences --------------------------------------------------------------------------
+
+check(
+  'a second base charge for a day already charged is refused by the index',
+  await deniedAsService(
+    `insert into billing_ledger
+       (coaching_center_id, kind, amount_poisha, charge_date, top_up)
+     values ($1, 'daily_charge', -100, $2, false)`,
+    [burnExample, today],
+  ),
+)
+check(
+  'and a top-up flag on anything but a daily charge is refused by the shape',
+  await deniedAsService(
+    `insert into billing_ledger
+       (coaching_center_id, kind, amount_poisha, top_up, description)
+     values ($1, 'recharge', 100, true, 'not a charge')`,
+    [burnExample],
+  ),
+)
+check(
+  'a member of one centre cannot settle another\'s',
+  await deniedAsUser(db, ids.ownerA, 'select public.settle_billing($1)', [plusCentre]),
+)
+check(
+  'and neither can a signed-out request',
+  await deniedAsUser(db, null, 'select public.settle_billing($1)', [plusCentre]),
+)
+
+// The member path is allowed, because the worst it can do is charge their own
+// centre for a day it already owed (§11.7's own threat table).
+await asService(
+  `insert into center_members (coaching_center_id, user_id, role)
+   values ($1, $2, 'owner')`,
+  [burnExample, ids.ownerA],
+)
+const memberSettle = await asUser(db, ids.ownerA, (tx) =>
+  tx.query('select public.settle_billing($1) as out', [burnExample]),
+)
+check(
+  "a member's own centre settles through their own session",
+  memberSettle.rows[0].out.ok === true,
+  JSON.stringify(memberSettle.rows[0].out),
+)
+
+// --- The reconciliation (§11.13) ---------------------------------------------------------
+
+const founderRow = (
+  await db.query(
+    `insert into auth.users (email) values ('reconcile-burn@coachdesk.invalid')
+     returning id`,
+  )
+).rows[0]
+await db.query(
+  'update profiles set is_platform_admin = true where id = $1',
+  [founderRow.id],
+)
+const reconciliation = await asUser(db, founderRow.id, (tx) =>
+  tx.query('select * from platform_reconciliation()'),
+)
+check(
+  'the books hold: the reconciliation answers all three questions with no rows',
+  reconciliation.rows.length === 0,
+  JSON.stringify(reconciliation.rows),
+)
+check(
+  'and a member of any centre cannot ask the question',
+  await deniedAsUser(db, ids.ownerA, 'select * from platform_reconciliation()'),
+)
+check(
+  'nor can a signed-out request',
+  await deniedAsUser(db, null, 'select * from platform_reconciliation()'),
 )
 
 console.log(`\n${passed} passed, ${failed} failed`)

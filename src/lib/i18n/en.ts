@@ -5130,6 +5130,22 @@ export const en: Dictionary = {
       asksPlaces: 'Places asked for',
       asksSince: 'Waiting since',
     },
+
+    /**
+     * §11.13's reconciliation, on the panel where it lives. The three questions
+     * are asked of every centre at once and the card answers with either the
+     * all-clear or the findings — a number in a sentence, never a bare count,
+     * because a number alone does not say "these are the books, and they hold"
+     * or "open them".
+     */
+    reconciliation: {
+      title: 'The books',
+      holds: 'All three questions answer clean — the balance, the chain and the line all agree.',
+      findings: (n: number) =>
+        `${n} finding${n === 1 ? '' : 's'} — open the books.`,
+      question: (n: number): string =>
+        n === 1 ? 'Cache vs ledger' : n === 2 ? 'The chain' : 'The line vs paid days',
+    },
   },
 
   /** See the Bangla for why this screen is a comparison and not a list. */

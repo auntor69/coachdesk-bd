@@ -86,8 +86,10 @@ export default async function FounderPage() {
 
   // Not scoped by coaching_center_id, and neither can be: the whole point is every
   // centre. The gate on the first is app.is_platform_admin() inside the function, and on
-  // the second it is the same call inside the policy.
-  const [{ data, error }, { data: intents }] = await Promise.all([
+  // the second it is the same call inside the policy. The third is §11.13's
+  // reconciliation — three questions over every centre's ledger, returning only the
+  // rows that are wrong, so no rows is the all-clear rather than an empty answer.
+  const [{ data, error }, { data: intents }, { data: findings }] = await Promise.all([
     // scoped-by: platform_centers() is a security definer RPC over all centres,
     // gated on app.is_platform_admin(). See 20260811000020_platform_panel.sql.
     supabase.rpc('platform_centers'),
@@ -104,6 +106,9 @@ export default async function FounderPage() {
       .in('state', ['pending', 'initiated'])
       .order('created_at', { ascending: false })
       .limit(60),
+    // scoped-by: platform_reconciliation() is gated on app.is_platform_admin() the
+    // same way platform_centers is. See 20260811000081_settle_billing.sql.
+    supabase.rpc('platform_reconciliation'),
   ])
 
   const list = customers(data, t.unnamed)
@@ -512,6 +517,38 @@ export default async function FounderPage() {
               )
             })}
           </ul>
+
+          {/* §11.13's reconciliation, drawn after the customers because it is about
+              all of them at once. No rows is the answer that sells: the balance
+              cache, the chain and the line all agree, and the founder reads that
+              once and moves on. A finding is a sentence naming the centre, never
+              a bare count — the detail column is composed by the function, from
+              the two figures that disagree. */}
+          <Card>
+            <h2 className="font-semibold text-ink">{t.reconciliation.title}</h2>
+            {!findings || findings.length === 0 ? (
+              <p className="mt-2 text-sm text-ink-soft">{t.reconciliation.holds}</p>
+            ) : (
+              <div className="mt-2 flex flex-col gap-2">
+                <p className="text-sm font-medium text-ink">
+                  {t.reconciliation.findings(findings.length)}
+                </p>
+                <ul className="flex flex-col gap-1.5">
+                  {findings.map((f) => (
+                    <li
+                      key={`${f.question}-${f.coaching_center_id}-${f.detail}`}
+                      className="text-sm text-ink-soft"
+                    >
+                      <span className="font-medium text-ink">
+                        {t.reconciliation.question(f.question)}
+                      </span>{' '}
+                      — {f.coaching_center_name}: {f.detail}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+          </Card>
 
           {/* The two things easiest to misread, stated once at the bottom. */}
           <p className="text-xs text-ink-faint">{t.window}</p>
