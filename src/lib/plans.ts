@@ -528,6 +528,43 @@ export function monthlyBillBdt(
   return students + teacherChargeBdt(activeTeachers) + branchChargeBdt(plan, activeBranches)
 }
 
+/**
+ * What a day costs, in poisha (§11.6: one balance, burned by the day).
+ *
+ * DERIVED FROM `monthlyBillBdt` AND NEVER TYPED IN, which is the whole reason
+ * this is a function and not a constant — the same argument
+ * `seatsCoveredByFloor`'s docblock makes about its own figure. A daily rate
+ * typed anywhere would be a third number that must change with every repricing,
+ * and the day it drifted from the monthly figure a customer would be quoted one
+ * price and burned another.
+ *
+ * `floor(monthly × 100 / 30)`, floored in the CUSTOMER's favour and never
+ * rounded up: rounding up would make a year cost ৳434 more than twelve months
+ * and a 31-day month dearer than a 30-day one (§17). ৳2,600 a month is
+ * ৳86.666… — not a whole taka, not a whole poisha — so the unit is poisha and
+ * integers all the way down, and the ~20 poisha a month the floor gives away
+ * is below the resolution of anything anyone looks at.
+ *
+ * THE SQL TWIN. `public.settle_billing` computes the same figure as
+ * `monthly / 30` in integer poisha (integer division floors), from the same
+ * card held to this file by `tests/price-versions.test.ts`. Two engines was
+ * never the design — one engine, one card, and two doors into them; the worked
+ * figures in `tests/daily-rate.test.ts` are the same ones the RLS suite
+ * asserts of the SQL, so the two doors answer alike or a test fails.
+ *
+ * Zero on the free tier without a special case: §11.6's rule that "the
+ * arithmetic returns zero", not a branch someone has to remember.
+ */
+export function dailyRatePoisha(
+  plan: PlanLimits,
+  activeStudents: number,
+  activeTeachers = 0,
+  activeBranches = 1,
+): number {
+  const monthlyPoisha = monthlyBillBdt(plan, activeStudents, activeTeachers, activeBranches) * 100
+  return Math.floor(monthlyPoisha / 30)
+}
+
 /* -------------------------------------------------------------------------- */
 /* How many students this organisation may have                               */
 /* -------------------------------------------------------------------------- */
