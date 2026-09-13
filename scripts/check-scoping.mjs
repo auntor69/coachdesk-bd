@@ -41,14 +41,14 @@
  * time with a filter on each.
  *
  * WHY THIS DOES NOT CHECK `.rpc(...)`, which looks like a hole and is not. There
- * are eleven rpc call sites and ten distinct functions. Four are the SMS worker's
+ * are nine rpc call sites and eight distinct functions. Four are the SMS worker's
  * — reap_stranded_sms, cancel_opted_out_sms, claim_sms_batch, finish_sms — which
  * are platform-wide by design and revoked from every role a browser can hold, so
  * a centre filter would be meaningless. platform_centers is deliberately every
  * centre, gated inside the function on app.is_platform_admin(). bootstrap_center
- * creates the centre, so there is nothing yet to scope to. issue_phone_code and
- * verify_phone_code are keyed on a phone number and a purpose, and run before the
- * account they protect exists, so there is no centre to name. settle_payment_intent
+ * creates the centre, so there is nothing yet to scope to. (The phone-code
+ * functions that used to be listed here are gone — signup verifies an email
+ * through the platform now, MASTERPLAN §5.4.) settle_payment_intent
  * takes the intent's own id and the intent row already says which centre it belongs
  * to. That leaves exactly one function that takes a centre id:
  * import_students(p_center_id uuid, ...).

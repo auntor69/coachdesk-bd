@@ -14,32 +14,20 @@ import { headers } from 'next/headers'
 import type { Route } from 'next'
 
 import { createClient } from '@/lib/supabase/server'
-import { createAdminClient } from '@/lib/supabase/admin'
-import {
-  normalizeBdMobile,
-  phoneToLoginEmail,
-  formatBdMobile,
-} from '@/lib/bd/phone'
+import { normalizeBdMobile } from '@/lib/bd/phone'
 import { loginEmailFor } from '@/lib/bd/username'
 import { getSession, homePathFor } from '@/lib/auth/session'
 import { MIN_PASSWORD } from '@/lib/auth/password'
-import { OTP_LENGTH } from '@/lib/auth/otp'
-import {
-  checkPhoneCode,
-  phoneGateOn,
-  sendPhoneCode,
-  type CheckCodeResult,
-  type SendCodeResult,
-} from '@/lib/auth/otp-gate'
 import { MAX_NAME } from '@/lib/limits'
 import { digits } from '@/lib/bd/time'
 import { DEFAULT_LOCALE, dict } from '@/lib/i18n'
 import { nameTooLong, passwordTooShort } from '@/lib/i18n/messages'
+import { EMAIL_CODE_LENGTH } from '@/lib/auth/email-otp'
 
 export type FormState = {
   error?: string
   /** Which input to highlight, so the message lands next to the problem. */
-  field?: 'identifier' | 'phone' | 'password' | 'name' | 'center' | 'email'
+  field?: 'identifier' | 'password' | 'name' | 'center' | 'email' | 'code'
 } | null
 
 /**
@@ -47,20 +35,18 @@ export type FormState = {
  *
  * Written out rather than widened from `FormState`: sign-in and centre creation have
  * no code step and should not carry the shape of one. Nothing in it is a claim the
- * browser can make — `awaitingCode` decides which fields are drawn, never whether a
- * number was proved, and the account is created in the same call that checks the code.
+ * browser can make — `awaitingCode` decides which fields are drawn, never whether an
+ * address was proved, and the code is checked against Supabase's own confirmation
+ * record inside this same call. There is no verified flag for a second request to
+ * forge (§5.4).
  */
 export type SignupState = {
   error?: string
-  field?: 'phone' | 'password' | 'name' | 'code'
+  field?: 'email' | 'password' | 'name' | 'code'
   /** A code has been sent and the form is waiting for one. */
   awaitingCode?: boolean
-  /** The number the code went to, formatted for reading. Shown, never resubmitted. */
+  /** The address the code went to. Shown, never resubmitted. */
   sentTo?: string
-  /** Seconds until the code expires. */
-  expiresIn?: number
-  /** Seconds until a resend is allowed, when the last answer was a cooldown. */
-  wait?: number
 } | null
 
 /**
@@ -70,19 +56,16 @@ export type SignupState = {
  */
 function friendlyAuthError(message: string): string {
   if (/invalid login credentials/i.test(message)) {
-    return 'নম্বর, ইউজারনেম বা পাসওয়ার্ড ঠিক নেই। আবার চেষ্টা করুন।'
+    return 'ইমেইল, নম্বর, ইউজারনেম বা পাসওয়ার্ড ঠিক নেই। আবার চেষ্টা করুন।'
   }
-  if (/email rate limit|too many requests|rate limit/i.test(message)) {
+  if (/email not confirmed/i.test(message)) {
+    return 'ইমেইলটি এখনও ভেরিফাই হয়নি। ইমেইলে পাঠানো কোড বা লিংকটি দেখুন।'
+  }
+  if (/rate limit|too many requests/i.test(message)) {
     return 'অনেকবার চেষ্টা হয়েছে। কিছুক্ষণ পর আবার চেষ্টা করুন।'
   }
   if (/already registered|already been registered/i.test(message)) {
-    return 'এই নম্বরে অ্যাকাউন্ট আছে। লগইন করুন।'
-  }
-  // What a unique-violation on profiles.phone looks like from the auth API.
-  // GoTrue reports any trigger failure as this one opaque string, and for us
-  // the overwhelmingly likely cause is a number that already has an account.
-  if (/database error (creating|saving)/i.test(message)) {
-    return 'এই নম্বরে অ্যাকাউন্ট আছে। লগইন করুন।'
+    return 'এই ইমেইলে অ্যাকাউন্ট আছে। লগইন করুন।'
   }
   if (/password/i.test(message) && /short|least/i.test(message)) {
     return passwordTooShort(DEFAULT_LOCALE)
@@ -90,97 +73,73 @@ function friendlyAuthError(message: string): string {
   return 'কিছু একটা সমস্যা হয়েছে। আবার চেষ্টা করুন।'
 }
 
-/** Why no code was sent, in the voice of the rest of this screen. */
-function sendRefusal(result: Extract<SendCodeResult, { ok: false }>): string {
-  switch (result.reason) {
-    case 'cooldown':
-      return `আরও ${digits(result.wait, 'bn')} সেকেন্ড পর নতুন কোড নিতে পারবেন।`
-    case 'phone_limit':
-      return 'এই নম্বরে এক ঘণ্টায় অনেকবার কোড পাঠানো হয়েছে। পরে আবার চেষ্টা করুন।'
-    case 'ip_limit':
-      return 'এই সংযোগ থেকে অনেকবার চেষ্টা হয়েছে। কিছুক্ষণ পর আবার চেষ্টা করুন।'
-    case 'undelivered':
-      return 'কোড পাঠানো যায়নি। এক মিনিট পর আবার চেষ্টা করুন।'
-    case 'invalid':
-      return 'সঠিক মোবাইল নম্বর দিন (যেমন ০১৭১২৩৪৫৬৭৮)।'
-    default:
-      return 'কোড পাঠানো যায়নি। আবার চেষ্টা করুন।'
+/**
+ * Why a send was refused, in the voice of the rest of this screen. Supabase's
+ * own rate limit is the only expected refusal: the built-in sender allows about
+ * two messages an hour and the dedicated SMTP raises it far past anything a
+ * signup flow can hit.
+ */
+function sendRefusal(message: string): string {
+  if (/once every|rate limit|too many/i.test(message)) {
+    return 'কোড একবারই পাঠানো যায় — এক মিনিট অপেক্ষা করে আবার চেষ্টা করুন।'
   }
+  return 'কোড পাঠানো যায়নি। এক মিনিট পর আবার চেষ্টা করুন।'
 }
 
 /**
- * Why a code was refused. Four of the answers are the same sentence on purpose —
- * never asked, already used, already burned and already swept are one state to a
- * visitor, and telling them apart would say which numbers are mid-signup.
+ * Why a code was refused. The same sentence for wrong, stale and unknown on
+ * purpose — telling them apart would tell a script which addresses are
+ * mid-signup, and the answer to all three is "ask for a new code".
  */
-function verifyRefusal(result: Extract<CheckCodeResult, { ok: false }>): string {
-  switch (result.reason) {
-    case 'wrong':
-      return result.left > 0
-        ? `কোড মিলছে না। আর ${digits(result.left, 'bn')} বার চেষ্টা করতে পারবেন।`
-        : 'কোড মিলছে না। নতুন কোড নিন।'
-    case 'malformed':
-      return `${digits(OTP_LENGTH, 'bn')} সংখ্যার কোড দিন।`
-    case 'expired':
-      return 'কোডের সময় শেষ। নতুন কোড নিন।'
-    case 'burned':
-      return 'অনেকবার ভুল হয়েছে। নতুন কোড নিন।'
-    case 'none':
-      return 'কোডটি আর কাজ করছে না। নতুন কোড নিন।'
-    case 'invalid':
-      return 'সঠিক মোবাইল নম্বর দিন (যেমন ০১৭১২৩৪৫৬৭৮)।'
-    default:
-      return 'কিছু একটা সমস্যা হয়েছে। আবার চেষ্টা করুন।'
+function verifyRefusal(message: string): string {
+  if (/invalid|expired|incorrect|not found|no such/i.test(message)) {
+    return `কোড মিলছে না। ইমেইলে পাঠানো ${digits(EMAIL_CODE_LENGTH, 'bn')} সংখ্যার কোডটি দিন, বা নতুন কোড নিন।`
   }
+  return 'কোডটি কাজ করছে না। নতুন কোড নিন।'
 }
 
 /**
- * The caller's address, for the per-IP hourly ceiling.
- *
- * Null when there is no proxy header, which is local development. The SQL skips the
- * per-IP count on a null rather than filing everyone under one shared 'unknown',
- * where the first twenty signups of an hour would use up everybody's allowance.
+ * Where this request came from, for the confirmation email's redirect. The
+ * `Origin` header is sent on every same-origin POST — and a Server Action is a
+ * POST — with the forwarded host and protocol as the fallbacks a proxy behind
+ * a proxy would leave. Never a value from the form body.
  */
-async function callerIp(): Promise<string | null> {
-  const forwarded = (await headers()).get('x-forwarded-for')
-  // A proxy chain: the client is the first entry, the rest are Vercel's.
-  return forwarded?.split(',')[0]?.trim() || null
+async function requestOrigin(): Promise<string> {
+  const h = await headers()
+  const origin = h.get('origin')
+  if (origin) return origin
+
+  const host = h.get('x-forwarded-host') ?? h.get('host')
+  const proto = h.get('x-forwarded-proto') ?? 'http'
+  return host ? `${proto}://${host}` : ''
 }
 
 /**
- * Whether this number already has an account.
- *
- * Asked before a code is sent rather than after one is proved, because a send costs a
- * taka and rings somebody's phone. On a read error this answers "no" and signup goes
- * on: the number is checked again by `createUser`, which refuses a duplicate, so the
- * cost of guessing wrong is one message — where refusing would be every signup
- * blocked by a transient error. This says nothing signup did not already say; the
- * existing duplicate path returns the same sentence.
+ * The link inside the confirmation email lands here once it has been clicked,
+ * so the email works whether its template carries the code, the link, or both
+ * (§5.4). Must be an allowed redirect URL in the dashboard for Supabase to
+ * honour it; otherwise it falls back to the Site URL, which is the same trip.
+ * Undefined when no origin could be derived, in which case the platform uses
+ * its configured Site URL — the link still works, it just defaults.
  */
-async function phoneHasAccount(phone: string): Promise<boolean> {
-  // actor-less: nobody is signed in yet, and nothing is written. This reads whether a
-  // number is taken, before a code is sent to it.
-  const { data } = await createAdminClient()
-    .from('profiles')
-    .select('id')
-    .eq('phone', phone)
-    .maybeSingle()
-
-  return data !== null
+async function confirmUrl(): Promise<string | undefined> {
+  const origin = await requestOrigin()
+  return origin ? `${origin}/auth/confirm` : undefined
 }
 
 /**
- * Sign in with a mobile number *or* a username, in one field.
+ * Sign in with an email address, a mobile number *or* a username, in one field.
  *
  * MASTERPLAN.md §5.3 puts a single box on the login screen and makes the server
- * work out which of the two it was handed — "no radio button, no second tab, no
- * 'are you a teacher?' question". That dispatch is `loginEmailFor`, and it is
- * unambiguous because the two sets cannot overlap: a username begins with a
- * letter and no form of a Bangladeshi mobile number does.
+ * work out which of the three it was handed. That dispatch is `loginEmailFor`,
+ * and it is unambiguous because the three sets cannot overlap: an email carries
+ * an `@`, a username starts with a letter and no form of a Bangladeshi mobile
+ * number does.
  *
- * Both are normalised on the way through, so 01712-345678, +8801712345678 and
- * ০১৭১২৩৪৫৬৭৮ reach one account, and `Rahim` reaches the same account as
- * `rahim`, instead of failing as "wrong password".
+ * Numbers and usernames are normalised on the way through, so 01712-345678,
+ * +8801712345678 and ০১৭১২৩৪৫৬৭৮ reach one account, and `Rahim` reaches the
+ * same account as `rahim`, instead of failing as "wrong password". Emails are
+ * lowercased, because autocorrect capitalises the first letter of a text field.
  */
 export async function signIn(
   _prev: FormState,
@@ -191,11 +150,11 @@ export async function signIn(
 
   const loginEmail = loginEmailFor(rawIdentifier)
   if (!loginEmail) {
-    // One message for both halves of the field. Saying *which* form it failed to
-    // be would be a hint about which form exists — and it is no help anyway: the
+    // One message for all thirds of the field. Saying *which* form it failed to
+    // be would be a hint about which forms exist — and it is no help anyway: the
     // teacher was told one identifier and is typing that one.
     return {
-      error: 'মোবাইল নম্বর বা ইউজারনেম ঠিক নেই (যেমন ০১৭১২৩৪৫৬৭৮ বা rahim)।',
+      error: 'ইমেইল, মোবাইল নম্বর বা ইউজারনেম ঠিক নেই (যেমন name@gmail.com, ০১৭১২৩৪৫৬৭৮ বা rahim)।',
       field: 'identifier',
     }
   }
@@ -235,29 +194,30 @@ export async function signIn(
  * the same signup serves an owner opening a centre and a teacher who was
  * invited to one.
  *
- * Two steps when a gateway is configured, one step when it is not — see `phoneGateOn`.
- * The two-step path never hands the browser anything to carry between them: the code
- * is checked and the account created inside this one call, so there is no verified flag
- * for a second request to forge. `awaitingCode` in the returned state only decides
- * which inputs are drawn.
+ * Two steps, and the second is Supabase's rather than ours (§5.4): `signUp`
+ * creates the account unconfirmed and the platform sends the email; `verifyOtp`
+ * checks the code and establishes the session inside this same call — so there
+ * is no verified flag for a second request to forge, and `awaitingCode` in the
+ * returned state only decides which inputs are drawn. If the project ever has
+ * confirmation switched off, `signUp` returns the session directly and the code
+ * step never appears.
  */
 export async function signUp(
   _prev: SignupState,
   formData: FormData,
 ): Promise<SignupState> {
-  const rawPhone = String(formData.get('phone') ?? '')
+  const rawEmail = String(formData.get('email') ?? '')
   const password = String(formData.get('password') ?? '')
   const fullName = String(formData.get('name') ?? '').trim()
   const typedCode = String(formData.get('code') ?? '').trim()
-  // A submit button's own name. It can only ever cause a send, so a browser choosing
-  // it is choosing to be rate-limited, not to skip anything.
+  // A submit button's own name. It can only ever cause a resend, so a browser
+  // choosing it is choosing to be rate-limited, not to skip anything.
   const resending = String(formData.get('intent') ?? '') === 'resend'
 
-  const phone = normalizeBdMobile(rawPhone)
-  const loginEmail = phone ? phoneToLoginEmail(phone) : null
+  const email = rawEmail.trim().toLowerCase()
 
-  if (!phone || !loginEmail) {
-    return { error: 'সঠিক মোবাইল নম্বর দিন (যেমন ০১৭১২৩৪৫৬৭৮)।', field: 'phone' }
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || email.length > 254) {
+    return { error: 'সঠিক ইমেইল দিন (যেমন name@gmail.com)।', field: 'email' }
   }
   if (!fullName) {
     return { error: 'আপনার নাম লিখুন।', field: 'name' }
@@ -269,124 +229,93 @@ export async function signUp(
     return { error: passwordTooShort(DEFAULT_LOCALE), field: 'password' }
   }
 
-  if (!phoneGateOn()) {
-    return createAccount({ loginEmail, password, fullName, phone })
-  }
+  const redirectTo = await confirmUrl()
 
-  if (await phoneHasAccount(phone)) {
-    return { error: 'এই নম্বরে অ্যাকাউন্ট আছে। লগইন করুন।', field: 'phone' }
-  }
-
-  if (resending || !typedCode) {
-    const sent = await sendPhoneCode({
-      phone,
-      purpose: 'signup',
-      ip: await callerIp(),
+  // Step 1: no code yet — create the (unconfirmed) account and send the email.
+  if (!typedCode && !resending) {
+    const supabase = await createClient()
+    const { data, error } = await supabase.auth.signUp({
+      email,
+      password,
+      options: {
+        // Read by the on_auth_user_created trigger, so the profile row exists
+        // before the email is even confirmed. DEFAULT_LOCALE rather than a
+        // literal: a new centre has expressed no preference yet.
+        data: { full_name: fullName, locale: DEFAULT_LOCALE },
+        emailRedirectTo: redirectTo,
+      },
     })
 
-    if (sent.ok) {
-      return {
-        awaitingCode: true,
-        sentTo: formatBdMobile(phone),
-        expiresIn: sent.expiresIn,
-      }
+    // Confirmation off in the project: the session came back with the account.
+    if (!error && data.session) {
+      redirect('/onboarding')
     }
 
-    // A cooldown means a code sent a moment ago is still live, so the code box is
-    // where the visitor belongs even though this attempt was refused. A resend that
-    // failed for any other reason should not throw away the step they are standing on
-    // either — the code they already have may still work.
-    const stay = sent.reason === 'cooldown' || resending
-    return stay
-      ? {
-          awaitingCode: true,
-          sentTo: formatBdMobile(phone),
-          wait: sent.reason === 'cooldown' ? sent.wait : undefined,
-          error: sendRefusal(sent),
-          field: 'code',
+    if (error) {
+      // The address already has an account. It may be an abandoned signup —
+      // created, never confirmed, and now unable to log in — so before saying
+      // "log in" and stranding them, offer the code again: `resend` succeeds
+      // only for an unconfirmed user, which is exactly the population it
+      // exists for. A confirmed account errors here and gets the sentence.
+      if (/already registered|already been registered/i.test(error.message)) {
+        const { error: resendError } = await supabase.auth.resend({
+          email,
+          type: 'signup',
+          options: { emailRedirectTo: redirectTo },
+        })
+        if (!resendError) {
+          return { awaitingCode: true, sentTo: email }
         }
-      : { error: sendRefusal(sent), field: 'phone' }
+        return {
+          awaitingCode: /once every|rate limit|too many/i.test(resendError.message),
+          sentTo: /once every|rate limit|too many/i.test(resendError.message)
+            ? email
+            : undefined,
+          error: sendRefusal(resendError.message),
+          field: 'email',
+        }
+      }
+      return { error: sendRefusal(error.message), field: 'email' }
+    }
+
+    return { awaitingCode: true, sentTo: email }
   }
 
-  const checked = await checkPhoneCode({ phone, purpose: 'signup', code: typedCode })
-  if (!checked.ok) {
+  const supabase = await createClient()
+
+  // A resend: the account exists unconfirmed, and only the email is re-armed.
+  if (resending) {
+    const { error } = await supabase.auth.resend({
+      email,
+      type: 'signup',
+      options: { emailRedirectTo: redirectTo },
+    })
+
+    if (!error) {
+      return { awaitingCode: true, sentTo: email }
+    }
     return {
       awaitingCode: true,
-      sentTo: formatBdMobile(phone),
-      error: verifyRefusal(checked),
+      sentTo: email,
+      error: sendRefusal(error.message),
       field: 'code',
     }
   }
 
-  return createAccount({ loginEmail, password, fullName, phone })
-}
-
-/**
- * The account itself, once there is nothing left to prove.
- *
- * Reached with a verified number when the gate is on and directly when it is off, so
- * it makes no assumption about which. Either redirects or returns a refusal.
- */
-async function createAccount({
-  loginEmail,
-  password,
-  fullName,
-  phone,
-}: {
-  loginEmail: string
-  password: string
-  fullName: string
-  phone: string
-}): Promise<SignupState> {
-  const supabase = await createClient()
-
-  // Accounts are created through the admin endpoint, never the public signUp
-  // endpoint. Public signUp sends a confirmation email, and the free tier's
-  // shared SMTP rate-limits it to ~2/hour; signup would start throttling real
-  // signups within the first hour. The admin endpoint creates the user with
-  // email_confirm already set and sends no mail at all — which is exactly right,
-  // because our phone-login address is unroutable and could never receive one.
-  // What the endpoint can't do is race prevention: two people signing up with
-  // the same number in the same instant can both pass the check below. That is
-  // acceptable — the loser is still fully usable, just redirected to login.
-  // actor-less: nobody exists to name yet. This call is what creates the account, so
-  // its id cannot be in a header sent before it, and nothing audited is written either
-  // way — the on_auth_user_created trigger writes `profiles`, which is not one of
-  // migration 46's fourteen tables. The first audited row this person causes is their
-  // centre, and `bootstrap_center` below writes it through their own JWT.
-  const admin = createAdminClient()
-  const { error } = await admin.auth.admin.createUser({
-    email: loginEmail,
-    password,
-    email_confirm: true,
-    // Read by the on_auth_user_created trigger, so the profile row exists
-    // before this function returns.
-    //
-    // DEFAULT_LOCALE rather than a literal: a new centre has expressed no
-    // preference yet, and the one place that decides what a reader gets by
-    // default should be the one place that says so.
-    user_metadata: { full_name: fullName, phone, locale: DEFAULT_LOCALE },
+  // Step 2: the code. Checked against the platform's own confirmation record,
+  // and the session it returns is the session — nothing else is decided here.
+  const { error: verifyError } = await supabase.auth.verifyOtp({
+    email,
+    token: typedCode,
+    type: 'signup',
   })
 
-  if (error) {
-    if (/already registered|already been registered|already exists/i.test(error.message)) {
-      return { error: 'এই নম্বরে অ্যাকাউন্ট আছে। লগইন করুন।', field: 'phone' }
-    }
-    return { error: friendlyAuthError(error.message), field: 'phone' }
-  }
-
-  // The account exists now. Sign in with it — the trigger has already created
-  // the profile row, and signInWithPassword returns a session without any email.
-  const { error: signInError } = await supabase.auth.signInWithPassword({
-    email: loginEmail,
-    password,
-  })
-
-  if (signInError) {
+  if (verifyError) {
     return {
-      error:
-        'অ্যাকাউন্ট তৈরি হয়েছে, কিন্তু লগইন হয়নি। লগইন পাতায় গিয়ে চেষ্টা করুন।',
-      field: 'phone',
+      awaitingCode: true,
+      sentTo: email,
+      error: verifyRefusal(verifyError.message),
+      field: 'code',
     }
   }
 
@@ -419,9 +348,10 @@ export async function createCenter(
    * The onboarding screen does not draw this form for a centre-issued login, and that
    * is not what stops one getting here: a Server Action is a public endpoint, so the
    * only reason the screen and the action agree is that both ask. `bootstrap_center`
-   * asks a third time (20260811000077) and is the one that cannot be routed around —
-   * the anon key reaches that RPC directly. This is here so the refusal arrives as a
-   * sentence under the field rather than as a Postgres error string.
+   * asks a third time (20260811000079 widens it to both reserved domains) and is the
+   * one that cannot be routed around — the anon key reaches that RPC directly. This
+   * is here so the refusal arrives as a sentence under the field rather than as a
+   * Postgres error string.
    */
   if (session.username) {
     return { error: dict(session.locale).noCenter.refused, field: 'center' }
@@ -461,8 +391,8 @@ export async function createCenter(
 /**
  * `resetStaffPassword` was removed here.
  *
- * It was an owner-issued reset written before there was a screen to put one on, and
- * it never got one — no component in the tree referenced it. That did not make it
+ * It was an owner-issued reset written before there was a screen to put one on, and it
+ * never got one — no component in the tree referenced it. That did not make it
  * harmless. `signOut` in this module is imported by the app shell, so the module is
  * in the build graph, so every exported action in it has an id and is a live HTTP
  * endpoint whether or not any button posts to it.
@@ -479,8 +409,3 @@ export async function createCenter(
  * anything holding a second membership anywhere, itself, or a platform admin. The
  * rule is `lib/auth/reset.ts` and its ten tests. Nothing was lost by deleting this.
  */
-
-/** Used by the login page to echo a normalised number back at the user. */
-export async function previewPhone(input: string): Promise<string> {
-  return formatBdMobile(normalizeBdMobile(input))
-}

@@ -106,13 +106,6 @@ function adminCalls(): Call[] {
 const ACTOR_LESS = [
   // The queue worker. `actor_role = 'service_role'` with a null actor is the truth.
   'src/app/api/cron/sms/route.ts',
-  // Signup, where the account being created is the actor and does not exist yet. Nothing
-  // audited is written: the trigger behind this writes `profiles`, which migration 46
-  // does not watch.
-  'src/app/(auth)/actions.ts',
-  // The phone gate in front of signup, for the same reason and one step earlier: a code is
-  // issued to prove a number belongs to somebody who has no account yet.
-  'src/lib/auth/otp-gate.ts',
   // The two rosters that show a colleague's username, which `profiles` is self-read for.
   // Reads, so there is no audit row and nothing to attribute.
   'src/app/(app)/settings/teachers/page.tsx',

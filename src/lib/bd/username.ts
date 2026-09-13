@@ -412,18 +412,37 @@ export function loginEmailToUsername(email: string): string | null {
 }
 
 /**
- * §5.3's dispatch, which is the entire login screen: "if it normalises as a BD
- * mobile it is a phone, otherwise it is a username. No radio button, no second
- * tab, no 'are you a teacher?' question."
+ * §5.3's dispatch, which is the entire login screen: an `@` makes it an email,
+ * a shape that normalises as a BD mobile makes it a staff login keyed by that
+ * number, and anything else is a username. No radio button, no second tab, no
+ * "are you a teacher?" question.
  *
- * The order reads like a preference and is not one. The two sets cannot overlap —
- * a username starts with a letter and every form of a mobile number starts with a
- * digit — so whichever branch answers is the only branch that could have. Null
- * means neither, which the caller turns into one deliberately unhelpful message:
- * telling somebody *which* half of the field they got wrong is how an attacker
- * learns which identifiers exist.
+ * The order reads like a preference and is not one. The three sets cannot
+ * overlap — an email has an `@`, a username never contains one, and every form
+ * of a mobile number starts with a digit — so whichever branch answers is the
+ * only branch that could have. Null means none of the three, which the caller
+ * turns into one deliberately unhelpful message: telling somebody *which* third
+ * of the field they got wrong is how an attacker learns which identifiers exist.
+ *
+ * Emails arrived with §5.4's 2026-09-13 rewrite: self-serve signup creates real,
+ * verified addresses, and the number and the username remain the identifiers of
+ * accounts a centre minted for its staff. Three is the ceiling of this field —
+ * see §5.3 for why nothing else may be added to it.
  */
 export function loginEmailFor(identifier: string): string | null {
-  return phoneToLoginEmail(identifier) ?? usernameToLoginEmail(identifier)
+  const typed = identifier.trim()
+
+  if (typed.includes('@')) {
+    // Light on purpose: Supabase does the real validation, and this branch only
+    // has to decide that an `@` was typed and hand it on unchanged in shape.
+    // Lowercased because GoTo stores addresses that way and a capital letter
+    // in a phone keyboard's autocorrect should not fail a login.
+    const email = typed.toLowerCase()
+    return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) && email.length <= 254
+      ? email
+      : null
+  }
+
+  return phoneToLoginEmail(typed) ?? usernameToLoginEmail(typed)
 }
 

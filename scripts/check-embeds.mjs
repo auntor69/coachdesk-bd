@@ -382,32 +382,6 @@ const closedRpcs = [
   // Settling an intent writes a receipt and raises the student ceiling (migration 57). A
   // browser that could reach it would be buying places for free.
   ['settle_payment_intent', { p_intent: '00000000-0000-0000-0000-000000000000' }],
-  // The signup gate (migration 65). Reachable from a browser, `issue_phone_code` would
-  // hand the caller its own ceilings and `verify_phone_code` its own attempt limit —
-  // and between them they are the only thing proving a phone number belongs to whoever
-  // is typing it.
-  [
-    'issue_phone_code',
-    {
-      p_phone: '+8801700000000',
-      p_purpose: 'signup',
-      p_code_hash: 'x',
-      p_ip: null,
-      p_ttl_seconds: 300,
-      p_cooldown_seconds: 60,
-      p_phone_per_hour: 5,
-      p_ip_per_hour: 20,
-    },
-  ],
-  [
-    'verify_phone_code',
-    {
-      p_phone: '+8801700000000',
-      p_purpose: 'signup',
-      p_code_hash: 'x',
-      p_max_attempts: 5,
-    },
-  ],
   /*
    * The organisation's headcount (migration 76). Harmless if it runs — a signed-out
    * caller fails `app.is_staff_admin` and gets 42501 with no number in it — but the

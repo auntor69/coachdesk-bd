@@ -1023,83 +1023,85 @@ Where a Bangla name transliterates to nothing usable — punctuation, an initial
 name typed in a script the map does not cover — the fallback is the centre's own
 short code plus a number, never a random hex string.
 
-### 5.3 Signing in with either one ✅
+### 5.3 Signing in with any of the three ✅
 
-One field, labelled **"Phone number or username"**. The server decides which it
-received: if it normalises as a BD mobile it is a phone, otherwise it is a
-username. No radio button, no second tab, no "are you a teacher?" question —
-because the person signing in does not think of themselves as an auth strategy.
+One field, labelled **"Email, mobile number or username"**. The server decides which
+it received: an `@` makes it an email, a shape that normalises as a BD mobile makes
+it a staff login keyed by that number, and anything else is a username. No radio
+button, no second tab, no "are you a teacher?" question — because the person signing
+in does not think of themselves as an auth strategy.
 
-This must not break the accounts that already exist. Phone login works today by
-mapping the number onto a synthetic address at a reserved TLD
-(`8801712345678@phone.coachdesk.invalid`), because Supabase needs an email and
-real phone auth needs a sender ID we do not have. Usernames extend the same trick
-with a second reserved domain rather than replacing it, so every existing
-password keeps working and nobody is re-signed-up.
+Emails are the owner's identifier since §5.4's rewrite (2026-09-13): self-serve
+signup creates a real, verified Gmail-style address. The number and the username
+remain the identifiers of accounts a *centre* mints for its staff — `giveTeacherLogin`
+and `appointManager` still key those accounts on a phone number when there is one and
+on a username when there is not, because §5.1's part-timer must never be forced to
+hand over a number or an email to get a login. Both continue to work through the
+reserved-domain trick: the synthetic addresses `8801712345678@phone.coachdesk.invalid`
+and `rahim@user.coachdesk.invalid` are unroutable by DNS, so nothing addressed to
+them can ever reach a real inbox, and no real email can collide with them. Existing
+passwords all keep working; nobody was re-signed-up.
 
-### 5.4 Owner and manager signup needs OTP ✅ (built) 🚧 (off until a gateway exists)
+Three identifiers is the ceiling, not the start of a list. Nothing else may be added
+to this field — every one of them has to be normalised, logged, explained on a
+login screen, and refused with one shared sentence that does not say which half was
+wrong, because that difference is how you enumerate who has an account.
 
-**It was a real security hole and it is worth remembering why.** An owner signed up by
-typing a phone number and a password, and nothing checked that the number was theirs.
-Anyone could register using another person's phone number — and since `profiles.phone`
-is unique across the platform, doing so also **denied that number to its actual owner
-forever**. Not only impersonation: a squatting attack on the identifier we use to
-recognise returning customers.
+### 5.4 Owner signup verifies an email address ✅
 
-So: a one-time code, sent to the number, before the account exists. That is built.
+**Rewritten 2026-09-13.** The phone OTP gate below was built, tested, and then
+retired unread — it never switched on, because switching it on needed a BTRC
+sender ID, which needed an aggregator account, which needed an NID, and none of
+that was ever going to arrive in time to matter. The owner's decision replaces it
+outright: **signup is by email, verified by email**, through Supabase's own
+confirmation flow. A Gmail address costs nothing to verify. A mobile number cost
+a taka a message and an external approval to even try.
 
-| Control | Built as |
+The hole the old gate existed to close is closed by verification itself, in the
+general form: nobody finishes signup without reading the inbox, so nobody can
+register an identifier they do not own — not to impersonate its real holder, and
+not to squat it. And signup no longer offers a phone number at all, so there is
+no number field to squat.
+
+**The flow, and it is the same shape the phone gate had:**
+
+| | |
 |---|---|
-| Code length | 6 digits, `OTP_LENGTH` |
-| Expiry | 5 minutes, `OTP_TTL_SECONDS` |
-| Verification | **server-side only.** The stored hash is `sha256(phone:purpose:code)`, so a row cannot be replayed against another number, and the browser never learns the code it is checked against |
-| Max attempts | 5 per code, counted in SQL under a row lock so parallel guesses queue, and the code is burned when they run out |
-| Resend cooldown | 60 seconds, checked before anything is inserted or sent |
-| Per-number ceiling | 5 per number per hour, 20 per IP per hour; a missing proxy header is skipped rather than filed under one bucket every such visitor would share |
-| Storage | `app.phone_verifications` — hash, expiry, attempt count, and a sweep of everything older than an hour on each insert. No cron, no table that grows for ever |
-| Normalisation | canonicalised in the gate before anything is sent or stored, so `01712…`, `+88017…` and `০১৭১২…` are one number and one ceiling, not three |
+| Step 1 | name, email, password. `signUp` creates the account **unconfirmed** and Supabase sends the confirmation email |
+| Step 2 | the email carries a **six-digit code** (and a link to `/auth/confirm` as its fallback). The code is typed into the same form — `verifyOtp` checks it and returns the session |
+| One call | the code is checked and the session established inside one Server Action; `awaitingCode` in the returned state only decides which inputs are drawn, exactly as before — there is no verified flag for a browser to carry between requests |
+| If confirmation is off | `signUp` returns the session directly and the second step never appears |
+| Already registered, unconfirmed | the resend path: `resend({ type: 'signup' })` re-arms the code rather than telling somebody who cannot sign in to sign in |
+| Wrong code | Supabase counts the attempts; the screen says the code does not match, never which half of anything was wrong |
 
-**Teachers are exempt, deliberately and permanently.** Their phone is optional, so
-there may be no number to send to; and the account is being issued by their
-employer inside a centre that already exists. Re-introducing teacher OTP would
-make the register unusable for the exact centres we are selling to — the ones
-whose part-time physics teacher does not want to be in a database. This is
-written here as a rule and not a preference: **teacher account creation must never
-require OTP.**
+The name and the locale travel in `signUp`'s metadata, so the `on_auth_user_created`
+trigger writes the profile row before the email is even confirmed — the same
+trigger, unchanged, that fired for admin-created accounts.
 
-Where it lives: the numbers and the answer parsers in `src/lib/auth/otp.ts`, the gate
-and both transports in `src/lib/auth/otp-gate.ts`, the table and the two functions in
-migration `20260811000065_phone_verification.sql`, the two-step screen in
-`src/app/(auth)/actions.ts` and `src/app/(auth)/signup-form.tsx`.
+**Teachers are exempt, deliberately and permanently, and now by construction.**
+Staff accounts are minted by the centre through the admin API, which creates them
+confirmed and sends nothing: no email arrives at a teacher who may not have one,
+no code stands between a manager and a login for their physics teacher. This is
+the old §5.4 rule, held by the shape of the code rather than by a gate with an
+exemption in it.
 
-**The step is not the security boundary; the code is.** The screen has two steps when
-the gate is on, but the code is checked and the account created inside one Server
-Action call — so there is no verified flag for a browser to carry between requests, and
-`awaitingCode` in the returned state only decides which inputs are drawn. A browser
-that skips the step is asked for a code it does not have.
+**Delivery is Gmail, on a dedicated address.** `coachdeskbd@gmail.com` is the
+sender, configured as custom SMTP in the Supabase dashboard with an app password
+— the password lives in the dashboard and nowhere else: not in the code, not in
+`.env`, never in a chat. Until the SMTP fields are filled, Supabase's built-in
+sender works but rate-limits to roughly two messages an hour, which is enough to
+test and nothing else. The one dashboard edit worth making the same trip for is
+the **Confirm Signup template**: its default is a link, and a six-digit
+`{{ .Token }}` is the better experience on a phone keyboard — both are handled by
+the code either way, and the link route exists so a default template degrades
+gracefully rather than breaking.
 
-**On exactly when there is a way to send a code.** `phoneGateOn()` reads the same three
-server-only variables the SMS worker reads before claiming a batch, so the aggregator's
-credentials are the deploy that shuts this hole — for everybody at once, with no code
-change. Until then signup is what it always was and the hole above is still open, which
-is why this section says so rather than claiming otherwise. And nothing turns the gate
-off once those variables are set: every path to a false answer is the absence of a
-transport, never a variable saying to skip the check.
-
-`OTP_DEV_TRANSPORT=1` is the other way on, and it is ignored when `NODE_ENV` is
-production — which is every Vercel build, previews included. Without it the flow could
-not be run at all before a sender ID exists, because the condition that turns the gate
-on is the same condition that turns the logging transport off. With it the code goes to
-the server log and nowhere else: never a return value, never a header, never a field on
-a form state. A code the browser can read is not a code.
-
-**Delivery is the part that is still blocked.** It needs an SMS route, which needs a
-BTRC-approved sender ID, which needs an aggregator account, which needs an NID. The
-interface was the deliverable; the SMS provider behind it is one file, already written.
-
-Provider credentials live in server-only environment variables. They are never
-imported into a client component, never returned from a Server Action, and never
-logged. This is the same rule the service-role key already lives under.
+**What was retired with the phone gate** (migration `20260811000079`):
+`app.phone_verifications` and its two functions, `src/lib/auth/otp.ts`,
+`src/lib/auth/otp-gate.ts`, and the `previewPhone` action. `profiles.phone`
+survives — it is the staff record's contact number, not a login identifier — and
+`bd/phone.ts` survives with it, because `giveTeacherLogin` and `appointManager`
+still mint number-keyed staff accounts (§5.1, §5.3).
 
 ### 5.5 A login the centre minted cannot found a centre ✅
 
@@ -1117,12 +1119,12 @@ teacher off for the summer holds a working account with zero memberships, and
 create-a-coaching-centre form. None of it reached the old centre; the membership
 was gone and RLS refused. What it reached was `bootstrap_center`, which asked only
 whether the claimant already **owns** a centre. So every staff login a manager
-minted was also a self-serve centre signup: past §5.4's phone gate, because that
+minted was also a self-serve centre signup: past §5.4's verification, because that
 gate is on signup and this account was created by an admin call, with the 14-day
 Teacher Pro trial of §4.3 stamped on it, on a password somebody else knows.
 
 **The credential is refused, not the person.** A teacher who wants their own
-batches signs up with their own number and gets the form exactly as before — §2
+batches signs up with their own email and gets the form exactly as before — §2
 keeps Teacher Free open to anybody, and §5.1 has always held a teacher *record*
 apart from a *login account*. What cannot happen is founding a centre on a key a
 third party holds.
@@ -1139,11 +1141,17 @@ TypeScript alone would be advice (§24).
 what actually signs the person in; `profiles.username` is the readable copy
 migration 38's trigger writes and `app.guard_profile_identity` keeps a browser out
 of. They are read with `or`, so a disagreement between them refuses rather than
-admits. The domain literal is duplicated into SQL and has to be — Postgres has
-nowhere to import a constant from — so `tests/onboarding.test.ts` asserts the two
-strings are the same one. It is the **username** domain and not the `.invalid`
-suffix the two synthetic domains share: `like '%.invalid'` would refuse every
-owner on the platform.
+admits.
+
+**The guard was widened to both synthetic domains on 2026-09-13, and the reason is
+§5.4's rewrite.** It used to refuse only the username domain, because phone-keyed
+logins were then also self-serve signups — an owner — and refusing `%.invalid`
+outright would have refused every owner on the platform. Since signup is by email,
+the *only* accounts left on either reserved domain are centre-minted staff logins,
+which is exactly the population the fence exists for. The guard now refuses the
+shared `%.coachdesk.invalid` suffix — both domains at once, no real email can end
+in `.invalid` (RFC 2606), and a minted login can no longer found a centre whichever
+of the two shapes it was keyed on.
 
 **And that screen now has a way out, which is the part nothing else in the product
 offered.** `/login` redirects a live session to `homePathFor`, which for an account
@@ -2908,11 +2916,10 @@ never sees the money, with the narrowing enforced per table as a restrictive pol
 and every screen it would otherwise fill with noughts refusing at the door; and
 attendance that says who took the register rather than only who last touched it,
 so a manager's correction is allowed, logged, and named a correction on the screen
-that makes it (§6.3); and a phone gate in front of owner signup — a six-digit code with
-a five-minute life, five tries counted under a row lock, a minute between sends and an
-hourly ceiling per number and per IP, checked and spent inside the same call that
-creates the account — which switches itself on the day the aggregator's three variables
-exist, and is off until then (§5.4). And one teacher can no longer be in two rooms at
+that makes it (§6.3); and owner signup that verifies an email address — Supabase's
+own confirmation flow, a six-digit code checked inside the same call that establishes
+the session, with staff accounts minted confirmed and exempt by construction (§5.4).
+And one teacher can no longer be in two rooms at
 four o'clock: the rule is enforced on the day rows, which are the last thing a save
 writes and so the only moment a batch's routine is whole, and stated a second time in
 the form so the refusal can name the batch, the day and the hour instead of raising
@@ -2943,7 +2950,7 @@ screen can answer it in the owner's own words, and exempt the migration runner b
 service key — a key every form holds, so exempting it would have left the fence guarding
 only the caller nobody uses. A branch is a bucket in that count solely on an institution
 plan, where head office is a place of its own rather than a wildcard (§8, §16 step 20).
-1,418 RLS assertions and 1,195 unit tests green across 75 migrations and 42 tables in
+1,433 RLS assertions and 1,589 unit tests green across 79 migrations and 43 tables in
 `public` plus one in `app`, and four derived gates and two that ask the live API. One of those gates now refuses
 a query whose table name it cannot read, having discovered it had been counting five
 fewer than existed — and the RLS suite found a manager who could promote themselves
@@ -3028,9 +3035,10 @@ calendar. The `subscriptions` table is still unread and unwritten and
 member's session needs to know is the one date on the centre, and that date is derived
 from the payments themselves.
 
-**Blocked 🚧** — automated SMS, and with it the enforcement of a signup phone gate that
-is otherwise built and tested (BTRC sender ID needs an aggregator account which needs an
-NID); the real bKash integration (credentials pending); price validation (needs the
+**Blocked 🚧** — automated SMS (a BTRC sender ID needs an aggregator account which
+needs an NID); the real bKash integration (credentials pending — held by the owner's
+decision of 2026-09-13 along with automated SMS, both deliberately, until the legal
+and integration work is worth doing); price validation (needs the
 design-partner conversations).
 
 ---
@@ -3218,6 +3226,26 @@ with §11.
   period and starts writing a ledger entry. The tier move it also performs is unchanged.
 - ⛔ **Locking a student's name at admission to stop seat recycling.** There is no seat to
   recycle. The name stays editable and identity edits are audited (§11.8).
+
+**Retired 2026-09-13 by email signup (§5.4's rewrite).** The phone OTP gate was the
+right answer to the wrong constraint: it closed a real hole, it was fully built and
+tested, and it could never be switched on because an SMS route needed approvals that
+were never coming. Email verification replaces it at zero marginal cost. Each is named
+so the code that implements it can be found and removed rather than left to disagree
+with §5.
+
+- ⛔ **A phone number as a self-serve signup identifier.** Signup is by email; the
+  number field is gone from the form and the phone arm is gone from sign-in. Staff
+  logins minted by a centre may still be keyed on a number (§5.1) — that is the
+  employer's register, not a self-serve claim.
+- ⛔ **The phone OTP gate and its table.** `app.phone_verifications`,
+  `issue_phone_code`, `verify_phone_code`, `src/lib/auth/otp.ts`, `otp-gate.ts`,
+  `previewPhone` — built in `20260811000065`, removed unread by `20260811000079`.
+  Supabase's email confirmation does the same job with none of the machinery:
+  the code is checked inside one Server Action call, exactly the shape the phone
+  gate had, minus a table, two functions, four ceilings and a transport.
+- ⛔ **`phoneGateOn()` and `OTP_DEV_TRANSPORT`.** The condition that could never be
+  true and the dev-only transport that existed only because of it.
 
 ---
 
@@ -4205,5 +4233,6 @@ truths start.
 | 2026-09-04 | **The pooled ceiling was being compared against one branch, and 20260811000076 is the missing half.** §3.6 is the rule this broke: a student place is a licence and licences pool across the organisation, so `session.ceiling` is one figure for the whole institution — while `20260811000053` made every `select` on `students` RESTRICTIVE by branch, so a count taken through a pinned manager's own client is one building's. Five sites paired them: the dashboard places line, the plan screen's usage table, the roster's warning, the add-student card, and both `limitRefusal` and `importStudents` inside `settings/actions.ts`. A manager of Mirpur with 40 of the organisation's 300 students read **260 of 300 places left** when there were five. **The fence never moved** — `app.guard_student_capacity()` counts past RLS under an advisory lock and raises `CD001`, and `test-rls.mjs` proves it — so nothing was over-admitted; what broke was the promise, worst on the bulk paste, where §10 refuses the whole list and three hundred typed lines are lost to a number the screen got wrong. **`public.center_student_count(uuid)` is a wrapper, not a new fence.** `app.active_students` was already the right count and already granted to `authenticated`, but `app` is not a schema PostgREST serves, so `src/` had never been able to ask; the counting function is untouched because three triggers depend on its volatility — row 200 of a 500-row import has to see rows 1..199. It is `security definer` with an empty search path, and because `scripts/check-scoping.mjs` names a definer function that trusts a centre id as the one hazard its parser cannot catch, the first thing the body does is ask `app.is_staff_admin` or `app.can_manage_students` about that id and raise `42501` otherwise. Standard SQLSTATE, not a `CD###`: `check-sql.mjs` requires every product code to be named in `src/lib`, and this is a refusal to read rather than one of the product's rules. Both revokes, and `check-embeds.mjs` now asks the live anon endpoint as well — 7/7 SHUT. **Where two scopes share a screen, the screen says so (§9.1).** The dashboard's student tile stays this building's on purpose, because `/hq` refuses a pinned manager and tells them their figures are on their dashboard, so the line beneath it reads "5 of 300 places left across the organisation" and carries the pool note. The roster drops the ceiling instead of pairing it — "40/300 students" is two true halves making a false claim in a subtitle with no room to explain itself — and names the branch, with the organisation's pressure in the rail. `?? 0` survives only where it hides a warning and never where it grants room: a failed count takes the paste box away and refuses both actions with `limitUnknown`, because one wrongly admitted row is one thing and eighty is another. **§20.9's branch-pinned manager now has a gate**, `tests/pinned-manager.test.ts`: it sweeps every `.ts`/`.tsx` under `src/app` for a places figure built from an unpooled count, holds the file list to exactly six so a seventh has to be justified, and asserts the qualifier wherever a branch count survives beside the pool. Negative-tested with a throwaway harness until all 25 mutations were caught, including a fabricated new screen. **A live check was also wrong about a real roster:** `test-rls-live.mjs` asserted no student anywhere is named *Nadia Islam*, which was a statement about a fixture when written and a statement about a paying customer's admission of 2026-09-03 by the time it went red — every policy it guarded was working. Probe names are baselined before the import now and every claim is a delta, and an unbaselined name throws rather than baselining itself mid-run. 12 new tests. Counts: 1,567 unit tests, 162 live RLS assertions, 76 migrations. |
 | 2026-09-04 | **The same owner came back to the two fixes above and was right about both.** The first was arithmetic dressed up as a design decision. The roster's desktop sheet shipped one button where the card shipped two, on the reasoning that the coloured name in the first cell was already the other one — and the answer to that is that reading a record and rewriting one are two errands, and a reader who has to deduce the second from a text colour has not been offered it. The 150px objection was real and the owner supplied the way past it: two squares carrying an eye and a pencil want 80px, so the sheet gates only `mayEdit` now, exactly as the card does, with no ternary swapping one control for the other. The actions column goes from 14% to 15% and the 1% comes off the class column; the name keeps its 24% and the guardian's number its 19%, which is the one width the sheet may never re-cut because `Guardian’s number` is its longest heading. Below `xl` the words stay, with the icon beside them — that is where the original report came from, where a thumb is doing the work, and where an icon next to its label is what teaches the bare icon on the sheet. **The first SVG in the product, so §20.7 now says when an icon is allowed** rather than leaving `decorative icons that label nothing` to be read as *no icons*: it must be the label, carry the word it replaced as both `aria-label` and `title` off the same dictionary key, be `aria-hidden` with no `<title>` inside the svg or a screen reader has two names for one control, appear only on a shape drawn where there is a pointer, and be repeated beside its word on the narrow shape. `components/icons.tsx` is two shapes sharing one `<svg>` wrapper — no icon package, and `currentColor` so the shape follows the button's hover instead of sitting one colour inside a box that moved. `rowView` and `rowEdit` also tighten from 12 characters to 10, because 22px per button that the label used to have now belongs to the icon. **The second was worse than a design mistake: the confirm screen for removing a teacher was making a claim that was frightening, irrelevant and, for some teachers, false.** It ended *"Their login is not deleted — they may use it at another centre"*, in the one place a reader is deciding whether to press a red button. Irrelevant, because `deleteTeacher` deletes the `center_members` row and RLS refuses the account thereafter — and the access had already ended one step earlier, since removal is only permitted on a teacher who is off and the off branch is what deletes that row. And false for a teacher with no phone number: `giveTeacherLogin` can only re-find an existing account by phone, so a username-only login is reachable from nowhere else at all. **The mechanism was right and is untouched (§38).** The auth account does survive deliberately — `profiles` is one row per human and not per appointment, so deleting it here would be this centre reaching across a tenant boundary to break somebody else's teacher — and that is a fact about our schema rather than a fact the owner needs, so it stays in `deleteTeacher`'s docblock and leaves the confirm screen. Both sentences now say the thing the owner needs instead: they cannot reach your centre either way, and that ended when you turned them off. Both languages, and the gate holds both — neither string may mention a login or another centre in either language, and both must name whose access ended, so the order sentence and the confirm sentence cannot drift into telling an owner the access ends at two different moments. Negative-tested with throwaway harnesses until all 22 roster mutations and all 6 copy mutations were caught. Counts: 1,568 unit tests, 162 live RLS assertions, 76 migrations. |
 | 2026-09-04 | **A staff login the centre minted was also a self-serve centre signup, and the teacher holding it had no way to sign out.** §5.5 records the whole of it. The mechanism is two features meeting: §5.1 issues a teacher a credential out of nothing but their name, with a password the manager chose and can still read off the roster, and switching that teacher off **deletes** their `center_members` row — so the ordinary end of a term, not a removal, leaves a working account with zero memberships, and `homePathForRole(null)` sends exactly that session to `/onboarding`. Nothing of the old centre was reachable: the membership was gone and RLS refused. What was reachable was `bootstrap_center`, which asked only whether the claimant already **owns** a centre. So every minted staff login could found its own, past §5.4's phone gate — that gate is on signup and this account was made by an admin call — with §4.3's 14-day Teacher Pro trial stamped on it, on a password somebody else knows. **The credential is refused, not the person:** a teacher who wants their own batches signs up with their own number and gets the form exactly as before, because refusing anyone who had ever been a member would have closed §2's Teacher Free tier against the very teacher §5.1 exists to accommodate. Three layers ask and only one is a fence — the screen does not draw the form, `createCenter` re-checks so the refusal arrives as a sentence under the field instead of a Postgres string, and `20260811000077` refuses inside the function, which is the one that counts because that RPC is `grant execute … to authenticated` and the anon key reaches it directly (§24). **Both signals, either one enough:** the login address, which is what actually signs the person in, `or` `profiles.username`, the copy migration 38's trigger writes and `app.guard_profile_identity` keeps a browser out of — so a disagreement between them refuses rather than admits. The domain literal is duplicated into SQL because Postgres has nowhere to import a constant from, and it is the username domain and not the shared `.invalid` suffix: `like '%.invalid'` would refuse every owner on the platform, which is why one of the five new pglite checks is a positive control that an ordinary phone signup still succeeds. **The other half is a button.** `/login` bounces a live session to `homePathFor`, which for a member-less account is this same page, so that reader could not reach a sign-out anywhere in the product; it is on both arms now, because one arm without it strands whichever reader gets that arm. The refusal arm is the first screen in `(auth)` to read `dict(session.locale)` — a signup has expressed no preference and gets Bangla, but this person has a profile with a locale in it — and it says what is actually missing rather than "try another centre", the sentence the teacher-removal thread deliberately stopped telling. 6 source-reading tests over the screen, the action and the comment-stripped migration, negative-tested until 25 of 25 mutations were caught, plus 5 checks against real Postgres proving each arm of the guard fires alone and the one-centre-per-owner rule still runs behind it, at 4 of 4. Counts: 1,423 pglite RLS checks, 1,574 unit tests, 162 live RLS assertions, 77 migrations. |
+| 2026-09-13 | **Signup is by email, and the phone OTP gate is retired unread.** The gate of 2026-08-11's `20260811000065` was built and tested and could never switch on — it needed a BTRC sender ID, which needed an aggregator, which needed an NID. The owner's decision: an email address is free to verify and a mobile number is not, so §5.4 is rewritten around Supabase's own confirmation flow — `signUp` creates the account unconfirmed, a six-digit code arrives by email, `verifyOtp` checks it and establishes the session inside the same Server Action call, and staff accounts minted by a centre are created confirmed and send nothing, which is the teacher exemption held by construction rather than by a gate with a hole in it. `app.phone_verifications`, both its functions, `otp.ts`, `otp-gate.ts` and `previewPhone` are removed by `20260811000079`; `profiles.phone` and number-keyed staff logins survive, because a teacher's contact number is a fact about the register and not a credential. Sign-in takes email, number or username — the third and last identifiers that field will ever hold (§5.3). Delivery is the dedicated `coachdeskbd@gmail.com` as custom SMTP with an app password that lives in the dashboard and nowhere else; until it is configured the built-in sender works at ~2/hour, enough to test. And `bootstrap_center`'s centre-issued-login guard was widened the same day to refuse both reserved domains — since self-serve signup no longer creates phone-keyed accounts, every `%.coachdesk.invalid` login is a centre-minted one, which is exactly the population §5.5's fence exists for (§5.5). The same day the owner held automated SMS and the real bKash API by decision, not by block, until the legal and integration work is worth doing. |
 | 2026-09-05 | **The read-only rollout, and the owner solved the billing hectic-ness better than the spec did.** §4.4's standing question moved from a hidden button to a whole arm on eighteen screens, above every read the arm would otherwise pay for: three of them keep a page bar and a note and nothing else, and two are mixed — /notices keeps the log of what the centre already told whom, and /settings/center keeps the centre's name and the wallet a parent sends fees to, because those are the two facts a lapsed owner reads out over the phone. §§11.6–11.8 are new and they came out of the owner's own reading of the product: a prepaid account balance replaces §9's pay-per-student mechanism, never expiring, non-refundable, and paying the monthly subscription too, so a centre with credit never reaches the read-only state at all. The balance is a ledger with an advisory lock and an immutability trigger rather than a column, and it is deliberately not the fence — capacity is. §11.8 separates the seat recycling the owner asked about, which is the deal being sold and only corrupts their own books, from the billing-date gaming next door to it, which is real and is answered by charging on the peak active count over the period rather than the instant reading. *(Three sentences of this row are superseded four days later by the row below: the balance **is** the fence, the ledger is poisha and not whole taka, the peak-active-count rule is retired, and "never reaches the read-only state at all" describes a centre with credit — a centre without it reaches read-only on an ordinary Tuesday.)* |
 | 2026-09-05 | **One prepaid balance, burned by the day — the money model is now a single mechanism, and this revision is the document catching up with that decision.** The owner asked for one solution rather than a set of them, twice, and was right that there were two: §5 priced a subscription with marginal bands while §9 sold student places as a separate contextual purchase, so the product had a monthly bill *and* a thing to buy, and the plan screen read as confusing because it was describing both. The model is now one sentence — **money in → taka in the balance → each day takes its own cost off → when the balance cannot cover the next day, saving stops until they top up** — with size changing the daily rate and nothing else. §11.6 holds it and every other section defers to it. **What went, and each of them was load-bearing somewhere:** purchased student capacity and its whole vocabulary of places (`student_capacity`, `quoteSeats`, `capacityBands`, `nextSeatCostBdt`, `ASK_PLACES`, `capacityPressure`), the contextual seat purchase inside Add Student, the bulk-import payment step, the branch places request, coverage periods as the gate, `GRACE_DAYS` and grace in any form, monthly invoices and due dates and dunning, the peak-active-count billing rule, the whole-taka ledger, mid-term downgrade credit arithmetic, `status='trial'` as access-granting, a self-serve grace button, a self-serve holiday pause, and name-locking — fourteen retirements listed in §18 with the code each one names. Three of the four purchase kinds go with them: a seat, a branch and a place were each a door that could refuse, and they are now rate changes the balance carries, which leaves §11.2's payment intent with exactly one kind and makes a recharge claim one of those intents rather than a second table. **What arrived:** poisha and integer arithmetic, because ৳2,600 ÷ 30 is neither a whole taka nor a whole poisha and `floor(monthly × 100 / 30)` is the only rounding that does not make a year dearer than twelve months; `app.settle_billing`, which charges whole past days at today's rate under a per-centre advisory lock and **tops today up if the roster grows**, so a day costs its own high-water rate with no high-water mark stored anywhere to drift; access as a comparison (`balance < owed`) so a centre lapses on the right day with no job run and no row written, exactly as a trial expires; two founder levers, a money adjustment and granted days, each needing a written reason and each audited, which is the answer to a Ramadan closure, a 200-row mis-paste and a founder who was asleep; and a discount ladder that is a bonus on the credit rather than a discounted rate, 0/5/10/20% at one/three/six/twelve months, so nothing has to remember which taka was bought at which price. **The one genuine gaming surface daily billing has is the midnight empty roster**, and it is closed by charging from the size at the first write of the day rather than at a fixed hour: to be charged the floor you must be empty when work starts, and an empty roster cannot take attendance, collect a fee or record a mark. **The cost of retiring capacity is stated rather than hidden:** a mis-paste is now an unbounded rate instead of a refusal, answered by §20.5's informed consent at the door and repaired by a founder grant. §16.1 is the order it lands in, and the rule behind that order is that every intermediate state must be safe — the ledger, the burn, the rate and the access derivation are additive, so until capacity is removed last the stricter fence is still standing. | 2026-09-05 | **A register written with dashes was welding the father's name onto the child's, and the accounting half of the prepaid model is now written down rather than assumed.** The defect first, because it is the one that was losing data: `COLUMN` in `lib/bd/roster.ts` was `/[,;\t|]/`, so `Rahim Ahmed - Abdul Karim - 01712345678` — which is how half the registers in this country are written — parsed as **one** field. The line imported cleanly: a student called "Rahim Ahmed - Abdul Karim", no guardian, the right phone number, no problem reported. On every row of the paste, into the one field §7.1 fixes at creation and never lets an owner edit. A dash is a column now only with **space on both sides**, which is not fussiness but the whole of the distinction: `Abdul-Karim Chowdhury` and `আব্দুল-করিম চৌধুরী` are one name and must stay one, so a dash between two letters is not a separator — the same rule a human reader applies. All three dashes, because a phone keyboard hands you whichever it likes: hyphen-minus off an English layout, en dash off a Bangla one, em dash out of Word. That is the same alphabet `isPhoneSeparator` already accepts *inside* a number, applied to the gap *between* fields. Six new test blocks: the four dash forms and a serial-prefixed one all yielding name, guardian and `+8801712345678`; the Bangla forms and a number typed `017 ১২৩৪ 5678`; both compound names surviving intact; a dash line with no guardian being a student and not a problem; and — the one that matters most — the five verdicts unchanged, since a separator changing must not change what the parser refuses. **Then §§11.10–11.14 and §14.1, which are the questions the money model raised and did not answer.** §11.10: prices have versions, `price_versions` is seeded by migration and select-only with no app write path, and the four numbers live in SQL *and* in `plans.ts` the way `plan_allowances` already does it — a test that regexes the seed statement out of the `.sql` file and compares it, because a third copy would pass while both of the others drifted. A settled day is never repriced, existing credit buys days at the new rate, and a quote is honoured while its intent lives. §11.11: the bonus is a **promotion**, a row with a code, a window and tiers in basis points, not a formula in a branch — and a recharge writes **two** ledger entries, the cash and the bonus, because ৳7,800 is revenue and ৳390 is not, and one merged ৳8,190 makes every revenue figure in the product a lie. The browser never says what the bonus is. §11.12: one counting function, the same one the capacity trigger reads, and a twelve-row table saying what each lifecycle event does to the count — a merge drops it and is **not** backdated, a branch archive drops it, a 200-row import raises it at once with §20.5's consent as the fence — plus the high-water rule with its three properties, and the flat refusal that if the count cannot be read then nothing is charged. §11.13: `settlement_runs`, four statuses, and `insufficient_balance` named explicitly as **the product working** rather than an incident, since it will be the most frequent row in the table; `usage_unavailable` is the only one that needs a human. Three reconciliation queries on the founder panel — the column against the sum, the `before + amount = after` chain in `created_at` order, and gaps in charged days — and a manual retry that is a new attempt through the same idempotent function with a written reason, never a second calculation. What must never be logged is named: no student name, no guardian number, no transaction id, no balance. §11.14: the fifteen-row old→new matrix, which is the only way step 24 is safe — preserve `payments.amount_bdt`, stop writing `covers_period_*`, archive `paid_through`, replace **both** of its derivations with one ledger trigger, delete `coverageLapsed` and `GRACE_DAYS` with their tests in that same commit, migrate `status='trial'` into granted days, and back-fill `charged_through = greatest(coalesce(paid_through, today), today)` with a zero `migration_opening_balance` per centre so every centre has a first ledger row and none has a balance that came from nowhere. Verified on a restore into a throwaway Supabase project, never on a local copy of production data. §14.1: seven legal pages led by **Prepaid Billing Terms**, `policy_acceptances` with a version per acceptance, both languages with Bangla the one that matters, and no compliance claim we have not been audited against. §16.1 gains four steps for all of it, and 25a — the legal pages — is pinned to the same week as step 25 rather than left to follow it, because the first taka must not arrive against nothing written. §15 also records two things this document had assumed about the code and that are false: the search boxes make no requests to debounce (a no-JavaScript GET form and an in-memory filter, and a client-side search would cost the URL state, the back button and the offline shell), and the paged reads already refuse rather than truncate. Counts: 1,423 pglite RLS checks, **1,599 unit tests**, 162 live RLS assertions, 77 migrations. Suite green. Next is step 21, the ledger. |

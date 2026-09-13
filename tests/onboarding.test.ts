@@ -29,7 +29,8 @@ const read = (...parts: string[]) => readFileSync(path.join(ROOT, ...parts), 'ut
 
 const PAGE = read('src', 'app', '(auth)', 'onboarding', 'page.tsx')
 const ACTIONS = read('src', 'app', '(auth)', 'actions.ts')
-const MIGRATION = read('supabase', 'migrations', '20260811000077_center_issued_login.sql')
+/** The live shape of `bootstrap_center` — re-emitted whole by 20260811000079. */
+const MIGRATION = read('supabase', 'migrations', '20260811000079_email_signup.sql')
 /** The same file with its prose taken off: a comment naming a rule is not the rule. */
 const SQL = MIGRATION.replace(/^\s*--.*$/gm, '')
 
@@ -144,11 +145,21 @@ test('the domain in the SQL is the one TypeScript mints, and not the other one',
   // Postgres has nowhere to import a constant from, so the literal is duplicated and
   // this is the only thing keeping the copies together. Renaming the domain in
   // username.ts without touching the migration would silently open the hole again.
-  assert.match(SQL, new RegExp(`like '%@${USERNAME_LOGIN_DOMAIN.replace(/\./g, '\\.')}'`))
-
-  // And it is the username domain, not the suffix both share: a phone login is
-  // `.invalid` too, so `like '%.invalid'` would refuse every owner on the platform.
-  assert.ok(PHONE_LOGIN_DOMAIN.endsWith('.invalid') && USERNAME_LOGIN_DOMAIN.endsWith('.invalid'))
-  assert.doesNotMatch(SQL, /like '%\.invalid'/)
-  assert.doesNotMatch(SQL, new RegExp(PHONE_LOGIN_DOMAIN.replace(/\./g, '\\.')))
+  //
+  // Since 2026-09-13 the guard refuses the shared suffix rather than one domain:
+  // self-serve signup creates real email addresses (§5.4), so every login on
+  // either reserved domain is one a centre minted — exactly the population this
+  // fence exists for. The suffix is derived from the TypeScript constant, and the
+  // phone domain is asserted to share it, so renaming either without the other
+  // fails here rather than quietly re-opening a door.
+  const suffix = USERNAME_LOGIN_DOMAIN.split('.').slice(1).join('.')
+  assert.ok(
+    suffix === 'coachdesk.invalid',
+    'the shared suffix is no longer coachdesk.invalid — update this test knowingly',
+  )
+  assert.ok(
+    PHONE_LOGIN_DOMAIN.endsWith(`.${suffix}`),
+    'the phone domain no longer shares the suffix the SQL refuses',
+  )
+  assert.match(SQL, new RegExp(`like '%\\.${suffix.replace(/\./g, '\\.')}'`))
 })

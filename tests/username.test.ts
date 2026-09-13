@@ -271,15 +271,29 @@ test('the two synthetic domains are separate and both unresolvable', () => {
 })
 
 test('one login field, and the server works out which it got', () => {
+  // §5.3's three arms, and the three sets cannot overlap: an email carries an
+  // `@`, a username never contains one, and every form of a mobile number
+  // starts with a digit. Whichever branch answers is the only one that could.
   assert.equal(loginEmailFor('01712345678'), phoneToLoginEmail('01712345678'))
   assert.equal(loginEmailFor('০১৭১২৩৪৫৬৭৮'), phoneToLoginEmail('01712345678'))
   assert.equal(loginEmailFor('rahim'), usernameToLoginEmail('rahim'))
   assert.equal(loginEmailFor('Rahim01'), usernameToLoginEmail('rahim01'))
 
-  // Neither. The caller answers this with one message that does not say which half
-  // of the field was wrong, because that difference is how somebody enumerates
-  // which identifiers exist.
-  for (const input of ['', 'ab', '0171234567', '01012345678', 'rahim!', 'রহিম']) {
+  // The email arm, which arrived with §5.4's rewrite: lowercased (autocorrect
+  // capitalises the first letter of a text field) and passed through in shape,
+  // because the platform does the real validation and this only decides the
+  // branch.
+  assert.equal(loginEmailFor('Name@Gmail.com'), 'name@gmail.com')
+  assert.equal(loginEmailFor('  name@gmail.com  '), 'name@gmail.com')
+
+  // A synthetic address typed whole is the same account as its local part.
+  assert.equal(loginEmailFor('rahim@user.coachdesk.invalid'), 'rahim@user.coachdesk.invalid')
+
+  // Not an email at all: no `@`, two of them, or spaces inside. The caller
+  // answers these with one message that does not say which third of the field
+  // was wrong, because that difference is how somebody enumerates which
+  // identifiers exist.
+  for (const input of ['', 'ab', '0171234567', '01012345678', 'rahim!', 'রহিম', 'name@', '@gmail.com', 'a@b@c', 'a b@gmail.com']) {
     assert.equal(loginEmailFor(input), null, `failed on: ${input}`)
   }
 })
