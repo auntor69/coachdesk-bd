@@ -6,7 +6,7 @@ import Link from 'next/link'
 import { signUp, type SignupState } from './actions'
 import { Alert, Button, Field } from '@/components/ui'
 import { MIN_PASSWORD } from '@/lib/auth/password'
-import { EMAIL_CODE_LENGTH, RESEND_COOLDOWN_SECONDS } from '@/lib/auth/email-otp'
+import { EMAIL_CODE_MAX, RESEND_COOLDOWN_SECONDS } from '@/lib/auth/email-otp'
 import { digits } from '@/lib/bd/time'
 
 /**
@@ -94,8 +94,8 @@ export function SignupForm({
       {showCode && (
         <p className="text-ink-soft">
           <span className="font-semibold text-ink break-all">{state?.sentTo}</span>{' '}
-          ঠিকানায় {digits(EMAIL_CODE_LENGTH, 'bn')} সংখ্যার একটি কোড পাঠানো হয়েছে।
-          ইমেইলে আসা লিংকে চাপ দিলেও হবে।
+          ঠিকানায় একটি ভেরিফিকেশন কোড পাঠানো হয়েছে। কোডটি না এলে স্প্যাম ফোল্ডারটাও
+          একবার দেখে নিন।
         </p>
       )}
 
@@ -151,10 +151,12 @@ export function SignupForm({
           type="text"
           inputMode="numeric"
           // Some mail clients fill this from the message itself, which saves the
-          // visitor reading six digits off a notification and typing them back.
+          // visitor reading digits off a notification and typing them back.
           autoComplete="one-time-code"
-          maxLength={EMAIL_CODE_LENGTH}
-          placeholder={'০'.repeat(EMAIL_CODE_LENGTH)}
+          // The platform decides how many digits the code is — the input must
+          // never be the thing that truncates it.
+          maxLength={EMAIL_CODE_MAX}
+          placeholder="••••••"
           required
           autoFocus
           error={state?.field === 'code' ? state.error : undefined}

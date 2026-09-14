@@ -19,10 +19,8 @@ import { loginEmailFor } from '@/lib/bd/username'
 import { getSession, homePathFor } from '@/lib/auth/session'
 import { MIN_PASSWORD } from '@/lib/auth/password'
 import { MAX_NAME } from '@/lib/limits'
-import { digits } from '@/lib/bd/time'
 import { DEFAULT_LOCALE, dict } from '@/lib/i18n'
 import { nameTooLong, passwordTooShort } from '@/lib/i18n/messages'
-import { EMAIL_CODE_LENGTH } from '@/lib/auth/email-otp'
 
 export type FormState = {
   error?: string
@@ -89,11 +87,13 @@ function sendRefusal(message: string): string {
 /**
  * Why a code was refused. The same sentence for wrong, stale and unknown on
  * purpose — telling them apart would tell a script which addresses are
- * mid-signup, and the answer to all three is "ask for a new code".
+ * mid-signup, and the answer to all three is "ask for a new code". No count of
+ * digits is named: the platform decides how long the code is, and a sentence
+ * promising six of them would read as a lie beside an eight-digit mail.
  */
 function verifyRefusal(message: string): string {
   if (/invalid|expired|incorrect|not found|no such/i.test(message)) {
-    return `কোড মিলছে না। ইমেইলে পাঠানো ${digits(EMAIL_CODE_LENGTH, 'bn')} সংখ্যার কোডটি দিন, বা নতুন কোড নিন।`
+    return 'কোড মিলছে না। ইমেইলে পাঠানো কোডটি আবার দেখে নিয়ে দিন, বা নতুন কোড নিন।'
   }
   return 'কোডটি কাজ করছে না। নতুন কোড নিন।'
 }
