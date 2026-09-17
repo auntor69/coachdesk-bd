@@ -1,0 +1,39 @@
+COACHDESK BD
+============================================================================
+The operating system for coaching centers in Bangladesh.
+
+One app runs the whole center: admissions and roster with bulk import,
+batches, attendance, exams and marks, a fee board with invoices,
+installments, scholarships and a four-stage chase list, payroll,
+expenses, notices, weekly progress reports, multi-branch HQ, and a
+full audit log — in Bengali and English, offline-first, on any phone
+the staff already owns.
+
+----------------------------------------------------------------------------
+Stack: Next.js (App Router) + Supabase (Postgres, RLS, Auth) + Tailwind,
+deployed on Vercel. 83 SQL migrations. ~1,600 unit tests and 1,466
+row-level-security assertions, all green.
+----------------------------------------------------------------------------
+
+Three decisions that make it different:
+
+1. Money is integers. Every amount is stored in poisha (1 taka =
+   100 poisha). No float ever touches a balance — not in the app,
+   not in the database.
+
+2. Billing is burned, not billed. A center holds one prepaid balance
+   and a database function charges each day against it — top-up,
+   catch-up, refusal, every attempt audited. The books reconcile
+   themselves. When the balance cannot cover the day, the app goes
+   read-only: access is derived from money, not a subscription date.
+
+3. Security is tested, not assumed. Plan ceilings and roles are
+   enforced twice — SQL triggers first, server actions second — and
+   every RLS change is proven against every table, every run.
+
+Built for Bangladesh, not translated into it: Bengali-first UI, fees
+in taka, bKash payments, month close the way centers actually run it.
+
+Status: core product complete and verified. In progress: self-serve
+recharge with a founder review queue, the billing dashboard, and
+retiring the old seat-based pricing.
