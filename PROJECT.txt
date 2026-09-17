@@ -34,6 +34,14 @@ Three decisions that make it different:
 Built for Bangladesh, not translated into it: Bengali-first UI, fees
 in taka, bKash payments, month close the way centers actually run it.
 
-Status: core product complete and verified. In progress: self-serve
-recharge with a founder review queue, the billing dashboard, and
-retiring the old seat-based pricing.
+Status: in active development — not launched yet.
+
+Working today: the full center workflow above, held up by ~1,600
+unit tests and 1,466 security assertions, all green.
+
+In progress right now: the prepaid billing engine — self-serve
+recharge, founder review queue, billing dashboard — and retiring
+the old seat-based pricing.
+
+Still ahead: legal pages, automated SMS gateway, and the real
+bKash API integration.
