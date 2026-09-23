@@ -45,7 +45,7 @@ import {
   requestPlaces,
   withdrawPlacesRequest,
   type UpgradeState,
-} from '../../plan/actions'
+} from '../../billing/actions'
 import { importStudents, type ActionState } from '../../actions'
 
 type BatchOption = { id: string; label: string }
@@ -104,7 +104,7 @@ export function ImportForm({
   mayAsk: boolean
   /** How many places this branch has already asked for, or null if they have not. */
   asked: number | null
-  /** Owner or manager — /settings/plan is pageRole('manager'). */
+  /** Owner or manager — /settings/billing is pageRole('manager'). */
   mayReadPlan: boolean
 }) {
   const [text, setText] = useState('')
@@ -134,8 +134,7 @@ export function ImportForm({
 
   /*
    * The purchase, in the same <form> as the import.
-   *
-   * A SECOND <form> IS ILLEGAL INSIDE THE FIRST, and a link to /settings/plan would
+   *    * A SECOND <form> IS ILLEGAL INSIDE THE FIRST, and a link to /settings/billing would
    * throw away a five-hundred-line paste to buy the places that paste needs. So the buy
    * button submits this form to a different action with `formAction`, which is what
    * useActionState's dispatch is for; `buyStudentPlaces` ignores the roster and the
@@ -407,7 +406,7 @@ export function ImportForm({
 
                 {mayReadPlan && (
                   <Link
-                    href="/settings/plan"
+                    href="/settings/billing"
                     className="inline-flex min-h-tap items-center font-medium
                       text-brand-700"
                   >

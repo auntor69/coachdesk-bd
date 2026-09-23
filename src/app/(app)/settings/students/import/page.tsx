@@ -136,7 +136,7 @@ export default async function ImportStudentsPage() {
 
   /*
    * WHERE THE BANDS START FOR A PASTE THAT DOES NOT FIT, and it is the paid ceiling
-   * rather than `session.ceiling`. ../../plan/actions.ts prices from `session.active`
+   * rather than `session.ceiling`. ../../billing/actions.ts prices from `session.active`
    * for the reason written there: a trial moves the effective ceiling while
    * `settle_payment_intent` reads the paid row, so a quote off the trial is a number
    * the database refuses after the money has gone.
@@ -196,7 +196,7 @@ export default async function ImportStudentsPage() {
           room={room}
           forSale={forSale}
           // The two guards this screen cannot enforce itself, resolved where the session
-          // is: `buyStudentPlaces` is requireRole('owner') and /settings/plan is
+          // is: `buyStudentPlaces` is requireRole('owner') and /settings/billing is
           // pageRole('manager'), while this page is `can_manage_students` — so a teacher
           // reaches it and must be offered neither the button nor the link.
           mayBuy={session.active.role === 'owner'}

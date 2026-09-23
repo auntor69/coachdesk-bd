@@ -328,11 +328,11 @@ function Line({
   )
 }
 
-/** The way back. No month to carry, unlike the expense voucher's: /settings/plan has one view. */
+/** The way back. No month to carry, unlike the expense voucher's: the money screen has one view. */
 function BackToPlan({ label }: { label: string }) {
   return (
     <Link
-      href="/settings/plan"
+      href="/settings/billing"
       className="inline-flex min-h-tap items-center font-medium text-brand-700"
     >
       ← {label}

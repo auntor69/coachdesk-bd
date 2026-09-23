@@ -23,8 +23,8 @@ import {
   ASK_PLACES,
 } from '@/lib/plans'
 import { createClient } from '@/lib/supabase/server'
-import { BuyPlaces } from '../../plan/buy-places'
-import { OpenPurchase } from '../../plan/open-purchase'
+import { BuyPlaces } from '../../billing/buy-places'
+import { OpenPurchase } from '../../billing/open-purchase'
 import { AskPlaces } from './ask-places'
 import { StudentForm } from './student-form'
 
@@ -45,7 +45,7 @@ export async function generateMetadata() {
  *
  * THE CEILING IS NOT A DEAD END ANY MORE (§3.4). What used to happen here is what the
  * masterplan opens by forbidding: an owner was refused, told the places were gone, and
- * sent to /settings/plan to work out for themselves how many to buy. The price of one
+ * sent to /settings/billing to work out for themselves how many to buy. The price of one
  * more place and the control that buys it are on this screen now, and the reference the
  * founder needs to match the transfer is printed here too — because this is where the
  * purchase happened, and an owner who leaves for bKash comes back to this URL.
@@ -155,7 +155,7 @@ export default async function NewStudentPage() {
   const [ask, buys] = await Promise.all([
     mayAsk ? openAsk(supabase, session.active.centerId, session.active.branchId) : null,
     /*
-     * Purchases opened and not yet paid for, read the same way /settings/plan reads them
+     * Purchases opened and not yet paid for, read the same way /settings/billing reads them
      * so the two screens cannot disagree about what is waiting. The reference has to
      * survive a reload — the owner leaves for bKash and comes back — so it is read off
      * the row rather than carried in the action's return, and a lapsed one is read too:
@@ -320,12 +320,12 @@ export default async function NewStudentPage() {
             {t.placesFreeLink} →
           </Link>
 
-          {/* And the plan itself, which is the only way out on a tier that does not sell
-              places. /settings/plan is pageRole('manager'), so a teacher is not sent to
-              it. Last, because for a centre it is no longer the errand. */}
+          {/* And the money screen itself, which is the only way out on a tier that does
+              not sell places. /settings/billing is pageRole('manager'), so a teacher is
+              not sent to it. Last, because for a centre it is no longer the errand. */}
           {isStaffAdmin(session) && (
             <Link
-              href="/settings/plan"
+              href="/settings/billing"
               className="flex min-h-tap items-center text-ink-soft hover:text-ink"
             >
               {t.placesPlanLink} →
@@ -371,7 +371,7 @@ export default async function NewStudentPage() {
           {/*
            * Null while there is room, so nothing is drawn and nothing costs a gap. Staff
            * admins only, and the reason is the door rather than the news: it ends in a
-           * link to /settings/plan, which a teacher on `can_manage_students` would be
+           * link to /settings/billing, which a teacher on `can_manage_students` would be
            * refused at. Their version of this warning is the form saying no.
            */}
           {isStaffAdmin(session) && (

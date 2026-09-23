@@ -54,7 +54,7 @@ export default async function TeachersPage() {
    * `setCenterPlan` writes the new plan and only warns when the centre is over its
    * seat count, so six teachers stay switched on under a plan that covers one, and
    * this is the only screen that can switch them off. It refused to draw. So the
-   * count is now read before the decision is made, and /settings and /settings/plan
+   * count is now read before the decision is made, and /settings and /settings/billing
    * both stop hiding the fact under the same condition.
    *
    * Which costs one query on a screen that used to cost none for these plans. A

@@ -243,7 +243,7 @@ test('the price is quoted off the paid ceiling, and nothing is created before it
 })
 
 test('one form, three actions, and the batch ticks are controlled', () => {
-  // A second <form> inside the first is illegal, and a link to /settings/plan would
+  // A second <form> inside the first is illegal, and a link to /settings/billing would
   // throw away a five-hundred-line paste to buy the places it needs. Counted on the
   // opening attribute, because three comments say the tag name to explain the rule.
   assert.equal(count(FORM, '<form action='), 1)

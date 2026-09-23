@@ -20,7 +20,15 @@ import { loginEmailToPhone } from '@/lib/bd/phone'
 import { loginEmailToUsername } from '@/lib/bd/username'
 import { asLocale, dict, DEFAULT_LOCALE, type Dictionary, type Locale } from '@/lib/i18n'
 import type { PermissionKey } from '@/lib/permissions'
-import { effectiveEntitlement, type Access, type OrgBilling } from '@/lib/entitlement'
+import {
+  billingStanding,
+  dailyBurn,
+  effectiveEntitlement,
+  type Access,
+  type BillingStanding,
+  type OrgBilling,
+} from '@/lib/entitlement'
+import { settleDay } from '@/lib/billing/settlement'
 import { hasStaff, type PlanLimits, type StudentCeiling } from '@/lib/plans'
 import { ACTIVE_CENTER_COOKIE, pickActive, strongestPerCenter } from '@/lib/auth/active-center'
 import { can, narrowingOf, type Capability } from '@/lib/staff/capabilities'
@@ -57,6 +65,29 @@ export type Membership = {
   trialPlan: PlanType | null
   trialEndsAt: string | null
   /**
+   * The money available to settle days that are not yet paid for (MASTERPLAN.md §11.7's
+   * first lever), in poisha.
+   *
+   * A cache of `sum(billing_ledger.amount_poisha)` — the ledger is the truth and this is
+   * the column a session can read without a scan — maintained by the trigger in
+   * 20260811000078 and unwritable from a browser. `effectiveEntitlement` compares it
+   * against what is owed; the rail in the app shell divides it by the day's rate.
+   *
+   * IT IS REPLACED, NOT RE-READ, when this session settles the day: the row as the query
+   * saw it is the record of what the balance was *before* the burn, and using it after
+   * would be the disagreement §4.4 forbids — a screen that says a centre is paid up
+   * while the write that follows is refused.
+   */
+  balancePoisha: number
+  /**
+   * The last Dhaka day that is paid for, as YYYY-MM-DD (§11.7's second lever).
+   *
+   * Advanced by the ledger's own trigger when a daily charge lands, and by a founder
+   * granting days. Never hand-set by a customer, and it only ever moves forward, because
+   * backwards would mean charging a day that has already been paid for.
+   */
+  chargedThrough: string
+  /**
    * Places bought on top of what the plan allows (MASTERPLAN.md §4.5's per-student
    * top-up), which is why the ceiling is derived from the plan *and* this rather than
    * from the plan alone.
@@ -78,7 +109,11 @@ export type Membership = {
    * centre in the same minute. Denormalised onto the centre row by the trigger in
    * 20260811000059 so that every member reads one answer.
    *
-   * Null is not lapsed, here as everywhere: see `coverageLapsed`.
+   * NOT READ BY THE RESOLVER ANY MORE (§11.14): coverage stopped gating anything the
+   * day the balance did, and the two derivations must never both be live. It stays on
+   * the row as history — a receipt still records what period it was for — and stays on
+   * this type because the plan screen and the buy-subscription flow still write and
+   * read it, until step 25 replaces that flow with a recharge.
    */
   paidThrough: string | null
   /**
@@ -119,7 +154,12 @@ export function billingOf(m: Membership): OrgBilling {
     trial_plan: m.trialPlan,
     trial_ends_at: m.trialEndsAt,
     student_capacity: m.studentCapacity,
-    paid_through: m.paidThrough,
+    balance_poisha: m.balancePoisha,
+    charged_through: m.chargedThrough,
+    // Nobody has read the day's rate at this point, and "not read" is exactly what
+    // null means here. The session fills it in from the settlement when it makes one,
+    // and where the centre is paid up it is never needed: `owed` is zero without it.
+    daily_rate_poisha: null,
   }
 }
 
@@ -227,6 +267,22 @@ export type Session = {
    * `studentCeiling`.
    */
   ceiling: StudentCeiling
+  /**
+   * The prepaid balance as this session found it: what one day costs, what is owed,
+   * and how many days the money still covers (MASTERPLAN.md §11.7, §4.4).
+   *
+   * THE SAME RESOLUTION `access` CAME FROM, and that is the whole reason it is here
+   * rather than computed by the screen that draws it. `access` is one bit of this
+   * answer; a rail that divided the balance by the rate a second time could disagree
+   * with the refusal that same screen is about to hit. It is filled after the day has
+   * been settled — see `settleDay` — so `daysLeft` counts from a line that is current
+   * rather than from yesterday's.
+   *
+   * Total, never null: a reader with no centre gets a standing whose figures are absent
+   * (`daysLeft: null`, nothing owed) rather than a second shape every caller has to
+   * narrow before drawing anything.
+   */
+  billing: BillingStanding
 }
 
 /**
@@ -280,7 +336,7 @@ export const getSession = cache(async (): Promise<Session | null> => {
       // `'a' + 'b'` widens to `string` and every column on the row comes back as
       // `GenericStringError`. Wrapping this for width costs the whole embed's typing.
       .select(
-        'coaching_center_id, role, branch_id, capabilities, coaching_centers (name, plan, status, sms_credit_balance, student_capacity, trial_plan, trial_ends_at, paid_through)',
+        'coaching_center_id, role, branch_id, capabilities, coaching_centers (name, plan, status, sms_credit_balance, student_capacity, balance_poisha, charged_through, trial_plan, trial_ends_at, paid_through)',
       )
       .eq('user_id', user.id)
       .eq('active', true),
@@ -330,6 +386,8 @@ export const getSession = cache(async (): Promise<Session | null> => {
           trialPlan: center.trial_plan,
           trialEndsAt: center.trial_ends_at,
           studentCapacity: center.student_capacity,
+          balancePoisha: center.balance_poisha,
+          chargedThrough: center.charged_through,
           paidThrough: center.paid_through,
           capabilities: narrowed.get(row.coaching_center_id) ?? null,
         }
@@ -383,14 +441,63 @@ export const getSession = cache(async (): Promise<Session | null> => {
    * then — a field stored, typed and read by no gate is `can_manage_students` all over
    * again, a protection that exists only in the shape of the data.
    *
-   * `paid_through` JOINED THE SELECT WITH §4.4's LAPSE, and it is the one column here
-   * that no browser could read for itself: the ledger it is derived from is owner-only,
-   * so a teacher's session gets the centre's coverage through this embed or not at all.
-   * That is the whole reason it is a column on `coaching_centers` — see the note on
-   * `Membership.paidThrough`. A centre with no receipts leaves it null, which grants
-   * full access rather than removing it, and the resolver says at length why.
+   * THE BALANCE REPLACED THE COVERAGE DATE IN THIS SELECT (§11.14), and it is here for
+   * the same reason `paid_through` was: the ledger it is derived from is not readable by
+   * every member, so a teacher's session gets the centre's money through this embed or
+   * not at all. `paid_through` is still read — the plan screen and its buy flow are
+   * still the old model until step 25 — and the resolver stops consulting it, because
+   * two live derivations of access disagree on exactly the day it matters.
    */
-  const entitlement = effectiveEntitlement(active ? billingOf(active) : null, new Date())
+
+  /*
+   * SETTLE, THEN RESOLVE — in that order, and for every centre whose days cost anything.
+   *
+   * §16.1 step 24 puts the burn in front of the write guard, and the guarantee behind
+   * that is the one being kept here: the day is charged from the size at the moment work
+   * starts, which is what closes the only gaming vector daily billing has. Every action
+   * reaches `requireWritable` through a session, so a charge taken here is still taken
+   * before any write can land — and the read-only arms and the banner get the *same*
+   * answer, which a refusal thrown at the write could never give them: a dry centre
+   * whose screens all looked writable until the owner tapped something names the
+   * problem one interaction too late (§4.4).
+   *
+   * IT IS ASKED ON EVERY REQUEST AND NOT ONLY ON THE ONE THAT OWES, because the call is
+   * also the only thing that knows the day's rate — and the rail above the content, and
+   * the banner that explains a dry balance, both need it on exactly the days when no
+   * settlement happens. What that costs is a price card read, two head counts and a
+   * balance sum on a page load; what it buys is that a centre's own screen can say what a
+   * day costs it. `dailyBurn` refuses only the free tier, whose rate is zero forever.
+   *
+   * THE BURN DOES NOT WRITE ON EVERY CALL. It is idempotent per day: a centre that is
+   * paid up with an unchanged roster inserts nothing, a repeated refusal is one row for
+   * the day (`settlement_runs_one_note_per_day`), and the day's base charge is unique.
+   * So the common path here is reads, a lock, and a return.
+   *
+   * A SETTLEMENT THAT DID NOT HAPPEN LEAVES THE RATE UNKNOWN, and unknown is not zero:
+   * the resolver reads it as read-only wherever the rate is needed (§11.7). So a
+   * database that refuses the call is a centre that cannot write when its line is behind
+   * — the narrow direction, the same one every other fallback in this file takes.
+   *
+   * `billing` is recomputed from the settlement's answer rather than from the row, and
+   * `org` is rebuilt with it: the embed is the record of what the balance was *before*
+   * the burn, and a rail drawn from it would show one day more than the centre has.
+   */
+  const now = new Date()
+  let org = active ? billingOf(active) : null
+  let billing = billingStanding(org, now)
+
+  if (active && org && dailyBurn(org)) {
+    const settled = await settleDay(supabase, active.centerId)
+    org = {
+      ...org,
+      balance_poisha: settled?.balanceAfter ?? org.balance_poisha,
+      charged_through: settled?.chargedThrough ?? org.charged_through,
+      daily_rate_poisha: settled?.dailyPoisha ?? null,
+    }
+    billing = billingStanding(org, now)
+  }
+
+  const entitlement = effectiveEntitlement(org, now)
 
   return {
     userId: user.id,
@@ -406,6 +513,7 @@ export const getSession = cache(async (): Promise<Session | null> => {
     access: entitlement.access,
     plan: entitlement.plan,
     ceiling: entitlement.ceiling,
+    billing,
   }
 })
 

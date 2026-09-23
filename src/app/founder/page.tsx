@@ -3,7 +3,9 @@ import Link from 'next/link'
 import { Card } from '@/components/ui'
 import { pagePlatformAdmin } from '@/lib/auth/session'
 import { createClient } from '@/lib/supabase/server'
+import { founderQueue } from '@/lib/billing/claims'
 import { transferReference } from '@/lib/billing/receipt'
+import { rechargeWords } from '@/lib/i18n/recharge'
 import { formatBdMobile } from '@/lib/bd/phone'
 import { digits, formatDate, formatMonth, hasPassed, todayInDhaka } from '@/lib/bd/time'
 import { dict } from '@/lib/i18n'
@@ -17,10 +19,12 @@ import {
   sizeLine,
   type CenterStatus,
 } from '@/lib/platform/centers'
+import { leverLabels, leverSentences } from '@/lib/i18n/levers'
 import { CenterBilling } from './center-billing'
 import { CenterPurchases, type OpenPurchase } from './center-purchases'
 import { AskedToUpgrade } from './asked-to-upgrade'
 import { StaffReset } from './staff-reset'
+import { RechargeQueue, type QueueClaim, type QueueWords } from './recharge-queue'
 
 /*
  * NO generateMetadata, on purpose.
@@ -82,6 +86,10 @@ export default async function FounderPage() {
   const d = dict(locale)
   const t = d.founder
 
+  // The recharge card's words, which are a fragment of their own: see
+  // lib/i18n/recharge.ts for why the two dictionaries cannot carry them yet.
+  const words = rechargeWords(locale)
+
   const supabase = await createClient()
 
   // Not scoped by coaching_center_id, and neither can be: the whole point is every
@@ -89,7 +97,13 @@ export default async function FounderPage() {
   // the second it is the same call inside the policy. The third is §11.13's
   // reconciliation — three questions over every centre's ledger, returning only the
   // rows that are wrong, so no rows is the all-clear rather than an empty answer.
-  const [{ data, error }, { data: intents }, { data: findings }] = await Promise.all([
+  const [
+    { data, error },
+    { data: intents },
+    { data: findings },
+    queue,
+    { data: moneyRows },
+  ] = await Promise.all([
     // scoped-by: platform_centers() is a security definer RPC over all centres,
     // gated on app.is_platform_admin(). See 20260811000020_platform_panel.sql.
     supabase.rpc('platform_centers'),
@@ -109,10 +123,35 @@ export default async function FounderPage() {
     // scoped-by: platform_reconciliation() is gated on app.is_platform_admin() the
     // same way platform_centers is. See 20260811000081_settle_billing.sql.
     supabase.rpc('platform_reconciliation'),
+    // The recharges customers say they have sent, oldest first, and the one read here
+    // that is deliberately every centre at once — see lib/billing/claims.ts, where
+    // `recharge_claims_owner_read` answering app.is_platform_admin() is written down.
+    founderQueue(supabase),
+    // The prepaid balance and the line it pays for, for every centre — §11.7's two levers
+    // work from both, and neither is on `platform_centers()`, whose shape is the panel's
+    // roster of usage rather than its money. A plain read because nothing has to be
+    // computed: `centers_member_read` already answers `app.is_platform_admin()`, so there
+    // is no definer function to write.
+    // scoped-by: every centre is the point of this panel; centers_member_read in
+    // 20260811000002_rls_policies.sql is what authorises it.
+    supabase.from('coaching_centers').select('id, balance_poisha, charged_through'),
   ])
 
   const list = customers(data, t.unnamed)
   const totals = platformTotals(list)
+
+  /*
+   * The money, per centre, for the card's two levers.
+   *
+   * A MISSING ROW IS NULL AND NOT A ZERO, which is the distinction every screen in this
+   * product draws: a centre whose balance could not be read is not a centre holding
+   * nothing, and a grant worked out from an assumed line would be a date nobody can
+   * predict. `./center-billing.tsx` says what the card does with the null.
+   */
+  const money = new Map((moneyRows ?? []).map((row) => [row.id, row]))
+
+  /** Dhaka's calendar day, the one every line and every grant is counted in (§11.7). */
+  const dhakaToday = todayInDhaka(new Date())
 
   // A Dhaka calendar date from a UTC timestamp. A centre that signed up at 1am
   // local is stamped the previous day in UTC, and a founder checking "who joined
@@ -161,6 +200,80 @@ export default async function FounderPage() {
       lapsed,
     })
     purchases.set(intent.coaching_center_id, open)
+  }
+
+  /*
+   * The queue, with every sentence composed here.
+   *
+   * THE SIZE IS THE CLAIM'S OWN SNAPSHOT — the three counts the quote was priced from —
+   * and not the centre's live roster, because the question this line answers is "what was
+   * this priced at". It is also the only size there is: the claim is read without a join,
+   * so the centre's name comes from the list this page already has.
+   *
+   * `t.unnamed` is the fallback for a centre missing from that list, which cannot happen
+   * while the list read succeeded — a claim's centre is a foreign key — and it is the same
+   * word `customers` uses for the same absence. The sender's number has no such word and
+   * gets a dash: it is required on the form that files a claim, so a missing one is an old
+   * row rather than a centre we could not name.
+   */
+  const byCenter = new Map(list.map((c) => [c.centerId, c]))
+
+  const queueClaims: QueueClaim[] = (queue ?? []).map((claim) => {
+    const customer = byCenter.get(claim.centerId)
+    const usage = claim.usage
+
+    const size =
+      usage === null
+        ? null
+        : [
+            `${digits(usage.students, locale)} ${t.size.students}`,
+            `${digits(usage.teachers, locale)} ${t.size.teachers}`,
+            // Only past the first, the rule `sizeLine` follows: a centre is one building.
+            ...(usage.branches > 1
+              ? [`${digits(usage.branches, locale)} ${t.size.branches}`]
+              : []),
+          ].join(' · ')
+
+    const sentOn = dhakaDay(claim.submittedAt)
+    const name = customer?.name ?? t.unnamed
+
+    return {
+      id: claim.id,
+      centre: size === null ? name : words.queueCentre(name, size),
+      sent: words.queueSent(formatTaka(claim.quotedPoisha / 100), sentOn ?? ''),
+      quoted: words.queueQuoted(
+        formatTaka(claim.quotedPoisha / 100),
+        formatTaka(claim.quotedBonusPoisha / 100),
+      ),
+      trx: words.queueTrx(
+        claim.trxId,
+        claim.senderMsisdn === null ? '—' : formatBdMobile(claim.senderMsisdn),
+      ),
+      quotedTaka: String(claim.quotedPoisha / 100),
+    }
+  })
+
+  /*
+   * The card's own words, handed over field by field.
+   *
+   * `RechargeWords` carries functions — `queueCentre`, `queueSent`, the four sentences
+   * above are the ones this page just called — and a group with a function in it cannot
+   * cross into a client component at all. So the finished sentences travel on the claims
+   * and only the labels and the four reasons travel here.
+   */
+  const queueWords: QueueWords = {
+    queueTitle: words.queueTitle,
+    queueBody: words.queueBody,
+    queueEmpty: words.queueEmpty,
+    queueUnreadable: words.queueUnreadable,
+    arrivedLabel: words.arrivedLabel,
+    arrivedHint: words.arrivedHint,
+    approve: words.approve,
+    approving: words.approving,
+    reject: words.reject,
+    reasonLabel: words.reasonLabel,
+    noteLabel: words.noteLabel,
+    reasons: words.reason,
   }
 
   /*
@@ -277,12 +390,22 @@ export default async function FounderPage() {
             </a>
           </p>
 
+          {/* Money a customer says they have already sent us, sitting in our own bKash
+              account with nothing recorded against it. The first block under the figures,
+              because it is the only thing on this screen that somebody else is waiting on
+              — see ./recharge-queue.tsx. */}
+          <RechargeQueue claims={queue === null ? null : queueClaims} words={queueWords} />
+
           <ul className="flex flex-col gap-3">
             {list.map((c) => {
               const signedUp = dhakaDay(c.createdAt)
               const lastActive = dhakaDay(c.lastActiveAt)
               const waitingSince = dhakaDay(c.asksSince)
               const open = purchases.get(c.centerId)
+              // The card's two levers work from these, and both are null together when the
+              // money read did not answer — see the note on the map above.
+              const held = money.get(c.centerId)
+              const line = held ? held.charged_through : null
 
               return (
                 <li key={c.centerId}>
@@ -504,6 +627,21 @@ export default async function FounderPage() {
                       words={t.money}
                       // The fee board's own wallet names, not a second copy.
                       methods={d.feeRow.methods}
+                      // The two levers' words, and the two figures they work from.
+                      // Both sentences are composed here, where the locale is: the
+                      // client component fills nothing but the days preview.
+                      levers={leverLabels(locale)}
+                      holding={
+                        held && line
+                          ? leverSentences(locale).holding(
+                              formatTaka(Number(held.balance_poisha) / 100),
+                              formatDate(line, locale),
+                            )
+                          : null
+                      }
+                      line={line}
+                      today={dhakaToday}
+                      locale={locale}
                     />
 
                     {/* Below the money, because that is the order of the calls: most

@@ -235,6 +235,21 @@ export const bn = {
     more: 'আরও',
     /** The loanword, which every phone in the country already uses for this. */
     locked: 'আপগ্রেড',
+    /**
+     * The balance rail above the content (MASTERPLAN §4.4): how many more days the
+     * money in the balance covers, for the owner who is the only one who can top it up.
+     *
+     * DAYS AND NOT A DATE, which is the whole point of the prepaid model: a date asks
+     * the owner to remember what a period was bought for, and a day count is the honest
+     * unit once the money is theirs (§17 — "price in months, burn in days"). The zero
+     * case names today rather than saying "no days", because on that day the centre is
+     * still working and the sentence has to be true.
+     */
+    balanceDays: (days: number) =>
+      days === 1 ? 'ব্যালেন্সে আরেক দিনের টাকা আছে' : `ব্যালেন্সে আরও ${days} দিনের টাকা আছে`,
+    balanceEmpty: 'ব্যালেন্স খালি — আজ পরিশোধিত, কাল নয়',
+    /** The rail's own call to action, which lands on the plan screen. */
+    balanceTopUp: 'টাকা জমা দিন',
     nav: {
       home: 'হোম',
       attendance: 'হাজিরা',
@@ -468,6 +483,23 @@ export const bn = {
      * ran out" cannot be checked, so it gets ignored or resented.
      */
     coveredTo: (date: string) => `শেষ যে টাকা জমা হয়েছে তাতে ${date} পর্যন্ত চলেছে।`,
+    /**
+     * The two sentences the banner uses instead of the plan ones when it is the *balance*
+     * that stopped the writing (§4.4, §11.6).
+     *
+     * A DIFFERENT FACT AND NOT A SOFTER WORDING. "The plan has run out" is about a tier
+     * and a date; this is about a purse and a day, and the fix is a top-up rather than a
+     * renewal. An owner who reads the wrong one questions their plan instead of their
+     * bKash history, and the second sentence below is the one they can check.
+     */
+    balanceTitle: 'ব্যালেন্স শেষ — নতুন কিছু সেভ হচ্ছে না',
+    balanceBody:
+      'প্রতিদিন ব্যবহারের জন্য টাকা কাটা হয়, আর ব্যালেন্সে পরের দিনটির টাকা নেই — তাই নতুন '
+      + 'নতুন শিক্ষার্থী, হাজিরা, টাকা জমা বা মেসেজ কিছুই সেভ হচ্ছে না। আগের হাজিরা, নম্বর আর '
+      + 'ফির হিসাব সব যেখানে ছিল সেখানেই আছে। টাকা জমা পড়লেই আবার সব চলবে।',
+    /** Takes the day's cost and what is left, both already formatted as taka. */
+    balanceOut: (cost: string, balance: string) =>
+      `এক দিনের খরচ ${cost}, আপনার ব্যালেন্সে আছে ${balance}।`,
     /** On the banner's tel: chip, which appears only where a sales number is set. */
     callUs: 'ফোন দিন',
     /** Owners and managers only — a teacher cannot open the plan screen. */
@@ -5873,7 +5905,7 @@ export const bn = {
         badPlan: 'প্ল্যানটি চেনা গেল না। তালিকা থেকে বেছে নিন।',
         /**
          * নিচের প্ল্যানে নামা এখানে হয় না — সেটা কথা বলার বিষয়, `upgrade` ঘরের ফর্মটি
-         * তার জন্যই। কারণটা ../../app/(app)/settings/plan/actions.ts-এ লেখা আছে।
+         * তার জন্যই। কারণটা ../../app/(app)/settings/billing/actions.ts-এ লেখা আছে।
          */
         downgradeIsACall:
           'ছোট প্ল্যানে নামার কাজটা এখান থেকে হয় না। নিচের ফর্মে জানান, আমরা ফোন করব।',
@@ -7406,7 +7438,7 @@ export const bn = {
       failed: 'কাজটা হয়নি। আবার চেষ্টা করুন।',
     },
     /**
-     * "সেন্টার প্ল্যান চেয়েছে" — an owner raised their hand on /settings/plan.
+     * "সেন্টার প্ল্যান চেয়েছে" — an owner raised their hand on /settings/billing.
      *
      * OUTSIDE `asked`, and for the same reason `paymentSaved` sits outside `money`:
      * this one takes an argument, and `asked` goes to a client component whole. The
@@ -7774,6 +7806,7 @@ export const bn = {
       salaryPaid: 'বেতন দেওয়া হয়েছে',
       expenseRecorded: 'খরচ লেখা হয়েছে',
       platformPaymentRecorded: 'আমাদের টাকা দেওয়া হয়েছে',
+      balanceChanged: 'ব্যালেন্স বদলেছে',
       /** "অনুরোধ", কারণ কেউ নিশ্চিত না করা পর্যন্ত টাকাটা আসলে আসেনি। */
       paymentRequested: 'টাকা পাঠানোর অনুরোধ হয়েছে',
       paymentSettled: 'টাকা পাওয়া গেছে বলে নিশ্চিত হয়েছে',

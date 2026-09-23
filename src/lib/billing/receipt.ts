@@ -16,7 +16,7 @@
  * the number is chosen rather than read:
  *
  *   - a purchase code, `transferReference(intent_id)`, whenever there is an intent. This is
- *     the code the owner was shown on /settings/plan and quoted in the bKash reference when
+ *     the code the owner was shown on /settings/billing and quoted in the bKash reference when
  *     they sent the money, and it is what the founder panel lists open purchases by — so
  *     the paper closes the loop it opened rather than opening a second one.
  *   - failing that the provider's own `reference`, the TrxID, which is the only identifier

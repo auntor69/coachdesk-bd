@@ -31,8 +31,11 @@
 
 import { useActionState, useEffect, useRef } from 'react'
 
+import type { Locale } from '@/lib/i18n/locale'
+
 import { Alert, Button, Field } from '@/components/ui'
 import { mintIdempotencyKey } from '@/lib/idempotency'
+import type { LeverLabels } from '@/lib/i18n/levers'
 import { MAX_LABEL, MAX_TEXT } from '@/lib/limits'
 import type { CenterStatus, PaymentMethod } from '@/lib/supabase/types'
 import type { PlanId } from '@/lib/plans'
@@ -42,6 +45,7 @@ import {
   setCenterPlan,
   type FounderState,
 } from './actions'
+import { CenterLevers } from './center-levers'
 
 /**
  * Labels for both forms.
@@ -105,6 +109,11 @@ export function CenterBilling({
   statuses,
   words,
   methods,
+  levers,
+  holding,
+  line,
+  today,
+  locale,
 }: {
   centerId: string
   /** The centre's current tier and state, so both `<select>`s open on the truth. */
@@ -133,6 +142,26 @@ export function CenterBilling({
    * for a year. One owner for the words, two readers.
    */
   methods: Record<PaymentMethod, string>
+  /**
+   * The two levers' own words, in a fragment of their own — see lib/i18n/levers.ts for why
+   * they are not in the dictionaries yet. Passed as strings: the group crosses the boundary
+   * whole, so it cannot hold a function.
+   */
+  levers: LeverLabels
+  /**
+   * What the centre holds and how far its days reach, already a sentence — composed on the
+   * server from `formatTaka` and `formatDate`, because the founder's panel is the one screen
+   * where both figures have to be read before a lever is touched. Null where the read
+   * failed, together with `line`: a lever drawn beside a blank is a lever granted blind.
+   */
+  holding: string | null
+  /**
+   * `charged_through` and the Dhaka day, raw, for the days form's live preview — the only
+   * sentence on this card that changes as somebody types. See ./center-levers.tsx.
+   */
+  line: string | null
+  today: string
+  locale: Locale
 }) {
   const [payState, payAction, paying] = useActionState<FounderState, FormData>(
     recordCenterPayment,
@@ -435,6 +464,36 @@ export function CenterBilling({
             {applying ? words.applying : words.apply}
           </Button>
         </form>
+
+        {/* ---------------------------------------------------------------- */}
+        {/* The levers (§11.7)                                                 */}
+        {/* ---------------------------------------------------------------- */}
+        {/* Last, because it is the rarest errand on the card: a bill is the
+            ordinary phone call, and a grant is the one that follows a closure, a
+            mis-paste or a founder who was asleep. The line above them is what makes
+            them legible — a balance is not a figure this panel has ever drawn. */}
+        {holding === null || line === null ? (
+          /* Said rather than drawn with a dash beside it. Both levers work from the line,
+             and a grant worked out from a line nobody could read is a date nobody can
+             predict — so the refusal is the whole block, not an empty field in it. */
+          <p className="border-t border-line pt-4 text-sm text-ink-soft">
+            {levers.unreadable}
+          </p>
+        ) : (
+          <>
+            <p className="text-sm text-ink-soft">
+              <span className="num">{holding}</span>
+            </p>
+
+            <CenterLevers
+              centerId={centerId}
+              line={line}
+              today={today}
+              locale={locale}
+              labels={levers}
+            />
+          </>
+        )}
       </div>
     </details>
   )

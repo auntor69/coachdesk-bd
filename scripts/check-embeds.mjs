@@ -272,14 +272,30 @@ if (shapes.size === 0) {
 
 const probes = [...shapes.values()]
 
+/*
+ * A shape the anon role may not even ASK for — 401/42501, `permission denied for table`
+ * — is a resolved relationship by the definition this check uses: PostgREST parsed the
+ * select against its schema cache and consulted the grant *before* any policy. What the
+ * gate is for is the 400 that says a shape no longer parses, and the 404 that says a
+ * migration was pushed and PostgREST has not noticed. A 42501 on a table whose migration
+ * deliberately revoked anon (`price_versions` in 20260811000080, `policy_acceptances` in
+ * 20260811000085) is the fences working; failing the run on it would make the check
+ * demand a read privilege two migrations refuse on purpose.
+ *
+ * So the refusal is recorded as resolved-but-refused and counted separately, where it can
+ * be read — and a table that SHOULD be readable anon and is not still shows up, because
+ * those all carry an anon SELECT grant today and a dropped one would turn their shapes
+ * into refusals.
+ */
 async function ask(probe) {
   const endpoint = `${url}/rest/v1/${probe.relation}?select=${encodeURIComponent(probe.select)}&limit=1`
   const response = await fetch(endpoint, {
     headers: { apikey: key, Authorization: `Bearer ${key}` },
   })
-  if (response.ok) return { ...probe, ok: true }
+  if (response.ok) return { ...probe, ok: true, refused: false }
   const body = await response.json().catch(() => ({}))
-  return { ...probe, ok: false, status: response.status, body }
+  const refused = response.status === 401 || body.code === '42501'
+  return { ...probe, ok: refused, refused, status: response.status, body }
 }
 
 // Eight at a time. Sequentially this is close to a hundred round trips to another
@@ -303,12 +319,14 @@ const relations = [...new Set(probes.map((p) => p.relation))].sort()
 for (const relation of relations) {
   const mine = results.filter((r) => r.relation === relation)
   const bad = mine.filter((r) => !r.ok).length
+  const refused = mine.filter((r) => r.refused).length
   const embedded = mine.filter((r) => r.select.includes('(')).length
   const shapeCount = `${mine.length} shape${mine.length === 1 ? '' : 's'}`
   const detail = embedded > 0 ? `${shapeCount}, ${embedded} embedded` : shapeCount
+  const suffix = refused > 0 ? `, ${refused} refused to anon (by grant, as designed)` : ''
   console.log(
     bad === 0
-      ? `  OK    ${relation.padEnd(24)} ${detail}`
+      ? `  OK    ${relation.padEnd(24)} ${detail}${suffix}`
       : `  FAIL  ${relation.padEnd(24)} ${detail} — ${bad} did not resolve`,
   )
 }

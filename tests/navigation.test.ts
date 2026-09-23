@@ -429,6 +429,22 @@ test('every screen carries a way back that its own reader can open', () => {
    * which check it turns on is asserted where the check is, on the screen's own test.
    */
   const guards = new Map(SCREENS.map((s) => [s.route, guardOf(s.body)]))
+
+  /*
+   * A ROUTE THAT ONLY REDIRECTS ADMITS EXACTLY THE READERS ITS TARGET ADMITS, so its
+   * guard is the target's. `/settings/plan` is one since §16.1 step 27 demolished the
+   * page — it carries no guard of its own because it shows nobody anything, and reading
+   * that as "anybody may be here" would let the next screen behind a redirect claim the
+   * menu's promise on the strength of a route that opens no door.
+   *
+   * Resolved in a second pass because the map this reads is the one being built.
+   */
+  for (const { route, body } of SCREENS) {
+    if (guards.get(route)) continue
+    const target = body.match(/^\s*redirect\('([^']+)'\)/m)?.[1]
+    if (target) guards.set(route, guards.get(target) ?? null)
+  }
+
   const offenders: string[] = []
 
   for (const { route, body } of SCREENS) {

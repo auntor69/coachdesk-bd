@@ -5,7 +5,8 @@ import 'server-only'
  *
  * MASTERPLAN §3.7 forks the full-register screen on who is looking: an owner is offered
  * the price, a branch manager is offered a button that asks HQ. The asking is a Server
- * Action in `settings/plan/actions.ts`; this is the read that stops the same screen
+ * Action in `settings/billing/actions.ts` — it moved under billing with the plan screen's
+ * demolition at §16.1 step 27; this is the read that stops the same screen
  * offering the button to somebody who pressed it yesterday.
  *
  * THE BRANCH IS MATCHED HERE RATHER THAN IN THE QUERY, and not for tidiness. A manager

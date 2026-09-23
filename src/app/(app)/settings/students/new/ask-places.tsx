@@ -23,7 +23,7 @@
 import { useActionState } from 'react'
 
 import { Alert, Button } from '@/components/ui'
-import { requestPlaces, withdrawPlacesRequest, type UpgradeState } from '../../plan/actions'
+import { requestPlaces, withdrawPlacesRequest, type UpgradeState } from '../../billing/actions'
 
 export function AskPlaces({
   ask,

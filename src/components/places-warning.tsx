@@ -78,7 +78,7 @@ export function PlacesWarning({
       {/* The door, on every level. The warning an owner cannot act on from where they
           are standing is the one they scroll past. */}
       <Link
-        href="/settings/plan"
+        href="/settings/billing"
         className="mt-2 inline-flex min-h-tap items-center font-medium text-brand-700"
       >
         {t.placesLink} →

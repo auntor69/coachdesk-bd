@@ -70,15 +70,19 @@ import {
   type Session,
 } from '@/lib/auth/session'
 import { founderResetRefusal } from '@/lib/auth/founder-reset'
+import { parseDays } from '@/lib/billing/levers'
+import { leverLabels, leverSentences } from '@/lib/i18n/levers'
 import { MIN_PASSWORD } from '@/lib/auth/password'
+import { approveClaim, rejectClaim } from '@/lib/billing/claims'
 import { readIntent } from '@/lib/billing/intents'
 import { paymentProvider } from '@/lib/billing/provider'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { createClient } from '@/lib/supabase/server'
-import { addMonths, formatMonth, hasPassed } from '@/lib/bd/time'
+import { addMonths, digits, formatDate, formatMonth, hasPassed } from '@/lib/bd/time'
 import { formatBdMobile, normalizeBdMobile } from '@/lib/bd/phone'
 import { PAYMENT_METHODS } from '@/lib/fees/methods'
 import { dict, DEFAULT_LOCALE } from '@/lib/i18n'
+import { REJECT_REASONS, rechargeWords, type RejectReason } from '@/lib/i18n/recharge'
 import { passwordTooShort } from '@/lib/i18n/messages'
 import { readIdempotencyKey, UNIQUE_VIOLATION } from '@/lib/idempotency'
 import { MAX_LABEL, MAX_TEXT, clamp } from '@/lib/limits'
@@ -96,7 +100,7 @@ import {
   isMonthsCovered,
   isPeriodChoice,
 } from '@/lib/platform/billing'
-import type { CenterStatus, MemberRole, PaymentMethod } from '@/lib/supabase/types'
+import type { CenterStatus, Json, MemberRole, PaymentMethod } from '@/lib/supabase/types'
 
 /**
  * What both forms render back.
@@ -129,6 +133,16 @@ const METHODS = new Set<PaymentMethod>(PAYMENT_METHODS)
 const CHECK_VIOLATION = '23514'
 
 const PLAN_IDS = new Set<PlanId>(Object.keys(PLANS) as PlanId[])
+
+/**
+ * The reasons a rejection may carry, as the panel's own list.
+ *
+ * Derived from the one array rather than typed out again: `REJECT_REASONS` is what the
+ * `<select>` offers, `recharge_claims.reject_reason` checks the same four, and
+ * `reject_recharge_claim` refuses anything else — so a fifth reason has to be added in
+ * three places and this is the one that says so out loud.
+ */
+const REASONS = new Set<RejectReason>(REJECT_REASONS)
 
 /** Matches `center_status` in 20260811000001_init_schema.sql. */
 const STATUSES = new Set<CenterStatus>([
@@ -449,6 +463,134 @@ export async function creditCenterPayment(
 }
 
 /**
+ * The founder crediting a recharge a customer says they sent — §11.9 step 7.
+ *
+ * THE OTHER HALF OF THE ONE SCREEN THING IN THE PRODUCT A READ-ONLY CENTRE MAY DO. The
+ * customer files the claim (`submitRechargeClaim`, which is deliberately the one write not
+ * behind `requireWritable`); this is the human looking at their own bKash account and
+ * saying what arrived. Nothing is credited between those two steps — `fileRechargeClaim`
+ * writes an assertion and no money — which is what makes a wrong amount a conversation
+ * rather than a correction of history.
+ *
+ * THE SESSION'S OWN CLIENT, unlike every other write in this file, and the difference is
+ * worth reading before changing it: `approve_recharge_claim` is a security-definer RPC
+ * that checks `app.is_platform_admin()` itself and records `auth.uid()` on the payment and
+ * on the claim, so the gate below is the *second* check rather than the only one — the
+ * exact inversion of `recordCenterPayment`, where the admin key is the whole door.
+ *
+ * THE BOX IS BLANK BY DEFAULT and blank means "what they said they sent": §11.9 lets the
+ * founder override the amount, because customers send the wrong figure constantly, and a
+ * prefilled box is a figure nobody checked. The cap is the same one a founder-recorded
+ * receipt carries, so a stray keystroke cannot credit more than a payment can record.
+ *
+ * THE BONUS IS NOT HERE. It is re-derived inside the function from the amount that
+ * actually arrived and the promotion live at that moment, so the figure quoted to the
+ * customer decides nothing (§11.11) — the sentence returned below is built from what the
+ * database credited, not from what the screen promised.
+ */
+export async function approveRechargeClaim(
+  _prev: FounderState,
+  formData: FormData,
+): Promise<FounderState> {
+  const gate = await founder()
+  if (!isSession(gate)) return gate
+
+  const session = gate
+  const t = rechargeWords(session.locale)
+
+  const claimId = String(formData.get('claimId') ?? '')
+  if (!claimId) return { error: t.queueFailed }
+
+  // Read as blank *before* parsing, or an untouched box would be reported as a number
+  // nobody could read.
+  const typed = String(formData.get('arrived') ?? '').trim()
+  let arrivedPoisha: number | null = null
+
+  if (typed !== '') {
+    const arrived = parseTaka(typed)
+    // Zero is refused and not coerced: a credit of nothing is not a smaller credit, and
+    // the function raises 22023 for it — in a code rather than in a sentence.
+    if (arrived === null || arrived <= 0) return { error: t.badAmount }
+    if (arrived > MAX_CENTER_PAYMENT_BDT) {
+      return { error: t.tooLarge(formatTaka(MAX_CENTER_PAYMENT_BDT)) }
+    }
+    arrivedPoisha = Math.round(arrived * 100)
+  }
+
+  const note = clamp(String(formData.get('note') ?? '').trim(), MAX_TEXT)
+
+  const supabase = await createClient()
+  const outcome = await approveClaim(supabase, {
+    claimId,
+    arrivedPoisha,
+    note: note || null,
+  })
+
+  if (!outcome.ok) {
+    // The anti-replay fence gets the customer's own sentence for it, because that is the
+    // sentence the founder has to repeat down the phone. The other two are one answer: a
+    // claim somebody else already decided clears itself off the queue on the re-render.
+    return { error: outcome.reason === 'duplicate' ? t.reason.duplicate : t.queueFailed }
+  }
+
+  revalidatePath('/founder')
+
+  // `creditedLine` is the customer's own line for an approved claim, read here as the
+  // founder's receipt: it is the same fact, and it is the only place the credited bonus
+  // appears — the row leaves the queue on the re-render, so this is what the founder reads
+  // instead of it. The blank where there is no bonus is `creditedLine`'s own convention.
+  return {
+    ok: t.creditedLine(
+      formatTaka(outcome.arrivedPoisha / 100),
+      outcome.bonusPoisha > 0 ? formatTaka(outcome.bonusPoisha / 100) : '',
+    ),
+  }
+}
+
+/**
+ * Closing a claim that will not be credited — §11.9's rejection, and it needs a reason.
+ *
+ * A SHORT LIST RATHER THAN FREE TEXT, because a rejection without one becomes a phone call
+ * and a reason nobody can group is barely better. The list is re-checked here for the same
+ * reason every set in this file is: the `<select>` is a suggestion, this endpoint is
+ * reachable without it, and the sentence the customer will read comes off the row.
+ *
+ * `other` IS THE ONE THE NOTE IS FOR — "we called them and agreed to treat it as a
+ * discount" is a fact no enum can carry — so the note travels with the reason rather than
+ * being an approval-only field. Nothing is credited either way, and nothing is deleted: the
+ * row keeps its reason, its reviewer and its note, which is what lets the customer's own
+ * card say what happened.
+ */
+export async function rejectRechargeClaim(
+  _prev: FounderState,
+  formData: FormData,
+): Promise<FounderState> {
+  const gate = await founder()
+  if (!isSession(gate)) return gate
+
+  const session = gate
+  const t = rechargeWords(session.locale)
+
+  const claimId = String(formData.get('claimId') ?? '')
+  if (!claimId) return { error: t.queueFailed }
+
+  const reason = String(formData.get('reason') ?? '') as RejectReason
+  if (!REASONS.has(reason)) return { error: t.queueFailed }
+
+  const note = clamp(String(formData.get('note') ?? '').trim(), MAX_TEXT)
+
+  const supabase = await createClient()
+  const closed = await rejectClaim(supabase, { claimId, reason, note: note || null })
+  if (!closed) return { error: t.queueFailed }
+
+  revalidatePath('/founder')
+
+  // Word for word what the customer's own card will say, so the founder and the customer
+  // are reading the same thing rather than two versions of it.
+  return { ok: t.stateRejected }
+}
+
+/**
  * Moves a centre onto a plan, a status, or both.
  *
  * The only way either column changes. `bootstrap_center` sets them once at signup and
@@ -766,7 +908,7 @@ export async function cancelCenterPurchase(
  *
  * THE ROW IS KEPT, NOT DELETED. `handled_at` is stamped and the request stays, which
  * is what stops the owner's own screen flipping back to an empty form the moment the
- * founder acts — /settings/plan reads `handled_at is null`, so the pending card
+ * founder acts — /settings/billing reads `handled_at is null`, so the pending card
  * disappears while the fact that they asked does not. An owner who wants to ask again
  * gets a fresh row, dated the day they asked again; see the note on requestUpgrade.
  *
@@ -914,4 +1056,225 @@ export async function resetCenterStaffPassword(
   // Nothing on the panel changes, so nothing is revalidated. The name is what the
   // founder needs next, read back down the phone to the person waiting on it.
   return { ok: t.resetDone(profile.full_name || formatBdMobile(phone)) }
+}
+
+/**
+ * Moves money on or off a centre's prepaid balance — §11.7's first lever, step 26.
+ *
+ * THE ANSWER TO EVERY CASE §11.8 COULD NOT FENCE. A centre shut for three weeks around
+ * Eid was charged for three weeks and will say so; a 200-row paste was a mistake and is
+ * now a daily rate; a founder was asleep when a customer ran dry. The money model has no
+ * self-serve answer to any of them on purpose — a pause button would cut a fully-using
+ * customer's price by a third and make revenue unforecastable — so what is built instead
+ * is a human with two levers and a written reason.
+ *
+ * THE SESSION'S OWN CLIENT AND NOT THE ADMIN KEY, which is the same inversion
+ * `approveRechargeClaim` makes and for the same reason: `founder_adjust_balance` asks
+ * `app.is_platform_admin()` inside itself and writes `auth.uid()` onto the row, so the
+ * gate below is the second check rather than the only one. The ledger holds no INSERT
+ * grant for `authenticated` at all (§11.7's threat table), so a browser cannot reach this
+ * table directly whatever it posts.
+ *
+ * WHAT THE BROWSER MAY NAME: an amount and a reason. Nothing else. It cannot name the
+ * balance, the day, or a rate — the function reads the balance under the ledger's own
+ * advisory lock and refuses an amount that would take it below nothing, which is the
+ * constraint standing behind the sentence returned here.
+ */
+export async function adjustCenterBalance(
+  _prev: FounderState,
+  formData: FormData,
+): Promise<FounderState> {
+  const gate = await founder()
+  if (!isSession(gate)) return gate
+
+  const session = gate
+  const t = dict(session.locale).founder
+  const labels = leverLabels(session.locale)
+
+  const centerId = String(formData.get('centerId') ?? '')
+  if (!centerId) return { error: t.money.noCenter }
+
+  // Signed here and not by the form: one control, and a minus sign is the only way to take
+  // money off, so it has to be readable. Zero is refused below — an adjustment of nothing
+  // adjusts nothing, and the function raises for it too.
+  const taka = parseTaka(String(formData.get('amount') ?? ''))
+  if (taka === null || taka === 0) return { error: labels.badAdjust }
+  if (Math.abs(taka) > MAX_CENTER_PAYMENT_BDT) {
+    return { error: t.tooMuch(formatTaka(MAX_CENTER_PAYMENT_BDT)) }
+  }
+
+  const reason = clamp(String(formData.get('reason') ?? '').trim(), MAX_TEXT)
+  if (!reason) return { error: labels.noReason }
+
+  const outcome = await writeAdjustment(await createClient(), {
+    centerId,
+    amountPoisha: Math.round(taka * 100),
+    reason,
+  })
+
+  revalidatePath('/founder')
+
+  if (!outcome.ok) return { error: labels[outcome.reason] }
+
+  return {
+    ok: leverSentences(session.locale).adjusted(
+      formatTaka(outcome.amountPoisha / 100),
+      formatTaka(outcome.balanceAfter / 100),
+    ),
+  }
+}
+
+/**
+ * Gives a centre days rather than money — §11.7's second lever, step 26.
+ *
+ * DAYS AND NOT FAKE MONEY, which is §11.7's whole distinction and the reason this is a
+ * second action rather than a sign on the first. A trial, a goodwill extension or a
+ * closure allowance given forward cannot be spent on anything else, cannot be confused
+ * with taka a customer actually paid, and costs nothing to represent: the entry carries
+ * zero and the line moves.
+ *
+ * THE DATE IS NOT THE BROWSER'S TO NAME. The founder types a number of days and the
+ * function works out the reach from the line the row actually holds and the Dhaka day —
+ * and starts at today when the line is behind it, so granting three days to a centre that
+ * lapsed a fortnight ago leaves it covered rather than still dry. The sentence returned
+ * here is built from the date the database answered with, never from what the form
+ * predicted.
+ *
+ * `MAX_GRANT_DAYS` IS CHECKED HERE AND IN SQL, like every cap in this product: a Server
+ * Action is a public HTTP endpoint, so the field's `maxLength` is a suggestion and this is
+ * the sentence. A stray keystroke past a year is a free decade otherwise. The constant
+ * itself never reaches the copy — the hint says "up to a year" — because a sentence naming
+ * 366 is a sentence that drifts the day the constant moves.
+ */
+export async function grantCenterDays(
+  _prev: FounderState,
+  formData: FormData,
+): Promise<FounderState> {
+  const gate = await founder()
+  if (!isSession(gate)) return gate
+
+  const session = gate
+  const t = dict(session.locale).founder
+  const labels = leverLabels(session.locale)
+
+  const centerId = String(formData.get('centerId') ?? '')
+  if (!centerId) return { error: t.money.noCenter }
+
+  const days = parseDays(String(formData.get('days') ?? ''))
+  if (days === null) return { error: labels.badDays }
+
+  const reason = clamp(String(formData.get('reason') ?? '').trim(), MAX_TEXT)
+  if (!reason) return { error: labels.noReason }
+
+  const outcome = await writeGrant(await createClient(), { centerId, days, reason })
+
+  revalidatePath('/founder')
+
+  if (!outcome.ok) return { error: labels.failed }
+
+  return {
+    ok: leverSentences(session.locale).grantedDays(
+      digits(outcome.days, session.locale),
+      formatDate(outcome.chargedThrough, session.locale),
+    ),
+  }
+}
+
+/**
+ * The two functions as PostgREST sees them, cast the way `settleDay` and `approveClaim`
+ * cast theirs.
+ *
+ * Migration 86 is the newest file in the repository and `src/lib/supabase/types.ts` is
+ * regenerated after it is applied, so the entries below are the standing placeholder until
+ * that run — the same note `lib/billing/claims.ts` carried for migration 84. The cast is a
+ * no-op once they exist, because the argument names are the same ones the functions
+ * declare.
+ */
+type LeverRpc = (
+  fn: 'founder_adjust_balance' | 'founder_grant_days',
+  args: Record<string, unknown>,
+) => PromiseLike<{ data: Json | null; error: { code?: string; message: string } | null }>
+
+/** The refusals a founder can act on, and nothing else — the rest are real faults. */
+type AdjustOutcome =
+  | { ok: true; amountPoisha: number; balanceAfter: number }
+  | { ok: false; reason: 'overdraw' | 'failed' }
+
+type GrantOutcome =
+  | { ok: true; days: number; chargedThrough: string }
+  | { ok: false; reason: 'failed' }
+
+/**
+ * The three codes these functions raise in, read for the one that is a sentence.
+ *
+ * `23514` IS THE ONE A FOUNDER MEETS — "that would leave the balance at -৳300" — and it is
+ * a `23514` because the rule is `billing_ledger_no_overdraft` and the function raises with
+ * the constraint's own code. The other two are `42501` for a caller who is not the
+ * platform admin and `22023` for an argument the action already refused in words; both are
+ * faults rather than things a founder typed, so they answer with the general sentence.
+ */
+const OVERDRAFT = '23514'
+
+/** A number off the wire, or null for anything that is not one. */
+function numberOrNull(value: unknown): number | null {
+  return typeof value === 'number' && Number.isFinite(value) ? value : null
+}
+
+async function writeAdjustment(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  input: { centerId: string; amountPoisha: number; reason: string },
+): Promise<AdjustOutcome> {
+  const adjust = supabase.rpc as unknown as LeverRpc
+
+  const { data, error } = await adjust('founder_adjust_balance', {
+    p_center: input.centerId,
+    p_amount_poisha: input.amountPoisha,
+    p_reason: input.reason,
+  })
+
+  if (error) {
+    return { ok: false, reason: error.code === OVERDRAFT ? 'overdraw' : 'failed' }
+  }
+
+  if (typeof data !== 'object' || data === null || Array.isArray(data)) {
+    return { ok: false, reason: 'failed' }
+  }
+
+  const out = data as Record<string, unknown>
+  const balanceAfter = numberOrNull(out.balanceAfter)
+
+  // The sentence the founder reads is built from this figure, so a missing one is the
+  // wire disagreeing with the database rather than a zero to fall back on.
+  if (balanceAfter === null) return { ok: false, reason: 'failed' }
+
+  return { ok: true, amountPoisha: input.amountPoisha, balanceAfter }
+}
+
+async function writeGrant(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  input: { centerId: string; days: number; reason: string },
+): Promise<GrantOutcome> {
+  const grant = supabase.rpc as unknown as LeverRpc
+
+  const { data, error } = await grant('founder_grant_days', {
+    p_center: input.centerId,
+    p_days: input.days,
+    p_reason: input.reason,
+  })
+
+  if (error) return { ok: false, reason: 'failed' }
+
+  if (typeof data !== 'object' || data === null || Array.isArray(data)) {
+    return { ok: false, reason: 'failed' }
+  }
+
+  const out = data as Record<string, unknown>
+  const chargedThrough =
+    typeof out.chargedThrough === 'string' ? out.chargedThrough.slice(0, 10) : null
+
+  // The date the screen reads back, and the one the row now holds — a grant that reported
+  // a date of its own would be the second engine this whole module exists to avoid.
+  if (chargedThrough === null) return { ok: false, reason: 'failed' }
+
+  return { ok: true, days: input.days, chargedThrough }
 }

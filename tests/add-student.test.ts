@@ -43,7 +43,7 @@ const read = (...parts: string[]) => readFileSync(path.join(ROOT, ...parts), 'ut
 
 const PAGE = read('src', 'app', '(app)', 'settings', 'students', 'new', 'page.tsx')
 const FORM = read('src', 'app', '(app)', 'settings', 'students', 'new', 'student-form.tsx')
-const ACTIONS = read('src', 'app', '(app)', 'settings', 'plan', 'actions.ts')
+const ACTIONS = read('src', 'app', '(app)', 'settings', 'billing', 'actions.ts')
 
 /** The at-limit shape, from its early return to the end of it. */
 const WALL_AT = PAGE.indexOf('if (atLimit) {')
@@ -185,7 +185,7 @@ test('the warning draws above the form on a phone, and each column draws as writ
   assert.match(rail, /<PlacesWarning\s+className="order-2"/)
 
   // Staff admins only, exactly as the roster gates it: the warning ends in a link to
-  // /settings/plan, which a teacher on `can_manage_students` would be refused at.
+  // /settings/billing, which a teacher on `can_manage_students` would be refused at.
   assert.match(rail, /\{isStaffAdmin\(session\) && \(\s*<PlacesWarning/)
 })
 
@@ -210,14 +210,20 @@ test('the wall carries every way out that its reader actually has', () => {
   assert.match(WALL, /places\.waitingTitle/)
   assert.match(WALL, /buys\.error &&/, 'a dropped purchase read says nothing')
 
-  // The manager's ask, the free-a-place link every tier has, and the plan link last.
+  // The manager's ask, the free-a-place link every tier has, and the money link last.
   assert.match(WALL, /\{mayAsk && \(\s*<AskPlaces/)
   assert.match(WALL, /t\.placesFreeLink/)
   assert.ok(
     WALL.indexOf('t.placesFreeLink') < WALL.indexOf('t.placesPlanLink'),
-    'the plan link is offered before the one that costs nothing',
+    'the money link is offered before the one that costs nothing',
   )
-  assert.match(WALL, /\{isStaffAdmin\(session\) && \(\s*<Link\s+href="\/settings\/plan"/)
+  // The money link lands on the places form, which moved under billing with the plan
+  // screen's demolition (§16.1 step 27) — and this link is one of the four in the product
+  // that promised it, which is why `buy-places.tsx` was re-homed rather than deleted.
+  assert.match(
+    WALL,
+    /\{isStaffAdmin\(session\) && \(\s*<Link\s+href="\/settings\/billing"/,
+  )
 })
 
 test('who may buy and who may ask is decided the way the actions decide it', () => {
@@ -257,7 +263,9 @@ test('a purchase opened here refreshes the screen it was opened on', () => {
   assert.ok(from > 0, 'buyStudentPlaces has been renamed')
   const body = ACTIONS.slice(from, ACTIONS.indexOf('export async function', from + 10))
   assert.match(body, /revalidatePath\('\/settings\/students\/new'\)/)
-  assert.match(body, /revalidatePath\('\/settings\/plan'\)/)
+  // The money screen, which is where the places form lives now that the plan page is a
+  // redirect (§16.1 step 27) — the same path this action's own card sits on.
+  assert.match(body, /revalidatePath\('\/settings\/billing'\)/)
 })
 
 test('the refusal that keeps the record also keeps the ticks', () => {

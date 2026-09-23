@@ -15,8 +15,15 @@ import { createServerClient } from '@supabase/ssr'
  * cached as the offline fallback would mean an installed app opening with no signal
  * shows a login form it cannot submit. The page reads no session and no cookie by
  * design, precisely so that being public costs nothing; see its own note.
+ *
+ * /legal is here because it is the one public surface a stranger is *sent* to. Seven
+ * documents — the prepaid terms above all — that the signup checkbox links to before an
+ * account exists, and that the recharge screen's non-refundable line links to for an owner
+ * whose balance has already run out. Behind a session check, the second of those would be
+ * unreachable in exactly the state that makes it matter (MASTERPLAN.md §14.1). The pages
+ * read no tenant data: every word is a constant in src/lib/legal.
  */
-const PUBLIC_ROUTES = ['/login', '/signup', '/onboarding', '/auth', '/offline']
+const PUBLIC_ROUTES = ['/login', '/signup', '/onboarding', '/auth', '/offline', '/legal']
 
 /**
  * Routes authenticated by a bearer token instead of a cookie.

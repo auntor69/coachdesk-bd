@@ -83,6 +83,32 @@ const AUTH_STUB = `
 
 export async function bootDatabase({ verbose = false } = {}) {
   const db = new PGlite({ extensions: { pgcrypto, citext } })
+
+  /*
+   * The session runs on the customer's calendar, not the server's.
+   *
+   * This Postgres reads the host clock, which is UTC, so `current_date` is a day behind
+   * Dhaka's from midnight to 6am local — six hours out of every twenty-four. That is the
+   * one thing the product's own SQL is not allowed to do (20260811000081 names
+   * `current_date` only to forbid it, and every real query states `at time zone
+   * 'Asia/Dhaka'`), but several fixtures still age rows with it while meaning "the day this
+   * centre is having" — `riskInvoice` in scripts/test-rls.mjs, and the accountant who
+   * leaves. For those six hours they aged a row one day too far and the assertions failed
+   * against the fixture rather than against the schema: a fee ten days past due read as
+   * eleven, and an employee hired at midnight local had joined "tomorrow" and so could
+   * never leave, which aborted the run on a check constraint.
+   *
+   * Pinning the zone is the same thing as running the suite from Dhaka, which is where it
+   * is normally run and why the suite has been reported green for months. Both numbers were
+   * measured, not assumed: at 19:55 UTC the suite was two failures and an abort, and with
+   * the zone pinned it is 1,466 assertions and nothing else. `TZ=Asia/Dhaka npm run
+   * test:rls` reproduces the second result, and this line is what makes that unnecessary.
+   *
+   * Nothing a migration stores moves: `timestamptz` is an absolute instant, so only the
+   * renderings — `current_date`, a `::date` cast — change. The production project stays UTC.
+   */
+  await db.exec(`set time zone 'Asia/Dhaka';`)
+
   await db.exec('create extension if not exists pgcrypto;')
   await db.exec(AUTH_STUB)
 

@@ -191,7 +191,7 @@ test('the month a purchase opens in is Dhaka’s', () => {
 })
 
 test('the window a form draws is the window the action bills', () => {
-  // The pair /settings/plan shows and `buySubscription` charges for. Both call these
+  // The pair /settings/billing shows and `buySubscription` charges for. Both call these
   // two functions, and the point of the test is that the answer is one window: twelve
   // months from the end of existing coverage, ending the day before the anniversary.
   const from = coverageStart('2026-11-30', NOW)

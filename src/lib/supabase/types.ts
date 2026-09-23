@@ -30,6 +30,8 @@ export type PaymentProvider = 'manual' | 'bkash'
 export type PaymentPurpose = 'subscription' | 'student_capacity' | 'teacher_seat' | 'branch'
 export type PayoutWallet = 'bkash' | 'nagad' | 'rocket'
 export type PlanType = 'teacher_free' | 'teacher_plus' | 'center' | 'institution'
+export type PolicyKind = 'prepaid_billing' | 'refunds' | 'terms' | 'privacy' | 'acceptable_use' | 'deletion' | 'security'
+export type RechargeClaimState = 'submitted' | 'approved' | 'rejected' | 'expired'
 export type RevenueCategory = 'tuition' | 'admission' | 'registration' | 'exam' | 'form' | 'other'
 export type SalaryBasis = 'monthly' | 'per_class'
 export type SmsKind = 'exam_result' | 'attendance_alert' | 'fee_reminder' | 'notice' | 'custom'
@@ -1884,6 +1886,51 @@ export type Database = {
         }
         Relationships: []
       }
+      policy_acceptances: {
+        Row: {
+          id: string
+          profile_id: string
+          coaching_center_id: string | null
+          policy_kind: PolicyKind
+          policy_version: string
+          accepted_at: string
+          ip: string | null
+        }
+        Insert: {
+          id?: string
+          profile_id: string
+          coaching_center_id?: string | null
+          policy_kind: PolicyKind
+          policy_version: string
+          accepted_at?: string
+          ip?: string | null
+        }
+        Update: {
+          id?: string
+          profile_id?: string
+          coaching_center_id?: string | null
+          policy_kind?: PolicyKind
+          policy_version?: string
+          accepted_at?: string
+          ip?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'policy_acceptances_coaching_center_id_fkey'
+            columns: ['coaching_center_id']
+            isOneToOne: false
+            referencedRelation: 'coaching_centers'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'policy_acceptances_profile_id_fkey'
+            columns: ['profile_id']
+            isOneToOne: false
+            referencedRelation: 'profiles'
+            referencedColumns: ['id']
+          },
+        ]
+      }
       price_versions: {
         Row: {
           id: string
@@ -2028,6 +2075,181 @@ export type Database = {
             isOneToOne: false
             referencedRelation: 'students'
             referencedColumns: ['id', 'coaching_center_id']
+          },
+        ]
+      }
+      promotions: {
+        Row: {
+          id: string
+          code: string
+          name: string
+          starts_at: string
+          ends_at: string | null
+          tiers: Json
+          price_version_id: string
+          active: boolean
+          created_by: string | null
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          code: string
+          name: string
+          starts_at?: string
+          ends_at?: string | null
+          tiers: Json
+          price_version_id: string
+          active?: boolean
+          created_by?: string | null
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          code?: string
+          name?: string
+          starts_at?: string
+          ends_at?: string | null
+          tiers?: Json
+          price_version_id?: string
+          active?: boolean
+          created_by?: string | null
+          created_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'promotions_created_by_fkey'
+            columns: ['created_by']
+            isOneToOne: false
+            referencedRelation: 'users'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'promotions_price_version_id_fkey'
+            columns: ['price_version_id']
+            isOneToOne: false
+            referencedRelation: 'price_versions'
+            referencedColumns: ['id']
+          },
+        ]
+      }
+      recharge_claims: {
+        Row: {
+          id: string
+          coaching_center_id: string
+          reference_code: string
+          quoted_poisha: number
+          quoted_bonus_poisha: number
+          price_version_id: string
+          promotion_id: string | null
+          usage_students: number | null
+          usage_teachers: number | null
+          usage_branches: number | null
+          trx_id: string
+          sender_msisdn: string | null
+          state: RechargeClaimState
+          arrived_poisha: number | null
+          granted_poisha: number | null
+          granted_bonus_poisha: number | null
+          granted_promotion_id: string | null
+          reject_reason: string | null
+          submitted_by: string | null
+          reviewed_by: string | null
+          submitted_at: string
+          reviewed_at: string | null
+          review_note: string | null
+        }
+        Insert: {
+          id?: string
+          coaching_center_id: string
+          reference_code?: string
+          quoted_poisha: number
+          quoted_bonus_poisha?: number
+          price_version_id: string
+          promotion_id?: string | null
+          usage_students?: number | null
+          usage_teachers?: number | null
+          usage_branches?: number | null
+          trx_id: string
+          sender_msisdn?: string | null
+          state?: RechargeClaimState
+          arrived_poisha?: number | null
+          granted_poisha?: number | null
+          granted_bonus_poisha?: number | null
+          granted_promotion_id?: string | null
+          reject_reason?: string | null
+          submitted_by?: string | null
+          reviewed_by?: string | null
+          submitted_at?: string
+          reviewed_at?: string | null
+          review_note?: string | null
+        }
+        Update: {
+          id?: string
+          coaching_center_id?: string
+          reference_code?: string
+          quoted_poisha?: number
+          quoted_bonus_poisha?: number
+          price_version_id?: string
+          promotion_id?: string | null
+          usage_students?: number | null
+          usage_teachers?: number | null
+          usage_branches?: number | null
+          trx_id?: string
+          sender_msisdn?: string | null
+          state?: RechargeClaimState
+          arrived_poisha?: number | null
+          granted_poisha?: number | null
+          granted_bonus_poisha?: number | null
+          granted_promotion_id?: string | null
+          reject_reason?: string | null
+          submitted_by?: string | null
+          reviewed_by?: string | null
+          submitted_at?: string
+          reviewed_at?: string | null
+          review_note?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'recharge_claims_coaching_center_id_fkey'
+            columns: ['coaching_center_id']
+            isOneToOne: false
+            referencedRelation: 'coaching_centers'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'recharge_claims_granted_promotion_id_fkey'
+            columns: ['granted_promotion_id']
+            isOneToOne: false
+            referencedRelation: 'promotions'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'recharge_claims_price_version_id_fkey'
+            columns: ['price_version_id']
+            isOneToOne: false
+            referencedRelation: 'price_versions'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'recharge_claims_promotion_id_fkey'
+            columns: ['promotion_id']
+            isOneToOne: false
+            referencedRelation: 'promotions'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'recharge_claims_reviewed_by_fkey'
+            columns: ['reviewed_by']
+            isOneToOne: false
+            referencedRelation: 'users'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'recharge_claims_submitted_by_fkey'
+            columns: ['submitted_by']
+            isOneToOne: false
+            referencedRelation: 'users'
+            referencedColumns: ['id']
           },
         ]
       }
@@ -3186,6 +3408,14 @@ export type Database = {
       }
     }
     Functions: {
+      approve_recharge_claim: {
+        Args: {
+          p_claim: string | null
+          p_arrived_poisha?: number | null
+          p_note?: string | null
+        }
+        Returns: Json
+      }
       bootstrap_center: {
         Args: {
           center_name: string | null
@@ -3197,6 +3427,12 @@ export type Database = {
       }
       cancel_opted_out_sms: {
         Args: Record<PropertyKey, never>
+        Returns: number
+      }
+      center_owed_poisha: {
+        Args: {
+          p_center: string | null
+        }
         Returns: number
       }
       center_student_count: {
@@ -3220,6 +3456,22 @@ export type Database = {
         }
         Returns: string
       }
+      founder_adjust_balance: {
+        Args: {
+          p_center: string | null
+          p_amount_poisha: number | null
+          p_reason: string | null
+        }
+        Returns: Json
+      }
+      founder_grant_days: {
+        Args: {
+          p_center: string | null
+          p_days: number | null
+          p_reason: string | null
+        }
+        Returns: Json
+      }
       import_students: {
         Args: {
           p_center_id: string | null
@@ -3239,6 +3491,21 @@ export type Database = {
       reap_stranded_sms: {
         Args: Record<PropertyKey, never>
         Returns: number
+      }
+      reject_recharge_claim: {
+        Args: {
+          p_claim: string | null
+          p_reason: string | null
+          p_note?: string | null
+        }
+        Returns: Json
+      }
+      settle_billing: {
+        Args: {
+          p_center: string | null
+          p_ran_by?: string | null
+        }
+        Returns: Json
       }
       settle_payment_intent: {
         Args: {
@@ -3269,6 +3536,8 @@ export type Database = {
       payment_purpose: PaymentPurpose
       payout_wallet: PayoutWallet
       plan_type: PlanType
+      policy_kind: PolicyKind
+      recharge_claim_state: RechargeClaimState
       revenue_category: RevenueCategory
       salary_basis: SalaryBasis
       sms_kind: SmsKind
