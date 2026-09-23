@@ -73,6 +73,21 @@ export const en: Dictionary = {
      */
     locked: 'Upgrade',
     /**
+     * The balance rail above the content (MASTERPLAN §4.4): how many more days the money
+     * in the balance covers, for the owner who is the only one who can top it up.
+     *
+     * DAYS AND NOT A DATE, which is the whole point of the prepaid model: a date asks the
+     * owner to remember what a period was bought for, and a day count is the honest unit
+     * once the money is theirs (§17 — "price in months, burn in days"). The zero case
+     * names today rather than saying "no days", because on that day the centre is still
+     * working and the sentence has to be true.
+     */
+    balanceDays: (days: number) =>
+      days === 1 ? 'The balance covers one more day' : `The balance covers ${days} more days`,
+    balanceEmpty: 'Nothing left in the balance — today is paid, tomorrow is not',
+    /** The rail's own call to action, which lands on the plan screen. */
+    balanceTopUp: 'Top up',
+    /**
      * Short enough for a 48px tab at 375px, which is the constraint the Bangla
      * labels were written to and the one English loses most easily: "Attendance"
      * is ten characters where হাজিরা is six.
@@ -195,6 +210,24 @@ export const en: Dictionary = {
      * coverage is what caused this. See the Bangla note.
      */
     coveredTo: (date: string) => `The last payment covered you up to ${date}.`,
+    /**
+     * The two sentences the banner uses instead of the plan ones when it is the *balance*
+     * that stopped the writing (§4.4, §11.6).
+     *
+     * A DIFFERENT FACT AND NOT A SOFTER WORDING. "The plan has run out" is about a tier
+     * and a date; this is about a purse and a day, and the fix is a top-up rather than a
+     * renewal. An owner who reads the wrong one questions their plan instead of their
+     * bKash history, and the second sentence below is the one they can check.
+     */
+    balanceTitle: 'The balance has run out, so nothing new is saving',
+    balanceBody:
+      'Each day of use costs money, and the balance cannot cover the next one — so no '
+      + 'new students, no attendance, no payments, no messages. Every register, mark '
+      + 'and fee already recorded is exactly where it was. Top up and it all works as '
+      + 'before.',
+    /** Takes the day's cost and what is left, both already formatted as taka. */
+    balanceOut: (cost: string, balance: string) =>
+      `A day costs ${cost} and your balance is ${balance}.`,
     callUs: 'Ring us',
     seePlan: 'See the plan',
     refused:
@@ -2458,7 +2491,7 @@ export const en: Dictionary = {
     shortTotal: 'Total',
     shortBuy: 'Buy the places for {taka}',
     shortBuying: 'Opening…',
-    /** Owner only — see planOwner in settings/plan/actions.ts. */
+    /** Owner only — see planOwner in settings/billing/actions.ts. */
     shortAsk: 'Only the owner can buy places. Show them this screen.',
     /**
      * §3.7's other half, for the branch manager who reached the same screen. {n} is
@@ -4153,10 +4186,10 @@ export const en: Dictionary = {
        * sell no places at all: a student who left in March is still holding a place.
        *
        * It is also the only route a teacher on `can_manage_students` is offered here —
-       * they cannot buy, cannot ask, and would be refused at /settings/plan.
+       * they cannot buy, cannot ask, and would be refused at /settings/billing.
        */
       placesFreeLink: 'Turn a student off to free a place',
-      /** Owner or manager — /settings/plan is pageRole('manager'). */
+      /** Owner or manager — /settings/billing is pageRole('manager'). */
       placesPlanLink: 'Places and plan',
       /**
        * The rail beside the form: what saving it actually does.
@@ -5296,6 +5329,7 @@ export const en: Dictionary = {
       salaryPaid: 'Salary paid',
       expenseRecorded: 'Spending recorded',
       platformPaymentRecorded: 'Paid to us',
+      balanceChanged: 'Prepaid balance changed',
       /**
        * "Requested" and not "started", because the centre's side of a manual transfer is
        * an intention: the money has not moved until somebody here confirms it did.

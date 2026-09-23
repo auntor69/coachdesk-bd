@@ -4,8 +4,9 @@ import { readFileSync } from 'node:fs'
 import path from 'node:path'
 
 import {
+  billingStanding,
+  dailyBurn,
   effectiveEntitlement,
-  GRACE_DAYS,
   TRIAL_NOTICE_DAYS,
   trialStanding,
   type OrgBilling,
@@ -23,17 +24,25 @@ import { PLANS, PLAN_RANK, type PlanId } from '../src/lib/plans.ts'
  * quietly says the wrong number to somebody who is paying.
  *
  * §4.4's lapse is the fourth and the only one that acts on its own: nothing was
- * clicked, a date went by. Both directions are expensive — a week of grace nobody
- * enforces is a customer who never pays again, and a day of grace miscounted is a
- * centre frozen mid-register over money that arrived.
+ * clicked, a day went by and the balance could not cover it. Both directions are
+ * expensive — a centre that keeps writing on money it does not have is a customer who
+ * never tops up, and a day of a miscounted debt is a centre frozen mid-register over
+ * money that arrived this morning.
  *
- * The tests below are grouped that way: access, then the trial, then coverage, then
+ * The tests below are grouped that way: access, then the trial, then the balance, then
  * the ceiling, then the fallbacks that must all point the same way.
  */
 
 const NOW = new Date('2026-08-29T12:00:00Z')
 
-/** A paying centre with nothing bought and no trial — the shape every case varies. */
+/**
+ * A paying centre, paid up through today, with an empty purse and no rate read.
+ *
+ * THE ORDINARY STATE, and the right shape to vary one thing away from: nothing is owed,
+ * so an unrelated test that never thinks about money cannot accidentally be asserting a
+ * lapse. `charged_through` is TODAY — 29 August in Dhaka, which is what NOW is — and not
+ * a date in the future, so each billing case below moves exactly one field.
+ */
 function org(over: Partial<OrgBilling> = {}): OrgBilling {
   return {
     status: 'active',
@@ -41,10 +50,9 @@ function org(over: Partial<OrgBilling> = {}): OrgBilling {
     trial_plan: null,
     trial_ends_at: null,
     student_capacity: 0,
-    // Null and not a live date, so every test above the coverage block reads a centre
-    // with no receipts — which is the state that must never suspend anybody, and
-    // therefore the state the rest of this file should be varying one thing away from.
-    paid_through: null,
+    balance_poisha: 0,
+    charged_through: '2026-08-29',
+    daily_rate_poisha: null,
     ...over,
   }
 }
@@ -366,169 +374,352 @@ test('an old trial still reports, and reports old', () => {
 })
 
 /* -------------------------------------------------------------------------- */
-/* Coverage and the grace window                                              */
+/* The balance, and what it takes away                                        */
 /* -------------------------------------------------------------------------- */
 
 /*
- * MASTERPLAN.md §4.4: "When today is past `covers_period_end` the account is in grace;
- * past grace it is suspended ... computed from coverage, not from a flag somebody
- * remembered to set."
+ * MASTERPLAN.md §4.4/§11.7: access is `balance < owed`, where `owed` is
+ * `greatest(0, today − charged_through) × dailyRate`. There is no grace window and no
+ * coverage date left — a charge allowed to sit unpaid is credit, and this is a prepaid
+ * product — and the whole point of a comparison is that it needs nothing to have run: a
+ * centre that never opens the app still lapses on exactly the right day.
  *
- * DATES ARE WRITTEN OUT AND NOT COMPUTED. Every case below names the calendar day it
- * means rather than calling `addDays(NOW, -8)`, because the arithmetic is the thing
- * under test: a suite that builds its fixtures with the helper the implementation uses
- * agrees with an off-by-one instead of catching it. NOW is 29 August 2026, 12:00 UTC,
- * which is the evening of the 29th in Dhaka.
+ * DATES AND RATES ARE WRITTEN OUT AND NOT COMPUTED. Every case below names the calendar
+ * day and the poisha it means rather than calling `addDays(NOW, -8)` or `dailyRatePoisha`,
+ * because the arithmetic is the thing under test: a suite that builds its fixtures with
+ * the helper the implementation uses agrees with an off-by-one instead of catching it.
+ * NOW is 29 August 2026, 12:00 UTC, which is the evening of the 29th in Dhaka.
+ *
+ * ONE DAY IS ONE TAKA HERE, AND ONLY FOR READING. The real figure is `plans.ts`'s,
+ * `floor(monthly × 100 / 30)` — ৳86.66 a day at ৳2,600 a month — and a round number is
+ * used below because a failure in a comparison is easier to see than one in a legend of
+ * digits. `daily_rate_poisha` is a number handed back by the settlement (§11.7), never a
+ * figure this file could derive, so nothing here is testing a rate calculation.
  */
 
-test('the grace window is a week', () => {
-  // Pinned, so moving it is a decision somebody makes on purpose. Longer than the
-  // monthly cycle and a customer can be a whole period behind without noticing;
-  // shorter and a receipt entered on Sunday suspends somebody who paid on Friday.
-  assert.equal(GRACE_DAYS, 7)
-})
+const RATE = 100
 
-test('coverage that runs out today is not a lapse', () => {
-  // The date names the last day covered, not the first day uncovered. A monthly
-  // customer paid to the 31st is paying for the 31st.
+test('a line at today owes nothing, whatever the balance and the rate say', () => {
+  // THE COMMON PATH, and the reason an unreadable head count cannot lock a paying
+  // centre out: with the line at today, `owed` is zero and the rate is never consulted,
+  // so a rate nobody could read is a rate that did not matter. The empty balance is a
+  // centre that has spent everything it had and is paid up to the end of the day.
   assert.equal(
-    effectiveEntitlement(org({ paid_through: '2026-08-29' }), NOW).access,
+    effectiveEntitlement(
+      org({ charged_through: '2026-08-29', daily_rate_poisha: null, balance_poisha: 0 }),
+      NOW,
+    ).access,
     'full',
   )
-})
 
-test('the last day of grace still writes, and the next one does not', () => {
-  // 22 August is seven days back, which is the whole window: "past grace" and not "at
-  // the end of it". The 21st is eight and is the first day that stops.
+  // A line past today is granted days — a sales trial, a goodwill extension — and it owes
+  // nothing either. §4.4: a trial is days, not a status.
   assert.equal(
-    effectiveEntitlement(org({ paid_through: '2026-08-22' }), NOW).access,
-    'full',
-  )
-  assert.equal(
-    effectiveEntitlement(org({ paid_through: '2026-08-21' }), NOW).access,
-    'read_only',
-  )
-})
-
-test('coverage still running is not a lapse either', () => {
-  assert.equal(
-    effectiveEntitlement(org({ paid_through: '2026-09-30' }), NOW).access,
-    'full',
-  )
-})
-
-test('no coverage recorded never suspends anybody', () => {
-  // The one that matters most. Every customer who paid before the receipt screen
-  // existed has no payment row, and the first real centre on this product is one of
-  // them: `active`, paying, and with nothing in `payments` to prove it. Reading null as
-  // "ran out in 1970" would freeze the account we can least afford to freeze.
-  assert.equal(effectiveEntitlement(org({ paid_through: null }), NOW).access, 'full')
-})
-
-test('a coverage date that is not a date grants access rather than removing it', () => {
-  // The one fallback in this file that points the loose way, and the reason is that the
-  // two directions are not symmetrical: an unreadable trial date falls back to what the
-  // customer already paid for, while an unreadable coverage date would fall back to
-  // taking the product off somebody who may have paid this morning. A bad string is not
-  // evidence of non-payment. Suspending by hand still works and is unaffected.
-  for (const paid_through of ['', 'yesterday', '2026-13-45', '29/08/2026', 'null']) {
-    assert.equal(
-      effectiveEntitlement(org({ paid_through }), NOW).access,
-      'full',
-      paid_through,
-    )
-  }
-})
-
-test('a free plan has no coverage to lapse', () => {
-  // A teacher who bought a month of Pro two years ago and has since dropped to Free
-  // keeps Free. Coverage is what money bought, and a tier that costs nothing has
-  // nothing to cover — the same rule as §4.5's, applied to standing instead of caps.
-  assert.equal(
-    effectiveEntitlement(org({ plan: 'teacher_free', paid_through: '2024-01-31' }), NOW)
+    effectiveEntitlement(org({ charged_through: '2026-09-30', balance_poisha: 0 }), NOW)
       .access,
     'full',
   )
 })
 
-test('only an active centre lapses', () => {
-  // `trial` is the founder's sales trial, where nobody has paid and the point is that
-  // the centre runs its real term on the product. Coverage there is either null or a
-  // leftover from a previous life, and neither may end the trial early.
+test('a day the balance cannot cover takes the writing, and no more', () => {
+  // One taka a day, one day owed, nothing to pay it with. The centre still reads
+  // everything and cannot save anything, which is §4.4's whole lever.
   assert.equal(
-    effectiveEntitlement(org({ status: 'trial', paid_through: '2024-01-31' }), NOW).access,
-    'full',
+    effectiveEntitlement(
+      org({ charged_through: '2026-08-28', daily_rate_poisha: RATE, balance_poisha: 0 }),
+      NOW,
+    ).access,
+    'read_only',
   )
 
-  // And the other direction is not a route back: coverage cannot talk a hand-suspended
-  // or cancelled centre into writing, because the lapse only ever removes access.
+  // One day's worth is enough, and the comparison is `balance < owed` rather than `<=`:
+  // whole days or nothing means the day whose money is in the balance is bought rather
+  // than nearly bought, and the balance lands at zero once it has been spent.
+  assert.equal(
+    effectiveEntitlement(
+      org({ charged_through: '2026-08-28', daily_rate_poisha: RATE, balance_poisha: RATE }),
+      NOW,
+    ).access,
+    'full',
+  )
+})
+
+test('owed counts every day behind, not the first one', () => {
+  // Three days behind is three days' money. An implementation that charged for today
+  // alone would hand a fortnight of free product to a centre nobody billed, and it would
+  // look right in every single-day test in this file.
+  const three = org({
+    charged_through: '2026-08-26',
+    daily_rate_poisha: RATE,
+    balance_poisha: RATE * 2,
+  })
+  assert.equal(effectiveEntitlement(three, NOW).access, 'read_only')
+
+  assert.equal(
+    effectiveEntitlement(org({ ...three, balance_poisha: RATE * 3 }), NOW).access,
+    'full',
+  )
+})
+
+test('a rate that could not be read is read-only, and only where it is needed', () => {
+  // §11.7: "Where the rate *is* needed and cannot be read, the answer is `read_only`."
+  // Needed means behind, so the same unreadable rate on a centre that is paid up grants
+  // full access — that is the case above, and it is asserted again here as the pair,
+  // because the two are one decision and a change to either must move both. An empty
+  // rate read as zero would hand the product away; an empty rate read as an accusation
+  // would freeze a customer over a failed head count.
+  const behind = org({ charged_through: '2026-08-28', daily_rate_poisha: null })
+  assert.equal(effectiveEntitlement(behind, NOW).access, 'read_only')
+  assert.equal(
+    effectiveEntitlement({ ...behind, charged_through: '2026-08-29' }, NOW).access,
+    'full',
+  )
+})
+
+test('a balance nobody could read is read-only while the day is owed', () => {
+  // The other half of the same fallback, and it fails the same way: behind, with a rate
+  // and nothing to compare it against, is read-only. A null read as zero would be the
+  // one shape that hands the product out.
+  assert.equal(
+    effectiveEntitlement(
+      org({ charged_through: '2026-08-28', daily_rate_poisha: RATE, balance_poisha: null }),
+      NOW,
+    ).access,
+    'read_only',
+  )
+})
+
+test('a line that is not a date, and a line never drawn at all, are not debts', () => {
+  // `daysBetween` answers zero for a date it cannot parse, and zero days behind is paid
+  // up. That is the loose direction on purpose, and it is the one this file has always
+  // taken for an unreadable date: a bad string is evidence of nothing, the founder can
+  // still suspend by hand, and a customer mid-transfer must not lose the product to a
+  // mangled column. A count we could not take is a different thing entirely — see the
+  // unreadable rate above, which fails the other way.
+  for (const charged_through of ['', 'yesterday', '2026-13-45', '29/08/2026', 'null']) {
+    assert.equal(
+      effectiveEntitlement(org({ charged_through, daily_rate_poisha: RATE }), NOW).access,
+      'full',
+      charged_through,
+    )
+  }
+
+  // Null is a centre whose ledger holds no line at all, and it owes nothing by
+  // construction — there is no day that could have been charged and then not paid for.
+  // Reading it as "behind since 1970" would bill a customer for a past they were not on
+  // this model for, which is the one mistake §11.14's back-fill exists to prevent.
+  assert.equal(
+    effectiveEntitlement(org({ charged_through: null, daily_rate_poisha: RATE }), NOW)
+      .access,
+    'full',
+  )
+})
+
+test('a free plan burns nothing and never lapses', () => {
+  // §11.6: the free tier's rate is zero, so `owed` is zero however far behind the line
+  // has fallen — "the arithmetic returns zero", not a branch somebody remembered. A
+  // teacher who once bought a month of Pro and has since dropped to Free keeps Free
+  // forever, which is §4.5's rule applied to standing instead of caps.
+  assert.equal(
+    effectiveEntitlement(
+      org({ plan: 'teacher_free', charged_through: '2024-01-31', daily_rate_poisha: null }),
+      NOW,
+    ).access,
+    'full',
+  )
+})
+
+test('only a status that may write can lose the writing to money', () => {
+  // The floor and the balance are answered separately and combined in one direction.
+  // `trial` is the founder's sales trial, where nobody has paid — and §4.4 grants a
+  // trial as *days*, so the balance can take the writing from a trial that has run out
+  // of them. That is the mechanism the status stopped being.
+  const dry = { charged_through: '2026-08-28', daily_rate_poisha: RATE, balance_poisha: 0 }
+  assert.equal(
+    effectiveEntitlement(org({ ...dry, status: 'trial' }), NOW).access,
+    'read_only',
+  )
+
+  // And nothing goes the other direction: a full purse is not a route back into a centre
+  // a human suspended or cancelled. Those two switches are not about money.
   for (const status of ['suspended', 'cancelled']) {
     assert.equal(
-      effectiveEntitlement(org({ status, paid_through: '2026-12-31' }), NOW).access,
+      effectiveEntitlement(org({ status, balance_poisha: 10_000_000 }), NOW).access,
       'read_only',
       status,
     )
   }
 })
 
-test('a lapse takes the writing and leaves the tier and the ceiling', () => {
+test('a dry balance takes the writing and leaves the tier and the ceiling', () => {
   // §4.5 again, and the same assertion the hand-suspended case makes: a centre of four
-  // hundred students that is a fortnight late is not suddenly thirty over a free-tier
+  // hundred students whose balance ran out is not suddenly thirty over a free-tier
   // limit, and the fee book it is trying to settle keeps its printed receipts.
-  const lapsed = effectiveEntitlement(
-    org({ plan: 'center', student_capacity: 400, paid_through: '2026-07-01' }),
+  const dry = effectiveEntitlement(
+    org({
+      plan: 'center',
+      student_capacity: 400,
+      charged_through: '2026-08-28',
+      daily_rate_poisha: RATE,
+      balance_poisha: 0,
+    }),
     NOW,
   )
   const paid = effectiveEntitlement(
-    org({ plan: 'center', student_capacity: 400, paid_through: '2026-09-30' }),
+    org({ plan: 'center', student_capacity: 400, balance_poisha: RATE * 30 }),
     NOW,
   )
 
-  assert.equal(lapsed.access, 'read_only')
-  assert.equal(lapsed.plan.id, paid.plan.id)
-  assert.deepEqual(lapsed.ceiling, paid.ceiling)
+  assert.equal(dry.access, 'read_only')
+  assert.equal(paid.access, 'full')
+  assert.equal(dry.plan.id, paid.plan.id)
+  assert.deepEqual(dry.ceiling, paid.ceiling)
 })
 
-test('a trial in force keeps its tier through a lapse', () => {
+test('a trial lifts the tier, and the balance only takes the writing', () => {
   // Two clocks pulling opposite ways, which is a row that has been told two things at
-  // once. The trial can only raise the tier and the lapse can only remove the writing,
+  // once. The trial can only raise the tier and the balance can only remove the writing,
   // so the order they are applied in cannot matter — and the honest reading is the
   // trialled tier, read-only.
   const e = effectiveEntitlement(
     org({
-      plan: 'teacher_free',
-      trial_plan: 'teacher_plus',
+      plan: 'center',
+      trial_plan: 'institution',
       trial_ends_at: '2027-01-01T00:00:00Z',
-      paid_through: '2026-01-31',
+      charged_through: '2026-08-28',
+      daily_rate_poisha: RATE,
+      balance_poisha: 0,
     }),
     NOW,
   )
 
-  // Free is the paid plan, so there is nothing to lapse — the trial does not change
-  // what the customer is buying, which is what makes this case full access.
-  assert.equal(e.plan.id, 'teacher_plus')
-  assert.equal(e.access, 'full')
+  assert.equal(e.plan.id, 'institution')
+  assert.equal(e.access, 'read_only')
+
+  // A free plan is the exception, and it is the same rule rather than a second one: Free
+  // has no rate, so there is nothing owed and nothing can take the writing away. A
+  // Teacher Pro trial on a free centre therefore ends as a full-access free centre —
+  // which is §4.5's promise that nobody's data is taken away on a downgrade.
+  const free = effectiveEntitlement(
+    org({
+      plan: 'teacher_free',
+      trial_plan: 'teacher_plus',
+      trial_ends_at: '2027-01-01T00:00:00Z',
+      charged_through: '2026-01-31',
+      balance_poisha: 0,
+    }),
+    NOW,
+  )
+
+  assert.equal(free.plan.id, 'teacher_plus')
+  assert.equal(free.access, 'full')
 })
 
 test('the day is Dhaka’s, not the server’s', () => {
-  // 21 August, 18:30 UTC is half past midnight on the 22nd in Dhaka. Coverage ended on
-  // the 14th, so the Dhaka day is eight days past it and the UTC day is seven — the
-  // difference between a suspended centre and a writing one. The server runs in UTC and
-  // a centre in Dhaka does not.
-  const justAfterMidnightInDhaka = new Date('2026-08-21T18:30:00Z')
+  // 21 August, 18:30 UTC is half past midnight on the 22nd in Dhaka, and the line is at
+  // the 21st — so the Dhaka day is one day owed where the UTC day is none. The server
+  // runs in UTC and a centre in Dhaka does not, and the difference is a register that
+  // refuses to save for six hours every night.
+  const behind = org({ charged_through: '2026-08-21', daily_rate_poisha: RATE })
 
   assert.equal(
-    effectiveEntitlement(org({ paid_through: '2026-08-14' }), justAfterMidnightInDhaka)
-      .access,
+    effectiveEntitlement(behind, new Date('2026-08-21T18:30:00Z')).access,
     'read_only',
   )
 
-  // Six hours earlier is still the 21st in Dhaka, and still inside the window.
+  // Six hours earlier it is still the 21st in Dhaka: the line is at today, and the
+  // balance is never consulted because there is nothing owed against it.
   assert.equal(
-    effectiveEntitlement(org({ paid_through: '2026-08-14' }), new Date('2026-08-21T12:30:00Z'))
-      .access,
+    effectiveEntitlement(behind, new Date('2026-08-21T12:30:00Z')).access,
     'full',
   )
+})
+
+/* -------------------------------------------------------------------------- */
+/* The figures the rail and the banner are drawn from                         */
+/* -------------------------------------------------------------------------- */
+
+test('the standing says what is owed, what a day costs, and what is left', () => {
+  // `billingStanding` is the one arithmetic three readers share: the resolver above,
+  // the shell's rail, and the banner. A second division of the balance by the rate is
+  // how a screen and the refusal behind it come to disagree about the same centre.
+  const s = billingStanding(
+    org({ charged_through: '2026-08-26', daily_rate_poisha: RATE, balance_poisha: RATE * 5 }),
+    NOW,
+  )
+
+  assert.equal(s.today, '2026-08-29')
+  assert.equal(s.chargedThrough, '2026-08-26')
+  assert.equal(s.daysOwed, 3)
+  assert.equal(s.daysLeft, 5)
+  assert.equal(s.lapsed, false)
+})
+
+test('days left are whole days, because part of a day buys nothing', () => {
+  // §11.7's rule, in the figure the owner reads: ৳3.40 buys three days at ৳1.00 and the
+  // fourth is not nearly bought. A rail that rounded up would promise the day the burn
+  // is about to refuse.
+  const s = billingStanding(
+    org({ balance_poisha: 340, daily_rate_poisha: RATE }),
+    NOW,
+  )
+
+  assert.equal(s.daysOwed, 0)
+  assert.equal(s.daysLeft, 3)
+  assert.equal(s.lapsed, false)
+})
+
+test('a free tier has no days to count and none to run out of', () => {
+  // Null rather than a large number or an infinity: the rail draws nothing on a free
+  // centre, and a figure nobody can divide is not a figure.
+  const s = billingStanding(
+    org({ plan: 'teacher_free', charged_through: '2024-01-31', balance_poisha: 500 }),
+    NOW,
+  )
+
+  assert.equal(s.daysLeft, null)
+  assert.equal(s.daysOwed, 0)
+  assert.equal(s.lapsed, false)
+})
+
+test('no centre draws no figures rather than a full purse', () => {
+  // The floor, and the same total answer the resolver gives for the same reason: a reader
+  // with no centre is read-only because there is nothing to write to. The banner has to
+  // check `active` before it says a word, or an account midway through onboarding is told
+  // its centre has lapsed — this is what stops the rail saying anything at all.
+  assert.deepEqual(billingStanding(null, NOW), {
+    today: '2026-08-29',
+    chargedThrough: null,
+    daysOwed: 0,
+    dailyRatePoisha: null,
+    balancePoisha: null,
+    daysLeft: null,
+    lapsed: false,
+  })
+})
+
+test('the burn is asked for by every centre whose days cost anything', () => {
+  // `dailyBurn` decides whether a page load asks the burn for the day's figures, and it
+  // deliberately does NOT try to predict whether anything is owed. That guess was the
+  // first draft and it was wrong twice over: it hid the rate from the rail on exactly the
+  // days the rail is for, and it was a second opinion about money that the burn answers
+  // itself, under the ledger's lock.
+  //
+  // What is left is the one plan with no rate at all. A free centre's line never moves,
+  // so a call would return `nothing_due` every day for the rest of its life — and there
+  // is no figure for the rail to draw either.
+  assert.equal(dailyBurn(org({ plan: 'teacher_free' })), false)
+  assert.equal(dailyBurn(org({ plan: 'teacher_plus' })), true)
+  assert.equal(dailyBurn(org({ plan: 'center' })), true)
+  assert.equal(dailyBurn(org({ plan: 'institution' })), true)
+
+  // A plan nobody can name reads as Teacher Free, which is `planFor`'s fallback and the
+  // narrow direction for every gate in the product (§4.2) — a row that has gone wrong is
+  // granted the fewest features, and a tier with no price burns nothing. It is worth
+  // being explicit that this is the same rule rather than a second one: the alternative
+  // would be charging a centre at a rate derived from a plan name that does not exist.
+  assert.equal(dailyBurn(org({ plan: null })), false)
+  assert.equal(dailyBurn(org({ plan: 'nonsense' })), false)
 })
 
 /* -------------------------------------------------------------------------- */

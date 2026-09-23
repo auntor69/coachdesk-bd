@@ -928,7 +928,7 @@ test('the branch asks leave as numbers a founder can sort and total', () => {
 
 test('a note a centre owner typed cannot run in the founder’s spreadsheet', () => {
   // The one free-text field on this sheet a customer controls end to end: an owner
-  // types it into /settings/plan and the founder opens it in Excel. `+` rather than
+  // types it into /settings/billing and the founder opens it in Excel. `+` rather than
   // `=` because it is the realistic case — the note most owners will write is the
   // number they want ringing, and a cell beginning `+880` is a formula to Excel.
   const list = customers(

@@ -41,6 +41,7 @@ import { TRIAL_NOTICE_DAYS, trialStanding, type TrialStanding } from '@/lib/enti
 import { has, planName, type FeatureKey, type PlanLimits } from '@/lib/plans'
 import { formatBdMobile, normalizeBdMobile } from '@/lib/bd/phone'
 import { formatDate } from '@/lib/bd/time'
+import { formatTaka } from '@/lib/money'
 import { dict, type Dictionary, type Locale } from '@/lib/i18n'
 
 /**
@@ -408,25 +409,39 @@ function splitForPhone(entries: NavEntry[]): { tabs: NavEntry[]; more: NavEntry[
 function ReadOnlyBanner({
   status,
   coveredTo,
+  money,
   t,
   canSeePlan,
 }: {
   status: CenterStatus
   /**
    * The last day the centre's payments covered, already formatted, or null. Non-null
-   * only when the coverage is *why* this banner is on screen — an `active` centre past
-   * its grace window (MASTERPLAN.md §4.4).
+   * only when a *date* is the fact worth reading — a centre suspended by hand, or one
+   * whose coverage history explains the state.
    */
   coveredTo: string | null
+  /**
+   * What the day costs and what is left, both already formatted as taka, or null when
+   * the balance is not what stopped the writing (MASTERPLAN.md §4.4, §11.6).
+   *
+   * THIS IS THE ORDINARY CAUSE NOW. Under the prepaid balance a centre runs out of
+   * money far more often than it is suspended by a human, and the sentence it needs is
+   * about a purse rather than a tier — the two numbers below are what the owner checks
+   * against their own bKash history before ringing anybody.
+   */
+  money: { cost: string; balance: string } | null
   t: Dictionary['readOnly']
   canSeePlan: boolean
 }) {
-  // `cancelled` gets its own words; everything else gets the sentence with a fix in it.
-  // That covers three cases and not one: `suspended`, an `active` centre whose coverage
-  // lapsed past the grace window, and a status outside the enum — and "the plan has run
-  // out, settle the bill" is the right answer to all three, because a row that has gone
-  // wrong is also best answered by a phone call.
+  // `cancelled` gets its own words: that one is not about money at all, and a top-up
+  // would not fix it.
   const cancelled = status === 'cancelled'
+
+  // Three causes and three sentences, in this order: a cancelled account is a fact about
+  // the contract, a dry balance is a fact about the money, and everything else — a hand
+  // suspension, or a status nobody can name — gets the sentence with a phone call in it.
+  const title = cancelled ? t.cancelledTitle : money ? t.balanceTitle : t.suspendedTitle
+  const body = cancelled ? t.cancelledBody : money ? t.balanceBody : t.suspendedBody
 
   // Empty in every deployment until the founder puts their own number in, exactly as
   // on the plan screen — and the banner is not gated on it, for the reason the note
@@ -441,29 +456,30 @@ function ReadOnlyBanner({
       role="status"
       className="mb-5 rounded-xl border-2 border-late/40 bg-late/5 px-4 py-3 print:hidden"
     >
-      <p className="font-semibold text-late">
-        {cancelled ? t.cancelledTitle : t.suspendedTitle}
-      </p>
-      <p className="mt-1 text-sm text-ink-soft">
-        {cancelled ? t.cancelledBody : t.suspendedBody}
-      </p>
+      <p className="font-semibold text-late">{title}</p>
+      <p className="mt-1 text-sm text-ink-soft">{body}</p>
 
       {/* The one fact that turns a general complaint into something a customer can
-          check against their own bKash history. Only when coverage is the reason: on a
-          hand-suspended centre the date would be answering a question nobody asked, and
-          on a cancelled one it would read as a receipt. */}
-      {coveredTo && (
-        <p className="mt-1 text-sm text-ink-soft">{t.coveredTo(coveredTo)}</p>
+          check against their own bKash history, and the figure it is checked against
+          differs with the cause: a date on a coverage centre, two amounts on a balance
+          one. Only when that cause is what put the banner here — on a cancelled account
+          either would read as a receipt. */}
+      {money ? (
+        <p className="mt-1 text-sm text-ink-soft">
+          {t.balanceOut(money.cost, money.balance)}
+        </p>
+      ) : (
+        coveredTo && <p className="mt-1 text-sm text-ink-soft">{t.coveredTo(coveredTo)}</p>
       )}
 
       {(canSeePlan || salesPhone) && (
         <div className="mt-3 flex flex-wrap gap-2">
-          {/* Owners and managers only, because /settings/plan is pageRole('manager') —
+          {/* Owners and managers only, because /settings/billing is pageRole('manager') —
               offering a teacher a tab that answers with a 403 is worse than offering
               them nothing, and there is nothing for them to do here anyway. */}
           {canSeePlan && (
             <Link
-              href="/settings/plan"
+              href="/settings/billing"
               className="inline-flex min-h-tap items-center rounded-xl border-2
                 border-brand-500 bg-brand-50 px-4 font-medium text-brand-800"
             >
@@ -541,14 +557,14 @@ function TrialBanner({
         {standing.state === 'ended' ? t.endedBody(day) : t.runningBody(tier, day)}
       </p>
 
-      {/* Owners and managers only — /settings/plan is pageRole('manager'), and a
+      {/* Owners and managers only — /settings/billing is pageRole('manager'), and a
           teacher offered a tab that answers 403 is worse off than one offered nothing.
           No sales chip here: unlike a lapse, nothing is broken and nobody needs to be
           rung today. */}
       {canSeePlan && (
         <div className="mt-3">
           <Link
-            href="/settings/plan"
+            href="/settings/billing"
             // White while the card is green, or the button's fill matches the card it
             // sits on and all that is left of it is a border.
             className={`inline-flex min-h-tap items-center rounded-xl border-2
@@ -739,6 +755,46 @@ export async function AppShell({
   const lapsed = readOnly?.status === 'active' ? readOnly.paidThrough : null
 
   /*
+   * Whether the *balance* is what stopped the writing, and the two figures that say so
+   * (MASTERPLAN.md §4.4).
+   *
+   * ASKED OF THE STANDING AND NOT OF THE STATUS, which is the one thing this banner had
+   * to learn when coverage stopped gating anything: a lapsed centre is still `active`, so
+   * the status column cannot tell the money apart from a hand suspension. `billing.lapsed`
+   * is the balance comparison itself — the same one `access` was resolved from, off the
+   * same call, so the sentence and the refusal can never describe different money.
+   *
+   * NULL WHEN THE RATE IS UNKNOWN, and then the plan sentence is drawn instead: a banner
+   * that says "a day costs nothing" because a head count failed would be worse than the
+   * general words it replaces.
+   */
+  const cost =
+    session.billing.dailyRatePoisha !== null
+      ? formatTaka(session.billing.dailyRatePoisha / 100)
+      : null
+  const money =
+    readOnly && session.billing.lapsed && cost
+      ? { cost, balance: formatTaka((session.billing.balancePoisha ?? 0) / 100) }
+      : null
+
+  /*
+   * The balance rail (§4.4, §3.7's ladder): how many more days the money covers.
+   *
+   * OWNERS AND MANAGERS ONLY, because they are the only ones who can do anything about
+   * it — `/settings/billing` is `pageRole('manager')`, and a countdown a teacher cannot act
+   * on is a daily worry with no button on it. Shown from fourteen days out, which is the
+   * first rung of §3.7's ladder, and not at all while the read-only banner is up: that
+   * banner already says the balance is out, and repeating it above itself would be two
+   * versions of one fact.
+   *
+   * NOT SHOWN ON A FREE TIER, because `daysLeft` is null there — there is no rate to
+   * divide by and nothing to run out of.
+   */
+  const canTopUp = Boolean(readOnly === null && atLeast(role, 'manager'))
+  const daysLeft = session.billing.daysLeft
+  const rail = canTopUp && daysLeft !== null && daysLeft <= 14 ? daysLeft : null
+
+  /*
    * The trial notice, asked of the row rather than of the entitlement — `Entitlement`
    * cannot say a plan came from a trial, on purpose, and `entitlement.ts` explains at
    * length why this screen is the one exception that gets to ask the question directly.
@@ -844,9 +900,36 @@ export async function AppShell({
             <ReadOnlyBanner
               status={readOnly.status}
               coveredTo={lapsed ? formatDate(lapsed, session.locale) : null}
+              money={money}
               t={d.readOnly}
               canSeePlan={atLeast(role, 'manager')}
             />
+          )}
+          {rail !== null && (
+            <div
+              role="status"
+              className={`mb-5 flex flex-wrap items-center justify-between gap-2
+                rounded-xl border-2 px-4 py-3 print:hidden ${
+                  rail <= 3 ? 'border-late/40 bg-late/5' : 'border-line bg-surface-alt'
+                }`}
+            >
+              <p className={`text-sm font-medium ${rail <= 3 ? 'text-late' : 'text-ink-soft'}`}>
+                {rail === 0 ? t.balanceEmpty : t.balanceDays(rail)}
+              </p>
+              {/*
+                The countdown's own door, and it leads to the screen that answers it:
+                /settings/billing is the balance, the rate and the recharge (§20.4). The
+                plan screen is still where a tier is bought; what a dry balance needs is
+                the top-up, and that is here.
+              */}
+              <Link
+                href="/settings/billing"
+                className="inline-flex min-h-tap items-center rounded-xl border-2
+                  border-brand-500 bg-brand-50 px-4 text-sm font-medium text-brand-800"
+              >
+                {t.balanceTopUp}
+              </Link>
+            </div>
           )}
           {trial && (
             <TrialBanner

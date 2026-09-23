@@ -14,10 +14,14 @@
     "test:scoping": "node scripts/check-scoping.mjs",
     "test:exports": "node scripts/check-server-exports.mjs",
     "test:rls": "node scripts/test-rls.mjs",
+    "test:billing": "node scripts/test-billing.mjs",
+    "test:recharge": "node scripts/test-recharge.mjs",
+    "test:legal": "node scripts/test-legal.mjs",
+    "test:levers": "node scripts/test-levers.mjs",
     "test:rls:live": "node --env-file=.env.local scripts/test-rls-live.mjs",
     "test:embeds": "node --env-file=.env.local scripts/check-embeds.mjs",
     "test:unit": "node --test \"tests/**/*.test.ts\"",
-    "test": "npm run test:sql && npm run test:schema && npm run test:scoping && npm run test:exports && npm run test:rls && npm run test:unit",
+    "test": "npm run test:sql && npm run test:schema && npm run test:scoping && npm run test:exports && npm run test:rls && npm run test:billing && npm run test:recharge && npm run test:legal && npm run test:levers && npm run test:unit",
     "test:live": "npm run test:rls:live && npm run test:embeds"
   },
   "dependencies": {

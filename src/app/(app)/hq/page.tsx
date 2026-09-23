@@ -556,7 +556,7 @@ export default async function HqPage({
                 </p>
                 <p className="mt-1 text-sm text-ink-soft">{t.poolNote}</p>
                 <Link
-                  href="/settings/plan"
+                  href="/settings/billing"
                   className="mt-2 inline-flex min-h-tap items-center font-medium
                     text-brand-700"
                 >
@@ -633,7 +633,7 @@ export default async function HqPage({
                 ))}
               </ul>
               <Link
-                href="/settings/plan"
+                href="/settings/billing"
                 className="mt-2 inline-flex min-h-tap items-center font-medium
                   text-brand-700"
               >

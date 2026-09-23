@@ -937,9 +937,10 @@ export function wouldExceed(
  * named here instead — the same reason `hasStaff` exists rather than a fourth reading
  * of `maxTeachers`.
  *
- * /settings/plan is the deliberate exception and reads the raw number: stating the
- * limits IS that screen's job, and so is the refusal copy on the add forms, which
- * names the ceiling at the moment somebody reaches it.
+ * The money screen is the deliberate exception and prints the raw number: its
+ * difference block states the limits a move would raise, on the teacher tiers where
+ * the ladder is still a choice rather than a consequence of size — and the refusal
+ * copy on the add forms names the ceiling at the moment somebody reaches it.
  */
 export function capIsQuota(plan: PlanLimits, what: LimitKey): boolean {
   if (plan[what] === null) return false

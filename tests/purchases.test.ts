@@ -111,7 +111,7 @@ test('a purchase never disagrees with the monthly bill it produces', () => {
 test('the price a screen shows is the price the intent opens at', () => {
   /*
    * THE DRIFT THIS EXISTS TO CATCH. Two screens quote student places while the owner
-   * types — settings/plan/buy-places.tsx and the import form's priced shortfall — and
+   * types — settings/billing/buy-places.tsx and the import form's priced shortfall — and
    * neither can call `priceIntent`, which lives behind a server boundary. Both compute
    * `capacityCostBdt` and `capacityBands` from the paid ceiling instead, and the whole
    * point of doing it that way is that the two answers are the same answer. A change to
@@ -368,7 +368,7 @@ test('only a capacity purchase grants places, and only a subscription covers a p
 })
 
 test('a tier move is priced at the tier being bought, and carries it', () => {
-  // The move an owner makes from /settings/plan: Centre to Institution, priced from the
+  // The move an owner makes from /settings/billing: Centre to Institution, priced from the
   // tier they are moving onto rather than the one they are leaving.
   const months = 3
   const quote = priceIntent({

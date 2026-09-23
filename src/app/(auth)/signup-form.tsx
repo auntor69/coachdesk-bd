@@ -2,6 +2,7 @@
 
 import { useActionState, useEffect, useState } from 'react'
 import Link from 'next/link'
+import type { Route } from 'next'
 
 import { signUp, type SignupState } from './actions'
 import { Alert, Button, Field } from '@/components/ui'
@@ -31,8 +32,13 @@ import { digits } from '@/lib/bd/time'
  */
 export function SignupForm({
   passwordHint,
+  terms,
+  privacy,
 }: {
   passwordHint: string
+  /** Where the two documents the checkbox names are read, and what they are called. */
+  terms: { href: Route; label: string }
+  privacy: { href: Route; label: string }
 }) {
   const [state, formAction, pending] = useActionState<SignupState, FormData>(
     signUp,
@@ -42,6 +48,12 @@ export function SignupForm({
   const [name, setName] = useState('')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
+  // Controlled for the same reason the three above are, and it matters more here: React
+  // empties an uncontrolled field when a form action returns, so an untracked tick box would
+  // be cleared the moment the code step appeared — and the code step is the one that records
+  // the consent. It would post nothing, and the account would be refused after the email had
+  // been confirmed, which is the worst order for that to happen in.
+  const [agreed, setAgreed] = useState(false)
 
   // Both pieces of local state are pinned to the answer they belong to, rather than
   // reset by an effect when a new one arrives. `useActionState` hands back a fresh
@@ -192,6 +204,59 @@ export function SignupForm({
             ইমেইল বদলান
           </Button>
         </div>
+      )}
+
+      {!showCode && (
+        <div className="flex flex-col gap-1.5">
+          <label className="flex items-start gap-2.5 text-sm text-ink-soft">
+            <input
+              type="checkbox"
+              name="agree"
+              value="on"
+              checked={agreed}
+              onChange={(e) => setAgreed(e.target.checked)}
+              // A required control the visitor cannot see is a submit that fails with a
+              // message no browser will show — the same rule the three fields above
+              // follow. The server refuses an untick either way; this is the sentence
+              // landing next to the box instead of on the next render.
+              required
+              aria-invalid={state?.field === 'agree' ? true : undefined}
+              className="mt-0.5 size-4 shrink-0 accent-brand-600"
+            />
+            <span>
+              আমি{' '}
+              <Link
+                href={terms.href}
+                target="_blank"
+                className="font-semibold text-brand-700 underline"
+              >
+                {terms.label}
+              </Link>{' '}
+              ও{' '}
+              <Link
+                href={privacy.href}
+                target="_blank"
+                className="font-semibold text-brand-700 underline"
+              >
+                {privacy.label}
+              </Link>{' '}
+              পড়েছি এবং সম্মতি দিচ্ছি।
+            </span>
+          </label>
+
+          {state?.field === 'agree' && (
+            <span role="alert" className="text-sm font-medium text-absent">
+              {state.error}
+            </span>
+          )}
+        </div>
+      )}
+
+      {showCode && (
+        // The tick travels with the code as a hidden field rather than being re-asked.
+        // The box has already been answered on this form; asking twice would be a second
+        // tick for the same act, and the record is one row per person per version.
+        <input type="hidden" name="agree" value={agreed ? 'on' : ''} />
       )}
 
       <p className="text-center text-ink-soft">

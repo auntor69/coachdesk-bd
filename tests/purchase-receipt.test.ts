@@ -74,7 +74,7 @@ function settled(over: Partial<ReceiptPaymentRow> = {}): ReceiptPaymentRow {
 test('a settled capacity purchase is headed by the code the owner quoted', () => {
   const sheet = purchaseReceipt(settled())
 
-  // The same string /settings/plan printed beside the transfer instructions and the founder
+  // The same string /settings/billing printed beside the transfer instructions and the founder
   // panel lists the open purchase by. This is the whole point of preferring it: the paper
   // closes the loop the purchase opened instead of opening a second one.
   assert.deepEqual(sheet.number, {
@@ -381,10 +381,10 @@ test('a credit paid back over a wallet is headed by that transaction number', ()
 
 test('the credit note and the receipt come off one route and one function', () => {
   // The whole reason `kind` exists rather than each reader testing the sign. If the printable
-  // ever grows a second copy of that decision, the list and the sheet can disagree about what
-  // a row is — and one of them will be titling a credit "Payment receipt".
+  // ever grows a second copy of that decision, two readers can disagree about what a row is —
+  // and one of them will be titling a credit "Payment receipt".
   const page = readFileSync(
-    path.join(ROOT, 'src', 'app', '(app)', 'settings', 'plan', 'receipt', '[paymentId]', 'page.tsx'),
+    path.join(ROOT, 'src', 'app', '(app)', 'settings', 'billing', 'receipt', '[paymentId]', 'page.tsx'),
     'utf8',
   )
   assert.match(page, /sheet\.kind === 'credit'/)
@@ -392,12 +392,21 @@ test('the credit note and the receipt come off one route and one function', () =
   // And nowhere does it look at the sign itself.
   assert.doesNotMatch(page, /amount\s*<\s*0/)
 
+  /*
+   * THE SECOND READER IS THE LEDGER NOW, and it does not test the sign either. The plan
+   * page's receipts card was the pair this assertion used to name — it badged a credit off
+   * `sheet.kind` — and it went with the page at §16.1 step 27. What replaced it is the
+   * billing screen's history, where a credit arrives as a `refund`/`reversal` ledger entry
+   * with its own kind word and a signed figure from `signedTaka`, and the receipt link on
+   * the row opens this same printable. So the direction of the rule is unchanged: no reader
+   * of a payment decides what it is from its arithmetic.
+   */
   const list = readFileSync(
-    path.join(ROOT, 'src', 'app', '(app)', 'settings', 'plan', 'page.tsx'),
+    path.join(ROOT, 'src', 'app', '(app)', 'settings', 'billing', 'page.tsx'),
     'utf8',
   )
-  assert.match(list, /sheet\.kind === 'credit'/)
   assert.doesNotMatch(list, /amount\s*<\s*0/)
+  assert.doesNotMatch(list, /amount_bdt\s*</)
 })
 
 test('both languages have words for a credit note', () => {
@@ -427,7 +436,7 @@ test('the sheet reads what the places cost and does not recompute it', () => {
   // band whenever one purchase straddles two. So the page may print `priced_lines` and may
   // not reach for the price list.
   const page = readFileSync(
-    path.join(ROOT, 'src', 'app', '(app)', 'settings', 'plan', 'receipt', '[paymentId]', 'page.tsx'),
+    path.join(ROOT, 'src', 'app', '(app)', 'settings', 'billing', 'receipt', '[paymentId]', 'page.tsx'),
     'utf8',
   )
   for (const banned of ['capacityBands', 'priceIntent', 'capacityCostBdt', 'studentCeiling']) {

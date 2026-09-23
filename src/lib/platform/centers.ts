@@ -9,7 +9,7 @@
  *
  * THE BILL IS NOT COMPUTED HERE EITHER. `monthlyBillBdt` in ../plans.ts is called,
  * never reimplemented — the bands, the ৳1999 floor and the ৳100 seat live there
- * once, because the pricing calculator an owner reads on /settings/plan and this
+ * once, because the pricing calculator an owner reads on /settings/billing and this
  * panel have to quote the same figure. A centre told ৳2,400 on their screen and
  * invoiced ৳2,700 from this one is a refund and an apology.
  *
@@ -280,7 +280,7 @@ export type Customer = {
    * Branches waiting on student places, and the places they want.
    *
    * NOT A JOB FOR THE FOUNDER, unlike `wantsPlan` — an owner answers this themselves
-   * on /settings/plan, at a price the app already quotes. It is here because a centre
+   * on /settings/billing, at a price the app already quotes. It is here because a centre
    * whose branches are hitting the ceiling is a centre that is growing, and that is
    * either the easiest call of the week or a customer who has been stuck for a
    * fortnight and has not said so.

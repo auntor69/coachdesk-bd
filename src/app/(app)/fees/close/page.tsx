@@ -454,7 +454,7 @@ export default async function MonthClosePage({
               {t.registerLink} →
             </Link>
             <Link
-              href="/settings/plan"
+              href="/settings/billing"
               className="inline-flex min-h-tap items-center font-medium text-brand-700
                 underline"
             >

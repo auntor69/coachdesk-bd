@@ -197,8 +197,7 @@ export default async function DashboardPage() {
    * whether five queries are sent.
    *
    * NO LOCKED TEASER on FREE or PRO, unlike the plan-gated doors elsewhere. A paywall
-   * card on the screen an owner opens six times a day is furniture inside a week, and
-   * /settings/plan already lists what the centre tiers add. The three tiles above stay
+   * card on the screen an owner opens six times a day is furniture inside a week, and    * /settings/billing already lists what the centre tiers add. The three tiles above stay
    * on every plan either way, so nobody loses a figure they had.
    *
    * AND EVERY TERM OF THE SUBTRACTION HAS TO BE READABLE (§6.2). `center_profit_month` is
@@ -1055,7 +1054,7 @@ export default async function DashboardPage() {
                     ? t.placesPooled(pressure.remaining, pressure.ceiling)
                     : t.placesLeft(pressure.remaining, pressure.ceiling)}{' '}
                   <Link
-                    href="/settings/plan"
+                    href="/settings/billing"
                     className="font-medium text-brand-800 underline"
                   >
                     {t.placesLink} →

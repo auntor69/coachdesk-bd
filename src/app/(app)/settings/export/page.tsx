@@ -80,7 +80,7 @@ export default async function ExportPage({
           </p>
           <p className="mt-3">
             <Link
-              href="/settings/plan"
+              href="/settings/billing"
               className="inline-flex min-h-tap items-center font-medium
                 text-brand-700 underline"
             >

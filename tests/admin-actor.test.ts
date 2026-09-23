@@ -148,9 +148,18 @@ test('the human-facing modules are all still in the set that names an actor', ()
   assert.deepEqual(named, [
     'src/app/(app)/exams/actions.ts',
     'src/app/(app)/settings/actions.ts',
+    'src/app/(app)/settings/billing/actions.ts',
+    // The recharge card reads `public.promotions` with the admin key, because §11.11 keeps
+    // a promotion unreachable from a centre's own session — and it names the reader, so
+    // nothing it does is anonymous.
+    'src/app/(app)/settings/billing/recharge-panel.tsx',
     'src/app/(app)/settings/managers/actions.ts',
-    'src/app/(app)/settings/plan/actions.ts',
     'src/app/founder/actions.ts',
+    // The consent rows of §14.1. A person ticked a box and a named profile agreed to a
+    // version of a document, so the write has a human behind it — and it is service-role
+    // because the signup acceptance lands in the same request that confirms the address,
+    // before a cookie has been written to the response.
+    'src/lib/legal/acceptance.ts',
   ])
 })
 

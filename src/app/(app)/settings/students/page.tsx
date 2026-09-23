@@ -251,7 +251,7 @@ export default async function StudentsPage({
    * has would turn a family away over a number we could not fetch.
    *
    * Staff admins only, and the reason is the door rather than the news: the warning ends
-   * in a link to /settings/plan, which is `pageRole('manager')`, so a teacher who got here
+   * in a link to /settings/billing, which is `pageRole('manager')`, so a teacher who got here
    * on `can_manage_students` would be sent to a refusal. Their version of this warning is
    * the student form saying no, which it already does.
    */

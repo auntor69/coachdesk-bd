@@ -873,7 +873,7 @@ export async function setSubjectActive(
   revalidatePath('/settings/batches')
   // Both of these count the active ones and would otherwise keep showing the
   // number this call just changed.
-  revalidatePath('/settings/plan')
+  revalidatePath('/settings/billing')
   revalidatePath('/settings')
   return { ok: t.saved }
 }
@@ -937,7 +937,7 @@ export async function deleteSubject(
 
   revalidatePath('/settings/subjects')
   revalidatePath('/settings/batches')
-  revalidatePath('/settings/plan')
+  revalidatePath('/settings/billing')
   revalidatePath('/settings')
   return { ok: t.removed }
 }
@@ -2935,7 +2935,7 @@ export async function toggleTeacherActive(
    * it. `setCenterPlan` writes the new plan and only warns when the centre is over
    * its seat count, so a centre that drops from six teachers to a one-seat plan
    * keeps five rows it is not paying for, and this refusal was the reason it could
-   * never get rid of them: /settings/plan reported 6/1 and the one screen that
+   * never get rid of them: the money screen reported 6/1 and the one screen that
    * could fix it would not act. A centre may always shrink toward its plan.
    *
    * Growing past it is still refused, by the seat check below — unchanged, and the
@@ -3106,7 +3106,7 @@ export async function deleteTeacher(
   revalidatePath('/settings/managers')
   revalidatePath('/payroll')
   revalidatePath('/teach')
-  revalidatePath('/settings/plan')
+  revalidatePath('/settings/billing')
   revalidatePath('/settings')
   return { ok: t.removed }
 }

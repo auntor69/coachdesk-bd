@@ -8569,7 +8569,7 @@ check(
 //
 // THE WIRING. `handled_at is null` lives in the panel's join, so a ticked-off
 // request has to leave the founder's screen while the row stays in the table. That
-// is what stops the owner's own /settings/plan flipping back to a blank form the
+// is what stops the owner's own money screen flipping back to a blank form the
 // moment the founder acts, and there is no way to check it by reading either half
 // alone.
 //
@@ -8754,7 +8754,7 @@ check(
   (await requestRow())?.handled_at instanceof Date,
   String((await requestRow())?.handled_at),
 )
-// The whole point of stamping rather than deleting: /settings/plan reads
+// The whole point of stamping rather than deleting: the money screen reads
 // `handled_at is null`, so the owner's pending card disappears while the fact that
 // they asked survives. A founder who could delete this would be able to erase the
 // only record of a customer having tried to give us money.

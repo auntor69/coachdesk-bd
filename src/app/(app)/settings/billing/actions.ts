@@ -50,8 +50,14 @@ import {
   requireRole,
   type CenterSession,
 } from '@/lib/auth/session'
-import { toAsciiDigits } from '@/lib/bd/phone'
-import { currentPeriodMonth } from '@/lib/bd/time'
+import { normalizeBdMobile, toAsciiDigits } from '@/lib/bd/phone'
+import { currentPeriodMonth, todayInDhaka } from '@/lib/bd/time'
+import { currentPriceVersion, fileRechargeClaim, livePromotion } from '@/lib/billing/claims'
+import { rechargeQuote } from '@/lib/billing/recharge'
+import { rechargeWords } from '@/lib/i18n/recharge'
+import { recordAcceptance } from '@/lib/legal/acceptance'
+import { RECHARGE_POLICIES } from '@/lib/legal/policies'
+import { centerStudentCount } from '@/lib/students/headcount'
 import { openIntent } from '@/lib/billing/intents'
 import { priceIntent } from '@/lib/billing/price'
 import { paymentProvider } from '@/lib/billing/provider'
@@ -59,14 +65,21 @@ import { UNIQUE_VIOLATION } from '@/lib/idempotency'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { createClient } from '@/lib/supabase/server'
 import { dict, DEFAULT_LOCALE } from '@/lib/i18n'
-import { MAX_PLACES, MAX_TEXT, clamp } from '@/lib/limits'
+import { MAX_LABEL, MAX_PLACES, MAX_TEXT, clamp } from '@/lib/limits'
 import { formatTaka } from '@/lib/money'
 import {
   MAX_CENTER_PAYMENT_BDT,
   coverageStart,
   isMonthsCovered,
 } from '@/lib/platform/billing'
-import { ASK_PLACES, PLAN_RANK, planFor, type PlanId } from '@/lib/plans'
+import {
+  ASK_PLACES,
+  PLAN_RANK,
+  dailyRatePoisha,
+  monthlyBillBdt,
+  planFor,
+  type PlanId,
+} from '@/lib/plans'
 
 export type UpgradeState = {
   error?: string
@@ -213,7 +226,7 @@ export async function requestUpgrade(
 
   if (error) return { error: t.failed }
 
-  revalidatePath('/settings/plan')
+  revalidatePath('/settings/billing')
 
   return { ok: t.sent }
 }
@@ -248,7 +261,7 @@ export async function withdrawUpgradeRequest(
 
   if (error) return { error: t.failed }
 
-  revalidatePath('/settings/plan')
+  revalidatePath('/settings/billing')
 
   return { ok: t.withdrawn }
 }
@@ -327,7 +340,7 @@ export async function buyStudentPlaces(
   const told = await provider.createPayment(admin, opened.intent)
   if (told.kind === 'blocked') return { error: t.closed }
 
-  revalidatePath('/settings/plan')
+  revalidatePath('/settings/billing')
   // And the desk this was very likely pressed from. §3.4: an owner who runs out of places
   // with a family standing in front of them buys them inside the add-student screen, and
   // that screen prints the reference off the row this just wrote. Without this line the
@@ -541,7 +554,7 @@ export async function answerAsk(
   // shortage was dealt with by a purchase nobody made.
   if (error) return { ok: t.opened }
 
-  revalidatePath('/settings/plan')
+  revalidatePath('/settings/billing')
   revalidatePath('/settings/students/new')
   revalidatePath('/settings/students/import')
 
@@ -582,7 +595,7 @@ export async function declineAsk(
 
   if (error) return { error: t.askFailed }
 
-  revalidatePath('/settings/plan')
+  revalidatePath('/settings/billing')
   revalidatePath('/settings/students/new')
   revalidatePath('/settings/students/import')
 
@@ -744,7 +757,7 @@ export async function buySubscription(
   const told = await provider.createPayment(admin, opened.intent)
   if (told.kind === 'blocked') return { error: t.closed }
 
-  revalidatePath('/settings/plan')
+  revalidatePath('/settings/billing')
 
   return { ok: t.opened }
 }
@@ -796,7 +809,167 @@ export async function cancelPurchase(
   if (error) return { error: t.failed }
   if (!data || data.length === 0) return { error: t.gone }
 
-  revalidatePath('/settings/plan')
+  revalidatePath('/settings/billing')
 
   return { ok: t.cancelled }
+}
+
+/** What the recharge form reports back, in the two shapes the screen draws. */
+export type RechargeState = { error?: string; ok?: string } | null
+
+/**
+ * The owner telling us they have sent the money — MASTERPLAN §11.9, build-order step 25.
+ *
+ * THIS IS THE ONE WRITE IN THE PRODUCT A READ-ONLY CENTRE MUST BE ABLE TO MAKE, and it is
+ * therefore the one place `requireWritable` is deliberately absent. Read-only exists
+ * because the balance cannot cover the day (§4.4/§11.7), and recharging is the only way
+ * out of it — a dry centre refused its own top-up would be a customer we have locked out
+ * of paying us. Every other gate in this file is unchanged: the owner check, the amount
+ * bounded, the transaction ID required.
+ *
+ * WHAT IT DOES NOT DO: CREDIT ANYTHING. The row it writes is a claim — "I sent this, here
+ * is the transaction ID" — and the balance moves only when a founder has looked at their
+ * own bKash account and approved it (`public.approve_recharge_claim`, §11.9 step 7). The
+ * bonus is priced here so the screen can show a figure, and *re-derived* at approval from
+ * the amount that actually arrived: §11.11 is explicit that the browser never says what
+ * the bonus is, and neither does this action.
+ *
+ * THE AMOUNT IS THE ONLY NUMBER THE CUSTOMER PICKS, and it is bounded on both sides
+ * before anything is priced. Below one day's rate a recharge buys nothing at all —
+ * §11.7's whole days or nothing — so it would be a claim a founder has to check by hand
+ * in exchange for a figure the balance cannot spend, and the message says what the
+ * smallest useful amount is rather than refusing in the abstract. Above
+ * `MAX_CENTER_PAYMENT_BDT` it is the cap a founder-recorded receipt already carries, for
+ * the same reason: a stray keystroke must not open a quote nobody meant to make.
+ *
+ * THE COUNTS ARE READ HERE RATHER THAN SENT. §11.4's list starts with a client-supplied
+ * amount and this purchase's price *is* the centre's size — `monthlyBillBdt` and
+ * `dailyRatePoisha` are computed from three counts the form is not trusted to state. They
+ * are the same three `app.settle_billing` reads, from the same place the plan screen's own
+ * bill comes from, so the rate the customer is shown is the rate the burn will charge.
+ */
+export async function submitRechargeClaim(
+  _prev: RechargeState,
+  formData: FormData,
+): Promise<RechargeState> {
+  const gate = await planOwner()
+  const session = isSession(gate) ? gate : null
+  if (!session) {
+    const caller = await getSession()
+    return { error: rechargeWords(caller?.locale ?? DEFAULT_LOCALE).ownerOnly }
+  }
+
+  const t = rechargeWords(session.locale)
+  const supabase = await createClient()
+  const admin = createAdminClient(session.userId)
+
+  const [students, { count: teachers }, { count: branches }] = await Promise.all([
+    centerStudentCount(supabase, session.active.centerId),
+    supabase
+      .from('teachers')
+      .select('id', { count: 'exact', head: true })
+      .eq('coaching_center_id', session.active.centerId)
+      .eq('active', true),
+    supabase
+      .from('branches')
+      .select('id', { count: 'exact', head: true })
+      .eq('coaching_center_id', session.active.centerId)
+      .eq('active', true),
+  ])
+
+  // A missing count is not a smaller bill. This figure becomes a rate somebody sends
+  // money against, so the form goes away and says so — the rule the plan screen already
+  // follows when it prints `—` instead of a nought.
+  if (students === null || teachers === null || branches === null) {
+    return { error: t.unreadable }
+  }
+
+  const counts = { students, teachers, branches: Math.max(1, branches) }
+  const plan = planFor(session.active.plan)
+  const monthlyPoisha =
+    monthlyBillBdt(plan, counts.students, counts.teachers, counts.branches) * 100
+  const daily = dailyRatePoisha(plan, counts.students, counts.teachers, counts.branches)
+
+  const typed = toAsciiDigits(String(formData.get('amount') ?? '')).replace(/[^0-9]/g, '')
+  const amountBdt = Number(typed)
+  if (!Number.isFinite(amountBdt) || amountBdt <= 0) return { error: t.badAmount }
+
+  const minimumBdt = Math.ceil(daily / 100)
+  if (minimumBdt > 0 && amountBdt < minimumBdt) {
+    return { error: t.tooSmall(formatTaka(minimumBdt)) }
+  }
+  if (amountBdt > MAX_CENTER_PAYMENT_BDT) {
+    return { error: t.tooLarge(formatTaka(MAX_CENTER_PAYMENT_BDT)) }
+  }
+
+  // The card and the promotion the quote is pinned to (§11.10/§11.11). Both are read
+  // here and both are re-read at approval: this decides what the screen says, and that
+  // decides what is credited, and §11.11 wants the second one authoritative.
+  const today = todayInDhaka(new Date())
+  const card = await currentPriceVersion(supabase, today)
+  if (!card) return { error: t.unreadable }
+
+  const promotion = await livePromotion(admin, card.id, new Date())
+  const amountPoisha = amountBdt * 100
+  const quote = rechargeQuote({
+    amountPoisha,
+    tiers: promotion?.tiers ?? [],
+    dailyRatePoisha: daily,
+  })
+
+  /*
+   * The consent tick, REFUSED HERE AND RECORDED BELOW (MASTERPLAN §11.6, §14.1).
+   *
+   * Refused rather than dropped, because the promise on the screen is that the money is not
+   * refundable and the terms are the ones that say so — a claim filed with that box unticked
+   * is a claim taken against nothing, which is the exact state §14.1 exists to end. It is
+   * checked before the row is written, so a refused form leaves no half-filed claim behind.
+   *
+   * This is not a permission and not a fence: RLS has nothing to say about it, and the row in
+   * `policy_acceptances` is the record rather than the gate.
+   */
+  if (String(formData.get('agree') ?? '') !== 'on') {
+    return { error: t.agreeRequired }
+  }
+
+  const trxId = clamp(String(formData.get('trxId') ?? '').trim(), MAX_LABEL)
+  if (trxId === '') return { error: t.badTrx }
+
+  const sender = normalizeBdMobile(String(formData.get('sender') ?? ''))
+  if (!sender) return { error: t.badPhone }
+
+  const filed = await fileRechargeClaim(admin, {
+    centerId: session.active.centerId,
+    quotedPoisha: quote.payPoisha,
+    quotedBonusPoisha: quote.bonusPoisha,
+    priceVersionId: card.id,
+    promotionId: promotion?.id ?? null,
+    counts,
+    trxId,
+    senderMsisdn: sender,
+    submittedBy: session.userId,
+  })
+
+  if (!filed.ok) {
+    return { error: filed.reason === 'too_many_open' ? t.capReached : t.failed }
+  }
+
+  /*
+   * What was agreed to, with the version of each document in force today.
+   *
+   * AFTER THE CLAIM IS FILED AND NEVER INSTEAD OF IT. `recordAcceptance` writes one row per
+   * person, per policy, per version — so a second recharge at the same wording adds nothing,
+   * and a recharge after we re-word the terms adds the new version beside the old one rather
+   * than over it (§14.1: a term we change is a term somebody agreed to a different form of).
+   * The centre is named here and is null at signup, because this is the first moment the
+   * balance exists and the acceptance is about the balance.
+   */
+  await recordAcceptance(session.userId, session.active.centerId, RECHARGE_POLICIES)
+
+  revalidatePath('/settings/billing')
+
+  // The reference is in the answer as well as on the row, because the sentence the owner
+  // reads next tells them to go and look at bKash — and a reference they can only see by
+  // scrolling back is one they will not write down.
+  return { ok: t.filed(filed.referenceCode) }
 }

@@ -1,5 +1,5 @@
 /**
- * The settings hub: four groups, two columns, and thirteen rows that each still know
+ * The settings hub: four groups, two columns, and fourteen rows that each still know
  * who is allowed to see them.
  *
  * WHAT THIS FILE IS GUARDING. The screen was thirteen identical rows in one column
@@ -13,7 +13,7 @@
  * and the longest hint on the page wants more than the 308px that leaves.
  *
  * THE GATES ARE THE REAL SUBJECT. Every row on this screen is a door to something a
- * particular reader may or may not touch, and the redesign moved all thirteen of them.
+ * particular reader may or may not touch, and the redesign moved all of them.
  * §38: a `group` field must not have cost a single one of those conditions, and the
  * per-row `count: null` decisions — a dropped count draws no chip rather than a nought —
  * must survive too.
@@ -157,7 +157,9 @@ test('every row carries a group and every group is one of the four', () => {
   const groups = [...PAGE.matchAll(/group: '(\w+)' as HubGroup/g)].map((m) => m[1])
 
   // Source order, which is also the order inside each group: the centre's own record
-  // first, then the roster, and the plan last of the four in `centre`.
+  // first, then the roster, and billing last of the four in `centre` — the balance is
+  // what a dry centre opens. It is the only money row now: the plan row went with the
+  // plan screen at §16.1 step 27, since two rows leading to one destination is not a hub.
   assert.deepEqual(groups, [
     'centre', // center
     'people', // students
@@ -171,14 +173,31 @@ test('every row carries a group and every group is one of the four', () => {
     'centre', // sms
     'records', // export
     'records', // activity
-    'centre', // plan
+    'centre', // billing
   ])
 
   // Thirteen rows and thirteen groups, plus the founder's explicit null. A row that
-  // slipped through without one would be filtered into no column and vanish.
-  assert.equal(count(PAGE, 'label: t.'), 14)
+  // slipped through without one would be filtered into no column and vanish. The billing
+  // row's label comes from its own fragment (`billing.hubLabel`), which is why this stays
+  // at thirteen rather than fourteen.
+  assert.equal(count(PAGE, 'label: t.'), 13)
   assert.equal(count(PAGE, 'group: '), 16, 'thirteen, the null, the field and the helper')
   assert.equal(count(PAGE, 'group: null'), 1)
+})
+
+test('the billing row leads to the balance screen, and it is the only money row', () => {
+  // §20.4 / step 27: the money screen is one screen now. It is a plain row in the centre
+  // group with no count, and its words come from the screen's own fragment
+  // (src/lib/i18n/billing.ts) so the two dictionaries are not touched — see that module
+  // on why.
+  assert.ok(PAGE.includes("href: '/settings/billing' as Route,"))
+  assert.ok(PAGE.includes('label: billing.hubLabel,'))
+  assert.ok(PAGE.includes('const billing = billingWords(locale)'))
+
+  // And there is no plan row behind it. `settings/plan` is a redirect rather than a
+  // screen (src/app/(app)/settings/plan/page.tsx), so a row pointing at it would be a
+  // second door to this room.
+  assert.ok(!PAGE.includes("href: '/settings/plan'"), 'the plan row outlived its screen')
 })
 
 test('the guard, the union and the two teacher permissions are unchanged', () => {
@@ -246,9 +265,11 @@ test('the reads, the counts and the three payment answers are unchanged', () => 
   assert.ok(PAGE.includes('t.feesGoTo(formatBdMobile(staffOnly.center.payment_number))'))
   assert.ok(PAGE.includes(': t.noPaymentNumber'))
 
-  // §33: the batch cap is a sentence about the plan, never the ceiling behind it.
-  assert.ok(PAGE.includes("capIsQuota(session.plan, 'maxBatches')"))
-  assert.ok(PAGE.includes('t.planUnlimited(planName(session.plan, locale))'))
+  // §33: the batch cap was a sentence about the plan rather than the ceiling behind it,
+  // and it left with the plan row. Asserted as an absence, so re-adding one without a
+  // destination to put it on fails here instead of quietly reappearing.
+  assert.ok(!PAGE.includes('capIsQuota'), 'the plan sentence is back')
+  assert.ok(!PAGE.includes('planUnlimited'), 'the plan sentence is back')
 })
 
 /* -------------------------------------------------------------------------- */

@@ -46,7 +46,7 @@ const DASHBOARD = src('app', '(app)', 'dashboard', 'page.tsx')
 const ROSTER = src('app', '(app)', 'settings', 'students', 'page.tsx')
 const ADD = src('app', '(app)', 'settings', 'students', 'new', 'page.tsx')
 const IMPORT = src('app', '(app)', 'settings', 'students', 'import', 'page.tsx')
-const PLAN = src('app', '(app)', 'settings', 'plan', 'page.tsx')
+const PLAN = src('app', '(app)', 'settings', 'billing', 'plan-cards.tsx')
 const ACTIONS = src('app', '(app)', 'settings', 'actions.ts')
 const HQ = src('app', '(app)', 'hq', 'page.tsx')
 
@@ -308,18 +308,20 @@ test('both qualifiers exist in both languages', () => {
 /* The bill, which is the one figure that is not only a display               */
 /* -------------------------------------------------------------------------- */
 
-test('the plan screen bills from the organisation, not from whoever is reading', () => {
+test('the money screen bills from the organisation, not from whoever is reading', () => {
   // `counts.students` is the basis of a subscription that becomes a receipt. It is
   // owner-gated and only manager rows are ever pinned — but that invariant is
   // `.eq('role','manager')` in application code, not a database constraint, and a bill
   // basis may not rest on it.
-  assert.ok(PLAN.includes('centerStudentCount(supabase, session.active.centerId)'))
-  assert.ok(PLAN.includes('{ label: t.students, used: studentCount, limit: session.ceiling.ceiling }'))
+  assert.ok(PLAN.includes('centerStudentCount(supabase, active.centerId)'))
   assert.match(PLAN, /students: studentCount/)
 
-  // The batch row keeps its own scoped count on purpose: §8.4 caps batches per branch, so
-  // a narrowed count against a per-branch ceiling is the correct pair there.
-  assert.ok(PLAN.includes("from('batches')"))
+  // The usage table and its batch row left with the plan screen (§16.1 step 27, §20.4):
+  // there is no ceiling bar to draw on a per-student tier, and the tier is a line in the
+  // billing screen's third question instead. Asserted as an absence so the scoped batch
+  // count cannot come back with the table.
+  assert.ok(!PLAN.includes("from('batches')"), 'the usage table is back')
+  assert.ok(!PLAN.includes('t.usageTitle'), 'a ceiling bar is back')
 })
 
 test('/hq needs none of this because it never serves a pinned reader', () => {

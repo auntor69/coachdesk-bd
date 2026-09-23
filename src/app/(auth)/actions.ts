@@ -21,11 +21,13 @@ import { MIN_PASSWORD } from '@/lib/auth/password'
 import { MAX_NAME } from '@/lib/limits'
 import { DEFAULT_LOCALE, dict } from '@/lib/i18n'
 import { nameTooLong, passwordTooShort } from '@/lib/i18n/messages'
+import { recordAcceptance } from '@/lib/legal/acceptance'
+import { copyFor, policyFor, SIGNUP_POLICIES } from '@/lib/legal/policies'
 
 export type FormState = {
   error?: string
   /** Which input to highlight, so the message lands next to the problem. */
-  field?: 'identifier' | 'password' | 'name' | 'center' | 'email' | 'code'
+  field?: 'identifier' | 'password' | 'name' | 'center' | 'email' | 'code' | 'agree'
 } | null
 
 /**
@@ -40,7 +42,7 @@ export type FormState = {
  */
 export type SignupState = {
   error?: string
-  field?: 'email' | 'password' | 'name' | 'code'
+  field?: 'email' | 'password' | 'name' | 'code' | 'agree'
   /** A code has been sent and the form is waiting for one. */
   awaitingCode?: boolean
   /** The address the code went to. Shown, never resubmitted. */
@@ -210,6 +212,20 @@ export async function signUp(
   const password = String(formData.get('password') ?? '')
   const fullName = String(formData.get('name') ?? '').trim()
   const typedCode = String(formData.get('code') ?? '').trim()
+  /*
+   * The consent tick, and it is checked BEFORE anything is created (MASTERPLAN §14.1).
+   *
+   * A TICK IN THE FORM IS NOT THE RECORD, which is why this is not the interesting half:
+   * `policy_acceptances` gets a row with the version of each document that was in force when
+   * the box was ticked, and the row is what a dispute reads. What this line does is refuse to
+   * create an account at all without the tick — the one moment where asking again is free,
+   * because there is no account to be awkward about yet.
+   *
+   * It is required on both steps of §5.4's two-step form, and it survives the step because
+   * the form keeps it mounted and controlled: a tick that vanished when the code box appeared
+   * would be recorded as a consent nobody gave.
+   */
+  const agreed = formData.get('agree') === 'on'
   // A submit button's own name. It can only ever cause a resend, so a browser
   // choosing it is choosing to be rate-limited, not to skip anything.
   const resending = String(formData.get('intent') ?? '') === 'resend'
@@ -227,6 +243,14 @@ export async function signUp(
   }
   if (password.length < MIN_PASSWORD) {
     return { error: passwordTooShort(DEFAULT_LOCALE), field: 'password' }
+  }
+  if (!agreed) {
+    const terms = copyFor(policyFor('terms'), DEFAULT_LOCALE)
+    const privacy = copyFor(policyFor('privacy'), DEFAULT_LOCALE)
+    return {
+      error: `অ্যাকাউন্ট খুলতে ${terms.title} ও ${privacy.title} পড়ে সম্মতি দিন।`,
+      field: 'agree',
+    }
   }
 
   const redirectTo = await confirmUrl()
@@ -248,6 +272,7 @@ export async function signUp(
 
     // Confirmation off in the project: the session came back with the account.
     if (!error && data.session) {
+      await recordAcceptance(data.session.user.id, null, SIGNUP_POLICIES)
       redirect('/onboarding')
     }
 
@@ -304,7 +329,7 @@ export async function signUp(
 
   // Step 2: the code. Checked against the platform's own confirmation record,
   // and the session it returns is the session — nothing else is decided here.
-  const { error: verifyError } = await supabase.auth.verifyOtp({
+  const { data: verified, error: verifyError } = await supabase.auth.verifyOtp({
     email,
     token: typedCode,
     type: 'signup',
@@ -317,6 +342,25 @@ export async function signUp(
       error: verifyRefusal(verifyError.message),
       field: 'code',
     }
+  }
+
+  /*
+   * The consent, written at the moment the address is proved (MASTERPLAN §14.1).
+   *
+   * HERE RATHER THAN AT STEP ONE, and the reason is the shape of the record: at step one
+   * there is no account, no profile and no id to name, so a row written then would have to
+   * be claimed later by whoever turned up — which is exactly the forgeable "verified flag"
+   * §5.4 refuses to keep. `verifyOtp` is the same call that proves the address, and the id it
+   * returns is the person the row is about.
+   *
+   * `null` for the centre, because a centre is created on the next screen and a teacher never
+   * creates one at all. The row is about the human, and `recordAcceptance` never throws — a
+   * bookkeeping failure here must not undo a confirmed account, and the audit log is where a
+   * missing row would surface.
+   */
+  const confirmed = verified.user ?? verified.session?.user
+  if (confirmed) {
+    await recordAcceptance(confirmed.id, null, SIGNUP_POLICIES)
   }
 
   redirect('/onboarding')

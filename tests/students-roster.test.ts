@@ -408,7 +408,7 @@ test('nothing about who may read what has moved', () => {
   assert.match(PAGE, /matchesSearch\(\[r\.name, r\.code, r\.guardianPhone\], terms\)/)
   assert.match(PAGE, /'rows' in students/, 'a failed read no longer draws an empty roster')
 
-  // The places warning ends in a link to /settings/plan, which a teacher on
+  // The places warning ends in a link to /settings/billing, which a teacher on
   // `can_manage_students` would be refused at.
   assert.match(PAGE, /const warnPlaces =[\s\S]{0,200}isStaffAdmin\(session\)/)
 })

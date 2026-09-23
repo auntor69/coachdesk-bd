@@ -515,7 +515,7 @@ test('the write is scoped, and the membership goes with it', () => {
     '/settings/managers',
     '/payroll',
     '/teach',
-    '/settings/plan',
+    '/settings/billing',
   ]) {
     assert.ok(body.includes(`revalidatePath('${path}')`), path)
   }
