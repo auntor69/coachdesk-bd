@@ -391,7 +391,26 @@ export function billingStanding(org: OrgBilling | null, now: Date): BillingStand
  * the day it drifted would be the day it let a centre write on an empty purse.
  */
 export function dailyBurn(org: OrgBilling): boolean {
-  return planFor(org.plan).pricing !== 'free'
+  return burnsMoney(org.plan)
+}
+
+/**
+ * The same rule, for a caller that has a plan id and no session (MASTERPLAN.md §11.7).
+ *
+ * The nightly settle cron has a row from `coaching_centers` and nothing else — no
+ * membership, no embedded billing record — and it needs exactly this question answered
+ * before it spends a round trip on a centre. Splitting it out is the alternative to the
+ * cron reading `pricing !== 'free'` for itself, which would be a second copy of a money
+ * rule in a second file: the day the free tier gained a rate, one of the two would keep
+ * skipping it.
+ *
+ * It takes a loose string because the two callers disagree about types on purpose — the
+ * session's `plan` is a `PlanId` narrowed by the resolver, and a database row's is whatever
+ * the column holds — and `planFor` is the one function in this product allowed to be
+ * generous about that, refusing an unknown plan rather than guessing (§12.2).
+ */
+export function burnsMoney(plan: string | null | undefined): boolean {
+  return planFor(plan).pricing !== 'free'
 }
 
 /**

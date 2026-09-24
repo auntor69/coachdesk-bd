@@ -487,7 +487,7 @@ export const getSession = cache(async (): Promise<Session | null> => {
   let billing = billingStanding(org, now)
 
   if (active && org && dailyBurn(org)) {
-    const settled = await settleDay(supabase, active.centerId)
+    const { settlement: settled } = await settleDay(supabase, active.centerId)
     org = {
       ...org,
       balance_poisha: settled?.balanceAfter ?? org.balance_poisha,

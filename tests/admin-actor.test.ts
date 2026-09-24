@@ -93,9 +93,9 @@ function adminCalls(): Call[] {
 /**
  * The calls with no human behind them, and why each has to be one.
  *
- * TWO KINDS, AND THE SECOND IS NOT A MACHINE. The first three are: work nobody asked for,
- * or work asked for by an account that does not exist yet. The last two are reads — a
- * screen showing an owner what a colleague types to sign in — and a read leaves no audit
+ * TWO KINDS, AND THE SECOND IS NOT A MACHINE. The first two are machines: work nobody
+ * asked for, and work whose whole record is that a machine did it. The last two are reads —
+ * a screen showing an owner what a colleague types to sign in — and a read leaves no audit
  * row for anybody to be named on, so an actor there would be a header sent to no reader.
  *
  * Not a list to shorten, and not one to lengthen carelessly either: a new entry is a claim
@@ -106,6 +106,10 @@ function adminCalls(): Call[] {
 const ACTOR_LESS = [
   // The queue worker. `actor_role = 'service_role'` with a null actor is the truth.
   'src/app/api/cron/sms/route.ts',
+  // The nightly burn. Same truth, one table over: the record is a `settlement_runs` row with
+  // `ran_by = 'system'`, and no member asked for the charge — §11.13 calls it a convenience
+  // precisely because nobody is behind it.
+  'src/app/api/cron/settle/route.ts',
   // The two rosters that show a colleague's username, which `profiles` is self-read for.
   // Reads, so there is no audit row and nothing to attribute.
   'src/app/(app)/settings/teachers/page.tsx',

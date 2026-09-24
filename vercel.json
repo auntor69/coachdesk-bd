@@ -4,6 +4,10 @@
     {
       "path": "/api/cron/sms",
       "schedule": "0 4 * * *"
+    },
+    {
+      "path": "/api/cron/settle",
+      "schedule": "10 18 * * *"
     }
   ]
 }
