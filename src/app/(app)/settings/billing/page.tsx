@@ -19,7 +19,7 @@ import { centerStudentCount } from '@/lib/students/headcount'
 import { createClient } from '@/lib/supabase/server'
 import type { BillingEntryKind } from '@/lib/supabase/types'
 import { PriceCalculator } from './calculator'
-import { PlanCards } from './plan-cards'
+import { ContactCard } from './contact-card'
 import { RechargePanel } from './recharge-panel'
 
 /** getSession, not pageRole — see the note on teach/page.tsx's own. */
@@ -472,18 +472,15 @@ export default async function BillingPage() {
       </Card>
 
       {/*
-        THE CARDS THAT OUTLIVED THE PLAN PAGE, below the five questions rather than
-        beside them. They are the coverage-based buy flow — places, a subscription
-        window, a move up a tier — which retires at build-order step 28 and is still a
-        live door until that cutover lands: the ceiling is still the fence, so a centre
-        without a places form has no way to admit the next student.
-
-        Its own server component, reading its own data, for the reason `RechargePanel`
-        records: these are nine reads only the transition uses, and folding them into
-        this page would make a screen that is meant to be deleted at step 28 into a
-        permanent tax on every visit to the balance. See the head of ./plan-cards.tsx.
+        §20.4'S KEPT BLOCK, and the only thing that outlived the coverage-based buy flow:
+        the request form and the way to reach us. Step 28 retired the four cards that sold
+        a place, a branch, a subscription window and a tier, because §11.6 sells a balance
+        and the tier follows it — but a centre with no balance has no other way to say
+        yes, and a free teacher who wants Pro has no self-serve path at all. It sits
+        beside the recharge card rather than instead of it, and its own docblock holds the
+        reasoning.
       */}
-      <PlanCards />
+      <ContactCard />
     </div>
   )
 }

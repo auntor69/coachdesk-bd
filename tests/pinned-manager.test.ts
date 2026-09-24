@@ -46,7 +46,7 @@ const DASHBOARD = src('app', '(app)', 'dashboard', 'page.tsx')
 const ROSTER = src('app', '(app)', 'settings', 'students', 'page.tsx')
 const ADD = src('app', '(app)', 'settings', 'students', 'new', 'page.tsx')
 const IMPORT = src('app', '(app)', 'settings', 'students', 'import', 'page.tsx')
-const PLAN = src('app', '(app)', 'settings', 'billing', 'plan-cards.tsx')
+const BILL = src('app', '(app)', 'settings', 'billing', 'page.tsx')
 const ACTIONS = src('app', '(app)', 'settings', 'actions.ts')
 const HQ = src('app', '(app)', 'hq', 'page.tsx')
 
@@ -312,16 +312,20 @@ test('the money screen bills from the organisation, not from whoever is reading'
   // `counts.students` is the basis of a subscription that becomes a receipt. It is
   // owner-gated and only manager rows are ever pinned — but that invariant is
   // `.eq('role','manager')` in application code, not a database constraint, and a bill
-  // basis may not rest on it.
-  assert.ok(PLAN.includes('centerStudentCount(supabase, active.centerId)'))
-  assert.match(PLAN, /students: studentCount/)
+  // basis may not rest on it. Since §16.1 step 28 removed the cards that outlived the plan
+  // screen, the billing page itself is the reader: its third question prices the rate from
+  // this count, so the rule is asserted there now.
+  assert.ok(BILL.includes('centerStudentCount(supabase, session.active.centerId)'))
+  assert.match(
+    BILL,
+    /dailyRatePoisha\(plan, counts\.students, counts\.teachers, counts\.branches\)/,
+  )
 
   // The usage table and its batch row left with the plan screen (§16.1 step 27, §20.4):
   // there is no ceiling bar to draw on a per-student tier, and the tier is a line in the
   // billing screen's third question instead. Asserted as an absence so the scoped batch
   // count cannot come back with the table.
-  assert.ok(!PLAN.includes("from('batches')"), 'the usage table is back')
-  assert.ok(!PLAN.includes('t.usageTitle'), 'a ceiling bar is back')
+  assert.ok(!BILL.includes("from('batches')"), 'the usage table is back')
 })
 
 test('/hq needs none of this because it never serves a pinned reader', () => {
