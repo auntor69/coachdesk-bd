@@ -22,7 +22,7 @@
 
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { readFileSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import path from 'node:path'
 
 import {
@@ -43,9 +43,6 @@ const PAGE = read('src', 'app', '(app)', 'settings', 'billing', 'page.tsx')
 
 /** The pricing calculator, which the billing screen draws behind its own disclosure. */
 const CALC = read('src', 'app', '(app)', 'settings', 'billing', 'calculator.tsx')
-
-/** The plan page's surviving cards, re-homed under billing at §16.1 step 27. */
-const CARDS = read('src', 'app', '(app)', 'settings', 'billing', 'plan-cards.tsx')
 
 /** What is left of `/settings/plan` — a route and nothing else. */
 const REDIRECT = read('src', 'app', '(app)', 'settings', 'plan', 'page.tsx')
@@ -374,22 +371,12 @@ test('a per-student tier advertises no ceiling this product would enforce', asyn
   // §8 and §6: 100 batches and 200 subjects are abuse ceilings, not headroom. A centre
   // sold ninety-nine more batches has been sold a number we would refuse them at.
   //
-  // The filter lives in the surviving difference block, and it steps aside entirely on the
-  // tiers with nothing above them.
-  assert.match(
-    CARDS,
-    /from_ !== to && \(to === null \|\| nextUp\.pricing !== 'per_student'\)/,
-  )
-  // §20.4: the block is shown on the teacher tiers only — a centre paying per student has
-  // already chosen its plan and is managing its size, which billing's third question
-  // answers.
-  assert.match(CARDS, /const TEACHER_TIERS = \['teacher_free', 'teacher_plus'\]/)
-  assert.match(CARDS, /const teacherTier = TEACHER_TIERS\.includes\(plan\.id\)/)
-  assert.match(CARDS, /const nextUp = teacherTier\s*\n\s*\?/)
-
-  // Which leaves exactly the three that are true of every centre: no student cap, no
-  // teacher cap, no cap on one batch. Asserted against the plan table itself rather
-  // than against the string, so a tier gaining a finite cap fails here.
+  // THE COMPARISON BLOCK WENT AT STEP 28, and the string this test used to read went with
+  // it. The four-tier difference table was the transition's own furniture — it compared a
+  // tier against the next one up, which is a question §11.6 answers with a rate — so what
+  // survives is the rule it enforced, asserted against the plan table rather than against
+  // the markup that used to state it: no student cap, no teacher cap, no cap on one batch.
+  // A tier gaining a finite cap fails here.
   const { PLANS } = await import('../src/lib/plans.ts')
   for (const id of ['center', 'institution'] as const) {
     const tier = PLANS[id]
@@ -403,17 +390,35 @@ test('a per-student tier advertises no ceiling this product would enforce', asyn
   }
 })
 
-test('the cards that outlived the page are rendered, and the coverage flow is not deleted early', () => {
-  // The places form and the subscription form retire at step 28, and `recharge-panel.tsx`
-  // says so. Until then a centre at its ceiling has to keep both doors, which is why the
-  // demolition re-homed them instead of deleting them.
-  assert.ok(PAGE.includes('<PlanCards />'), 'the surviving cards are not rendered')
-  assert.ok(CARDS.includes('<BuyPlaces'), 'the places form is gone before step 28')
-  assert.ok(CARDS.includes('<BuySubscription'), 'the subscription form is gone before step 28')
-  assert.ok(CARDS.includes('<AskRow'), 'a manager can ask and nobody can answer')
-  assert.ok(CARDS.includes('<UpgradeRequest'), 'the way out of read-only is gone')
+test('the coverage-based cards are gone, and the way to reach us is what survives', () => {
+  // §16.1 step 28. Four of the blocks that outlived the plan page retire here: the places
+  // card with its pending purchase, the branch asks and their two answers, the subscription
+  // window, and the four-tier ladder. Each sold coverage or a ceiling, and §11.6 sells a
+  // balance instead — so what step 27 could only re-home, step 28 deletes. Asserted as an
+  // absence, because a re-import is how a deleted card comes back.
+  assert.ok(!PAGE.includes('<PlanCards'), 'the transition cards are back on the screen')
 
-  // §3.6 and §11.12: a bill that becomes a receipt is counted across the organisation, so
-  // the pooled count is the one the form is priced from.
-  assert.ok(CARDS.includes('centerStudentCount(supabase, active.centerId)'))
+  for (const gone of ['plan-cards.tsx', 'ask-row.tsx', 'buy-subscription.tsx']) {
+    assert.ok(
+      !existsSync(path.join(ROOT, 'src', 'app', '(app)', 'settings', 'billing', gone)),
+      `${gone} survived step 28`,
+    )
+  }
+
+  // AND THE FIFTH BLOCK DID NOT RETIRE. §20.4 keeps "the request form and the way to reach
+  // us", for `read-only.test.ts`'s reason: asking to pay is the way out. A free teacher who
+  // wants Pro has no self-serve path, and a centre with no balance has no other door — so
+  // the container was deleted and its one survivor was given a file of its own.
+  const BILLING = ['src', 'app', '(app)', 'settings', 'billing']
+  assert.ok(
+    existsSync(path.join(ROOT, ...BILLING, 'upgrade-request.tsx')),
+    'the request form went with the cards it lived in',
+  )
+  assert.ok(PAGE.includes('<ContactCard'), 'the way to reach us is no longer drawn')
+  assert.ok(read(...BILLING, 'contact-card.tsx').includes('<UpgradeRequest'))
+
+  // §3.6 and §11.12 hold these cards to one fact that survives them: the count a bill is
+  // priced from is the organisation's, not the reader's building. That is the screen's own
+  // `centerStudentCount` now, which is where the rate's `students` figure comes from.
+  assert.ok(PAGE.includes('centerStudentCount(supabase, session.active.centerId)'))
 })
