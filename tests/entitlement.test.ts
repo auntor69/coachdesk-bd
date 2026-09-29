@@ -11,7 +11,7 @@ import {
   trialStanding,
   type OrgBilling,
 } from '../src/lib/entitlement.ts'
-import { PLANS, PLAN_RANK, type PlanId } from '../src/lib/plans.ts'
+import { PLANS, PLAN_RANK, wouldExceed, type PlanId } from '../src/lib/plans.ts'
 
 /**
  * The one place that answers "what is this organisation allowed to do right now".
@@ -19,9 +19,12 @@ import { PLANS, PLAN_RANK, type PlanId } from '../src/lib/plans.ts'
  * MASTERPLAN.md §4.2 is three lines long and every one of them has a direction that
  * is expensive to get wrong. A status misread hands a cancelled customer a working
  * product or freezes a paying one; a trial misread hands out a paid tier forever or
- * ends it a day early; a ceiling derived from the wrong tier promises room the
- * database refuses. None of those show up as a crash — each one is a screen that
+ * ends it a day early. None of those show up as a crash — each one is a screen that
  * quietly says the wrong number to somebody who is paying.
+ *
+ * THE THIRD LINE USED TO BE A CEILING and it is gone (§16.1 step 28). Its section
+ * survives as the assertion that nothing grows it back: two fields in the result, and
+ * a per-student tier with no student cap at all.
  *
  * §4.4's lapse is the fourth and the only one that acts on its own: nothing was
  * clicked, a day went by and the balance could not cover it. Both directions are
@@ -30,7 +33,7 @@ import { PLANS, PLAN_RANK, type PlanId } from '../src/lib/plans.ts'
  * money that arrived this morning.
  *
  * The tests below are grouped that way: access, then the trial, then the balance, then
- * the ceiling, then the fallbacks that must all point the same way.
+ * the retired capacity, then the fallbacks that must all point the same way.
  */
 
 const NOW = new Date('2026-08-29T12:00:00Z')
@@ -49,7 +52,6 @@ function org(over: Partial<OrgBilling> = {}): OrgBilling {
     plan: 'center',
     trial_plan: null,
     trial_ends_at: null,
-    student_capacity: 0,
     balance_poisha: 0,
     charged_through: '2026-08-29',
     daily_rate_poisha: null,
@@ -81,16 +83,14 @@ test('a status that is not a status may not write', () => {
   }
 })
 
-test('read-only never touches the plan or the ceiling', () => {
-  // §4.4 and §4.5 together: a suspended centre keeps its tier and its ceiling, and
-  // stops writing. Dropping them to Teacher Free instead would take printed receipts
-  // and exports off the fee book they are trying to settle, and would tell a centre
-  // of four hundred that it is thirty over its limit.
+test('read-only never touches the plan', () => {
+  // §4.4 and §4.5 together: a suspended centre keeps its tier and stops writing.
+  // Dropping them to Teacher Free instead would take printed receipts and exports off
+  // the fee book they are trying to settle.
   const suspended = effectiveEntitlement(org({ status: 'suspended' }), NOW)
   const active = effectiveEntitlement(org({ status: 'active' }), NOW)
 
   assert.equal(suspended.plan.id, active.plan.id)
-  assert.deepEqual(suspended.ceiling, active.ceiling)
 })
 
 /* -------------------------------------------------------------------------- */
@@ -108,10 +108,10 @@ test('a trial in force is the plan, and nothing says it was a trial', () => {
   )
 
   assert.equal(e.plan.id, 'teacher_plus')
-  // The result is three fields wide on purpose. A fourth saying "this is a trial"
-  // would be read by a gate within a week, and a gate that branches on it is the
-  // fifth plan this design exists to avoid.
-  assert.deepEqual(Object.keys(e).sort(), ['access', 'ceiling', 'plan'])
+  // The result is two fields wide on purpose. A third saying "this is a trial" would be
+  // read by a gate within a week, and a gate that branches on it is the fifth plan this
+  // design exists to avoid.
+  assert.deepEqual(Object.keys(e).sort(), ['access', 'plan'])
 })
 
 test('the trial ends by comparison, not by anybody running anything', () => {
@@ -558,7 +558,6 @@ test('a dry balance takes the writing and leaves the tier and the ceiling', () =
   const dry = effectiveEntitlement(
     org({
       plan: 'center',
-      student_capacity: 400,
       charged_through: '2026-08-28',
       daily_rate_poisha: RATE,
       balance_poisha: 0,
@@ -566,14 +565,13 @@ test('a dry balance takes the writing and leaves the tier and the ceiling', () =
     NOW,
   )
   const paid = effectiveEntitlement(
-    org({ plan: 'center', student_capacity: 400, balance_poisha: RATE * 30 }),
+    org({ plan: 'center', balance_poisha: RATE * 30 }),
     NOW,
   )
 
   assert.equal(dry.access, 'read_only')
   assert.equal(paid.access, 'full')
   assert.equal(dry.plan.id, paid.plan.id)
-  assert.deepEqual(dry.ceiling, paid.ceiling)
 })
 
 test('a trial lifts the tier, and the balance only takes the writing', () => {
@@ -723,66 +721,44 @@ test('the burn is asked for by every centre whose days cost anything', () => {
 })
 
 /* -------------------------------------------------------------------------- */
-/* The ceiling                                                                */
+/* Capacity, retired (§16.1 step 28)                                          */
 /* -------------------------------------------------------------------------- */
 
-test('the ceiling follows the tier in force, not the one being paid for', () => {
-  // The reason the resolver exists as one function rather than two derivations. A
-  // teacher trialling Pro whose ceiling came from the paid tier would see every Pro
-  // feature on the screen and be refused at student thirty-one — which is what the
-  // database did until 20260811000060 taught the trigger this same rule.
-  const e = effectiveEntitlement(
-    org({
-      plan: 'teacher_free',
-      trial_plan: 'teacher_plus',
-      trial_ends_at: '2026-09-05T12:00:00Z',
-    }),
-    NOW,
-  )
+test('the resolver answers two fields, and one of them is not a ceiling', () => {
+  // The third field was the plan's allowance plus whatever the centre had bought, and
+  // it was what every "places" figure in the app read. A per-student tier has no
+  // student limit, so there is nothing left to resolve — and the shape is asserted
+  // rather than assumed, because a field nobody asserts on is how one comes back.
+  //
+  // The 900 places a centre could once have bought are not passed any more, because
+  // `OrgBilling` no longer carries the column (§16.1 step 28). It is archived rather
+  // than dropped (§11.14), so the point of the case has moved from "a number that used
+  // to raise a ceiling no longer does" to "there is no longer a field to pass".
+  const e = effectiveEntitlement(org({ plan: 'center' }), NOW)
 
-  assert.deepEqual(e.ceiling, { kind: 'plan', ceiling: PLANS.teacher_plus.maxStudents })
+  assert.deepEqual(Object.keys(e).sort(), ['access', 'plan'])
+  assert.equal(Object.hasOwn(e, 'ceiling'), false)
 })
 
-test('a centre ceiling is the greater of what the floor gave and what was bought', () => {
-  // `kind` is what a refusal reads to choose its words: a centre is told to buy
-  // places, never to change plan. See studentCeiling.
-  const included = effectiveEntitlement(org({ student_capacity: 0 }), NOW).ceiling
-  assert.equal(included.kind, 'purchased')
-
-  const floor = included.ceiling
-  assert.ok(floor > 0, 'the floor includes students')
-
-  // Bought less than the floor already gave: the floor still holds. A capacity of
-  // zero is what every fresh centre looks like, and it must not mean "no students".
-  assert.equal(effectiveEntitlement(org({ student_capacity: 1 }), NOW).ceiling.ceiling, floor)
-
-  // Bought more: the purchase holds.
-  assert.equal(
-    effectiveEntitlement(org({ student_capacity: floor + 250 }), NOW).ceiling.ceiling,
-    floor + 250,
-  )
-})
-
-test('purchased places are ignored on a teacher tier', () => {
-  // A centre that bought 900 places and dropped to Teacher Pro lands on 150, because
-  // limits apply to new actions and the new action is priced by the new plan. The
-  // places are not lost: `student_capacity` still holds the number and this is the
-  // function ignoring it, not the column being cleared. So re-upgrading restores them.
-  const e = effectiveEntitlement(org({ plan: 'teacher_plus', student_capacity: 900 }), NOW)
-
-  assert.deepEqual(e.ceiling, { kind: 'plan', ceiling: PLANS.teacher_plus.maxStudents })
-})
-
-test('a capacity column that has gone wrong reads as nothing bought', () => {
-  const floor = effectiveEntitlement(org(), NOW).ceiling.ceiling
-
-  for (const student_capacity of [null, -1, -900, 0.5, Number.NaN, Number.POSITIVE_INFINITY]) {
-    assert.equal(
-      effectiveEntitlement(org({ student_capacity }), NOW).ceiling.ceiling,
-      floor,
-      String(student_capacity),
-    )
+test('a plan that sells no student limit carries none', () => {
+  // Null is the whole design of this cut: the two per-student tiers have no student
+  // cap, so a purchase cannot raise one and a downgrade cannot put a roster over one.
+  for (const id of ['center', 'institution'] as const) {
+    assert.equal(PLANS[id].maxStudents, null, id)
   }
+
+  // `wouldExceed` reads a null cap as no cap, which is the reading the resolver's
+  // missing field now depends on: nothing downstream may treat null as zero.
+  assert.equal(wouldExceed(PLANS.center, 'maxStudents', 3000), false)
+})
+
+test('the teacher tiers keep the one student cap that is left', () => {
+  // The floor and Pro still hold 30 and 150, and `how many more fit` is `roomFor`
+  // against those — which is what the paste box and `limitRefusal` now ask.
+  assert.equal(PLANS.teacher_free.maxStudents, 30)
+  assert.equal(PLANS.teacher_plus.maxStudents, 150)
+  assert.equal(wouldExceed(PLANS.teacher_free, 'maxStudents', 29), false)
+  assert.equal(wouldExceed(PLANS.teacher_free, 'maxStudents', 30), true)
 })
 
 /* -------------------------------------------------------------------------- */
@@ -798,8 +774,8 @@ test('no organisation in view lands on the floor and may not write', () => {
 
   assert.equal(e.access, 'read_only')
   assert.equal(e.plan.id, 'teacher_free')
-  assert.deepEqual(e.ceiling, { kind: 'plan', ceiling: PLANS.teacher_free.maxStudents })
 })
+
 
 test('a plan nobody recognises is the free tier', () => {
   // Same direction as everything else here, and the same answer planFor already

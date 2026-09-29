@@ -234,19 +234,18 @@ test('what the table means and what to do about it are two columns from lg', () 
   // Not `{t.payrollAllNote}`: the gap box picks its note in a ternary, so the brace is
   // three tokens away and an anchor carrying one silently matches nothing.
   const payroll = AFTER.indexOf('t.payrollAllNote')
-  const pool = AFTER.indexOf('{t.poolNote}')
-  const growing = AFTER.indexOf('{t.growingTitle}')
   const asks = AFTER.indexOf('{d.settings.plan.places.asksTitle}')
 
   // Every anchor found first. A typo returns -1, and -1 reads as "before everything" in
   // each comparison below, so a missing anchor would pass the order test twice over.
-  for (const at of [legend, dashed, payroll, pool, growing, asks]) assert.ok(at > 0)
+  for (const at of [legend, dashed, payroll, asks]) assert.ok(at > 0)
 
-  // Left: the footnotes belonging to the columns above. Right: §3.7's argument, where the
-  // pool, the places running out and the branches asking for more read as one thing
-  // instead of three separate notes.
+  // Left: the footnotes belonging to the columns above. Right: the decision — which is
+  // §3.7's asks alone now, because the pool card, the places warning and the growth box
+  // that sat above them all went with the ceiling (§16.1 step 28).
   assert.ok(legend < dashed && dashed < payroll, 'the footnotes in that order')
-  assert.ok(payroll < pool && pool < growing && growing < asks, 'then the decision')
+  assert.ok(payroll < asks, 'then the decision')
+  assert.doesNotMatch(PAGE, /poolNote|growingTitle|capacityPressure|PlacesWarning/)
 
   // Source order is reading order, so the phone keeps the stack it had and no `order-N`
   // is needed to place either column.
@@ -254,24 +253,24 @@ test('what the table means and what to do about it are two columns from lg', () 
   assert.doesNotMatch(PAGE, /lg:grid-cols-12/)
 })
 
-test('the payroll gap and the pool warning are still the same two objects', () => {
-  // §38, on the two blocks the redesign moved into columns. The warning 20260811000055
-  // left to this screen: entering payroll centrally leaves every branch but head office
-  // looking free, and every profit figure above is then wrong in the flattering direction.
+test('the payroll gap is still the same object, and the pool warning is gone', () => {
+  // §38, on the block the redesign moved into the right-hand column. The warning
+  // 20260811000055 left to this screen: entering payroll centrally leaves every branch but
+  // head office looking free, and every profit figure above is then wrong in the
+  // flattering direction.
   assert.ok(PAGE.includes('const gap = payrollGap(rows)'))
   assert.ok(PAGE.includes("{gap.kind === 'all' ? t.payrollAll : t.payrollSome(gap.names.join(', '))}"))
   assert.ok(PAGE.includes('border-late/30 bg-late/5'))
 
-  // The calm card and the boxed warning stay two objects, on the ≤ 20% and ≤ 5% rows.
-  assert.ok(PAGE.includes("pressure.level === 'fine' ? ("))
-  assert.ok(PAGE.includes('<PlacesWarning pressure={pressure} t={d.dashboard} note={t.poolNote} />'))
-  assert.equal(count(PAGE, '{t.poolNote}'), 2, 'the note travels with both')
-
-  // And the growing box only on the urgent row, with a failed read given its own sentence
-  // rather than falling into "nothing is growing".
-  assert.ok(PAGE.includes("pressure.level === 'urgent' || pressure.level === 'full'"))
-  assert.ok(PAGE.includes('{grew === null ? ('))
-  assert.ok(PAGE.includes('{t.growingUnreadable}'))
+  // §3.7'S THREE READINGS OF THE POOL WENT TOGETHER (§16.1 step 28): the calm card with
+  // the pool note, the boxed warning past a fifth, and the growth box that only drew on
+  // the urgent row. There is no ceiling for them to describe, so the right column is the
+  // asks and the decision, and the whole `pressure`/`grew` machinery is gone with them —
+  // asserted as an absence, because a threshold coming back would come back with all
+  // three of them and would need a count nobody reads any more.
+  for (const gone of ['PlacesWarning', 'capacityPressure', 'grew', 'recentIntake', 'growingBranches']) {
+    assert.equal(count(PAGE, gone), 0, `${gone} is back in /hq`)
+  }
 })
 
 test('the gates and the reads the redesign moved past are unchanged', () => {

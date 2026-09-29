@@ -87,13 +87,7 @@ import { passwordTooShort } from '@/lib/i18n/messages'
 import { readIdempotencyKey, UNIQUE_VIOLATION } from '@/lib/idempotency'
 import { MAX_LABEL, MAX_TEXT, clamp } from '@/lib/limits'
 import { formatTaka, parseTaka, sumTaka } from '@/lib/money'
-import {
-  PLANS,
-  planFor,
-  planName,
-  studentCeiling,
-  type PlanId,
-} from '@/lib/plans'
+import { PLANS, planFor, planName, type PlanId } from '@/lib/plans'
 import {
   MAX_CENTER_PAYMENT_BDT,
   coverageEnd,
@@ -666,7 +660,10 @@ export async function setCenterPlan(
         : { plan, status, trial_plan: null, trial_ends_at: null },
     )
     .eq('id', centerId)
-    .select('student_capacity')
+    // `id` back, not the row: what this needs is "did the update match a centre", and
+    // the one column it used to read — `student_capacity` — went with capacity (§16.1
+    // step 28). The counter below no longer asks about students at all.
+    .select('id')
     .maybeSingle()
 
   if (error || !updated) return { error: words.failed }
@@ -679,48 +676,28 @@ export async function setCenterPlan(
   )
 
   // Counted after the write rather than before it, so the warning describes the plan
-  // the centre is actually on. Two cheap counts, and only to decide one sentence.
+  // the centre is actually on. One cheap count, and only to decide one sentence.
   // scoped-by: one centre by id, on the founder's own panel.
-  const [{ count: students }, { count: teachers }] = await Promise.all([
-    admin
-      .from('students')
-      .select('id', { count: 'exact', head: true })
-      .eq('coaching_center_id', centerId)
-      .eq('status', 'active'),
-    admin
-      .from('teachers')
-      .select('id', { count: 'exact', head: true })
-      .eq('coaching_center_id', centerId)
-      .eq('active', true),
-  ])
+  const { count: teachers } = await admin
+    .from('teachers')
+    .select('id', { count: 'exact', head: true })
+    .eq('coaching_center_id', centerId)
+    .eq('active', true)
 
   /*
    * Whether the centre is now above what the new plan holds — the one sentence that
    * makes this panel safe to use, because moving a centre down a tier does not remove
    * anybody and the founder would otherwise find out from the customer.
    *
-   * The student half asks `studentCeiling` rather than `limits.maxStudents`, which is
-   * null on the two centre tiers and so never fired: a 300-student centre moved onto
-   * `center` — 79 included places — reported "saved" with no warning, and the next
-   * student that centre tried to admit was refused by migration 36's trigger with the
-   * founder none the wiser.
-   *
-   * The purchased figure is the centre's own `student_capacity`, read back off the
-   * update above, and it has to be: `app.student_ceiling` in the database is
-   * `greatest(included_students, student_capacity)` on the two centre tiers, so a 0
-   * passed here would predict a refusal the trigger is not going to make and warn a
-   * founder about a centre that has bought the places. The TypeScript side ignores it
-   * on the teacher tiers for the same reason the SQL does — those are not priced per
-   * student — so the two agree on every plan rather than only on the ones tested.
-   *
-   * A trial is not read here, and the one case where that shows is safe: moving a
-   * centre onto the free tier leaves the trial pair standing (see the update above),
-   * so this can warn about a roster `app.admitted_ceiling` would still admit. An extra
-   * warning is the right direction for a screen whose job is to say "look at this".
+   * ONLY THE TEACHER HALF IS LEFT (§16.1 step 28), and the student half is not a loss.
+   * It asked `studentCeiling` — the plan's allowance, or the number of places the centre
+   * had bought — and the second of those does not exist any more while the first is null
+   * on both per-student tiers. There is no number a tier change can put a roster above:
+   * the balance charges for the students there are, and a downgrade removes none of them.
+   * `maxTeachers` still does, and it is the one a move between the two centre tiers
+   * actually changes.
    */
-  const over =
-    (students ?? 0) > studentCeiling(limits, updated.student_capacity).ceiling ||
-    (limits.maxTeachers !== null && (teachers ?? 0) > limits.maxTeachers)
+  const over = limits.maxTeachers !== null && (teachers ?? 0) > limits.maxTeachers
 
   return over
     ? { ok: applied, warn: t.overLimit(planName(limits, session.locale)) }
@@ -781,10 +758,6 @@ export async function confirmCenterPurchase(
   const intent = await readIntent(admin, centerId, intentId)
   if (!intent) return { error: words.noIntent }
 
-  // Read off the row, not off the form: the check constraint ties `grants_capacity` to
-  // the purpose, so this is the same number the database is about to grant.
-  const grantsPlaces = intent.purpose === 'student_capacity'
-
   // Checked here for the sentence, and again by the provider and the RPC for the answer.
   // A quote that lapsed is re-quoted at today's price rather than honoured.
   if (intent.state !== 'successful') {
@@ -822,15 +795,16 @@ export async function confirmCenterPurchase(
 
     const confirmed = t.purchaseConfirmed(formatTaka(settled.chargedBdt))
 
-    // The two halves of this the founder can be asked about tomorrow — the ceiling and the
-    // tier — said out loud, and each only for the purchase that moves it. The tier is read
-    // off the intent rather than off the centre because that is the value the settlement
-    // used; a plan read back afterwards would also be right, and would cost a round trip
-    // to say the same thing.
+    // The one half of this the founder can be asked about tomorrow — the tier — said out
+    // loud, and only for the purchase that moves it. The ceiling it used to name went
+    // with capacity (§16.1 step 28): nothing this settlement writes raises a student
+    // limit any more, so there is no second sentence to add. The tier is read off the
+    // intent rather than off the centre because that is the value the settlement used; a
+    // plan read back afterwards would also be right, and would cost a round trip to say
+    // the same thing.
     return {
       ok: [
         confirmed,
-        grantsPlaces ? t.purchaseHolds(settled.capacityAfter) : null,
         intent.target_plan
           ? t.purchaseMovedTo(planName(planFor(intent.target_plan), session.locale))
           : null,

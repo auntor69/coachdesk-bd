@@ -29,7 +29,7 @@ import {
   type OrgBilling,
 } from '@/lib/entitlement'
 import { settleDay } from '@/lib/billing/settlement'
-import { hasStaff, type PlanLimits, type StudentCeiling } from '@/lib/plans'
+import { hasStaff, type PlanLimits } from '@/lib/plans'
 import { ACTIVE_CENTER_COOKIE, pickActive, strongestPerCenter } from '@/lib/auth/active-center'
 import { can, narrowingOf, type Capability } from '@/lib/staff/capabilities'
 import type { CenterStatus, MemberRole, PlanType } from '@/lib/supabase/types'
@@ -88,16 +88,6 @@ export type Membership = {
    */
   chargedThrough: string
   /**
-   * Places bought on top of what the plan allows (MASTERPLAN.md §4.5's per-student
-   * top-up), which is why the ceiling is derived from the plan *and* this rather than
-   * from the plan alone.
-   *
-   * Zero for every centre until something can write it, and it stays a number the
-   * browser is shown rather than one it is believed: the enforcement is
-   * `limitRefusal` counting rows server-side, per §4.5.
-   */
-  studentCapacity: number
-  /**
    * The furthest date the centre's payments cover, as YYYY-MM-DD, or null when no
    * payment has said what period it bought.
    *
@@ -130,7 +120,7 @@ export type Membership = {
    * teaches and administers holds two. `narrowingOf` folds them, so what this field says
    * is what the policies will actually do.
    *
-   * A COURTESY, LIKE `studentCapacity`. The fence is the restrictive policies; this is
+   * A COURTESY, AND NOT A FENCE. The fence is the restrictive policies; this is
    * what lets a screen hide a card instead of drawing an empty one. See §6.2's own note
    * about the two service-role paths, where the check in the action is the only fence
    * there is.
@@ -153,7 +143,6 @@ export function billingOf(m: Membership): OrgBilling {
     plan: m.plan,
     trial_plan: m.trialPlan,
     trial_ends_at: m.trialEndsAt,
-    student_capacity: m.studentCapacity,
     balance_poisha: m.balancePoisha,
     charged_through: m.chargedThrough,
     // Nobody has read the day's rate at this point, and "not read" is exactly what
@@ -253,21 +242,6 @@ export type Session = {
    */
   plan: PlanLimits
   /**
-   * How many active students this centre may hold.
-   *
-   * Beside `plan` rather than inside it, because on a centre tier the answer is not
-   * in that table: `maxStudents` is null there, and null does not mean unlimited — it
-   * means the tier bills per student, so the ceiling is what the centre has paid for
-   * and no plan constant knows the figure. Every screen that read `plan.maxStudents`
-   * and got null therefore drew a centre as having no limit at all, on the same day
-   * migration 36 started refusing its student inserts.
-   *
-   * `kind` is what a refusal reads to choose its words: a teacher tier is full and
-   * wants a plan change, a centre has run out of places and wants more places. See
-   * `studentCeiling`.
-   */
-  ceiling: StudentCeiling
-  /**
    * The prepaid balance as this session found it: what one day costs, what is owed,
    * and how many days the money still covers (MASTERPLAN.md §11.7, §4.4).
    *
@@ -336,7 +310,7 @@ export const getSession = cache(async (): Promise<Session | null> => {
       // `'a' + 'b'` widens to `string` and every column on the row comes back as
       // `GenericStringError`. Wrapping this for width costs the whole embed's typing.
       .select(
-        'coaching_center_id, role, branch_id, capabilities, coaching_centers (name, plan, status, sms_credit_balance, student_capacity, balance_poisha, charged_through, trial_plan, trial_ends_at, paid_through)',
+        'coaching_center_id, role, branch_id, capabilities, coaching_centers (name, plan, status, sms_credit_balance, balance_poisha, charged_through, trial_plan, trial_ends_at, paid_through)',
       )
       .eq('user_id', user.id)
       .eq('active', true),
@@ -385,7 +359,6 @@ export const getSession = cache(async (): Promise<Session | null> => {
           smsCreditBalance: center.sms_credit_balance,
           trialPlan: center.trial_plan,
           trialEndsAt: center.trial_ends_at,
-          studentCapacity: center.student_capacity,
           balancePoisha: center.balance_poisha,
           chargedThrough: center.charged_through,
           paidThrough: center.paid_through,
@@ -420,20 +393,20 @@ export const getSession = cache(async (): Promise<Session | null> => {
    * trialling Pro thirty places while every feature on the screen said a hundred and
    * fifty. There is now one derivation and no way to half-apply it.
    *
-   * WHAT THE THREE BILLING COLUMNS COST TODAY, now that they are actually read.
-   * `trial_plan`, `trial_ends_at` and `student_capacity` were passed as null, null and
-   * 0 from the day this resolver was written until migration 36 reached the live
-   * database and `src/lib/supabase/types.ts` was regenerated, because a select cannot
-   * ask for a column the generated types do not have. Those three literals were the
-   * true state of every centre while nothing could write them, and they are the wrong
-   * shape of correct: the moment a founder starts a trial, a stand-in that says "no
-   * trial" is a downgrade applied by a screen. They are now read from the row.
+   * WHAT THE BILLING COLUMNS COST TODAY, now that they are actually read.
+   * `trial_plan` and `trial_ends_at` were passed as null and null from the day this
+   * resolver was written until migration 36 reached the live database and
+   * `src/lib/supabase/types.ts` was regenerated, because a select cannot ask for a
+   * column the generated types do not have. Those two literals were the true state of
+   * every centre while nothing could write them, and they are the wrong shape of
+   * correct: the moment a founder starts a trial, a stand-in that says "no trial" is a
+   * downgrade applied by a screen. They are now read from the row.
    *
-   * `student_capacity` will still be 0 everywhere for a while, and that is a fact
-   * about the product rather than about this line: nothing writes it yet, because the
-   * §4.5 top-up dialog and the payment path behind it are not built. The difference is
-   * that when one of them writes it, every gate downstream is already asking the row
-   * instead of a constant.
+   * `student_capacity` IS NO LONGER SELECTED AT ALL (§16.1 step 28). It was a third
+   * literal fed from the row, and it fed the ceiling that counted bought places — which
+   * is retired: the per-student tiers have no student ceiling (§3.3) and the teacher
+   * tiers' allowance is the plan's own. §11.14 archives the column rather than dropping
+   * it, so the row still carries the number and nothing in the product reads it.
    *
    * `access` IS SURFACED AS OF THIS COMMIT, and only because the two things that had
    * to come with it came with it: `requireWritable` below, which every action module's
@@ -512,7 +485,6 @@ export const getSession = cache(async (): Promise<Session | null> => {
     active,
     access: entitlement.access,
     plan: entitlement.plan,
-    ceiling: entitlement.ceiling,
     billing,
   }
 })

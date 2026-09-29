@@ -11,7 +11,7 @@ the staff already owns.
 
 ----------------------------------------------------------------------------
 Stack: Next.js (App Router) + Supabase (Postgres, RLS, Auth) + Tailwind,
-deployed on Vercel. 86 SQL migrations. 1,681 unit tests and 1,466
+deployed on Vercel. 87 SQL migrations. 1,663 unit tests and 1,469
 row-level-security assertions, all green.
 ----------------------------------------------------------------------------
 
@@ -36,8 +36,8 @@ in taka, bKash payments, month close the way centers actually run it.
 
 Status: in active development — not launched yet.
 
-Working today: the full center workflow above, held up by 1,681
-unit tests and 1,466 security assertions, all green.
+Working today: the full center workflow above, held up by 1,663
+unit tests and 1,469 security assertions, all green.
 
 Terms exist now. Seven pages — the prepaid billing terms leading
 it, then refunds, the terms of service, privacy, acceptable use,
@@ -47,17 +47,20 @@ the recharge screen both link into them. Agreeing is recorded as a
 row: which wording of which document, by whom, and when. No page
 claims a certification nobody has audited.
 
-In progress right now: the prepaid billing engine. The balance, the
-daily burn, self-serve recharge and the founder's review queue are
-live in the database, and the founder has two levers — money and
-granted days, each with a written reason. The billing screen is now
-built around the balance: how long the money lasts, what is left,
-what it is priced from, how to add more, and every day charged so
-far with its own count and rate. A nightly run settles the centers
-nobody opened that day, so the live balance is current before
-anyone looks. What is left is the retirement of the old seat-based
-pricing: the plan page is a redirect already, and the buy controls
-that outlived it go with the model they came from.
+In progress right now: the prepaid billing engine, and it is nearly
+done. The balance, the daily burn, self-serve recharge and the
+founder's review queue are live in the database, and the founder has
+two levers — money and granted days, each with a written reason. The
+billing screen is built around the balance: how long the money lasts,
+what is left, what it is priced from, how to add more, and every day
+charged so far with its own count and rate. A nightly run settles the
+centers nobody opened that day, so the live balance is current before
+anyone looks. The old seat-based pricing was retired on 2026-09-25:
+the buy controls are gone, the plan page is a redirect, and a
+per-student tier no longer has a student ceiling at all — size sets
+the daily rate instead of a door. The column that held bought places
+is archived rather than dropped, so the payments that bought them
+still explain themselves.
 
 Still ahead: automated SMS gateway and the real bKash API
 integration.

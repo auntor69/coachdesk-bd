@@ -15,6 +15,19 @@
  * The same argument brought in 20260811000060, which decides how many places a live
  * trial admits. Its rank test is native enum comparison, so `PLAN_RANK` and the enum's
  * declared order are one more pair of numbers living in two places.
+ *
+ * WHAT THIS FILE NO LONGER CHECKS is the ceiling the app resolved from those two —
+ * `studentCeiling`, `studentRoom`, `capacityPressure` and the seat quote (§16.1 step
+ * 28). The seeded allowances are still checked against `includedStudents`, because the
+ * database column and the plan table are still two copies of the same numbers and the
+ * migration that archives `student_capacity` does not touch either.
+ *
+ * WHAT IT ASKS OF 20260811000087 is the other half of that: the ceiling no longer reads
+ * what was bought (§16.1 step 28), a per-student tier answers uncapped rather than with
+ * the floor's own 79 or 238 (§3.3), and the guard that enforces the teacher tiers' plan
+ * allowance came through the rewrite with its lock, its tenant check and its bypass
+ * intact. Those are the assertions that would have caught the defect this cut could have
+ * shipped — capping a centre at its floor on the day it stopped selling seats.
  */
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
@@ -24,16 +37,12 @@ import path from 'node:path'
 import {
   PLANS,
   PLAN_RANK,
-  capacityPressure,
   includedStudents,
   monthlyBillBdt,
   monthlyFloorBdt,
+  roomFor,
   seatsCoveredByFloor,
-  studentCeiling,
   studentChargeBdt,
-  studentRoom,
-  CAPACITY_NOTICE_SHARE,
-  CAPACITY_URGENT_SHARE,
   CENTER_MONTHLY_FLOOR_BDT,
   INSTITUTION_MONTHLY_FLOOR_BDT,
   type PlanId,
@@ -46,6 +55,7 @@ const migration = (file: string) =>
 
 const MIGRATION = migration('20260811000036_student_capacity.sql')
 const TRIAL_CEILING = migration('20260811000060_trial_ceiling.sql')
+const RETIRED = migration('20260811000087_capacity_retired.sql')
 const CEILINGS = migration('20260811000075_plan_ceilings.sql')
 const INIT = migration('20260811000001_init_schema.sql')
 
@@ -185,121 +195,21 @@ test('an institution pays its own floor, not a centre’s', () => {
   assert.equal(monthlyBillBdt(PLANS.teacher_plus, 900), PLANS.teacher_plus.priceBdt)
 })
 
-test('a teacher tier ignores purchased capacity entirely', () => {
-  // The downgrade case, and the one worth getting wrong quietly: a centre that bought
-  // 900 places and moved to Teacher Pro lands on 150. Limits apply to new actions and
-  // the new action is priced by the new plan. Nothing is lost — the purchase record
-  // outlives the plan — but the ceiling is the plan's.
-  for (const plan of [PLANS.teacher_free, PLANS.teacher_plus]) {
-    for (const bought of [0, 120, 900]) {
-      const ceiling = studentCeiling(plan, bought)
-      assert.equal(ceiling.kind, 'plan', plan.id)
-      assert.equal(ceiling.ceiling, plan.maxStudents, `${plan.id} @ ${bought}`)
-    }
-  }
-})
+test('room to add students comes from the plan table, and null is no limit', () => {
+  // `roomFor` is what the paste box and `limitRefusal` ask now (§16.1 step 28), and it
+  // reads the plan table and nothing else. A per-student tier answers null rather than
+  // a number, and null is "nothing to run out of" — never "no room". The two are
+  // opposite answers, and a paste is where confusing them loses an afternoon's typing.
+  assert.equal(roomFor(PLANS.center, 'maxStudents', 3000), null)
+  assert.equal(roomFor(PLANS.institution, 'maxStudents', 3000), null)
 
-test('a centre gets the greater of what it was included and what it bought', () => {
-  // The same rule as app.student_ceiling, which is the half that enforces it. If
-  // these two ever disagree the app promises room the database refuses.
-  const included = includedStudents(PLANS.center)
+  assert.equal(roomFor(PLANS.teacher_plus, 'maxStudents', 0), 150)
+  assert.equal(roomFor(PLANS.teacher_free, 'maxStudents', 23), 7)
 
-  // Zero capacity is what every centre looks like before its first top-up, and it
-  // must not mean "no students" — that would refuse the first student of a customer
-  // who has just paid the floor.
-  assert.deepEqual(studentCeiling(PLANS.center, 0), {
-    kind: 'purchased',
-    ceiling: included,
-    included,
-    purchased: 0,
-  })
-
-  // Bought less than the floor already gave: the floor still wins.
-  assert.equal(studentCeiling(PLANS.center, included - 10).ceiling, included)
-
-  // Bought more: the purchase wins, and that is the whole point of the column.
-  assert.equal(studentCeiling(PLANS.center, 900).ceiling, 900)
-
-  // A column that has gone wrong reads as nothing bought, not as a ceiling under
-  // the floor's own.
-  for (const broken of [-1, -900, Number.NaN, Number.POSITIVE_INFINITY]) {
-    assert.equal(studentCeiling(PLANS.center, broken).ceiling, included, `${broken}`)
-  }
-
-  // Institution resolves the same way, off its own larger floor.
-  const inst = studentCeiling(PLANS.institution, 0)
-  assert.equal(inst.kind, 'purchased')
-  assert.equal(inst.ceiling, includedStudents(PLANS.institution))
-})
-
-test('room to add students is never negative', () => {
-  // A centre downgraded below its own roster is a real state — nothing deletes
-  // students when a plan moves — and "you may add -70 students" is not a sentence.
-  const centre = studentCeiling(PLANS.center, 120)
-
-  assert.equal(studentRoom(centre, 0), 120)
-  assert.equal(studentRoom(centre, 119), 1)
-  assert.equal(studentRoom(centre, 120), 0)
-  assert.equal(studentRoom(centre, 900), 0)
-  assert.equal(studentRoom(centre, Number.NaN), 0)
-})
-
-test('the warnings fire at a fifth and at a twentieth, and 0 is its own state', () => {
-  // §3.7's thresholds, and the reason they are asserted rather than trusted: three
-  // screens read them, and a fraction typed as 0.5 instead of 0.05 would put every
-  // half-empty centre under an urgent banner — which is how a warning stops being read
-  // at all. Both boundaries are inclusive, so a centre sitting exactly on one is warned
-  // rather than left one student short of it.
-  const centre = studentCeiling(PLANS.center, 200)
-  const level = (used: number) => capacityPressure(centre, used).level
-
-  // The boundaries below are 200's fifth and twentieth, so the ceiling has to be 200 —
-  // it is `greatest(included, purchased)`, and a floor price that ever bought more than
-  // 200 places would move every number in this test without changing a line of it.
-  assert.equal(centre.ceiling, 200)
-  assert.equal(CAPACITY_NOTICE_SHARE, 0.2)
-  assert.equal(CAPACITY_URGENT_SHARE, 0.05)
-
-  assert.equal(level(0), 'fine')
-  assert.equal(level(159), 'fine') // 41 left, a fifth and one
-  assert.equal(level(160), 'notice') // 40 left, exactly a fifth
-  assert.equal(level(189), 'notice') // 11 left, a twentieth and one
-  assert.equal(level(190), 'urgent') // 10 left, exactly a twentieth
-  assert.equal(level(199), 'urgent')
-  assert.equal(level(200), 'full')
-  // Past the ceiling is still full and not something worse: a centre downgraded below
-  // its roster is a real state, and the screens print `remaining` beside the word.
-  assert.equal(level(900), 'full')
-  assert.deepEqual(capacityPressure(centre, 900), {
-    level: 'full',
-    remaining: 0,
-    ceiling: 200,
-  })
-
-  // The free tier's thirty, where the same shares land on much smaller counts — the
-  // whole reason the thresholds are shares and not "warn at 20 left".
-  const free = studentCeiling(PLANS.teacher_free, 0)
-  assert.equal(capacityPressure(free, 23).level, 'fine')
-  assert.equal(capacityPressure(free, 24).level, 'notice')
-  assert.equal(capacityPressure(free, 29).level, 'urgent')
-  assert.equal(capacityPressure(free, 30).level, 'full')
-})
-
-test('a ceiling of nought never reads as comfortable', () => {
-  // The division guard, and it exists because Infinity is not <= 0.2: a share computed
-  // against a ceiling of nought would have every screen reporting "fine" forever on a
-  // centre that cannot add anybody. No plan produces such a ceiling — a plan_allowances
-  // row edited to zero would — and both ways in land on a warning rather than silence.
-  const broken = { kind: 'plan', ceiling: 0 } as const
-
-  // Nothing fits, which is `full` on its own merits and never reaches the share.
-  assert.equal(capacityPressure(broken, 0).level, 'full')
-  assert.equal(capacityPressure(broken, Number.NaN).level, 'full')
-
-  // And the one path that does reach it: a count below zero, which is a column gone
-  // wrong rather than a roster. `remaining` comes out positive against a ceiling of
-  // nought, so the share would be Infinity — urgent instead of fine.
-  assert.equal(capacityPressure(broken, -5).level, 'urgent')
+  // Never negative: a teacher downgraded below their own roster is a real state —
+  // nothing deletes students when a plan moves — and "you may add -70 students" is
+  // not a sentence.
+  assert.equal(roomFor(PLANS.teacher_free, 'maxStudents', 300), 0)
 })
 
 test('the capacity check fires per row, not per statement', () => {
@@ -362,7 +272,79 @@ test('the capacity guard asks what may be admitted, not what was bought', () => 
   // The app's own admin client is NOT on that list and must never be added to it: the
   // point of the ceiling living in the database is that a Server Action cannot wave it
   // through. The comment beside the list says `service_role`, so this asks the list.
-  assert.doesNotMatch(guard[0], /current_user in \([^)]*service_role/)
+  assert.doesNotMatch(guard[0], /current_user in \([^)]*service_role\)/)
+
+  // AND THE VERSION THAT RUNS NOW IS 87's. Migration 60's text is history; what has to be
+  // true is that the rewrite kept every part that makes this a guard, and that the refusal
+  // it raises stopped promising a purchase the product no longer makes.
+  const retired =
+    /create or replace function app\.guard_student_capacity\(\)[\s\S]*?\n\$\$;/i.exec(
+      RETIRED,
+    )
+  assert.ok(retired, 'migration 87 no longer replaces the capacity guard')
+  assert.match(retired[0], /ceiling := app\.admitted_ceiling\(new\.coaching_center_id\)/)
+  assert.match(retired[0], /pg_catalog\.pg_advisory_xact_lock\(/)
+  assert.match(retired[0], /if ceiling is null then/)
+  assert.match(retired[0], /current_user in \('postgres', 'supabase_admin'\)/)
+  assert.doesNotMatch(retired[0], /current_user in \([^)]*service_role\)/)
+  assert.doesNotMatch(retired[0], /buy more student places/i)
+})
+
+test('the ceiling is what the plan allows, and nothing that was bought', () => {
+  const fn =
+    /create or replace function app\.student_ceiling\(center uuid\)[\s\S]*?\n\$\$;/i.exec(
+      RETIRED,
+    )
+  assert.ok(fn, 'migration 87 no longer replaces app.student_ceiling')
+
+  // The whole of purchased capacity's effect on the product, and the only lines that have
+  // to be gone: the column, and the `greatest` that made a bought seat outrank the floor.
+  assert.doesNotMatch(fn[0], /student_capacity/)
+  assert.doesNotMatch(fn[0], /greatest\(/)
+
+  // A per-student tier has no student ceiling at all (§3.3) — and the value is integer's
+  // maximum rather than a null, because null is what this function returns for a centre
+  // that does not exist and the guard reads that as "no tenant" rather than as "no room".
+  // One value, one meaning, in the function every admission passes through.
+  assert.match(fn[0], /when c\.plan in \('center', 'institution'\) then 2147483647/)
+
+  // The teacher tiers keep the allowance §18 preserves by name as §2.7's engineering cap.
+  assert.match(fn[0], /else a\.included_students/)
+  assert.match(fn[0], /join public\.plan_allowances a on a\.plan = c\.plan/)
+  assert.match(fn[0], /where c\.id = center/)
+})
+
+test('capacity is archived rather than dropped, and the enum keeps every value', () => {
+  // §11.14, and it is a decision rather than an omission: the payments that bought these
+  // places are still on the record, and a dropped number leaves those rows unable to
+  // explain themselves. `covers_period_*` gets the same treatment, for the same reason.
+  assert.match(RETIRED, /comment on column public\.coaching_centers\.student_capacity is/)
+  assert.match(RETIRED, /comment on column public\.payment_intents\.grants_capacity is/)
+  assert.doesNotMatch(RETIRED, /drop\s+column/i)
+  assert.doesNotMatch(RETIRED, /drop\s+(type|table)/i)
+  assert.doesNotMatch(RETIRED, /drop\s+value/i)
+})
+
+test('an intent that would grant places is refused rather than settled', () => {
+  const fn =
+    /create or replace function public\.settle_payment_intent\([\s\S]*?\n\$\$;/i.exec(RETIRED)
+  assert.ok(fn, 'migration 87 no longer replaces settle_payment_intent')
+
+  // The refusal, and it is a money rule rather than a capacity one: a pending intent priced
+  // under the old model names a ceiling that can no longer be raised, so settling it would
+  // take the customer's money and hand over nothing.
+  assert.match(fn[0], /if it\.grants_capacity > 0 then/)
+
+  // And the archived column is never read or written again — not in the settlement, and not
+  // in the read-back a retry gets.
+  assert.doesNotMatch(fn[0], /set student_capacity/)
+  assert.doesNotMatch(fn[0], /select c\.student_capacity/)
+
+  // The retry path has to survive the refusal, or a webhook delivered twice becomes a
+  // second charge. It is checked before the grant test, and it returns the first answer.
+  const readBack = /if it\.state = 'successful' then[\s\S]*?end if;/.exec(fn[0])
+  assert.ok(readBack, 'the already-settled read-back is gone from settle_payment_intent')
+  assert.doesNotMatch(readBack[0], /student_capacity/)
 })
 
 test('a trial raises the ceiling, and only when it outranks what was paid for', () => {
