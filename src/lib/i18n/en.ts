@@ -2478,35 +2478,6 @@ export const en: Dictionary = {
     overRoom:
       'This plan has room for {room} more, but {fresh} in the list are new.',
     /**
-     * §3.5's priced shortfall — what overRoom says on a plan that sells places.
-     *
-     * No noun after a count anywhere in this block. The shortfall is 1 when a centre
-     * with no room pastes one name, so "{n} places" would read "1 places"; the counts
-     * that can be proved plural say so where they are written.
-     */
-    shortTitle: 'The list needs {n} more',
-    shortBody:
-      'New on this list: {fresh}. Free places: {room}. Buy the places first, and the whole list goes in together.',
-    shortBand: '{n} at {rate} each',
-    shortTotal: 'Total',
-    shortBuy: 'Buy the places for {taka}',
-    shortBuying: 'Opening…',
-    /** Owner only — see planOwner in settings/billing/actions.ts. */
-    shortAsk: 'Only the owner can buy places. Show them this screen.',
-    /**
-     * §3.7's other half, for the branch manager who reached the same screen. {n} is
-     * ASK_PLACES, and it is fixed — see requestPlaces for why a manager does not
-     * choose it. "HQ" rather than "the owner": on an institution the person who pays
-     * is a head office, and a manager who has never met them still knows what to call
-     * them.
-     */
-    shortAskFor: 'Ask HQ for {n} more places',
-    shortAsking: 'Asking…',
-    shortAsked:
-      'HQ has been asked for {n} more places. They add them by paying for them — once that happens, reload this page and the list goes in.',
-    shortAskWithdraw: 'Cancel the request',
-    shortPlanLink: 'Places and plan',
-    /**
      * The reference code is not on this screen. It is rendered on the plan page from
      * the row itself, because an owner leaves for bKash and comes back to a reloaded
      * screen — a code that only existed in this form's state would be gone.
@@ -2868,51 +2839,6 @@ export const en: Dictionary = {
      * Both numbers, because "12 left" says nothing about whether that is comfortable.
      * Twelve of thirty is a different month from twelve of three hundred.
      */
-    placesLeft: (left: number, total: number) => `${left} of ${total} places left`,
-    /**
-     * The same line for a manager pinned to one branch, and four words is the whole of
-     * the difference.
-     *
-     * The tile above this line is what that reader can see, which is their building;
-     * these places are the institution's, because a place is a licence and licences pool
-     * (§3.6). Left unqualified the two figures invite the subtraction between them —
-     * forty students, three hundred places, so two hundred and sixty spare — and the
-     * organisation may have five. §9.1's rule: where two figures on one screen answer
-     * different questions, the screen says which.
-     *
-     * Not shown to head office, whose tile and ceiling are already the same organisation,
-     * and who would read it as a distinction with nothing on the other side of it.
-     */
-    placesPooled: (left: number, total: number) =>
-      `${left} of ${total} places left across the organisation`,
-    /**
-     * The ceiling reached, and a different sentence rather than "0 places left": a
-     * nought is a figure, and this is the one state where the next student is a
-     * decision instead of a form. The link says where to make it.
-     */
-    placesFull: 'Every student place on this plan is taken',
-    placesLink: 'Plan and places',
-    /**
-     * §3.7's urgent state — a twentieth of the ceiling left, or none.
-     *
-     * A second sentence rather than a colour, because a red line saying the same words
-     * as the black one it replaced is a change only the person who wrote it can see.
-     * The thresholds themselves are in lib/plans.ts; nothing here knows what 5% means.
-     *
-     * "Before your next admission" and not "now": the cost of ignoring this is not
-     * abstract, it is an owner standing in front of a parent who wants to enrol, and
-     * that is the sentence that gets a bill paid this week rather than next month.
-     */
-    placesTight: (left: number, total: number) =>
-      `Only ${left} of ${total} student places are left`,
-    placesTightBody:
-      'Add places before your next admission, so the form opens instead of refusing.',
-    /**
-     * The same box with the ceiling reached, and a different second line because
-     * "before your next admission" is advice for somebody who still has one. Present
-     * tense: the refusal is not a risk any more, it is what the form does today.
-     */
-    placesFullBody: 'The new-student form will refuse until you add places.',
 
     /**
      * THE PROFIT LINE — §9.8's box, on the home screen because §9.10 puts it there.
@@ -3544,20 +3470,15 @@ export const en: Dictionary = {
       limitUnknown:
         'Could not check whether this plan has room, so nothing was added. Please try again.',
       /**
-       * The per-student tiers' own version of planLimit, and it has to be a different
-       * sentence because the answer is different. A Coaching Center is already on the
-       * tier it wants — there is nothing above it to change to — and what it has run
-       * out of is places, which are bought a band at a time rather than by moving
-       * plan. "Changing plan makes room" sends that owner to a screen with nothing on
-       * it for them.
+       * Retired with the seats it priced (§16.1 step 28): the per-student tiers are
+       * uncapped, so a per-student centre can no longer run out of places. The
+       * teacher tiers' refusal is `cap` on the students screen, fed by the surviving
+       * `app.guard_student_capacity`.
        *
-       * Names the figure, unlike planLimit, which deliberately does not name a plan's
-       * cap. The difference is that this number is the thing the centre paid for
-       * rather than a ceiling we set, so it is theirs to know — and an owner deciding
-       * how many more to ask for cannot do the sum without it.
+       * Its sentence was not deleted blindly — the figure it named was the thing the
+       * centre paid for rather than a ceiling we set, which is why it was a different
+       * sentence from `planLimit` and not a variant of it.
        */
-      placesFull: (places: number) =>
-        `This centre is using all ${places} of its student ${places === 1 ? 'place' : 'places'}, so nothing was added. Turn a student off, or ask for more places on the plan screen.`,
       staffNeedsCenter: 'Staff and permissions come with the Coaching Center plan.',
       /** staffNeedsCenter one tier up. See settings.branches for the screen's own card. */
       branchesNeedInstitution: 'Branches come with the Institution plan.',
@@ -3773,62 +3694,16 @@ export const en: Dictionary = {
        * noun, so "1 more places" would be wrong for nothing.
        */
       places: {
-        title: 'Buy student places',
-        body: 'Raise the limit as far as you need. We add the places once the money reaches us.',
-        label: 'How many places?',
-        hint: 'The next place costs {taka}.',
-        quote: '{n} more for {taka} — your limit becomes {to}.',
-        submit: 'Buy the places',
-        submitting: 'Buying…',
-        opened:
-          'Done. Send the money as shown below and we will add the places.',
-        waitingTitle: 'Waiting for your transfer',
-        ref: 'Reference code',
-        refHint:
-          'Put this code in the reference when you send the money — without it, matching your transfer to this purchase takes longer.',
-        noContact:
-          'The number is not on this screen yet — we will ring you with it ourselves.',
-        lapsedNote:
-          'This price has run out, so it can no longer be confirmed. Buy again — and if you have already sent the money, ring us.',
         /**
-         * The mirror of `pendingUnreadable` above, with the opposite advice. That form
-         * upserts, so asking twice is safe; this one opens a row per purchase, so a
-         * second tap on a dropped read is a second bill for the founder to sort out.
-         */
-        unreadable:
-          'Whether you have a purchase waiting could not be read just now. If you opened one and sent the money, ring us rather than buying again.',
-        badCount: 'Say how many places you need.',
-        notOnThisPlan:
-          'Places are not sold separately on this plan. More students means a different plan.',
-        closed: 'This purchase is no longer open. Reload the page.',
-        failed: 'Could not start the purchase. Try again.',
-        /**
-         * §3.7's ask, and the two refusals around it. Both refusals are for a POST that
-         * did not come from a screen — an owner sees the price and a teacher sees
-         * neither — so they say whose button it is rather than apologising.
-         */
-        ownerBuys: 'You can buy the places yourself. Asking is for a manager who cannot.',
-        managerOnly: 'Only a branch manager can ask HQ for more places.',
-        asked: 'HQ has been told. They add the places by paying for them.',
-        askWithdrawn: 'The request has been cancelled.',
-        askFailed: 'Could not send the request. Try again.',
-        /**
-         * §3.7's answer, on the owner's side of the same fork. "Buying the places is the
-         * answer" is not a turn of phrase — the ask closes on the purchase and carries
-         * its id, so what the manager is waiting for is a payment, not a decision.
+         * The three words §3.7's asks card still draws on /hq — the one surviving
+         * surface of the old places vocabulary (§16.1 step 28). The card is the record
+         * of asks filed before the seats went: nobody can file one any more, so the
+         * block holds only what the history list needs, and shrinks with it.
          */
         asksTitle: 'A branch has run out of places',
-        asksBody:
-          'Buying the places answers the request. It closes as soon as the purchase is open; the places arrive when the money reaches us.',
         askLine: (where: string, places: number, when: string) =>
           `${where} asked for ${places} more ${places === 1 ? 'place' : 'places'} on ${when}.`,
-        askBuy: (places: number, taka: string) => `Buy ${places} places for ${taka}`,
-        /** Not "Refuse". The branch may ask again next month, and should. */
-        askDecline: 'Not now',
-        askDeclined: 'Closed without a purchase. The branch can ask again.',
-        askGone: 'That request is no longer open. Reload the page.',
-        asksUnreadable:
-          'Whether a branch is waiting for places could not be read just now.',
+        title: 'The branches waiting',
       },
 
       /**
@@ -4140,57 +4015,11 @@ export const en: Dictionary = {
       cap: (name: string, limit: number) =>
         `The ${name} plan holds ${limit} ${limit === 1 ? 'student' : 'students'}.`,
       /**
-       * The same card, for a centre that pays per student. Its ceiling is not what
-       * its plan holds — see settings.errors.placesFull for why that needs its own
-       * words, and lib/plans.ts studentCeiling for where the number comes from.
+       * The per-student tiers' version of `cap`, still drawn after a CD001 refusal —
+       * which since §16.1 step 28 can only come from a teacher tier's plan allowance
+       * (`app.guard_student_capacity` survives; the per-student tiers are uncapped).
        */
       placesTitle: 'There are no student places left',
-      /**
-       * Names the wall and nothing else. It used to end "…or ask for more places on the
-       * plan screen", which is the journey §3.4 opens by forbidding: the owner was
-       * refused here and sent somewhere else to work out how many to buy. Every way out
-       * is now on this card, so the sentence sets up what follows instead of replacing
-       * it with a destination.
-       */
-      places: (places: number) =>
-        `This centre has ${places} student ${places === 1 ? 'place' : 'places'} and is using every one. Another student needs another place.`,
-      /**
-       * The owner's way out, on the screen the refusal happened on — §3.4 and §20.5.
-       *
-       * THE PRICE IS IN THE REFUSAL, which is what §20.5 asks for in as many words: "You
-       * have used all 120 places. One more costs ৳18", never "capacity exceeded". One
-       * figure and not the bands (§33), and the same one BuyPlaces quotes with — it says
-       * it again under its own field, where it turns into the whole bill as soon as a
-       * number is typed. The price belongs in the sentence that refuses and beside the
-       * field that changes it, so twice is right here.
-       *
-       * The note is what no price can say — §22. The money is sent by hand and a human
-       * settles it, so buying does not admit the child standing at the desk, and an owner
-       * who is not told that will keep a family waiting for a form that never finishes.
-       */
-      placesNext: (taka: string) => `One more place costs ${taka}.`,
-      placesBuyNote:
-        'You send the money yourself and we add the places once we have checked it. Nothing is added by this form — so if a family is waiting, take the guardian’s number and admit the student when the places arrive.',
-      /**
-       * The same card again, for the branch manager who cannot buy their way out of it
-       * — §3.7. The count is ASK_PLACES; the button is the only way forward this reader
-       * has, so it says what pressing it does rather than naming a screen.
-       */
-      placesAsk: (n: number) => `Ask HQ for ${n} more places`,
-      placesAsking: 'Asking…',
-      placesAsked: (n: number) =>
-        `HQ has been asked for ${n} more places. They add them by paying for them.`,
-      placesAskWithdraw: 'Cancel the request',
-      /**
-       * The way out that costs nothing and exists on every tier, including the two that
-       * sell no places at all: a student who left in March is still holding a place.
-       *
-       * It is also the only route a teacher on `can_manage_students` is offered here —
-       * they cannot buy, cannot ask, and would be refused at /settings/billing.
-       */
-      placesFreeLink: 'Turn a student off to free a place',
-      /** Owner or manager — /settings/billing is pageRole('manager'). */
-      placesPlanLink: 'Places and plan',
       /**
        * The rail beside the form: what saving it actually does.
        *
@@ -5042,7 +4871,6 @@ export const en: Dictionary = {
     boughtMovesTo: (plan: string) => `and moves them to ${plan}`,
     /** Composed by the Server Action, after the receipt is written. */
     purchaseConfirmed: (amount: string) => `Confirmed ${amount}.`,
-    purchaseHolds: (places: number) => `This centre now holds ${places} students.`,
     purchaseMovedTo: (plan: string) => `They are now on ${plan}.`,
     /** String leaves only — this group is handed to a client component. */
     purchases: {
@@ -5222,20 +5050,6 @@ export const en: Dictionary = {
     payrollSome: (branches: string) => `No salaries recorded at: ${branches}`,
     payrollSomeNote:
       'If salaries are paid centrally from the head office, every other branch reads more profitable than it is. Record each payment under the branch the person works at and the comparison becomes fair.',
-    poolNote:
-      'Places are one pool for the whole organisation — every branch draws from the same pool, and none has a quota of its own.',
-    growingTitle: 'Where the places have been going',
-    /** A branch and its figure. The line below names what the figure counts, once. */
-    growingBranch: (branch: string, students: number) => `${branch} ${students}`,
-    growingLine: (branches: string) => `New students in the last three months: ${branches}.`,
-    growingOthers: (count: number) =>
-      count === 1 ? 'And one other branch took some.' : `And ${count} other branches took some.`,
-    growingNote:
-      'Buying more places adds them to the one pool, so whichever branch fills next can use them. This is only to show where the growth is.',
-    growingNone:
-      'No branch has taken a new student in the last three months, so the register is full of students already on it rather than of new arrivals.',
-    growingUnreadable:
-      'Where the recent admissions went could not be read just now. Nothing is wrong with your records — the figures above are unaffected.',
   },
 
   /** See the Bangla: the names are what an owner calls the thing, not the table. */

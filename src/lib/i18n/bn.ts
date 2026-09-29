@@ -3996,26 +3996,6 @@ export const bn = {
     willSkip: '{n} লাইন বাদ পড়বে',
     tooMany: 'একবারে সর্বোচ্চ {max} লাইন দিন, বাকিগুলো পরের বার। এখানে {got} লাইন আছে।',
     overRoom: 'এই প্ল্যানে আর {room} জন যোগ করা যাবে, কিন্তু তালিকায় {fresh} জন নতুন।',
-    /** §3.5-এর দাম দেখানো ঘাটতি — যে প্ল্যানে জায়গা কেনা যায়, সেখানে overRoom-এর জায়গায়। */
-    shortTitle: 'আরও {n}টি জায়গা লাগবে',
-    shortBody:
-      'তালিকায় নতুন: {fresh}। খালি জায়গা: {room}। আগে জায়গা কিনে নিন, তাহলে পুরো তালিকা একসাথে যোগ হবে।',
-    shortBand: '{n}টি, প্রতিটি {rate}',
-    shortTotal: 'মোট',
-    shortBuy: 'জায়গা কিনুন — {taka}',
-    shortBuying: 'শুরু হচ্ছে…',
-    shortAsk: 'জায়গা কেবল মালিক কিনতে পারেন। তাঁকে এই স্ক্রিনটি দেখান।',
-    /**
-     * §3.7's fork for a branch manager. "HQ" stays as হেড অফিস — the word a manager
-     * actually uses for the office that pays, and not মালিক, because on an institution
-     * the two are not the same person.
-     */
-    shortAskFor: 'হেড অফিসে আরও {n}টি জায়গার অনুরোধ পাঠান',
-    shortAsking: 'পাঠানো হচ্ছে…',
-    shortAsked:
-      'হেড অফিসে আরও {n}টি জায়গার অনুরোধ গেছে। তাঁরা টাকা দিয়ে জায়গা যোগ করবেন — হয়ে গেলে এই পাতাটি রিলোড করলেই তালিকা যোগ করা যাবে।',
-    shortAskWithdraw: 'অনুরোধ বাতিল করুন',
-    shortPlanLink: 'জায়গা ও প্ল্যান',
     bought:
       'কেনা শুরু হয়েছে। প্ল্যান পাতায় দেওয়া রেফারেন্স কোড দিয়ে টাকা পাঠান — টাকা পৌঁছালে এই পাতাটি রিলোড করলেই তালিকা যোগ করা যাবে।',
     problemsTitle: 'এই লাইনগুলো যোগ হবে না — ঠিক করে আবার দিন',
@@ -4584,38 +4564,6 @@ export const bn = {
     collected: 'এ মাসে আদায়',
     students: 'শিক্ষার্থী',
     batches: 'ব্যাচ',
-
-    /**
-     * PLACES REMAINING — see en.dashboard.placesLeft for why it is on every plan and
-     * not only the paid ones.
-     *
-     * ASCII digits, interpolated, like `batchesTaken` two keys down: money and counts
-     * stay ASCII across this product while dates go Bangla, and a line that mixed the
-     * two numeral systems would be harder to read than either convention alone.
-     */
-    placesLeft: (left: number, total: number) => `${total}-এর মধ্যে ${left}টি জায়গা খালি`,
-    /**
-     * এক শাখায় নিয়োজিত ম্যানেজারের জন্য একই লাইন — কেন আলাদা বাক্য, তা
-     * en.dashboard.placesPooled-এ লেখা আছে: উপরের সংখ্যাটি তাঁর শাখার, আর জায়গাগুলো
-     * পুরো প্রতিষ্ঠানের।
-     */
-    placesPooled: (left: number, total: number) =>
-      `পুরো প্রতিষ্ঠানে ${total}-এর মধ্যে ${left}টি জায়গা খালি`,
-    /** The ceiling reached. See en.dashboard.placesFull for why it is its own sentence. */
-    placesFull: 'এই প্ল্যানে শিক্ষার্থীর সব জায়গা পূরণ হয়ে গেছে',
-    placesLink: 'প্ল্যান ও জায়গা',
-    /**
-     * §3.7-এর জরুরি অবস্থা — সীমার এক-বিশ ভাগ বাকি, বা কিছুই বাকি নেই। কেন আলাদা বাক্য,
-     * আর কেন "এখনই" নয় বরং "ভর্তির আগে", তা en.dashboard.placesTight-এ লেখা আছে।
-     *
-     * উপরের নিয়ম মেনে সংখ্যাগুলো ASCII।
-     */
-    placesTight: (left: number, total: number) =>
-      `${total}-এর মধ্যে মাত্র ${left}টি জায়গা বাকি`,
-    placesTightBody:
-      'পরের ভর্তির আগেই জায়গা বাড়িয়ে নিন, নাহলে সেদিন ফর্মটি খুলবে না।',
-    /** সীমা পূরণ। কেন আলাদা বাক্য, দেখুন en.dashboard.placesFullBody। */
-    placesFullBody: 'জায়গা না বাড়ানো পর্যন্ত নতুন শিক্ষার্থীর ফর্ম কাজ করবে না।',
 
     /**
      * THE PROFIT LINE — MASTERPLAN.md §9.8, on the home screen because §9.10 puts it
@@ -5502,19 +5450,11 @@ export const bn = {
       limitUnknown:
         'প্ল্যানে জায়গা আছে কিনা এখন দেখা গেল না, তাই কিছু যোগ হয়নি। আবার চেষ্টা করুন।',
       /**
-       * planLimit-এর বদলে এটি, যখন সেন্টার শিক্ষার্থী-প্রতি টাকা দেয়: তার উপরে
-       * আর কোনো প্ল্যান নেই, তাই 'প্ল্যান বদলান' বলার কোনো মানে হয় না — যা শেষ
-       * হয়েছে তা হলো জায়গা, আর জায়গা প্ল্যান বদলে নয়, ব্যান্ড ধরে কেনা হয়।
-       *
-       * planLimit সংখ্যাটি বলে না, এটি বলে: এই সংখ্যাটি আমাদের বসানো সীমা নয়,
-       * সেন্টার নিজে যা কিনেছে — আর আরও কত লাগবে তার হিসাব এটি ছাড়া হয় না।
-       * See en.settings.errors.placesFull.
-       */
-      placesFull: (places: number) =>
-        `এই সেন্টারের ${digits(places, 'bn')}টি শিক্ষার্থীর জায়গা সবই ব্যবহার হচ্ছে, তাই কিছু যোগ হয়নি। কোনো শিক্ষার্থীকে বন্ধ করুন, বা প্ল্যানের পাতা থেকে আরও জায়গা চান।`,
-      /**
-       * Not a cap being hit — a feature that does not exist on this plan. Worded
-       * as what the centre tier is for, because the owner did nothing wrong.
+       * এটি যে জায়গায় বসেছিল (en.settings.errors.placesFull), সেটি §16.1 step 28
+       * -এর সাথে সরানো হয়েছে: per-student টিয়ার এখন সীমাহীন, তাই শিক্ষার্থী-প্রতি
+       * টাকা দেওয়া সেন্টার আর জায়গার অভাবে আটকাতে পারে না। শিক্ষক প্ল্যানের
+       * প্রত্যাখ্যান হলো students স্ক্রিনের `cap`, যা বেঁচে থাকা
+       * `app.guard_student_capacity` থেকে আসে।
        */
       staffNeedsCenter: 'একাধিক শিক্ষক আর অনুমতি কোচিং সেন্টার প্ল্যানের ফিচার।',
       /** staffNeedsCenter one tier up. See settings.branches for the screen's own card. */
@@ -5822,51 +5762,16 @@ export const bn = {
        * `opened` says so instead of congratulating anybody.
        */
       places: {
-        title: 'শিক্ষার্থীর জায়গা কিনুন',
-        body: 'সীমা যত দরকার তত বাড়ানো যায়। টাকা পৌঁছালে আমরা জায়গা যোগ করে দেব।',
-        label: 'কতটি জায়গা?',
-        hint: 'পরের জায়গাটির দাম {taka}।',
-        quote: 'আরও {n}টি জায়গা, দাম {taka} — সীমা হবে {to} জন।',
-        submit: 'জায়গা কিনুন',
-        submitting: 'কেনা হচ্ছে…',
-        opened: 'হয়ে গেছে। নিচে দেখানো নিয়মে টাকা পাঠান, আমরা জায়গা যোগ করে দেব।',
-        waitingTitle: 'টাকার অপেক্ষায়',
-        ref: 'রেফারেন্স কোড',
-        refHint:
-          'টাকা পাঠানোর সময় এই কোডটি রেফারেন্সে লিখে দিন — নাহলে টাকা কোন কেনাকাটার, তা মেলাতে দেরি হবে।',
-        noContact: 'নম্বরটি এখনও এই পর্দায় আসেনি — আমরা নিজেরাই ফোন করে জানাব।',
-        lapsedNote:
-          'এই দামের সময় শেষ, তাই এটি আর নিশ্চিত করা যাবে না। নতুন করে কিনুন — টাকা পাঠিয়ে ফেলে থাকলে আমাদের ফোন করুন।',
         /**
-         * উপরের `pendingUnreadable`-এর উল্টো পরামর্শ। ওই ফর্ম একই সারিতে বসে, তাই দুবার
-         * পাঠালে ক্ষতি নেই; এটি প্রতিবার নতুন কেনাকাটা খোলে, তাই পড়া না গেলে আবার
-         * চাপলে দুটো বিল দাঁড়িয়ে যায়।
+         * §3.7-এর asks কার্ড /hq -তে এখনও যা আঁকে — পুরনো জায়গার শব্দভাণ্ডারের শেষ
+         * টিকে থাকা পৃষ্ঠ (§16.1 step 28)। কার্ডটি এখন ইতিহাস: জায়গা চাওয়ার পথ
+         * বন্ধ, তাই ব্লকে কেবল ইতিহাসের তালিকার যা লাগে তাই আছে, আর শেষ অনুরোধের
+         * উত্তর হলে কার্ডটিও মিলিয়ে যাবে।
          */
-        unreadable:
-          'আপনার কোনো কেনাকাটা অপেক্ষায় আছে কি না, তা এখন পড়া যায়নি। কেনাকাটা খুলে টাকা পাঠিয়ে থাকলে আবার না কিনে আমাদের ফোন করুন।',
-        badCount: 'কতটি জায়গা লাগবে লিখুন।',
-        notOnThisPlan:
-          'এই প্ল্যানে জায়গা আলাদা করে কেনা যায় না। বেশি শিক্ষার্থীর জন্য প্ল্যান বদলাতে হবে।',
-        closed: 'কেনাকাটাটা আর খোলা নেই। পর্দাটি আবার লোড করে দেখুন।',
-        failed: 'কেনাকাটা শুরু করা যায়নি। আবার চেষ্টা করুন।',
-        /** See en.settings.plan.places.ownerBuys for why both refusals name the button. */
-        ownerBuys: 'আপনি নিজেই জায়গা কিনতে পারেন। অনুরোধ পাঠানো ম্যানেজারের জন্য।',
-        managerOnly: 'কেবল ব্রাঞ্চ ম্যানেজার হেড অফিসে জায়গার অনুরোধ পাঠাতে পারেন।',
-        asked: 'হেড অফিসে জানানো হয়েছে। তাঁরা টাকা দিয়ে জায়গা যোগ করবেন।',
-        askWithdrawn: 'অনুরোধ বাতিল হয়েছে।',
-        askFailed: 'অনুরোধ পাঠানো যায়নি। আবার চেষ্টা করুন।',
-        /** §3.7's answer — see en.settings.plan.places.asksTitle. */
         asksTitle: 'একটি ব্রাঞ্চে জায়গা শেষ',
-        asksBody:
-          'জায়গা কিনলেই অনুরোধের জবাব হয়ে যায়। কেনাকাটা খোলার সঙ্গেই অনুরোধ বন্ধ হয়; টাকা আমাদের কাছে পৌঁছালে জায়গা যোগ হয়।',
         askLine: (where: string, places: number, when: string) =>
           `${where} ${when} তারিখে আরও ${digits(places, 'bn')}টি জায়গার অনুরোধ করেছে।`,
-        askBuy: (places: number, taka: string) =>
-          `${digits(places, 'bn')}টি জায়গা ${taka} দিয়ে কিনুন`,
-        askDecline: 'এখন নয়',
-        askDeclined: 'কেনাকাটা ছাড়াই বন্ধ হয়েছে। ব্রাঞ্চ আবার অনুরোধ করতে পারবে।',
-        askGone: 'অনুরোধটি আর খোলা নেই। পর্দাটি আবার লোড করে দেখুন।',
-        asksUnreadable: 'কোনো ব্রাঞ্চ জায়গার অপেক্ষায় আছে কিনা এখন পড়া যায়নি।',
+        title: 'অপেক্ষায় থাকা ব্রাঞ্চগুলো',
       },
 
       /**
@@ -6208,33 +6113,11 @@ export const bn = {
       cap: (name: string, limit: number) =>
         `${name} প্ল্যানে ${digits(limit, 'bn')} জন শিক্ষার্থী।`,
       /**
-       * একই কার্ড, তবে শিক্ষার্থী-প্রতি টাকা দেওয়া সেন্টারের জন্য: তার সীমা
-       * প্ল্যানে যত জন ধরে তা নয়, সে যত জায়গা কিনেছে তত।
-       * See en.settings.students.places and lib/plans.ts studentCeiling.
+       * `cap`-এর শিক্ষার্থী-প্রতি সংস্করণ, CD001 প্রত্যাখ্যানের পরেই — যা §16.1 step 28
+       * -এর পর থেকে কেবল শিক্ষক প্ল্যানের সীমা থেকে আসে (per-student টিয়ার সীমাহীন,
+       * `app.guard_student_capacity` বেঁচে আছে)।
        */
       placesTitle: 'শিক্ষার্থীর আর জায়গা নেই',
-      /** See en — the tail that sent the reader to another screen is gone (§3.4). */
-      places: (places: number) =>
-        `এই সেন্টারে ${digits(places, 'bn')}টি শিক্ষার্থীর জায়গা, সবই ব্যবহার হচ্ছে। আরেকজন শিক্ষার্থীর জন্য আরেকটি জায়গা লাগবে।`,
-      /**
-       * §3.4 and §20.5 — the refusal names the price, and the owner buys from here. The
-       * figure is already formatted with ৳ and ASCII digits, like every other taka string
-       * that crosses from a page (see settings.plan.placesLine). The note is §22's half,
-       * and it is the half that changes what the owner does with the family in front of
-       * them.
-       */
-      placesNext: (taka: string) => `আরেকটি জায়গার দাম ${taka}।`,
-      placesBuyNote:
-        'টাকা আপনি নিজে পাঠাবেন, আর আমরা তা মিলিয়ে দেখে জায়গা যোগ করে দেব। এই ফর্ম নিজে থেকে কিছু যোগ করে না — তাই কেউ অপেক্ষা করছেন থাকলে অভিভাবকের নম্বরটি লিখে রাখুন, জায়গা এলে শিক্ষার্থীকে ভর্তি করবেন।',
-      /** §3.7 — the same card for a manager, whose only way forward is the button. */
-      placesAsk: (n: number) => `হেড অফিসে আরও ${digits(n, 'bn')}টি জায়গার অনুরোধ পাঠান`,
-      placesAsking: 'পাঠানো হচ্ছে…',
-      placesAsked: (n: number) =>
-        `হেড অফিসে আরও ${digits(n, 'bn')}টি জায়গার অনুরোধ গেছে। তাঁরা টাকা দিয়ে জায়গা যোগ করবেন।`,
-      placesAskWithdraw: 'অনুরোধ বাতিল করুন',
-      /** The route that costs nothing, on every tier — and a teacher's only one here. */
-      placesFreeLink: 'জায়গা খালি করতে কোনো শিক্ষার্থীকে বন্ধ করুন',
-      placesPlanLink: 'জায়গা ও প্ল্যান',
       /** See en.settings.students.savesTitle — the two ways a record looks finished. */
       savesTitle: 'সেভ করলে কী হয়',
       savesPhone:
@@ -7397,8 +7280,6 @@ export const bn = {
     boughtMovesTo: (plan: string) => `এবং তাদের ${plan}-এ নিয়ে যাবে`,
     /** Composed by the Server Action once the receipt is written, like `paymentSaved`. */
     purchaseConfirmed: (amount: string) => `${amount} নিশ্চিত করা হয়েছে।`,
-    purchaseHolds: (places: number) =>
-      `এই সেন্টারে এখন ${digits(places, 'bn')} জন শিক্ষার্থী রাখা যাবে।`,
     purchaseMovedTo: (plan: string) => `তারা এখন ${plan}-এ আছে।`,
     /**
      * The purchases a customer has started and not paid for.
@@ -7693,23 +7574,6 @@ export const bn = {
     payrollSome: (branches: string) => `বেতনের হিসাব নেই: ${branches}`,
     payrollSomeNote:
       'বেতন যদি হেড অফিস থেকে একসাথে দেওয়া হয়, তবে বাকি শাখাগুলোর লাভ বেশি দেখাবে। যে শাখার লোকের বেতন, সেই শাখার নামেই লিখলে তুলনাটা ঠিক হবে।',
-    /** §17, on the screen that would otherwise invite per-branch quotas. */
-    poolNote:
-      'জায়গার হিসাব পুরো প্রতিষ্ঠানের জন্য একটাই — সব শাখা এই একই ভাণ্ডার থেকে নেয়, শাখা ধরে ধরে ভাগ করা নেই।',
-    growingTitle: 'জায়গাগুলো কোথায় যাচ্ছে',
-    growingBranch: (branch: string, students: number) =>
-      `${branch} ${digits(students, 'bn')} জন`,
-    growingLine: (branches: string) => `গত তিন মাসে নতুন ভর্তি: ${branches}।`,
-    growingOthers: (count: number) =>
-      count === 1
-        ? 'আরও একটি শাখাতেও কিছু ভর্তি হয়েছে।'
-        : `আরও ${digits(count, 'bn')}টি শাখাতেও কিছু ভর্তি হয়েছে।`,
-    growingNote:
-      'আরও জায়গা কিনলে তা এই একই ভাণ্ডারে যোগ হয়, ফলে পরে যে শাখা ভরে উঠবে সে-ই ব্যবহার করতে পারবে। এখানে শুধু দেখানো হচ্ছে বৃদ্ধিটা কোন শাখায়।',
-    growingNone:
-      'গত তিন মাসে কোনো শাখায় নতুন শিক্ষার্থী ভর্তি হয়নি — অর্থাৎ খাতা ভরে আছে আগে থেকেই থাকা শিক্ষার্থীতে, নতুন আসায় নয়।',
-    growingUnreadable:
-      'সাম্প্রতিক ভর্তিগুলো কোন শাখায় হয়েছে তা এখন পড়া গেল না। আপনার তথ্যে কোনো সমস্যা নেই — উপরের হিসাবগুলো ঠিকই আছে।',
   },
 
   /**
