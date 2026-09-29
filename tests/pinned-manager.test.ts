@@ -324,21 +324,17 @@ test('the roster drops the whole line rather than pairing it with one branch', (
   )
 })
 
-test('both qualifiers exist in both languages', () => {
+test('the surviving branch qualifier exists in both languages, and the pooled figure does not', () => {
   for (const d of [en, bn]) {
-    assert.equal(typeof d.dashboard.placesPooled, 'function')
     assert.equal(typeof d.settings.students.usedHere, 'function')
-    // The note is reused rather than reworded: one sentence about the pool, so two
-    // screens cannot end up describing it differently.
-    assert.equal(typeof d.hq.poolNote, 'string')
+    // The retired qualifiers stayed down (§16.1 step 28): there is no ceiling to pool
+    // across, so no sentence may describe one.
+    assert.equal('placesPooled' in d.dashboard, false)
+    assert.equal('poolNote' in d.hq, false)
   }
 
-  // The English says which scope it means, and the Bangla keeps ASCII digits (house rule)
-  // and no Latin letters.
-  assert.match(en.dashboard.placesPooled(5, 300), /across the organisation/)
+  // The English says which scope it means, and the Bangla keeps no Latin letters.
   assert.match(en.settings.students.usedHere(40), /at this branch/)
-  assert.match(bn.dashboard.placesPooled(5, 300), /5|300/)
-  assert.doesNotMatch(bn.dashboard.placesPooled(5, 300), /[A-Za-z]/)
   assert.doesNotMatch(bn.settings.students.usedHere(40), /[A-Za-z]/)
 })
 

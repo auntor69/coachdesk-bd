@@ -60,7 +60,10 @@ the buy controls are gone, the plan page is a redirect, and a
 per-student tier no longer has a student ceiling at all — size sets
 the daily rate instead of a door. The column that held bought places
 is archived rather than dropped, so the payments that bought them
-still explain themselves.
+still explain themselves. The words went with the controls on
+2026-09-29: both dictionaries lost the buy-and-ask vocabulary whose
+screens no longer exist, and the head office's card reads the asks
+that were already filed as the history they now are.
 
 Still ahead: automated SMS gateway and the real bKash API
 integration.
