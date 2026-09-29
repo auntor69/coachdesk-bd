@@ -8,21 +8,23 @@ import {
   CENTER_TEACHER_SEAT_BDT,
   INSTITUTION_BRANCH_BDT,
   PLANS,
-  capacityBands,
-  capacityCostBdt,
-  includedStudents,
   monthlyBillBdt,
-  studentCeiling,
-  studentChargeBdt,
 } from '../src/lib/plans.ts'
 
 /**
  * What the server says a purchase costs.
  *
- * MASTERPLAN §11.4 forbids five things arriving from a browser and four of them are
+ * MASTERPLAN §11.4 forbids five things arriving from a browser and three of them are
  * inputs to this arithmetic. The tests below are about the fifth consequence: that the
- * one figure a customer is asked to pay is derived from columns, matches the monthly
- * bill it produces, and is zero whenever there is nothing to sell.
+ * one figure a customer is asked to pay is derived from columns and is zero whenever
+ * there is nothing to sell.
+ *
+ * THE STUDENT PLACE WENT WITH CAPACITY (§16.1 step 28), and so did the seven tests
+ * that priced one — the worked example, the fresh centre, the band-boundary sweep, the
+ * two-screens-agree sweep and the two zero-quote cases. `priceIntent`'s union no longer
+ * has the arm, so there is nothing to call; what survives is the rule those tests were
+ * really about, asserted in one line below: a quote grants places only by granting
+ * them, which nothing does any more.
  *
  * The provider layer cannot be imported — `server-only` throws outside a request — so
  * the constraints that layer carries are pinned by reading it, the way
@@ -46,162 +48,22 @@ function linesAgree(quote: ReturnType<typeof priceIntent>, label: string): void 
   }
 }
 
-test("§3.5's worked example, priced as a purchase", () => {
-  // A ceiling of 120 raised to 320. The masterplan's own figures, and the same ones
-  // tests/seats.test.ts holds capacityCostBdt to — asserted again here because this is
-  // the function a screen will actually call.
-  const quote = priceIntent({
-    purpose: 'student_capacity',
-    plan: PLANS.center,
-    purchasedCapacity: 120,
-    places: 200,
-  })
+test('nothing for sale grants student places any more', () => {
+  // The one line the seven retired tests were really about. Every quote the union can
+  // produce now grants exactly zero places, and `grantsCapacity` stays on the shape
+  // because the column it feeds is dropped by the migration rather than by this cut.
+  const quotes = [
+    priceIntent({ purpose: 'teacher_seat', activeTeachers: 6, seats: 2 }),
+    priceIntent({
+      purpose: 'branch',
+      plan: PLANS.institution,
+      activeBranches: 3,
+      branches: 1,
+    }),
+  ]
 
-  assert.equal(quote.amountBdt, 3480)
-  assert.equal(quote.quantity, 200)
-  assert.equal(quote.grantsCapacity, 200)
-  assert.deepEqual(quote.lines, [
-    { what: 'places', count: 180, rateBdt: 18, costBdt: 3240 },
-    { what: 'places', count: 20, rateBdt: 12, costBdt: 240 },
-  ])
-  linesAgree(quote, 'worked example')
-})
-
-test('a fresh centre is charged from what its floor already paid for', () => {
-  // THE TRAP THIS TEST EXISTS FOR. `student_capacity` is 0 on a new centre and its
-  // ceiling is 79, because ৳1,999 bought those places. Pricing from the column would
-  // sell them back at 25 taka each.
-  const included = includedStudents(PLANS.center)
-  const quote = priceIntent({
-    purpose: 'student_capacity',
-    plan: PLANS.center,
-    purchasedCapacity: 0,
-    places: 41,
-  })
-
-  assert.equal(included, 79)
-  assert.equal(quote.amountBdt, studentChargeBdt(120) - studentChargeBdt(79))
-  assert.equal(quote.amountBdt, 21 * 25 + 20 * 18)
-  linesAgree(quote, 'fresh centre')
-})
-
-test('a purchase never disagrees with the monthly bill it produces', () => {
-  // The same invariant seats.test.ts holds the bands to, asked through priceIntent so
-  // that a quote and an invoice cannot drift apart by way of this file.
-  for (const purchased of [0, 79, 100, 120, 299, 300, 600, 1200]) {
-    for (const places of [1, 20, 41, 200, 700]) {
-      const quote = priceIntent({
-        purpose: 'student_capacity',
-        plan: PLANS.center,
-        purchasedCapacity: purchased,
-        places,
-      })
-      const from = Math.max(purchased, includedStudents(PLANS.center))
-
-      assert.equal(
-        quote.amountBdt,
-        studentChargeBdt(from + places) - studentChargeBdt(from),
-        `${purchased} + ${places}`,
-      )
-      linesAgree(quote, `${purchased} + ${places}`)
-    }
-  }
-})
-
-test('the price a screen shows is the price the intent opens at', () => {
-  /*
-   * THE DRIFT THIS EXISTS TO CATCH. Two screens quote student places while the owner
-   * types — settings/billing/buy-places.tsx and the import form's priced shortfall — and
-   * neither can call `priceIntent`, which lives behind a server boundary. Both compute
-   * `capacityCostBdt` and `capacityBands` from the paid ceiling instead, and the whole
-   * point of doing it that way is that the two answers are the same answer. A change to
-   * either half that moved a boundary by one seat would show ৳3,480 and bill ৳3,504,
-   * which the customer notices and we do not.
-   *
-   * The ceiling is `studentCeiling(paid plan, paid capacity)` on both sides: the pages
-   * pass it in as a number, `capacity()` in price.ts derives it. That is the one thing
-   * the screens must get right, so it is what this asserts.
-   */
-  for (const plan of [PLANS.center, PLANS.institution]) {
-    for (const purchased of [0, 79, 238, 300, 700]) {
-      const ceiling = studentCeiling(plan, purchased)
-
-      for (const places of [1, 20, 180, 200, 500]) {
-        const quote = priceIntent({
-          purpose: 'student_capacity',
-          plan,
-          purchasedCapacity: purchased,
-          places,
-        })
-        const where = `${plan.id} ${purchased} + ${places}`
-
-        // What the browser adds up.
-        assert.equal(
-          capacityCostBdt(ceiling.ceiling, ceiling.ceiling + places),
-          quote.amountBdt,
-          where,
-        )
-
-        // And the breakdown under it, band for band, in order.
-        assert.deepEqual(
-          capacityBands(ceiling.ceiling, ceiling.ceiling + places).map((band) => ({
-            what: 'places' as const,
-            count: band.seats,
-            rateBdt: band.rateBdt,
-            costBdt: band.costBdt,
-          })),
-          quote.lines,
-          where,
-        )
-        linesAgree(quote, where)
-      }
-    }
-  }
-})
-
-test('an institution buys places above its own bigger floor', () => {
-  const included = includedStudents(PLANS.institution)
-  const quote = priceIntent({
-    purpose: 'student_capacity',
-    plan: PLANS.institution,
-    purchasedCapacity: 0,
-    places: 12,
-  })
-
-  assert.equal(included, 238)
-  assert.equal(quote.amountBdt, 12 * 18)
-  assert.equal(quote.grantsCapacity, 12)
-})
-
-test('the teacher tiers are quoted nothing, because nothing is for sale', () => {
-  // Their ceiling comes from the plan and money does not move it.
-  // `settle_payment_intent` refuses the same purchase from the other end, so this is
-  // the polite half of a rule the database also holds.
-  for (const plan of [PLANS.teacher_free, PLANS.teacher_plus]) {
-    const quote = priceIntent({
-      purpose: 'student_capacity',
-      plan,
-      purchasedCapacity: 0,
-      places: 50,
-    })
-
-    assert.equal(quote.quantity, 0, plan.id)
-    assert.equal(quote.amountBdt, 0, plan.id)
-    assert.equal(quote.grantsCapacity, 0, plan.id)
-    assert.deepEqual(quote.lines, [], plan.id)
-  }
-})
-
-test('a paste of nothing, or of nonsense, is priced as nothing', () => {
-  for (const places of [0, -1, -900, Number.NaN, Number.POSITIVE_INFINITY]) {
-    const quote = priceIntent({
-      purpose: 'student_capacity',
-      plan: PLANS.center,
-      purchasedCapacity: 120,
-      places,
-    })
-    assert.equal(quote.quantity, 0, `${places}`)
-    assert.equal(quote.amountBdt, 0, `${places}`)
+  for (const quote of quotes) {
+    assert.equal(quote.grantsCapacity, 0, quote.purpose)
   }
 })
 
@@ -326,10 +188,13 @@ test('branches are charged beyond the three an institution includes', () => {
   }
 })
 
-test('only a capacity purchase grants places, and only a subscription covers a period', () => {
-  // Both are check constraints in 20260811000057, and an intent that broke either would
-  // be refused by the insert. Held here too, because a caller reading `grantsCapacity`
-  // to decide what to say on screen must not be told a branch came with seats.
+test('only a subscription covers a period', () => {
+  // A check constraint in 20260811000057, and an intent that broke it would be refused
+  // by the insert. Held here too, because a caller reading `coversPeriodStart` to decide
+  // what to say on screen must not be told a branch came with a month.
+  //
+  // The other half — "only a capacity purchase grants places" — has nothing left to
+  // assert: every arm of the union grants zero (§16.1 step 28).
   const quotes = [
     priceIntent({
       purpose: 'subscription',
@@ -357,14 +222,6 @@ test('only a capacity purchase grants places, and only a subscription covers a p
     }
   }
 
-  const capacity = priceIntent({
-    purpose: 'student_capacity',
-    plan: PLANS.center,
-    purchasedCapacity: 120,
-    places: 40,
-  })
-  assert.equal(capacity.grantsCapacity, capacity.quantity)
-  assert.equal(capacity.coversPeriodStart, null)
 })
 
 test('a tier move is priced at the tier being bought, and carries it', () => {
@@ -450,14 +307,8 @@ test('nobody is sold a move onto the free tier', () => {
 
 test('only months of coverage can carry a tier', () => {
   // 20260811000073 says so as a check constraint, because a tier arriving on a purchase
-  // of places or seats would move the plan without anybody having paid a month for it.
+  // of seats or branches would move the plan without anybody having paid a month for it.
   const others = [
-    priceIntent({
-      purpose: 'student_capacity',
-      plan: PLANS.center,
-      purchasedCapacity: 120,
-      places: 40,
-    }),
     priceIntent({ purpose: 'teacher_seat', activeTeachers: 6, seats: 2 }),
     priceIntent({
       purpose: 'branch',
@@ -541,12 +392,6 @@ test('a quote survives the trip through the jsonb column unchanged', () => {
   // before anybody prints the receipt. So the document has to come back exactly as it
   // went in — a lossy round trip here is a receipt quoting a rate nobody charged.
   const quotes = [
-    priceIntent({
-      purpose: 'student_capacity',
-      plan: PLANS.center,
-      purchasedCapacity: 120,
-      places: 200,
-    }),
     priceIntent({
       purpose: 'subscription',
       plan: PLANS.center,

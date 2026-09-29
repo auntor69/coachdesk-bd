@@ -3,11 +3,9 @@ import { forbidden } from 'next/navigation'
 
 import { Card } from '@/components/ui'
 import { PageHeader } from '@/components/page-header'
-import { PlacesWarning } from '@/components/places-warning'
 import { Th, Td } from '@/components/table'
 import { pageRole, getSession } from '@/lib/auth/session'
 import { openAsks } from '@/lib/billing/asks'
-import { growingBranches, recentIntake } from '@/lib/billing/growth'
 import { isHqMember } from '@/lib/branches'
 import {
   currentPeriodMonth,
@@ -23,7 +21,7 @@ import {
 } from '@/lib/finance/branch-money'
 import { dict, DEFAULT_LOCALE } from '@/lib/i18n'
 import { formatTaka } from '@/lib/money'
-import { has, planName, capacityPressure, PLANS } from '@/lib/plans'
+import { has, planName, PLANS } from '@/lib/plans'
 import { canReadMoney } from '@/lib/staff/capabilities'
 import { createClient } from '@/lib/supabase/server'
 
@@ -355,8 +353,6 @@ export default async function HqPage({
 
   const totalHeads = centerHeads.error ? null : centerHeads.count
   const totalTeachers = centerTeachers.error ? null : centerTeachers.count
-  const pressure =
-    totalHeads === null ? null : capacityPressure(session.ceiling, totalHeads)
 
   /*
    * Which branch names open a record. A row `branchMoneyRows` had to name itself — a
@@ -367,36 +363,15 @@ export default async function HqPage({
   const listed = new Set(branches.map((branch) => branch.id))
 
   /*
-   * §3.7's urgent row, and only that row: "≤ 5% — urgent, HQ told which branches are
-   * growing". At ≤ 20% the plan asks for a notice and nothing more, and a box naming
-   * buildings under a notice would make the two levels read the same — which is the
-   * failure places-warning.tsx spends a paragraph avoiding.
-   *
-   * THE WINDOW IS THE LAST THREE MONTHS FROM TODAY, NOT FROM THE MONTH PICKER. The pool
-   * this decorates is a live count — every active student, no month in the query — so an
-   * intake keyed to a month an owner is browsing would put last February's admissions
-   * under today's remaining places and invite the subtraction. The month picker moves the
-   * money table; this box is about now.
-   */
-  const urgent =
-    pressure !== null && (pressure.level === 'urgent' || pressure.level === 'full')
-  const intake = urgent
-    ? await recentIntake(
-        supabase,
-        session.active.centerId,
-        addMonths(currentPeriodMonth(), -2),
-        currentPeriodMonth(),
-      )
-    : null
-
   /*
-   * Named off the table's own rows rather than the branch list, so a building is called the
-   * same thing in both places — including the ones `branchMoneyRows` had to name itself: head
-   * office, and a branch whose row an RLS policy withheld.
+   * §3.7'S GROWTH BOX IS GONE WITH THE POOL IT DECORATED (§16.1 step 28). It named the
+   * buildings whose intake was filling the organisation's places, and it drew on the
+   * urgent row of the capacity warning alone — which is the warning the ceiling took with
+   * it. Nothing is growing toward a number now: a per-student tier has no place count to
+   * fill, and a list of which branches took the most names with no figure to act on it is
+   * a sentence with no errand. `lib/billing/growth.ts` and its own tests stay where they
+   * are, unused, until the cut that removes a door rather than a figure needs them.
    */
-  const named = new Map(rows.map((row) => [row.branchId, row.name]))
-  const grew =
-    intake === null ? null : growingBranches(intake, (id) => named.get(id) ?? t.unnamedBranch)
 
   return (
     <Shell>
@@ -539,69 +514,17 @@ export default async function HqPage({
         </div>
 
         <div className="flex flex-col gap-4">
-          {/* §8.3 asks for the pool on this screen and §17 says what it is: one allowance
-              for the whole organisation, never a quota per building. Which is why it sits
-              beside the table rather than in it — a column would invite exactly the
-              division the plan forbids.
-
-              §3.7 names this screen for the warning, so past a fifth left the section
-              gives way to the shared one and the pool note travels with it. The card an
-              owner reads calmly and the box telling them next week is a problem are not
-              the same object. */}
-          {pressure !== null &&
-            (pressure.level === 'fine' ? (
-              <section className="rounded-xl border border-line bg-white p-4">
-                <p className="num font-medium text-ink">
-                  {d.dashboard.placesLeft(pressure.remaining, pressure.ceiling)}
-                </p>
-                <p className="mt-1 text-sm text-ink-soft">{t.poolNote}</p>
-                <Link
-                  href="/settings/billing"
-                  className="mt-2 inline-flex min-h-tap items-center font-medium
-                    text-brand-700"
-                >
-                  {d.dashboard.placesLink} →
-                </Link>
-              </section>
-            ) : (
-              <PlacesWarning pressure={pressure} t={d.dashboard} note={t.poolNote} />
-            ))}
-
           {/*
-            §3.7's other half of the urgent row: the owner is told which branches are
-            growing. Under the boxed warning and never under the calm card, because the plan
-            puts this on the ≤ 5% row alone.
-
-            A FAILED READ MUST NOT READ AS "NOTHING IS GROWING". The two are opposite advice
-            — one says buy places for Sylhet, the other says the register filled with
-            students who were already on it — so `null` gets its own sentence rather than
-            falling into the empty case. This is also why the box does not simply vanish on
-            a failed read: it is attached to a warning an owner is acting on this week.
+            §8.3's POOL CARD IS GONE (§16.1 step 28). It read "N of M places left across the
+            organisation" off `session.ceiling`, and there is no ceiling left to count
+            against — a per-student tier carries no student limit, so the number had stopped
+            being a fact about anything. The branch table beside it is untouched: it is the
+            table §8.3 actually asks for, and the pool sentence was its caption rather than
+            its content.
           */}
-          {urgent && (
-            <section className="rounded-xl border border-line bg-white p-4">
-              <h2 className="font-semibold text-ink">{t.growingTitle}</h2>
-              {grew === null ? (
-                <p className="mt-1 text-sm text-ink-soft">{t.growingUnreadable}</p>
-              ) : grew.top.length === 0 ? (
-                <p className="mt-1 text-sm text-ink-soft">{t.growingNone}</p>
-              ) : (
-                <>
-                  <p className="num mt-1 text-ink">
-                    {t.growingLine(
-                      grew.top.map((b) => t.growingBranch(b.name, b.admitted)).join(', '),
-                    )}
-                  </p>
-                  {grew.others > 0 && (
-                    <p className="mt-1 text-sm text-ink-soft">
-                      {t.growingOthers(grew.others)}
-                    </p>
-                  )}
-                </>
-              )}
-              <p className="mt-1 text-sm text-ink-soft">{t.growingNote}</p>
-            </section>
-          )}
+
+          {/* §3.7's growth box went with the pool card above it — see the note where
+              `urgent` used to be computed. */}
 
           {/*
             §3.7's asks, on the screen it names for them. A LIST AND NOT A CONTROL: the two

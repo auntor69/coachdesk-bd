@@ -4,16 +4,12 @@ import { PageHeader } from '@/components/page-header'
 import { Card } from '@/components/ui'
 import { EyeIcon, PencilIcon } from '@/components/icons'
 import { SearchBox, SearchEmpty } from '@/components/search-box'
-import { PlacesWarning } from '@/components/places-warning'
 import { Th, Td } from '@/components/table'
 import { pagePermission, getSession, isStaffAdmin } from '@/lib/auth/session'
-import { isHqMember } from '@/lib/branches'
 import { createClient } from '@/lib/supabase/server'
 import { pageAll } from '@/lib/supabase/page'
 import { formatBdMobile } from '@/lib/bd/phone'
 import { MAX_IMPORT_ROWS } from '@/lib/bd/roster'
-import { capacityPressure } from '@/lib/plans'
-import { centerStudentCount } from '@/lib/students/headcount'
 import { searchTerms, matchesSearch, MAX_QUERY } from '@/lib/search'
 import { dict, DEFAULT_LOCALE } from '@/lib/i18n'
 
@@ -140,34 +136,20 @@ export default async function StudentsPage({
   // for each student in the page. `.order('id')` last, after the name, because two
   // students named the same have no order otherwise and the offset walk would be
   // free to hand back one of them twice and never the other.
-  const [students, pooledStudents] = await Promise.all([
-    pageAll((from, to) =>
-      supabase
-        .from('students')
-        .select(
-          `id, name, student_code, guardian_phone, class_level, institution,
-           status, sms_opt_out, enrollments (id, status, batches (name))`,
-        )
-        // Scoped as well as governed by RLS: an owner of two centres passes
-        // is_staff_admin for both, so the policy alone would mix two rosters.
-        .eq('coaching_center_id', session.active.centerId)
-        .order('name', { ascending: true })
-        .order('id')
-        .range(from, to),
-    ),
-    /*
-     * The ORGANISATION's headcount, which the rows above cannot give: they are this
-     * reader's branch (students_branch_scope) and the ceiling they get compared against
-     * pools across the institution (§3.6). 20260811000076 exists for that gap. One
-     * integer, no rows, and refused with 42501 to anybody who is not a staff admin or a
-     * teacher with can_manage_students — which is everybody who reaches this screen.
-     *
-     * Beside the roster read rather than after it: this screen already walks every page
-     * of a 1,200-name register, and a second round trip after that walk is a warning
-     * card that arrives late on the slowest screen in the product.
-     */
-    centerStudentCount(supabase, session.active.centerId),
-  ])
+  const students = await pageAll((from, to) =>
+    supabase
+      .from('students')
+      .select(
+        `id, name, student_code, guardian_phone, class_level, institution,
+         status, sms_opt_out, enrollments (id, status, batches (name))`,
+      )
+      // Scoped as well as governed by RLS: an owner of two centres passes
+      // is_staff_admin for both, so the policy alone would mix two rosters.
+      .eq('coaching_center_id', session.active.centerId)
+      .order('name', { ascending: true })
+      .order('id')
+      .range(from, to),
+  )
 
   /*
    * And a read that did not arrive is not a centre with nobody in it, which is the
@@ -219,45 +201,13 @@ export default async function StudentsPage({
   const activeCount = rows.filter((r) => r.active).length
 
   /*
-   * WHOSE CEILING THIS IS, and it is never one branch's. A place is a licence and
-   * licences pool across the organisation (§3.6), so `session.ceiling` is one figure for
-   * the whole institution — while `activeCount` above is counted out of `rows`, and
-   * `students_branch_scope` narrowed those to the reader's own building.
-   *
-   * It used to read `session.plan.maxStudents` and show a bare count on the centre
-   * tiers, where that column is null. Unlike batches and subjects, where a cap is a
-   * guardrail we set and `capIsQuota` hides it, a centre's student ceiling is the thing
-   * the centre is paying for: the number belongs to them and this is the screen it
-   * belongs on. What it does not belong to is one branch, hence the fork below.
+   * NO CEILING LINE AND NO PLACES WARNING (§16.1 step 28). The subtitle used to be a
+   * places figure — the plan's own allowance, or what the centre had bought — and it had
+   * to be dropped for a pinned manager, whose `activeCount` is one building against the
+   * organisation's pooled number. There is no pooled number any more: a per-student tier
+   * has no student limit, so what is left is what this list actually holds, and it is the
+   * same sentence for every reader. See `subtitle` below.
    */
-  const limit = session.ceiling.ceiling
-  const pooled = isHqMember(session.active)
-
-  /*
-   * And §3.7's warning, which this screen is named for: the roster is where somebody sits
-   * down to add the names, so it is the one place where "nearly full" arrives before the
-   * refusal rather than after it.
-   *
-   * Fed the ORGANISATION's headcount through 20260811000076, not `activeCount`. The old
-   * comment here claimed the count was the whole centre "because the read above is
-   * centre-scoped and carries no branch filter" — true when it was written and untrue
-   * since 20260811000053, whose RESTRICTIVE policy narrows that read whatever it asks
-   * for. A manager pinned to Mirpur with 40 of the organisation's 300 students was shown
-   * 260 free places on the screen built to warn them, and `app.guard_student_capacity()`
-   * refused the 41st.
-   *
-   * Null is no warning, which is the same fail-open the add-student form takes: the
-   * database still refuses at the real ceiling, and "no places left" off a read nobody
-   * has would turn a family away over a number we could not fetch.
-   *
-   * Staff admins only, and the reason is the door rather than the news: the warning ends
-   * in a link to /settings/billing, which is `pageRole('manager')`, so a teacher who got here
-   * on `can_manage_students` would be sent to a refusal. Their version of this warning is
-   * the student form saying no, which it already does.
-   */
-  const pressure =
-    pooledStudents === null ? null : capacityPressure(session.ceiling, pooledStudents)
-  const warnPlaces = isStaffAdmin(session)
 
   /**
    * Whether to draw a door into any of the three write screens.
@@ -360,18 +310,18 @@ export default async function StudentsPage({
       <PageHeader
         title={t.title}
         back={{ href: '/settings', label: d.settings.hub.title }}
-        /* The ceiling they are paying for, and nothing else. There used to be a line
+        /* What this list holds, and nothing else (§16.1 step 28). There used to be a line
            here telling the reader to tap a student, because tapping a student was the
            only way in and nothing on the row said so. Every row now carries the button
            instead, which is the honest fix: an instruction that teaches an invisible
            control is a control that should have been drawn.
 
-           The ceiling comes off for a pinned manager, because `activeCount` is their
-           branch's and the ceiling is the organisation's — §9.1 forbids two figures of
-           different scope side by side without saying so, and here there is no room to
-           say it, so the pair is broken instead. Their pooled figure is in the warning
-           in the rail. */
-        subtitle={pooled ? t.used(activeCount, limit) : t.usedHere(activeCount)}
+           `usedHere` FOR EVERY READER, where it used to be the pinned manager's alone.
+           The fork existed because `activeCount` is one building's and the ceiling was the
+           organisation's, and §9.1 forbids two figures of different scope side by side
+           without saying so. There is no second figure: a per-student tier has no student
+           cap, so the only number left describes the list it sits above. */
+        subtitle={t.usedHere(activeCount)}
         actions={
           mayWrite && (
             <Link
@@ -399,19 +349,10 @@ export default async function StudentsPage({
           wrappers swap themselves into columns from `lg` with `lg:order`.
         */}
         <div className="contents lg:order-3 lg:col-span-4 lg:flex lg:flex-col lg:gap-5">
-          {/* Above the paste door on purpose: 200 names against 40 places is the import
-              that stops half way, and this is the sentence that gets read first. Null
-              while there is room, and a null child costs no gap. The pool note for a
-              pinned reader, whose branch roster is 40 names next to a figure about 300
-              — the same qualifier the dashboard's places line carries. */}
-          {warnPlaces && pressure && (
-            <PlacesWarning
-              className="order-2"
-              pressure={pressure}
-              t={d.dashboard}
-              note={pooled ? undefined : d.hq.poolNote}
-            />
-          )}
+          {/* §3.7's places warning stood here, above the paste door, because 200 names
+              against 40 places is the import that stops half way. It went with the ceiling
+              (§16.1 step 28): there is no figure to warn about, and the paste box is drawn
+              on every write-enabled roster. */}
 
           {/*
             The way a centre actually gets its students in: somebody sits down with

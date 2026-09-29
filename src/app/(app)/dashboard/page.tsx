@@ -3,7 +3,6 @@ import Link from 'next/link'
 import { Card } from '@/components/ui'
 import { PageHeader } from '@/components/page-header'
 import { greetingFor } from '@/components/app-shell'
-import { PlacesWarning } from '@/components/places-warning'
 import { pageRole, getSession, isStaffAdmin, canReadFees, myTeacherIds } from '@/lib/auth/session'
 import { isHqMember } from '@/lib/branches'
 import { createClient } from '@/lib/supabase/server'
@@ -14,14 +13,13 @@ import {
   addMonths,
   formatDate,
 } from '@/lib/bd/time'
-import { has, capacityPressure } from '@/lib/plans'
+import { has } from '@/lib/plans'
 import { can, canReadMoney } from '@/lib/staff/capabilities'
 import { setupSteps } from '@/lib/setup'
 import { countChasesDue } from '@/lib/fees/reminder-schedule'
 import { categoryBills, monthBills, monthMoney, payrollState } from '@/lib/finance/profit'
 import { ratesForDashboard } from '@/lib/attendance/rates'
 import { studentsAtRisk, RISK_COLUMNS } from '@/lib/students/risk'
-import { centerStudentCount } from '@/lib/students/headcount'
 import {
   progressToTell,
   PROGRESS_COUNT_COLUMNS,
@@ -231,7 +229,6 @@ export default async function DashboardPage() {
     { count: termsCount },
     { count: salaryPayCount },
     { count: salaryExpenseCount },
-    pooledStudents,
   ] = await Promise.all([
     supabase
       .from('students')
@@ -524,23 +521,6 @@ export default async function DashboardPage() {
           .gte('spent_on', period)
           .lt('spent_on', addMonths(period, 1))
       : noCount,
-    /*
-     * The organisation's headcount, which is not the same number as the tile above.
-     *
-     * The tile is what this reader can see, and for a manager pinned to one building
-     * that is their building — `students_branch_scope`. Places pool across the whole
-     * institution (§3.6), so the places line has to be told the organisation's count or
-     * it pairs 40 students with a 300-place ceiling and reports 260 free when there are
-     * five. 20260811000076 is the read that sees past the scope, gated inside on the
-     * same staff-admin word `isAdmin` is.
-     *
-     * Asked of every staff admin rather than only a pinned one: for head office it
-     * returns exactly what the tile already says, and putting a branch test on the
-     * condition would be a second copy of the scoping rule inside a page. A teacher is
-     * skipped because the line it feeds is `isAdmin`-gated — the RPC would refuse them
-     * anyway — and the ternary keeps the tuple's shape, which is what `noCount` is for.
-     */
-    isAdmin ? centerStudentCount(supabase, session.active.centerId) : null,
   ])
 
   /*
@@ -712,39 +692,13 @@ export default async function DashboardPage() {
   const payroll = payrollState(termsCount, salaryPayCount)
 
   /*
-   * Places remaining — §9.10's last item.
-   *
-   * Drawn on every plan rather than behind `showMoney`. Capacity is not a centre
-   * feature — the ceiling is nearest on free, where it is thirty — and an owner who
-   * finds out about it by being refused at student thirty-one has already had the
-   * afternoon this line exists to prevent.
-   *
-   * `capacityPressure` and not `studentRoom`, because the same call now decides how loud
-   * the line is: §3.7's thresholds live in lib/plans.ts, where the other two screens that
-   * print a place count read them from. `remaining` is what `studentRoom` returned.
-   *
-   * FED THE ORGANISATION'S COUNT AND NOT THE TILE'S, which is the one thing this line
-   * cannot get wrong. `capacityPressure` says so itself — "ORGANISATION-WIDE, ALWAYS …
-   * never a branch's own" — and `studentCount` is a branch's own for a pinned manager,
-   * because it comes through their policies. So the count comes from the RPC and the
-   * whole line goes away when that read fails: a pinned manager shown their branch's
-   * figure against the pool spends the afternoon admitting students CD001 refuses one at
-   * a time, and no figure at all is better than that one.
+   * §9.10'S LAST ITEM IS GONE (§16.1 step 28), and with it the one figure on this screen
+   * that was not this reader's own. It was a places-remaining line fed the organisation's
+   * pooled headcount against `session.ceiling`, loud past §3.7's thresholds — and a
+   * per-student tier has no student limit, so there is no remaining to report and no door
+   * to a purchase. The pooled read went with it: it existed only to pair with a ceiling,
+   * and the students tile below is the reader's own branch on purpose.
    */
-  const pressure =
-    pooledStudents === null ? null : capacityPressure(session.ceiling, pooledStudents)
-
-  /*
-   * And a pinned manager is told whose places these are.
-   *
-   * Two figures answering different questions on one screen, which §9.1 says the screen
-   * has to spell out: the tile above is this building's forty students and the line below
-   * is the institution's five remaining places. Unqualified, the arithmetic between them
-   * invites "so we have 260 spare". Head office needs none of this — for them the tile
-   * and the ceiling are the same organisation — so the qualifier turns on the pin and not
-   * on the plan.
-   */
-  const pooledPlaces = !isHqMember(session.active)
 
   return (
     <div className="flex flex-col gap-5">
@@ -1038,43 +992,6 @@ export default async function DashboardPage() {
               />
             </div>
 
-            {/* Places remaining, on every plan — see the note on `pressure`. One faint line
-                and a door while there is room, because it is a fact an owner needs to have
-                seen rather than one they act on today, and the day they do act on it the
-                door is the only thing on this line that matters.
-
-                That day is what `pressure` names. Past a fifth left the faint line has
-                stopped being honest about how close this is, so §3.7's warning takes its
-                place — never both, or the screen says one thing twice in two weights. */}
-            {isAdmin &&
-              pressure !== null &&
-              (pressure.level === 'fine' ? (
-                <p className="num mt-2 text-sm text-ink-soft">
-                  {pooledPlaces
-                    ? t.placesPooled(pressure.remaining, pressure.ceiling)
-                    : t.placesLeft(pressure.remaining, pressure.ceiling)}{' '}
-                  <Link
-                    href="/settings/billing"
-                    className="font-medium text-brand-800 underline"
-                  >
-                    {t.placesLink} →
-                  </Link>
-                </p>
-              ) : (
-                <div className="mt-3">
-                  {/* The pool sentence, in the box where the warning is loud enough to
-                      act on: a branch manager reading "only 5 places left" needs to know
-                      those five are the organisation's and not their building's ration,
-                      or the next thing they do is ask head office for a bigger quota
-                      that does not exist. HQ's own wording, so the two screens that
-                      explain the pool cannot drift. */}
-                  <PlacesWarning
-                    pressure={pressure}
-                    t={t}
-                    note={pooledPlaces ? d.hq.poolNote : undefined}
-                  />
-                </div>
-              ))}
           </div>
 
           {/* THE PROFIT LINE — §9.8's box, here because §9.10 puts it on this screen and
