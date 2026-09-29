@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from 'next'
 import { Hind_Siliguri } from 'next/font/google'
+import { SpeedInsights } from '@vercel/speed-insights/next'
 
 import { OfflineBanner } from '@/components/offline-banner'
 import { ServiceWorker } from '@/components/service-worker'
@@ -77,6 +78,7 @@ export default async function RootLayout({ children }: LayoutProps<'/'>) {
         <OfflineBanner text={dict(locale).offline.banner} />
         <ServiceWorker />
         {children}
+        <SpeedInsights />
       </body>
     </html>
   )
