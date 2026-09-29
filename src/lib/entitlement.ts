@@ -16,7 +16,7 @@
  * still holding a paid tier or has lost the free one.
  *
  * AND NOTHING DOWNSTREAM LEARNS WHY. A feature gate, a cap check and a permission
- * helper all read the *result* — a plan, a ceiling, and whether writing is allowed.
+ * helper all read the *result* — a plan, and whether writing is allowed.
  * None of them is told that the plan came from a trial, that a payment lapsed, or
  * which status produced the answer. That is the whole point of the indirection:
  * `isTrial` asked at one call site is a branch, asked at forty it is a second plan
@@ -45,8 +45,10 @@
  * there is no state to unset.
  *
  * NOT THE BOUNDARY. RLS in Postgres decides whose rows these are, and
- * `app.guard_center_billing` and `app.guard_student_capacity` are what a browser
- * cannot talk its way past. This is one layer in: narrower than the boundary, never
+ * `app.guard_center_billing` is what a browser cannot talk its way past, and
+ * `app.guard_student_capacity` is the third — it still refuses an admission past the
+ * plan's allowance on the teacher tiers, and since §16.1 step 28 it no longer counts
+ * places that were bought. This is one layer in: narrower than the boundary, never
  * wider. If the two ever disagree in this direction, a screen draws and its queries
  * come back empty.
  */
@@ -55,9 +57,7 @@ import { daysBetween, todayInDhaka } from './bd/time.ts'
 import {
   PLAN_RANK,
   planFor,
-  studentCeiling,
   type PlanLimits,
-  type StudentCeiling,
 } from './plans.ts'
 import type { CenterStatus } from './supabase/types.ts'
 
@@ -111,7 +111,7 @@ const ACCESS_BY_STATUS: Record<CenterStatus, Access> = {
  *
  * EVERY KEY IS REQUIRED AND EVERY VALUE MAY BE NULL, which is deliberate and is not
  * the same as making the keys optional. Null is a real state for four of these —
- * no trial, no plan recorded, no capacity bought — but *forgetting* one is not a
+ * no trial, no plan recorded — but *forgetting* one is not a
  * state at all: it is a `select` that did not ask for the column, and with optional
  * keys that compiles into "no trial" for a centre that is trialling. So the compiler
  * makes the caller write each one down, including the ones it has nothing to say
@@ -126,8 +126,6 @@ export type OrgBilling = {
   trial_plan: string | null
   /** `coaching_centers.trial_ends_at` — timestamptz, so an ISO string over the wire. */
   trial_ends_at: string | Date | null
-  /** `coaching_centers.student_capacity` — places bought beyond the plan allowance. */
-  student_capacity: number | null
   /**
    * `coaching_centers.balance_poisha` — the money available to settle days that are
    * not yet paid for. MASTERPLAN.md §11.7's first lever.
@@ -167,13 +165,11 @@ export type OrgBilling = {
   daily_rate_poisha: number | null
 }
 
-/** The answer. Three fields, and none of them says how it was arrived at. */
+/** The answer. Two fields, and neither of them says how it was arrived at. */
 export type Entitlement = {
   access: Access
   /** The tier in force — the trial's while it lasts, otherwise the paid one. */
   plan: PlanLimits
-  /** How many active students are allowed, and what to do when they run out. */
-  ceiling: StudentCeiling
 }
 
 /**
@@ -380,7 +376,7 @@ export function billingStanding(org: OrgBilling | null, now: Date): BillingStand
  * threw a unique violation and every extra call was a crash. 20260811000082 took that
  * away at the database (`settlement_runs_one_note_per_day` and `on conflict do nothing`),
  * so what is left is the cost of a call that charges nothing: a price card read, the same
- * two head counts the capacity trigger reads, and a balance sum. In exchange, every
+ * two head counts the day's rate is priced from, and a balance sum. In exchange, every
  * request knows the day's rate and the current balance, which is what the rail above the
  * content and the read-only banner are drawn from — and neither of them could draw a
  * figure on a day when no settlement happened.
@@ -414,9 +410,15 @@ export function burnsMoney(plan: string | null | undefined): boolean {
 }
 
 /**
- * The resolver. MASTERPLAN.md §4.2, in the order it is written there: access from
- * the status, plan from the trial or the subscription, ceiling from the plan and
- * what has been bought.
+ * The resolver. MASTERPLAN.md §4.2: access from the status, plan from the trial or the
+ * subscription.
+ *
+ * IT USED TO RESOLVE A CEILING TOO, and it does not any more (§16.1 step 28). That
+ * third field was the plan's allowance plus whatever had been bought, which is what
+ * every "places" figure in the app read. Capacity is retired: a per-student tier has
+ * no student limit at all (§3.3), so there is nothing left to resolve — and the fence
+ * that remains, `app.guard_student_capacity`, is the database's own answer for the
+ * teacher tiers, where the allowance is the plan's and not something bought.
  *
  * FAIL CLOSED, IN THE ESTABLISHED DIRECTION. Every fallback here is the narrow one:
  * an unrecognised status may not write, an unrecognised plan is Teacher Free, an
@@ -425,8 +427,8 @@ export function burnsMoney(plan: string | null | undefined): boolean {
  *
  * ONE THING IS NOT FAILED CLOSED HERE, and it is on purpose: a *count* that could
  * not be read is refused by its caller rather than treated as zero. This function
- * never sees a count. One failed count would not let one extra student past a
- * ceiling, it would let eighty — so `limitRefusal` answers "we cannot tell just now"
+ * never sees a count. One failed count would not let one extra student past a cap, it
+ * would let eighty — so `limitRefusal` answers "we cannot tell just now"
  * and adds nobody, and this file has no opinion to offer it.
  *
  * `now` IS A PARAMETER rather than a `new Date()` inside, so a test can stand either
@@ -453,7 +455,7 @@ export function effectiveEntitlement(org: OrgBilling | null, now: Date): Entitle
   // a future caller which forgets that guard fails closed instead of wide.
   if (!org) {
     const plan = planFor(null)
-    return { access: 'read_only', plan, ceiling: studentCeiling(plan, 0) }
+    return { access: 'read_only', plan }
   }
 
   const paid = planFor(org.plan)
@@ -478,11 +480,6 @@ export function effectiveEntitlement(org: OrgBilling | null, now: Date): Entitle
     // and an unrecognised status cannot borrow access from a full purse either.
     access: standing === 'full' && billing.lapsed ? 'read_only' : standing,
     plan,
-    // The trial's plan, not the paid one, and that is the point of resolving the plan
-    // first: a teacher trialling Pro gets Pro's 150 places for the fortnight, and
-    // keeps every student they added when it ends. Limits apply to new actions,
-    // never retroactively — §4.5.
-    ceiling: studentCeiling(plan, org.student_capacity ?? 0),
   }
 }
 

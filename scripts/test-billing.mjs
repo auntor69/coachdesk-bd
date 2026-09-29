@@ -190,8 +190,10 @@ check(
 
 console.log('\nA day, charged whole and once (§11.7):')
 
+// No `student_capacity` write any more: the column is archived and governs nothing
+// (§16.1 step 28), and on this tier the ceiling is uncapped, so the sixty students below
+// are what the day's rate is priced from either way.
 const centre = await burnCentre('center', { recharge: 250000 })
-await asService('update coaching_centers set student_capacity = 100 where id = $1', [centre])
 
 for (let i = 0; i < 60; i += 1) {
   await asService(

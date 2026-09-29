@@ -590,9 +590,10 @@ test('the branch asks come through as a count, a sum and the oldest wait', () =>
   assert.equal(c.asksOpen, 2)
   assert.equal(c.asksPlaces, 35)
   assert.equal(c.asksSince, '2026-08-20T05:00:00.000Z')
-  // Nothing about the asking moves what the centre is entitled to. The places are
-  // bought on the owner's own plan screen and land in center_members.student_capacity;
-  // a shaper that added them here would bill for room nobody has paid for.
+  // Nothing about the asking moves what the centre is entitled to. Places are not bought
+  // any more: `coaching_centers.student_capacity` is archived and `app.student_ceiling`
+  // stopped reading it (§16.1 step 28). A shaper that added these asks to the headcount
+  // would bill a centre for students its plan never admitted.
   assert.equal(c.students, 40)
 })
 

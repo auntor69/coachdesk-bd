@@ -21,14 +21,18 @@
  */
 
 /**
- * The SQLSTATE `app.guard_student_capacity()` raises when the ceiling is reached.
+ * The SQLSTATE `app.guard_student_capacity()` raises when a plan's allowance is full.
+ *
+ * The teacher tiers are the only place it can still fire: since §16.1 step 28 the
+ * per-student tiers have no student ceiling at all (§3.3), and the bought places this
+ * used to count against are archived rather than read.
  *
  * Ours, not Postgres's, and that is the point. The standard codes all say something
  * else: `23514` claims a CHECK constraint fired, `P0001` is what every uncaught
  * `raise` in the schema returns and so identifies nothing, and `42501` — the code the
  * billing-column guard uses — means "you may not do this", which is wrong here. A
- * manager IS allowed to add a student. They have run out of places, which is a
- * different sentence and a different screen.
+ * manager IS allowed to add a student. Their plan has run out of the students it
+ * includes, which is a different sentence and a different screen.
  *
  * `CD` is not a class Postgres allocates, so nothing else can collide with it. The
  * migration names the same five characters in a comment next to the `raise`, and a

@@ -59,8 +59,8 @@ const RECEIPT_COLUMNS =
  * WHAT IT WAS PRICED AT is on it, above the amount, since 20260811000068 gave
  * `payment_intents` a `priced_lines` column — §3.8's "rate applied", which is the one field of
  * the record that has to be stored because it cannot be worked out again: recomputing the bands
- * here would price the *next* purchase, `settle_payment_intent` having already raised
- * `student_capacity` by the time anybody prints this. Read, never re-derived.
+ * here would price the *next* purchase rather than the one that was settled, and on a receipt
+ * that is a wrong number in the customer's hands. Read, never re-derived.
  *
  * A CREDIT NOTE COMES OUT OF THE SAME ROUTE, because since 20260811000074 a credit *is* a
  * `payments` row — a negative one — and giving it a route of its own would mean two pages

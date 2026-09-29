@@ -48,7 +48,7 @@ import { PERMISSION_KEYS, type PermissionKey } from '@/lib/permissions'
 import type { Capability } from '@/lib/staff/capabilities'
 import { dict } from '@/lib/i18n'
 import { nameTooLong, passwordTooShort } from '@/lib/i18n/messages'
-import { has, studentRoom, wouldExceed, hasStaff, type LimitKey } from '@/lib/plans'
+import { has, roomFor, wouldExceed, hasStaff, type LimitKey } from '@/lib/plans'
 import {
   examTypeDeleteVerdict,
   subjectDeleteVerdict,
@@ -198,21 +198,20 @@ function isSession(value: CenterSession | ActionState): value is CenterSession {
  * "There is no room for another student", in the words that fit what this centre
  * is paying for.
  *
- * Two sentences and not one, because the two tiers have different answers. A
- * teacher plan holds a fixed number and the way out is a different plan. A centre
- * plan holds what the centre bought, there is nothing above it to move to, and the
- * way out is more places — so `planLimit` would send a paying owner to a screen
- * that has nothing for them.
+ * TWO SENTENCES AND NOT ONE, because the two tiers still have different answers after
+ * capacity was retired (§16.1 step 28). A teacher plan holds a fixed number and the way
+ * out is a different plan; a per-student tier has no student cap at all since
+ * 20260811000087, so nothing can refuse one — `app.guard_student_capacity` is still there
+ * and still raises CD001 on the teacher tiers, which is the half §18 keeps, and the
+ * decision here is which sentence to put in front of a reader who will never see it.
  *
- * Reads `kind` rather than asking the plan table what its pricing is, because the
- * ceiling is the thing that already knows: see `studentCeiling`, and the note on
- * `Session.ceiling` for why the figure is exact today.
+ * SO IT READS `pricing` AND NOT A CEILING, which is the change this cut makes: the
+ * figure this used to name came from `studentCeiling`, and there is no such thing to
+ * name.
  */
 function noRoomForStudent(session: CenterSession): string {
-  const t = dict(session.locale).settings.errors
-  return session.ceiling.kind === 'purchased'
-    ? t.placesFull(session.ceiling.ceiling)
-    : t.planLimit
+  const d = dict(session.locale).settings
+  return session.plan.pricing === 'per_student' ? d.students.placesTitle : d.errors.planLimit
 }
 
 /**
@@ -281,27 +280,27 @@ function enrolmentRefusal(session: CenterSession, error: unknown): ActionState |
  * failed. It is not zero, and the difference is a free plan quietly taking a second
  * batch on the day Supabase hiccups.
  *
- * STUDENTS ARE THE ONE ARM THAT DOES NOT ASK THE PLAN TABLE, and `key` is unused for
- * them. `maxStudents` is null on the centre tiers — they bill per student, so their
- * ceiling is what the centre bought — and `wouldExceed` reads a null cap as no cap,
- * which had this function admitting every student on the tiers that charge for them.
- * `session.ceiling` is where the number lives for both kinds of plan, and it agrees
- * with `wouldExceed` exactly on the tiers that do have a cap.
+ * A NULL CAP IS NOT A MISSING ANSWER, AND IT IS THE FIRST THING THIS CHECKS (§16.1 step
+ * 28). `maxStudents` is null on the two per-student tiers — they bill per student, so the
+ * balance carries the roster and the plan table has no number to compare against. A null
+ * cap is the tier saying it does not limit this at all, so the answer is taken before the
+ * count: a tier that sells no limit never pays for a read, and — the half that matters —
+ * is never refused a write because that read failed.
  *
- * AND IT IS THE ONE ARM THAT DOES NOT COUNT THROUGH THE CALLER'S OWN CLIENT. Places pool
- * across the organisation (§3.6) and `session.ceiling` is that one pooled number, while
- * `students_branch_scope` narrows a select to the reader's branch — so for a manager
- * pinned to Mirpur the two halves of this comparison came from different scopes, and the
- * courtesy said "there is room" about an organisation that was full. 20260811000076 is
- * the read that sees past the scope. The other two arms are correct as they stand:
- * `subjects` is one catalogue for the organisation and is not branch-scoped, and
- * `maxTeachers` is null on both tiers that have branches at all.
+ * SO `students` ASKS THE PLAN TABLE LIKE THE OTHER TWO, which is the change this cut
+ * makes. It used to be the one arm that read `session.ceiling` instead of `key`, because
+ * the ceiling was the only thing that knew a centre's number — and a centre's number is
+ * now nothing the plan table needs to hold. The read still goes through
+ * 20260811000076's RPC, because on the tiers where the cap is real the count is the
+ * organisation's and `students_branch_scope` would narrow it to the reader's branch.
  */
 async function limitRefusal(
   session: CenterSession,
   table: 'students' | 'teachers' | 'subjects',
   key: LimitKey,
 ): Promise<ActionState | null> {
+  if (session.plan[key] === null) return null
+
   const supabase = await createClient()
   const centerId = session.active.centerId
   const head = { count: 'exact' as const, head: true }
@@ -336,11 +335,6 @@ async function limitRefusal(
 
   const t = dict(session.locale).settings.errors
   if (count === null) return { error: t.limitUnknown }
-  if (table === 'students') {
-    return studentRoom(session.ceiling, count) === 0
-      ? { error: noRoomForStudent(session) }
-      : null
-  }
   return wouldExceed(session.plan, key, count) ? { error: t.planLimit } : null
 }
 
@@ -2132,25 +2126,28 @@ export async function importStudents(
   // through and dropping the rest is worse than refusing: the owner has no way
   // to know which 65 are missing, and would have to diff two hundred lines.
   //
-  // The ORGANISATION's headcount, through 20260811000076. A count through this caller's
-  // own client is their branch's (students_branch_scope) while `session.ceiling` below
-  // pools across the institution (§3.6), so a manager pinned to Mirpur was told 260
-  // lines would fit when five would. That paste is not partially created (§10): the
-  // 41st line raises CD001, `import_students` rolls the transaction back, and three
-  // hundred typed names are gone.
-  const count = await centerStudentCount(supabase, centerId)
+  // ROOM, OR NO CAP AT ALL (§16.1 step 28). `maxStudents` is null on both per-student
+  // tiers — the balance carries their roster and there is no number to run out of — so a
+  // centre never counts and `room` stays null, which the branches below read as "nothing
+  // to compare against" rather than as "no room". The ceiling arithmetic that used to sit
+  // here (`studentRoom(session.ceiling, count)`) went with capacity.
+  //
+  // WHERE THE CAP IS REAL, THE COUNT IS THE ORGANISATION'S, through 20260811000076: a
+  // count through this caller's own client is their branch's (students_branch_scope), and
+  // that paste is not partially created (§10) — the 41st line raises CD001,
+  // `import_students` rolls the transaction back, and three hundred typed names are gone.
+  const cap = session.plan.maxStudents
+  const count = cap === null ? null : await centerStudentCount(supabase, centerId)
 
   // Refused rather than read as zero, for the reason `limitRefusal` carries. A paste
-  // is where it would cost the most: one failed count would not admit one row past
-  // the ceiling, it would admit eighty.
-  //
-  // Asked unconditionally now, where it used to be skipped when `maxStudents` was
-  // null. That test meant "this plan has no total to compare against", and the centre
-  // tiers were the plans it exempted — the tiers that charge by the student. They have
-  // a total; it is the number of places they bought.
-  if (count === null) return { error: t.errors.limitUnknown }
+  // is where it would cost the most: one failed count would not admit one row past the
+  // cap, it would admit eighty — and only where there is a cap to read against, which on
+  // a per-student tier there is not.
+  if (cap !== null && count === null) return { error: t.errors.limitUnknown }
 
-  const room = studentRoom(session.ceiling, count)
+  // Null here is "this tier does not cap students", and the branches below read it that
+  // way rather than as "no room".
+  const room = count === null ? null : roomFor(session.plan, 'maxStudents', count)
   const perBatchCap = session.plan.maxStudentsPerBatch
 
   // Both caps ask about the same number — how many of these lines are new — so
@@ -2159,10 +2156,10 @@ export async function importStudents(
   // plan that has plenty of room for those three.
   //
   // Skipped when neither cap can bite: a paste that fits even if every line of it is
-  // new needs no roster to prove it, and on a centre with two thousand places that
-  // saves paging two thousand names to answer a question already settled.
+  // new needs no roster to prove it, and on a tier with no student cap at all — `room`
+  // null — that saves paging a thousand names to answer a question already settled.
   const fresh =
-    ready.length <= room && perBatchCap === null
+    (room === null || ready.length <= room) && perBatchCap === null
       ? ready
       : await unknownRows(supabase, centerId, ready)
 
@@ -2172,11 +2169,11 @@ export async function importStudents(
   // about it, so the owner tries again instead of going to look at our prices.
   if (fresh === null) return { error: t.errors.limitUnknown }
 
-  if (fresh.length > room) {
+  if (room !== null && fresh.length > room) {
     // Two sentences when there is room for some of them, because "there is no room"
-    // is not true yet and an owner who is told it stops reading. The second is the
-    // one every other student refusal uses, so a centre is told about its places and
-    // a teacher about their plan.
+    // is not true yet and an owner who is told it stops reading. The second is the one
+    // every other student refusal uses, and on this arm the reader is always a teacher
+    // tier: a per-student tier has no `room` to be over.
     return {
       error:
         room === 0

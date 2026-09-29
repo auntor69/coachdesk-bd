@@ -9940,10 +9940,13 @@ check(
   ])) === 31,
 )
 
-// A trial that does NOT outrank the paid plan grants nothing, and this is the
-// under-billing case rather than a tidiness one: Teacher Pro includes 150 and a
-// Coaching Center 79, so a centre still carrying its signup trial would otherwise be
-// admitted 150 students on a plan that includes 79.
+// A trial that does NOT outrank the paid plan grants nothing. It mattered because it was
+// the under-billing case rather than a tidiness one: Teacher Pro includes 150 and a
+// Coaching Center 79, so a centre still carrying its signup trial would have been admitted
+// 150 students on a plan that includes 79. Since §16.1 step 28 the centre tier has no
+// ceiling to reach at all (§3.3), so the same rule can only be asked as 'the trial moved
+// nothing' — which is what is asserted, and the teacher tiers' own version of it is the 30
+// asserted above.
 await db.query(
   `update coaching_centers
       set plan = 'center', trial_ends_at = now() + interval '7 days'
@@ -9953,7 +9956,7 @@ await db.query(
 const outranked = await ceilingsOf(joinedCenter)
 check(
   'a trial below the paid plan cannot lower or raise what may be admitted',
-  outranked?.admitted === outranked?.bought && outranked?.admitted === 79,
+  outranked?.admitted === outranked?.bought && outranked?.admitted === 2147483647,
   `admitted ${outranked?.admitted}, bought ${outranked?.bought}`,
 )
 
@@ -13248,11 +13251,11 @@ check(
 // not a crash: it is a browser that names its own amount, or an intent that reaches
 // `successful` without money behind it.
 //
-// A CENTRE OF ITS OWN, because the settle path writes `student_capacity` and every centre
-// above this line has been through the capacity section. Centre C starts on the centre plan
-// with nothing purchased, which is what a fresh signup looks like, and the ceiling is read
-// from `app.student_ceiling` rather than hard-coded so the assertions are about the
-// arithmetic and not about today's price list.
+// A CENTRE OF ITS OWN, and it starts on the centre plan with nothing purchased, which is
+// what a fresh signup looks like. The ceiling is asked of `app.student_ceiling` rather than
+// hard-coded, so the assertions are about the arithmetic and not about today's price list —
+// and since §16.1 step 28 that answer is 'no ceiling at all' on this tier (§3.3), while a
+// purchase that used to raise one is refused rather than settled.
 // ---------------------------------------------------------------------------
 
 console.log('\nPayment intents (what a centre buys from us):')
@@ -13280,12 +13283,10 @@ const centerC = await one(
    values ('Sylhet Prime Coaching', $1, 'center') returning id`,
   [ownerC],
 )
-await db.query('update coaching_centers set student_capacity = 0 where id = $1', [centerC])
-
 const includedC = await n(db, 'select app.student_ceiling($1)::int as n', [centerC])
 check(
-  'a fresh centre on the centre plan already has its included places',
-  includedC > 0,
+  'a per-student tier has no student ceiling at all, so no admission is ever refused',
+  includedC === 2147483647,
   `ceiling ${includedC}`,
 )
 
@@ -13302,9 +13303,11 @@ const UNIT_OF = {
 
 const newIntent = async (center, fields = {}) => {
   const {
-    purpose = 'student_capacity',
-    quantity = 41,
-    amount = 738,
+    // The one purpose new intents use (§11.2). A capacity intent is still creatable — the
+    // enum and the columns are preserved (§11.14) — and it is refused at settlement below.
+    purpose = 'subscription',
+    quantity = 1,
+    amount = 1999,
     grants = purpose === 'student_capacity' ? quantity : 0,
     lines = pricedDoc(UNIT_OF[purpose], quantity, amount),
     key = null,
@@ -13461,7 +13464,7 @@ const quoted = await newIntent(centerC, { key: await uuid() })
 
 for (const [what, sql, params] of [
   ['the amount', 'update payment_intents set amount_bdt = 1 where id = $1', [quoted]],
-  ['the number of places', 'update payment_intents set quantity = 500 where id = $1', [quoted]],
+  ['the quantity', 'update payment_intents set quantity = 500 where id = $1', [quoted]],
   ['what it is for', `update payment_intents set purpose = 'branch' where id = $1`, [quoted]],
   [
     'the centre buying it',
@@ -13527,16 +13530,21 @@ const receipts = (id) =>
 const settled = (await settle(intentC, null, 'bkash', ownerC)).rows[0]
 
 check('settling an initiated purchase reports it as new', settled.already === false)
-check('the amount charged is the one the server quoted', Number(settled.charged_bdt) === 738)
-check('the ceiling comes back raised by the places bought', settled.capacity_after === includedC + 41)
-
-// THE ONE THIS SECTION EXISTS FOR. `student_capacity` is an absolute number that
-// app.student_ceiling reads as greatest(plan_included, purchased), so adding the seats to a
-// zero column would leave the plan's own allowance winning and the customer with nothing
-// for their money. 41 places bought on top of the plan's floor must read as floor + 41.
+check('the amount charged is the one the server quoted', Number(settled.charged_bdt) === 1999)
 check(
-  'and app.student_ceiling agrees, which is what admissions are measured against',
-  (await n(db, 'select app.student_ceiling($1)::int as n', [centerC])) === includedC + 41,
+  'and the answer carries no ceiling, because no purchase raises one any more',
+  settled.capacity_after === 0,
+)
+
+// THE ONE THIS SECTION EXISTS FOR, in its second form. It used to prove that 41 places
+// bought on top of the plan's floor read as floor + 41 rather than as the floor — that a
+// customer got what they paid for. Places are not sold any more (§16.1 step 28), so what has
+// to be true instead is that a settled subscription moves the ceiling not at all, and that
+// the ceiling it does not move is the uncapped one a per-student tier now has (§3.3) rather
+// than the 79 the floor used to leave it at.
+check(
+  'and app.student_ceiling is untouched by the settlement',
+  (await n(db, 'select app.student_ceiling($1)::int as n', [centerC])) === includedC,
 )
 
 check('one receipt was written', (await receipts(intentC)) === 1)
@@ -13548,7 +13556,7 @@ const receipt = (
     [intentC],
   )
 ).rows[0]
-check('the receipt carries the amount from the intent', Number(receipt.amount_bdt) === 738)
+check('the receipt carries the amount from the intent', Number(receipt.amount_bdt) === 1999)
 check('and the reference the money arrived with', receipt.reference === 'TRX77123')
 check('and says who confirmed it', receipt.recorded_by === ownerC)
 check(
@@ -13564,7 +13572,7 @@ check('with the same receipt', settledTwice.payment_id === settled.payment_id)
 check('no second receipt was written', (await receipts(intentC)) === 1)
 check(
   'and the ceiling did not move a second time',
-  (await n(db, 'select app.student_ceiling($1)::int as n', [centerC])) === includedC + 41,
+  (await n(db, 'select app.student_ceiling($1)::int as n', [centerC])) === includedC,
 )
 
 check(
@@ -13605,7 +13613,7 @@ check('an expired quote is refused rather than honoured', await cannotSettle(sta
 check('and its money is not silently taken', (await receipts(stale)) === 0)
 check(
   'the ceiling is untouched by everything that was refused',
-  (await n(db, 'select app.student_ceiling($1)::int as n', [centerC])) === includedC + 41,
+  (await n(db, 'select app.student_ceiling($1)::int as n', [centerC])) === includedC,
 )
 
 // --- What else is for sale, and what it does not grant ----------------------
@@ -13621,14 +13629,18 @@ const branchSettled = (await settle(branchBuy)).rows[0]
 check('a branch purchase settles like any other', branchSettled.already === false)
 check('with a receipt of its own', (await receipts(branchBuy)) === 1)
 check(
-  'and grants no student places, because only places are a stored ceiling',
-  branchSettled.capacity_after === includedC + 41,
+  'and grants no student places, because no purchase stores one any more',
+  branchSettled.capacity_after === 0,
 )
 
-// The refusal that stops us taking money for nothing. 20260811000036 ignores purchased
-// capacity on the teacher tiers, so a place sold to one would raise a column that
-// app.student_ceiling never reads — the settle function checks the ceiling actually moved
-// and rolls the whole transaction back when it did not.
+// The refusal that stops us taking money for nothing. It used to be arithmetic: a place sold
+// on a teacher tier raised a column app.student_ceiling never read, so the settle function
+// checked the ceiling had actually moved and rolled the whole transaction back when it had
+// not. §16.1 step 28 made it a fact about the product instead — nothing raises a student
+// ceiling any more — so the refusal is now the intent's purpose and not the centre's plan.
+// Both tiers are asserted, because that difference is exactly what a regression would get
+// wrong: reading the plan instead of the purpose would let a capacity intent settle on the
+// centre tiers, where the ceiling is uncapped and nothing would look amiss.
 const ownerD = (
   await db.query('insert into auth.users (id) values (gen_random_uuid()) returning id')
 ).rows[0].id
@@ -13638,11 +13650,36 @@ const centerD = await one(
   [ownerD],
 )
 
-const doomed = await newIntent(centerD, { ref: 'TRXTP01' })
+const doomed = await newIntent(centerD, {
+  purpose: 'student_capacity',
+  quantity: 41,
+  amount: 738,
+  ref: 'TRXTP01',
+})
 await move(doomed, 'initiated')
 check('a teacher plan cannot be sold student places', await cannotSettle(doomed))
 check('and the money is refused rather than taken', (await receipts(doomed)) === 0)
 check('leaving the purchase open to cancel', (await field(doomed, 'state')) === 'initiated')
+
+// And the same intent on a per-student tier is refused too, which is the assertion that
+// would have caught the arithmetic reading the plan: on `center` the ceiling is uncapped, so
+// a refusal keyed to whether the ceiling moved would settle this happily.
+const doomedCentre = await newIntent(centerC, {
+  purpose: 'student_capacity',
+  quantity: 41,
+  amount: 738,
+  ref: 'TRXCT01',
+})
+await move(doomedCentre, 'initiated')
+check(
+  'nor a per-student tier, where the ceiling is uncapped and nothing would look amiss',
+  await cannotSettle(doomedCentre),
+)
+check('and no receipt is written for it either', (await receipts(doomedCentre)) === 0)
+check(
+  'and the ceiling it would have raised is the one the tier already had',
+  (await n(db, 'select app.student_ceiling($1)::int as n', [centerC])) === includedC,
+)
 
 // --- Two ways to pay twice for one thing ------------------------------------
 
@@ -15720,10 +15757,9 @@ check(
 // The recharge rides along in burnCentre; the students and the seat are the
 // only things this test adds by hand.
 const burnExample = await burnCentre('center', { recharge: 250000 })
-await asService(
-  'update coaching_centers set student_capacity = 100 where id = $1',
-  [burnExample],
-)
+// No `student_capacity` write: the column is archived and governs nothing (§16.1 step 28),
+// and on this tier the ceiling is now uncapped, so the sixty students below are what the
+// day's rate is priced from either way.
 
 for (let i = 0; i < 60; i += 1) {
   await asService(
