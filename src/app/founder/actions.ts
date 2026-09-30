@@ -1198,7 +1198,11 @@ async function writeAdjustment(
   supabase: Awaited<ReturnType<typeof createClient>>,
   input: { centerId: string; amountPoisha: number; reason: string },
 ): Promise<AdjustOutcome> {
-  const adjust = supabase.rpc as unknown as LeverRpc
+  // BOUND, NOT DETACHED — see settleDay in lib/billing/settlement.ts. `rpc` is a
+  // prototype method that reads `this.rest`, so calling it as a free function set
+  // `this` to undefined and threw; the arrow keeps the cast and keeps `this`.
+  const adjust = ((fn: 'founder_adjust_balance', args: Record<string, unknown>) =>
+    supabase.rpc(fn as never, args as never)) as unknown as LeverRpc
 
   const { data, error } = await adjust('founder_adjust_balance', {
     p_center: input.centerId,
@@ -1228,7 +1232,9 @@ async function writeGrant(
   supabase: Awaited<ReturnType<typeof createClient>>,
   input: { centerId: string; days: number; reason: string },
 ): Promise<GrantOutcome> {
-  const grant = supabase.rpc as unknown as LeverRpc
+  // BOUND, NOT DETACHED — same fix as writeAdjustment above.
+  const grant = ((fn: 'founder_grant_days', args: Record<string, unknown>) =>
+    supabase.rpc(fn as never, args as never)) as unknown as LeverRpc
 
   const { data, error } = await grant('founder_grant_days', {
     p_center: input.centerId,

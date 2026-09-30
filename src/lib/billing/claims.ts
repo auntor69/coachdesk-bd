@@ -280,11 +280,23 @@ const CHECK_VIOLATION = '23514'
  * `src/lib/supabase/types.ts` is older than migration 84, so neither function is in
  * `Database['public']['Functions']` yet and the cast is what stands in for it. The next
  * `npm run gen:types` produces both entries and this becomes a no-op.
+ *
+ * BOUND, NOT DETACHED — see settleDay for the longer story. `rpc` is a prototype method
+ * that reads `this.rest`, so pulling it off the client and calling it free set `this` to
+ * undefined and threw on the call; the arrow below keeps the narrow cast and keeps `this`.
  */
 type DecideRpc = (
   fn: 'approve_recharge_claim' | 'reject_recharge_claim',
   args: Record<string, unknown>,
 ) => PromiseLike<{ data: Json | null; error: { code?: string; message: string } | null }>
+
+/** The bound, cast wrapper every RPC call in this module goes through. */
+function decideRpc(
+  supabase: SupabaseClient<Database>,
+): DecideRpc {
+  return (fn, args) =>
+    supabase.rpc(fn, args as never) as unknown as ReturnType<DecideRpc>
+}
 
 /** A number off the wire, or null for anything that is not one. */
 function numberOrNull(value: unknown): number | null {
@@ -406,9 +418,7 @@ export async function approveClaim(
   supabase: SupabaseClient<Database>,
   input: { claimId: string; arrivedPoisha: number | null; note: string | null },
 ): Promise<ApprovalOutcome> {
-  const decide = supabase.rpc as unknown as DecideRpc
-
-  const { data, error } = await decide('approve_recharge_claim', {
+  const { data, error } = await decideRpc(supabase)('approve_recharge_claim', {
     p_claim: input.claimId,
     p_arrived_poisha: input.arrivedPoisha,
     p_note: input.note,
@@ -453,9 +463,7 @@ export async function rejectClaim(
   supabase: SupabaseClient<Database>,
   input: { claimId: string; reason: RejectReason; note: string | null },
 ): Promise<boolean> {
-  const decide = supabase.rpc as unknown as DecideRpc
-
-  const { error } = await decide('reject_recharge_claim', {
+  const { error } = await decideRpc(supabase)('reject_recharge_claim', {
     p_claim: input.claimId,
     p_reason: input.reason,
     p_note: input.note,
