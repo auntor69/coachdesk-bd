@@ -31,19 +31,19 @@ import {
  */
 
 const FOUNDING: BonusTier[] = [
-  { minPoisha: 780_000, bonusBps: 500 },
-  { minPoisha: 1_560_000, bonusBps: 1000 },
-  { minPoisha: 3_120_000, bonusBps: 2000 },
+  { minMonths: 3, bonusBps: 500 },
+  { minMonths: 6, bonusBps: 1000 },
+  { minMonths: 12, bonusBps: 2000 },
 ]
 
 /** ৳2,600 a month is 8,666 poisha a day — the masterplan's own worked rate. */
 const DAILY = 8_666
 
-test('the founding ladder is the masterplan\'s own three tiers', () => {
+test('the founding ladder is the founder\'s month-anchored three tiers', () => {
   assert.deepEqual(FOUNDING, [
-    { minPoisha: 780_000, bonusBps: 500 },
-    { minPoisha: 1_560_000, bonusBps: 1000 },
-    { minPoisha: 3_120_000, bonusBps: 2000 },
+    { minMonths: 3, bonusBps: 500 },
+    { minMonths: 6, bonusBps: 1000 },
+    { minMonths: 12, bonusBps: 2000 },
   ])
 })
 
@@ -64,6 +64,42 @@ test('§11.6\'s four suggested amounts, priced', () => {
   )
 })
 
+test('the ladder is the centre\'s own months, not the worked example\'s taka', () => {
+  // THE CASE THE FOUNDER FOUND. The absolute ladder floored at ৳7,800 — the worked
+  // example's three months — so a centre paying ৳2,099 a month pressed a button that
+  // said three months and was answered 0%. Month-anchored, the same button is true
+  // on every tier: 3 × 2,099 = 5% and 1 × 2,099 is nothing.
+  const month = 209_900
+  const suggestions = rechargeSuggestions(month, FOUNDING, Math.floor(month / 30))
+
+  assert.deepEqual(
+    suggestions.map((s) => [s.months, s.bonusPoisha]),
+    [
+      [1, 0],
+      [3, 31_485],
+      [6, 125_940],
+      [12, 503_760],
+    ],
+  )
+})
+
+test('and a Teacher Pro month is priced by the same ladder', () => {
+  // The absolute ladder could never have served this tier at all: 12 × ৳499 =
+  // ৳5,988 never reached the first ৳7,800 floor. Months make the offer real.
+  const month = 49_900
+  const suggestions = rechargeSuggestions(month, FOUNDING, Math.floor(month / 30))
+
+  assert.deepEqual(
+    suggestions.map((s) => [s.months, s.bonusPoisha]),
+    [
+      [1, 0],
+      [3, 7_485],
+      [6, 29_940],
+      [12, 119_760],
+    ],
+  )
+})
+
 test('the bonus is a percentage of money and never a grant of days', () => {
   // The 12-month figure re-derived at a rate three times higher: 20% of the taka is
   // still 20% of the taka, and the days are what moved. §11.6 names this as the soft spot
@@ -71,6 +107,7 @@ test('the bonus is a percentage of money and never a grant of days', () => {
   const grown = rechargeQuote({
     amountPoisha: 3_120_000,
     tiers: FOUNDING,
+    monthlyPoisha: 260_000,
     dailyRatePoisha: DAILY * 3,
   })
   assert.equal(grown.bonusPoisha, 624_000)
@@ -78,40 +115,53 @@ test('the bonus is a percentage of money and never a grant of days', () => {
 })
 
 test('a typed amount takes the highest floor it reaches, in any order', () => {
-  assert.equal(bonusPoisha(FOUNDING, 2_000_000), 200_000)
-  assert.equal(reachedBonusBps(FOUNDING, 2_000_000), 1000)
+  // ৳2,000,000 at ৳260,000 a month is 7 whole months — the 6-month floor, 10%.
+  assert.equal(bonusPoisha(FOUNDING, 2_000_000, 260_000), 200_000)
+  assert.equal(reachedBonusBps(FOUNDING, 2_000_000, 260_000), 1000)
 
   const jumbled = [FOUNDING[2], FOUNDING[0], FOUNDING[1]]
-  assert.equal(bonusPoisha(jumbled, 2_000_000), 200_000)
-  assert.equal(bonusPoisha(jumbled, 3_120_000), 624_000)
+  assert.equal(bonusPoisha(jumbled, 2_000_000, 260_000), 200_000)
+  assert.equal(bonusPoisha(jumbled, 3_120_000, 260_000), 624_000)
 })
 
 test('the poisha a fraction of a percent would lose are the customer\'s', () => {
   // ৳7,800.01 at 5% is 39,000.05 poisha. §11.6 floors it, so the credited figure is an
   // integer — which the ledger's `bigint` demands — and the fraction goes to the customer.
-  assert.equal(bonusPoisha(FOUNDING, 780_001), 39_000)
-  assert.equal(bonusPoisha(FOUNDING, 779_999), 0)
+  assert.equal(bonusPoisha(FOUNDING, 780_001, 260_000), 39_000)
+  // And the MONTHS are floored in the founder's favour: ৳779,999 is 2.99 months of
+  // ৳260,000 — two whole months, no bonus. A centre 1 poisha short of the third
+  // month did not buy the third month.
+  assert.equal(bonusPoisha(FOUNDING, 779_999, 260_000), 0)
 })
 
-test('nothing about a malformed promotion can stop a quote', () => {
-  assert.equal(bonusPoisha([], 780_000), 0)
-  assert.equal(bonusPoisha([{ minPoisha: 0, bonusBps: 2000 }], 780_000), 0)
-  assert.equal(bonusPoisha([{ minPoisha: 780_000, bonusBps: 0 }], 780_000), 0)
-  assert.equal(bonusPoisha([{ minPoisha: 780_000, bonusBps: -500 }], 780_000), 0)
-  assert.equal(bonusPoisha([{ minPoisha: NaN, bonusBps: 500 }], 780_000), 0)
-  assert.equal(bonusPoisha(FOUNDING, -100), 0)
-  assert.equal(bonusPoisha(FOUNDING, Number.NaN), 0)
+test('nothing about a malformed promotion or an unreadable monthly can stop a quote', () => {
+  assert.equal(bonusPoisha([], 780_000, 260_000), 0)
+  assert.equal(bonusPoisha([{ minMonths: 0, bonusBps: 2000 }], 780_000, 260_000), 0)
+  assert.equal(bonusPoisha([{ minMonths: 3, bonusBps: 0 }], 780_000, 260_000), 0)
+  assert.equal(bonusPoisha([{ minMonths: 3, bonusBps: -500 }], 780_000, 260_000), 0)
+  assert.equal(bonusPoisha([{ minMonths: NaN, bonusBps: 500 }], 780_000, 260_000), 0)
+  assert.equal(bonusPoisha(FOUNDING, -100, 260_000), 0)
+  assert.equal(bonusPoisha(FOUNDING, Number.NaN, 260_000), 0)
+
+  // NO MONTHLY FIGURE, NO MONTHS, NO BONUS — the fail-closed direction §11.12 takes
+  // every unreadable count. Zero, negative and NaN all divide by nothing.
+  assert.equal(bonusPoisha(FOUNDING, 780_000, 0), 0)
+  assert.equal(bonusPoisha(FOUNDING, 780_000, -1), 0)
+  assert.equal(bonusPoisha(FOUNDING, 780_000, Number.NaN), 0)
 })
 
-test('the next rung says what reaching it costs', () => {
-  // ৳5,000 typed, ৳2,800 more to reach the 5% floor. The difference is quoted from the
-  // floor itself so a reader doing the arithmetic lands on the same number.
-  assert.deepEqual(nextTier(FOUNDING, 500_000), { extraPoisha: 280_000, bonusBps: 500 })
-  // Already at 5%: the rung above is 10%, from the ৳15,600 floor.
-  assert.deepEqual(nextTier(FOUNDING, 780_000), { extraPoisha: 780_000, bonusBps: 1000 })
+test('the next rung says what reaching it costs, in the centre\'s own money', () => {
+  // ৳500,000 typed at ৳260,000 a month is 1.9 months — 1 whole month — so the 3-month
+  // rung sits at ৳780,000: ৳280,000 more. Quoted from the floor itself so a reader
+  // doing the arithmetic against the monthly figure lands on the number on screen.
+  assert.deepEqual(nextTier(FOUNDING, 500_000, 260_000), { extraPoisha: 280_000, bonusBps: 500 })
+  // Already at 5% (3 whole months): the rung above is 10%, at 6 months — 3 months more.
+  assert.deepEqual(nextTier(FOUNDING, 780_000, 260_000), { extraPoisha: 780_000, bonusBps: 1000 })
   // Nothing above the top.
-  assert.equal(nextTier(FOUNDING, 3_120_000), null)
-  assert.equal(nextTier(FOUNDING, 4_000_000), null)
+  assert.equal(nextTier(FOUNDING, 3_120_000, 260_000), null)
+  assert.equal(nextTier(FOUNDING, 4_000_000, 260_000), null)
+  // No monthly figure, no months to climb towards.
+  assert.equal(nextTier(FOUNDING, 500_000, 0), null)
 })
 
 test('days come from the rate and are absent when there is no rate', () => {
@@ -133,11 +183,11 @@ test('a suggestion list is empty when the monthly figure could not be read', () 
 
 test('the tiers off the column are read defensively', () => {
   assert.deepEqual(
-    readBonusTiers([{ min_poisha: 780_000, bonus_bps: 500 }, { min_poisha: 'lots' }]),
-    [{ minPoisha: 780_000, bonusBps: 500 }],
+    readBonusTiers([{ min_months: 3, bonus_bps: 500 }, { min_months: 'lots' }]),
+    [{ minMonths: 3, bonusBps: 500 }],
   )
   assert.deepEqual(readBonusTiers(null), [])
-  assert.deepEqual(readBonusTiers({ min_poisha: 1 }), [])
+  assert.deepEqual(readBonusTiers({ min_months: 1 }), [])
 })
 
 /* -------------------------------------------------------------------------- */
@@ -163,10 +213,10 @@ function seedFromMigration(): BonusTier[] {
 
   const sql = readFileSync(`${dir}/${file}`, 'utf8')
   const tiers: BonusTier[] = []
-  const tier = /'min_poisha',\s*(\d+),\s*'bonus_bps',\s*(\d+)/g
+  const tier = /'min_months',\s*(\d+),\s*'bonus_bps',\s*(\d+)/g
 
   for (const match of sql.matchAll(tier)) {
-    tiers.push({ minPoisha: Number(match[1]), bonusBps: Number(match[2]) })
+    tiers.push({ minMonths: Number(match[1]), bonusBps: Number(match[2]) })
   }
 
   assert.equal(tiers.length, 3, `${file} seeds three tiers`)
@@ -181,10 +231,11 @@ test('and the same amounts answer the same through both engines', () => {
   // The SQL side of these four is asserted in scripts/test-recharge.mjs against the same
   // literals — `app.bonus_poisha` in PGlite, `bonusPoisha` here. Neither test can see the
   // other, and that is the arrangement: the numbers are the agreement between them.
+  // ৳260,000 is the month both engines count months from here.
   const seeded = seedFromMigration()
-  assert.equal(bonusPoisha(seeded, 260_000), 0)
-  assert.equal(bonusPoisha(seeded, 780_000), 39_000)
-  assert.equal(bonusPoisha(seeded, 1_560_000), 156_000)
-  assert.equal(bonusPoisha(seeded, 3_120_000), 624_000)
-  assert.equal(bonusPoisha(seeded, 2_000_000), 200_000)
+  assert.equal(bonusPoisha(seeded, 260_000, 260_000), 0)
+  assert.equal(bonusPoisha(seeded, 780_000, 260_000), 39_000)
+  assert.equal(bonusPoisha(seeded, 1_560_000, 260_000), 156_000)
+  assert.equal(bonusPoisha(seeded, 3_120_000, 260_000), 624_000)
+  assert.equal(bonusPoisha(seeded, 2_000_000, 260_000), 200_000)
 })
