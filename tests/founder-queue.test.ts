@@ -242,7 +242,7 @@ test('the queue is read across centres, and says so where the gate can see it', 
 test('closing a claim credits nothing and keeps the row', () => {
   // A rejection is a state and a reason, never a delete: the customer's own card says what
   // happened, and a table with no UPDATE path would otherwise leave it saying nothing.
-  assert.ok(CLAIMS.includes("decide('reject_recharge_claim'"))
+  assert.ok(CLAIMS.includes("decideRpc(supabase)('reject_recharge_claim'"))
   assert.ok(ACTIONS.includes('await rejectClaim(supabase, { claimId, reason, note: note || null })'))
   assert.ok(!/delete\(\)/.test(CLAIMS), 'nothing here deletes a claim')
   assert.ok(!/\.update\(/.test(CLAIMS), 'the RPCs own every write to a claim')

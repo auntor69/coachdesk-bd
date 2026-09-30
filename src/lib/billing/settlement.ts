@@ -126,7 +126,13 @@ export async function settleDay(
   centerId: string,
   ranBy: SettleCaller = 'session',
 ): Promise<SettlementAttempt> {
-  const settle = supabase.rpc as unknown as SettleBillingRpc
+  // BOUND, NOT DETACHED. `rpc` is a prototype method of the client and reads
+  // `this.rest` inside — pulling it off the object and calling it as a free
+  // function set `this` to undefined and threw "Cannot read properties of
+  // undefined (reading 'rest')" on every signed-in page, which is the failure
+  // Vercel logged as ERROR 2938108482. The narrow cast lives on the bound
+  // signature instead, so the call keeps its types and keeps its `this`.
+  const settle: SettleBillingRpc = (...args) => supabase.rpc(...args)
   const { data, error } = await settle('settle_billing', {
     p_center: centerId,
     p_ran_by: ranBy,
