@@ -60,7 +60,12 @@ const centre = async (name = `Recharge ${Math.random().toString(36).slice(2, 8)}
     )
   ).rows[0].id
 
-/** A claim as the Server Action files it: priced by the server, unique transaction. */
+/**
+ * A claim as the Server Action files it: priced by the server, unique transaction.
+ *
+ * The counts price ৳2,600 a month (100/3/1 on the founding card — the masterplan's own
+ * worked example), which is the month the ladder's months are counted from at approval.
+ */
 const fileClaim = async (
   center,
   { quoted = 780000, bonus = 39000, trx = `TRX${Math.random().toString(36).slice(2, 10)}` } = {},
@@ -119,12 +124,12 @@ const approveAsPlatform = (claim, arrived = null) =>
 
 console.log('\nThe bonus ladder:')
 
-const bonusFor = async (amount) =>
+const bonusFor = async (amount, monthly = 260000) =>
   Number(
     (
       await db.query(
-        `select app.bonus_poisha(tiers, $1) as b from promotions where code = 'LAUNCH'`,
-        [amount],
+        `select app.bonus_poisha(tiers, $1, $2) as b from promotions where code = 'LAUNCH'`,
+        [amount, monthly],
       )
     ).rows[0].b,
   )
@@ -134,7 +139,8 @@ check('three months is five percent, to the poisha', (await bonusFor(780000)) ==
 check('six months is ten percent', (await bonusFor(1560000)) === 156000)
 check('twelve months is twenty percent', (await bonusFor(3120000)) === 624000)
 check(
-  'a typed amount takes the highest band it reaches',
+  'a typed amount takes the highest band its WHOLE months reach',
+  // ৳2,000,000 at ৳260,000 a month is 7.69 months — 7 whole — so the 6-month rung.
   (await bonusFor(2000000)) === 200000,
   String(await bonusFor(2000000)),
 )
@@ -144,12 +150,36 @@ check(
   String(await bonusFor(780001)),
 )
 check(
+  'a fraction of a MONTH is floored in the founder\'s favour',
+  // ৳779,999 is 2.99 months — two whole months, no bonus. A centre 1 poisha short
+  // of the third month did not buy the third month.
+  (await bonusFor(779999)) === 0,
+  String(await bonusFor(779999)),
+)
+check(
+  'the ladder is the centre\'s OWN month, not the worked example\'s taka',
+  // THE CASE THE FOUNDER FOUND: ৳2,099 a month. Its three months now carries the
+  // 5% the button promises; its one month still carries nothing.
+  (await bonusFor(629700, 209900)) === 31485 && (await bonusFor(209900, 209900)) === 0,
+  `3mo: ${await bonusFor(629700, 209900)}, 1mo: ${await bonusFor(209900, 209900)}`,
+)
+check(
+  'and Teacher Pro\'s twelve months reaches the top rung at last',
+  // The absolute ladder could never serve this tier: 12 × ৳499 never reached ৳7,800.
+  (await bonusFor(598800, 49900)) === 119760,
+  String(await bonusFor(598800, 49900)),
+)
+check(
+  'no monthly figure means no months means no bonus',
+  (await bonusFor(780000, 0)) === 0 && (await bonusFor(780000, -1)) === 0,
+)
+check(
   'a tier list nobody ordered still answers the same',
   Number(
     (
       await db.query(
-        `select app.bonus_poisha('[{"min_poisha": 3120000, "bonus_bps": 2000},
-            {"min_poisha": 780000, "bonus_bps": 500}]'::jsonb, 3120000) as b`,
+        `select app.bonus_poisha('[{"min_months": 12, "bonus_bps": 2000},
+            {"min_months": 3, "bonus_bps": 500}]'::jsonb, 3120000, 260000) as b`,
       )
     ).rows[0].b,
   ) === 624000,
@@ -159,14 +189,25 @@ check(
   Number(
     (
       await db.query(
-        `select app.bonus_poisha('[{"min_poisha": "lots", "bonus_bps": "some"}]'::jsonb, 780000) as b`,
+        `select app.bonus_poisha('[{"min_months": "lots", "bonus_bps": "some"}]'::jsonb, 780000, 260000) as b`,
       )
     ).rows[0].b,
   ) === 0,
 )
 check(
   'an empty tier list bonuses nothing',
-  Number((await db.query(`select app.bonus_poisha('[]'::jsonb, 780000) as b`)).rows[0].b) === 0,
+  Number(
+    (await db.query(`select app.bonus_poisha('[]'::jsonb, 780000, 260000) as b`)).rows[0].b,
+  ) === 0,
+)
+check(
+  'the old two-argument shape is gone, not silently wrong',
+  // The ladder changed meaning in the same commit that changed the signature, so a
+  // stale caller fails loudly here rather than crediting a wrong gift in production.
+  await db
+    .query(`select app.bonus_poisha('[{"min_months": 3, "bonus_bps": 500}]'::jsonb, 780000) as b`)
+    .then(() => false)
+    .catch(() => true),
 )
 
 /* -------------------------------------------------------------------------- */
@@ -263,6 +304,7 @@ const bigger = (await approve(quotedSmall.id, 1560000)).rows[0].out
 
 check(
   'the bonus is re-derived from what arrived, not from the quote',
+  // ৳15,600 at the claim's own ৳2,600 month is 6 whole months — the 10% rung.
   bigger.bonusPoisha === 156000,
   JSON.stringify(bigger),
 )
@@ -284,6 +326,66 @@ check(
   JSON.stringify(honest),
 )
 check('and the balance is the arithmetic one', (await balance(lying)) === 819000)
+
+/* -------------------------------------------------------------------------- */
+/* The months come from the claim's own snapshot (§11.12's rule, at approval)  */
+/* -------------------------------------------------------------------------- */
+
+console.log('\nThe months the approval counts:')
+
+// A small centre whose claim was priced at ITS size: 60/3/1 = ৳2,099 a month.
+// The old absolute ladder answered 0% for its three months; the month-anchored
+// one answers the 5% the button promised.
+const smallCentre = await centre()
+const smallQuote = 629700
+const smallClaim = await fileClaim(smallCentre, {
+  quoted: smallQuote,
+  bonus: 0,
+  trx: 'SMALL3M',
+})
+await asService(
+  `update recharge_claims set usage_students = 60, usage_teachers = 3, usage_branches = 1
+    where id = $1`,
+  [smallClaim.id],
+)
+const smallOut = (await approve(smallClaim.id)).rows[0].out
+check(
+  'a ৳2,099-a-month centre gets its three months\' 5%',
+  smallOut.bonusPoisha === 31485,
+  JSON.stringify(smallOut),
+)
+check('and the answer names the month it counted from', smallOut.monthlyPoisha === 209900)
+
+// Growth between quote and approval must not reprice the ladder's months: the
+// counts are the claim's own snapshot, not today's roster.
+await asService(
+  `insert into students (coaching_center_id, name, guardian_phone)
+   select id, 'Student ' || g, '01700000001' from coaching_centers, generate_series(1, 40) g
+   where id = $1`,
+  [smallCentre],
+)
+const grownCentre = await centre()
+const grownClaim = await fileClaim(grownCentre, { quoted: 3120000, bonus: 624000, trx: 'GROWN12' })
+await asService(
+  `update recharge_claims set usage_students = 100, usage_teachers = 3, usage_branches = 1
+    where id = $1`,
+  [grownClaim.id],
+)
+await asService(
+  `insert into students (coaching_center_id, name, guardian_phone)
+   select id, 'Student ' || g, '01700000001' from coaching_centers, generate_series(1, 200) g
+   where id = $1`,
+  [grownCentre],
+)
+const grownOut = (await approve(grownClaim.id)).rows[0].out
+check(
+  'roster growth after the quote does not reprice the approval',
+  // 100/3/1 from the claim's snapshot = ৳2,600 → 12 months → 20%, regardless of
+  // the 300 students now on the roster (which would have moved the month to a
+  // different band and the bonus with it).
+  grownOut.bonusPoisha === 624000 && grownOut.monthlyPoisha === 260000,
+  JSON.stringify(grownOut),
+)
 
 /* -------------------------------------------------------------------------- */
 /* The fences                                                                 */

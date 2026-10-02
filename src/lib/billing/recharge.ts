@@ -26,13 +26,22 @@
  */
 
 /**
- * One floor of a promotion: this much money reaches this many basis points (§11.6).
+ * One floor of a promotion: this many months reaches this many basis points (§11.6).
  *
  * Basis points and not percent, because 2.5% is not an integer and §11.6 has already
  * decided that floats have no place in the money path. 500 is five percent exactly.
+ *
+ * MONTHS, NOT TAKA, since the founder's decision of 2026-09-30 (migration
+ * 20260811000088): `minMonths` is a count of the centre's OWN monthly figure, not an
+ * absolute amount. The founding ladder floored at ৳7,800/৳15,600/৳31,200 — the worked
+ * example's month — and a centre paying ৳2,099 a month pressed a button that said
+ * "3 months" and was answered 0%; on Teacher Pro even twelve months missed the first
+ * rung. A commitment to three months is three months whatever the tier charges for it,
+ * so the ladder reads the months the money buys and not the taka it arrived in.
  */
 export type BonusTier = {
-  minPoisha: number
+  /** The whole months of the centre's own monthly figure this floor begins at. */
+  minMonths: number
   bonusBps: number
 }
 
@@ -73,7 +82,17 @@ function whole(value: number): number {
  * ৳390 and given ৳3.90 would be a bug the second engine introduced. The test that holds
  * them together runs the same ladder through both.
  *
- * THE HIGHEST FLOOR THE AMOUNT REACHES WINS, whatever order the tiers were written in.
+ * MONTHS ARE DERIVED FROM THE CENTRE'S OWN MONTHLY FIGURE, the third argument. `amount ÷
+ * monthly`, FLOORED — in the customer's disfavour, deliberately: 2.9 months of money is
+ * 2 months of commitment, and a centre that sends ৳7,799 against a ৳7,800 quote did not
+ * buy the third month. The same flooring the SQL twin applies.
+ *
+ * A MONTHLY FIGURE THAT IS NOT A POSITIVE NUMBER BONUSES NOTHING rather than dividing by
+ * it: a free tier has no months to buy, and a monthly figure nobody could read is not
+ * evidence of a discount — the same fail-closed direction an unreadable count takes
+ * everywhere else in §11.
+ *
+ * THE HIGHEST FLOOR THE MONTHS REACH WINS, whatever order the tiers were written in.
  * §11.6: "a typed amount gets the highest band it reaches, which is what the owner asked
  * for", so the list is read and never indexed.
  *
@@ -84,18 +103,24 @@ function whole(value: number): number {
  *
  * A NEGATIVE OR MALFORMED TIER CONTRIBUTES NOTHING rather than throwing: this runs inside
  * a screen an owner is looking at, and a promotion somebody typed wrong must not be able
- * to stop a recharge being quoted. `minPoisha <= 0` is refused as well, because a floor of
- * nothing would bonus every amount on the ladder including the ones below it.
+ * to stop a recharge being quoted.
  */
-export function bonusPoisha(tiers: readonly BonusTier[], amountPoisha: number): number {
+export function bonusPoisha(
+  tiers: readonly BonusTier[],
+  amountPoisha: number,
+  monthlyPoisha: number,
+): number {
   const amount = whole(amountPoisha)
-  if (amount <= 0) return 0
+  const monthly = whole(monthlyPoisha)
+  if (amount <= 0 || monthly <= 0) return 0
+
+  const months = Math.floor(amount / monthly)
 
   let best = 0
   for (const tier of tiers) {
-    if (!Number.isFinite(tier.minPoisha) || !Number.isFinite(tier.bonusBps)) continue
-    if (tier.minPoisha <= 0 || tier.bonusBps <= 0) continue
-    if (amount < Math.floor(tier.minPoisha)) continue
+    if (!Number.isFinite(tier.minMonths) || !Number.isFinite(tier.bonusBps)) continue
+    if (tier.minMonths <= 0 || tier.bonusBps <= 0) continue
+    if (months < Math.floor(tier.minMonths)) continue
     best = Math.max(best, tier.bonusBps)
   }
 
@@ -106,15 +131,19 @@ export function bonusPoisha(tiers: readonly BonusTier[], amountPoisha: number): 
 export function reachedBonusBps(
   tiers: readonly BonusTier[],
   amountPoisha: number,
+  monthlyPoisha: number,
 ): number {
   const amount = whole(amountPoisha)
-  if (amount <= 0) return 0
+  const monthly = whole(monthlyPoisha)
+  if (amount <= 0 || monthly <= 0) return 0
+
+  const months = Math.floor(amount / monthly)
 
   let best = 0
   for (const tier of tiers) {
-    if (!Number.isFinite(tier.minPoisha) || !Number.isFinite(tier.bonusBps)) continue
-    if (tier.minPoisha <= 0 || tier.bonusBps <= 0) continue
-    if (amount < Math.floor(tier.minPoisha)) continue
+    if (!Number.isFinite(tier.minMonths) || !Number.isFinite(tier.bonusBps)) continue
+    if (tier.minMonths <= 0 || tier.bonusBps <= 0) continue
+    if (months < Math.floor(tier.minMonths)) continue
     best = Math.max(best, tier.bonusBps)
   }
 
@@ -135,25 +164,33 @@ export function reachedBonusBps(
 export function nextTier(
   tiers: readonly BonusTier[],
   amountPoisha: number,
+  monthlyPoisha: number,
 ): { extraPoisha: number; bonusBps: number } | null {
   const amount = whole(amountPoisha)
-  const current = reachedBonusBps(tiers, amount)
+  const monthly = whole(monthlyPoisha)
+  if (monthly <= 0) return null
+
+  const months = Math.floor(amount / monthly)
+  const current = reachedBonusBps(tiers, amount, monthly)
 
   const ahead = tiers
     .filter(
       (tier) =>
-        Number.isFinite(tier.minPoisha)
+        Number.isFinite(tier.minMonths)
         && Number.isFinite(tier.bonusBps)
-        && tier.minPoisha > 0
+        && tier.minMonths > 0
         && tier.bonusBps > current
-        && Math.floor(tier.minPoisha) > amount,
+        && Math.floor(tier.minMonths) > months,
     )
-    .sort((a, b) => a.minPoisha - b.minPoisha)[0]
+    .sort((a, b) => a.minMonths - b.minMonths)[0]
 
   if (!ahead) return null
 
   return {
-    extraPoisha: Math.floor(ahead.minPoisha) - amount,
+    // Quoted from the floor itself: the money that reaches `minMonths` whole
+    // months, less what was typed. A reader doing the arithmetic against the
+    // monthly figure lands on the number on the screen.
+    extraPoisha: Math.max(0, Math.floor(ahead.minMonths) * monthly - amount),
     bonusBps: ahead.bonusBps,
   }
 }
@@ -177,18 +214,21 @@ export function daysOfCredit(creditPoisha: number, dailyRatePoisha: number | nul
 export function rechargeQuote(input: {
   amountPoisha: number
   tiers: readonly BonusTier[]
+  /** The centre's own monthly figure, in poisha — what the months are counted from. */
+  monthlyPoisha: number
   dailyRatePoisha: number | null
 }): RechargeQuote {
   const payPoisha = whole(input.amountPoisha)
-  const bonus = bonusPoisha(input.tiers, payPoisha)
+  const monthly = whole(input.monthlyPoisha)
+  const bonus = bonusPoisha(input.tiers, payPoisha, monthly)
   const creditPoisha = payPoisha + bonus
 
   return {
     payPoisha,
     bonusPoisha: bonus,
     creditPoisha,
-    bonusBps: reachedBonusBps(input.tiers, payPoisha),
-    nextTier: nextTier(input.tiers, payPoisha),
+    bonusBps: reachedBonusBps(input.tiers, payPoisha, monthly),
+    nextTier: nextTier(input.tiers, payPoisha, monthly),
     days: daysOfCredit(creditPoisha, input.dailyRatePoisha),
   }
 }
@@ -217,6 +257,7 @@ export function rechargeSuggestions(
     const quote = rechargeQuote({
       amountPoisha: monthly * months,
       tiers,
+      monthlyPoisha: monthly,
       dailyRatePoisha,
     })
     return {
@@ -245,11 +286,11 @@ export function readBonusTiers(value: unknown): BonusTier[] {
   for (const raw of value) {
     if (typeof raw !== 'object' || raw === null) continue
     const tier = raw as Record<string, unknown>
-    const minPoisha = tier.min_poisha
+    const minMonths = tier.min_months
     const bonusBps = tier.bonus_bps
-    if (typeof minPoisha !== 'number' || !Number.isFinite(minPoisha)) continue
+    if (typeof minMonths !== 'number' || !Number.isFinite(minMonths)) continue
     if (typeof bonusBps !== 'number' || !Number.isFinite(bonusBps)) continue
-    tiers.push({ minPoisha, bonusBps })
+    tiers.push({ minMonths, bonusBps })
   }
 
   return tiers

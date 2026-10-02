@@ -116,7 +116,9 @@ export async function RechargePanel() {
    */
   const suggestions: Suggestion[] = card
     ? rechargeSuggestions(monthlyPoisha, tiers, daily).map((s) => {
-        const bps = reachedBonusBps(tiers, s.payPoisha)
+        // The centre's own monthly figure is what the ladder's months are counted
+        // from (migration 20260811000088) — so "3 months · 5%" is true on every tier.
+        const bps = reachedBonusBps(tiers, s.payPoisha, monthlyPoisha)
         return {
           months: s.months,
           value: String(s.payPoisha / 100),

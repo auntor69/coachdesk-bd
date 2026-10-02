@@ -542,6 +542,10 @@ export async function submitRechargeClaim(
   const quote = rechargeQuote({
     amountPoisha,
     tiers: promotion?.tiers ?? [],
+    // The centre's own monthly figure — the same one the quote's months are counted
+    // from, and the one the approval re-derives from the stored counts (migration
+    // 20260811000088). Both engines count months from the same number.
+    monthlyPoisha: monthlyPoisha,
     dailyRatePoisha: daily,
   })
 
