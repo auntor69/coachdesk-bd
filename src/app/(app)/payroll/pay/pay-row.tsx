@@ -3,13 +3,14 @@
 /**
  * One person's row for the month, with the form that hands them a salary behind a tap.
  *
- * WHAT IS ABOVE THE FORM IS THE GUARD AGAINST PAYING TWICE. 20260811000044 has no unique
- * index on (payee, for_month) on purpose — half a salary on the 5th and half on the 20th is
- * two real rows and a reversing correction is a third — so nothing in the database will
- * refuse a second payment, and ./actions.ts deliberately does not either. What stops an
- * owner paying a salary twice by accident is this row printing what is already on the
- * record for this month before the form opens. That is why the figures are not inside the
- * collapsed panel.
+ * WHAT IS ABOVE THE FORM IS THE FIRST GUARD AGAINST PAYING TWICE. 20260811000044 has no
+ * unique index on (payee, for_month) on purpose — half a salary on the 5th and half on the
+ * 20th is two real rows and a reversing correction is a third — so the row printing what is
+ * already on the record for this month is what tells an owner where the month stands. The
+ * second guard is inside the form: `needsRepeat` draws the explicit tick ./actions.ts asks
+ * for when a payment would take somebody past their agreed figure, and that action refuses
+ * the overshoot whether or not this box was drawn. The figures stay outside the collapsed
+ * panel for the same reason they always did — they are what the owner reads before they tap.
  *
  * FOUR BOXES OR ONE, decided by whether there is a live monthly agreement behind the row.
  * Four prefilled from the agreement is the ordinary case: `amount_bdt` is generated from
@@ -59,6 +60,7 @@ export function PayRow({
   hint,
   flag,
   parts,
+  needsRepeat,
   canWrite,
   methods,
   t,
@@ -80,6 +82,11 @@ export function PayRow({
   flag: string | null
   /** The agreement's four columns, or null where there is nothing to prefill. */
   parts: SalaryParts | null
+  /**
+   * Draw the confirmation tick: this row already has money on the month. See ./page.tsx
+   * for how it is decided and ./actions.ts for what happens without it.
+   */
+  needsRepeat: boolean
   canWrite: boolean
   methods: MethodLabels
   t: T<'salaryPayForm'>
@@ -229,6 +236,24 @@ export function PayRow({
               maxLength={MAX_TEXT}
               autoComplete="off"
             />
+
+            {/*
+              The tick that turns a second payment into a deliberate one. NOT `required`:
+              the server asks for it only when the figures make the month overshoot the
+              agreement, and the second half of a salary does not — so the form offers the
+              control to every row that has money on the month and lets the action refuse
+              the one case that needs it, with a sentence naming how much is already there.
+            */}
+            {needsRepeat && (
+              <label className="flex items-start gap-2 text-sm text-ink-soft">
+                <input
+                  type="checkbox"
+                  name="confirmRepeat"
+                  className="mt-0.5 h-5 w-5 shrink-0 accent-brand-600"
+                />
+                <span>{t.repeatLabel}</span>
+              </label>
+            )}
 
             <Button type="submit" full disabled={pending}>
               {pending ? t.paying : t.submit}

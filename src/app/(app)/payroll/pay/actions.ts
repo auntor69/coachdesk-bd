@@ -17,14 +17,17 @@
  * owner is looking at, is checked against a regex and both ends of a range, and never comes
  * from `now()`.
  *
- * "ALREADY PAID" IS NOT CHECKED HERE, AND THAT IS THE DESIGN. 20260811000044 deliberately
- * has no unique index on (payee, for_month): half a salary on the 5th and half on the 20th
- * is two real rows, and the only correction this table permits is a third one with a minus
+ * "ALREADY PAID" IS A READ AND A TICK, NOT A CONSTRAINT. 20260811000044 deliberately has
+ * no unique index on (payee, for_month): half a salary on the 5th and half on the 20th is
+ * two real rows, and the only correction this table permits is a third one with a minus
  * sign. So a second payment for a month is legitimate and this action must not refuse it.
- * What stops an owner paying twice by accident is the screen — every row prints what is
- * already on the record for that month before the form opens — and what stops one tap
- * becoming two payments is the idempotency token, which is a different question with a
- * different answer.
+ * What stops one tap becoming two payments is the idempotency token; what stops a second
+ * full salary paid by accident is `needsRepeatConfirmation` — a payment that would take the
+ * month past the live monthly agreement is refused until the form says it was meant. The
+ * tick is something an advance, a bonus or a settlement can give and a duplicate cannot,
+ * and the form shows it on every row that already has money on the month, so the refusal
+ * can never be a dead end. The screen still prints paid, agreed and left above every form:
+ * this fence is for the owner who does not read it.
  *
  * SOMEBODY WHO HAS LEFT MAY BE PAID, unlike ../actions.ts, where agreeing a figure with
  * them is refused. The asymmetry is the point: a final settlement after somebody leaves is
@@ -55,8 +58,10 @@ import { currentPeriodMonth } from '@/lib/bd/time'
 import { dict } from '@/lib/i18n'
 import { readIdempotencyKey, UNIQUE_VIOLATION } from '@/lib/idempotency'
 import { MAX_LABEL, MAX_TEXT, clamp } from '@/lib/limits'
-import { MAX_TAKA, parseTaka, sumTaka } from '@/lib/money'
+import { formatTaka, MAX_TAKA, parseTaka, sumTaka } from '@/lib/money'
+import { MONTHLY_BASIS } from '@/lib/payroll/basis'
 import { readPayeeValue, type PayeeKind } from '@/lib/payroll/bill'
+import { needsRepeatConfirmation } from '@/lib/payroll/month'
 import { PAYMENT_METHODS } from '@/lib/fees/methods'
 import { has } from '@/lib/plans'
 import { createClient } from '@/lib/supabase/server'
@@ -276,6 +281,79 @@ export async function paySalary(
 
   if (!(await payeeExists(supabase, centerId, payee.kind, payee.id))) {
     return { error: t.errors.payeeNotFound }
+  }
+
+  // The payee's column in both tables, chosen from the one picker value so the two reads
+  // below and the insert cannot disagree about which half of the pair this is.
+  const payeeColumn = payee.kind === 'employee' ? 'employee_id' : 'teacher_id'
+
+  /*
+   * What this month already holds for them, and what a monthly agreement says it should.
+   *
+   * Read before the insert because these two figures are the only place a repeated salary
+   * can be told apart from a genuine instalment — see needsRepeatConfirmation. Failing
+   * closed on either read: a guard that could not be read must not let an overpayment
+   * through, and `salary_payments` revokes DELETE, so the mistake would be permanent.
+   *
+   * A replay's own row is left out of the sum. A retry of the first payment carries the key
+   * already on the record, and counting it would make the replay look like a second payment
+   * and refuse it — the one request the idempotency index exists to answer with the voucher
+   * written the first time.
+   */
+  const [paidRows, termsRow] = await Promise.all([
+    supabase
+      .from('salary_payments')
+      .select('amount_bdt, idempotency_key')
+      .eq('coaching_center_id', centerId)
+      .eq('for_month', forMonth)
+      .eq(payeeColumn, payee.id),
+    supabase
+      .from('salary_terms')
+      .select('basis, net_bdt')
+      .eq('coaching_center_id', centerId)
+      .eq('active', true)
+      .eq(payeeColumn, payee.id)
+      .maybeSingle(),
+  ])
+
+  if (paidRows.error || termsRow.error) return { error: t.errors.failed }
+
+  const alreadyPaid = sumTaka(
+    (paidRows.data ?? [])
+      .filter((row) => !key || row.idempotency_key !== key)
+      .map((row) => Number(row.amount_bdt ?? 0)),
+  )
+  // Null on a per-class agreement — 20260811000044 refuses to store a monthly figure for
+  // one — and null when there is no live agreement at all. Both are nothing to measure
+  // against; see needsRepeatConfirmation.
+  const agreedNet =
+    termsRow.data && termsRow.data.basis === MONTHLY_BASIS
+      ? Number(termsRow.data.net_bdt ?? 0)
+      : null
+
+  /*
+   * The fence itself. A payment that would take the month past the agreed figure is
+   * refused in words unless the form carried the explicit tick — which is what makes the
+   * second full salary that used to be one tap into a deliberate choice, while the second
+   * half of a salary stays an ordinary payment. A negative row is never refused: a
+   * reversing correction is the only way this table permits a mistake to be put right.
+   */
+  if (
+    needsRepeatConfirmation({
+      agreedNet,
+      alreadyPaid,
+      amount: net,
+      confirmed: formData.get('confirmRepeat') === 'on',
+    })
+  ) {
+    // Revalidated on the way out for the same reason the read-back failure below is: the
+    // refusal names the confirmation tick, and a page rendered before the payment this
+    // refusal was measured against is not drawing it. Refreshing first is what keeps the
+    // sentence's one instruction reachable from the screen it is printed on.
+    revalidatePath('/payroll/pay')
+    return {
+      error: t.errors.repeatConfirm(formatTaka(alreadyPaid), formatTaka(agreedNet ?? 0)),
+    }
   }
 
   const { data: written, error: writeError } = await supabase

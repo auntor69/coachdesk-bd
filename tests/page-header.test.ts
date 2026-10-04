@@ -250,12 +250,16 @@ const NO_BAR = [
  *
  * `/settings/plan` is a redirect since §16.1 step 27 demolished the page: a shipped URL
  * with a live replacement, kept so an old bookmark and the receipt sheets' crumb still
- * arrive somewhere. A route that returns `redirect()` has no heading to owe the reader and
- * no reader to address, so it is settled rather than pending — and asserted to be one, in
- * the loop below, because a list like this is exactly how the next heading-less screen
- * would try to escape the gate.
+ * arrive somewhere. Under it, the receipt path forwards the id to the sheet's new address,
+ * because the old one is what printed copies and the app's own history carried. A route
+ * that returns `redirect()` has no heading to owe the reader and no reader to address, so
+ * it is settled rather than pending — and asserted to be one, in the loop below, because a
+ * list like this is exactly how the next heading-less screen would try to escape the gate.
  */
-const REDIRECTS = ['src/app/(app)/settings/plan/page.tsx']
+const REDIRECTS = [
+  'src/app/(app)/settings/plan/page.tsx',
+  'src/app/(app)/settings/plan/receipt/[paymentId]/page.tsx',
+]
 
 test('every screen in the app draws the bar, or is one of the five printed exceptions', () => {
   const without = PAGES.filter(
@@ -268,7 +272,7 @@ test('every screen in the app draws the bar, or is one of the five printed excep
   for (const path of REDIRECTS) {
     const page = TSX.find((f) => f.path === path)
     assert.ok(page, `${path} is listed as a redirect and is not a page`)
-    assert.match(page.source, /^\s*redirect\('/m, `${path}: drawn as a screen, not redirected`)
+    assert.match(page.source, /^\s*redirect\((?:'|`)/m, `${path}: drawn as a screen, not redirected`)
     assert.doesNotMatch(
       page.source,
       /<\/?[A-Za-z]/,
