@@ -1607,6 +1607,17 @@ export const en: Dictionary = {
       /** See the Bangla: this must never say it failed, or they will pay twice. */
       savedUnknown:
         'The payment has almost certainly been saved, but its voucher number cannot be read just now. Check the list below — do not pay again, or it will be recorded twice.',
+      /**
+       * The refusal that turns a second full salary from one tap into a deliberate act.
+       *
+       * `paid` and `agreed` arrive already formatted (`formatTaka`), because this sentence
+       * is composed on the server and travels finished. The way out is named rather than
+       * only the refusal, for the reason `refundTooMuch` names its ceiling: the box is on
+       * the form directly above the button, and an owner who meant the payment needs to
+       * know which control to reach for.
+       */
+      repeatConfirm: (paid: string, agreed: string) =>
+        `${paid} is already on this month, and this payment would take the month past the agreed ${agreed}. If that is meant — a second instalment, an advance, or a bonus — tick the confirmation box on the form and submit again.`,
     },
   },
 
@@ -1627,6 +1638,15 @@ export const en: Dictionary = {
     noteLabel: 'Note',
     notePlaceholder: 'Eid bonus',
     totalLabel: 'Total',
+    /**
+     * The confirmation tick, drawn only on a row that already has money on the month.
+     *
+     * A hint and not the fence: ./actions.ts reads the same facts for itself and refuses a
+     * payment that would take the month past the agreed figure. This sentence exists so the
+     * owner meets the question before they submit rather than as a refusal afterwards.
+     */
+    repeatLabel:
+      'They already have money recorded for this month. Tick this if the payment is meant to go past the agreed figure — a second instalment, an advance, or a bonus.',
     submit: 'Record this payment',
     paying: 'Saving…',
     cancel: 'Cancel',

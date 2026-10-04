@@ -441,8 +441,21 @@ test('every screen carries a way back that its own reader can open', () => {
    */
   for (const { route, body } of SCREENS) {
     if (guards.get(route)) continue
-    const target = body.match(/^\s*redirect\('([^']+)'\)/m)?.[1]
-    if (target) guards.set(route, guards.get(target) ?? null)
+    /*
+     * A literal target, or the literal head of one that keeps the route's own segment:
+     * `/settings/plan/receipt/[paymentId]` forwards the id into
+     * `/settings/billing/receipt/`, and a gate that only read whole literals would call
+     * that route unreadable rather than resolve it to the one screen living under the
+     * prefix. Exactly one, because a prefix that names two screens names no guard.
+     */
+    const target =
+      body.match(/^\s*redirect\('([^']+)'\)/m)?.[1] ??
+      body.match(/^\s*redirect\('([^']*)'\s*\+/m)?.[1] ??
+      body.match(/^\s*redirect\(`([^`$]*)/m)?.[1]
+    if (target) {
+      const under = [...guards].filter(([candidate]) => candidate.startsWith(target))
+      guards.set(route, guards.get(target) ?? (under.length === 1 ? under[0][1] : null))
+    }
   }
 
   const offenders: string[] = []

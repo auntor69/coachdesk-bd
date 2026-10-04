@@ -29,6 +29,7 @@ import path from 'node:path'
 import { MONTHLY_BASIS, PER_CLASS_BASIS } from '../src/lib/payroll/basis.ts'
 import { payeeValue, type Payee, type TermsSourceRow } from '../src/lib/payroll/bill.ts'
 import {
+  needsRepeatConfirmation,
   payLines,
   tallyMonth,
   voucherLines,
@@ -507,6 +508,119 @@ test('a voucher for somebody in neither list still shows', () => {
   assert.equal(lines[0].amount, 5000)
 })
 
+/* -------------------------------------------------------------------------- */
+/* The fence against one tap becoming two salaries                            */
+/* -------------------------------------------------------------------------- */
+
+test('the first payment for a month is never the overpayment', () => {
+  // However large it is. The guard is about the second arrival, and a first figure typed
+  // wrong is refused by the form's own total or corrected with a negative row.
+  assert.equal(
+    needsRepeatConfirmation({ agreedNet: 13000, alreadyPaid: 0, amount: 13000, confirmed: false }),
+    false,
+  )
+})
+
+test('the second half of a salary passes without a tick', () => {
+  // ৳6,000 handed over on the 5th and ৳7,000 on the 20th is the instalment 20260811000044
+  // was written to allow, and it lands exactly on ৳13,000 rather than past it.
+  assert.equal(
+    needsRepeatConfirmation({ agreedNet: 13000, alreadyPaid: 6000, amount: 7000, confirmed: false }),
+    false,
+  )
+  assert.equal(
+    needsRepeatConfirmation({ agreedNet: 13000, alreadyPaid: 7000, amount: 6000, confirmed: false }),
+    false,
+  )
+})
+
+test('the agreement is a ceiling and not a fence: exactly on it is not over it', () => {
+  // `sum > agreed` and never `>=`, or the last instalment of a month would refuse as if it
+  // were a duplicate. A single poisha past is past.
+  assert.equal(
+    needsRepeatConfirmation({ agreedNet: 13000, alreadyPaid: 6000, amount: 7000, confirmed: false }),
+    false,
+  )
+  assert.equal(
+    needsRepeatConfirmation({ agreedNet: 13000, alreadyPaid: 6000, amount: 7000.01, confirmed: false }),
+    true,
+    'a poisha past the agreement is past it',
+  )
+})
+
+test('a second full salary is refused until the form says it was meant', () => {
+  // The defect this rule exists for: the form re-prefills the whole agreed figure after a
+  // success, so the next tap used to write a second ৳13,000 against the same month — a row
+  // that is permanent, since `salary_payments` revokes DELETE, and a second voucher number.
+  assert.equal(
+    needsRepeatConfirmation({ agreedNet: 13000, alreadyPaid: 13000, amount: 13000, confirmed: false }),
+    true,
+  )
+  // The tick is the way out, and it is what keeps the advance, the bonus and the settlement
+  // available to an owner who means them.
+  assert.equal(
+    needsRepeatConfirmation({ agreedNet: 13000, alreadyPaid: 13000, amount: 13000, confirmed: true }),
+    false,
+  )
+})
+
+test('an advance or a bonus is an overshoot, and the tick is what makes it deliberate', () => {
+  assert.equal(
+    needsRepeatConfirmation({ agreedNet: 13000, alreadyPaid: 13000, amount: 2000, confirmed: false }),
+    true,
+  )
+})
+
+test('a reversal is never refused and never needs a tick', () => {
+  // A negative row is the only correction 20260811000044 permits, and refusing it would
+  // leave a wrong figure on the month with no way out at all.
+  assert.equal(
+    needsRepeatConfirmation({ agreedNet: 13000, alreadyPaid: 20000, amount: -7000, confirmed: false }),
+    false,
+  )
+})
+
+test('nothing measurable never blocks a payment', () => {
+  // A per-class agreement stores no monthly figure and a payee with no live agreement has
+  // no obligation to exceed. Refusing either would be inventing one out of an absent row —
+  // the same reading `payLines` refuses for money on a month with no agreement.
+  for (const agreedNet of [null, 0, -1]) {
+    assert.equal(
+      needsRepeatConfirmation({ agreedNet, alreadyPaid: 20000, amount: 5000, confirmed: false }),
+      false,
+      `agreedNet ${String(agreedNet)}`,
+    )
+  }
+  // And a month that holds nothing yet.
+  assert.equal(
+    needsRepeatConfirmation({ agreedNet: 13000, alreadyPaid: 0, amount: 5000, confirmed: false }),
+    false,
+  )
+})
+
+test('the comparison runs through sumTaka, so no float decides a salary', () => {
+  // ৳6,000.55 + ৳6,999.45 is exactly ৳13,000 in integer poisha. Float addition is the one
+  // thing every figure in this product refuses to do, and this rule is a figure.
+  assert.equal(
+    needsRepeatConfirmation({
+      agreedNet: 13000,
+      alreadyPaid: 6000.55,
+      amount: 6999.45,
+      confirmed: false,
+    }),
+    false,
+  )
+  assert.equal(
+    needsRepeatConfirmation({
+      agreedNet: 13000,
+      alreadyPaid: 6000.55,
+      amount: 6999.46,
+      confirmed: false,
+    }),
+    true,
+  )
+})
+
 /**
  * And the screen's own shape.
  *
@@ -690,4 +804,61 @@ test('shape: nothing about who may read or write this has moved', () => {
 
   // And writing is the session's, never the page's opinion of it.
   assert.match(PAGE, /const canWrite = session\.access === 'full'/)
+})
+
+/* -------------------------------------------------------------------------- */
+/* The wiring: the rule in the action, the tick on the row                    */
+/* -------------------------------------------------------------------------- */
+
+const ACTION = readFileSync(
+  path.join(import.meta.dirname, '..', 'src', 'app', '(app)', 'payroll', 'pay', 'actions.ts'),
+  'utf8',
+)
+const ROW = readFileSync(
+  path.join(import.meta.dirname, '..', 'src', 'app', '(app)', 'payroll', 'pay', 'pay-row.tsx'),
+  'utf8',
+)
+
+test('shape: the action decides the fence on live reads, and fails closed', () => {
+  // The payee column chosen once, so the two reads and the insert cannot disagree about
+  // which half of the pair this salary is for.
+  assert.match(ACTION, /const payeeColumn = payee\.kind === 'employee' \? 'employee_id' : 'teacher_id'/)
+
+  // What the month already holds for them, from this centre and this month...
+  assert.match(ACTION, /\.from\('salary_payments'\)/)
+  assert.match(ACTION, /\.eq\('for_month', forMonth\)[\s\S]{0,200}\.eq\(payeeColumn, payee\.id\)/)
+  // ...and the live monthly agreement, if there is one.
+  assert.match(
+    ACTION,
+    /\.from\('salary_terms'\)[\s\S]{0,200}\.eq\('active', true\)[\s\S]{0,200}\.eq\(payeeColumn, payee\.id\)/,
+  )
+
+  // A read that failed refuses the payment rather than waving it through: the row it would
+  // write is permanent.
+  assert.match(ACTION, /if \(paidRows\.error \|\| termsRow\.error\) return \{ error: t\.errors\.failed \}/)
+  // A replay's own row is not counted as money already paid, or the token's second arrival
+  // would be refused the voucher it already has.
+  assert.match(ACTION, /\.filter\(\(row\) => !key \|\| row\.idempotency_key !== key\)/)
+  // Only a monthly figure is a ceiling; a per-class agreement has nothing to exceed.
+  assert.match(ACTION, /termsRow\.data\.basis === MONTHLY_BASIS/)
+  // And the refusal is the rule's, naming how much is already on the month.
+  assert.match(ACTION, /needsRepeatConfirmation\(\{[\s\S]{0,220}confirmRepeat/)
+  assert.match(
+    ACTION,
+    /t\.errors\.repeatConfirm\(formatTaka\(alreadyPaid\), formatTaka\(agreedNet \?\? 0\)\)/,
+  )
+  // A stale page has no tick on the row, so the refusal refreshes before it sends the
+  // reader looking for one — exactly as the read-back failure above does.
+  assert.match(ACTION, /revalidatePath\('\/payroll\/pay'\)\r?\n\s+return \{\r?\n\s+error: t\.errors\.repeatConfirm/)
+})
+
+test('shape: the row draws the tick the action asks for, above the button', () => {
+  assert.match(ROW, /\{needsRepeat && \(/)
+  assert.match(ROW, /name="confirmRepeat"/)
+  // Above the submit, because it is the question the submit answers.
+  assert.ok(ROW.indexOf('name="confirmRepeat"') < ROW.indexOf('{pending ? t.paying : t.submit}'))
+  // Drawn on every row that already has money on the month — the one case a further
+  // payment can take past the agreement — and handed down by the page.
+  assert.match(PAGE, /const needsRepeat = row\.payments > 0 && row\.remaining !== null/)
+  assert.match(PAGE, /needsRepeat=\{needsRepeat\}/)
 })

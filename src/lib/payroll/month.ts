@@ -373,6 +373,68 @@ export type VoucherLine = {
 }
 
 /**
+ * Whether a further positive payment for one person's month needs the form to confirm it
+ * was meant.
+ *
+ * THE GUARD 20260811000051 LEFT TO THE SCREEN, AND WHY IT COULD NOT STAY THERE. That
+ * migration says it in its own words — "nothing at all in the columns to tell two arrivals
+ * of one tap apart from two genuine instalments" — and 20260811000044 has no unique index
+ * on (payee, for_month) on purpose, because a centre paying half a salary on the 5th and
+ * half on the 20th writes two rows both of which are real. What the product offered instead
+ * was a screen that prints paid, agreed and left above every form, and that is a guard only
+ * for a reader who stops to read it. The form itself re-prefills the whole agreed figure
+ * after a payment, so the next tap pays a second full salary — and `salary_payments`
+ * revokes DELETE, so the duplicate is permanent: the month's profit drops by a salary and
+ * two vouchers exist for one payment. That is exactly the ৳13,000 of wrong August profit
+ * 20260811000051's header prices.
+ *
+ * SO THE RULE IS OVERPAYMENT, NOT REPETITION. A payment that takes the month past what the
+ * agreement says is due waits for an explicit tick — which keeps the advance, the Eid bonus
+ * and the late settlement available to an owner who means them — while the second half of a
+ * salary, ৳7,000 after ৳6,000, is under the agreed figure and goes through as the ordinary
+ * thing it is. `alreadyPaid` is what the month already holds for this payee, a replay's own
+ * row excluded, and the comparison runs through `sumTaka` so it is decided in the same
+ * integer poisha every other figure on this screen is.
+ *
+ * A CORRECTION IS NEVER REFUSED. A negative amount cannot be the accident this guards
+ * against; it is the only correction `salary_payments` permits.
+ *
+ * NOTHING IS MEASURABLE WITHOUT A MONTHLY AGREEMENT, and `agreedNet` null says so: a
+ * per-class rate has no monthly figure to exceed — 20260811000044 refuses to store one —
+ * and a payee with no live agreement is a final settlement with nothing to measure against.
+ * Refusing those would be inventing an obligation out of an absent agreement, which is the
+ * reading `payLines` refuses for the same row.
+ */
+export function needsRepeatConfirmation({
+  agreedNet,
+  alreadyPaid,
+  amount,
+  confirmed,
+}: {
+  /** The live monthly agreement's net, or null where there is nothing to measure against. */
+  agreedNet: number | null
+  /** What this month already holds for this payee, this submit's own row excluded. */
+  alreadyPaid: number
+  /** The net this submit would add — the generated column's arithmetic, done once to check. */
+  amount: number
+  /** The form's own "yes, a further payment", submitted only by an explicit tick. */
+  confirmed: boolean
+}): boolean {
+  if (confirmed) return false
+  // A correction, or an empty figure the caller has already refused elsewhere. Neither is
+  // the accident this guard exists for, and refusing a reversing row would leave a wrong
+  // figure with no way out.
+  if (!Number.isFinite(amount) || amount <= 0) return false
+  // No monthly agreement: nothing to be over. See the header.
+  if (agreedNet === null || !Number.isFinite(agreedNet) || agreedNet <= 0) return false
+  // The first payment for the month. A large one is visible in the form's own total before
+  // it is submitted, and this guard is about the second arrival.
+  if (!Number.isFinite(alreadyPaid) || alreadyPaid <= 0) return false
+
+  return sumTaka([alreadyPaid, amount]) > agreedNet
+}
+
+/**
  * The month's payments, named, in the order they arrived.
  *
  * Nothing is sorted here: the query orders by `paid_at desc, voucher_no desc` and the screen
