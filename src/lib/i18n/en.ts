@@ -82,6 +82,17 @@ export const en: Dictionary = {
      * names today rather than saying "no days", because on that day the centre is still
      * working and the sentence has to be true.
      */
+    /**
+     * What is actually in the balance, in taka — the figure that leads the strip.
+     *
+     * THE STRIP USED TO BE A COUNTDOWN ONLY, and it only appeared inside fourteen days of
+     * the money running out. So the one number an owner checks before they spend anything
+     * was two taps away — Settings, then Billing — and a balance is a fact about today
+     * rather than a warning about a fortnight's time (§20.4 asks it second for that
+     * reason). Drawn on every screen now, for the reader the countdown was always drawn
+     * for.
+     */
+    balanceHeld: (taka: string) => taka + ' in the balance',
     balanceDays: (days: number) =>
       days === 1 ? 'The balance covers one more day' : `The balance covers ${days} more days`,
     balanceEmpty: 'Nothing left in the balance — today is paid, tomorrow is not',

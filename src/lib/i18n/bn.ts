@@ -245,6 +245,17 @@ export const bn = {
      * case names today rather than saying "no days", because on that day the centre is
      * still working and the sentence has to be true.
      */
+    /**
+     * What is actually in the balance, in taka — the figure that leads the strip.
+     *
+     * THE STRIP USED TO BE A COUNTDOWN ONLY, and it only appeared inside fourteen days of
+     * the money running out. So the one number an owner checks before they spend anything
+     * was two taps away — Settings, then Billing — and a balance is a fact about today
+     * rather than a warning about a fortnight's time (§20.4 asks it second for that
+     * reason). Drawn on every screen now, for the reader the countdown was always drawn
+     * for.
+     */
+    balanceHeld: (taka: string) => 'ব্যালেন্সে ' + taka,
     balanceDays: (days: number) =>
       days === 1 ? 'ব্যালেন্সে আরেক দিনের টাকা আছে' : `ব্যালেন্সে আরও ${days} দিনের টাকা আছে`,
     balanceEmpty: 'ব্যালেন্স খালি — আজ পরিশোধিত, কাল নয়',

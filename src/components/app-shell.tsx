@@ -464,10 +464,19 @@ function ReadOnlyBanner({
           differs with the cause: a date on a coverage centre, two amounts on a balance
           one. Only when that cause is what put the banner here — on a cancelled account
           either would read as a receipt. */}
+      {/*
+        THE FIGURES ARE THE OWNER'S AND THE MANAGER'S. A teacher needs to know that saving
+        has stopped — the sentence above says exactly that, in words — and has no business
+        knowing what the centre holds or what a day costs it: `/settings/billing` is
+        `pageRole('manager')` for the same reason, and the strip above the content is gated
+        the same way. `canSeePlan` is that gate under this banner's own name.
+      */}
       {money ? (
-        <p className="mt-1 text-sm text-ink-soft">
-          {t.balanceOut(money.cost, money.balance)}
-        </p>
+        canSeePlan && (
+          <p className="mt-1 text-sm text-ink-soft">
+            {t.balanceOut(money.cost, money.balance)}
+          </p>
+        )
       ) : (
         coveredTo && <p className="mt-1 text-sm text-ink-soft">{t.coveredTo(coveredTo)}</p>
       )}
@@ -778,13 +787,21 @@ export async function AppShell({
       : null
 
   /*
-   * The balance rail (§4.4, §3.7's ladder): how many more days the money covers.
+   * The money strip (§4.4, §3.7's ladder): what is in the balance and how many more days it
+   * covers, on EVERY screen.
+   *
+   * IT USED TO BE A FOURTEEN-DAY COUNTDOWN, drawn only once the money was nearly out, and
+   * that was the wrong question asked late. What an owner reaches for before they spend
+   * anything is what they hold today — and it was two taps away, behind Settings and then
+   * Billing, on a screen they had to remember to open (§20.4 answers "how much is left"
+   * second, and this is the same figure moved out of the drawer). The day count stays
+   * because it is the honest unit once the money is theirs (§17 — "price in months, burn in
+   * days"), and it is what turns amber inside three days, where it used to simply appear.
    *
    * OWNERS AND MANAGERS ONLY, because they are the only ones who can do anything about
    * it — `/settings/billing` is `pageRole('manager')`, and a countdown a teacher cannot act
-   * on is a daily worry with no button on it. Shown from fourteen days out, which is the
-   * first rung of §3.7's ladder, and not at all while the read-only banner is up: that
-   * banner already says the balance is out, and repeating it above itself would be two
+   * on is a daily worry with no button on it. Not at all while the read-only banner is up:
+   * that banner already says the balance is out, and repeating it above itself would be two
    * versions of one fact.
    *
    * NOT SHOWN ON A FREE TIER, because `daysLeft` is null there — there is no rate to
@@ -792,7 +809,26 @@ export async function AppShell({
    */
   const canTopUp = Boolean(readOnly === null && atLeast(role, 'manager'))
   const daysLeft = session.billing.daysLeft
-  const rail = canTopUp && daysLeft !== null && daysLeft <= 14 ? daysLeft : null
+  const balancePoisha = session.billing.balancePoisha
+  const rail = canTopUp && daysLeft !== null ? daysLeft : null
+  /** Inside three days the strip turns amber, which is §3.7's first rung. */
+  const railLow = rail !== null && rail <= 3
+
+  /**
+   * The strip's one sentence, with the amount leading it when there is one to lead with.
+   *
+   * ONE LINE AND NOT TWO. This is furniture above every screen in the product, and two
+   * lines of it on a 375px phone is a paragraph the reader scrolls past before their own
+   * content begins. A balance that could not be read is left out rather than drawn as
+   * ৳0 — an unread figure is not an empty one (§11.7).
+   */
+  const daysLine = rail === null ? null : rail === 0 ? t.balanceEmpty : t.balanceDays(rail)
+  const heldLine =
+    daysLine === null
+      ? null
+      : balancePoisha === null
+        ? daysLine
+        : `${t.balanceHeld(formatTaka(balancePoisha / 100))} · ${daysLine}`
 
   /*
    * The trial notice, asked of the row rather than of the entitlement — `Entitlement`
@@ -905,16 +941,16 @@ export async function AppShell({
               canSeePlan={atLeast(role, 'manager')}
             />
           )}
-          {rail !== null && (
+          {heldLine !== null && (
             <div
               role="status"
               className={`mb-5 flex flex-wrap items-center justify-between gap-2
                 rounded-xl border-2 px-4 py-3 print:hidden ${
-                  rail <= 3 ? 'border-late/40 bg-late/5' : 'border-line bg-surface-alt'
+                  railLow ? 'border-late/40 bg-late/5' : 'border-line bg-surface-alt'
                 }`}
             >
-              <p className={`text-sm font-medium ${rail <= 3 ? 'text-late' : 'text-ink-soft'}`}>
-                {rail === 0 ? t.balanceEmpty : t.balanceDays(rail)}
+              <p className={`text-sm font-medium ${railLow ? 'text-late' : 'text-ink-soft'}`}>
+                {heldLine}
               </p>
               {/*
                 The countdown's own door, and it leads to the screen that answers it:
