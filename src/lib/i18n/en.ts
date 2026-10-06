@@ -1647,6 +1647,15 @@ export const en: Dictionary = {
      */
     repeatLabel:
       'They already have money recorded for this month. Tick this if the payment is meant to go past the agreed figure — a second instalment, an advance, or a bonus.',
+    /**
+     * The sentence that goes with a locked button.
+     *
+     * The submit is `disabled` while this payment would take the month past the agreed figure
+     * and the tick is not on — the same rule ./actions.ts refuses with, run on the figures
+     * standing in the boxes. A control that cannot be tapped has to say what would let it: a
+     * dead button with no sentence beside it is a page somebody reloads.
+     */
+    unlockHint: 'Tick the confirmation box above to record this payment.',
     submit: 'Record this payment',
     paying: 'Saving…',
     cancel: 'Cancel',
