@@ -189,7 +189,44 @@ export default async function BillingPage() {
     history.months.length > 0 || history.money.length > 0 || history.grants.length > 0
 
   const daysLeft = session.billing.daysLeft
-  const coversTo = coversToDay(session.billing.chargedThrough, daysLeft)
+  const chargedThrough = session.billing.chargedThrough
+  const coversTo = coversToDay(chargedThrough, daysLeft)
+
+  /*
+   * THE LINE IS AHEAD OF TODAY, WHICH IS THE ONE STATE THIS SCREEN LEFT UNEXPLAINED.
+   *
+   * `charged_through` is the last day the centre is covered for, and a founder's grant of
+   * days moves it forward without touching the balance — §11.7's rule that a grant is days
+   * and not fake money. So a centre can hold ৳1,999 with its line two months out, and the
+   * burn charges nothing, correctly: there is no day left to buy. The headline above still
+   * reads the money's own count ("30 days left"), because that is what the balance buys
+   * *after* the granted days, so an owner watching a balance that never moves concludes the
+   * billing is broken. It is not; it is waiting, and this is the sentence that says so.
+   *
+   * Two Dhaka days compared as strings, which is chronological order for `YYYY-MM-DD` —
+   * the same comparison `grantReach` and the pay action's month check make.
+   */
+  const aheadTo =
+    chargedThrough !== null &&
+    session.billing.today !== null &&
+    chargedThrough > session.billing.today
+      ? chargedThrough
+      : null
+
+  /**
+   * One sentence under the count, and only ever one.
+   *
+   * The granted-days line replaces the balance sentence rather than joining it: a centre
+   * with an empty balance and a granted line owes nothing, and "your balance covers today
+   * and no more" over one that is being carried is exactly the false alarm this screen is
+   * not allowed to raise (§4.4).
+   */
+  const leftSentence =
+    aheadTo !== null
+      ? words.leftGranted(formatDate(aheadTo, locale))
+      : daysLeft === 0 || coversTo === null
+        ? words.leftToday
+        : words.leftCovers(formatDate(coversTo, locale))
 
   /** The count a day was charged at, or a dash per side that could not be read. */
   const dayCount = (day: LedgerDay): string => {
@@ -280,11 +317,7 @@ export default async function BillingPage() {
             <p className="num mt-1 text-3xl font-bold text-ink">
               {words.leftDays(digits(daysLeft, locale))}
             </p>
-            <p className="mt-1 text-sm text-ink-soft">
-              {daysLeft === 0 || coversTo === null
-                ? words.leftToday
-                : words.leftCovers(formatDate(coversTo, locale))}
-            </p>
+            <p className="mt-1 text-sm text-ink-soft">{leftSentence}</p>
           </>
         )}
       </section>

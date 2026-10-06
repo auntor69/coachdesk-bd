@@ -99,7 +99,8 @@ const WORDS: Record<Locale, LeverWords> = {
       grantTitle: 'দিন দিয়ে দিন',
       grantHint:
         'টাকা নয় — দিন। ঈদের ছুটি, ভুলের ক্ষমা, কয়েক সপ্তাহের শুভেচ্ছা। কোনো টাকা কাটা হবে '
-        + 'না, ব্যালেন্সও বদলাবে না, তাই এই দিন অন্য কোথাও খরচ করা যায় না।',
+        + 'না, ব্যালেন্সও বদলাবে না, তাই এই দিন অন্য কোথাও খরচ করা যায় না। কেন্দ্রের '
+        + 'ব্যালেন্সে টাকা থাকলে এই দিনগুলো শেষ হওয়ার আগে সেই টাকা খরচ হবে না।',
       days: 'কত দিন',
       daysHint: 'পূর্ণ সংখ্যা, এক বছর পর্যন্ত। দিন শুরু হয় আজ থেকে।',
       reaches: '{date} পর্যন্ত চলবে',
@@ -135,7 +136,7 @@ const WORDS: Record<Locale, LeverWords> = {
       grantHint:
         'Days, not money — a closure, an apology, a few weeks of goodwill. Nothing is '
         + 'charged and the balance does not move, so these days cannot be spent on anything '
-        + 'else.',
+        + 'else. If the centre holds a balance, it is not spent until these days run out.',
       days: 'How many days',
       daysHint: 'A whole number, up to a year. Days run from today.',
       reaches: 'Covers them to {date}',

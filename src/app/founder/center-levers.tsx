@@ -20,7 +20,7 @@
  * clock would be wrong for whoever is six time zones away.
  */
 
-import { useActionState, useState } from 'react'
+import { useActionState, useEffect, useState } from 'react'
 
 import { Alert, Button, Field } from '@/components/ui'
 import { grantReach, parseDays } from '@/lib/billing/levers'
@@ -71,6 +71,21 @@ export function CenterLevers({
       ? null
       : fill(labels.reaches, { date: formatDate(grantReach(line, parsed, today), locale) })
 
+  /*
+   * The days box clears itself once a grant has landed, and only then.
+   *
+   * IT USED TO CLEAR ON SUBMIT, WHICH IS THE WRONG MOMENT TWICE OVER. A refusal — a number
+   * `parseDays` will not take, a reason left blank — emptied the box before the action had
+   * answered, so the founder retyped a figure the screen had just thrown away; and a tap
+   * whose only visible effect is the field going blank is how the same thirty days gets
+   * granted a second time. That is not hypothetical: this centre's line carries two
+   * identical thirty-day grants made thirty-six minutes apart. Same rule
+   * `./settings/billing/recharge-form.tsx` follows — a refusal leaves what was typed alone.
+   */
+  useEffect(() => {
+    if (grantState?.ok) setDays('')
+  }, [grantState])
+
   // Unique DOM ids, because eleven customer cards each hold a field named `amount` — the same
   // reason `fid()` exists next door.
   const fid = (name: string) => `${name}-levers-${centerId}`
@@ -80,11 +95,7 @@ export function CenterLevers({
       {/* -------------------------------------------------------------------- */}
       {/* The days                                                             */}
       {/* -------------------------------------------------------------------- */}
-      <form
-        action={grantAction}
-        className="flex flex-col gap-3"
-        onSubmit={() => setDays('')}
-      >
+      <form action={grantAction} className="flex flex-col gap-3">
         <input type="hidden" name="centerId" value={centerId} />
         <p className="font-semibold text-ink">{labels.grantTitle}</p>
         <p className="text-sm text-ink-soft">{labels.grantHint}</p>

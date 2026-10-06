@@ -37,6 +37,17 @@ export type BillingWords = {
   leftTitle: string
   leftDays: (days: string) => string
   leftCovers: (date: string) => string
+  /**
+   * The line is ahead of today, so the balance is not being drawn on yet.
+   *
+   * Granted days (or a `paid_through` left by the old model) carry the centre past today,
+   * and the burn charges nothing because there is no day left to buy. Since the headline
+   * above still reads the money's own count, an owner looking at a balance that never
+   * moves concludes the billing is broken. See `page.tsx`, which asks this before
+   * `leftToday` — a centre with ৳0 and a granted line owes nothing and must not be told
+   * its balance "covers today and no more".
+   */
+  leftGranted: (date: string) => string
   leftToday: string
   /** The free tier has no balance to run down — there is nothing to count. */
   leftFree: string
@@ -103,6 +114,9 @@ const EN: BillingWords = {
   leftTitle: 'How long have you got',
   leftDays: (days) => days + ' days left',
   leftCovers: (date) => 'This covers you to ' + date + '.',
+  leftGranted: (date) =>
+    'Granted days carry this centre to ' + date
+    + ', so nothing comes off the balance yet.',
   leftToday: 'Your balance covers today and no more.',
   leftFree: 'Your plan is free. There is no balance to run down and nothing to top up.',
   leftNoRate: 'Your balance is read, but not what a day costs it — reload the page.',
@@ -171,6 +185,8 @@ const BN: BillingWords = {
   leftTitle: 'আর কত দিন',
   leftDays: (days) => days + ' দিন বাকি',
   leftCovers: (date) => 'এতে ' + date + ' পর্যন্ত চলবে।',
+  leftGranted: (date) =>
+    'এই কেন্দ্রকে ' + date + ' পর্যন্ত দিন দেওয়া আছে, তাই এখনো ব্যালেন্স থেকে কিছু কাটা হচ্ছে না।',
   leftToday: 'ব্যালেন্সে আর মাত্র আজকের দিন আছে।',
   leftFree: 'আপনার প্ল্যান বিনামূলের। খরচ হবে এমন কোনো ব্যালেন্স নেই, যোগ করারও কিছু নেই।',
   leftNoRate: 'ব্যালেন্স পড়া গেছে, কিন্তু দিনপ্রতি খরচ নয় — পাতা একবার রিলোড করুন।',

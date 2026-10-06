@@ -265,7 +265,11 @@ test('the five questions are drawn, in §20.4\'s order', () => {
 test('the headline is the days left and the date the money reaches', () => {
   // The figure most visits are for, in the reader's own numerals, and the date under it.
   assert.ok(PAGE.includes('words.leftDays(digits(daysLeft, locale))'))
-  assert.ok(PAGE.includes('const coversTo = coversToDay(session.billing.chargedThrough, daysLeft)'))
+  // The line is read off the session once and the date derived from that reading — the
+  // granted-days sentence below needs the same figure, and two reads of one column is how
+  // two sentences come to name two different days.
+  assert.ok(PAGE.includes('const chargedThrough = session.billing.chargedThrough'))
+  assert.ok(PAGE.includes('const coversTo = coversToDay(chargedThrough, daysLeft)'))
   assert.ok(PAGE.includes('words.leftCovers(formatDate(coversTo, locale))'))
 })
 
@@ -457,4 +461,51 @@ test('the coverage-based cards are gone, and the way to reach us is what survive
   // priced from is the organisation's, not the reader's building. That is the screen's own
   // `centerStudentCount` now, which is where the rate's `students` figure comes from.
   assert.ok(PAGE.includes('centerStudentCount(supabase, session.active.centerId)'))
+})
+
+test('a line past today is explained instead of looking like a broken burn', () => {
+  /*
+   * THE DEFECT THIS CLOSES, out of the live books: a centre holding ৳1,999 whose
+   * `charged_through` two months ahead, from granted days, is charged nothing each day —
+   * correctly, because there is no day left to buy. The headline above it still reads the
+   * money's own count ("30 days left"), so the owner watching a balance that never moves
+   * concludes the billing is broken. It is not; it is waiting, and the screen now says so.
+   */
+  const WORDS = read('src', 'lib', 'i18n', 'billing.ts')
+
+  // Read off the session's own two fields, and never recomputed: the line is the database's
+  // word for how far the centre is carried, and today is Dhaka's (§11.7).
+  assert.ok(PAGE.includes('const chargedThrough = session.billing.chargedThrough'))
+  assert.match(
+    PAGE,
+    /const aheadTo =\n\s+chargedThrough !== null &&\n\s+session\.billing\.today !== null &&\n\s+chargedThrough > session\.billing\.today/,
+  )
+
+  // `YYYY-MM-DD` compared as strings, which is chronological order — the same comparison
+  // `grantReach` and the pay action's month check make.
+  assert.match(PAGE, /\? chargedThrough\n\s+: null/)
+
+  // ONE SENTENCE UNDER THE COUNT AND ONLY ONE, with the granted line asked first: a centre
+  // with an empty balance and a granted line owes nothing, and "your balance covers today
+  // and no more" over one that is being carried is the false alarm §4.4 refuses.
+  assert.match(
+    PAGE,
+    /const leftSentence =\n\s+aheadTo !== null\n\s+\? words\.leftGranted\(formatDate\(aheadTo, locale\)\)/,
+  )
+  assert.match(PAGE, /: daysLeft === 0 \|\| coversTo === null\n\s+\? words\.leftToday/)
+  assert.ok(
+    PAGE.indexOf('aheadTo !== null') < PAGE.indexOf('words.leftToday'),
+    'the granted line is asked before the balance\u2019s own sentence',
+  )
+  assert.ok(PAGE.includes('<p className="mt-1 text-sm text-ink-soft">{leftSentence}</p>'))
+  // And the sentence still counts as one: no second copy of the old conditional left behind.
+  assert.doesNotMatch(PAGE, /words\.leftCovers\(formatDate\(coversTo, locale\)\)\}/)
+
+  // Both languages name the date, and the Bangla is not a placeholder.
+  assert.match(WORDS, /leftGranted: \(date: string\) => string/)
+  assert.match(
+    WORDS,
+    /leftGranted: \(date\) =>\n\s+'Granted days carry this centre to ' \+ date/,
+  )
+  assert.match(WORDS, /এখনো ব্যালেন্স থেকে কিছু কাটা হচ্ছে না/)
 })
