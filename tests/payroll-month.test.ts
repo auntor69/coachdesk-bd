@@ -862,3 +862,46 @@ test('shape: the row draws the tick the action asks for, above the button', () =
   assert.match(PAGE, /const needsRepeat = row\.payments > 0 && row\.remaining !== null/)
   assert.match(PAGE, /needsRepeat=\{needsRepeat\}/)
 })
+
+test('shape: the tick is the button\u2019s lock, decided by the action\u2019s own rule', () => {
+  // The defect this closes, and it was a UI one: the tick was drawn and the submit was not,
+  // so the refusal arrived as a sentence after a tap instead of as a control that cannot be
+  // tapped. The lock runs `needsRepeatConfirmation` — the very function ./actions.ts refuses
+  // with — so the dead button and the refusal can never disagree, and it runs on the live
+  // `amount` rather than on the tick alone, which is what keeps the legitimate second
+  // instalment payable.
+  assert.match(
+    ROW,
+    /const needsTick = needsRepeatConfirmation\(\{ agreedNet, alreadyPaid, amount, confirmed \}\)/,
+  )
+  assert.match(ROW, /<Button type="submit" full disabled=\{pending \|\| needsTick\}>/)
+  assert.match(ROW, /\{needsTick && !pending && \(/)
+  assert.match(ROW, /role="status"/)
+
+  // The tick is controlled, because a `disabled` attribute cannot follow an uncontrolled box.
+  assert.match(ROW, /onChange=\{\(e\) => setConfirmed\(e\.target\.checked\)\}/)
+
+  // The row starts from the agreement's own sum, so there is no frame of unlocked button on a
+  // row that is about to be locked; and the boxes report what they add up to in both shapes of
+  // the form — the four prefilled ones and the single box on a row with no agreement.
+  assert.match(ROW, /const \[amount, setAmount\] = useState\(agreedAmount\(parts\)\)/)
+  assert.match(ROW, /function agreedAmount\(parts: SalaryParts \| null\): number \{/)
+  assert.match(ROW, /onAmount=\{setAmount\}/)
+  assert.match(ROW, /useEffect\(\(\) => \{\r?\n\s+onAmount\(total\)\r?\n\s+\}, \[total, onAmount\]\)/)
+})
+
+test('shape: a tick does not survive the payment it unlocked', () => {
+  // The hole a lock on its own leaves open. After a success the boxes remount to the
+  // agreement's figures, so a tick still standing from the payment before is `confirmed: true`
+  // — and the second full salary this whole mechanism exists for goes through already
+  // confirmed, which is exactly the tap nobody meant.
+  assert.match(ROW, /if \(state\?\.ok\) setConfirmed\(false\)/)
+})
+
+test('shape: the page hands down the pair the lock is measured from', () => {
+  // The same two figures ./actions.ts reads for itself: what the month already holds and what
+  // the live agreement says it should. Null for a per-class rate or no agreement at all —
+  // there is nothing to overshoot, so the form stays unlocked rather than inventing a ceiling.
+  assert.match(PAGE, /alreadyPaid=\{row\.paid\}/)
+  assert.match(PAGE, /agreedNet=\{row\.terms === null \|\| perClass \? null : row\.terms\.net\}/)
+})

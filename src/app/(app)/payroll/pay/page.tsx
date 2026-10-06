@@ -67,9 +67,11 @@ const MONTH_RE = /^\d{4}-\d{2}-01$/
  * *before* its form opens — which is what tells an owner what is already on the record.
  * Since the audit of 2026-10-04 the form is no longer the only guard: a payment that would
  * take the month past the agreed figure is refused by ./actions.ts until the form carries
- * an explicit tick, which is why the rows below hand `needsRepeat` down to the form. The
- * other half of the problem — one tap arriving twice — is the idempotency token, and
- * 20260811000051 is the index behind it.
+ * an explicit tick, which is why the rows below hand `needsRepeat` down to the form. That
+ * tick is the button's lock as well as a question — pay-row.tsx disables the submit until it
+ * is on, measured with the same rule, so an owner meets a dead control rather than a refusal
+ * after the tap. The other half of the problem — one tap arriving twice — is the idempotency
+ * token, and 20260811000051 is the index behind it.
  *
  * THE JOIN IS DONE IN TYPESCRIPT, as on /payroll and for the same reason: 20260811000005
  * replaced every simple foreign key with one on (sibling_id, coaching_center_id), so both
@@ -480,6 +482,13 @@ export default async function PayrollPayPage({
                       // not knowable from here and four empty boxes are four questions.
                       parts={row.terms !== null && !perClass ? row.terms.parts : null}
                       needsRepeat={needsRepeat}
+                      // The pair the form's own lock is measured from, and the same pair
+                      // ./actions.ts reads for itself — so the disabled button and the
+                      // refusal name one rule rather than two. Null for a per-class rate or
+                      // no agreement at all: there is nothing to overshoot, and the form
+                      // stays unlocked.
+                      alreadyPaid={row.paid}
+                      agreedNet={row.terms === null || perClass ? null : row.terms.net}
                       canWrite={canWrite}
                       methods={d.feeRow.methods}
                       t={d.salaryPayForm}
