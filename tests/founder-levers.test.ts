@@ -318,3 +318,41 @@ test('the one template says what it wants filled', () => {
     assert.match(leverLabels(locale).reaches, /\{date\}/)
   }
 })
+
+test('the grant hint says what a grant does to money that is already there', () => {
+  /*
+   * THE SENTENCE THAT WAS MISSING, and it is the one that makes a working engine look
+   * broken: a founder reads "nothing is charged and the balance does not move" and expects
+   * the centre's balance to keep burning day by day. It does not — the granted days are
+   * consumed first, and the money waits behind them. This is not hypothetical: UDVASH's
+   * line carries two identical thirty-day grants and ৳1,999 that nothing will touch until
+   * 30 November.
+   */
+  const needle: Record<string, string> = {
+    en: 'not spent until these days run out',
+    bn: 'সেই টাকা খরচ হবে না',
+  }
+
+  for (const locale of LOCALES) {
+    assert.ok(
+      leverLabels(locale).grantHint.includes(needle[locale]),
+      `grantHint (${locale}): ${leverLabels(locale).grantHint}`,
+    )
+  }
+})
+
+test('the days box clears on success, and never on submit', () => {
+  /*
+   * IT USED TO CLEAR ON SUBMIT (§20.7's family of defects, and the one that wrote a second
+   * grant onto a real centre): a refusal emptied the box before the action had answered, so
+   * the founder retyped a figure the screen had just thrown away — and a tap whose only
+   * visible effect is the field going blank is how the same thirty days gets granted twice.
+   * `./settings/billing/recharge-form.tsx`'s rule, which this now follows: a refusal leaves
+   * what was typed alone.
+   */
+  assert.match(
+    LEVERS_UI,
+    /useEffect\(\(\) => \{\n\s+if \(grantState\?\.ok\) setDays\(''\)\n\s+\}, \[grantState\]\)/,
+  )
+  assert.doesNotMatch(LEVERS_UI, /onSubmit=\{\(\) => setDays\(''\)\}/)
+})

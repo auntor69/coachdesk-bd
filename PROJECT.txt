@@ -11,7 +11,7 @@ the staff already owns.
 
 ----------------------------------------------------------------------------
 Stack: Next.js (App Router) + Supabase (Postgres, RLS, Auth) + Tailwind,
-deployed on Vercel. 88 SQL migrations. 1,679 unit tests and 1,469
+deployed on Vercel. 88 SQL migrations. 1,682 unit tests and 1,469
 row-level-security assertions, all green.
 ----------------------------------------------------------------------------
 
@@ -36,7 +36,7 @@ in taka, bKash payments, month close the way centers actually run it.
 
 Status: in active development — not launched yet.
 
-Working today: the full center workflow above, held up by 1,679
+Working today: the full center workflow above, held up by 1,682
 unit tests and 1,469 security assertions, all green.
 
 Terms exist now. Seven pages — the prepaid billing terms leading
