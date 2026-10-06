@@ -52,22 +52,24 @@ export type RechargeWords = {
   factBalance: string
   factDaily: string
   factDays: string
-  factDaysUnknown: string
 
   sizedBy: (students: string, teachers: string) => string
   offerTitle: string
   offerMonths: (months: number) => string
-  offerCredit: (credit: string) => string
   offerBonus: (bonus: string, bps: number) => string
   offerNoBonus: string
   typedLabel: string
   typedHint: string
-  nextTier: (taka: string, bps: number) => string
   daysAtSize: (days: string) => string
 
   sendTitle: string
-  sendBody: (phone: string) => string
-  reference: (code: string) => string
+  /** The two wallets' own names, in the reader's script: বিকাশ and নগদ in Bangla. */
+  walletBkash: string
+  walletNagad: string
+  /** Beside the chips: what both of them take, to the number above them. */
+  sendHow: string
+  /** The line the whole block turns on — which amount, and who checks it. */
+  sendAmount: string
   trxLabel: string
   trxHint: string
   senderLabel: string
@@ -111,6 +113,17 @@ export type RechargeWords = {
   badPhone: string
   failed: string
   unreadable: string
+  /** The balance ran out — the read-only state, which is not a read that failed. */
+  dried: string
+  /**
+   * No number to send to, so the card cannot open — not a reload problem either.
+   *
+   * `unreadable`'s sentence names the *price* rather than the balance, because that is
+   * what the panel actually failed to read: the balance arrives on the session and is
+   * drawn above either way. Telling somebody whose balance is right there in front of
+   * them that it "could not be read" is how a screen teaches a customer to distrust it.
+   */
+  unavailable: string
   ownerOnly: string
 
   /** The founder's half: the queue, and the two decisions on it. */
@@ -140,27 +153,25 @@ const EN: RechargeWords = {
   factBalance: 'In your balance',
   factDaily: 'A day costs you',
   factDays: 'Days left',
-  factDaysUnknown: 'Unknown',
 
   sizedBy: (students, teachers) =>
     students + ' students and ' + teachers + ' teachers',
   offerTitle: 'Suggested',
   offerMonths: (months) => (months === 1 ? '1 month' : months + ' months'),
-  offerCredit: (credit) => credit + ' of credit',
   offerBonus: (bonus, bps) => bonus + ' bonus (' + bps / 100 + '%)',
   offerNoBonus: 'No bonus at this amount',
   typedLabel: 'Or type an amount in taka',
   typedHint: 'Digits only.',
-  nextTier: (taka, bps) =>
-    'Add ' + taka + ' more and the bonus becomes ' + bps / 100 + '%.',
   daysAtSize: (days) => 'About ' + days + ' days at your current size.',
 
   sendTitle: 'Send the money',
-  sendBody: (phone) =>
-    'Send exactly the amount above to ' + phone + ' using Send Money in bKash or Nagad.',
-  reference: (code) => 'If there is a reference field, put ' + code + '.',
+  walletBkash: 'bKash',
+  walletNagad: 'Nagad',
+  sendHow: 'both take Send Money to this number.',
+  sendAmount:
+    'Send exactly the amount you choose below — every transfer is checked by hand.',
   trxLabel: 'Transaction ID',
-  trxHint: 'The TrxID in your bKash message.',
+  trxHint: 'The TrxID from your bKash or Nagad message.',
   senderLabel: 'The number you sent from',
   senderHint: '01XXXXXXXXX — we check it against the account.',
   confirm: 'I have sent it',
@@ -197,10 +208,16 @@ const EN: RechargeWords = {
   badAmount: 'Type the amount in whole taka.',
   tooSmall: (taka) => 'The smallest recharge is ' + taka + '.',
   tooLarge: (taka) => 'The largest recharge is ' + taka + ' — send the rest as a second one.',
-  badTrx: 'Enter the transaction ID from your bKash message.',
+  badTrx: 'Enter the transaction ID from your bKash or Nagad message.',
   badPhone: 'Enter the number you sent from, like 01712345678.',
   failed: 'That could not be saved. Try once more.',
-  unreadable: 'Your balance could not be read just now. Reload the page.',
+  unreadable: 'We could not price your recharge just now. Reload the page.',
+  dried:
+    'Your balance has run out, so the app is read-only until money arrives. Send to the '
+    + 'number below — nothing is lost while the transfer is being checked.',
+  unavailable:
+    'This card cannot take money right now. Ask from the contact card below and we will '
+    + 'ring you.',
   ownerOnly: 'Only the owner can add money to the balance.',
 
   queueTitle: 'Recharges to check',
@@ -231,27 +248,25 @@ const BN: RechargeWords = {
   factBalance: 'ব্যালেন্সে আছে',
   factDaily: 'দিনপ্রতি খরচ',
   factDays: 'দিন বাকি',
-  factDaysUnknown: 'জানা নেই',
 
   // The count, not a sentence: the rate is what moved and this is what moved it.
   sizedBy: (students, teachers) => students + ' শিক্ষার্থী, ' + teachers + ' শিক্ষক',
   offerTitle: 'প্রস্তাবিত',
   offerMonths: (months) => months + ' মাস',
-  offerCredit: (credit) => credit + ' ব্যালেন্স',
   offerBonus: (bonus, bps) => bonus + ' বোনাস (' + bps / 100 + '%)',
   offerNoBonus: 'এই অঙ্কে বোনাস নেই',
   typedLabel: 'অথবা নিজের ইচ্ছেমতো টাকা লিখুন',
   typedHint: 'শুধু সংখ্যা।',
-  nextTier: (taka, bps) =>
-    'আরও ' + taka + ' যোগ করলে বোনাস ' + bps / 100 + '% হয়ে যাবে।',
   daysAtSize: (days) => 'এখনকার আকারে প্রায় ' + days + ' দিন।',
 
   sendTitle: 'টাকা পাঠান',
-  sendBody: (phone) =>
-    'উপরের অঙ্কটি ঠিক ততটাই ' + phone + ' নম্বরে বিকাশ বা নগদের “সেন্ড মানি” দিয়ে পাঠান।',
-  reference: (code) => 'রেফারেন্স লেখার জায়গা থাকলে ' + code + ' লিখুন।',
+  walletBkash: 'বিকাশ',
+  walletNagad: 'নগদ',
+  sendHow: 'দুটোই এই নম্বরে “সেন্ড মানি” নেয়।',
+  sendAmount:
+    'নিচে যে অঙ্কটি বেছে নেবেন, ঠিক ততটাই পাঠান — প্রতিটি ট্রান্সফার আমরা হাতে মিলিয়ে দেখি।',
   trxLabel: 'ট্রানজেকশন আইডি',
-  trxHint: 'বিকাশের মেসেজে যে TrxID আছে।',
+  trxHint: 'বিকাশ বা নগদের মেসেজে যে TrxID আছে।',
   senderLabel: 'যে নম্বর থেকে পাঠিয়েছেন',
   senderHint: '০১XXXXXXXXX — আমরা অ্যাকাউন্টের সাথে মিলিয়ে দেখি।',
   confirm: 'পাঠিয়েছি',
@@ -288,10 +303,15 @@ const BN: RechargeWords = {
   badAmount: 'পুরো টাকায় অঙ্কটি লিখুন।',
   tooSmall: (taka) => 'সবচেয়ে কম রিচার্জ ' + taka + '।',
   tooLarge: (taka) => 'সবচেয়ে বেশি রিচার্জ ' + taka + ' — বাকিটা আলাদা করে পাঠান।',
-  badTrx: 'বিকাশের মেসেজ থেকে ট্রানজেকশন আইডি লিখুন।',
+  badTrx: 'বিকাশ বা নগদের মেসেজ থেকে ট্রানজেকশন আইডি লিখুন।',
   badPhone: 'যে নম্বর থেকে পাঠিয়েছেন সেটি লিখুন, যেমন 01712345678।',
   failed: 'সংরক্ষণ করা যায়নি। আরেকবার চেষ্টা করুন।',
-  unreadable: 'এখন ব্যালেন্স পড়া গেল না। পাতা একবার রিলোড করুন।',
+  unreadable: 'এখন আপনার রিচার্জের দাম বের করা গেল না। পাতা একবার রিলোড করুন।',
+  dried:
+    'ব্যালেন্স শেষ, তাই টাকা না আসা পর্যন্ত অ্যাপটি শুধু পড়ার জন্য। নিচের নম্বরে টাকা '
+    + 'পাঠান — যাচাই চলাকালীন কিছুই হারায় না।',
+  unavailable:
+    'এখান থেকে টাকা যোগ করা যাচ্ছে না। নিচের যোগাযোগের কার্ড থেকে জানান — আমরা ফোন করব।',
   ownerOnly: 'ব্যালেন্সে টাকা কেবল মালিক যোগ করতে পারেন।',
 
   queueTitle: 'যাচাইয়ের অপেক্ষায় রিচার্জ',
