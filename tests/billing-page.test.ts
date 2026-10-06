@@ -47,6 +47,9 @@ const CALC = read('src', 'app', '(app)', 'settings', 'billing', 'calculator.tsx'
 /** What is left of `/settings/plan` — a route and nothing else. */
 const REDIRECT = read('src', 'app', '(app)', 'settings', 'plan', 'page.tsx')
 
+/** The recharge card, which this screen folds in and which the send block lives on. */
+const PANEL = read('src', 'app', '(app)', 'settings', 'billing', 'recharge-panel.tsx')
+
 /** A ledger entry with everything but the named fields defaulted away. */
 let seq = 0
 function entry(over: Partial<LedgerEntry> & Pick<LedgerEntry, 'kind' | 'amountPoisha'>): LedgerEntry {
@@ -291,6 +294,39 @@ test('the rate bands are behind the calculator, not printed on the screen', () =
 
 test('the recharge card is folded in, so there is one recharge screen and not two', () => {
   assert.ok(PAGE.includes('<RechargePanel />'))
+})
+
+test('the number money is sent to is the card\'s largest figure, not a footnote', () => {
+  // The complaint this guards. The wallet number used to sit inside the form's own grey
+  // instruction sentence — "send exactly the amount above to 017…" — which made the one
+  // thing on this card a reader must find *without* reading read as the smallest text on
+  // it, and named an amount nobody had chosen yet at that point on the page. It is now
+  // drawn on its own, at `text-3xl`, in a bordered block of its own.
+  assert.match(
+    PANEL,
+    /text-3xl font-bold[\s\S]{0,200}formatBdMobile\(paymentPhone as string\)/,
+    'the number is small or is no longer the block\'s own figure',
+  )
+  // Selected as text rather than left to a long-press: an owner reads this off one phone
+  // and types it into another, which is the whole reason the block exists.
+  assert.ok(PANEL.includes('select-all'), 'the number cannot be copied by selection')
+
+  // BOTH WALLETS BY NAME, because the sentence this replaced said bKash and a Nagad
+  // customer reads that as "not for me". The words module carries the two names in the
+  // reader's own script — বিকাশ and নগদ — for the same reason.
+  assert.ok(PANEL.includes('{words.walletBkash}'), 'only bKash is named')
+  assert.ok(PANEL.includes('{words.walletNagad}'), 'Nagad is never named')
+  // And the amount line points *below*, where the amount actually is.
+  assert.ok(PANEL.includes('{words.sendAmount}'), 'the send block names no amount')
+
+  // THE TWO CAUSES OF AN UNOPENABLE CARD STAY DISTINCT. An empty balance is not a read
+  // that failed ("reload" over a balance of zero changes nothing), and a deployment with
+  // no number configured is not a reload problem either.
+  assert.ok(PANEL.includes('{words.dried}'), 'a lapsed centre is told to reload')
+  assert.ok(
+    PANEL.includes('{paymentPhone ? words.unreadable : words.unavailable}'),
+    'the two reasons a card cannot take money are told apart',
+  )
 })
 
 test('the history draws each day with its count and its rate', () => {

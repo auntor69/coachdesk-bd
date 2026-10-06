@@ -3726,66 +3726,6 @@ export const en: Dictionary = {
         title: 'The branches waiting',
       },
 
-      /**
-       * Months of the plan — and, for a centre not on one yet, the plan itself.
-       *
-       * The only place in the app where money moves a tier, so the words are "pay" and
-       * not "ask". The contact card further down is the other half: the conversations
-       * this deliberately cannot have.
-       */
-      subscribe: {
-        title: 'Pay for your plan',
-        body: 'As many months as you like, in one go. Once the money reaches us your '
-          + 'account is covered to the end of that period.',
-        coveredUntil: (date: string) => `Paid up to ${date}.`,
-        notCovered: 'No paid period is on your account yet.',
-        planLabel: 'Which plan?',
-        renewOption: 'Stay on my plan',
-        monthsLabel: 'How many months?',
-        /** A dropdown label, so the server builds it: "1 months" is not a choice. */
-        monthsOption: (n: number) => `${n} ${n === 1 ? 'month' : 'months'}`,
-        quote: '{taka} in total — {from} to {until}.',
-        submit: 'Pay for this',
-        submitting: 'Opening…',
-        opened: 'Done. Send the money as shown below — the plan starts the moment we '
-          + 'have it.',
-        waitingTitle: 'Waiting for money',
-        waitingLine: (months: string, taka: string, until: string) =>
-          `${months} months at ${taka} — covers you to ${until}.`,
-        waitingPlan: (name: string) => `Moves you to ${name}.`,
-        cancel: 'Cancel this purchase',
-        cancelling: 'Cancelling…',
-        cancelled: 'Cancelled. You can buy again now.',
-        gone: 'That purchase is no longer open. Reload the page.',
-        badMonths: 'Choose how many months you are paying for.',
-        badPlan: 'That plan was not recognised. Choose one from the list.',
-        downgradeIsACall:
-          'Moving down a plan is not something this form does. Tell us below and we '
-          + 'will ring you.',
-        midTermIsACall:
-          'You have already paid for the months ahead, so we work a mid-term change '
-          + 'out by hand. Tell us below and we will ring you.',
-        alreadyOpen:
-          'One purchase is still waiting for money. Send that one, or cancel it and '
-          + 'buy again.',
-        notOnThisPlan: 'This plan has no monthly charge, so there is nothing to buy.',
-        tooMuch: (taka: string) =>
-          `This form cannot take more than ${taka} at once. Ring us and we will work `
-          + `it out with you.`,
-        closed: 'That purchase is no longer open. Reload the page.',
-        failed: 'The purchase could not be started. Try again.',
-        unreadable:
-          'Whether you have a purchase waiting could not be read just now. If you have '
-          + 'already sent the money, ring us rather than buying again.',
-        /**
-         * The bill is worked out from the roster, so a count that would not read cannot
-         * be priced. The form goes away rather than quote a figure built from a nought.
-         */
-        priceUnreadable:
-          'What your plan would cost could not be worked out just now. Reload the page, '
-          + 'or ring us and we will tell you.',
-      },
-
       /** See the Bangla: the only way in to a receipt, and not only for places. */
       paid: {
         title: 'What we have received',

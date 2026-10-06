@@ -109,9 +109,10 @@ export async function ContactCard() {
       )
     : null
 
-  // Blank in every deployment until the founder puts their own number in. Absent rather
-  // than a dead chip: a WhatsApp button that opens a chat with nobody is worse than no
-  // button, and this is the screen where trust is being built.
+  // The same one line of config `recharge-panel.tsx` reads, and absent rather than a dead
+  // chip: a WhatsApp button that opens a chat with nobody is worse than no button, and this
+  // is the screen where trust is being built. It cannot live in the repository — only in the
+  // deployment's own environment — so the card is written to be correct either way.
   const salesPhone = normalizeBdMobile(process.env.NEXT_PUBLIC_SALES_PHONE ?? '')
   const salesMessage = t.contactMessage(active.centerName, planName(plan, locale))
 

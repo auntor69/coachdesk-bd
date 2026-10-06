@@ -48,11 +48,10 @@ import {
  * same arithmetic on the same inputs, so they agree by construction — and the assertion
  * that they do is `tests/daily-rate.test.ts` plus the RLS suite's own worked figures.
  *
- * WHAT IT DOES NOT DO YET: it does not replace the subscription cards below it. Retiring
- * the coverage-based buy flow is build-order step 28, and until then this card and that one
- * are both on the screen — one adding money to a balance, the other selling months of
- * coverage. Both are honest about what they do; the second stops being offered when §11.14's
- * cutover lands.
+ * IT IS THE ONLY WAY MONEY ARRIVES NOW. The coverage-based cards it once sat beside went
+ * in build-order step 28 — months of a tier are no longer sellable from any screen — so
+ * everything the product charges for is paid through this one block: a claim against the
+ * founder's own wallet, checked by hand, credited as a bonus-priced balance.
  */
 export async function RechargePanel() {
   const session = await getSession()
@@ -174,12 +173,13 @@ export async function RechargePanel() {
   const claims = await ownClaims(supabase, active.centerId)
 
   /*
-   * WHERE THE MONEY GOES. `NEXT_PUBLIC_SALES_PHONE` is the founder's own number, empty in
-   * every deployment because it is not in the repository — and on this card that is worse
-   * than on the WhatsApp chip it was introduced for, because a recharge without a number to
-   * send to is not a smaller recharge, it is a form that cannot be completed. So the send
-   * block and the form are drawn only when there is a number, and the card says so plainly
-   * otherwise rather than offering a button whose instruction is missing.
+   * WHERE THE MONEY GOES. `NEXT_PUBLIC_SALES_PHONE` is the founder's own number, and it
+   * cannot live in the repository — only in the deployment's environment. On this card
+   * that matters more than on the WhatsApp chip it was introduced for, because a recharge
+   * without a number to send to is not a smaller recharge, it is a form that cannot be
+   * completed. So the send block and the form are drawn only when there is a number, and
+   * the card says so plainly otherwise rather than offering a button whose instruction is
+   * missing.
    */
   const paymentPhone = normalizeBdMobile(process.env.NEXT_PUBLIC_SALES_PHONE ?? '')
   const canRecharge = Boolean(paymentPhone) && card !== null && suggestions.length > 0
@@ -232,24 +232,56 @@ export async function RechargePanel() {
         has gone read-only, and "nothing is lost while it is pending" is §11.9's own promise
         about the window between sending money and a human checking it. Said here rather
         than only in the shell's banner, because this is the screen the banner sends them to.
+
+        `dried` and NOT `unreadable` — the balance was read perfectly well: it is empty.
+        "Reload the page" over an empty balance is advice that changes nothing, which is
+        how a customer learns the screen is guessing.
       */}
       {session.billing.lapsed && (
         <p className="mt-3 rounded-xl border border-late/40 bg-late/5 p-3 text-sm text-ink">
-          {words.unreadable}
+          {words.dried}
         </p>
       )}
 
       {canRecharge && (
         <>
-          <div className="mt-4 border-t border-line pt-3">
+          {/*
+            WHERE THE MONEY GOES, AND THE ONE THING ON THIS CARD A READER MUST FIND WITHOUT
+            READING. The number used to be buried inside a grey sentence — "send exactly the
+            amount above to 017…" — the form's own instruction printed as a footnote, and
+            naming an amount that is not even chosen yet at this point on the page. It is
+            now the largest figure in the card: the number in the reader's own digits,
+            the two wallets it works on named beside it, and the amount line saying below,
+            where the amount actually is.
+          */}
+          <div className="mt-4 rounded-xl border-2 border-brand-500 bg-brand-50 p-4">
             <h3 className="font-medium text-ink">{words.sendTitle}</h3>
-            <p className="mt-1 text-sm text-ink-soft">
-              {words.sendBody(formatBdMobile(paymentPhone as string))}
+            <p
+              className="num mt-1.5 text-3xl font-bold tracking-tight text-brand-900
+                select-all break-all"
+            >
+              {formatBdMobile(paymentPhone as string)}
             </p>
+            <p className="mt-2 flex flex-wrap items-center gap-2">
+              <span
+                className="rounded-full border border-brand-500 bg-white px-2.5 py-0.5
+                  text-xs font-semibold text-brand-800"
+              >
+                {words.walletBkash}
+              </span>
+              <span
+                className="rounded-full border border-brand-500 bg-white px-2.5 py-0.5
+                  text-xs font-semibold text-brand-800"
+              >
+                {words.walletNagad}
+              </span>
+              <span className="text-sm text-ink-soft">{words.sendHow}</span>
+            </p>
+            <p className="mt-2 text-sm font-medium text-ink">{words.sendAmount}</p>
             {/* §11.6 commits to saying this before the tap, and §14.1 commits to it leading
                 somewhere: the sentence used to be a dead end, so the words that make the
                 promise now link to the page that keeps it. */}
-            <p className="mt-1 text-xs text-ink-faint">
+            <p className="mt-2 text-sm text-ink-soft">
               {words.nonRefundable}{' '}
               <Link
                 href={policyHref(terms.slug)}
@@ -275,7 +307,15 @@ export async function RechargePanel() {
         </>
       )}
 
-      {!canRecharge && <p className="mt-3 text-sm text-ink-soft">{words.unreadable}</p>}
+      {!canRecharge && (
+        <p className="mt-3 text-sm text-ink-soft">
+          {/* Two causes, two sentences: a read that failed is fixed by reloading, a
+              deployment with no number to send to is not — saying "reload" there is
+              advice that changes nothing, so this one says so and points at the contact
+              card below, which still works without a number. */}
+          {paymentPhone ? words.unreadable : words.unavailable}
+        </p>
+      )}
 
       {/*
         WHAT HAS BEEN SENT, newest first, including the closed ones. §11.9's "nothing is lost

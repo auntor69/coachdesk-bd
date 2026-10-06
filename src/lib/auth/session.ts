@@ -101,9 +101,10 @@ export type Membership = {
    *
    * NOT READ BY THE RESOLVER ANY MORE (§11.14): coverage stopped gating anything the
    * day the balance did, and the two derivations must never both be live. It stays on
-   * the row as history — a receipt still records what period it was for — and stays on
-   * this type because the plan screen and the buy-subscription flow still write and
-   * read it, until step 25 replaces that flow with a recharge.
+   * the row as history — a founder-recorded receipt still advances it and records what
+   * period it was for — and stays on this type because two screens still draw it: the
+   * shell's small print under the lapsed notice and the founder's centre card. The buy
+   * flow that used to write it from the customer's side went with step 28.
    */
   paidThrough: string | null
   /**
@@ -417,9 +418,9 @@ export const getSession = cache(async (): Promise<Session | null> => {
    * THE BALANCE REPLACED THE COVERAGE DATE IN THIS SELECT (§11.14), and it is here for
    * the same reason `paid_through` was: the ledger it is derived from is not readable by
    * every member, so a teacher's session gets the centre's money through this embed or
-   * not at all. `paid_through` is still read — the plan screen and its buy flow are
-   * still the old model until step 25 — and the resolver stops consulting it, because
-   * two live derivations of access disagree on exactly the day it matters.
+   * not at all. `paid_through` is still read — for history on the shell's lapsed
+   * small print and the founder's centre card — and the resolver stops consulting it,
+   * because two live derivations of access disagree on exactly the day it matters.
    */
 
   /*
