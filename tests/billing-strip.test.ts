@@ -1,7 +1,7 @@
 import { describe, test } from 'node:test'
 import assert from 'node:assert'
-import { formatTaka } from '@/lib/money'
-import { dict } from '@/lib/i18n'
+import { formatTaka } from '../src/lib/money.ts'
+import { dict } from '../src/lib/i18n/index.ts'
 
 /* -------------------------------------------------------------------------- */
 /* The always-on balance strip, and the role gates around it                  */
