@@ -93,6 +93,21 @@ export const en: Dictionary = {
      * for.
      */
     balanceHeld: (taka: string) => taka + ' in the balance',
+    /**
+     * THE DAY COUNT IS THE MONEY'S OWN COUNT, AND A GRANTED LINE DOES NOT MOVE IT.
+     *
+     * §11.7: a founder's grant is days and not fake money, so a centre can hold a real
+     * balance with its line two months out while the burn charges nothing — correctly,
+     * because there is no day left to buy. The billing screen has explained that since the
+     * granted-days pass (`billing.leftGranted`); the strip is the surface an owner reads
+     * on every screen without opening anything, and it printed the same unmoving count
+     * with no explanation, which is the one state that reads as broken billing. The same
+     * fact in the same words, on the screen that shows it first.
+     *
+     * Short, because the strip is one line by construction — see the shell's own note on
+     * why it is not two.
+     */
+    balanceGranted: (date: string) => 'granted until ' + date,
     balanceDays: (days: number) =>
       days === 1 ? 'The balance covers one more day' : `The balance covers ${days} more days`,
     balanceEmpty: 'Nothing left in the balance — today is paid, tomorrow is not',

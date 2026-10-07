@@ -256,6 +256,12 @@ export const bn = {
      * for.
      */
     balanceHeld: (taka: string) => 'ব্যালেন্সে ' + taka,
+    /**
+     * The granted line, in the strip, in the words the billing screen already uses —
+     * `billing.leftGranted` says 'এই কেন্দ্রকে … পর্যন্ত দিন দেওয়া আছে' and this is its
+     * one-line form. Same fact, same vocabulary, said where the owner reads it first.
+     */
+    balanceGranted: (date: string) => date + ' পর্যন্ত দিন দেওয়া আছে',
     balanceDays: (days: number) =>
       days === 1 ? 'ব্যালেন্সে আরেক দিনের টাকা আছে' : `ব্যালেন্সে আরও ${days} দিনের টাকা আছে`,
     balanceEmpty: 'ব্যালেন্স খালি — আজ পরিশোধিত, কাল নয়',

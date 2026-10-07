@@ -811,8 +811,41 @@ export async function AppShell({
   const daysLeft = session.billing.daysLeft
   const balancePoisha = session.billing.balancePoisha
   const rail = canTopUp && daysLeft !== null ? daysLeft : null
-  /** Inside three days the strip turns amber, which is §3.7's first rung. */
-  const railLow = rail !== null && rail <= 3
+
+  /*
+   * THE LINE IS AHEAD OF TODAY, WHICH IS A GRANT AND NOT A PAYMENT.
+   *
+   * `charged_through` is the last day the centre is covered for. A founder's grant of
+   * days moves it forward without touching the balance (§11.7 — a grant is days, not
+   * fake money), so a centre can hold a real balance with its line two months out while
+   * the burn charges nothing. That is correct: there is no day left to buy.
+   *
+   * The billing screen has said so since the granted-days pass, in `billing.leftGranted`.
+   * The strip did not, and it is the surface an owner reads on every screen without
+   * opening anything — so a balance that never moves looked like broken billing rather
+   * than a centre waiting. The count below is still the money's own count, because that
+   * is what the balance buys *after* the granted days; this is the sentence that says
+   * which of the two states the reader is in.
+   *
+   * Two Dhaka days compared as strings, which is chronological order for `YYYY-MM-DD` —
+   * the same comparison the billing page makes for its own `aheadTo`.
+   */
+  const grantedTo =
+    canTopUp &&
+    session.billing.chargedThrough !== null &&
+    session.billing.today !== null &&
+    session.billing.chargedThrough > session.billing.today
+      ? session.billing.chargedThrough
+      : null
+
+  /**
+   * Inside three days the strip turns amber, which is §3.7's first rung.
+   *
+   * NOT WHILE GRANTED DAYS CARRY THE LINE: amber is a warning that the money is about to
+   * run out, and a centre being carried by a grant has nothing running out yet. Colouring
+   * it would be the false alarm the billing screen's own sentence exists to avoid.
+   */
+  const railLow = rail !== null && grantedTo === null && rail <= 3
 
   /**
    * The strip's one sentence, with the amount leading it when there is one to lead with.
@@ -822,7 +855,14 @@ export async function AppShell({
    * content begins. A balance that could not be read is left out rather than drawn as
    * ৳0 — an unread figure is not an empty one (§11.7).
    */
-  const daysLine = rail === null ? null : rail === 0 ? t.balanceEmpty : t.balanceDays(rail)
+  const daysLine =
+    grantedTo !== null
+      ? t.balanceGranted(formatDate(grantedTo, session.locale))
+      : rail === null
+        ? null
+        : rail === 0
+          ? t.balanceEmpty
+          : t.balanceDays(rail)
   const heldLine =
     daysLine === null
       ? null
