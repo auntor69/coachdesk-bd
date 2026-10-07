@@ -178,6 +178,16 @@ test('a figure that cannot be proved is a dash and never a flattering zero', () 
   assert.ok(PAGE.includes("{rosterProblem === 'tooLarge' ? t.rosterTooLarge : t.rosterUnreadable}"))
 })
 
+test('a dispatch is dated by the Dhaka day it was queued on, not the UTC one', () => {
+  // `created_at` is a timestamptz Postgres returns in UTC, so ten characters off it is
+  // yesterday for the first six hours of every Bangladeshi day — on the list that records
+  // what the centre spent its credits on. `dhakaMoment` is the conversion every other
+  // dated row in the app makes; see tests/notices-page.test.ts for the arithmetic.
+  assert.match(PAGE, /formatDate\(dhakaMoment\(dispatch\.created_at\)\.date, locale\)/)
+  assert.doesNotMatch(PAGE, /created_at\.slice\(0, 10\)/)
+  assert.match(PAGE, /import \{ dhakaMoment, formatDate \} from '@\/lib\/bd\/time'/)
+})
+
 test('a failed dispatch read says so instead of sending the owner on an errand', () => {
   // `null` is the failed read and `[]` the honest empty one, which is why this is two
   // arms and not `?? []` — `noneYet` tells them where to go and send one.
