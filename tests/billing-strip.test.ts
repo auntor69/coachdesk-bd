@@ -1,5 +1,7 @@
 import { describe, test } from 'node:test'
 import assert from 'node:assert'
+import { readFileSync } from 'node:fs'
+import path from 'node:path'
 import { formatTaka } from '../src/lib/money.ts'
 import { dict } from '../src/lib/i18n/index.ts'
 
@@ -94,5 +96,75 @@ describe('the money strip is drawn on every screen and only where money matters'
     // the one place a reader reaches for before they spend, which a free centre has no
     // button for, so it is absent on the only two states where money does not belong:
     // a tier with no rate, and a centre whose balance is already out.
+  })
+
+  test('the strip can say the line is carried by granted days', () => {
+    // §11.7: a grant is days and not fake money, so a centre can hold a real balance with
+    // its line two months out while the burn correctly charges nothing — there is no day
+    // left to buy. The count on its own reads as broken billing, which is the one state
+    // this sentence exists to rule out. Same vocabulary the billing screen already uses
+    // in `billing.leftGranted`, said on the screen the owner reads without opening one.
+    for (const locale of ['en', 'bn'] as const) {
+      assert.equal(
+        typeof dict(locale).shell.balanceGranted,
+        'function',
+        `${locale} can say a line was granted rather than paid for`,
+      )
+    }
+
+    assert.equal(
+      dict('en').shell.balanceGranted('29 Nov 2026'),
+      'granted until 29 Nov 2026',
+      'English names the day the granted line reaches',
+    )
+    assert.equal(
+      dict('bn').shell.balanceGranted('২৯ নভেম্বর ২০২৬'),
+      '২৯ নভেম্বর ২০২৬ পর্যন্ত দিন দেওয়া আছে',
+      'Bangla says the same thing in the words the billing screen uses',
+    )
+  })
+})
+
+describe('the strip says why a balance is not moving while granted days carry it', () => {
+  const read = (...parts: string[]) =>
+    readFileSync(path.join(import.meta.dirname, '..', ...parts), 'utf8')
+
+  const SHELL = read('src', 'components', 'app-shell.tsx')
+
+  test('the granted sentence is preferred over the day count', () => {
+    // The count stays the money's own count — that is what the balance buys *after* the
+    // granted days — so the fix is the sentence beside it and not a different number.
+    assert.match(
+      SHELL,
+      /const daysLine =\s*\n\s*grantedTo !== null\s*\n\s*\? t\.balanceGranted\(formatDate\(grantedTo, session\.locale\)\)/,
+      'the strip asks for the granted sentence first, so no count stands alone unexplained',
+    )
+  })
+
+  test('a carried centre is not coloured as a warning', () => {
+    // Amber is §3.7's warning that the money is about to run out. A centre being carried
+    // by a grant has nothing running out yet, and colouring it would be the false alarm
+    // the billing screen's own sentence exists to avoid.
+    assert.match(
+      SHELL,
+      /const railLow = rail !== null && grantedTo === null && rail <= 3/,
+      'amber is for money about to run out, and a carried centre has none',
+    )
+  })
+
+  test('the strip reuses the money screen’s own rule rather than inventing one', () => {
+    // `charged_through` ahead of today, as two Dhaka days compared as strings — the same
+    // comparison the billing page makes for its `aheadTo`. A strip with its own idea of
+    // "granted" would be a second answer to a question that already has one.
+    assert.match(
+      SHELL,
+      /session\.billing\.chargedThrough > session\.billing\.today/,
+      'ahead is charged_through past today in the shell',
+    )
+    assert.match(
+      read('src', 'app', '(app)', 'settings', 'billing', 'page.tsx'),
+      /chargedThrough > session\.billing\.today/,
+      'and the billing page is still making the same comparison',
+    )
   })
 })
