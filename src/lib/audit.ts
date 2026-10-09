@@ -58,6 +58,7 @@ export const AUDITED_TABLES = [
   'students',
   'guardians',
   'attendance_records',
+  'attendance_unlocks',
   'teachers',
   'teacher_permissions',
   'employees',
@@ -103,6 +104,8 @@ export type AuditAction =
   | 'guardianPhoneChanged'
   | 'consentChanged'
   | 'attendanceOverridden'
+  | 'attendanceFiledEarly'
+  | 'attendanceFiledLate'
   | 'feeRaised'
   | 'feeVoided'
   | 'discountGranted'
@@ -324,6 +327,10 @@ const RULES: Record<AuditedTable, Rule[]> = {
   // already follows an invoice.
   attendance_records: [
     { column: 'status', action: 'attendanceOverridden', shift: 'attendanceStatus' },
+  ],
+  attendance_unlocks: [
+    { on: 'created', is: (f) => f.after.reason === 'early', action: 'attendanceFiledEarly' },
+    { on: 'created', action: 'attendanceFiledLate' },
   ],
   fee_invoices: [
     { on: 'created', action: 'feeRaised' },

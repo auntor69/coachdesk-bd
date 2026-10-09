@@ -4811,6 +4811,343 @@ await db.query('delete from students where id = any($1::uuid[])', [
 ])
 
 // ---------------------------------------------------------------------------
+// The clock gate and its two signatures (20260811000089).
+//
+// A class is now taken at its own hour: before it starts the register is locked and
+// needs an 'early' signature, and after it ends with nothing filed the day counts as
+// cancelled and needs a 'forgot' one. Three of the rules below are the ones a forged
+// call would reach for — the signature cannot be given for the wrong side of the
+// clock, it cannot name its own signer, and it cannot be edited once it is given.
+//
+// THE CLOCK IS THIS SECTION'S PROBLEM, and the date section above does not have it.
+// "Two hours from now" wraps at midnight, so a class that has not started is only
+// expressible while there is room left in the Bangladeshi day, and one that has ended
+// only once three hours of it have gone. Each half is therefore built off Dhaka's own
+// clock and runs only where it can be true — and between them they always cover the
+// day: at most the last three hours run only the late half and the first three only
+// the early one. Nothing waits on them; the privileges, the day the signature may be
+// given for, and the no-timetable case are all clock-independent and asserted last.
+// ---------------------------------------------------------------------------
+
+console.log('\nThe clock gate and its two signatures (20260811000089):')
+
+const dhakaHour = (
+  await db.query(
+    `select extract(hour from (now() at time zone 'Asia/Dhaka'))::int as h`,
+  )
+).rows[0].h
+
+const clockBatch = (name) =>
+  one(
+    `insert into batches (coaching_center_id, subject_id, teacher_id, name, slot)
+     values ($1, $2, $3, $4, 'afternoon') returning id`,
+    [centerA, sBio, tKarim, name],
+  )
+
+/** A schedule row for *today*, N minutes from now — a real window at any hour. */
+const meetsTodayFrom = (batch, fromMinutes, toMinutes) =>
+  db.query(
+    `insert into batch_schedules (coaching_center_id, batch_id, day_of_week, start_time, end_time)
+     values ($1, $2,
+             extract(dow from (now() at time zone 'Asia/Dhaka'))::smallint,
+             ((now() at time zone 'Asia/Dhaka')::time + make_interval(mins => $3))::time,
+             ((now() at time zone 'Asia/Dhaka')::time + make_interval(mins => $4))::time)`,
+    [centerA, batch, fromMinutes, toMinutes],
+  )
+
+const clockRegister = (userId, batch) =>
+  tried(
+    userId,
+    `insert into attendance_sessions (coaching_center_id, batch_id, session_date, teacher_id)
+     values ($1, $2, ${DHAKA_TODAY}, $3)`,
+    [centerA, batch, tKarim],
+  )
+
+/** The signature as the card would post it: no signer, no moment, no window. */
+const signOff = (userId, batch, reason, day = DHAKA_TODAY) =>
+  tried(
+    userId,
+    `insert into attendance_unlocks
+       (coaching_center_id, batch_id, session_date, reason, batch_name, signature_version)
+     values ($1, $2, ${day}, $3::attendance_unlock_reason, 'Clock Fixture Batch', '2026-10-09')`,
+    [centerA, batch, reason],
+  )
+
+const signatureOf = async (batch, reason) =>
+  (
+    await db.query(
+      `select id, claimed_by, claimed_at, starts_at, ends_at, signature_version,
+              reason::text as reason
+         from attendance_unlocks where batch_id = $1 and reason = $2::attendance_unlock_reason`,
+      [batch, reason],
+    )
+  ).rows[0] ?? null
+
+// --- Two hours ahead: the register is locked until it is signed for -------------
+
+let earlyBatch = null
+let lateBatch = null
+
+if (dhakaHour <= 21) {
+  earlyBatch = await clockBatch('Clock Early Batch')
+  await meetsTodayFrom(earlyBatch, 120, 180)
+
+  const refusedEarly = await clockRegister(ids.karim, earlyBatch)
+  check(
+    'a register for a class that has not started is refused',
+    /has not started yet/.test(refusedEarly),
+    refusedEarly.split('\n')[0] || 'accepted',
+  )
+
+  // The wrong sentence. 'forgot' claims the class is over, and it has not begun —
+  // which is the whole reason the reason is checked against the clock rather than
+  // trusted as a word a teacher chose.
+  const wrongSentence = await signOff(ids.karim, earlyBatch, 'forgot')
+  check(
+    "and a 'forgot' signature cannot buy it, because the class has not ended",
+    /has not finished yet/.test(wrongSentence),
+    wrongSentence.split('\n')[0] || 'accepted',
+  )
+
+  check(
+    'neither attempt left a register or a signature behind',
+    (await n(db, 'select count(*)::int as n from attendance_sessions where batch_id = $1', [
+      earlyBatch,
+    ])) === 0
+      && (await n(
+        db,
+        'select count(*)::int as n from attendance_unlocks where batch_id = $1',
+        [earlyBatch],
+      )) === 0,
+  )
+
+  check(
+    'the early signature itself is accepted',
+    (await signOff(ids.karim, earlyBatch, 'early')) === '',
+  )
+
+  const earlyRow = await signatureOf(earlyBatch, 'early')
+  // The three columns the trigger owns: a client that could name its own signer could
+  // sign with a colleague's name, and one that could name the moment could date a
+  // signature to before the class. The call above sends none of them.
+  check(
+    'and the signer, the moment and the window are the database’s, not the form’s',
+    earlyRow?.claimed_by === ids.karim
+      && earlyRow?.claimed_at !== null
+      && earlyRow?.starts_at !== null
+      && earlyRow?.ends_at !== null
+      && earlyRow?.signature_version === '2026-10-09',
+    JSON.stringify(earlyRow),
+  )
+
+  check(
+    'and with the signature in, the same register goes through',
+    (await clockRegister(ids.karim, earlyBatch)) === '',
+  )
+} else {
+  check(
+    "the early half of the clock gate is out of season this hour, and says so",
+    dhakaHour > 21,
+    `Dhaka hour ${dhakaHour}`,
+  )
+}
+
+// --- Two hours behind: the class ended, and the day is a cancelled class --------
+
+if (dhakaHour >= 3) {
+  lateBatch = await clockBatch('Clock Late Batch')
+  // Ended two hours ago, which is well past the thirty-minute grace the register is
+  // measured with (`app.attendance_grace_minutes()`).
+  await meetsTodayFrom(lateBatch, -180, -120)
+
+  const refusedLate = await clockRegister(ids.karim, lateBatch)
+  check(
+    'a register for a class that ended with nothing filed is refused',
+    /counts as a cancelled class/.test(refusedLate),
+    refusedLate.split('\n')[0] || 'accepted',
+  )
+
+  const wrongEarly = await signOff(ids.karim, lateBatch, 'early')
+  check(
+    "and an 'early' signature cannot buy it, because there is nothing early about it",
+    /nothing early about this register/.test(wrongEarly),
+    wrongEarly.split('\n')[0] || 'accepted',
+  )
+
+  check(
+    'the late signature is accepted, exactly as the card would send it',
+    (await signOff(ids.karim, lateBatch, 'forgot')) === '',
+  )
+
+  const lateRow = await signatureOf(lateBatch, 'forgot')
+  check(
+    'and it carries the signer and the moment the caller never sent',
+    lateRow?.claimed_by === ids.karim && lateRow?.claimed_at !== null,
+    JSON.stringify(lateRow),
+  )
+
+  check(
+    'and the register for that class is finally taken',
+    (await clockRegister(ids.karim, lateBatch)) === '',
+  )
+} else {
+  check(
+    "the late half of the clock gate is out of season this hour, and says so",
+    dhakaHour < 3,
+    `Dhaka hour ${dhakaHour}`,
+  )
+}
+
+// --- The same signature asked for twice ----------------------------------------
+
+// The unique index is what makes a double tap, or an offline replay, agree once —
+// and the action reads 23505 as "already signed" for that reason.
+const firstSigned = earlyBatch ?? lateBatch
+const twiceReason = earlyBatch ? 'early' : 'forgot'
+check(
+  'signing twice for one class is refused by the index, so a retry cannot mean two',
+  await (async () => {
+    try {
+      await asUser(db, ids.karim, (tx) =>
+        tx.query(
+          `insert into attendance_unlocks
+             (coaching_center_id, batch_id, session_date, reason, batch_name, signature_version)
+           values ($1, $2, ${DHAKA_TODAY}, $3::attendance_unlock_reason, 'again', '2026-10-09')`,
+          [centerA, firstSigned, twiceReason],
+        ),
+      )
+      return false
+    } catch (error) {
+      return /duplicate key|attendance_unlocks_once/.test(String(error.message))
+    }
+  })(),
+)
+
+// --- The three rules that do not depend on the clock ---------------------------
+
+const signedIds = await n(
+  db,
+  'select count(*)::int as n from attendance_unlocks where coaching_center_id = $1',
+  [centerA],
+)
+const anySignature = (
+  await db.query(
+    `select id from attendance_unlocks where coaching_center_id = $1 order by claimed_at limit 1`,
+    [centerA],
+  )
+).rows[0].id
+
+// A consent that can be edited is not a record of consent — `policy_acceptances`'
+// own posture, and here it is the difference between "he signed" and "the row says
+// he signed now". Both halves are revoked privileges rather than policies, so this
+// fails at executor startup with Postgres's own message.
+const editedSignature = await tried(
+  ids.ownerA,
+  `update attendance_unlocks set reason = 'early'::attendance_unlock_reason where id = $1`,
+  [anySignature],
+)
+check(
+  'a signature cannot be edited after the fact, owner or not',
+  /permission denied/.test(editedSignature),
+  editedSignature.split('\n')[0] || 'accepted',
+)
+const droppedSignature = await tried(
+  ids.ownerA,
+  'delete from attendance_unlocks where id = $1',
+  [anySignature],
+)
+check(
+  'nor deleted, which is how a name comes off a class',
+  /permission denied/.test(droppedSignature),
+  droppedSignature.split('\n')[0] || 'accepted',
+)
+check(
+  'and the centre still has every one of them',
+  (await n(
+    db,
+    'select count(*)::int as n from attendance_unlocks where coaching_center_id = $1',
+    [centerA],
+  )) === signedIds,
+)
+
+// The signature is the centre's notice, so another centre must not be able to read
+// it — a row here names a teacher and a class and the hour they filed it.
+await asUser(db, ids.ownerB, async (tx) => {
+  check(
+    "centre B reads none of centre A's signatures",
+    (await n(tx, 'select count(*)::int as n from attendance_unlocks')) === 0,
+  )
+})
+
+// And the signer has to be somebody who could have taken that register. The batch
+// below has no timetable, so the clock gate has nothing to say about it and RLS is
+// the only thing left that can refuse this — which is what makes it a test of the
+// policy rather than of the trigger.
+const bNoClock = await clockBatch('Clock Fixture Batch')
+
+check(
+  'a batch with no timetable is never locked: no window, no gate',
+  (await clockRegister(ids.karim, bNoClock)) === '',
+)
+
+check(
+  'and a teacher of another centre cannot sign for this centre’s class',
+  await deniedAsUser(
+    db,
+    ids.rahim,
+    `insert into attendance_unlocks
+       (coaching_center_id, batch_id, session_date, reason, batch_name, signature_version)
+     values ($1, $2, ${DHAKA_TODAY}, 'early', 'not mine', '2026-10-09')`,
+    [centerA, bNoClock],
+  ),
+)
+
+// A signature may only be given for the class of the day: the clock gate does not
+// exist on any other date, so a row for one would be a record of a rule that never
+// applied. Both directions, and both are the guard rather than the calendar.
+check(
+  'a signature cannot be given for yesterday, which is a correction and not a lock',
+  /clock gate is about today/.test(
+    await signOff(ids.karim, bNoClock, 'forgot', `${DHAKA_TODAY} - 1`),
+  ),
+)
+check(
+  'nor for tomorrow, which has not arrived',
+  /has not arrived yet in Dhaka/.test(
+    await signOff(ids.karim, bNoClock, 'early', `${DHAKA_TODAY} + 1`),
+  ),
+)
+
+// The centre's notification, permanently. §10's log holds the signature with no
+// second delivery to lose — and `src/lib/audit.ts` names the two actions so the line
+// reads as which side of the class it was written on rather than as "changed".
+const loggedSignature = await n(
+  db,
+  `select count(*)::int as n from audit_log
+    where entity = 'attendance_unlocks' and actor = $1`,
+  [ids.karim],
+)
+check(
+  'and every signature is on the centre’s log, against the teacher who gave it',
+  loggedSignature > 0,
+  String(loggedSignature),
+)
+
+// The batches go, and the signatures go with them — the cascade the table's own note
+// describes, and the reason a centre closing a batch is not a hand-edit.
+await db.query('delete from batches where id = any($1::uuid[])', [
+  [earlyBatch, lateBatch, bNoClock].filter(Boolean),
+])
+check(
+  'closing a batch takes its signatures with it, and nothing else',
+  (await n(
+    db,
+    'select count(*)::int as n from attendance_unlocks where coaching_center_id = $1',
+    [centerA],
+  )) === 0,
+)
+
+// ---------------------------------------------------------------------------
 // The teacher fee permission.
 //
 // teacher_permissions.can_view_fees shipped in the init migration and was read by

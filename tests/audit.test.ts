@@ -356,7 +356,7 @@ test('a role change reads as one, and the actor is carried through untouched', (
   assert.equal(entry.at, '2026-09-01T20:31:39.221Z')
 })
 
-test('only the seventeen tables with triggers are audited', () => {
+test('only the eighteen tables with triggers are audited', () => {
   assert.equal(isAuditedTable('fee_payments'), true)
   // 20260811000064 gave attendance an override marker, so 20260811000046's deferred
   // trigger exists — attached with a WHEN clause, so what reaches the log is a status
@@ -369,8 +369,13 @@ test('only the seventeen tables with triggers are audited', () => {
   // the other direction — that no trigger exists without a name here.
   assert.equal(isAuditedTable('payment_intents'), true)
   assert.equal(isAuditedTable('fee_scholarships'), true)
+  // 20260811000089 signs a register taken outside its class time, and a signature is one
+  // of the acts §10's log exists for: a class filed before it started or after it ended,
+  // by a named person. The two actions are read off `reason`, so the line says which side
+  // of the class it was written on rather than "Changed".
+  assert.equal(isAuditedTable('attendance_unlocks'), true)
   assert.equal(isAuditedTable(''), false)
-  assert.equal(AUDITED_TABLES.length, 17)
+  assert.equal(AUDITED_TABLES.length, 18)
 })
 
 test('a payment request is named by which end it reached', () => {

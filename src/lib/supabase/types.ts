@@ -14,6 +14,7 @@ export type Json =
   | Json[]
 
 export type AttendanceStatus = 'present' | 'absent' | 'late' | 'excused'
+export type AttendanceUnlockReason = 'early' | 'forgot'
 export type AuditOperation = 'created' | 'updated' | 'deleted'
 export type BatchSlot = 'morning' | 'noon' | 'afternoon' | 'evening' | 'night'
 export type BillingEntryKind = 'recharge' | 'promotion_bonus' | 'daily_charge' | 'founder_money_adjustment' | 'founder_grant_days' | 'refund' | 'reversal' | 'correction' | 'settlement_failure' | 'settlement_retry' | 'migration_opening_balance'
@@ -245,6 +246,70 @@ export type Database = {
             isOneToOne: false
             referencedRelation: 'teachers'
             referencedColumns: ['id', 'coaching_center_id']
+          },
+        ]
+      }
+      attendance_unlocks: {
+        Row: {
+          id: string
+          coaching_center_id: string
+          batch_id: string
+          session_date: string
+          reason: AttendanceUnlockReason
+          batch_name: string
+          starts_at: string | null
+          ends_at: string | null
+          signature_version: string
+          claimed_by: string | null
+          claimed_at: string
+        }
+        Insert: {
+          id?: string
+          coaching_center_id: string
+          batch_id: string
+          session_date: string
+          reason: AttendanceUnlockReason
+          batch_name: string
+          starts_at?: string | null
+          ends_at?: string | null
+          signature_version: string
+          claimed_by?: string | null
+          claimed_at?: string
+        }
+        Update: {
+          id?: string
+          coaching_center_id?: string
+          batch_id?: string
+          session_date?: string
+          reason?: AttendanceUnlockReason
+          batch_name?: string
+          starts_at?: string | null
+          ends_at?: string | null
+          signature_version?: string
+          claimed_by?: string | null
+          claimed_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'attendance_unlocks_batch_center_fkey'
+            columns: ['batch_id', 'coaching_center_id']
+            isOneToOne: false
+            referencedRelation: 'batches'
+            referencedColumns: ['id', 'coaching_center_id']
+          },
+          {
+            foreignKeyName: 'attendance_unlocks_claimed_by_fkey'
+            columns: ['claimed_by']
+            isOneToOne: false
+            referencedRelation: 'users'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'attendance_unlocks_coaching_center_id_fkey'
+            columns: ['coaching_center_id']
+            isOneToOne: false
+            referencedRelation: 'coaching_centers'
+            referencedColumns: ['id']
           },
         ]
       }
@@ -3520,6 +3585,7 @@ export type Database = {
     }
     Enums: {
       attendance_status: AttendanceStatus
+      attendance_unlock_reason: AttendanceUnlockReason
       audit_operation: AuditOperation
       batch_slot: BatchSlot
       billing_entry_kind: BillingEntryKind
