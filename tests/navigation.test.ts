@@ -156,7 +156,7 @@ const GATED: { href: string; page: string[]; row: string[]; needs?: string }[] =
 ]
 
 /** The rows that are open to anybody who can reach the shell at all. */
-const UNGATED = ['/dashboard', '/teach', '/exams', '/at-risk', '/settings']
+const UNGATED = ['/dashboard', '/teach', '/exams', '/at-risk', '/settings', '/settings/students']
 
 test('every row in the menu points at a screen that exists', () => {
   // `typedRoutes` already fails the build on an href with no route, which is most of
@@ -287,6 +287,53 @@ test('under five destinations there is no More at all', () => {
   // should not change shape underneath them.
   assert.match(SHELL, /entries\.length <= PHONE_TABS \+ 1/)
   assert.match(NAV_MODULE, /more\.length > 0 &&/)
+})
+
+test('the roster is a row of the menu itself, not only a card behind the hub', () => {
+  // The register in the navigation. The roster was the one screen a centre opens
+  // several times a day that still lived two taps deep behind the settings hub —
+  // so this asserts the row exists, is in the staff-admin order (the labels test
+  // above then holds its wording in both languages), and gates nobody it need not.
+  assert.ok(ROWS.has('/settings/students'), 'the roster is in no menu')
+  assert.ok(
+    ORDER.includes('/settings/students'),
+    'the roster is in the staff-admin table, not only in a const beside it',
+  )
+
+  // `pagePermission('can_manage_students')` is cleared by rank for every reader of
+  // that table, so a `when` would offer the screen to nobody new — and `needs` would
+  // make the roster an advertisement for a tier, which it has never been.
+  const literal = ROWS.get('/settings/students')!
+  assert.ok(!literal.includes('when:'), 'the roster row gates a reader it need not gate')
+  assert.ok(!literal.includes('needs:'), 'the roster is not a plan feature')
+
+  // The promise on the other side of the row: the route it names is a real screen.
+  // (The menu-wide version of this is the first test in this file.)
+  assert.ok(existsSync(path.join(ROOT, 'src', 'app', '(app)', 'settings', 'students', 'page.tsx')))
+})
+
+test('the phone bar pads itself out from under the home indicator', () => {
+  // The safe-area fix: on a notched iPhone with `viewportFit: 'cover'` the home
+  // indicator is drawn over the bottom of the viewport, and this bar is fixed to
+  // that edge — so without a pad the last stretch of every tab is under the
+  // system gesture area. The assertion reads the pad off the bar's own `fixed`
+  // className rather than anywhere in the file, because a pad on the sheet or on
+  // a page would satisfy a looser pattern and fix nothing.
+  assert.match(
+    NAV_MODULE,
+    /fixed inset-x-0 bottom-0[\s\S]{0,160}pb-\[env\(safe-area-inset-bottom\)\]/,
+    'the tab bar carries padding-bottom: env(safe-area-inset-bottom)',
+  )
+
+  // env() resolves to 0 unless the document lays out under the indicator, so the
+  // pad only does anything because the layout asks for it. Either half without the
+  // other is a change that type-checks, ships, and moves nothing on the phone it
+  // was written for.
+  assert.match(
+    read('src', 'app', 'layout.tsx'),
+    /viewportFit: 'cover'/,
+    'the layout must opt into the safe area for the pad to be non-zero',
+  )
 })
 
 test('every row the sidebar can draw has a label in both languages', () => {

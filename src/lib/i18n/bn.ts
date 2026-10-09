@@ -271,6 +271,7 @@ export const bn = {
       home: 'হোম',
       attendance: 'হাজিরা',
       fees: 'ফি',
+      students: 'শিক্ষার্থী',
       settings: 'সেটিংস',
       exams: 'পরীক্ষা',
       mine: 'আমার',
