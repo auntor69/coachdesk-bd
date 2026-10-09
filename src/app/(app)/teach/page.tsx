@@ -5,7 +5,8 @@ import { PageHeader } from '@/components/page-header'
 import { pageRole, getSession, isStaffAdmin, myTeacherIds } from '@/lib/auth/session'
 import { createClient } from '@/lib/supabase/server'
 import { BatchSlot } from '@/lib/bd/schedule'
-import { todayInDhaka, dhakaDayOfWeek } from '@/lib/bd/time'
+import { todayInDhaka, dhakaDayOfWeek, dhakaClock, dhakaMoment, formatTime } from '@/lib/bd/time'
+import { classState, classWindow } from '@/lib/attendance/clock'
 import { dict, localName, DEFAULT_LOCALE } from '@/lib/i18n'
 
 /**
@@ -49,8 +50,13 @@ export default async function TeachPage() {
   const supabase = await createClient()
   const today = todayInDhaka()
   const dow = dhakaDayOfWeek()
+  // Read once, for the whole screen. Every row's clock state is measured against the
+  // same minute — a page that asked twice could show one batch as still locked and the
+  // next as cancelled, on a boundary that only moved because the render took a moment.
+  const nowClock = dhakaClock()
   const locale = session.locale
-  const t = dict(locale).teach
+  const d = dict(locale)
+  const t = d.teach
 
   // Whose batches this screen is about.
   //
@@ -161,6 +167,53 @@ export default async function TeachPage() {
   const markingUnknown = takenBatchIds === null
 
   /*
+   * TODAY'S SIGNATURES, which are the half of the clock gate this screen is for.
+   *
+   * The owner's request ends "the centre will get notification", and this is where the
+   * centre gets it: a class filed before it started, or filed late after ending with
+   * nothing on record, with the name of whoever signed for it. Read off the rows rather
+   * than sent anywhere, so there is no second delivery to lose and nothing to configure.
+   *
+   * An unreadable answer is drawn as nothing at all, and that is the right direction
+   * here: this is a list of things that happened, and a failure to read it must not
+   * invent one. The register itself still draws its own signed line from its own read,
+   * which is the one that matters to the person standing in the room.
+   */
+  const { data: unlocks } = await supabase
+    .from('attendance_unlocks')
+    .select('id, batch_id, reason, claimed_at, claimed_by')
+    .eq('coaching_center_id', session.active.centerId)
+    .eq('session_date', today)
+    .order('claimed_at', { ascending: false })
+
+  /*
+   * Who signed, by name, from the staff list rather than from the profile. A signature
+   * row holds an auth id and an owner cannot read a name out of one — `teachers.name`
+   * is the centre's own spelling of that person and is what every other line on this
+   * screen uses. One extra read, and only when somebody has signed today.
+   */
+  const claimedBy = [...new Set((unlocks ?? []).map((u) => u.claimed_by))].filter(
+    (id): id is string => id !== null,
+  )
+
+  const { data: claimers } =
+    claimedBy.length > 0
+      ? await supabase
+          .from('teachers')
+          .select('user_id, name')
+          .eq('coaching_center_id', session.active.centerId)
+          .in('user_id', claimedBy)
+      : { data: null }
+
+  const nameByUser = new Map(
+    (claimers ?? []).map((t) => [t.user_id, t.name] as const),
+  )
+
+  /** The day's signature per batch, newest first as the read came back. */
+  const unlockByBatch = new Map((unlocks ?? []).map((u) => [u.batch_id, u] as const))
+
+
+  /*
    * BOTH EMPTY CARDS ON THIS SCREEN ARE SENTENCES ABOUT WHOSE BATCHES THESE ARE, SO A
    * DROPPED READ MAY NOT BE ALLOWED TO REACH EITHER OF THEM.
    *
@@ -203,6 +256,40 @@ export default async function TeachPage() {
       (e) => e.status === 'active',
     ).length
     const taken = takenBatchIds?.has(batch.id) ?? false
+
+    /*
+     * The clock, per class (§20260811000089). Three words can come out of it and each
+     * goes where the reader already looks: 'Opens 4:00 pm' on a class that has not
+     * started, 'Counted as cancelled' on one that ended without a register, and the
+     * signed line for one filed outside its hours.
+     *
+     * NOT WHILE THE REGISTER READ FAILED (`markingUnknown`). `taken` is false in that
+     * state because nothing came back, and a false `taken` against a class that ended
+     * at five would draw 'cancelled' over a register somebody filed at four — the same
+     * disease the taken badge had, on the louder word. Silence is the honest answer for
+     * one render.
+     */
+    const window = classWindow({
+      dayOfWeek: dow,
+      schedules,
+      batch: { start_time: batch.start_time, end_time: batch.end_time },
+    })
+    const clock =
+      meetsToday && !markingUnknown
+        ? classState({
+            now: nowClock,
+            startsAt: window.startsAt,
+            endsAt: window.endsAt,
+            taken,
+          })
+        : 'open'
+    const signature = unlockByBatch.get(batch.id)
+    const signed = signature
+      ? {
+          reason: signature.reason,
+          at: formatTime(dhakaMoment(signature.claimed_at).time, locale),
+        }
+      : null
     /**
      * Whether this is the reader's own batch, by the `teacher_id` on it and never by
      * rank — the same rule `registerAct` and the trigger read. A teacher sees only
@@ -220,6 +307,14 @@ export default async function TeachPage() {
       studentCount,
       taken,
       meetsToday,
+      /**
+       * The clock's two words, already resolved: `opensAt` is a formatted time or
+       * null, and `signed` carries the sentence's own argument so the row holds no
+       * function.
+       */
+      opensAt: clock === 'early' ? formatTime(window.startsAt, locale) : null,
+      cancelled: clock === 'cancelled',
+      signed,
       /** Whose batch this is — nothing to say about the reader's own. */
       teacherName: ownBatch ? null : teacher?.name ?? null,
       /**
@@ -294,9 +389,64 @@ export default async function TeachPage() {
    * cap is on each block rather than on the column because the bar bleeds to the workspace
    * edges (§20.1). The timetable screen made the same call for the same reason.
    */
+  /*
+   * The centre's notification, written out here rather than drawn from a component.
+   *
+   * One line per signature, in the reader's language, naming the person who signed and
+   * the minute they did it. A signer whose staff row has gone reads as Unknown rather
+   * than dropping the line: the signature is still on the class, and an owner reading
+   * this list is asking what happened today, not who is still on the payroll.
+   *
+   * THE BATCH'S NAME COMES OFF THE LIST ALREADY READ, and not from an embed on the
+   * signature query. A `batches (name)` embed would make one failed join quietly empty
+   * this whole card — the one thing on the screen that is news — where a name the page
+   * could not resolve costs a suffix and nothing else.
+   */
+  const batchNameById = new Map(batchRows.map((b) => [b.id, b.name] as const))
+  const signatureLines = (unlocks ?? []).map((u) => {
+    const who = u.claimed_by
+      ? nameByUser.get(u.claimed_by) ?? d.common.unknown
+      : d.common.unknown
+    const at = formatTime(dhakaMoment(u.claimed_at).time, locale)
+    return {
+      id: u.id,
+      line: u.reason === 'early' ? t.notifyEarly(who, at) : t.notifyLate(who, at),
+      batchName: batchNameById.get(u.batch_id) ?? null,
+    }
+  })
+
   return (
     <div className="flex flex-col gap-5">
       <PageHeader title={t.title} subtitle={summary} />
+
+      {/*
+        * The centre's notification, above today's list and below the tally.
+        *
+        * Above the list because it is the one thing on this screen that is news rather
+        * than status: a class filed before it started is a question an owner wants to ask
+        * today, and an owner who has to open each batch to find it will stop looking.
+        * Below the tally because the tally is what a teacher acts on, and this list is
+        * mostly not theirs — their own signature is already said on the batch's row.
+        *
+        * Absent entirely when nothing has been signed, which is every ordinary day. An
+        * empty card headed "nothing signed today" would be furniture on the screen a
+        * teacher opens forty times.
+        */}
+      {signatureLines.length > 0 && (
+        <Card className="max-w-2xl border-late/30 bg-late/5">
+          <h2 className="font-semibold text-ink">{t.signaturesTitle}</h2>
+          <ul className="mt-2 flex flex-col gap-1.5">
+            {signatureLines.map((s) => (
+              <li key={s.id} className="text-sm text-ink-soft">
+                {s.line}
+                {s.batchName && (
+                  <span className="text-ink-faint"> · {s.batchName}</span>
+                )}
+              </li>
+            ))}
+          </ul>
+        </Card>
+      )}
 
       {rows.length === 0 &&
         (isAdmin ? (
@@ -356,6 +506,35 @@ export default async function TeachPage() {
                   <p className="num mt-0.5 text-sm text-ink-faint">
                     {t.students(row.studentCount)}
                   </p>
+                  {/*
+                    The clock's line, one of three and never two at once.
+
+                    A signature first, because it is the reason the other two cannot
+                    apply: a class filed early is no longer 'Opens 4:00 pm', and one
+                    filed late has stopped counting as cancelled. Then the time it
+                    opens — the teacher's own useful fact, and the reason the button
+                    below has nowhere to lead. Then the word count the owner asked for
+                    by name.
+
+                    The Mark button stays on every one of them. The gate is a signature
+                    and not a wall, and hiding the way in would leave a teacher with a
+                    class to file and no door to it. */}
+                  {row.signed ? (
+                    <p className="mt-0.5 truncate text-sm font-medium text-brand-700">
+                      ✓{' '}
+                      {row.signed.reason === 'early'
+                        ? t.signedEarly(row.signed.at)
+                        : t.signedLate(row.signed.at)}
+                    </p>
+                  ) : row.opensAt ? (
+                    <p className="mt-0.5 truncate text-sm text-late">
+                      {t.opensAt(row.opensAt)}
+                    </p>
+                  ) : row.cancelled ? (
+                    <p className="mt-0.5 truncate text-sm font-medium text-late">
+                      {t.countedCancelled}
+                    </p>
+                  ) : null}
                   {/* §6.3's review line: whose register this is, or who it is waiting
                       on. Only ever on somebody else's batch — a teacher reading their
                       own name here learns nothing, and an owner who teaches gets the

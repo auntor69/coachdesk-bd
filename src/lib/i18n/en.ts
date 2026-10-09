@@ -484,6 +484,55 @@ export const en: Dictionary = {
       'This register has already been taken. Anything you change is recorded as an override, with your name and the time — the teacher who took it stays on the record beside you.',
     takeToday: 'Mark today',
 
+    /*
+     * THE CLOCK GATE (20260811000089), which is three states and two signatures.
+     *
+     * A class on a timetable now has an hour as well as a day: the register opens by
+     * itself at the class time, a teacher who needs it earlier signs for it, and a
+     * class that ended with nothing filed counts as cancelled until somebody signs
+     * that it was held and files it late. The owner's request is quoted in full in
+     * src/lib/attendance/clock.ts.
+     *
+     * TWO VOICES, on purpose. The first card tells a teacher something about their own
+     * day and asks them for nothing, because the ordinary reader of it is standing in
+     * front of the room wondering why the button is gone. The second and third ask for
+     * a signature, so they say what the signature means and who will be told — which
+     * is the whole reason a signature is worth anything here.
+     */
+    lockedTitle: 'This class has not started',
+    lockedBody: (time: string) =>
+      `It begins at ${time}, and the register opens by itself then — there is nothing you need to do.`,
+    lockedSignTitle: 'Taking it before the class starts',
+    lockedSignBody:
+      'If this register has to be taken now, sign below. The owner and the managers are told that it was — with your name and the time — and the signature stays on the class.',
+    lockedSignLabel:
+      'I am taking this class’s register before the class has started, and I am the one filing it.',
+    lockedSignAction: 'Sign and take it early',
+    lateTitle: 'No register was taken',
+    lateBody: (time: string) =>
+      `The class ended at ${time} with nothing filed, so this day counts as a cancelled class until its register is in.`,
+    lateSignTitle: 'The class was held — sign to file it late',
+    lateSignBody:
+      'If the class was held and this is its register, sign below. The owner and the managers are told that it was filed late, and the day stops counting as cancelled.',
+    lateSignLabel:
+      'The class was held, I forgot to file its register at the time, and this is that register.',
+    lateSignAction: 'Sign and file it late',
+    /** What a signed register says about itself, to whoever opens it afterwards. */
+    signedEarly: (time: string) => `Signed and filed early, at ${time}`,
+    signedLate: (time: string) => `Signed and filed late, at ${time}`,
+    /**
+     * The centre's notification — the half of the owner's request that says somebody
+     * else has to be told. `time` is when they signed, not when the class was.
+     */
+    notifyEarly: (name: string, time: string) =>
+      `${name} filed this class early, at ${time}`,
+    notifyLate: (name: string, time: string) =>
+      `${name} filed this class late, at ${time}`,
+    signaturesTitle: 'Registers signed outside class time today',
+    /** The row's own two words, where the Take button would be. */
+    opensAt: (time: string) => `Opens ${time}`,
+    countedCancelled: 'Counted as cancelled',
+
     saved: (n: number) =>
       `Attendance saved — ${n} ${n === 1 ? 'student' : 'students'}`,
     savedExcept: (n: number) =>
@@ -512,6 +561,25 @@ export const en: Dictionary = {
       rosterUnreadable: 'Could not read the student list.',
       emptyBatch: 'This batch has no students.',
       saveFailed: 'Attendance was not saved. Please try again.',
+      /*
+       * The clock gate's two refusals, and neither is the database's message. The
+       * guard says what is true; these say what to do about it, which is the
+       * difference between a form that fails and a screen that helps.
+       */
+      unsigned:
+        'Tick the box to sign, then try again — the register cannot be filed without the signature.',
+      unlockFailed: 'That signature was not recorded. Please try again.',
+      clockChanged:
+        'This class’s time has changed since the page was opened. Reload it and try again.',
+      /**
+       * The clock's two refusals at the save itself, which is the backstop behind the
+       * signature card: a form posted straight to the action, or a signature given and
+       * then the page left open past the class's start.
+       */
+      earlyLocked:
+        'This class has not started yet, so its register cannot be filed without a signature. Open the register and sign to take it early.',
+      lateLocked:
+        'This class ended with no register, so the day now counts as cancelled. Open the register and sign to file it late.',
     },
   },
 
@@ -5080,6 +5148,7 @@ export const en: Dictionary = {
       students: 'Students',
       guardians: 'Guardians',
       attendance_records: 'Attendance overrides',
+      attendance_unlocks: 'Registers filed outside class time',
       teachers: 'Teachers',
       teacher_permissions: 'Permissions',
       employees: 'Staff',
@@ -5121,6 +5190,14 @@ export const en: Dictionary = {
        * one an owner would use when asking about it.
        */
       attendanceOverridden: 'Attendance overridden',
+      /**
+       * The clock gate's two lines (20260811000089). Not "register unlocked" for
+       * either: the useful fact on an owner's log is which side of the class the
+       * register was written on, because that is the question a parent's complaint
+       * or a fee dispute turns into.
+       */
+      attendanceFiledEarly: 'Register filed before the class',
+      attendanceFiledLate: 'Register filed after the class',
       feeRaised: 'Fee billed',
       feeVoided: 'Bill cancelled',
       discountGranted: 'Discount granted',
