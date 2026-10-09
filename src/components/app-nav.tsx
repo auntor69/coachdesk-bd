@@ -220,11 +220,20 @@ export function TabBar({
   const pathname = usePathname()
   const moreHere = more.some((item) => isHere(pathname, item.href))
 
+  /*
+   * The pad under the tabs, and the reason there is anything to pad: layout.tsx
+   * sets `viewportFit: 'cover'`, so on a notched iPhone the home indicator is
+   * drawn *over* the bottom of the viewport — which is exactly where this bar is
+   * fixed. Without it the lower third of every tab sits under the indicator: the
+   * tap lands in the system gesture area instead of on the link, and the More
+   * sheet's last row cannot be reached at all. `env()` is 0 on a screen with no
+   * indicator, so a laptop, an Android and print all keep the bar they had.
+   */
   return (
     <nav
       aria-label={label}
       className="fixed inset-x-0 bottom-0 z-10 border-t border-line bg-white
-        lg:hidden print:hidden"
+        pb-[env(safe-area-inset-bottom)] lg:hidden print:hidden"
     >
       <ul className="relative mx-auto flex w-full max-w-3xl">
         {items.map((item) => {

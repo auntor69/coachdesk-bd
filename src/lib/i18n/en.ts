@@ -126,6 +126,7 @@ export const en: Dictionary = {
       home: 'Home',
       attendance: 'Attendance',
       fees: 'Fees',
+      students: 'Students',
       settings: 'Settings',
       exams: 'Exams',
       mine: 'Mine',

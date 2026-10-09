@@ -148,6 +148,21 @@ const STAFF_ADMIN_NAV: NavItem[] = [
   { href: '/teach', label: 'attendance', icon: '✓' },
   EXAMS_TAB,
   FEES_TAB,
+  /*
+   * The roster, lifted out of the settings hub and into the menu proper. It was
+   * the one screen a centre opens several times a day — admit a child, check a
+   * guardian's number, find which batch somebody is in — that still took two taps
+   * through a hub of other things, so the dashboard stayed the only way to
+   * anywhere. Fifth, so the four above it keep the phone's four tabs; on the bar
+   * it lands behind More, which is one tap rather than two.
+   *
+   * No `when` and no `needs`, for the reason /at-risk has neither: the screen asks
+   * `pagePermission('can_manage_students')`, and every reader of this table clears
+   * a roster permission by rank without the box being ticked. A teacher is not in
+   * this table — theirs is a grant on the row, and they keep reaching the roster
+   * through Settings, which `navFor` already opens for them.
+   */
+  { href: '/settings/students', label: 'students', icon: '☰' },
   {
     href: '/expenses',
     label: 'expenses',
