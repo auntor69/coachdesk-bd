@@ -163,6 +163,8 @@ export const en: Dictionary = {
     usernameLabel: 'Login username',
     usernameHint:
       'This is what you sign in with. To change it, ask the centre owner.',
+    emailLabel: 'Login email',
+    emailHint: 'This is the email you sign in with. It cannot be changed from the app yet.',
     passwordTitle: 'Change your password',
     passwordBody:
       'The new password works straight away. Another phone that is already signed in will not be signed out on its own — you have to log out on that phone.',
@@ -5493,6 +5495,90 @@ export const en: Dictionary = {
       teacher: 'Teacher',
       student: 'Student',
       guardian: 'Guardian',
+    },
+  },
+
+  /**
+   * The (auth) screens — login, signup and onboarding. See the group's note in bn.ts for why
+   * it exists: the locale cookie was documented as the thing that stops an English reader
+   * being handed a Bangla login form, and nothing on those screens read it.
+   *
+   * Written as the English a Dhaka teacher reads, not as a gloss. "Coaching centre" stays a
+   * coaching centre in English, the way it does everywhere else in this product.
+   */
+  auth: {
+    login: {
+      title: 'Log in',
+      tagline: 'Attendance, results and fees — all in one place',
+      identifier: 'Email, mobile number or username',
+      identifierHint: 'For example name@gmail.com, 01712345678 or rahim',
+      password: 'Password',
+      submit: 'Log in',
+      submitting: 'Please wait…',
+      noAccount: 'No account yet?',
+      signUp: 'Create a new account',
+      forgot: 'If you forget your password, ask the owner of your coaching centre — they can set a new one for you.',
+    },
+
+    signup: {
+      title: 'New account',
+      freeLine: 'Free — up to {batches} batches and {students} students',
+      /** The one-batch wording, which the free tier takes today. See bn.ts on why there are two. */
+      freeLineOne: 'Free — {batches} batch and up to {students} students',
+      privacyNote: 'Your students’ information is visible only to your coaching centre. Nobody else.',
+      name: 'Your name',
+      namePlaceholder: 'Md. Rafiqul Islam',
+      email: 'Email',
+      emailHint: 'The code goes to this address, and you will log in with it',
+      password: 'Password',
+      codeSent: 'We sent a verification code to {email}. If it does not arrive, check your spam folder too.',
+      code: 'The code from the email',
+      submitCreate: 'Create account',
+      submittingCreate: 'Creating the account…',
+      submitSend: 'Send the code',
+      submittingSend: 'Sending the code…',
+      resend: 'Send a new code',
+      resendWait: '{n} seconds to go',
+      changeEmail: 'Change the email',
+      agreePrefix: 'I have read and accept the',
+      agreeAnd: 'and',
+      /** No leading space: the sentence ends here in English, and does not in Bangla. */
+      agreeAfter: '.',
+      haveAccount: 'Already have an account?',
+      login: 'Log in',
+    },
+
+    onboarding: {
+      title: 'Get started',
+      welcome: 'Welcome',
+      welcomeNamed: 'Welcome, {name}',
+      question: 'Which one are you?',
+      thenSubscribe: 'take a subscription',
+      thenTopUp: 'top up the balance',
+      trialLine: 'The first {days} days are completely free — no card and no payment. After that you will need to {how} to keep using it.',
+      submit: 'Get started',
+      submitting: 'Creating…',
+      nameNote: 'You can change the name later. If you need more than one teacher you will take a centre plan — you can reach us about it from inside the app.',
+      modes: {
+        teacher: {
+          title: 'I teach alone',
+          body: 'Your own batch and your own students. You take the attendance and the results yourself.',
+          nameLabel: 'Your coaching or batch name',
+          namePlaceholder: 'Rafiq Sir’s Maths',
+        },
+        center: {
+          title: 'I have a coaching centre',
+          body: 'Several teachers and batches, staff and accounts in one place.',
+          nameLabel: 'Coaching centre name',
+          namePlaceholder: 'Uttara Ideal Coaching',
+        },
+        institution: {
+          title: 'I have more than one branch',
+          body: 'An institution — several branches, per-branch accounts and one report.',
+          nameLabel: 'Institution name',
+          namePlaceholder: 'Adarsha Academy',
+        },
+      },
     },
   },
 }
