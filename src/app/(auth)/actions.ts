@@ -418,7 +418,18 @@ export async function createCenter(
 
   const supabase = await createClient()
 
-  const { error } = await bootstrapCenter(supabase, {
+  /*
+   * TYPED DIRECTLY, AND THAT IS THE CHANGE: no cast and no helper beside the call.
+   *
+   * This used to go through a hand-written `BootstrapRpc` shape, because the generated types
+   * still described the four-argument form — `teacher_mode boolean` — that 20260811000092
+   * dropped, and `npm run gen:types` had not been run since. It has now, so
+   * `Functions.bootstrap_center` carries `account_kind`, and a call written against it is the
+   * call this action makes: the fourth argument is the account kind, and it is what decides
+   * the trial a customer is given. The cast is not kept as insurance — a second signature to
+   * keep in step is the thing that let the first one go stale unnoticed.
+   */
+  const { error } = await supabase.rpc('bootstrap_center', {
     center_name: centerName,
     owner_phone: session.phone ? normalizeBdMobile(session.phone) : null,
     owner_name: session.fullName ?? '',
@@ -435,35 +446,6 @@ export async function createCenter(
 
   revalidatePath('/', 'layout')
   redirect(kind === 'teacher' ? '/teach' : '/dashboard')
-}
-
-/**
- * `public.bootstrap_center` AS POSTGREST SEES IT, cast the way `settleDay` and
- * `approveClaim` cast theirs.
- *
- * The generated types still describe the four-argument form — `teacher_mode boolean` —
- * because regenerating them needs a live project. 20260811000092 dropped that overload and
- * replaced it with the account kind, so a call written against the generated signature
- * would not compile *and* would be wrong: there is no `teacher_mode` to send any more, and
- * the fourth argument is what decides the trial a customer is given. The cast is the
- * narrow place that difference lives, and it is a no-op once `npm run gen:types` has run.
- */
-type BootstrapRpc = (
-  fn: 'bootstrap_center',
-  args: {
-    center_name: string
-    owner_phone: string | null
-    owner_name: string
-    account_kind: AccountKind
-  },
-) => PromiseLike<{ error: { message: string } | null }>
-
-function bootstrapCenter(
-  supabase: Awaited<ReturnType<typeof createClient>>,
-  args: Parameters<BootstrapRpc>[1],
-) {
-  const bootstrap: BootstrapRpc = (...call) => supabase.rpc(...call)
-  return bootstrap('bootstrap_center', args)
 }
 
 /**

@@ -136,12 +136,19 @@ test('the action asks again, because it is a public endpoint', () => {
   const body = ACTIONS.slice(start, ACTIONS.indexOf('\nexport ', start + 10))
 
   const check = body.indexOf('session.username')
-  // The call goes through `bootstrapCenter` since 20260811000092 — a local cast, because the
-  // generated types still describe the four-argument form — so what this looks for is the
-  // call rather than the raw `rpc('bootstrap_center'` it used to be.
-  const rpc = body.indexOf('bootstrapCenter(')
+  // The call is the raw `rpc('bootstrap_center', …)` again, and that is a fact about the
+  // generated types rather than about this line: 20260811000092's account kind is in
+  // `Functions.bootstrap_center` now, so the local `BootstrapRpc` cast that stood in for it
+  // while they were stale is gone — see the note in ./actions.ts. What this looks for is
+  // still the call, wherever the action spells it.
+  const rpc = body.indexOf("rpc('bootstrap_center'")
   assert.ok(check > 0, 'createCenter does not re-check the login it was called with')
   assert.ok(rpc > check, 'createCenter creates the centre before checking who asked')
+
+  // And the fourth argument is the account kind, which is the whole reason the cast
+  // existed: it is what decides the tier and the trial a customer is given, so a call that
+  // sent a boolean again would be a different product for every new signup.
+  assert.match(body.slice(rpc, rpc + 400), /account_kind: kind/)
 
   // Within the check's own lines, because createCenter refuses three other things and
   // any of those returns would otherwise stand in for this one.
