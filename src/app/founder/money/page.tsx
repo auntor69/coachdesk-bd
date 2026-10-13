@@ -162,44 +162,65 @@ export default async function FounderMoneyPage() {
           <p className="mt-2 text-sm text-ink-soft">{t.growth.unreadable}</p>
         ) : (
           <>
-            {/* A table from `sm`, because four figures per row want columns; the two money
-                columns are right-aligned so a bad month is visible down the page. */}
-            <table className="mt-3 w-full border-collapse text-sm">
-              <thead>
-                <tr className="border-b border-line text-left text-xs text-ink-soft">
-                  <th className="py-1 font-medium">{t.growth.month}</th>
-                  <th className="py-1 text-right font-medium">{t.growth.signups}</th>
-                  <th className="py-1 text-right font-medium">{t.growth.recharged}</th>
-                  <th className="py-1 text-right font-medium">{t.growth.burned}</th>
-                  <th className="py-1 text-right font-medium">{t.growth.net}</th>
-                </tr>
-              </thead>
-              <tbody>
-                {rows.map((row) => (
-                  <tr key={row.month} className="border-b border-line last:border-0">
-                    <td className="py-1.5 text-ink">{formatMonth(row.month, locale)}</td>
-                    <td className="num py-1.5 text-right text-ink">
-                      {digits(row.signups, locale)}
-                    </td>
-                    <td className="num py-1.5 text-right text-ink">
-                      {formatTaka(row.rechargedPoisha / 100)}
-                    </td>
-                    <td className="num py-1.5 text-right text-ink">
-                      {formatTaka(row.burnedPoisha / 100)}
-                    </td>
-                    {/* Signed, and a loss is drawn as one: netting a bad month into an
-                        absolute figure would make every month look like a good one. */}
-                    <td
-                      className={`num py-1.5 text-right font-semibold ${
-                        row.rechargedPoisha - row.burnedPoisha < 0 ? 'text-red-700' : 'text-ink'
-                      }`}
-                    >
-                      {formatTaka((row.rechargedPoisha - row.burnedPoisha) / 100)}
-                    </td>
+            {/*
+              * Five columns want columns rather than squeezed ones: a Bangla month name and
+              * four figures do not fit a 320px phone, and a wrapped month above a wrapped
+              * number is a row nobody can read across. So this is the same bleed-and-scroll
+              * every other wide table in the product uses — `-mx-4 overflow-x-auto px-4`,
+              * which lets the sheet run edge to edge instead of stopping inside the page's
+              * own gutter — with a minimum width so the columns keep their natural size. The
+              * two money columns are right-aligned so a bad month is visible down the page.
+              *
+              * And the headers carry `scope="col"`, which is the one thing the hand-rolled
+              * `<table>` here had that the five shared-cell tables did not: a screen reader
+              * reading a cell needs the column it belongs to, and this is a sheet of figures
+              * where which figure it is is half of what the number means.
+              */}
+            <div className="mt-3 -mx-4 overflow-x-auto px-4">
+              <table className="w-full min-w-[26rem] border-collapse text-sm">
+                <thead>
+                  <tr className="border-b border-line text-left text-xs text-ink-soft">
+                    <th scope="col" className="py-1 font-medium">{t.growth.month}</th>
+                    <th scope="col" className="py-1 text-right font-medium">{t.growth.signups}</th>
+                    <th scope="col" className="py-1 text-right font-medium">{t.growth.recharged}</th>
+                    <th scope="col" className="py-1 text-right font-medium">{t.growth.burned}</th>
+                    <th scope="col" className="py-1 text-right font-medium">{t.growth.net}</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody>
+                  {rows.map((row) => (
+                    <tr key={row.month} className="border-b border-line last:border-0">
+                      <td className="py-1.5 text-ink">{formatMonth(row.month, locale)}</td>
+                      <td className="num py-1.5 text-right text-ink">
+                        {digits(row.signups, locale)}
+                      </td>
+                      <td className="num py-1.5 text-right text-ink">
+                        {formatTaka(row.rechargedPoisha / 100)}
+                      </td>
+                      <td className="num py-1.5 text-right text-ink">
+                        {formatTaka(row.burnedPoisha / 100)}
+                      </td>
+                      {/*
+                        * Signed, and a loss is drawn as one: netting a bad month into an
+                        * absolute figure would make every month look like a good one.
+                        *
+                        * `text-absent` and not `text-red-700`, which is a different red from
+                        * the one every other figure in the product uses to mean "this is bad"
+                        * — `absent` is what a missed day, an unpaid invoice and a failed
+                        * action are all in, and the panel's own chips should follow it too.
+                        */}
+                      <td
+                        className={`num py-1.5 text-right font-semibold ${
+                          row.rechargedPoisha - row.burnedPoisha < 0 ? 'text-absent' : 'text-ink'
+                        }`}
+                      >
+                        {formatTaka((row.rechargedPoisha - row.burnedPoisha) / 100)}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
 
             {truncated && <p className="mt-2 text-xs text-ink-faint">{t.growth.truncated}</p>}
           </>

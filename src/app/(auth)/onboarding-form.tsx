@@ -4,8 +4,11 @@ import { useActionState, useState } from 'react'
 
 import { createCenter, type FormState } from './actions'
 import { Alert, Button, Field } from '@/components/ui'
-import { ACCOUNT_KINDS, type AccountKind, isAccountKind } from '@/lib/accounts/kind'
+import { ACCOUNT_KINDS, isAccountKind } from '@/lib/accounts/kind'
 import { MAX_NAME } from '@/lib/limits'
+import { digits } from '@/lib/bd/time'
+import { fill } from '@/lib/i18n/fill'
+import type { Locale, T } from '@/lib/i18n'
 
 /**
  * The one irreversible-feeling choice in the product, so it is asked plainly
@@ -19,45 +22,29 @@ import { MAX_NAME } from '@/lib/limits'
  * answers below are now a column, the trial each one gets is chosen from it, and the
  * sentence under each option says what that trial actually is.
  *
- * The words are Bangla throughout, like the rest of (auth): a signup has expressed no
- * language preference yet, and this is the first screen they read.
+ * ITS WORDS ARRIVE, in the reader's own language. They used to be typed here, on the
+ * argument that a signup has expressed no language preference yet — which stopped being
+ * true the moment the signup screen above it asked, through `readerLocale`, and the form one
+ * second earlier was in English. The group's note in lib/i18n/bn.ts has the whole story.
+ *
+ * The four labels per option are indexed by `AccountKind`, which is the same union
+ * `ACCOUNT_KINDS` is made of and the same one `bootstrap_center` refuses a fourth value of —
+ * so an answer added to the database without copy here is a compile error rather than a
+ * nameless row.
  */
-const MODES: {
-  id: AccountKind
-  title: string
-  body: string
-  nameLabel: string
-  namePlaceholder: string
-}[] = [
-  {
-    id: 'teacher',
-    title: 'আমি একা পড়াই',
-    body: 'নিজের ব্যাচ, নিজের শিক্ষার্থী। হাজিরা আর ফলাফল আপনিই নেবেন।',
-    nameLabel: 'আপনার কোচিং/ব্যাচের নাম',
-    namePlaceholder: 'রফিক স্যারের গণিত',
-  },
-  {
-    id: 'center',
-    title: 'আমার কোচিং সেন্টার আছে',
-    body: 'একাধিক শিক্ষক ও ব্যাচ, কর্মচারী আর হিসাব এক জায়গায়।',
-    nameLabel: 'কোচিং সেন্টারের নাম',
-    namePlaceholder: 'উত্তরা আইডিয়াল কোচিং',
-  },
-  {
-    id: 'institution',
-    title: 'আমার একাধিক শাখা আছে',
-    body: 'প্রতিষ্ঠান — একাধিক শাখা, শাখাভিত্তিক হিসাব আর একসাথে রিপোর্ট।',
-    nameLabel: 'প্রতিষ্ঠানের নাম',
-    namePlaceholder: 'আদর্শ একাডেমি',
-  },
-]
+export type TrialDays = Record<(typeof ACCOUNT_KINDS)[number], number>
 
-/** Whole days, in Bangla numerals, for the offer line under each option. */
-const bn = (value: number) => String(value).replace(/[0-9]/g, (d) => '০১২৩৪৫৬৭৮৯'[Number(d)])
-
-export type TrialDays = Record<AccountKind, number>
-
-export function OnboardingForm({ trialDays }: { trialDays: TrialDays }) {
+export function OnboardingForm({
+  trialDays,
+  t,
+  locale,
+}: {
+  trialDays: TrialDays
+  /** `auth.onboarding`, including one set of words per `ACCOUNT_KINDS` entry. */
+  t: T<'auth'>['onboarding']
+  /** For the days count, which is Bangla numerals in a Bangla sentence. */
+  locale: Locale
+}) {
   const [state, formAction, pending] = useActionState<FormState, FormData>(
     createCenter,
     null,
@@ -65,9 +52,9 @@ export function OnboardingForm({ trialDays }: { trialDays: TrialDays }) {
   // Narrowed through `isAccountKind` rather than asserted: the list is the same one the
   // action validates against and the database holds, so a fourth kind added there fails to
   // compile here instead of rendering an option the server would refuse.
-  const [mode, setMode] = useState<AccountKind>(ACCOUNT_KINDS[0])
+  const [mode, setMode] = useState<(typeof ACCOUNT_KINDS)[number]>(ACCOUNT_KINDS[0])
 
-  const selected = MODES.find((m) => m.id === mode)!
+  const selected = t.modes[mode]
   const days = trialDays[mode] ?? 0
 
   return (
@@ -75,15 +62,14 @@ export function OnboardingForm({ trialDays }: { trialDays: TrialDays }) {
       <input type="hidden" name="mode" value={mode} />
 
       <fieldset className="flex flex-col gap-3">
-        <legend className="mb-3 font-semibold text-ink">
-          আপনি কোনটি?
-        </legend>
+        <legend className="mb-3 font-semibold text-ink">{t.question}</legend>
 
-        {MODES.map((option) => {
-          const active = option.id === mode
+        {ACCOUNT_KINDS.map((id) => {
+          const option = t.modes[id]
+          const active = id === mode
           return (
             <label
-              key={option.id}
+              key={id}
               className={`flex cursor-pointer gap-3 rounded-2xl border-2 p-4
                 transition-colors ${
                   active
@@ -94,10 +80,10 @@ export function OnboardingForm({ trialDays }: { trialDays: TrialDays }) {
               <input
                 type="radio"
                 name="modeChoice"
-                value={option.id}
+                value={id}
                 checked={active}
                 onChange={() => {
-                  if (isAccountKind(option.id)) setMode(option.id)
+                  if (isAccountKind(id)) setMode(id)
                 }}
                 className="mt-1.5 h-5 w-5 shrink-0 accent-brand-600"
               />
@@ -116,11 +102,18 @@ export function OnboardingForm({ trialDays }: { trialDays: TrialDays }) {
        * the same row `bootstrap_center` reads when it writes the trial — so the promise on
        * the screen and the grant in the database are one number, and changing it in the
        * founder panel changes both.
+       *
+       * A `{days}`/`{how}` template rather than a function, because the number and the
+       * closing verb both depend on the answer chosen in the browser. `{how}` is one of two
+       * variants rather than a second sentence, so Bangla can put the verb where Bangla puts
+       * it and English can put it where English does.
        */}
       {days > 0 && (
         <p className="rounded-xl border border-brand-200 bg-brand-50 px-4 py-3 text-sm text-brand-900">
-          প্রথম {bn(days)} দিন সম্পূর্ণ ফ্রি — কার্ড বা পেমেন্ট লাগবে না। এরপর ব্যবহার
-          চালিয়ে যেতে {mode === 'teacher' ? 'সাবস্ক্রিপশন নিতে' : 'ব্যালেন্স যোগ করতে'} হবে।
+          {fill(t.trialLine, {
+            days: digits(days, locale),
+            how: mode === 'teacher' ? t.thenSubscribe : t.thenTopUp,
+          })}
         </p>
       )}
 
@@ -136,7 +129,7 @@ export function OnboardingForm({ trialDays }: { trialDays: TrialDays }) {
       {state?.error && !state.field && <Alert>{state.error}</Alert>}
 
       <Button type="submit" full disabled={pending}>
-        {pending ? 'তৈরি হচ্ছে…' : 'শুরু করুন'}
+        {pending ? t.submitting : t.submit}
       </Button>
 
       {/*
@@ -153,10 +146,7 @@ export function OnboardingForm({ trialDays }: { trialDays: TrialDays }) {
        * account may ever be. Moving between them is a plan request, which the last line
        * already points at.
        */}
-      <p className="text-center text-sm text-ink-faint">
-        পরে নাম বদলাতে পারবেন। একাধিক শিক্ষক লাগলে সেন্টার প্ল্যান নিতে হবে — অ্যাপ থেকেই
-        আমাদের বলতে পারবেন।
-      </p>
+      <p className="text-center text-sm text-ink-faint">{t.nameNote}</p>
     </form>
   )
 }

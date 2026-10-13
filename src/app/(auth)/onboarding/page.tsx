@@ -1,14 +1,21 @@
+import type { Metadata } from 'next'
 import { redirect } from 'next/navigation'
 
 import { getSession, homePathFor } from '@/lib/auth/session'
 import { dict } from '@/lib/i18n'
+import { fill } from '@/lib/i18n/fill'
+import { readerLocale } from '@/lib/i18n/server'
 import { readPlatformSettings } from '@/lib/platform/settings'
 import { createClient } from '@/lib/supabase/server'
 import { Card, Logo } from '@/components/ui'
 import { OnboardingForm } from '../onboarding-form'
 import { signOut } from '../actions'
 
-export const metadata = { title: 'শুরু করুন — CoachDesk' }
+/** The tab and the app switcher, in the reader's language — see login/page.tsx's own note. */
+export async function generateMetadata(): Promise<Metadata> {
+  const locale = await readerLocale()
+  return { title: `${dict(locale).auth.onboarding.title} — CoachDesk` }
+}
 
 /**
  * The way out, and the reason it is on both branches below.
@@ -92,11 +99,14 @@ export default async function OnboardingPage() {
    * A teacher whose login IS their own number falls through to the form, because that
    * account is genuinely theirs. `expected` below is the sentence they need.
    *
-   * Read in the reader's own language, unlike the rest of (auth): a signup has expressed
-   * no preference yet and gets Bangla, but this person has a profile and a locale in it.
+   * Read in the reader's own language, like every other screen in (auth) — a signup has a
+   * profile and a locale by the time it reaches this page, and the form below is the same
+   * one a fresh signup fills, so the two cannot be in different languages on the screen in
+   * front of them. See the `auth` group in lib/i18n/bn.ts.
    */
   const d = dict(session.locale)
   const t = d.noCenter
+  const a = d.auth.onboarding
   const settings = await readPlatformSettings(await createClient())
 
   if (session.username) {
@@ -128,8 +138,8 @@ export default async function OnboardingPage() {
           <Logo className="text-2xl" />
           <p className="mt-3 text-ink-soft">
             {session.fullName
-              ? `স্বাগতম, ${session.fullName}`
-              : 'স্বাগতম'}
+              ? fill(a.welcomeNamed, { name: session.fullName })
+              : a.welcome}
           </p>
         </div>
 
@@ -146,6 +156,8 @@ export default async function OnboardingPage() {
               center: settings.centerTrialDays,
               institution: settings.institutionTrialDays,
             }}
+            t={a}
+            locale={session.locale}
           />
         </Card>
 

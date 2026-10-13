@@ -1,7 +1,25 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
+import { readFileSync } from 'node:fs'
+import path from 'node:path'
 
 import { growthByMonth, monthKeys } from '../src/lib/platform/growth.ts'
+
+const MONEY_PAGE = readFileSync(
+  path.join(import.meta.dirname, '..', 'src', 'app', 'founder', 'money', 'page.tsx'),
+  'utf8',
+).replaceAll('\r\n', '\n')
+
+const count = (hay: string, needle: string) => hay.split(needle).length - 1
+
+/**
+ * The page with its prose taken off.
+ *
+ * Both assertions below name a class the file itself explains in a comment — the wrapper it
+ * uses and the red it stopped using — and a code comment is a substring like any other, so an
+ * unstripped read passes on a page that went back to the other one.
+ */
+const MONEY_CODE = MONEY_PAGE.replace(/\/\*[\s\S]*?\*\//g, '')
 
 /**
  * Six months of money, and the one bug that made this a module.
@@ -105,6 +123,34 @@ test('a correction is in neither column, because it is not income', () => {
 
   assert.equal(rows[0]?.rechargedPoisha, 0)
   assert.equal(rows[0]?.burnedPoisha, 0)
+})
+
+/* -------------------------------------------------------------------------- */
+/* The screen that draws it                                                   */
+/* -------------------------------------------------------------------------- */
+
+test('the growth table scrolls on a phone rather than squeezing five columns', () => {
+  // A Bangla month name and four figures do not fit 320px, and `w-full` on its own does not
+  // fail loudly — it wraps the month over the numbers and reads as a table nobody can scan
+  // down. Every other wide table in the product bleeds and scrolls; this one did not.
+  const table = MONEY_CODE.slice(MONEY_CODE.indexOf('<table'), MONEY_CODE.indexOf('</table>'))
+  assert.match(table, /min-w-\[26rem\]/, 'no minimum width, so the columns squeeze')
+
+  const before = MONEY_CODE.slice(0, MONEY_CODE.indexOf('<table'))
+  assert.match(before.slice(-400), /overflow-x-auto/, 'the table is not in a scroll container')
+
+  // And each header names its column. A screen of figures is read across, so the column a
+  // cell belongs to is half of what the number means to a screen reader.
+  assert.equal(count(table, 'scope="col"'), 5)
+  assert.equal(count(table, '<th '), 5)
+})
+
+test('a losing month is the product’s own red and not a second one', () => {
+  // `text-red-700` is a different red from `--color-absent`, which is what a missed day, an
+  // unpaid invoice and a failed action are all drawn in — a second red on the screen that
+  // reports the money is a second meaning nobody asked for.
+  assert.match(MONEY_CODE, /\? 'text-absent' : 'text-ink'/)
+  assert.doesNotMatch(MONEY_CODE, /text-red-\d/)
 })
 
 test('only customers inside the window are counted, and an undateable row is nobody', () => {

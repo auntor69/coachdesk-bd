@@ -5,6 +5,7 @@ import Link from 'next/link'
 
 import { signIn, type FormState } from './actions'
 import { Alert, Button, Field } from '@/components/ui'
+import type { T } from '@/lib/i18n'
 
 /**
  * One box for who you are, then a password. No OTP at login.
@@ -16,8 +17,16 @@ import { Alert, Button, Field } from '@/components/ui'
  * would hide a username, and everybody gets the same box. Owners pay for it
  * once per device with a saved password; a teacher who could not type their
  * username at all would simply be locked out.
+ *
+ * AND ITS WORDS ARRIVE, rather than being Bangla in this file. The screen that
+ * offers this form is the one screen a reader with no session ever sees, so it is
+ * the one place a reader who cannot read the language on screen has to be able to
+ * change it — and a form whose copy is typed here could not follow that choice.
+ * `T<'auth'>['login']` is the same discipline every other client form in the app
+ * follows: the group they need, typed, so a key removed from the dictionary is a
+ * compile error rather than a blank label on the login screen.
  */
-export function LoginForm({ next }: { next?: string }) {
+export function LoginForm({ next, t }: { next?: string; t: T<'auth'>['login'] }) {
   const [state, formAction, pending] = useActionState<FormState, FormData>(
     signIn,
     null,
@@ -30,10 +39,10 @@ export function LoginForm({ next }: { next?: string }) {
       {state?.error && !state.field && <Alert>{state.error}</Alert>}
 
       <Field
-        label="ইমেইল, মোবাইল নম্বর বা ইউজারনেম"
+        label={t.identifier}
         // The examples belong in the hint, not the placeholder: one example
         // alone reads as "this kind only" to whoever is holding the other two.
-        hint="যেমন name@gmail.com, ০১৭১২৩৪৫৬৭৮, বা rahim"
+        hint={t.identifierHint}
         name="identifier"
         type="text"
         autoComplete="username"
@@ -45,7 +54,7 @@ export function LoginForm({ next }: { next?: string }) {
       />
 
       <Field
-        label="পাসওয়ার্ড"
+        label={t.password}
         name="password"
         type="password"
         autoComplete="current-password"
@@ -54,20 +63,17 @@ export function LoginForm({ next }: { next?: string }) {
       />
 
       <Button type="submit" full disabled={pending}>
-        {pending ? 'অপেক্ষা করুন…' : 'লগইন করুন'}
+        {pending ? t.submitting : t.submit}
       </Button>
 
       <p className="text-center text-ink-soft">
-        অ্যাকাউন্ট নেই?{' '}
+        {t.noAccount}{' '}
         <Link href="/signup" className="font-semibold text-brand-700 underline">
-          নতুন অ্যাকাউন্ট খুলুন
+          {t.signUp}
         </Link>
       </p>
 
-      <p className="text-center text-sm text-ink-faint">
-        পাসওয়ার্ড ভুলে গেলে আপনার কোচিংয়ের মালিককে বলুন — তিনি নতুন পাসওয়ার্ড
-        দিতে পারবেন।
-      </p>
+      <p className="text-center text-sm text-ink-faint">{t.forgot}</p>
     </form>
   )
 }

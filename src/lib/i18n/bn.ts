@@ -342,6 +342,19 @@ export const bn = {
     usernameLabel: 'লগইন ইউজারনেম',
     usernameHint:
       'এই ইউজারনেম দিয়েই আপনি লগইন করেন। বদলাতে হলে কোচিংয়ের মালিককে বলুন।',
+    /*
+     * §5.4's third identifier, and the one the two above are wrong about. A self-serve
+     * signup is a real address with neither a number nor a username, so the card that
+     * tested for the number first printed an empty one under this heading — and told the
+     * owner of the account to ask the owner of the account.
+     *
+     * The second sentence is shorter than the other two hints on purpose: there is no
+     * owner to ask here, because this reader is the owner, and an address change is not
+     * something this app can do yet. Saying so costs one line and stops the search.
+     */
+    emailLabel: 'লগইন ইমেইল',
+    emailHint:
+      'এই ইমেইল দিয়েই আপনি লগইন করেন। অ্যাপ থেকে এখন এটি বদলানো যায় না।',
     passwordTitle: 'পাসওয়ার্ড বদলান',
     /**
      * The second sentence is the honest one. A password change does not throw other
@@ -7991,6 +8004,126 @@ export const bn = {
       teacher: 'শিক্ষক',
       student: 'ছাত্র',
       guardian: 'অভিভাবক',
+    },
+  },
+
+  /**
+   * The three screens a reader sees before they have a workspace: the two a signed-out
+   * visitor reaches, and the one a brand-new account is sent to.
+   *
+   * WHY THIS GROUP EXISTS AT ALL, and it is the group's whole justification. Every other
+   * screen in the product reads its words through `dict(session.locale)`; the (auth) screens
+   * were Bangla by hand, which was consistent and fine until the locale cookie existed.
+   * `lib/i18n/server.ts`, `lib/i18n/actions.ts` and `lib/i18n/locale.ts` all describe that
+   * cookie's entire purpose the same way — "an English reader who signs out does not get
+   * handed a Bangla login form" — and `components/language-switch.tsx` names the login screen
+   * as the reason the switch is a form rather than a `<select>`: "somebody who cannot read the
+   * form can still change it". Nothing read the cookie on either screen and the switch was
+   * drawn on neither, so the reader those three notes describe had a Bangla form with no
+   * control on it to say otherwise — the one state the switch was built for.
+   *
+   * The onboarding screen is in here rather than left Bangla, because leaving it would be a
+   * worse bug than the one being fixed: a signup that answers in English and is handed a
+   * Bangla form one second later has had its language flipped in the middle of the one flow
+   * where nothing has been saved yet. It reads `session.locale` like every signed-in screen.
+   *
+   * PLACEHOLDERS AND NOT FUNCTIONS, throughout, because two of these three screens are client
+   * components and `T<'auth'>` poisons function leaves. The three that carry a figure — the
+   * free-tier line, the address a code went to, and the trial offer whose length is chosen in
+   * the browser — are `{name}` templates filled by ./fill.ts, with the number already in the
+   * reader's own numerals by the time it is passed.
+   */
+  auth: {
+    login: {
+      /** The browser tab, the app switcher and the installed app's title. */
+      title: 'লগইন',
+      /** Under the wordmark, where a marketing page would put its hero. */
+      tagline: 'হাজিরা, ফলাফল আর ফি — এক জায়গায়',
+      identifier: 'ইমেইল, মোবাইল নম্বর বা ইউজারনেম',
+      identifierHint: 'যেমন name@gmail.com, ০১৭১২৩৪৫৬৭৮, বা rahim',
+      password: 'পাসওয়ার্ড',
+      submit: 'লগইন করুন',
+      submitting: 'অপেক্ষা করুন…',
+      noAccount: 'অ্যাকাউন্ট নেই?',
+      signUp: 'নতুন অ্যাকাউন্ট খুলুন',
+      forgot: 'পাসওয়ার্ড ভুলে গেলে আপনার কোচিংয়ের মালিককে বলুন — তিনি নতুন পাসওয়ার্ড দিতে পারবেন।',
+    },
+
+    signup: {
+      title: 'নতুন অ্যাকাউন্ট',
+      /**
+       * The free tier, described by the tier — the numbers are read off `PLANS`.
+       *
+       * TWO KEYS AND NOT ONE, for English's sake rather than Bangla's: "1 batches" is the
+       * first thing an English-medium teacher notices on the signup screen, and the free tier
+       * is one batch today, so the plural wording would have shipped wrong on the only screen
+       * this sentence appears on. The page picks with a ternary off `PLANS.maxBatches` — the
+       * same shape `dayLate`/`daysLate` take, and for the same reason: a template cannot
+       * branch. Bangla has one form, so both values are the same word for word, which is the
+       * honest translation and not a duplication.
+       */
+      freeLine: 'ফ্রি — {batches} ব্যাচ, {students} জন শিক্ষার্থী পর্যন্ত',
+      freeLineOne: 'ফ্রি — {batches} ব্যাচ, {students} জন শিক্ষার্থী পর্যন্ত',
+      privacyNote: 'শিক্ষার্থীদের তথ্য শুধু আপনার কোচিং দেখতে পাবে। অন্য কেউ নয়।',
+      name: 'আপনার নাম',
+      namePlaceholder: 'মোঃ রফিকুল ইসলাম',
+      email: 'ইমেইল',
+      emailHint: 'এই ইমেইলে কোড যাবে, এবং এই ইমেইল দিয়েই লগইন করবেন',
+      password: 'পাসওয়ার্ড',
+      codeSent: '{email} ঠিকানায় একটি ভেরিফিকেশন কোড পাঠানো হয়েছে। কোডটি না এলে স্প্যাম ফোল্ডারটাও একবার দেখে নিন।',
+      code: 'ইমেইলে আসা কোড',
+      submitCreate: 'অ্যাকাউন্ট খুলুন',
+      submittingCreate: 'অ্যাকাউন্ট হচ্ছে…',
+      submitSend: 'কোড নিন',
+      submittingSend: 'কোড পাঠানো হচ্ছে…',
+      resend: 'নতুন কোড পাঠান',
+      resendWait: 'আরও {n} সেকেন্ড',
+      changeEmail: 'ইমেইল বদলান',
+      /*
+       * The consent sentence, in three pieces because two of them are links. Bangla puts the
+       * verb last, so `agreeAfter` carries a leading space that English's full stop does not
+       * need — the alternative was a space before the period on one side or the other.
+       */
+      agreePrefix: 'আমি',
+      agreeAnd: 'ও',
+      agreeAfter: ' পড়েছি এবং সম্মতি দিচ্ছি।',
+      haveAccount: 'আগে থেকেই অ্যাকাউন্ট আছে?',
+      login: 'লগইন করুন',
+    },
+
+    onboarding: {
+      title: 'শুরু করুন',
+      welcome: 'স্বাগতম',
+      welcomeNamed: 'স্বাগতম, {name}',
+      question: 'আপনি কোনটি?',
+      /* One fragment each, poured into `trialLine` by the form. */
+      thenSubscribe: 'সাবস্ক্রিপশন নিতে',
+      thenTopUp: 'ব্যালেন্স যোগ করতে',
+      trialLine: 'প্রথম {days} দিন সম্পূর্ণ ফ্রি — কার্ড বা পেমেন্ট লাগবে না। এরপর ব্যবহার চালিয়ে যেতে {how} হবে।',
+      submit: 'শুরু করুন',
+      submitting: 'তৈরি হচ্ছে…',
+      nameNote: 'পরে নাম বদলাতে পারবেন। একাধিক শিক্ষক লাগলে সেন্টার প্ল্যান নিতে হবে — অ্যাপ থেকেই আমাদের বলতে পারবেন।',
+      /** One per `ACCOUNT_KINDS`, and the keys are that union, so a fourth kind cannot ship nameless. */
+      modes: {
+        teacher: {
+          title: 'আমি একা পড়াই',
+          body: 'নিজের ব্যাচ, নিজের শিক্ষার্থী। হাজিরা আর ফলাফল আপনিই নেবেন।',
+          nameLabel: 'আপনার কোচিং/ব্যাচের নাম',
+          namePlaceholder: 'রফিক স্যারের গণিত',
+        },
+        center: {
+          title: 'আমার কোচিং সেন্টার আছে',
+          body: 'একাধিক শিক্ষক ও ব্যাচ, কর্মচারী আর হিসাব এক জায়গায়।',
+          nameLabel: 'কোচিং সেন্টারের নাম',
+          namePlaceholder: 'উত্তরা আইডিয়াল কোচিং',
+        },
+        institution: {
+          title: 'আমার একাধিক শাখা আছে',
+          body: 'প্রতিষ্ঠান — একাধিক শাখা, শাখাভিত্তিক হিসাব আর একসাথে রিপোর্ট।',
+          nameLabel: 'প্রতিষ্ঠানের নাম',
+          namePlaceholder: 'আদর্শ একাডেমি',
+        },
+      },
     },
   },
 } as const
