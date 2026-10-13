@@ -51,6 +51,7 @@ import {
   ATTENDANCE_SIGNATURE_VERSION,
   classState,
   classWindow,
+  clockEnforced,
   unlockFor,
 } from '@/lib/attendance/clock'
 import { MAX_TEXT, clamp } from '@/lib/limits'
@@ -271,6 +272,10 @@ export async function saveAttendance(
       startsAt: window.startsAt,
       endsAt: window.endsAt,
       taken: Boolean(existing),
+      // A plan with no clock gate asks for nothing here: the state comes back 'open',
+      // `unlockFor` is null, and a save for a solo teacher sails through — the same
+      // answer `app.clock_enforced()` gives the guard on the other side of the wire.
+      enforced: clockEnforced(session.plan),
     })
     const needed = unlockFor(state)
 
@@ -594,6 +599,9 @@ export async function unlockAttendance(
     startsAt: window.startsAt,
     endsAt: window.endsAt,
     taken: Boolean(register),
+    // Off the gate, every state is 'open' and `unlockFor(state)` is null, so this
+    // action refuses below — the card that posts it never draws either (20260811000090).
+    enforced: clockEnforced(session.plan),
   })
 
   if (unlockFor(state) !== reason) {

@@ -6,7 +6,7 @@ import { pageRole, getSession, isStaffAdmin, myTeacherIds } from '@/lib/auth/ses
 import { createClient } from '@/lib/supabase/server'
 import { BatchSlot } from '@/lib/bd/schedule'
 import { todayInDhaka, dhakaDayOfWeek, dhakaClock, dhakaMoment, formatTime } from '@/lib/bd/time'
-import { classState, classWindow } from '@/lib/attendance/clock'
+import { classState, classWindow, clockEnforced } from '@/lib/attendance/clock'
 import { dict, localName, DEFAULT_LOCALE } from '@/lib/i18n'
 
 /**
@@ -281,6 +281,9 @@ export default async function TeachPage() {
             startsAt: window.startsAt,
             endsAt: window.endsAt,
             taken,
+            // A solo plan has no gate, so no 'Opens 4:00 pm' and no 'Counted as
+            // cancelled' on a teacher who answers to nobody (20260811000090).
+            enforced: clockEnforced(session.plan),
           })
         : 'open'
     const signature = unlockByBatch.get(batch.id)

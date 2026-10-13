@@ -867,3 +867,90 @@ test('the founder’s plan form ends a trial the customer has just answered', ()
   assert.match(paid, /trial_plan: null/)
   assert.match(paid, /trial_ends_at: null/)
 })
+
+/* -------------------------------------------------------------------------- */
+/* A teacher subscribes, a centre prepays                                     */
+/* -------------------------------------------------------------------------- */
+
+/*
+ * The one place the two billing shapes are told apart in this file, and it exists because
+ * the same row means two different things depending on who the customer is.
+ *
+ * §11.6 sells a centre a balance and burns it a day at a time; the morning it cannot cover
+ * the day, the centre goes read-only until it tops up — that is what every lapse assertion
+ * above is about, and the ones below are the same row with a teacher's plan on it.
+ *
+ * A teacher is one person paying for a month, standing in front of a class. Locking them
+ * out of the register they are holding to collect ৳499 is the behaviour §4.4 warns about
+ * from the other side, so the month their money runs out they are Teacher Free: a real
+ * tier, one batch and thirty students, attendance and the fee book, no printed receipts and
+ * no parent summaries. They keep working and they lose Pro.
+ */
+
+/** One rate for both cases, so the only thing that moves between them is the plan. */
+const PLUS_DAILY = 1663
+
+test('a teacher whose month has run out is Teacher Free rather than locked out', () => {
+  const dry = org({
+    plan: 'teacher_plus',
+    charged_through: '2026-08-26',
+    balance_poisha: 0,
+    daily_rate_poisha: PLUS_DAILY,
+  })
+
+  const e = effectiveEntitlement(dry, NOW)
+  assert.equal(e.access, 'full', 'a lapsed teacher may still take a register')
+  assert.equal(e.plan.id, 'teacher_free', 'and holds Teacher Free, with Free\'s caps')
+
+  // The same row as a centre, and the difference is the whole section: read-only until the
+  // owner tops up.
+  const centre = effectiveEntitlement(
+    org({ plan: 'center', charged_through: '2026-08-26', balance_poisha: 0, daily_rate_poisha: PLUS_DAILY }),
+    NOW,
+  )
+  assert.equal(centre.access, 'read_only')
+  assert.equal(centre.plan.id, 'center', 'and a centre keeps the tier it is billed on')
+})
+
+test('and the money they do have buys Pro back', () => {
+  const covered = org({
+    plan: 'teacher_plus',
+    charged_through: '2026-08-28',
+    balance_poisha: PLUS_DAILY * 2,
+    daily_rate_poisha: PLUS_DAILY,
+  })
+
+  const e = effectiveEntitlement(covered, NOW)
+  assert.equal(e.access, 'full')
+  assert.equal(e.plan.id, 'teacher_plus', 'one day behind with two days of money is Pro')
+})
+
+test('a suspended teacher is still suspended, whatever their purse says', () => {
+  // The tier rule can only ever take a tier away. `status` is still the floor, and a human
+  // threw that switch for a reason that is not money.
+  const suspended = org({
+    status: 'suspended',
+    plan: 'teacher_plus',
+    charged_through: '2026-08-29',
+    balance_poisha: 500000,
+    daily_rate_poisha: PLUS_DAILY,
+  })
+  assert.equal(effectiveEntitlement(suspended, NOW).access, 'read_only')
+})
+
+test('a trialling teacher is never read as lapsed', () => {
+  // A trial's paid plan is Teacher Free, whose rate is zero by construction, so there is
+  // nothing for the balance to fail to cover and the fortnight runs its course.
+  const trialling = org({
+    plan: 'teacher_free',
+    trial_plan: 'teacher_plus',
+    trial_ends_at: '2026-09-05T00:00:00Z',
+    charged_through: '2026-08-29',
+    balance_poisha: 0,
+    daily_rate_poisha: null,
+  })
+
+  const e = effectiveEntitlement(trialling, NOW)
+  assert.equal(e.access, 'full')
+  assert.equal(e.plan.id, 'teacher_plus')
+})

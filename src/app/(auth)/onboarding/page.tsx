@@ -2,6 +2,8 @@ import { redirect } from 'next/navigation'
 
 import { getSession, homePathFor } from '@/lib/auth/session'
 import { dict } from '@/lib/i18n'
+import { readPlatformSettings } from '@/lib/platform/settings'
+import { createClient } from '@/lib/supabase/server'
 import { Card, Logo } from '@/components/ui'
 import { OnboardingForm } from '../onboarding-form'
 import { signOut } from '../actions'
@@ -95,6 +97,7 @@ export default async function OnboardingPage() {
    */
   const d = dict(session.locale)
   const t = d.noCenter
+  const settings = await readPlatformSettings(await createClient())
 
   if (session.username) {
     return (
@@ -130,8 +133,20 @@ export default async function OnboardingPage() {
           </p>
         </div>
 
+        {/*
+         * The trial lengths come from `platform_settings` — the same row `bootstrap_center`
+         * reads when it writes the grant — so the sentence under the chosen option cannot
+         * promise a number the database will not give. Read here rather than in the form
+         * so the numbers travel as props and a client component holds no fetch of its own.
+         */}
         <Card>
-          <OnboardingForm />
+          <OnboardingForm
+            trialDays={{
+              teacher: settings.teacherTrialDays,
+              center: settings.centerTrialDays,
+              institution: settings.institutionTrialDays,
+            }}
+          />
         </Card>
 
         {/* For the teacher who signs in with their own number and was switched off:

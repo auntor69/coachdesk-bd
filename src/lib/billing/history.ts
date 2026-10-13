@@ -222,6 +222,11 @@ export function collapseHistory(entries: readonly LedgerEntry[]): LedgerHistory 
         money.push(entry)
         break
       case 'founder_grant_days':
+      // A signup's own days (20260811000091) are the same shape as a founder's grant: no
+      // money, a date the line reaches, and a count in `metadata.days`. The customer's
+      // history is where the difference matters — the label says which it was — and the
+      // arithmetic here is identical, so they are one arm rather than two copies of it.
+      case 'signup_trial':
         grantedDays += entry.days ?? 0
         grants.push(entry)
         break

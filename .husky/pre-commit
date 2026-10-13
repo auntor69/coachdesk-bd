@@ -1,0 +1,1 @@
+npm run test:sql && npm run test:schema && npm run test:scoping && npm run test:exports && npm run test:rls && npm run test:billing && npm run test:recharge && npm run test:legal && npm run test:levers && npm run test:unit

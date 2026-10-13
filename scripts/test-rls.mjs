@@ -5147,6 +5147,67 @@ check(
   )) === 0,
 )
 
+// --- The plan the gate belongs to (20260811000090) ------------------------------
+//
+// Everything above is a *centre's* rule: several teachers, a register that may be
+// filed by somebody other than the person asking, and a signature the centre can
+// read afterwards. The two teacher tiers are one person (one teacher, no staff to
+// manage), and the owner's rule is that a solo teacher takes attendance when he
+// wants — so the gate reads the plan off the row at write time and this part proves
+// the switch itself. Hour-independent on purpose: the signature refusal names the
+// plan before the window is ever read, and the function is a read of one column.
+// ---------------------------------------------------------------------------
+
+const enforcedFor = async (plan) => {
+  await db.query('update coaching_centers set plan = $2 where id = $1', [centerA, plan])
+  return (await n(db, 'select app.clock_enforced($1) as n', [centerA])) === 1
+}
+
+check("'center' is on the clock", await enforcedFor('center'))
+check("'institution' is on the clock", await enforcedFor('institution'))
+check("'teacher_free' takes attendance when it wants", !(await enforcedFor('teacher_free')))
+check("'teacher_plus' too", !(await enforcedFor('teacher_plus')))
+check('and the centre is back on its own plan, on the clock', await enforcedFor('center'))
+
+// The teeth, on the plan that has none. The batch below has a real window that has
+// already closed — the same shape the late half above used — so on a centre plan
+// this register is refused as a cancelled class; the only thing that moves between
+// that refusal and this acceptance is the plan on the row.
+
+const noGate = await clockBatch('Clock No-Gate Batch')
+if (dhakaHour >= 3) {
+  await meetsTodayFrom(noGate, -180, -120)
+
+  for (const solo of ['teacher_free', 'teacher_plus']) {
+    await db.query('update coaching_centers set plan = $2 where id = $1', [centerA, solo])
+
+    check(
+      `on ${solo} the register goes through at an hour no centre plan would allow`,
+      (await clockRegister(ids.karim, noGate)) === '',
+    )
+    check(
+      `and there is nothing left to sign for on ${solo}`,
+      /nothing to sign for/.test(await signOff(ids.karim, noGate, 'forgot')),
+    )
+
+    // One batch, one day, one register — so the next tier gets the same first write
+    // the one above did, and the two checks are two shots at the same window.
+    await db.query('delete from attendance_sessions where batch_id = $1', [noGate])
+  }
+
+  // The gate back where it was, on the same batch at the same hour: proof that the
+  // two refusals above were the plan and nothing else.
+  await db.query("update coaching_centers set plan = 'center' where id = $1", [centerA])
+  check(
+    'back on the centre plan the same register is refused again, by the clock',
+    /counts as a cancelled class/.test(await clockRegister(ids.karim, noGate)),
+  )
+}
+
+// The batch's window is today's, and today's signatures go with the batch — the
+// cascade this section's own fixture owes the ones after it.
+await db.query('delete from batches where id = $1', [noGate])
+
 // ---------------------------------------------------------------------------
 // The teacher fee permission.
 //
@@ -10118,7 +10179,7 @@ await asUser(db, joiner, async (tx) => {
       'Trial Signup Centre',
       '+8801812345678',
       'Nayeem Hasan',
-      true,
+      'teacher',
     ])
   ).rows[0].id
   check('a signup creates its centre', typeof joinedCenter === 'string')
@@ -10203,6 +10264,125 @@ check(
   afterTry?.trial_plan === 'teacher_plus' && Number(afterTry?.days_left) === 14,
   `trial_plan = ${afterTry?.trial_plan}, days_left = ${afterTry?.days_left}`,
 )
+
+// WHAT A SIGNUP SAYS IT IS (20260811000091). The onboarding form has three answers and
+// the database now remembers which one was given, because the trial a customer gets
+// depends on it: a teacher is trialled on a *tier*, a centre on *days*.
+check(
+  'and the account says it is a teacher',
+  (await db.query('select account_kind from coaching_centers where id = $1', [joinedCenter]))
+    .rows[0]?.account_kind === 'teacher',
+)
+
+/** A brand-new account that founds one centre, the way the onboarding form does. */
+const signUp = async (kind, name) => {
+  const user = (
+    await db.query('insert into auth.users (id) values (gen_random_uuid()) returning id')
+  ).rows[0].id
+  const id = await asUser(db, user, async (tx) =>
+    (
+      await tx.query('select public.bootstrap_center($1, $2, $3, $4) as id', [
+        name,
+        '+8801812345678',
+        'Nayeem Hasan',
+        kind,
+      ])
+    ).rows[0].id,
+  )
+  return { user, id }
+}
+
+/** What the signup left behind, asked of the row rather than of the code that wrote it. */
+const signupShape = async (center) =>
+  (
+    await db.query(
+      `select c.plan::text as plan,
+              c.status::text as status,
+              c.account_kind,
+              c.trial_plan::text as trial_plan,
+              (c.charged_through - (now() at time zone 'Asia/Dhaka')::date) as days,
+              (select count(*)::int from teachers t
+                where t.coaching_center_id = c.id
+                  and t.user_id = c.created_by) as staff_rows,
+              (select count(*)::int from billing_ledger l
+                where l.coaching_center_id = c.id
+                  and l.kind = 'signup_trial') as trial_entries
+         from coaching_centers c where c.id = $1`,
+      [center],
+    )
+  ).rows[0]
+
+// A centre's trial is DAYS ON THE LINE and its own tier. The old shape put a coaching
+// centre on a teacher's tier for a fortnight — one batch, one teacher, no staff list, 30
+// students — and then landed it on Teacher Free, which is a marketing tier and not a floor
+// a centre can run on.
+const centreSignup = await signUp('center', 'Kind Centre')
+const centreShape = await signupShape(centreSignup.id)
+check(
+  'a coaching centre signs up on its own tier',
+  centreShape?.plan === 'center',
+  `plan = ${centreShape?.plan}`,
+)
+check(
+  'with no teacher trial bolted onto it',
+  centreShape?.trial_plan === null,
+  `trial_plan = ${centreShape?.trial_plan}`,
+)
+check(
+  'and three days granted on the line',
+  Number(centreShape?.days) === 3,
+  `days = ${centreShape?.days}`,
+)
+check(
+  "recorded as a signup trial rather than a founder's gift",
+  centreShape?.trial_entries === 1,
+  `entries = ${centreShape?.trial_entries}`,
+)
+check(
+  'and its owner is not on its own staff list',
+  centreShape?.staff_rows === 0,
+  `teacher rows = ${centreShape?.staff_rows}`,
+)
+
+const instSignup = await signUp('institution', 'Kind Institution')
+const instShape = await signupShape(instSignup.id)
+check(
+  'an institution signs up on its own tier too',
+  instShape?.plan === 'institution' && Number(instShape?.days) === 3,
+  `plan = ${instShape?.plan}, days = ${instShape?.days}`,
+)
+
+// The length is the settings row's and not a constant, which is the whole reason it is a
+// table: change it and the next signup is given the new number.
+await db.query('update platform_settings set center_trial_days = 5 where id')
+const fiveDaySignup = await signUp('center', 'Five Day Centre')
+check(
+  'the trial length is read from the settings, not hard-coded',
+  Number((await signupShape(fiveDaySignup.id))?.days) === 5,
+)
+await db.query('update platform_settings set center_trial_days = 3 where id')
+check(
+  'and a customer cannot set their own trial length',
+  await deniedAsUser(db, centreSignup.user, 'select public.founder_set_trial_days(365, 365, 365)'),
+)
+check(
+  'nor rename what their account is',
+  await deniedAsUser(
+    db,
+    centreSignup.user,
+    `update coaching_centers set account_kind = 'institution' where id = $1`,
+    [centreSignup.id],
+  ),
+)
+
+// Taken away: each of these is an account of its own, and the sections below count what
+// they expect out of the centre list.
+await db.query('delete from coaching_centers where id = any($1::uuid[])', [
+  [centreSignup.id, instSignup.id, fiveDaySignup.id],
+])
+await db.query('delete from auth.users where id = any($1::uuid[])', [
+  [centreSignup.user, instSignup.user, fiveDaySignup.user],
+])
 
 // The places the trial actually grants — 20260811000060, MASTERPLAN.md §4.5.
 //
@@ -15452,7 +15632,9 @@ const probeAccount = async (email, username) =>
     )
   ).rows[0].id
 
-const FOUND = `select public.bootstrap_center('Probe Coaching', null, 'Probe', false)`
+// The fourth argument is the account kind since 20260811000092; the fence this section
+// is about is the login the call is made with, not what it is founding.
+const FOUND = `select public.bootstrap_center('Probe Coaching', null, 'Probe', 'teacher')`
 
 const staffLogin = await probeAccount('zzprobe@user.coachdesk.invalid', 'zzprobe')
 check(

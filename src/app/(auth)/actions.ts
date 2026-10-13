@@ -14,6 +14,7 @@ import { headers } from 'next/headers'
 import type { Route } from 'next'
 
 import { createClient } from '@/lib/supabase/server'
+import { isAccountKind, type AccountKind } from '@/lib/accounts/kind'
 import { normalizeBdMobile } from '@/lib/bd/phone'
 import { loginEmailFor } from '@/lib/bd/username'
 import { getSession, homePathFor } from '@/lib/auth/session'
@@ -403,6 +404,10 @@ export async function createCenter(
 
   const centerName = String(formData.get('centerName') ?? '').trim()
   const mode = String(formData.get('mode') ?? 'teacher')
+  // Three answers, and the database refuses a fourth (20260811000092). Re-checked here
+  // so a hand-posted form gets a sentence rather than a Postgres error string, the same
+  // pair every other field in this action has.
+  const kind: AccountKind = isAccountKind(mode) ? mode : 'teacher'
 
   if (!centerName) {
     return { error: 'কোচিং/ব্যাচের নাম লিখুন।', field: 'center' }
@@ -413,11 +418,11 @@ export async function createCenter(
 
   const supabase = await createClient()
 
-  const { error } = await supabase.rpc('bootstrap_center', {
+  const { error } = await bootstrapCenter(supabase, {
     center_name: centerName,
     owner_phone: session.phone ? normalizeBdMobile(session.phone) : null,
     owner_name: session.fullName ?? '',
-    teacher_mode: mode === 'teacher',
+    account_kind: kind,
   })
 
   if (error) {
@@ -429,7 +434,36 @@ export async function createCenter(
   }
 
   revalidatePath('/', 'layout')
-  redirect(mode === 'teacher' ? '/teach' : '/dashboard')
+  redirect(kind === 'teacher' ? '/teach' : '/dashboard')
+}
+
+/**
+ * `public.bootstrap_center` AS POSTGREST SEES IT, cast the way `settleDay` and
+ * `approveClaim` cast theirs.
+ *
+ * The generated types still describe the four-argument form — `teacher_mode boolean` —
+ * because regenerating them needs a live project. 20260811000092 dropped that overload and
+ * replaced it with the account kind, so a call written against the generated signature
+ * would not compile *and* would be wrong: there is no `teacher_mode` to send any more, and
+ * the fourth argument is what decides the trial a customer is given. The cast is the
+ * narrow place that difference lives, and it is a no-op once `npm run gen:types` has run.
+ */
+type BootstrapRpc = (
+  fn: 'bootstrap_center',
+  args: {
+    center_name: string
+    owner_phone: string | null
+    owner_name: string
+    account_kind: AccountKind
+  },
+) => PromiseLike<{ error: { message: string } | null }>
+
+function bootstrapCenter(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  args: Parameters<BootstrapRpc>[1],
+) {
+  const bootstrap: BootstrapRpc = (...call) => supabase.rpc(...call)
+  return bootstrap('bootstrap_center', args)
 }
 
 /**
