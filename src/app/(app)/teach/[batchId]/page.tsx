@@ -689,17 +689,17 @@ export default async function AttendancePage({
               has to be read before the first tap and not after forty of them — and
               above the closed-day notice too, which is about *which* day this is
               rather than about whose register it is. It carries a heading so the two
-              do not read as one amber box repeated. */}
+              do not read as one notice repeated. */}
           {act === 'correction' && (
-            <div className="rounded-xl border-2 border-amber-300 bg-amber-50 px-4 py-3">
-              <h2 className="font-semibold text-amber-900">{t.correctionTitle}</h2>
-              <p className="mt-1 text-sm text-amber-900">{t.correctionBody}</p>
+            <div className="rounded-xl border-2 border-late/40 bg-late/5 px-4 py-3">
+              <h2 className="font-semibold text-late">{t.correctionTitle}</h2>
+              <p className="mt-1 text-sm text-late">{t.correctionBody}</p>
             </div>
           )}
 
           {verdict === 'closed' && (
-            <div className="rounded-xl border-2 border-amber-300 bg-amber-50 px-4 py-3">
-              <p className="text-sm text-amber-900">{t.closedAdmin}</p>
+            <div className="rounded-xl border-2 border-late/40 bg-late/5 px-4 py-3">
+              <p className="text-sm text-late">{t.closedAdmin}</p>
             </div>
           )}
 

@@ -32,8 +32,8 @@
  * order below is therefore a preference only in a state nothing can produce — and it is
  * the order the old screen used, so no account that exists reads differently than it did.
  */
-import { formatBdMobile } from '../bd/phone.ts'
-import { loginEmailFor } from '../bd/username.ts'
+import { formatBdMobile, loginEmailToPhone } from '../bd/phone.ts'
+import { loginEmailFor, loginEmailToUsername } from '../bd/username.ts'
 import type { T } from '../i18n/index.ts'
 import type { Session } from './session.ts'
 
@@ -72,6 +72,38 @@ export function loginIdentifierOf(who: LoginFields): LoginIdentifier | null {
 export function loginAddressOf(who: LoginFields): string | null {
   const identifier = loginIdentifierOf(who)
   return identifier ? loginEmailFor(identifier.value) : null
+}
+
+/**
+ * Which of the three somebody *typed*, as opposed to the one a session holds.
+ *
+ * The founder's lockout form is the second reader of this question, and it is the one that
+ * cannot ask a session: the person who cannot get in is on the telephone, and all the
+ * founder has is what they read out. That form used to accept a number and nothing else,
+ * which locked out — of the recovery path, not of the app — every account §5.4 created and
+ * every teacher whose login is a username, the two populations with no number at all.
+ *
+ * `loginEmailFor` is the gate rather than a re-implementation of it, and the value comes
+ * back off the address it builds. So a string the login screen would refuse — a malformed
+ * address, a number that does not normalise, a username of the wrong shape — answers null
+ * here and never reaches a query, and a string it accepts resolves to the same value the
+ * session would report for that account. There is one dispatch in the product; this is it
+ * applied to a typed string instead of a cookie.
+ */
+export function identifierOfTyped(input: string): LoginIdentifier | null {
+  const address = loginEmailFor(input.trim())
+  if (!address) return null
+
+  // The same two classifiers `getSession` uses to decide what an account signs in with,
+  // which is what keeps this lookup and the profile screen reading the same three fields.
+  const username = loginEmailToUsername(address)
+  if (username) return { kind: 'username', value: username }
+
+  const phone = loginEmailToPhone(address)
+  if (phone) return { kind: 'phone', value: phone }
+
+  // Neither synthetic domain, so the string carried an `@` and is a real address.
+  return { kind: 'email', value: address }
 }
 
 /**

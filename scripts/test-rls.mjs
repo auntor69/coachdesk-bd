@@ -8430,9 +8430,16 @@ console.log('\nFounder panel (platform_centers):')
 // without a membership to stand on.
 await db.query('update profiles set is_platform_admin = true where id = $1', [ids.founder])
 
-// A name and number to ring, so the owners CTE has something real to return.
+// A name, a number and an address, so the owners CTE has something real to return.
+//
+// Production sets exactly one of the two contact details — a staff login is keyed on a
+// number, a self-serve signup on an address (§5.4) — and this fixture deliberately sets
+// both, so one pair of assertions covers the ordering for the pair of columns: the
+// addresses below have to come back with the founding owner's name, not the later
+// partner's, exactly as the number does.
 await db.query(
-  `update profiles set full_name = 'Jamil Ahmed', phone = '+8801711000111' where id = $1`,
+  `update profiles set full_name = 'Jamil Ahmed', phone = '+8801711000111',
+     email = 'jamil@uttara.example' where id = $1`,
   [ids.ownerA],
 )
 
@@ -8444,7 +8451,8 @@ await db.query(
   [centerA, ids.secondOwner],
 )
 await db.query(
-  `update profiles set full_name = 'Later Partner' where id = $1`,
+  `update profiles set full_name = 'Later Partner', email = 'partner@example.com'
+   where id = $1`,
   [ids.secondOwner],
 )
 
@@ -8527,7 +8535,7 @@ check('centre A is in the panel', Boolean(rowA))
  */
 const PANEL_COLUMNS = [
   'center_id', 'center_name', 'center_phone', 'bd_area', 'status', 'plan',
-  'created_at', 'owner_name', 'owner_phone', 'students', 'teachers', 'batches',
+  'created_at', 'owner_name', 'owner_phone', 'owner_email', 'students', 'teachers', 'batches',
   'sms_credit_balance', 'attendance_30d', 'exams_30d', 'fee_payments_30d',
   'collected_30d', 'taps_30d', 'notes_30d', 'results_30d', 'absences_30d',
   'sms_30d', 'last_active_at', 'paid_bdt',
@@ -8550,6 +8558,12 @@ check(
   'carries the owner mobile to ring',
   rowA?.owner_phone === '+8801711000111',
   String(rowA?.owner_phone),
+)
+
+check(
+  'carries the owner address to write to, from the founding owner',
+  rowA?.owner_email === 'jamil@uttara.example',
+  String(rowA?.owner_email),
 )
 
 const expectedStudents = Number(

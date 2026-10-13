@@ -186,11 +186,14 @@ test('the day the register is for is still decided outside the layout', () => {
   // day would spend the one revision the trigger allows on twelve wrong corrections.
   assert.ok(ROSTER.includes('if (enrollments === null || existingError) {'))
 
-  // The window, the admin's exception, and the two amber notices that say which of the
-  // two a reader is looking at. Both survived being moved inside the cap.
+  // The window, the admin's exception, and the two notices that say which of the two a
+  // reader is looking at. Both survived being moved inside the cap. Both are drawn in
+  // the app's one attention colour — `late`, the token every other warning on every
+  // other screen uses — rather than a hand-picked amber, so a third notice added here
+  // cannot quietly look like a different kind of warning.
   assert.ok(ROSTER.includes("const writable = verdict === 'open' || (verdict === 'closed' && isAdmin)"))
   assert.ok(ROSTER.includes('attendanceVerdict(sessionDate, today, lastClass)'))
-  assert.equal(count(ROSTER, 'rounded-xl border-2 border-amber-300 bg-amber-50 px-4 py-3'), 2)
+  assert.equal(count(ROSTER, 'rounded-xl border-2 border-late/40 bg-late/5 px-4 py-3'), 2)
   assert.ok(ROSTER.includes('{t.correctionTitle}'))
   assert.ok(ROSTER.includes('{t.closedAdmin}'))
 

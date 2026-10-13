@@ -3,14 +3,19 @@
 /**
  * "They cannot get in" — the founder's end of a phone call that has nowhere else to go.
  *
- * WHY THIS IS ON THE PANEL AND NOT IN A DATABASE CONSOLE. Login here is a number and a
- * password, with no email behind it, so there is no reset link to send. /account covers
- * a password you still know. The owner's staff screen covers a teacher who belongs to
- * no other centre, and refuses everybody else on purpose — read lib/auth/reset.ts for
- * the takeover that refusal exists to stop. What is left over is an owner, a manager,
- * and a teacher who works at two centres, and the refusal copy on that screen tells all
- * three of them to ring the founder. Until this form existed, answering that call meant
- * opening a SQL console, which is a habit worth not forming.
+ * WHY THIS IS ON THE PANEL AND NOT IN A DATABASE CONSOLE. There is no reset link to send,
+ * whoever the account belongs to. /account covers a password you still know. The owner's
+ * staff screen covers a teacher who belongs to no other centre, and refuses everybody else
+ * on purpose — read lib/auth/reset.ts for the takeover that refusal exists to stop. What is
+ * left over is an owner, a manager, and a teacher who works at two centres, and the refusal
+ * copy on that screen tells all three of them to ring the founder. Until this form existed,
+ * answering that call meant opening a SQL console, which is a habit worth not forming.
+ *
+ * ONE FIELD, THREE SHAPES. A number, §5.2's username, or §5.4's address — the identifier is
+ * whatever the person can read off their own screen, and for an owner who signed up through
+ * the app that is an address and nothing else. The action decides which of the three it is
+ * with the login screen's own dispatch, so a string this form accepts is a string that
+ * screen accepts.
  *
  * BEHIND A DISCLOSURE, like the billing forms and for the same reason: the customer
  * list is a list. It is also the least-used control on the page — most calls are about
@@ -38,8 +43,8 @@ import { resetCenterStaffPassword, type FounderState } from './actions'
 export type LockoutWords = {
   summary: string
   body: string
-  phone: string
-  phoneHint: string
+  identifier: string
+  identifierHint: string
   password: string
   passwordHint: string
   submit: string
@@ -69,15 +74,15 @@ export function StaffReset({
   /**
    * Unique across the whole list, exactly as on the billing forms: `Field` falls back
    * to the control's `name` for its id, so eleven cards would put eleven
-   * `id="phone"` in one document and every label would focus the first card's box. A
-   * founder typing a new password into the wrong customer's form is the one mistake
+   * `id="identifier"` in one document and every label would focus the first card's box.
+   * A founder typing a new password into the wrong customer's form is the one mistake
    * this particular screen must not make easy.
    */
   const fid = (name: string) => `${name}-lockout-${centerId}`
 
   useEffect(() => {
     // Emptied once it has been set. The next call is about a different person, and a
-    // form still holding the last one's number and password is how the wrong account
+    // form still holding the last one's identifier and password is how the wrong account
     // gets reset — the password is on screen in plain text, so this is also the only
     // thing that takes it off a founder's phone.
     if (state?.ok) form.current?.reset()
@@ -110,18 +115,25 @@ export function StaffReset({
           </p>
         )}
 
+        {/* One box for all three identifiers, and every keyboard hint says "this is not a
+            number": `autoCapitalize`/`autoCorrect`/`spellCheck` off because an address or a
+            username typed on a phone gets capitalised and corrected into something that
+            does not exist, and `type="text"` rather than `tel` for the same reason. The
+            placeholder shows the three shapes and no words, so it needs no translation. */}
         <Field
-          label={words.phone}
-          hint={words.phoneHint}
-          id={fid('phone')}
-          name="phone"
-          type="tel"
-          inputMode="tel"
+          label={words.identifier}
+          hint={words.identifierHint}
+          id={fid('identifier')}
+          name="identifier"
+          type="text"
+          inputMode="text"
           autoComplete="off"
-          placeholder="01712345678"
+          autoCapitalize="none"
+          autoCorrect="off"
+          spellCheck={false}
+          placeholder="01712345678 · rahim · name@example.com"
           required
-          maxLength={20}
-          className="num"
+          maxLength={254}
         />
 
         <Field

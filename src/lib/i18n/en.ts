@@ -4797,7 +4797,7 @@ export const en: Dictionary = {
     },
     filters: {
       search: 'Search',
-      searchHint: 'A name, an area or a phone number',
+      searchHint: 'A name, an area, an email or a phone number',
       /** Who the account is, not what they may do — see lib/accounts/kind.ts. */
       kind: 'Who',
       standing: 'Standing',
@@ -4937,7 +4937,7 @@ export const en: Dictionary = {
       adminsHint: 'Accounts that can read every customer\'s record.',
       adminsEmpty: 'No platform admin could be read, which cannot be right — reload.',
       search: 'Search',
-      searchHint: 'A name, a number or a username',
+      searchHint: 'A name, an email, a number or a username',
       customer: 'Customer',
       allCustomers: 'Every customer',
       role: 'Role',
@@ -5246,19 +5246,19 @@ export const en: Dictionary = {
     lockout: {
       summary: 'Somebody cannot get in',
       body:
-        'Type the number they sign in with and a new password, then read it out to '
-        + 'them on the phone. An owner, a manager or a teacher of this centre — any '
-        + 'of them. Another phone that is already signed in will not be signed out '
-        + 'on its own.',
-      phone: 'Login number',
-      phoneHint: 'Usually the number they are ringing you from.',
+        'Type the number, username or email they sign in with, and a new password, '
+        + 'then read it out to them on the phone. An owner, a manager or a teacher of '
+        + 'this centre — any of them. Another phone that is already signed in will not '
+        + 'be signed out on its own.',
+      identifier: 'Login number, username or email',
+      identifierHint: 'Whatever is on their own screen — any one of the three gets them in.',
       password: 'New password',
       passwordHint: 'Shown on screen, because you have to read it out.',
       submit: 'Set the password',
       saving: 'Setting…',
       failed: 'Could not do it. Try again.',
       errors: {
-        noAccount: 'No account has that number. Check the digits again.',
+        noAccount: 'No account has that number, username or email. Check it again.',
         self:
           'That is your own account. This is not the screen for your own password '
           + '— change it on your account screen.',
@@ -5266,7 +5266,7 @@ export const en: Dictionary = {
           'That account belongs to the platform, not to a centre. Its password '
           + 'cannot be set from here.',
         notStaff:
-          'That account does not work at this centre. Check both the number and '
+          'That account does not work at this centre. Check both the identifier and '
           + 'which centre you are on.',
       },
     },
@@ -5277,6 +5277,7 @@ export const en: Dictionary = {
       plan: 'Plan',
       bill: 'Monthly bill',
       owner: 'Owner',
+      ownerEmail: 'Owner email',
       ownerPhone: 'Owner phone',
       centerPhone: 'Centre phone',
       students: 'Students',

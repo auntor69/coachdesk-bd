@@ -3,6 +3,7 @@ import type { Route } from 'next'
 
 import { Card } from '@/components/ui'
 import { pagePlatformAdmin } from '@/lib/auth/session'
+import { loginIdentifierOf } from '@/lib/auth/identifier'
 import { createClient } from '@/lib/supabase/server'
 import { dhakaMoment, digits, formatDate } from '@/lib/bd/time'
 import { formatBdMobile } from '@/lib/bd/phone'
@@ -16,6 +17,19 @@ import { FounderNav } from '../nav'
 
 /** The roles `center_members` can hold, in the order the filter offers them. */
 const ROLES = ['owner', 'manager', 'teacher'] as const
+
+/**
+ * A person on this screen: a profile row, as far as it is ever drawn.
+ *
+ * The three identifier columns and a name, and it is deliberately not `profiles.Row` — the
+ * founder's list reads four names, not an account's phone number, locale and admin flag.
+ */
+type Person = {
+  full_name: string | null
+  phone: string | null
+  username: string | null
+  email: string | null
+}
 
 /**
  * How many logins are read.
@@ -96,7 +110,7 @@ export default async function FounderAccountsPage({
     // and finds our own team in the same pass.
     supabase
       .from('profiles')
-      .select('id, full_name, phone, username, is_platform_admin')
+      .select('id, full_name, phone, username, email, is_platform_admin')
       .order('full_name'),
   ])
 
@@ -115,10 +129,12 @@ export default async function FounderAccountsPage({
     if (role !== null && member.role !== role) return false
     if (!query) return true
     const person = byId.get(member.user_id)
-    // What the founder has in front of them: a name, a number, or the handle somebody typed at
-    // a login screen. A member with no profile row matches nothing and stays visible.
+    // What the founder has in front of them: a name, an address, a number, or the username
+    // somebody typed at a login screen. A member with no profile row matches nothing and
+    // stays visible.
     const haystack = [
       person?.full_name ?? '',
+      person?.email ?? '',
       person?.phone ?? '',
       person?.username ?? '',
     ]
@@ -162,12 +178,7 @@ export default async function FounderAccountsPage({
             {admins.map((admin) => (
               <li key={admin.id} className="text-ink">
                 <span className="font-medium">{admin.full_name ?? t.accounts.noName}</span>
-                {admin.phone && (
-                  <>
-                    {' · '}
-                    <span className="num text-ink-soft">{formatBdMobile(admin.phone)}</span>
-                  </>
-                )}
+                <Identifier person={admin} />
               </li>
             ))}
           </ul>
@@ -303,7 +314,7 @@ function Member({
     active: boolean
     created_at: string
   }
-  person: { full_name: string | null; phone: string | null; username: string | null } | null
+  person: Person | null
   center: string | null
   locale: Locale
   d: Dictionary
@@ -333,14 +344,40 @@ function Member({
         ) : (
           <span>{t.unknownCustomer}</span>
         )}
-        {person?.phone && (
-          <span className="num">· {formatBdMobile(person.phone)}</span>
-        )}
-        {person?.username && <span>· {person.username}</span>}
+        <Identifier person={person} />
         <span className="num">
           · {t.since(formatDate(dhakaMoment(member.created_at).date, locale))}
         </span>
       </div>
     </li>
+  )
+}
+
+/**
+ * The one identifier an account signs in with, beside their name (§5.3).
+ *
+ * Three shapes and one of them set: §5.4's real address for anybody who signed up through the
+ * app, a number for a staff login a centre minted, §5.2's username for a teacher who has
+ * neither. Drawn here once because this list draws it twice — the platform administrators
+ * card and every member row — and the failure it is written against is drawing the contact
+ * detail an account does not have: before `profiles.email` existed, a self-serve account
+ * showed a blank where its number would be, which reads as a broken row rather than as an
+ * address.
+ *
+ * `loginIdentifierOf` decides *which* one, so this list and the profile screen cannot
+ * disagree about what an account holds. A number is formatted the way a Bangladeshi reads
+ * their own — 01712345678, never +8801712345678 — and it is the only one of the three that
+ * takes the tabular figures, because it is the only one that is a number.
+ */
+function Identifier({ person }: { person: Person | null }) {
+  const identifier = person ? loginIdentifierOf(person) : null
+  if (!identifier) return null
+
+  const phone = identifier.kind === 'phone'
+  return (
+    <span className={phone ? 'num text-ink-soft' : 'break-all text-ink-soft'}>
+      {' · '}
+      {phone ? formatBdMobile(identifier.value) : identifier.value}
+    </span>
   )
 }

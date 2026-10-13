@@ -79,7 +79,8 @@ import { paymentProvider } from '@/lib/billing/provider'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { createClient } from '@/lib/supabase/server'
 import { digits, formatDate, hasPassed } from '@/lib/bd/time'
-import { formatBdMobile, normalizeBdMobile } from '@/lib/bd/phone'
+import { formatBdMobile } from '@/lib/bd/phone'
+import { identifierOfTyped } from '@/lib/auth/identifier'
 import { PAYMENT_METHODS } from '@/lib/fees/methods'
 import { dict, DEFAULT_LOCALE } from '@/lib/i18n'
 import { REJECT_REASONS, rechargeWords, type RejectReason } from '@/lib/i18n/recharge'
@@ -1018,19 +1019,21 @@ export async function markUpgradeHandled(
 /**
  * Gets a locked-out owner or manager back into their own centre.
  *
- * THE LAST PIECE OF A RECOVERY STORY WITH NO EMAIL IN IT. Login is a number and a
- * password; /account changes a password you still know; the owner's staff screen issues
- * one to a teacher who belongs to nobody else. Between them they cover everybody except
- * the three groups lib/auth/founder-reset.ts names — an owner, a manager, and a teacher
- * who works at two centres — and the copy on the owner's screen has been telling those
- * three to ring the founder since it shipped. This is the button that call reaches.
+ * THE LAST PIECE OF A RECOVERY STORY. /account changes a password you still know; the
+ * owner's staff screen issues one to a teacher who belongs to nobody else. Between them
+ * they cover everybody except the three groups lib/auth/founder-reset.ts names — an owner,
+ * a manager, and a teacher who works at two centres — and the copy on the owner's screen
+ * has been telling those three to ring the founder since it shipped. This is the button
+ * that call reaches, and for an owner who signed up through the app it is the only way
+ * back in that exists: there is no reset link to send, and nobody above them to ask.
  *
- * IT IS KEYED ON THE NUMBER, NOT ON A LIST. There is no roster of accounts rendered
+ * IT IS KEYED ON THE IDENTIFIER, NOT ON A LIST. There is no roster of accounts rendered
  * beside each centre, on purpose: the panel deliberately holds no link inward and one
- * contact detail per customer, and a list of every staff member at every centre would
- * be a directory of people the founder has no reason to read. The founder types the
- * number the person is ringing from, which is also the number they sign in with, and is
- * the thing they can actually see on their own phone screen. A mistyped digit lands on
+ * contact detail per customer, and a list of every staff member at every centre would be a
+ * directory of people the founder has no reason to read. The founder types what the person
+ * can read off their own screen — the number they sign in with, §5.2's username for a
+ * teacher who was given one, or §5.4's address for anybody who signed up themselves —
+ * because each of the three is the only identifier some population has. A typo lands on
  * `notStaff` rather than on a stranger.
  *
  * WHAT COMES BACK IS A NAME, and that is the check that matters. The founder reads
@@ -1062,10 +1065,22 @@ export async function resetCenterStaffPassword(
   const centerId = String(formData.get('centerId') ?? '')
   if (!centerId) return { error: t.money.noCenter }
 
-  // Normalised before it is looked up, because `profiles.phone` holds exactly one
-  // shape — E.164 — and an owner reading their number off a signboard says 01712…
-  const phone = normalizeBdMobile(String(formData.get('phone') ?? ''))
-  if (!phone) return { error: words.errors.noAccount }
+  /*
+   * Whatever the person on the line read out: a number, §5.2's username, or — since §5.4 —
+   * the address they signed up with. `identifierOfTyped` is §5.3's dispatch applied to typed
+   * text rather than to a cookie, so the founder can accept exactly what the login screen
+   * accepts and refuses what it would refuse, without a query. This field asked for a number
+   * and nothing else, which left the two populations that have no number — everybody who
+   * signed up through the app, and every teacher whose login is a username — with no way
+   * back into their own account.
+   *
+   * The lookup below can then be one column rather than three, and that is not a shortcut:
+   * the three sets cannot overlap (an address carries an `@`, a Bangladesh mobile starts
+   * with a digit, a username has neither), so whichever branch answered is the only branch
+   * that could have.
+   */
+  const identifier = identifierOfTyped(String(formData.get('identifier') ?? ''))
+  if (!identifier) return { error: words.errors.noAccount }
 
   const password = String(formData.get('password') ?? '')
   if (password.length < MIN_PASSWORD) {
@@ -1074,12 +1089,14 @@ export async function resetCenterStaffPassword(
 
   const admin = createAdminClient(session.userId)
 
-  // scoped-by: profiles is not centre-scoped — phone is unique platform-wide, which
-  // is what makes one number one account. requirePlatformAdmin above is the gate.
+  // scoped-by: profiles is not centre-scoped — each of the three identifier columns is
+  // unique platform-wide, which is what makes one identifier one account. `founder()`
+  // above is the gate, and `.eq` takes the column the dispatch chose, never a filter
+  // string built out of a form post.
   const { data: profile, error: profileFailed } = await admin
     .from('profiles')
     .select('id, full_name, is_platform_admin')
-    .eq('phone', phone)
+    .eq(identifier.kind, identifier.value)
     .maybeSingle()
 
   // A failed read is not "no such number". Falling through would tell the founder to
@@ -1118,9 +1135,16 @@ export async function resetCenterStaffPassword(
   const { error } = await admin.auth.admin.updateUserById(profile.id, { password })
   if (error) return { error: words.failed }
 
-  // Nothing on the panel changes, so nothing is revalidated. The name is what the
-  // founder needs next, read back down the phone to the person waiting on it.
-  return { ok: t.resetDone(profile.full_name || formatBdMobile(phone)) }
+  // Nothing on the panel changes, so nothing is revalidated. The name is what the founder
+  // needs next, read back down the phone to the person waiting on it — and when the account
+  // has no name typed on it, the identifier they just read out, in the shape its owner
+  // reads it: a number as 01712345678 rather than +8801712345678, an address as it is.
+  return {
+    ok: t.resetDone(
+      profile.full_name ||
+        (identifier.kind === 'phone' ? formatBdMobile(identifier.value) : identifier.value),
+    ),
+  }
 }
 
 /**

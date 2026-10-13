@@ -45,6 +45,7 @@ function row(over: Partial<PlatformCenterRow> = {}): PlatformCenterRow {
     created_at: '2026-06-01T04:00:00.000Z',
     owner_name: 'Jamshed Rahman',
     owner_phone: '+8801711000111',
+    owner_email: 'jamshed@udvash.example',
     students: 40,
     teachers: 3,
     batches: 6,
@@ -729,6 +730,7 @@ const HEADINGS = {
   plan: 'প্ল্যান',
   bill: 'মাসিক বিল',
   owner: 'মালিক',
+  ownerEmail: 'মালিকের ইমেইল',
   ownerPhone: 'মালিকের নম্বর',
   centerPhone: 'সেন্টারের নম্বর',
   students: 'শিক্ষার্থী',
@@ -782,6 +784,24 @@ test('the sheet has one row per centre and a heading for every column', () => {
   for (const r of rows) {
     assert.equal(r.length, header.length, 'a row shorter than the header shifts columns')
   }
+})
+
+test('the owner is reachable in the sheet by address as well as by number', () => {
+  // §5.4's owner has an address and no number, so a sheet whose only contact column is
+  // `owner_phone` cannot reach the customers who signed up through the app. Both columns
+  // stay, and they are separate cells rather than one "contact" — a founder who filters on
+  // either should not lose the rows in the other.
+  const { header, rows } = customersSheet(customers([row()], 'x', NOW), WORDS)
+  const at = (heading: string) => rows[0][header.indexOf(heading)]
+
+  assert.equal(at(HEADINGS.ownerEmail), 'jamshed@udvash.example')
+  assert.equal(at(HEADINGS.ownerPhone), '+8801711000111')
+  assert.notEqual(header.indexOf(HEADINGS.ownerEmail), header.indexOf(HEADINGS.ownerPhone))
+
+  // And the shape the fix exists for: the number gone, the address still there.
+  const lone = customersSheet(customers([row({ owner_phone: null })], 'x', NOW), WORDS)
+  assert.equal(lone.rows[0][lone.header.indexOf(HEADINGS.ownerEmail)], 'jamshed@udvash.example')
+  assert.equal(lone.rows[0][lone.header.indexOf(HEADINGS.ownerPhone)], null)
 })
 
 test('money and counts leave as bare numbers a spreadsheet can total', () => {
