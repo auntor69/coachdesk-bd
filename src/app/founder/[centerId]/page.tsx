@@ -204,10 +204,12 @@ export default async function FounderCenterPage({
       : ((
           await supabase
             .from('profiles')
-            .select('id, full_name, phone, username')
+            .select('id, full_name, email, phone, username')
             .in('id', staffIds)
         ).data ?? [])
-  const names = new Map(people.map((p) => [p.id, p.full_name ?? p.phone ?? '']))
+  // Named by their name, then by the address they signed up with, then by the number a
+  // centre gave them. See the same fallback on ./audit/page.tsx.
+  const names = new Map(people.map((p) => [p.id, p.full_name ?? p.email ?? p.phone ?? '']))
 
   const rowKind = kinds.data?.account_kind
   const kind = isAccountKind(rowKind) ? rowKind : null
@@ -247,7 +249,7 @@ export default async function FounderCenterPage({
             </span>
           )}
           {account.quiet && (
-            <span className="rounded-lg border border-red-200 bg-red-50 px-2 py-0.5 text-xs font-medium text-red-700">
+            <span className="rounded-lg border border-absent/30 bg-absent/5 px-2 py-0.5 text-xs font-medium text-absent">
               {account.daysQuiet === null ? t.neverActive : t.quiet(account.daysQuiet)}
             </span>
           )}
@@ -264,6 +266,12 @@ export default async function FounderCenterPage({
             value={
               <>
                 {account.ownerName ?? t.noOwner}
+                {account.ownerEmail && (
+                  <>
+                    {' · '}
+                    <Address email={account.ownerEmail} />
+                  </>
+                )}
                 {account.ownerPhone && (
                   <>
                     {' · '}
@@ -604,6 +612,23 @@ function Phone({ number }: { number: string }) {
   return (
     <a href={`tel:${number}`} className="num font-medium text-brand-700">
       {formatBdMobile(number)}
+    </a>
+  )
+}
+
+/**
+ * The founding owner's address, as a link that opens the founder's mail app.
+ *
+ * The sibling of `Phone`, and the reason both are here: §5.4's signup gives an owner a real
+ * address and no number at all, so for the customers who signed up through the app this is
+ * the only way to reach anybody — and it is the founding owner's, the same person the name
+ * and the number above belong to. `break-all` because the value sits in half of a 320px
+ * screen and an address is longer than it looks.
+ */
+function Address({ email }: { email: string }) {
+  return (
+    <a href={`mailto:${email}`} className="break-all font-medium text-brand-700">
+      {email}
     </a>
   )
 }

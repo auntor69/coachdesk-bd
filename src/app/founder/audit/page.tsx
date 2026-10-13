@@ -146,10 +146,17 @@ export default async function FounderAuditPage({
   const actors =
     actorIds.length === 0
       ? []
-      : ((await supabase.from('profiles').select('id, full_name, phone').in('id', actorIds)).data
-          ?? [])
+      : ((
+          await supabase
+            .from('profiles')
+            .select('id, full_name, email, phone')
+            .in('id', actorIds)
+        ).data ?? [])
+  // The address before the number: an actor with no name typed on their profile is named
+  // by whichever identifier they sign in with, and §5.4 leaves an email-signup account with
+  // no number to fall back to. A phone stays for the staff logins that have one.
   const names = new Map(
-    actors.map((row) => [row.id, row.full_name ?? row.phone ?? '']),
+    actors.map((row) => [row.id, row.full_name ?? row.email ?? row.phone ?? '']),
   )
 
   const filtered = isFiltered(filter) || filter.before !== null

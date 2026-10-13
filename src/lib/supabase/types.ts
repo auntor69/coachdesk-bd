@@ -17,7 +17,7 @@ export type AttendanceStatus = 'present' | 'absent' | 'late' | 'excused'
 export type AttendanceUnlockReason = 'early' | 'forgot'
 export type AuditOperation = 'created' | 'updated' | 'deleted'
 export type BatchSlot = 'morning' | 'noon' | 'afternoon' | 'evening' | 'night'
-export type BillingEntryKind = 'recharge' | 'promotion_bonus' | 'daily_charge' | 'founder_money_adjustment' | 'founder_grant_days' | 'signup_trial' | 'refund' | 'reversal' | 'correction' | 'settlement_failure' | 'settlement_retry' | 'migration_opening_balance'
+export type BillingEntryKind = 'recharge' | 'promotion_bonus' | 'daily_charge' | 'founder_money_adjustment' | 'founder_grant_days' | 'refund' | 'reversal' | 'correction' | 'settlement_failure' | 'settlement_retry' | 'migration_opening_balance' | 'signup_trial'
 export type CenterStatus = 'trial' | 'active' | 'suspended' | 'cancelled'
 export type EmployeeRole = 'manager' | 'accountant' | 'receptionist' | 'coordinator' | 'office_assistant' | 'librarian' | 'lab_assistant' | 'it_support' | 'marketing' | 'driver' | 'cook' | 'cleaner' | 'security_guard' | 'other'
 export type EnrollmentStatus = 'active' | 'paused' | 'completed' | 'dropped'
@@ -1954,6 +1954,41 @@ export type Database = {
         }
         Relationships: []
       }
+      platform_settings: {
+        Row: {
+          id: boolean
+          teacher_trial_days: number
+          center_trial_days: number
+          institution_trial_days: number
+          updated_at: string
+          updated_by: string | null
+        }
+        Insert: {
+          id?: boolean
+          teacher_trial_days: number
+          center_trial_days: number
+          institution_trial_days: number
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Update: {
+          id?: boolean
+          teacher_trial_days?: number
+          center_trial_days?: number
+          institution_trial_days?: number
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'platform_settings_updated_by_fkey'
+            columns: ['updated_by']
+            isOneToOne: false
+            referencedRelation: 'users'
+            referencedColumns: ['id']
+          },
+        ]
+      }
       policy_acceptances: {
         Row: {
           id: string
@@ -1999,41 +2034,6 @@ export type Database = {
           },
         ]
       }
-      platform_settings: {
-        Row: {
-          id: boolean
-          teacher_trial_days: number
-          center_trial_days: number
-          institution_trial_days: number
-          updated_at: string
-          updated_by: string | null
-        }
-        Insert: {
-          id?: boolean
-          teacher_trial_days: number
-          center_trial_days: number
-          institution_trial_days: number
-          updated_at?: string
-          updated_by?: string | null
-        }
-        Update: {
-          id?: boolean
-          teacher_trial_days?: number
-          center_trial_days?: number
-          institution_trial_days?: number
-          updated_at?: string
-          updated_by?: string | null
-        }
-        Relationships: [
-          {
-            foreignKeyName: 'platform_settings_updated_by_fkey'
-            columns: ['updated_by']
-            isOneToOne: false
-            referencedRelation: 'users'
-            referencedColumns: ['id']
-          },
-        ]
-      },
       price_versions: {
         Row: {
           id: string
@@ -2089,6 +2089,7 @@ export type Database = {
           created_at: string
           updated_at: string
           username: string | null
+          email: string | null
         }
         Insert: {
           id: string
@@ -2099,6 +2100,7 @@ export type Database = {
           created_at?: string
           updated_at?: string
           username?: string | null
+          email?: string | null
         }
         Update: {
           id?: string
@@ -2109,6 +2111,7 @@ export type Database = {
           created_at?: string
           updated_at?: string
           username?: string | null
+          email?: string | null
         }
         Relationships: [
           {
@@ -3524,7 +3527,7 @@ export type Database = {
           center_name: string | null
           owner_phone: string | null
           owner_name: string | null
-          teacher_mode?: boolean | null
+          account_kind?: string | null
         }
         Returns: string
       }
@@ -3575,6 +3578,26 @@ export type Database = {
         }
         Returns: Json
       }
+      founder_record_payment: {
+        Args: {
+          p_center: string | null
+          p_amount_poisha: number | null
+          p_months: number | null
+          p_reason: string | null
+          p_method?: PaymentMethod | null
+          p_reference?: string | null
+          p_idempotency_key?: string | null
+        }
+        Returns: Json
+      }
+      founder_set_trial_days: {
+        Args: {
+          p_teacher_trial_days: number | null
+          p_center_trial_days: number | null
+          p_institution_trial_days: number | null
+        }
+        Returns: Json
+      }
       import_students: {
         Args: {
           p_center_id: string | null
@@ -3585,7 +3608,7 @@ export type Database = {
       }
       platform_centers: {
         Args: Record<PropertyKey, never>
-        Returns: { center_id: string; center_name: string; center_phone: string; bd_area: string; status: CenterStatus; plan: PlanType; created_at: string; owner_name: string; owner_phone: string; students: number; teachers: number; batches: number; sms_credit_balance: number; attendance_30d: number; exams_30d: number; fee_payments_30d: number; collected_30d: number; taps_30d: number; notes_30d: number; results_30d: number; absences_30d: number; sms_30d: number; last_active_at: string; paid_bdt: number; last_paid_at: string; paid_through: string; wants_plan: PlanType; wants_since: string; wants_note: string; asks_open: number; asks_places: number; asks_since: string; branches: number }[]
+        Returns: { center_id: string; center_name: string; center_phone: string; bd_area: string; status: CenterStatus; plan: PlanType; created_at: string; owner_name: string; owner_phone: string; owner_email: string; students: number; teachers: number; batches: number; sms_credit_balance: number; attendance_30d: number; exams_30d: number; fee_payments_30d: number; collected_30d: number; taps_30d: number; notes_30d: number; results_30d: number; absences_30d: number; sms_30d: number; last_active_at: string; paid_bdt: number; last_paid_at: string; paid_through: string; wants_plan: PlanType; wants_since: string; wants_note: string; asks_open: number; asks_places: number; asks_since: string; branches: number }[]
       }
       platform_reconciliation: {
         Args: Record<PropertyKey, never>

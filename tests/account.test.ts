@@ -5,10 +5,12 @@ import path from 'node:path'
 
 import {
   describeLoginIdentifier,
+  identifierOfTyped,
   loginAddressOf,
   loginIdentifierOf,
   type LoginFields,
 } from '../src/lib/auth/identifier.ts'
+import { loginEmailFor } from '../src/lib/bd/username.ts'
 import { dict } from '../src/lib/i18n/index.ts'
 import { LOCALES } from '../src/lib/i18n/locale.ts'
 
@@ -136,6 +138,77 @@ test('both the screen and the password action ask this module, and neither tests
   assert.doesNotMatch(actions, /loginEmailFor\(/)
 })
 
+/* -------------------------------------------------------------------------- */
+/* And the same three, typed into the founder's lockout box                    */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * The founder's half of the question, and the half that cannot ask a session: the person who
+ * cannot get in is on the telephone, and all the founder has is what they read out.
+ *
+ * That form used to take a number and nothing else, so the two populations with no number —
+ * everybody who signed up through the app, and every teacher whose login is a username — had
+ * no way back into their own account at all.
+ */
+test('the founder’s box takes any of the three identifiers a person can read out', () => {
+  assert.deepEqual(identifierOfTyped('01712345678'), {
+    kind: 'phone',
+    value: '+8801712345678',
+  })
+  // Spaces, a `+880` and Bangla digits are all the same number, which is the shape somebody
+  // reads off a signboard rather than off a keyboard.
+  assert.deepEqual(identifierOfTyped('  +880 1712 345678 '), {
+    kind: 'phone',
+    value: '+8801712345678',
+  })
+  assert.deepEqual(identifierOfTyped('rahim'), { kind: 'username', value: 'rahim' })
+  assert.deepEqual(identifierOfTyped('Jamila.Akter@Gmail.com'), {
+    kind: 'email',
+    value: 'jamila.akter@gmail.com',
+  })
+})
+
+test('and refuses whatever the login screen would refuse, before any query', () => {
+  // The same list tests/username.test.ts holds the login dispatch to: a malformed address, a
+  // number that does not normalise, a username of the wrong shape. The founder is told there
+  // is no such account rather than shown a database error, and nothing is looked up.
+  for (const typed of [
+    '',
+    '   ',
+    'ab',
+    '0171234567',
+    '01012345678',
+    'rahim!',
+    'রহিম',
+    'name@',
+    '@gmail.com',
+    'a@b@c',
+    'a b@gmail.com',
+  ]) {
+    assert.equal(identifierOfTyped(typed), null, `accepted ${JSON.stringify(typed)}`)
+  }
+})
+
+test('what the founder types resolves to the value a session reports for that account', () => {
+  // The property that keeps the founder's lookup and the profile screen reading the same
+  // three columns: the kind it names is the field the session fills, and the address the
+  // value signs in with is the address the login screen builds from the same string.
+  for (const typed of ['01712345678', 'rahim', 'Jamila.Akter@Gmail.com']) {
+    const identifier = identifierOfTyped(typed)
+    assert.ok(identifier, `${typed} resolved to nothing`)
+
+    const session: LoginFields =
+      identifier.kind === 'phone'
+        ? { phone: identifier.value, username: null, email: null }
+        : identifier.kind === 'username'
+          ? { phone: null, username: identifier.value, email: null }
+          : { phone: null, username: null, email: identifier.value }
+
+    assert.deepEqual(loginIdentifierOf(session), identifier)
+    assert.equal(loginAddressOf(session), loginEmailFor(typed))
+  }
+})
+
 test('the password boxes are emptied once the change goes through', () => {
   // The five lines eight other forms in the app already open with, asserted here rather
   // than assumed because this is the only form whose boxes hold secrets. Left as it was,
@@ -150,4 +223,46 @@ test('the password boxes are emptied once the change goes through', () => {
 
   assert.match(form, /if \(state\?\.ok\) formRef\.current\?\.reset\(\)/)
   assert.match(form, /<form ref=\{formRef\}/)
+})
+
+/* -------------------------------------------------------------------------- */
+/* And the desk this screen is read on                                         */
+/* -------------------------------------------------------------------------- */
+
+test('the three cards use the width a laptop has, and a phone still reads them in order', () => {
+  const PAGE = readFileSync(
+    path.join(process.cwd(), 'src/app/(app)/account/page.tsx'),
+    'utf8',
+  )
+
+  // THE REPORTED BUG. The shell's `main` is `max-w-3xl` below `lg` and `max-w-7xl` above it,
+  // and each of these cards is capped at `max-w-2xl` — so from `lg` the whole screen sat in
+  // a 672px column at the left edge of a 1216px workspace with half of it empty. The fix is
+  // the grid's shape: two columns of the same cards, and no card made wider than it was.
+  assert.match(
+    PAGE,
+    /<div className="grid gap-5 lg:grid-cols-2 lg:items-start">/,
+    'the screen is one column on a desk again, so half of it is empty',
+  )
+  // And the fix is the grid, not a wider card: a form stretched across 1,216px is the
+  // other way to fill a desk and the wrong one.
+  assert.match(PAGE, /<Card className="max-w-2xl">/, 'a card lost its own cap')
+
+  // The bar stays OUT of the grid: `PageHeader` is a fragment at the top of the page's own
+  // column, and a cell — or a box of its own — gives it a containing block one grid row
+  // tall, so it stops sticking (tests/page-header.test.ts is the tripwire for that shape).
+  const bar = PAGE.indexOf('<PageHeader')
+  const grid = PAGE.indexOf('lg:grid-cols-2')
+  assert.ok(bar > 0 && grid > 0, 'the bar or the grid is gone')
+  assert.ok(bar < grid, 'the grid wraps the bar, which un-sticks it')
+
+  // And one column below `lg`, where the grid draws its cells in source order: the name, the
+  // identifier, then the password. A reader who has just corrected their own spelling is the
+  // reader about to try the login they cannot remember, so those two stay together — and
+  // either of them moving past the password is the bug this ordering pins.
+  const name = PAGE.indexOf('{t.nameTitle}')
+  const identifier = PAGE.indexOf('{login.value}')
+  const password = PAGE.indexOf('{t.passwordTitle}')
+  assert.ok(name < identifier, 'the identifier is no longer under the name')
+  assert.ok(identifier < password, 'the password box now comes before the login card')
 })

@@ -50,47 +50,74 @@ export default async function AccountPage() {
           without it the only way off this screen is the browser's back arrow. */}
       <PageHeader title={t.title} back={{ href: homePathFor(session), label: t.back }} />
 
-      {/* Capped on the cards and not on the column, so the bar reaches the workspace
-          edges while a name box stays the width of a name. */}
-      <Card className="max-w-2xl">
-        <h2 className="font-semibold text-ink">{t.nameTitle}</h2>
-        <p className="mb-3 mt-1 text-sm text-ink-soft">{t.nameBody}</p>
-        {/* `?? ''` and not the old "No name set" line: the box itself is where the
-            name is read now, and an empty box under the label "Name" says the same
-            thing without a second sentence to translate. */}
-        <NameForm fullName={session.fullName ?? ''} t={t} common={d.common} />
-      </Card>
+      {/*
+       * TWO COLUMNS FROM `lg`, WHICH IS EXACTLY WHERE THE WORKSPACE STOPS BEING A PHONE.
+       * Below that breakpoint the shell's `main` is a 672px column and these cards fill it.
+       * Above it `main` goes to 1216px, and the cards — each capped at `max-w-2xl`, because
+       * a box for a name should be the width of a name — went on sitting in the left 672px
+       * of it with the other 544 empty. That is the reported bug: the desk was there and
+       * the screen was not using it.
+       *
+       * The fix is the grid's shape rather than a wider card. Two columns of the same
+       * cards, the cap left on each of them, and nothing stretched to a width no form
+       * wants — see tests/account.test.ts, which pins the shape and the phone's order.
+       *
+       * The forms go in the left column and the password in the right, which keeps the
+       * identifier directly under the name on every screen: a reader who has just fixed
+       * their own spelling is the reader about to try the login they cannot remember, and
+       * saying it cannot be moved there saves the attempt (see the note on the identifier
+       * card). One column below `lg` — same order, top to bottom, which is the order a
+       * phone reads.
+       *
+       * The cap stays on the CARDS and never on the column that holds `PageHeader`: the
+       * bar bleeds to the workspace edges with `lg:-mx-8`, and a `max-w-*` above it stops
+       * that background at the column's edge. tests/page-header.test.ts is the tripwire,
+       * and this file is where that was got wrong once already.
+       */}
+      <div className="grid gap-5 lg:grid-cols-2 lg:items-start">
+        <div className="flex flex-col gap-5">
+          <Card className="max-w-2xl">
+            <h2 className="font-semibold text-ink">{t.nameTitle}</h2>
+            <p className="mb-3 mt-1 text-sm text-ink-soft">{t.nameBody}</p>
+            {/* `?? ''` and not the old "No name set" line: the box itself is where the
+                name is read now, and an empty box under the label "Name" says the same
+                thing without a second sentence to translate. */}
+            <NameForm fullName={session.fullName ?? ''} t={t} common={d.common} />
+          </Card>
 
-      {/* Whichever of the three this account signs in with, drawn only when it has one.
-          The card is here because this is the only screen that can say it: a staff login
-          is a number or a username somebody was told out loud once, and a self-serve
-          account is one of however many addresses its owner holds. `homePathFor` above
-          and this card are the two things a reader comes to this screen for. */}
-      {login && (
+          {/* Whichever of the three this account signs in with, drawn only when it has
+              one. The card is here because this is the only screen that can say it: a
+              staff login is a number or a username somebody was told out loud once, and a
+              self-serve account is one of however many addresses its owner holds.
+              `homePathFor` above and this card are the two things a reader comes to this
+              screen for. */}
+          {login && (
+            <Card className="max-w-2xl">
+              <p className="text-sm text-ink-faint">{login.label}</p>
+              {/* `break-all` on the two that can be long: an address or a username runs
+                  off the side of a 320px phone, where eleven digits never do. */}
+              <p
+                className={
+                  login.numeric ? 'num font-medium text-ink' : 'break-all font-medium text-ink'
+                }
+              >
+                {login.value}
+              </p>
+              <p className="mt-1 text-sm text-ink-soft">{login.hint}</p>
+            </Card>
+          )}
+        </div>
+
         <Card className="max-w-2xl">
-          <p className="text-sm text-ink-faint">{login.label}</p>
-          {/* `break-all` on the two that can be long: an address or a username runs off
-              the side of a 320px phone, where the eleven digits of a number never do. */}
-          <p
-            className={
-              login.numeric ? 'num font-medium text-ink' : 'break-all font-medium text-ink'
-            }
-          >
-            {login.value}
-          </p>
-          <p className="mt-1 text-sm text-ink-soft">{login.hint}</p>
+          <h2 className="font-semibold text-ink">{t.passwordTitle}</h2>
+          <p className="mb-3 mt-1 text-sm text-ink-soft">{t.passwordBody}</p>
+          <PasswordForm
+            t={t}
+            common={d.common}
+            nextHint={fill(t.nextHint, { n: digits(MIN_PASSWORD, locale) })}
+          />
         </Card>
-      )}
-
-      <Card className="max-w-2xl">
-        <h2 className="font-semibold text-ink">{t.passwordTitle}</h2>
-        <p className="mb-3 mt-1 text-sm text-ink-soft">{t.passwordBody}</p>
-        <PasswordForm
-          t={t}
-          common={d.common}
-          nextHint={fill(t.nextHint, { n: digits(MIN_PASSWORD, locale) })}
-        />
-      </Card>
+      </div>
     </div>
   )
 }

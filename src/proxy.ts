@@ -1,6 +1,8 @@
 import { NextResponse, type NextRequest } from 'next/server'
 import { createServerClient } from '@supabase/ssr'
 
+import { hasSessionCookie } from '@/lib/auth/session-cookie'
+
 /**
  * Routes reachable without a session.
  *
@@ -44,12 +46,37 @@ const PUBLIC_ROUTES = ['/login', '/signup', '/onboarding', '/auth', '/offline', 
 const TOKEN_ROUTES = ['/api/cron']
 
 /**
+ * `/login` carrying the whole target, query string included.
+ *
+ * `pathname` alone was silently dropping it twice over: the login URL kept a copy of the
+ * original parameters — `clone()` carries them and only the pathname was replaced — while
+ * `next` carried none of them, so signing in landed the reader on a bare path. A download
+ * link is where that stops being cosmetic: /api/export?kind=collections&month=… came back
+ * as /api/export, which the handler answers with "that is not a list we can produce". The
+ * login action still refuses anything that is not a same-origin path, so a query string
+ * riding along here cannot become an open redirect.
+ */
+function loginRedirect(request: NextRequest, pathname: string) {
+  const target = `${pathname}${request.nextUrl.search}`
+  const url = request.nextUrl.clone()
+  url.pathname = '/login'
+  url.search = ''
+  url.searchParams.set('next', target)
+  return NextResponse.redirect(url)
+}
+
+/**
  * Renamed from `middleware` in Next 16 — the file convention is deprecated.
  * Runs on the Node.js runtime by default now, which is what @supabase/ssr wants.
  *
  * This only refreshes the session and bounces signed-out visitors. It is not
  * the security boundary: RLS is. Every server action re-checks the user, since
  * a matcher change here must never be able to silently open a door.
+ *
+ * AND A REQUEST WITH NO SESSION COOKIE IS ANSWERED WITHOUT CALLING SUPABASE AT ALL, which
+ * is the one cost lever this file has: it runs on every navigation, and most of what passes
+ * through it has no session to check. See the note in the body, and lib/auth/session-cookie
+ * for why the cookie's *name* is enough to make that call on.
  */
 export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl
@@ -59,6 +86,32 @@ export async function proxy(request: NextRequest) {
   // The cron job would pay for it on every run and get nothing for it.
   if (TOKEN_ROUTES.some((route) => pathname.startsWith(route))) {
     return NextResponse.next({ request })
+  }
+
+  const isPublic = PUBLIC_ROUTES.some((route) => pathname.startsWith(route))
+
+  /*
+   * NO SESSION COOKIE, NO ROUND TRIP.
+   *
+   * `getUser()` is a network call to the auth server, and this file was making it for
+   * every request that reached it — including the ones with nothing to verify: a
+   * signed-out visitor on /login, a crawler on a public page, the installed app's first
+   * launch before anybody has signed in. The cookie is the only thing that call can find a
+   * session behind, so its absence already answers the question, and the two branches
+   * below are the same two the call produced: a public route is served, and a private one
+   * is sent to /login carrying its whole target.
+   *
+   * What is skipped is the refresh — and a refresh has nothing to do here: a session that
+   * does not exist cannot be renewed, and a request that carries no cookie has no expired
+   * token to rotate. Deciding this from the cookie's *presence* rather than from its
+   * contents is the point: reading the token to check an expiry would be a second place
+   * that decides whether a session is valid, and the answer this file is allowed to give
+   * is "ask Supabase", never "trust what I decoded".
+   */
+  const hasSession = hasSessionCookie(request.cookies.getAll())
+
+  if (!hasSession) {
+    return isPublic ? NextResponse.next({ request }) : loginRedirect(request, pathname)
   }
 
   let response = NextResponse.next({ request })
@@ -85,30 +138,14 @@ export async function proxy(request: NextRequest) {
   )
 
   // Refreshes an expiring session so a teacher mid-attendance is never
-  // bounced to the login screen.
+  // bounced to the login screen. A cookie is not a session — it can be expired, revoked
+  // or forged — so this is still the only thing that decides, for every request that has
+  // one. See the note above for the requests that do not.
   const {
     data: { user },
   } = await supabase.auth.getUser()
 
-  const isPublic = PUBLIC_ROUTES.some((route) => pathname.startsWith(route))
-
-  if (!user && !isPublic) {
-    // The whole target, query string included. `pathname` alone was silently
-    // dropping it twice over: the login URL kept a copy of the original
-    // parameters — `clone()` carries them and only the pathname was replaced —
-    // while `next` carried none of them, so signing in landed the reader on a
-    // bare path. A download link is where that stops being cosmetic:
-    // /api/export?kind=collections&month=… comes back as /api/export, which the
-    // handler answers with "that is not a list we can produce". The login action
-    // still refuses anything that is not a same-origin path, so a query string
-    // riding along here cannot become an open redirect.
-    const target = `${pathname}${request.nextUrl.search}`
-    const url = request.nextUrl.clone()
-    url.pathname = '/login'
-    url.search = ''
-    url.searchParams.set('next', target)
-    return NextResponse.redirect(url)
-  }
+  if (!user && !isPublic) return loginRedirect(request, pathname)
 
   return response
 }

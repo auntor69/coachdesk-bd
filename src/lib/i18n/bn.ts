@@ -7123,7 +7123,7 @@ export const bn = {
     },
     filters: {
       search: 'খুঁজুন',
-      searchHint: 'নাম, এলাকা বা ফোন নম্বর',
+      searchHint: 'নাম, এলাকা, ইমেইল বা ফোন নম্বর',
       /** কে, কী করতে পারবে তা নয় — দেখুন lib/accounts/kind.ts. */
       kind: 'কে',
       standing: 'অবস্থা',
@@ -7256,7 +7256,7 @@ export const bn = {
       adminsHint: 'যে অ্যাকাউন্টগুলো প্রতিটি গ্রাহকের হিসাব পড়তে পারে।',
       adminsEmpty: 'কোনও প্ল্যাটফর্ম অ্যাডমিন পড়া যায়নি, যা ঠিক হতে পারে না — আবার লোড করুন।',
       search: 'খুঁজুন',
-      searchHint: 'নাম, নম্বর বা ইউজারনেম',
+      searchHint: 'নাম, ইমেইল, নম্বর বা ইউজারনেম',
       customer: 'গ্রাহক',
       allCustomers: 'সব গ্রাহক',
       role: 'ভূমিকা',
@@ -7696,18 +7696,25 @@ export const bn = {
     lockout: {
       summary: 'কেউ ঢুকতে পারছে না',
       body:
-        'যে নম্বর দিয়ে তারা লগইন করে সেটি আর একটি নতুন পাসওয়ার্ড লিখুন, তারপর '
-        + 'ফোনেই পড়ে শোনান। এই সেন্টারের মালিক, ম্যানেজার বা শিক্ষক — যে কারও '
-        + 'চলবে। আগে থেকে লগইন করা অন্য ফোন নিজে থেকে লগআউট হবে না।',
-      phone: 'লগইন নম্বর',
-      phoneHint: 'যে নম্বর থেকে ফোন করছে, সাধারণত সেটিই।',
+        'তারা যে নম্বর, ইউজারনেম বা ইমেইল দিয়ে লগইন করে সেটি লিখুন আর একটি নতুন '
+        + 'পাসওয়ার্ড দিন, তারপর ফোনেই পড়ে শোনান। এই সেন্টারের মালিক, ম্যানেজার বা '
+        + 'শিক্ষক — যে কারও চলবে। আগে থেকে লগইন করা অন্য ফোন নিজে থেকে লগআউট হবে না।',
+      /*
+       * Three identifiers in one label, because the field takes all three: a number for a
+       * staff login, §5.2's username for a teacher who was given one, and §5.4's address for
+       * anybody who signed up through the app — which is most customers now, and the shape
+       * this label read as "নম্বর" only until it was fixed.
+       */
+      identifier: 'লগইন নম্বর, ইউজারনেম বা ইমেইল',
+      identifierHint: 'গ্রাহকের নিজের স্ক্রিনে যা লেখা আছে — তিনটির যেটি দিয়েই সে ঢোকে।',
       password: 'নতুন পাসওয়ার্ড',
       passwordHint: 'স্ক্রিনে দেখা যাবে, কারণ এটি পড়ে শোনাতে হবে।',
       submit: 'পাসওয়ার্ড দিন',
       saving: 'দেওয়া হচ্ছে…',
       failed: 'করা যায়নি। আবার চেষ্টা করুন।',
       errors: {
-        noAccount: 'এই নম্বরে কোনো অ্যাকাউন্ট নেই। নম্বরটি আবার মিলিয়ে নিন।',
+        noAccount:
+          'এই নম্বর, ইউজারনেম বা ইমেইলের কোনো অ্যাকাউন্ট নেই। আরেকবার মিলিয়ে নিন।',
         self:
           'এটি আপনার নিজের অ্যাকাউন্ট। নিজের পাসওয়ার্ড বদলানোর জায়গা এটি নয় — '
           + 'অ্যাকাউন্ট স্ক্রিন থেকে বদলান।',
@@ -7715,7 +7722,7 @@ export const bn = {
           'এই অ্যাকাউন্ট পুরো প্ল্যাটফর্মের, কোনো সেন্টারের নয়। এখান থেকে এটির '
           + 'পাসওয়ার্ড দেওয়া যাবে না।',
         notStaff:
-          'এই নম্বরের অ্যাকাউন্ট এই সেন্টারে কাজ করে না। নম্বর আর সেন্টার — '
+          'এই আইডির অ্যাকাউন্ট এই সেন্টারে কাজ করে না। আইডি আর সেন্টার — '
           + 'দুটোই মিলিয়ে নিন।',
       },
     },
@@ -7732,6 +7739,10 @@ export const bn = {
       plan: 'প্ল্যান',
       bill: 'মাসিক বিল',
       owner: 'মালিক',
+      /* §5.4's identifier, and the one that exists for a centre which signed up through
+         the app: an address and no number at all. Both columns are in the sheet, so
+         whichever a founder filters on, the other stays beside it. */
+      ownerEmail: 'মালিকের ইমেইল',
       ownerPhone: 'মালিকের নম্বর',
       centerPhone: 'সেন্টারের নম্বর',
       students: 'শিক্ষার্থী',

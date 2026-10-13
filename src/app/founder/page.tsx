@@ -43,11 +43,19 @@ import { FounderNav } from './nav'
  * introduce itself to anyone who has not been told about it.
  */
 
-/** Badge colours per center_status. Cancelled is grey — it is over, not urgent. */
+/**
+ * Badge colours per center_status. Cancelled is grey — it is over, not urgent.
+ *
+ * From the semantic tokens and not from Tailwind's own red and amber, which is the rule
+ * everywhere else in the app: `absent` and `late` are the two colours this product has one
+ * meaning for each, the same pair the register uses for a missing child and a late one. A
+ * chip in `text-red-700` is a second red beside them, a shade off, and the founder panel is
+ * where it was found — see the note in ./money/page.tsx.
+ */
 const STATUS_STYLE: Record<CenterStatus, string> = {
   active: 'border-brand-200 bg-brand-50 text-brand-800',
-  trial: 'border-amber-200 bg-amber-50 text-amber-800',
-  suspended: 'border-red-200 bg-red-50 text-red-700',
+  trial: 'border-late/40 bg-late/5 text-late',
+  suspended: 'border-absent/30 bg-absent/5 text-absent',
   cancelled: 'border-line bg-surface-alt text-ink-soft',
 }
 
@@ -119,11 +127,11 @@ const ORDER: Record<SortKey, (a: Customer, b: Customer) => number> = {
  *
  * WHAT IT HAS NOW: a search, a kind filter, a standing filter and four orders — see
  * SORTS and the note on `matched`. They narrow what is already on the page and nothing
- * else: the search reads names, areas and the two phone numbers, so a founder can find
- * the customer who is on the line with them without scrolling eleven cards, and the
- * kind filter answers the one question the panel could not before (§16.1: a solo
- * teacher and a coaching centre were the same row here, and they are two different
- * conversations).
+ * else: the search reads names, areas, and every way the panel holds to reach somebody —
+ * the owner's address, the owner's number and the centre's own — so a founder can find
+ * the customer who is on the line with them without scrolling eleven cards, and the kind
+ * filter answers the one question the panel could not before (§16.1: a solo teacher and a
+ * coaching centre were the same row here, and they are two different conversations).
  *
  * AND ONE THING BEHIND A CUSTOMER: their name opens `./[centerId]/page.tsx`, the record —
  * what they are, what they use, what their money has done, who can get in, and what we have
@@ -293,7 +301,7 @@ export default async function FounderPage({
       if (!query) return true
       // Name, area, and whoever the founder would ring — the three things they have in
       // front of them when they are looking somebody up.
-      const haystack = [c.name, c.area, c.ownerName, c.ownerPhone, c.phone]
+      const haystack = [c.name, c.area, c.ownerName, c.ownerEmail, c.ownerPhone, c.phone]
         .filter(Boolean)
         .join(' ')
         .toLowerCase()
@@ -725,8 +733,8 @@ export default async function FounderPage({
                           className={`rounded-lg border px-2 py-0.5 text-xs
                             ${
                               c.trialDaysLeft < 0
-                                ? 'border-red-600 bg-red-600 font-semibold text-white'
-                                : 'border-amber-200 bg-amber-50 font-medium text-amber-800'
+                                ? 'border-absent bg-absent font-semibold text-white'
+                                : 'border-late/40 bg-late/5 font-medium text-late'
                             }`}
                         >
                           {c.trialDaysLeft < 0
@@ -744,7 +752,7 @@ export default async function FounderPage({
                           three weeks late. */}
                       {c.owes && (
                         <span
-                          className="rounded-lg border border-red-600 bg-red-600
+                          className="rounded-lg border border-absent bg-absent
                             px-2 py-0.5 text-xs font-semibold text-white"
                         >
                           {t.owed.badge}
@@ -753,8 +761,8 @@ export default async function FounderPage({
                       {/* Marked, not moved — see the note on `customers`. */}
                       {c.quiet && (
                         <span
-                          className="rounded-lg border border-red-200 bg-red-50 px-2
-                            py-0.5 text-xs font-medium text-red-700"
+                          className="rounded-lg border border-absent/30 bg-absent/5 px-2
+                            py-0.5 text-xs font-medium text-absent"
                         >
                           {c.daysQuiet === null
                             ? t.neverActive
@@ -772,7 +780,7 @@ export default async function FounderPage({
                         chip with a button — the owner answers it on their own plan
                         screen, and there is nothing here for the founder to press. */}
                     {c.asksOpen > 0 && (
-                      <p className="num mt-1 text-sm font-medium text-amber-800">
+                      <p className="num mt-1 text-sm font-medium text-late">
                         {[
                           t.outOfPlaces(c.asksOpen, c.asksPlaces),
                           waitingSince && t.outOfPlacesSince(waitingSince),
@@ -816,11 +824,27 @@ export default async function FounderPage({
                       />
                     )}
 
-                    {/* Who to ring, as a link that dials on the phone the founder
-                        is holding. The one contact detail this panel carries, and
-                        the founder already has it — they signed them up. */}
+                    {/* Who to reach, as the link that works on the screen the founder
+                        is holding: an address opens their mail app, a number dials.
+                        Exactly one of the two is set — a staff login is keyed on a
+                        number, a self-serve signup on an address (§5.4) — so this draws
+                        one link rather than offering a choice, and the centre that
+                        signs up through the app is the one with no number at all. */}
                     <p className="mt-1 text-sm text-ink-soft">
                       {c.ownerName ?? t.noOwner}
+                      {c.ownerEmail && (
+                        <>
+                          {' — '}
+                          {/* `break-all`, because an address is twice the width of a
+                              number and this card is a column on a phone. */}
+                          <a
+                            href={`mailto:${c.ownerEmail}`}
+                            className="break-all font-medium text-brand-700"
+                          >
+                            {c.ownerEmail}
+                          </a>
+                        </>
+                      )}
                       {c.ownerPhone && (
                         <>
                           {' — '}

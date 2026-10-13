@@ -62,9 +62,12 @@ test('the not-live banner is above every figure it is the caveat on', () => {
   // put it and where a reader meets it after believing the numbers.
   assert.ok(PAGE.indexOf('{t.notLiveTitle}') < PAGE.indexOf('{t.balance}'))
   assert.ok(PAGE.includes('{!smsProviderConfigured() && ('), 'and still only when it is true')
+  // The app's own attention colour, not a hand-picked amber: `late` is the one
+  // warning token every other notice on every other screen is built from, and a
+  // second amber in the palette is how two warnings stop looking alike.
   assert.ok(
     PAGE.includes(
-      '<div className="max-w-4xl rounded-xl border-2 border-amber-300 bg-amber-50 px-4 py-3">',
+      '<div className="max-w-4xl rounded-xl border-2 border-late/40 bg-late/5 px-4 py-3">',
     ),
     'capped: two sentences of warning are unreadable at 1,216px',
   )

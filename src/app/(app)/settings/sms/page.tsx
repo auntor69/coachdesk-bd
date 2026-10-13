@@ -163,9 +163,9 @@ export default async function SmsSettingsPage() {
           every number below it, and a reader who meets it after the tallies has
           already believed them. */}
       {!smsProviderConfigured() && (
-        <div className="max-w-4xl rounded-xl border-2 border-amber-300 bg-amber-50 px-4 py-3">
-          <p className="font-semibold text-amber-900">{t.notLiveTitle}</p>
-          <p className="mt-1 text-sm text-amber-900/90">{t.notLiveBody}</p>
+        <div className="max-w-4xl rounded-xl border-2 border-late/40 bg-late/5 px-4 py-3">
+          <p className="font-semibold text-late">{t.notLiveTitle}</p>
+          <p className="mt-1 text-sm text-late/90">{t.notLiveBody}</p>
         </div>
       )}
 
