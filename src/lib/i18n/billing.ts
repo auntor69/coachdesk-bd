@@ -93,6 +93,12 @@ export type BillingWords = {
   kindBonus: string
   kindAdjust: string
   kindGrant: string
+  /**
+   * The days a signup was given (20260811000091) — the product's own offer rather than a
+   * favour somebody decided to do, which is why it is a kind of its own and a label of its
+   * own in the customer's history.
+   */
+  kindTrial: string
   kindRefund: string
   kindReversal: string
   kindCorrection: string
@@ -164,6 +170,7 @@ const EN: BillingWords = {
   kindBonus: 'Recharge bonus',
   kindAdjust: 'Balance adjustment',
   kindGrant: 'Days granted',
+  kindTrial: 'Signup trial',
   kindRefund: 'Refund',
   kindReversal: 'Reversal',
   kindCorrection: 'Correction',
@@ -234,6 +241,7 @@ const BN: BillingWords = {
   kindBonus: 'রিচার্জ বোনাস',
   kindAdjust: 'ব্যালেন্স সমন্বয়',
   kindGrant: 'দিন দেওয়া হয়েছে',
+  kindTrial: 'সাইনআপ ট্রায়াল',
   kindRefund: 'ফেরত',
   kindReversal: 'বাতিল',
   kindCorrection: 'সংশোধন',

@@ -17,7 +17,7 @@ export type AttendanceStatus = 'present' | 'absent' | 'late' | 'excused'
 export type AttendanceUnlockReason = 'early' | 'forgot'
 export type AuditOperation = 'created' | 'updated' | 'deleted'
 export type BatchSlot = 'morning' | 'noon' | 'afternoon' | 'evening' | 'night'
-export type BillingEntryKind = 'recharge' | 'promotion_bonus' | 'daily_charge' | 'founder_money_adjustment' | 'founder_grant_days' | 'refund' | 'reversal' | 'correction' | 'settlement_failure' | 'settlement_retry' | 'migration_opening_balance'
+export type BillingEntryKind = 'recharge' | 'promotion_bonus' | 'daily_charge' | 'founder_money_adjustment' | 'founder_grant_days' | 'signup_trial' | 'refund' | 'reversal' | 'correction' | 'settlement_failure' | 'settlement_retry' | 'migration_opening_balance'
 export type CenterStatus = 'trial' | 'active' | 'suspended' | 'cancelled'
 export type EmployeeRole = 'manager' | 'accountant' | 'receptionist' | 'coordinator' | 'office_assistant' | 'librarian' | 'lab_assistant' | 'it_support' | 'marketing' | 'driver' | 'cook' | 'cleaner' | 'security_guard' | 'other'
 export type EnrollmentStatus = 'active' | 'paused' | 'completed' | 'dropped'
@@ -788,6 +788,7 @@ export type Database = {
           paid_through: string | null
           balance_poisha: number
           charged_through: string
+          account_kind: string
         }
         Insert: {
           id?: string
@@ -810,6 +811,7 @@ export type Database = {
           paid_through?: string | null
           balance_poisha?: number
           charged_through?: string
+          account_kind?: string
         }
         Update: {
           id?: string
@@ -832,6 +834,7 @@ export type Database = {
           paid_through?: string | null
           balance_poisha?: number
           charged_through?: string
+          account_kind?: string
         }
         Relationships: [
           {
@@ -1996,6 +1999,41 @@ export type Database = {
           },
         ]
       }
+      platform_settings: {
+        Row: {
+          id: boolean
+          teacher_trial_days: number
+          center_trial_days: number
+          institution_trial_days: number
+          updated_at: string
+          updated_by: string | null
+        }
+        Insert: {
+          id?: boolean
+          teacher_trial_days: number
+          center_trial_days: number
+          institution_trial_days: number
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Update: {
+          id?: boolean
+          teacher_trial_days?: number
+          center_trial_days?: number
+          institution_trial_days?: number
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'platform_settings_updated_by_fkey'
+            columns: ['updated_by']
+            isOneToOne: false
+            referencedRelation: 'users'
+            referencedColumns: ['id']
+          },
+        ]
+      },
       price_versions: {
         Row: {
           id: string

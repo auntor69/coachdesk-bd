@@ -4770,6 +4770,226 @@ export const en: Dictionary = {
     noOwner: 'No owner on record',
     window: 'Attendance, exams, collections and messages cover the last 30 days.',
     gatewayNote: 'Gateway SMS is zero everywhere — no BTRC sender ID has been registered yet.',
+    /**
+     * The list's controls, and the line under them that says what they did.
+     *
+     * `showing` IS THE IMPORTANT ONE. Filters that quietly hide customers turn a panel
+     * of eleven into a panel of four, and the founder who forgets which filters are on
+     * is the founder who concludes they have lost seven customers. So the count is not
+     * optional decoration — it is drawn on every render, filtered or not.
+     *
+     * Both counts arrive as already-localised digits, because `digits` needs the locale
+     * and this file has none — the same split `queueSent` and `sizeLine` follow.
+     */
+    /**
+     * The panel's five sections. `label` is the nav's own name, read aloud by a screen reader
+     * before the links rather than drawn.
+     */
+    nav: {
+      label: 'Founder panel',
+      customers: 'Customers',
+      money: 'Money & growth',
+      health: 'System health',
+      accounts: 'Accounts & staff',
+      audit: 'Audit log',
+    },
+    filters: {
+      search: 'Search',
+      searchHint: 'A name, an area or a phone number',
+      /** Who the account is, not what they may do — see lib/accounts/kind.ts. */
+      kind: 'Who',
+      standing: 'Standing',
+      order: 'Order',
+      kinds: {
+        any: 'Anyone',
+        teacher: 'Teacher',
+        center: 'Coaching centre',
+        institution: 'Institution',
+      },
+      /** The unset option on both dropdowns. "Any" and not "All": neither filters. */
+      any: 'Any',
+      orders: {
+        bill: 'Biggest bill first',
+        quiet: 'Gone quiet first',
+        newest: 'Newest first',
+        name: 'Name',
+      },
+      apply: 'Filter',
+      clear: 'Clear',
+      showing: (shown: string, all: string) => `${shown} of ${all} customers`,
+      none: 'No customer matches.',
+      noneHint: 'Clear the filters to see everybody again.',
+    },
+    /**
+     * The platform's own log — §10's question asked from our side of the fence.
+     *
+     * The three operation words are not the log's own enum read aloud: a founder scanning
+     * fifty lines asks "did somebody add something, change something, or take something
+     * away", and `created` is a word for a database rather than for that question.
+     *
+     * `scope` is the line that has to be here. What this screen shows is a fifth of what the
+     * log holds (see lib/platform/audit.ts), and a founder who assumed it was the whole
+     * record would answer a customer's question wrongly.
+     */
+    audit: {
+      title: 'Audit log',
+      lead: 'Every change to a customer, a payment, a subscription or a login — who made it and when.',
+      center: 'Customer',
+      allCenters: 'Every customer',
+      entity: 'What',
+      allEntities: 'Everything',
+      operation: 'How',
+      anyOperation: 'Any kind',
+      operations: {
+        created: 'Added',
+        updated: 'Changed',
+        deleted: 'Removed',
+      },
+      apply: 'Show',
+      clear: 'Clear',
+      lines: (shown: string) => `${shown} lines, newest first`,
+      none: 'Nothing of that kind yet.',
+      noneHint: 'Clear the filters to see the whole log.',
+      /** A line whose centre could not be named. The line is still drawn, and says so. */
+      unknownCenter: 'A customer we could not name',
+      scope:
+        'This is our side of the record: the centre itself, payments, payment requests, '
+        + 'subscriptions and logins. What happens inside a centre — its register, its fees, '
+        + 'its students — is in that centre\'s own log, and stays there.',
+    },
+    /**
+     * Six months of the business.
+     *
+     * "Recharged" and not "revenue", and "burned" rather than "cost": §9.1 forbids the word
+     * revenue anywhere in the product, and the two labels beside the days each centre spent are
+     * the same two words the customer's own billing screen uses for the same two numbers.
+     *
+     * `whatCounts` is the line that keeps the table honest. A grant, an adjustment, a refund and
+     * a failed settlement are all real rows in the ledger and none of them is in either money
+     * column, so a founder who remembers one of those appears to be looking at a bug.
+     */
+    growth: {
+      title: 'Money & growth',
+      lead: 'Six months of the business: who joined, what came in, and what the centres burned.',
+      /** What we are holding for customers — days we owe, drawn apart from money in. */
+      held: 'Balance held',
+      monthsTitle: 'Six months',
+      monthsLead:
+        'Money in is what customers recharged. Money out is the days their centres were charged for.',
+      month: 'Month',
+      signups: 'New',
+      recharged: 'In',
+      burned: 'Burned',
+      net: 'Net',
+      truncated:
+        'The ledger read reached its cap, so the oldest months may be short — read them as a floor.',
+      unreadable:
+        'The ledger could not be read, so the months are not drawn. The figures above still stand.',
+      whatCounts:
+        'Only a recharge and the bonus it earned count as money in, and only a day charged counts '
+        + 'as money out. A granted day, an adjustment, a refund and a failed settlement are '
+        + 'corrections rather than income, so they are in the customer\'s own history and in '
+        + 'neither column here.',
+    },
+    /**
+     * What is quietly broken.
+     *
+     * Every sentence has three arms — empty, non-empty, and *unreadable* — and the third is not
+     * politeness: this page's whole job is to distinguish "nothing is wrong" from "nothing could
+     * be read", and a failed read drawn as a zero is the exact failure it exists to catch.
+     */
+    health: {
+      title: 'System health',
+      lead: 'What is waiting on us, and what does not reconcile.',
+      clear: 'Nothing is waiting and the books reconcile.',
+      clearHint: 'Every recharge is confirmed, every purchase is finished, and nobody owes us.',
+      waitingTitle: 'Waiting on us',
+      claims: (count: string, oldest: string) =>
+        `${count} recharges to confirm — the oldest was sent ${oldest}`,
+      claimsNone: 'No recharge is waiting to be confirmed.',
+      claimsUnknown: 'The recharges could not be read — check them on the customer list.',
+      purchases: (count: string, oldest: string) =>
+        `${count} purchases started and not finished — the oldest is from ${oldest}`,
+      purchasesNone: 'No purchase is sitting half-done.',
+      purchasesUnknown: 'The purchases could not be read.',
+      atLeast: (count: string) => `at least ${count}`,
+      owing: (count: string, amount: string) =>
+        `${count} customers have not covered the month behind them — ${amount} between them`,
+      owingNone: 'Nobody has fallen behind on their billing.',
+      blindSpots:
+        'Two things this page cannot see. The gateway is metered and switched off, so a zero there '
+        + 'is not a fault. And every count in this panel covers thirty days: an old problem that '
+        + 'has since been fixed does not appear here at all.',
+    },
+    /**
+     * Every login, and our own team.
+     *
+     * `adminsHint` says what the number means rather than who is on the list — this is the one
+     * figure in the panel about *us*, and it is the count of people who can read every customer's
+     * record.
+     */
+    accounts: {
+      title: 'Accounts & staff',
+      lead: 'Every login on every customer, and everyone here who can open this panel.',
+      adminsTitle: 'Our team',
+      adminsHint: 'Accounts that can read every customer\'s record.',
+      adminsEmpty: 'No platform admin could be read, which cannot be right — reload.',
+      search: 'Search',
+      searchHint: 'A name, a number or a username',
+      customer: 'Customer',
+      allCustomers: 'Every customer',
+      role: 'Role',
+      allRoles: 'Any role',
+      apply: 'Filter',
+      clear: 'Clear',
+      showing: (shown: string, all: string) => `${shown} of ${all} logins`,
+      stopped: 'Switched off',
+      noName: 'No name on record',
+      unknownCustomer: 'A customer we could not name',
+      since: (date: string) => `since ${date}`,
+      none: 'No login matches.',
+      noneHint: 'Clear the filters to see them all.',
+      unreadable: 'Could not read the logins.',
+      unreadableHint: 'Reload. If it stays broken, go and look at the database.',
+    },
+    /**
+     * One customer's record, in full — the drill-down behind every row of the list.
+     *
+     * TWO THINGS ARE REUSED RATHER THAN REWRITTEN: the nine 30-day counts are the list's own
+     * `usage` labels, and the four states are its `status` words. A second set of words for the
+     * same nine numbers is how a figure ends up called two things on two screens.
+     *
+     * `ledgerAfter` says "left", not "balance after": a founder reading thirty lines down a
+     * phone wants the running figure to read as a sentence, and the column it comes from is in
+     * the database for whoever needs the precise name.
+     */
+    record: {
+      accountTitle: 'The account',
+      owner: 'Owner',
+      phone: 'Centre number',
+      area: 'Area',
+      signedUp: 'Signed up',
+      lastUsed: 'Last used',
+      trial: 'Trial ends',
+      paidThrough: 'Paid up to',
+      moneyTitle: 'Money',
+      ledgerTitle: 'The balance, entry by entry',
+      ledgerLead: 'The newest thirty things that moved this customer\'s balance.',
+      ledgerEmpty: 'Nothing has touched the balance yet.',
+      ledgerCharge: 'A day charged',
+      ledgerTopUp: 'A day charged again as the roster grew',
+      ledgerAfter: (amount: string) => `left ${amount}`,
+      daysGranted: (days: string) => `${days} days granted`,
+      staffTitle: 'Who can get in',
+      staffEmpty: 'Nobody has a login on this centre yet.',
+      staffStopped: 'Switched off',
+      staffSince: (date: string) => `since ${date}`,
+      auditTitle: 'What we have done',
+      auditEmpty: 'Nothing of ours is recorded against this customer yet.',
+      auditAll: 'The whole log',
+      unreadable: 'Could not read this customer.',
+      unreadableHint: 'Reload. If it stays broken, go and look at the database.',
+    },
     status: {
       trial: 'Trial',
       active: 'Active',
@@ -4849,6 +5069,36 @@ export const en: Dictionary = {
       `Recorded ${amount} — ${from} to ${to}.`,
     paymentSavedMonth: (amount: string, month: string) =>
       `Recorded ${amount} — for ${month}.`,
+    /**
+     * The receipt for money that went onto the balance — a centre's payment since
+     * 20260811000092. No window and no months: the balance buys days a day at a time, and
+     * the sentence this replaced ("from August to August") described a coverage window
+     * nothing in the product reads any more.
+     */
+    paidBalance: (amount: string) => `Recorded ${amount} on their balance.`,
+    /**
+     * And a teacher's, which buys months of Teacher Pro. The amount is the one the price
+     * card produced rather than the one the form held — the same rule the bonus follows.
+     */
+    paidMonths: (amount: string, months: string) =>
+      `Recorded ${amount} — ${months} of Teacher Pro.`,
+    /**
+     * What a signup is given, in days. §4.3, 20260811000091: a policy rather than a price,
+     * and the founder changes it here rather than in a migration.
+     */
+    settings: {
+      title: 'Trials',
+      lead: 'What a new account gets before it pays. A teacher is trialled on a tier; a '
+        + 'coaching centre or an institution is given days on its own tier.',
+      teacherDays: 'Teacher trial (days)',
+      centerDays: 'Coaching centre trial (days)',
+      institutionDays: 'Institution trial (days)',
+      save: 'Save trials',
+      saving: 'Saving…',
+      saved: 'Saved.',
+      badDays: 'Whole days, between 0 and 365.',
+      failed: 'Could not save it. Try again.',
+    },
     planSaved: (plan: string, state: string) => `Now ${plan} · ${state}.`,
     /**
      * A credit, composed on the server because it carries a figure and the group below is
@@ -4878,6 +5128,11 @@ export const en: Dictionary = {
       payTitle: 'Record a payment',
       amount: 'Amount',
       amountHint: 'This month’s bill is prefilled — change it if they paid something else.',
+      /**
+       * Said on a teacher's card, where the figure above is not the founder's to give: a
+       * subscription is priced from `price_versions` by the database (20260811000092).
+       */
+      amountPriced: 'A teacher’s amount comes off the price list — this figure is only used for a centre.',
       method: 'How it came',
       coversFrom: 'From which month',
       months: 'How many months',

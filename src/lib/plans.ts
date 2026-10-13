@@ -281,6 +281,25 @@ export const PLAN_RANK: Record<PlanId, number> = {
   institution: 3,
 }
 
+/**
+ * Whether this is one of the two tiers that are one person (MASTERPLAN.md §2.1).
+ *
+ * THE LINE THE PRODUCT IS PRICED ON, asked by id rather than inferred, and it is asked by
+ * one decision: how a dry purse is read. A centre prepays a balance and is read-only when
+ * the money runs out (§4.4, §11.6); a teacher subscribes, and the month their money runs
+ * out they are a Teacher Free account — which is a real tier with a real cap, and the whole
+ * reason the free tier exists as a hook rather than as a demo.
+ *
+ * `hasStaff` answers a nearby question and is deliberately not reused: it reads
+ * `features.staffManagement`, which is about colleagues and is false on every solo tier
+ * only because a solo tier has no colleagues to manage. This is about who the customer is,
+ * and a feature flag moved for an unrelated pricing reason would take this decision with
+ * it.
+ */
+export function isTeacherTier(plan: PlanLimits): boolean {
+  return plan.id === 'teacher_free' || plan.id === 'teacher_plus'
+}
+
 /* -------------------------------------------------------------------------- */
 /* Centre pricing                                                             */
 /* -------------------------------------------------------------------------- */

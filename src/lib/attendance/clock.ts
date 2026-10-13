@@ -42,8 +42,9 @@
  *
  * Relative imports with the extension, like every other unit-tested module here:
  * these tests run under `node --test`, which resolves neither tsconfig paths nor
- * extensionless specifiers.
+ * extensionless specifiers. Type-only, so nothing here pulls plans.ts in at runtime.
  */
+import type { PlanLimits } from '../plans.ts'
 
 /**
  * How long after a class ends its register may still be taken without a signature.
@@ -70,6 +71,27 @@ export const ATTENDANCE_GRACE_MINUTES = 30
  * signed, and moving this date is what says the words are different now.
  */
 export const ATTENDANCE_SIGNATURE_VERSION = '2026-10-09'
+
+/**
+ * Whether this plan is on the clock gate at all (20260811000090).
+ *
+ * THE OWNER'S RULE, in the shape the rest of this file quotes it: the gate is a rule
+ * about a centre's staff — registers being filed by somebody other than the person
+ * asking — and on Teacher (Free) and Teacher Pro there is one teacher and no colleague
+ * to account to (`maxTeachers` 1, `staffManagement` false). A signature there would be
+ * a teacher signing for themselves, and "counted as cancelled" would be the product
+ * scolding its only user for teaching an evening class against a morning timetable.
+ * Centre and Institution are gated; the two teacher tiers take attendance when they
+ * want.
+ *
+ * THE SQL TWIN IS `app.clock_enforced()` in 20260811000090, and attendance-clock.test.ts
+ * holds this list to that one. The two database guards and these four call sites ask
+ * the same question in two languages: drift between them is either a signature card
+ * the database would refuse or a save the page never warned about.
+ */
+export function clockEnforced(plan: PlanLimits): boolean {
+  return plan.id === 'center' || plan.id === 'institution'
+}
 
 /**
  * The four states, plus the one for a batch the timetable has nothing to say about.
@@ -196,8 +218,17 @@ export function classState(input: {
   endsAt: string | null | undefined
   /** Whether this day already has a register. */
   taken: boolean
+  /**
+   * Whether this plan has the gate at all — `clockEnforced(session.plan)`, and on
+   * the two teacher tiers it is false: the four states below do not exist there, and
+   * every hour reads 'open'. The database asks the same question through
+   * `app.clock_enforced()` before its own two refusals, so the card this state draws
+   * and the guard that backs it stand on the same side of the plan.
+   */
+  enforced: boolean
 }): AttendanceState {
   if (input.taken) return 'filed'
+  if (!input.enforced) return 'open'
 
   const now = parseClock(input.now)
   const start = parseClock(input.startsAt)

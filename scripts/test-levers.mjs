@@ -377,6 +377,122 @@ check(
 check('and the refused amount changed nothing', (await balance(wallet.id)) === 130_000)
 
 /* -------------------------------------------------------------------------- */
+/* The money a customer sent, recorded by the founder (§11.5)                 */
+/* -------------------------------------------------------------------------- */
+
+console.log('\nRecording a payment that has arrived:')
+
+/*
+ * 20260811000093'S OWN REGRESSION, as a call rather than a text match.
+ *
+ * `founder_record_payment` writes a `recharge`, and 20260811000080 requires a card on that
+ * kind — an invariant the function broke for exactly one migration: on the live database
+ * every call raised 23514 after the receipt and before the balance moved, while the panel
+ * drew, the API spec listed the RPC and every suite stayed green, because nothing here
+ * called the function at all. The second check below is the one that would have caught it.
+ */
+const card = (
+  await db.query(
+    `select id, teacher_plus_monthly_poisha::int as monthly
+       from price_versions
+      order by effective_from desc
+      limit 1`,
+  )
+).rows[0]
+
+const recordPayment = (center, { amount = null, months = null, reason = 'Sent by bKash', key = null } = {}) =>
+  asUser(db, founder, (tx) =>
+    tx.query(
+      `select public.founder_record_payment(
+         $1::uuid, $2::bigint, $3::integer, $4::text, 'bkash', null, $5::uuid
+       ) as out`,
+      [center, amount, months, reason, key],
+    ),
+  )
+
+/* The kind is set by hand, because `account_kind` defaults to `teacher`. */
+const paidCentre = (
+  await asService(
+    `insert into coaching_centers (name, plan, status, account_kind)
+     values ('Paid ' || gen_random_uuid()::text, 'center', 'active', 'center')
+     returning id`,
+  )
+).rows[0].id
+
+const key = '7a5e2c9d-0000-4000-8000-000000000001'
+const first = (await recordPayment(paidCentre, { amount: 500_000, key })).rows[0].out
+
+check(
+  'the money reaches the balance the burn spends',
+  first.ok === true && first.already === false && first.balanceAfter === 500_000,
+  JSON.stringify(first),
+)
+check(
+  'and the recharge names the card in force — what 20260811000080 requires of the kind',
+  (await n(
+    db,
+    `select count(*)::int as n from billing_ledger
+      where coaching_center_id = $1 and kind = 'recharge' and amount_poisha = 500000
+        and price_version_id = $2 and payment_id is not null`,
+    [paidCentre, card.id],
+  )) === 1,
+)
+
+const replay = (await recordPayment(paidCentre, { amount: 500_000, key })).rows[0].out
+check(
+  'a replayed submit is the same payment, not a second credit',
+  replay.already === true && replay.balanceAfter === 500_000,
+  JSON.stringify(replay),
+)
+check(
+  'and one receipt exists',
+  (await n(db, 'select count(*)::int as n from payments where coaching_center_id = $1', [paidCentre])) === 1,
+)
+check(
+  'a customer pulling the same lever is refused',
+  (await refusal(() =>
+    asUser(db, owner, (tx) =>
+      tx.query(`select public.founder_record_payment($1::uuid, 100000, null, 'mine now')`, [
+        paidCentre,
+      ]),
+    ),
+  )) === '42501',
+)
+
+/* A teacher: the amount is the published price for the months, never the founder's typing. */
+const teacherPaid = (
+  await asService(
+    `insert into coaching_centers (name, plan, status, account_kind)
+     values ('Teacher ' || gen_random_uuid()::text, 'teacher_free', 'active', 'teacher')
+     returning id`,
+  )
+).rows[0].id
+
+const pro = (await recordPayment(teacherPaid, { months: 2, reason: 'Two months of Pro' })).rows[0].out
+check(
+  'a teacher pays the published price for the months',
+  pro.amountPoisha === card.monthly * 2,
+  JSON.stringify({ got: pro.amountPoisha, expected: card.monthly * 2 }),
+)
+const teacherRow = (
+  await db.query('select plan, trial_plan from coaching_centers where id = $1', [teacherPaid])
+).rows[0]
+check(
+  'and the plan moves to Teacher Pro with the trial pair cleared',
+  teacherRow.plan === 'teacher_plus' && teacherRow.trial_plan === null,
+  JSON.stringify(teacherRow),
+)
+check(
+  "and a teacher's recharge names the card as well",
+  (await n(
+    db,
+    `select count(*)::int as n from billing_ledger
+      where coaching_center_id = $1 and kind = 'recharge' and price_version_id = $2`,
+    [teacherPaid, card.id],
+  )) === 1,
+)
+
+/* -------------------------------------------------------------------------- */
 /* The books still reconcile, which is what the founder's panel reads         */
 /* -------------------------------------------------------------------------- */
 

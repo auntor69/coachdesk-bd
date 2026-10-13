@@ -279,7 +279,19 @@ test('the days preview is the same arithmetic the database runs', () => {
 test('the card has the figures to draw them, and says so when it does not', () => {
   // One extra read, and it is the centre's own columns: `centers_member_read` answers a
   // platform admin, so there is nothing for a definer function to do.
-  assert.match(PAGE, /from\('coaching_centers'\)\.select\('id, balance_poisha, charged_through'\)/)
+  //
+  // TWO READS OF ONE TABLE, and the split is deliberate rather than an oversight. The balance
+  // and the line are what the levers work from and they have been in the schema since the first
+  // migration; `account_kind` arrived in 20260811000091 and feeds one filter. Named together, a
+  // database one migration behind would fail the read the levers depend on, and the whole panel
+  // would refuse to move a balance over a column that only labels a customer.
+  assert.match(PAGE, /from\('coaching_centers'\)\s*\.select\('id, balance_poisha, charged_through'\)/)
+  assert.match(PAGE, /from\('coaching_centers'\)\.select\('id, account_kind'\)/)
+  // And the filter is withheld when that second read does not answer, because filtering every
+  // customer into "teacher" is a wrong answer shaped like a right one.
+  assert.match(PAGE, /const kindsReadable = !kindsError/)
+  assert.match(PAGE, /kindsReadable && ACCOUNT_KINDS\.includes/)
+  assert.match(PAGE, /\{kindsReadable && \(/)
   assert.match(PAGE, /scoped-by: every centre is the point of this panel/)
   assert.match(PAGE, /leverLabels\(locale\)/)
   // A failed read draws the refusal instead of the levers — a grant worked out from a line

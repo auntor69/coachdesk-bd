@@ -29,7 +29,7 @@ import {
   markHistory,
   registerAct,
 } from '@/lib/attendance/window'
-import { classState, classWindow, unlockFor } from '@/lib/attendance/clock'
+import { classState, classWindow, clockEnforced, unlockFor } from '@/lib/attendance/clock'
 import { planAbsenceNotices } from '@/lib/sms/absence-dispatch'
 import { dict, localName, DEFAULT_LOCALE } from '@/lib/i18n'
 import type { AttendanceStatus } from '@/lib/supabase/types'
@@ -327,6 +327,9 @@ export default async function AttendancePage({
           startsAt: window.startsAt,
           endsAt: window.endsAt,
           taken: Boolean(existingSession),
+          // On the two teacher tiers there is no gate: the state is 'open' at any
+          // hour, so no card is drawn and nothing has to be signed (20260811000090).
+          enforced: clockEnforced(session.plan),
         })
       : 'open'
   const needed = unlockFor(clock)

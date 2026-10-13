@@ -41,6 +41,14 @@ const MIGRATION = readFileSync(
 
 const CLOCK = readFileSync(path.join(ROOT, 'src', 'lib', 'attendance', 'clock.ts'), 'utf8')
 
+/** The migration that scoped the gate to the centre plans — path only; read where used. */
+const SCOPED = path.join(
+  ROOT,
+  'supabase',
+  'migrations',
+  '20260811000090_attendance_clock_scope.sql',
+)
+
 /* -------------------------------------------------------------------------- */
 /* Reading a time off a timetable                                             */
 /* -------------------------------------------------------------------------- */
@@ -136,7 +144,7 @@ test('nothing readable at all is no window, which is no gate', () => {
   })
   assert.deepEqual(window, { startsAt: null, endsAt: null })
   assert.equal(
-    classState({ now: '05:00', startsAt: window.startsAt, endsAt: window.endsAt, taken: false }),
+    classState({ now: '05:00', startsAt: window.startsAt, endsAt: window.endsAt, taken: false, enforced: true }),
     'open',
   )
 })
@@ -146,15 +154,19 @@ test('nothing readable at all is no window, which is no gate', () => {
 /* -------------------------------------------------------------------------- */
 
 const at = (now: string) =>
-  classState({ now, startsAt: '16:00', endsAt: '17:30', taken: false })
+  classState({ now, startsAt: '16:00', endsAt: '17:30', taken: false, enforced: true })
+
+/** The same class, on the plan that carries no clock: Teacher Free / Teacher Plus. */
+const solo = (now: string) =>
+  classState({ now, startsAt: '16:00', endsAt: '17:30', taken: false, enforced: false })
 
 test('a register that exists is filed, whatever the hour', () => {
   // First branch on purpose. A register taken on time and corrected at nine at night
   // is a correction — 20260811000031's rule, with its own price — and dragging it back
   // into the clock's hands would ask a teacher to sign for somebody else's afternoon.
-  assert.equal(classState({ now: '05:00', startsAt: '16:00', endsAt: '17:30', taken: true }), 'filed')
-  assert.equal(classState({ now: '22:00', startsAt: '16:00', endsAt: '17:30', taken: true }), 'filed')
-  assert.equal(classState({ now: '16:10', startsAt: '16:00', endsAt: '17:30', taken: true }), 'filed')
+  assert.equal(classState({ now: '05:00', startsAt: '16:00', endsAt: '17:30', taken: true, enforced: true }), 'filed')
+  assert.equal(classState({ now: '22:00', startsAt: '16:00', endsAt: '17:30', taken: true, enforced: true }), 'filed')
+  assert.equal(classState({ now: '16:10', startsAt: '16:00', endsAt: '17:30', taken: true, enforced: true }), 'filed')
 })
 
 test('a batch with no timetable is never locked', () => {
@@ -162,10 +174,71 @@ test('a batch with no timetable is never locked', () => {
   // filled in its routine yet must not lose the register. Both halves are checked
   // because they arrive from two different places — the batch's own times and the
   // day's schedule rows.
-  assert.equal(classState({ now: '05:00', startsAt: null, endsAt: null, taken: false }), 'open')
-  assert.equal(classState({ now: '22:00', startsAt: null, endsAt: null, taken: false }), 'open')
-  assert.equal(classState({ now: '22:00', startsAt: undefined, endsAt: '17:30', taken: false }), 'cancelled')
-  assert.equal(classState({ now: '05:00', startsAt: '16:00', endsAt: undefined, taken: false }), 'early')
+  assert.equal(classState({ now: '05:00', startsAt: null, endsAt: null, taken: false, enforced: true }), 'open')
+  assert.equal(classState({ now: '22:00', startsAt: null, endsAt: null, taken: false, enforced: true }), 'open')
+  assert.equal(classState({ now: '22:00', startsAt: undefined, endsAt: '17:30', taken: false, enforced: true }), 'cancelled')
+  assert.equal(classState({ now: '05:00', startsAt: '16:00', endsAt: undefined, taken: false, enforced: true }), 'early')
+})
+
+/* -------------------------------------------------------------------------- */
+/* The solo teacher's plan: no clock, at every hour                            */
+/* -------------------------------------------------------------------------- */
+
+test('Teacher Free and Teacher Plus take a register at any hour, like a correction', () => {
+  // §3.17 — a solo teacher is the centre; there is nobody to notice if the register
+  // is late, and asking him to sign a sentence about a colleague he does not have is
+  // the gate the owner drew for somebody else's school. The class is identical to the
+  // gated one above: same timetable, same hour, only the plan is different.
+  assert.equal(solo('15:59'), 'open')
+  assert.equal(solo('05:00'), 'open')
+  assert.equal(solo('18:01'), 'open')
+  assert.equal(solo('23:30'), 'open')
+})
+
+test('and a plan that enforces nothing never asks a teacher for a signature', () => {
+  // The state feeds the card's buttons, so an 'early' here would be a signature card
+  // on a solo teacher's screen — the bug this flag exists to make impossible.
+  assert.equal(unlockFor(solo('15:59')), null)
+  assert.equal(unlockFor(solo('23:30')), null)
+  // And a register that exists still reads as filed first, gate or no gate.
+  assert.equal(
+    classState({ now: '05:00', startsAt: '16:00', endsAt: '17:30', taken: true, enforced: false }),
+    'filed',
+  )
+})
+
+test('and the database agrees: both guards read the same plan switch', () => {
+  // The TS flag is a courtesy; the SQL is the thing that holds. A solo teacher whose
+  // register guard still read the window would be refused at the boundary by the
+  // database the screen just promised him — so the switch is pinned on both sides,
+  // and pinned to the same two plan ids in both languages.
+  const scoped = readFileSync(SCOPED, 'utf8').replace(/--[^\n]*/g, '')
+
+  // One list, written twice: `center` and `institution` in TypeScript...
+  assert.match(CLOCK, /return plan\.id === 'center' \|\| plan\.id === 'institution'/)
+  // ...and the same two in SQL.
+  assert.match(scoped, /select c\.plan in \('center', 'institution'\)/)
+
+  // Both database guards ask it before the clock says anything: the signature guard
+  // by name at the top, and the register guard as a condition of its clock block.
+  assert.match(scoped, /if not app\.clock_enforced\(new\.coaching_center_id\) then/)
+  assert.match(scoped, /and app\.clock_enforced\(new\.coaching_center_id\)/)
+
+  // And the screens ask the same question of the same session plan, so a card is
+  // never drawn for a teacher the database will not gate.
+  const actions = readFileSync(
+    path.join(ROOT, 'src', 'app', '(app)', 'teach', '[batchId]', 'actions.ts'),
+    'utf8',
+  )
+  assert.ok(
+    (actions.match(/clockEnforced\(session\.plan\)/g) ?? []).length >= 2,
+    'the save and the signature both answer the plan before the window',
+  )
+  const register = readFileSync(
+    path.join(ROOT, 'src', 'app', '(app)', 'teach', '[batchId]', 'page.tsx'),
+    'utf8',
+  )
+  assert.match(register, /clockEnforced\(session\.plan\)/)
 })
 
 test('before the class starts, the register is locked', () => {
@@ -195,11 +268,11 @@ test('a class with no end can be taken all day, and one with no start cannot be 
   // Two half-filled timetables, and they fail in opposite directions on purpose: an
   // end is what makes a class cancellable, a start is what makes it early.
   assert.equal(
-    classState({ now: '23:00', startsAt: '16:00', endsAt: null, taken: false }),
+    classState({ now: '23:00', startsAt: '16:00', endsAt: null, taken: false, enforced: true }),
     'open',
   )
   assert.equal(
-    classState({ now: '05:00', startsAt: null, endsAt: '17:30', taken: false }),
+    classState({ now: '05:00', startsAt: null, endsAt: '17:30', taken: false, enforced: true }),
     'open',
   )
 })

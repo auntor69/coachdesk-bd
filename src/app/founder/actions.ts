@@ -78,7 +78,7 @@ import { readIntent } from '@/lib/billing/intents'
 import { paymentProvider } from '@/lib/billing/provider'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { createClient } from '@/lib/supabase/server'
-import { addMonths, digits, formatDate, formatMonth, hasPassed } from '@/lib/bd/time'
+import { digits, formatDate, hasPassed } from '@/lib/bd/time'
 import { formatBdMobile, normalizeBdMobile } from '@/lib/bd/phone'
 import { PAYMENT_METHODS } from '@/lib/fees/methods'
 import { dict, DEFAULT_LOCALE } from '@/lib/i18n'
@@ -88,12 +88,7 @@ import { readIdempotencyKey, UNIQUE_VIOLATION } from '@/lib/idempotency'
 import { MAX_LABEL, MAX_TEXT, clamp } from '@/lib/limits'
 import { formatTaka, parseTaka, sumTaka } from '@/lib/money'
 import { PLANS, planFor, planName, type PlanId } from '@/lib/plans'
-import {
-  MAX_CENTER_PAYMENT_BDT,
-  coverageEnd,
-  isMonthsCovered,
-  isPeriodChoice,
-} from '@/lib/platform/billing'
+import { MAX_CENTER_PAYMENT_BDT, isMonthsCovered } from '@/lib/platform/billing'
 import type { CenterStatus, Json, MemberRole, PaymentMethod } from '@/lib/supabase/types'
 
 /**
@@ -206,116 +201,105 @@ export async function recordCenterPayment(
   const centerId = String(formData.get('centerId') ?? '')
   if (!centerId) return { error: words.noCenter }
 
-  const amount = parseTaka(String(formData.get('amount') ?? ''))
-  // Zero and negative both land here. A ৳0 receipt is not a payment and the column's
-  // own check constraint would refuse it — better to say so in words than to hand the
-  // founder a database error.
-  if (amount === null || amount <= 0) return { error: words.badAmount }
-  if (amount > MAX_CENTER_PAYMENT_BDT) {
+  /*
+   * The amount is OPTIONAL IN THE FORM AND READ FROM THE ROW BY THE DATABASE.
+   *
+   * `founder_record_payment` (20260811000092) has two branches and they need different
+   * figures: a centre's receipt is what the founder typed, and a teacher's is
+   * `price_versions.teacher_plus_monthly_poisha × months`, priced by the function so a
+   * slipped keystroke cannot sell a year of Pro for ৳49 (§11.4: a request may carry a
+   * quantity and never an amount). So a blank amount is legal here, and which field
+   * matters is decided where the customer's kind is known — in SQL, from the row.
+   * A centre that posted no figure is refused there, with a sentence, and mapped below.
+   */
+  const typedAmount = String(formData.get('amount') ?? '').trim()
+  const amount: number | null = typedAmount === '' ? null : parseTaka(typedAmount)
+  // Zero and negative both land here. A ৳0 receipt is not a payment and the column's own
+  // check constraint would refuse it — better to say so in words than to hand the founder
+  // a database error.
+  if (amount !== null && amount <= 0) return { error: words.badAmount }
+  if (amount !== null && amount > MAX_CENTER_PAYMENT_BDT) {
     return { error: t.tooMuch(formatTaka(MAX_CENTER_PAYMENT_BDT)) }
   }
 
   const method = String(formData.get('method') ?? 'bkash') as PaymentMethod
   if (!METHODS.has(method)) return { error: words.badMethod }
 
-  // Re-derived here rather than trusted: the `<select>` in the browser is a
-  // suggestion, and this endpoint is reachable without it.
-  const from = String(formData.get('coversFrom') ?? '')
-  if (!isPeriodChoice(from)) return { error: words.badPeriod }
-
-  const months = Number(formData.get('months') ?? 0)
-  if (!isMonthsCovered(months)) return { error: words.badMonths }
+  /*
+   * Zero months is a centre's answer and one, three, six or twelve is a teacher's, so the
+   * list is checked only when something was chosen. Still re-derived here rather than
+   * trusted: the `<select>` in the browser is a suggestion and this endpoint is reachable
+   * without it, and the database refuses a months value that is not a whole positive count.
+   */
+  const postedMonths = Number(formData.get('months') ?? 0)
+  const months = Number.isFinite(postedMonths) && postedMonths > 0 ? Math.floor(postedMonths) : 0
+  if (months > 0 && !isMonthsCovered(months)) return { error: words.badMonths }
 
   const reference = clamp(String(formData.get('reference') ?? ''), MAX_LABEL)
   const note = clamp(String(formData.get('note') ?? ''), MAX_TEXT)
+  /*
+   * A REASON IS REQUIRED, and it is the note field. The receipt cannot be edited or
+   * deleted, so the note is the only part of it that can say what was agreed on the phone
+   * — and the same rule is a `raise` inside `founder_record_payment` rather than a
+   * convention here, because this action is a public endpoint like every other.
+   */
+  if (!note) return { error: words.badReason }
 
   // Null if the browser could not mint one, which records the receipt with no retry
   // protection rather than refusing it.
   const key = readIdempotencyKey(formData.get('idempotencyKey'))
 
-  // Named, because migration 46's log has no JWT to read here and §10 wants "every
-  // taka the centre pays us" attributed to whoever wrote it down.
-  const admin = createAdminClient(session.userId)
+  /*
+   * THE SESSION'S OWN CLIENT, not the admin key, and the difference is the same one
+   * `approveRechargeClaim` records: `founder_record_payment` asks `app.is_platform_admin()`
+   * inside itself and writes `auth.uid()` onto the receipt, so the gate above is the second
+   * check rather than the only one. The ledger holds no INSERT grant for a browser at all,
+   * so a hand-posted form cannot reach it whatever it says.
+   */
+  const supabase = await createClient()
 
-  // The centre is read before the insert for the error message, not for safety: the
-  // FK would refuse an id that is not a centre either way, but "centre not found" is
-  // a sentence and a foreign key violation is a stack trace. Its status is read in
-  // the same round trip, because a receipt for a centre that is still marked trial is
-  // the one thing worth saying out loud afterwards.
-  // scoped-by: this is the founder panel, which is every centre by definition; the
-  // gate is requirePlatformAdmin above and the id came from the list it rendered.
-  const { data: center } = await admin
+  // The centre is read before the write for the error message and for the warning below,
+  // not for safety: the function refuses an id that is not a centre either way, but
+  // "centre not found" is a sentence and `23503` is a stack trace. Its status is read in
+  // the same round trip, because a receipt for a centre that is still marked trial is the
+  // one thing worth saying out loud afterwards.
+  // scoped-by: this is the founder panel, which is every centre by definition; the gate is
+  // requirePlatformAdmin above and the id came from the list it rendered.
+  const { data: center } = await supabase
     .from('coaching_centers')
-    .select('id, name, status')
+    .select('id, status')
     .eq('id', centerId)
     .maybeSingle()
 
   if (!center) return { error: words.noCenter }
 
-  const coversTo = coverageEnd(from, months)
-
-  // scoped-by: coaching_center_id is written on the row below; the admin client has
-  // no session to scope to and requirePlatformAdmin above is what authorises it.
-  const { error } = await admin.from('payments').insert({
-    coaching_center_id: centerId,
-    amount_bdt: amount,
+  // scoped-by: coaching_center_id is an argument to the function, which reads the row and
+  // refuses a centre that does not exist; the founder gate is asked inside it.
+  const outcome = await writePayment(supabase, {
+    centerId,
+    amountPoisha: amount === null ? null : Math.round(amount * 100),
+    months,
+    reason: note,
     method,
-    // Empty means no reference, not an empty reference — a bKash TrxID column full of
-    // '' is indistinguishable from one that was never filled in.
     reference: reference || null,
-    covers_period_start: from,
-    covers_period_end: coversTo,
-    note: note || null,
-    recorded_by: session.userId,
-    idempotency_key: key,
+    key,
   })
 
-  if (error) {
-    // The one error that is not a failure: the unique index in 20260811000025 refusing
-    // a second row for a receipt already entered. Guarded on `key` too, because
-    // without one that index cannot be what fired.
-    if (!key || error.code !== UNIQUE_VIOLATION) return { error: words.failed }
-
-    // Read back and check it against what this request asked for. The founder is told
-    // the same thing either way — the receipt exists, for this centre, for this money,
-    // over this window — and a stored row that disagrees on any of those means the key
-    // was reused somewhere it should not have been, which is not a receipt to confirm.
-    //
-    // scoped-by: this is the founder panel, and the key is unique per centre, so the
-    // filter on coaching_center_id below is what makes the lookup mean anything.
-    const { data: existing } = await admin
-      .from('payments')
-      .select('id, amount_bdt, covers_period_start, covers_period_end')
-      .eq('coaching_center_id', centerId)
-      .eq('idempotency_key', key)
-      .maybeSingle()
-
-    if (
-      !existing
-      || Number(existing.amount_bdt) !== amount
-      || existing.covers_period_start !== from
-      || existing.covers_period_end !== coversTo
-    ) {
-      return { error: words.failed }
-    }
-  }
+  if (!outcome.ok) return { error: words[outcome.reason] }
 
   revalidatePath('/founder')
 
-  // The last month covered, as a month rather than as `coversTo`'s day: "August 2026
-  // to July 2027" is what a founder and a centre owner say to each other, and
-  // "2027-07-31" is what the database needs. Derived with addMonths rather than by
-  // slicing the end date, so the two can never disagree about which month that is.
-  const lastMonth = addMonths(from, months - 1)
-
+  /*
+   * The confirmation is built from WHAT WAS CREDITED, not from what was typed — the same
+   * rule `approveRechargeClaim` follows for a bonus the customer was quoted. For a centre
+   * the two are the same figure; for a teacher the amount came off the price card, which is
+   * the whole point of it not being typed, and a founder reading "৳499 for one month" off
+   * the database cannot be looking at a number the form invented.
+   */
   const receipt =
-    from === lastMonth
-      ? t.paymentSavedMonth(formatTaka(amount), formatMonth(from, session.locale))
-      : t.paymentSaved(
-          formatTaka(amount),
-          formatMonth(from, session.locale),
-          formatMonth(lastMonth, session.locale),
-        )
+    months > 0
+      ? t.paidMonths(formatTaka(outcome.amountPoisha / 100), digits(months, session.locale))
+      : t.paidBalance(formatTaka(outcome.amountPoisha / 100))
 
   // A payment against a centre that is not active is the pay-first-at-signup case
   // half-done: the money arrived and the account is still switched off. Said as a
@@ -324,6 +308,113 @@ export async function recordCenterPayment(
   return center.status === 'active'
     ? { ok: receipt }
     : { ok: receipt, warn: words.notActive }
+}
+
+/** The one SQLSTATE this file reads for a sentence. See `writePayment`. */
+const INVALID_PARAMETER = '22023'
+
+type PaymentOutcome =
+  | { ok: true; amountPoisha: number; balanceAfter: number; already: boolean }
+  | { ok: false; reason: 'badAmount' | 'badMonths' | 'badReason' | 'failed' }
+
+/**
+ * `public.founder_record_payment` AS POSTGREST SEES IT, cast the way `settleDay` and the two
+ * levers cast theirs.
+ *
+ * The function is new in 20260811000092 and `src/lib/supabase/types.ts` is regenerated
+ * against a live project, so it is not in `Database['public']['Functions']` yet. The cast
+ * keeps the argument names honest — they are the function's own — and is a no-op once the
+ * types catch up.
+ */
+type PaymentRpc = (
+  fn: 'founder_record_payment',
+  args: {
+    p_center: string
+    p_amount_poisha: number | null
+    p_months: number
+    p_reason: string
+    p_method: PaymentMethod
+    p_reference: string | null
+    p_idempotency_key: string | null
+  },
+) => PromiseLike<{ data: Json | null; error: { code?: string; message: string } | null }>
+
+/**
+ * One receipt, written through the function that credits the balance.
+ *
+ * WHY A FUNCTION AND NOT AN INSERT, which is what this replaced: the founder's form used to
+ * write a `payments` row with a coverage window on it, and nothing in the product reads a
+ * coverage window any more (§16.1 step 24 made access `balance < owed`). The customer's
+ * money was recorded, granted no days, and left them read-only until somebody used a
+ * different control — a bug that looked like it had worked.
+ *
+ * So the money is written where it counts and the branch is chosen by the row rather than by
+ * the form: a centre's typed amount becomes a recharge on the balance, and a teacher's
+ * months are priced from `price_versions` by the function itself.
+ */
+async function writePayment(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  input: {
+    centerId: string
+    amountPoisha: number | null
+    months: number
+    reason: string
+    method: PaymentMethod
+    reference: string | null
+    key: string | null
+  },
+): Promise<PaymentOutcome> {
+  // BOUND, NOT DETACHED — see settleDay in lib/billing/settlement.ts. `rpc` is a prototype
+  // method that reads `this.rest`, so calling it as a free function threw on every
+  // signed-in page once already.
+  //
+  // `as never` on both arguments because the generated `Functions` union is what `rpc` is
+  // typed against, and this function is newer than the types — the same no-op cast
+  // `writeTrialDays` makes, and the second half of the note on `PaymentRpc`.
+  const record = ((fn: string, args: Record<string, unknown>) =>
+    supabase.rpc(fn as never, args as never)) as unknown as PaymentRpc
+
+  const { data, error } = await record('founder_record_payment', {
+    p_center: input.centerId,
+    p_amount_poisha: input.amountPoisha,
+    p_months: input.months,
+    p_reason: input.reason,
+    p_method: input.method,
+    p_reference: input.reference,
+    p_idempotency_key: input.key,
+  })
+
+  if (error) {
+    /*
+     * `22023` IS THE FUNCTION REFUSING AN ARGUMENT, and the only one reachable from this
+     * screen is a centre that posted no amount — the months are checked against the closed
+     * list above, the reason is checked above, and a teacher's amount is not the caller's to
+     * give at all. The message is read to choose the sentence, which is a little more
+     * knowing than this codebase usually is about an error string; the alternative is three
+     * round trips to find out which refusal it was.
+     */
+    if (error.code === INVALID_PARAMETER) {
+      if (/month/i.test(error.message)) return { ok: false, reason: 'badMonths' }
+      if (/reason/i.test(error.message)) return { ok: false, reason: 'badReason' }
+      return { ok: false, reason: 'badAmount' }
+    }
+
+    // A unique violation cannot land here: the function catches the replay itself and hands
+    // back the receipt it already wrote.
+    return { ok: false, reason: 'failed' }
+  }
+
+  if (typeof data !== 'object' || data === null || Array.isArray(data)) {
+    return { ok: false, reason: 'failed' }
+  }
+
+  const out = data as Record<string, unknown>
+  return {
+    ok: true,
+    amountPoisha: numberOrNull(out.amountPoisha) ?? 0,
+    balanceAfter: numberOrNull(out.balanceAfter) ?? 0,
+    already: out.already === true,
+  }
 }
 
 /**
@@ -1152,6 +1243,90 @@ export async function grantCenterDays(
       formatDate(outcome.chargedThrough, session.locale),
     ),
   }
+}
+
+/**
+ * What a new account is given before it pays — §4.3's trial lengths, as a lever.
+ *
+ * A POLICY AND NOT A PRICE, which is why it is a form here rather than a migration: the
+ * funnel changes, and the founder changes with it. The three numbers are read by
+ * `public.bootstrap_center` at signup (20260811000092) and quoted on the onboarding screen
+ * from the same row, so this one edit moves all three.
+ *
+ * THE DATABASE IS ASKED, not trusted: `founder_set_trial_days` checks
+ * `app.is_platform_admin()` inside itself and refuses a value outside 0–365, so a
+ * hand-posted form with the anon key can neither set its own trial length nor write a
+ * decade into the table.
+ */
+export async function setTrialDays(
+  _prev: FounderState,
+  formData: FormData,
+): Promise<FounderState> {
+  const gate = await founder()
+  if (!isSession(gate)) return gate
+
+  const session = gate
+  const words = dict(session.locale).founder.settings
+
+  /** A whole day count off the wire, or null for anything that is not one. */
+  const days = (field: string): number | null => {
+    const raw = String(formData.get(field) ?? '').trim()
+    if (!raw) return null
+    const value = parseTaka(raw)
+    if (value === null || !Number.isFinite(value)) return null
+    const whole = Math.floor(value)
+    return whole < 0 || whole > 365 ? null : whole
+  }
+
+  const teacherDays = days('teacherDays')
+  const centerDays = days('centerDays')
+  const institutionDays = days('institutionDays')
+  if (teacherDays === null || centerDays === null || institutionDays === null) {
+    return { error: words.badDays }
+  }
+
+  const ok = await writeTrialDays(await createClient(), {
+    teacherDays,
+    centerDays,
+    institutionDays,
+  })
+
+  if (!ok) return { error: words.failed }
+
+  revalidatePath('/founder')
+  return { ok: words.saved }
+}
+
+/**
+ * `public.founder_set_trial_days` AS POSTGREST SEES IT — the same cast, for the same
+ * reason, as every other function written after `src/lib/supabase/types.ts` was generated.
+ */
+type TrialDaysRpc = (
+  fn: 'founder_set_trial_days',
+  args: {
+    p_teacher_trial_days: number
+    p_center_trial_days: number
+    p_institution_trial_days: number
+  },
+) => PromiseLike<{ data: Json | null; error: { code?: string; message: string } | null }>
+
+async function writeTrialDays(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  input: { teacherDays: number; centerDays: number; institutionDays: number },
+): Promise<boolean> {
+  // `as never` for the reason `writePayment` records: the generated `Functions` union is
+  // what `rpc` is typed against and this function is newer than the types.
+  const save = ((fn: string, args: Record<string, unknown>) =>
+    supabase.rpc(fn as never, args as never)) as unknown as TrialDaysRpc
+
+  const { data, error } = await save('founder_set_trial_days', {
+    p_teacher_trial_days: input.teacherDays,
+    p_center_trial_days: input.centerDays,
+    p_institution_trial_days: input.institutionDays,
+  })
+
+  if (error) return false
+  return typeof data === 'object' && data !== null && !Array.isArray(data)
 }
 
 /**

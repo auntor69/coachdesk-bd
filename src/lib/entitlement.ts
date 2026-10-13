@@ -56,6 +56,7 @@
 import { daysBetween, todayInDhaka } from './bd/time.ts'
 import {
   PLAN_RANK,
+  isTeacherTier,
   planFor,
   type PlanLimits,
 } from './plans.ts'
@@ -459,17 +460,46 @@ export function effectiveEntitlement(org: OrgBilling | null, now: Date): Entitle
   }
 
   const paid = planFor(org.plan)
-  const plan = trialPlan(org, paid, now) ?? paid
-
-  // A status outside the enum is a row that has gone wrong, not a new kind of customer,
-  // so it reads as read-only.
-  const standing = ACCESS_BY_STATUS[org.status as CenterStatus] ?? 'read_only'
 
   // Resolved even when the status already forbids writing, because the caller may be
   // the rail rather than this function: one call answers "may they write" and "how long
   // has the money got" off the same read. The verdict below is the only place the two
   // are combined.
   const billing = billingStanding(org, now)
+
+  /*
+   * TEACHERS SUBSCRIBE, CENTRES PREPAY — so a dry purse means two different things.
+   *
+   * §11.6 sells a centre a balance and burns it a day at a time; the morning it cannot
+   * cover the day, the centre goes read-only and stays that way until it tops up. That is
+   * the right answer for an organisation: it is running a business, the term is running,
+   * and the person who has to act is the owner with the money.
+   *
+   * A teacher is one person, paying ৳499 a month, and the register they are holding is
+   * thirty children in a room. Taking that away the day a subscription lapses — to collect
+   * a month's fee from somebody who is standing in front of a class — is the failure §4.4
+   * warns about in the other direction: it turns a renewal conversation into an angry one.
+   * So the month the money runs out, a teacher is a Teacher Free account. Free is a real
+   * tier, not a demo: one batch, thirty students, attendance and the fee book, no printed
+   * receipts and no parent summaries. They keep working, they lose Pro, and renewing puts
+   * it back the moment the money is recorded.
+   *
+   * THE PLAN FALLS, THE STATUS DOES NOT. `status` is still the floor and still means what
+   * it means — a suspended teacher account cannot write — so this rule can only ever take
+   * a tier away, never a suspension. And a trial is untouched by it: a trialling teacher's
+   * paid plan is Teacher Free, whose rate is zero, so there is nothing to lapse and the
+   * fortnight runs its course.
+   */
+  const teacherTier = isTeacherTier(paid)
+  const lapsedTo = teacherTier && billing.lapsed ? planFor('teacher_free') : paid
+  const plan = trialPlan(org, lapsedTo, now) ?? lapsedTo
+
+  // A status outside the enum is a row that has gone wrong, not a new kind of customer,
+  // so it reads as read-only.
+  const standing = ACCESS_BY_STATUS[org.status as CenterStatus] ?? 'read_only'
+
+  // Only a centre's purse takes the writing away. A teacher's is read as a tier above.
+  const moneyTakesItAway = !teacherTier && billing.lapsed
 
   return {
     // THE BALANCE CAN ONLY TAKE ACCESS AWAY, NEVER GRANT IT, which is the same
@@ -478,7 +508,7 @@ export function effectiveEntitlement(org: OrgBilling | null, now: Date): Entitle
     // standing *and* paid up to write. A suspended centre with a healthy balance is
     // still suspended — a human threw that switch for a reason that is not money —
     // and an unrecognised status cannot borrow access from a full purse either.
-    access: standing === 'full' && billing.lapsed ? 'read_only' : standing,
+    access: standing === 'full' && moneyTakesItAway ? 'read_only' : standing,
     plan,
   }
 }

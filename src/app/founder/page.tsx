@@ -1,4 +1,5 @@
 import Link from 'next/link'
+import type { Route } from 'next'
 
 import { Card } from '@/components/ui'
 import { pagePlatformAdmin } from '@/lib/auth/session'
@@ -7,17 +8,20 @@ import { founderQueue } from '@/lib/billing/claims'
 import { transferReference } from '@/lib/billing/receipt'
 import { rechargeWords } from '@/lib/i18n/recharge'
 import { formatBdMobile } from '@/lib/bd/phone'
-import { digits, formatDate, formatMonth, hasPassed, todayInDhaka } from '@/lib/bd/time'
+import { digits, formatDate, hasPassed, todayInDhaka } from '@/lib/bd/time'
 import { dict } from '@/lib/i18n'
 import { formatTaka } from '@/lib/money'
-import { PLANS, planFor, planName, type PlanId } from '@/lib/plans'
-import { MONTHS_COVERED, periodChoices } from '@/lib/platform/billing'
+import { PLANS, isTeacherTier, planFor, planName, type PlanId } from '@/lib/plans'
+import { ACCOUNT_KINDS, type AccountKind } from '@/lib/accounts/kind'
+import { MONTHS_COVERED } from '@/lib/platform/billing'
+import { readPlatformSettings } from '@/lib/platform/settings'
 import {
   billLabel,
   customers,
   platformTotals,
   sizeLine,
   type CenterStatus,
+  type Customer,
 } from '@/lib/platform/centers'
 import { leverLabels, leverSentences } from '@/lib/i18n/levers'
 import { CenterBilling } from './center-billing'
@@ -25,6 +29,8 @@ import { CenterPurchases, type OpenPurchase } from './center-purchases'
 import { AskedToUpgrade } from './asked-to-upgrade'
 import { StaffReset } from './staff-reset'
 import { RechargeQueue, type QueueClaim, type QueueWords } from './recharge-queue'
+import { PlatformSettings } from './platform-settings'
+import { FounderNav } from './nav'
 
 /*
  * NO generateMetadata, on purpose.
@@ -52,6 +58,43 @@ const PLAN_ORDER = Object.keys(PLANS) as PlanId[]
 const STATUS_ORDER: CenterStatus[] = ['trial', 'active', 'suspended', 'cancelled']
 
 /**
+ * The orders the list can be read in, and the one the page opens on.
+ *
+ * FOUR, AND EACH ANSWERS A DIFFERENT MORNING. `bill` is the default and not a
+ * preference: this panel exists to say who is worth what, and a founder who has not
+ * chosen an order has asked the only question the screen was built for. `quiet` is the
+ * churn list — a centre that stopped using the product last week is the one worth a
+ * phone call, and by the time it is on the money screens it has already decided.
+ *
+ * A CLOSED LIST, like STATUS_ORDER, because the key arrives in a URL: anything not in
+ * it is ignored rather than passed to a comparator.
+ */
+const SORTS = ['bill', 'quiet', 'newest', 'name'] as const
+
+type SortKey = (typeof SORTS)[number]
+
+/**
+ * The four comparators, always biggest-and-first.
+ *
+ * A RECORD RATHER THAN A SWITCH so the compiler counts them: a fifth key added to
+ * SORTS without a comparator is a type error rather than a dropdown entry that leaves
+ * the list in whatever order it arrived in.
+ *
+ * `quiet` puts the gone-quiet ahead and orders them by how long, and a centre that has
+ * never been used sorts at the end of that group rather than the start — it is the
+ * loudest call to make, but `daysQuiet` is null for it and a screen sorted by a number
+ * it does not have would be inventing one. `newest` reads the ISO strings, which sort
+ * as dates without parsing them: a `timestamptz` from PostgREST is fixed-width UTC.
+ */
+const ORDER: Record<SortKey, (a: Customer, b: Customer) => number> = {
+  bill: (a, b) => b.billBdt - a.billBdt,
+  quiet: (a, b) =>
+    Number(b.quiet) - Number(a.quiet) || (b.daysQuiet ?? 0) - (a.daysQuiet ?? 0),
+  newest: (a, b) => (b.createdAt ?? '').localeCompare(a.createdAt ?? ''),
+  name: (a, b) => a.name.localeCompare(b.name),
+}
+
+/**
  * The founder's own screen: every centre, what it costs them, and whether they
  * are still using it.
  *
@@ -74,13 +117,39 @@ const STATUS_ORDER: CenterStatus[] = ['trial', 'active', 'suspended', 'cancelled
  * purchases, which is a plain read: `payment_intents_owner_read` already answers
  * `app.is_platform_admin()`, so there is nothing for a function to do.
  *
- * WHAT IT DOES NOT HAVE: filters, sorting, a search box, or a link into any
- * centre's data. With a customer list this size every control would be a way to
- * arrive at a worse view of it, and a link inward would be a founder reading a
- * child's marks. The CSV button covers the one thing a page cannot: taking the
- * numbers somewhere they can be added up.
+ * WHAT IT HAS NOW: a search, a kind filter, a standing filter and four orders — see
+ * SORTS and the note on `matched`. They narrow what is already on the page and nothing
+ * else: the search reads names, areas and the two phone numbers, so a founder can find
+ * the customer who is on the line with them without scrolling eleven cards, and the
+ * kind filter answers the one question the panel could not before (§16.1: a solo
+ * teacher and a coaching centre were the same row here, and they are two different
+ * conversations).
+ *
+ * AND ONE THING BEHIND A CUSTOMER: their name opens `./[centerId]/page.tsx`, the record —
+ * what they are, what they use, what their money has done, who can get in, and what we have
+ * done to them. That is *our* side of one customer, and it is the reason this list can stay a
+ * list: the questions that need five kinds of fact in one place have somewhere to go.
+ *
+ * WHAT IT STILL DOES NOT HAVE is a link into any centre's *data*. The record behind a
+ * customer holds none of their students, their register or their fees, and there will never
+ * be a screen that does: a founder reading a child's marks is the failure this whole
+ * arrangement — a definer function that returns counts and nothing else — is built to prevent.
+ * The CSV button covers the one thing a page cannot: taking the numbers somewhere they can be
+ * added up.
  */
-export default async function FounderPage() {
+export default async function FounderPage({
+  searchParams,
+}: {
+  /**
+   * The list's own controls, read from the URL.
+   *
+   * A GET form and not client state, and that is the whole design: the founder's list is
+   * read, telephoned from and returned to, and a filter that lives in memory is lost the
+   * moment they open a customer in another tab. It also means the screen keeps working with
+   * no JavaScript at all, and a filtered view is a URL somebody can send themselves.
+   */
+  searchParams: Promise<Record<string, string | string[] | undefined>>
+}) {
   const session = await pagePlatformAdmin()
   const locale = session.locale
   const d = dict(locale)
@@ -103,6 +172,7 @@ export default async function FounderPage() {
     { data: findings },
     queue,
     { data: moneyRows },
+    { data: kindRows, error: kindsError },
   ] = await Promise.all([
     // scoped-by: platform_centers() is a security definer RPC over all centres,
     // gated on app.is_platform_admin(). See 20260811000020_platform_panel.sql.
@@ -134,7 +204,21 @@ export default async function FounderPage() {
     // is no definer function to write.
     // scoped-by: every centre is the point of this panel; centers_member_read in
     // 20260811000002_rls_policies.sql is what authorises it.
-    supabase.from('coaching_centers').select('id, balance_poisha, charged_through'),
+    supabase
+      .from('coaching_centers')
+      .select('id, balance_poisha, charged_through'),
+    /*
+     * What each account says it is — in a read of its own, and the reason is a deployment order
+     * rather than tidiness.
+     *
+     * `account_kind` arrived in 20260811000091, and an app deploy can land before the migration
+     * that adds it. Named in the read above, a database one migration behind would fail *that*
+     * read — and the two levers on every card are drawn from it, so the whole panel would refuse
+     * to move a balance over one decorative column. So the money is read with the columns the
+     * panel has always had, and the kind is asked for separately; a failed read here costs the
+     * kind filter and nothing else.
+     */
+    supabase.from('coaching_centers').select('id, account_kind'),
   ])
 
   const list = customers(data, t.unnamed)
@@ -149,6 +233,73 @@ export default async function FounderPage() {
    * predict. `./center-billing.tsx` says what the card does with the null.
    */
   const money = new Map((moneyRows ?? []).map((row) => [row.id, row]))
+
+  /**
+   * What each account said it was (20260811000091).
+   *
+   * A MISSING ROW IS READ AS A TEACHER — the column's own default, and the safe direction: a
+   * teacher and a centre are two different conversations, and hiding a customer from a founder
+   * who is looking for them is the worse failure of the two.
+   *
+   * A FAILED READ IS NOT THE SAME THING, and that is what `kindsReadable` is for. If the column
+   * does not exist yet — an app deploy ahead of its migration — every row would read as a teacher
+   * and the filter would answer "here are the teachers" with the whole book. So the filter is not
+   * drawn at all in that case: a control we cannot evaluate is a control that lies, and this page
+   * already has one shape for "we could not read that": say so.
+   */
+  const kinds = new Map((kindRows ?? []).map((row) => [row.id, row.account_kind]))
+  const kindsReadable = !kindsError
+
+  /*
+   * The list's controls: a search, two filters and an order.
+   *
+   * NARROWING IS DONE HERE, ON THE SERVER, over the rows the page has already read. There is
+   * no second query and no query builder in the client: eleven customers fit in memory and a
+   * thousand would fit in the RPC's own page — the day this needs SQL paging is the day it
+   * needs a screen of its own, which the header already says.
+   *
+   * EVERY VALUE IS VALIDATED AGAINST A CLOSED LIST and a bad one is ignored rather than
+   * refused: these arrive from a URL, so a typo in a bookmark must draw the whole book rather
+   * than an error page.
+   */
+  const params = await searchParams
+  const one = (value: string | string[] | undefined) =>
+    (Array.isArray(value) ? value[0] : value) ?? ''
+
+  // Capped, because it is only ever compared against a name and a number: a 60-character
+  // search is already wider than anything in the table.
+  const query = one(params.q).trim().slice(0, 60).toLowerCase()
+  const askedKind = one(params.kind)
+  const askedStatus = one(params.standing)
+  const askedSort = one(params.order)
+
+  const kindFilter =
+    kindsReadable && ACCOUNT_KINDS.includes(askedKind as AccountKind)
+      ? (askedKind as AccountKind)
+      : null
+  const statusFilter = STATUS_ORDER.includes(askedStatus as CenterStatus)
+    ? (askedStatus as CenterStatus)
+    : null
+  const sort: SortKey = SORTS.includes(askedSort as SortKey)
+    ? (askedSort as SortKey)
+    : 'bill'
+
+  const searching = query !== '' || kindFilter !== null || statusFilter !== null
+
+  const matched = list
+    .filter((c) => {
+      if (kindFilter && (kinds.get(c.centerId) ?? 'teacher') !== kindFilter) return false
+      if (statusFilter && c.status !== statusFilter) return false
+      if (!query) return true
+      // Name, area, and whoever the founder would ring — the three things they have in
+      // front of them when they are looking somebody up.
+      const haystack = [c.name, c.area, c.ownerName, c.ownerPhone, c.phone]
+        .filter(Boolean)
+        .join(' ')
+        .toLowerCase()
+      return haystack.includes(query)
+    })
+    .sort(ORDER[sort])
 
   /** Dhaka's calendar day, the one every line and every grant is counted in (§11.7). */
   const dhakaToday = todayInDhaka(new Date())
@@ -279,26 +430,30 @@ export default async function FounderPage() {
   /*
    * The dropdown contents, built once for the whole list rather than per card.
    *
-   * All four are localised here and travel as `{ value, label }`, so the client
-   * component that renders them holds no dictionary and no formatter — see the note at
-   * the top of ./center-billing.tsx. The months a payment may cover are re-derived
-   * inside the action from the same function, which is what makes the `<select>`
-   * unnecessary to trust.
+   * Localised here and travelled as `{ value, label }`, so the client component that renders
+   * them holds no dictionary and no formatter — see the note at the top of
+   * ./center-billing.tsx. The months are re-derived inside the action from the same list,
+   * which is what makes the `<select>` unnecessary to trust.
+   *
+   * THERE ARE NO PAYMENT PERIODS ANY MORE (20260811000092). The form used to offer the
+   * months a receipt covered, and nothing in the product reads `covers_period_*`: the money
+   * goes onto the balance and the burn turns it into days. A teacher's card offers months,
+   * because that is what a subscription is; a centre's offers an amount.
    */
-  const periods = periodChoices().map((month) => ({
-    value: month,
-    label: formatMonth(month, locale),
-  }))
-
-  // Just the numeral. The control's own label says "how many months", so repeating the
-  // unit in every option would be four words of noise — and it sidesteps English
-  // needing "1 month" against "3 months" for no gain.
   const months = MONTHS_COVERED.map((n) => ({ value: n, label: digits(n, locale) }))
 
   const plans = PLAN_ORDER.map((id) => ({
     value: id,
     label: planName(PLANS[id], locale),
   }))
+
+  /**
+   * The trial lengths, from the row `bootstrap_center` reads at signup.
+   *
+   * Read on the server and handed down as three numbers, so the panel's own form and the
+   * onboarding screen's promise cannot disagree about what a signup is given.
+   */
+  const settings = await readPlatformSettings(supabase)
 
   const statuses = STATUS_ORDER.map((s) => ({ value: s, label: t.status[s] }))
 
@@ -315,6 +470,10 @@ export default async function FounderPage() {
         <h1 className="mt-1 text-xl font-bold text-ink">{t.title}</h1>
         <p className="mt-1 text-ink-soft">{t.lead}</p>
       </div>
+
+      {/* The panel's other four questions. A row of links rather than tabs — this panel has
+          no client state at all. */}
+      <FounderNav here="customers" words={t.nav} />
 
       {/* The error branch says so rather than rendering an empty list. A founder
           who reads "no centres yet" on a day they have eleven would go looking for
@@ -396,8 +555,108 @@ export default async function FounderPage() {
               — see ./recharge-queue.tsx. */}
           <RechargeQueue claims={queue === null ? null : queueClaims} words={queueWords} />
 
+          {/* The controls. A GET form: the URL is the state, so a filtered list can be
+              bookmarked, reloaded or sent to somebody else, and the screen works with no
+              JavaScript at all. */}
+          <form method="get" className="flex flex-col gap-3 rounded-2xl border border-line bg-white p-3">
+            <div className="flex flex-wrap items-end gap-2">
+              <label className="flex min-w-48 flex-1 flex-col gap-1">
+                <span className="text-xs text-ink-soft">{t.filters.search}</span>
+                <input
+                  type="search"
+                  name="q"
+                  defaultValue={one(params.q)}
+                  placeholder={t.filters.searchHint}
+                  maxLength={60}
+                  className="min-h-tap rounded-xl border border-line px-3 text-ink"
+                />
+              </label>
+
+              {/* Only when the column behind it could be read. See `kindsReadable`. */}
+              {kindsReadable && (
+                <label className="flex flex-col gap-1">
+                  <span className="text-xs text-ink-soft">{t.filters.kind}</span>
+                  <select
+                    name="kind"
+                    defaultValue={kindFilter ?? ''}
+                    className="min-h-tap rounded-xl border border-line bg-white px-3 text-ink"
+                  >
+                    <option value="">{t.filters.kinds.any}</option>
+                    {ACCOUNT_KINDS.map((k) => (
+                      <option key={k} value={k}>
+                        {t.filters.kinds[k]}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              )}
+
+              <label className="flex flex-col gap-1">
+                <span className="text-xs text-ink-soft">{t.filters.standing}</span>
+                <select
+                  name="standing"
+                  defaultValue={statusFilter ?? ''}
+                  className="min-h-tap rounded-xl border border-line bg-white px-3 text-ink"
+                >
+                  <option value="">{t.filters.any}</option>
+                  {STATUS_ORDER.map((s) => (
+                    <option key={s} value={s}>
+                      {t.status[s]}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <label className="flex flex-col gap-1">
+                <span className="text-xs text-ink-soft">{t.filters.order}</span>
+                <select
+                  name="order"
+                  defaultValue={sort}
+                  className="min-h-tap rounded-xl border border-line bg-white px-3 text-ink"
+                >
+                  {SORTS.map((key) => (
+                    <option key={key} value={key}>
+                      {t.filters.orders[key]}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <button
+                type="submit"
+                className="min-h-tap rounded-xl bg-brand-600 px-5 font-semibold text-white"
+              >
+                {t.filters.apply}
+              </button>
+
+              {/* Only once something is narrowed — a Clear on a list that is not filtered
+                  is a button that does nothing. */}
+              {searching && (
+                <Link
+                  href="/founder"
+                  className="inline-flex min-h-tap items-center px-3 text-sm font-medium text-ink-soft hover:text-ink"
+                >
+                  {t.filters.clear}
+                </Link>
+              )}
+            </div>
+
+            {/* Always said, and it is the line that makes the filters trustworthy: a list
+                of four customers from a book of eleven must not look like a book of four. */}
+            <p className="text-xs text-ink-faint">
+              {t.filters.showing(digits(matched.length, locale), digits(list.length, locale))}
+            </p>
+          </form>
+
+          {matched.length === 0 && (
+            <Card>
+              <p className="font-medium text-ink">{t.filters.none}</p>
+              <p className="mt-1 text-sm text-ink-soft">{t.filters.noneHint}</p>
+            </Card>
+          )}
+
           <ul className="flex flex-col gap-3">
-            {list.map((c) => {
+            {matched.map((c) => {
               const signedUp = dhakaDay(c.createdAt)
               const lastActive = dhakaDay(c.lastActiveAt)
               const waitingSince = dhakaDay(c.asksSince)
@@ -412,7 +671,17 @@ export default async function FounderPage() {
                   <Card>
                     <div className="flex items-start justify-between gap-3">
                       <div className="min-w-0">
-                        <h2 className="truncate font-semibold text-ink">{c.name}</h2>
+                        {/* The customer's name is the way into their record: it is what a
+                            founder is already looking at when they decide to open one, and
+                            a separate "Details" button would be a second thing to aim at. */}
+                        <h2 className="truncate font-semibold text-ink">
+                          <Link
+                            href={`/founder/${c.centerId}` as Route}
+                            className="hover:text-brand-700"
+                          >
+                            {c.name}
+                          </Link>
+                        </h2>
                         <p className="truncate text-sm text-ink-soft">
                           {[c.area, planName(planFor(c.plan), locale)]
                             .filter(Boolean)
@@ -620,7 +889,11 @@ export default async function FounderPage() {
                       plan={c.plan}
                       status={c.status}
                       suggestedAmount={c.billBdt}
-                      periods={periods}
+                      // A teacher buys months of Pro; a centre buys balance. Decided from
+                      // the plan here, and decided again from the row by the function that
+                      // writes the receipt — so a card drawn for the wrong shape cannot
+                      // record the wrong thing.
+                      sellsMonths={isTeacherTier(planFor(c.plan))}
                       months={months}
                       plans={plans}
                       statuses={statuses}
@@ -687,6 +960,20 @@ export default async function FounderPage() {
               </div>
             )}
           </Card>
+
+          {/*
+           * §4.3's trial lengths, which are the founder's own policy rather than any single
+           * customer's business — so they sit with the reconciliation and the window notes
+           * instead of inside a card.
+           */}
+          <PlatformSettings
+            days={{
+              teacher: settings.teacherTrialDays,
+              center: settings.centerTrialDays,
+              institution: settings.institutionTrialDays,
+            }}
+            words={t.settings}
+          />
 
           {/* The two things easiest to misread, stated once at the bottom. */}
           <p className="text-xs text-ink-faint">{t.window}</p>

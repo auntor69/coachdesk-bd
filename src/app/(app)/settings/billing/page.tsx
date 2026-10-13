@@ -50,6 +50,12 @@ function kindLabel(kind: BillingEntryKind, words: ReturnType<typeof billingWords
       return words.kindAdjust
     case 'founder_grant_days':
       return words.kindGrant
+    // The days a signup was given, which is the product's offer rather than a founder's
+    // favour — a separate label since 20260811000091, because the whole reason the kind
+    // exists is that a customer reading their own first month should be able to tell the
+    // two apart.
+    case 'signup_trial':
+      return words.kindTrial
     case 'refund':
       return words.kindRefund
     case 'reversal':
