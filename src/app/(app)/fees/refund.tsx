@@ -30,9 +30,9 @@
  */
 import { useActionState, useEffect, useRef, useState } from 'react'
 
-import Link from 'next/link'
 
 import { MethodPicker, type MethodLabels } from '@/components/method-picker'
+import { PaperLink } from '@/components/paper-link'
 import { Alert, Button, Field } from '@/components/ui'
 import { refundable } from '@/lib/fees/refund'
 import { mintIdempotencyKey } from '@/lib/idempotency'
@@ -194,16 +194,15 @@ export function RefundBill({
             parent who was handed cash back has nothing in writing until this is
             printed, and the number beside it is what the owner reads out first. */}
         {state?.receipt && (
-          <p>
-            <Link
+          <div className="flex items-center gap-2">
+            <PaperLink
               href={`/fees/receipt/${state.receipt.id}`}
-              className="inline-flex min-h-tap items-center font-medium text-brand-700
-                underline"
+              label={`${t.receiptLink} ${state.receipt.no}`}
             >
               {t.receiptLink}
-            </Link>
-            <span className="num ml-2 text-ink-soft">#{state.receipt.no}</span>
-          </p>
+            </PaperLink>
+            <span className="num text-ink-soft">#{state.receipt.no}</span>
+          </div>
         )}
 
         {/* Shut-it first and full width, the write second and narrow — the same way

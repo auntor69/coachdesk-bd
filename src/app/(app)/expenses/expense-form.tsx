@@ -28,6 +28,7 @@ import { useActionState, useEffect, useRef, useState } from 'react'
 
 import { BranchPicker } from '@/components/branch-picker'
 import { MethodPicker, type MethodLabels } from '@/components/method-picker'
+import { PaperLink } from '@/components/paper-link'
 import { Alert, Button, Field } from '@/components/ui'
 import type { BranchChoice } from '@/lib/branches'
 import { EXPENSE_CATEGORIES, type CategoryLabels } from '@/lib/expenses/categories'
@@ -133,6 +134,24 @@ export function ExpenseForm({
         <p role="status" className="text-sm font-medium text-brand-700">
           {state.ok}
         </p>
+      )}
+
+      {/*
+        The voucher, the instant it is written — the sheet the person who took the money signs
+        and the office keeps. The sentence above says the voucher number; this opens the paper
+        it is printed on, instead of sending the owner down to the register to find the number
+        again and guess that it is tappable.
+
+        Behind the same `state` as the sentence, so the replay branch gets it too: a retry
+        carries the row the first arrival wrote, which is the same voucher and not a second.
+      */}
+      {state?.receipt && (
+        <PaperLink
+          href={`/expenses/voucher/${state.receipt.id}`}
+          label={`${t.printVoucher} ${state.receipt.no}`}
+        >
+          {t.printVoucher}
+        </PaperLink>
       )}
 
       <label className="flex flex-col gap-1.5">

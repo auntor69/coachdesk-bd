@@ -1601,7 +1601,7 @@ export const bn = {
      * paper the parent is waiting for, and they may well save it as a PDF and send
      * it on WhatsApp instead of printing anything.
      */
-    receiptLink: 'রসিদ দেখুন',
+    receiptLink: 'রসিদ প্রিন্ট করুন',
     /**
      * Keyed by fee_payments.method, so the radio group is one list in both
      * languages and a method added to the enum without a label is a compile error.
@@ -1767,7 +1767,7 @@ export const bn = {
      * the parent is being handed a second piece of paper and the two must not look like
      * two payments — the printed slip says so as well.
      */
-    receiptLink: 'ফেরতের রসিদ দেখুন',
+    receiptLink: 'ফেরতের রসিদ প্রিন্ট করুন',
   },
 
   /**
@@ -2445,6 +2445,14 @@ export const bn = {
     recurringHint:
       'ভাড়া, বিদ্যুৎ, ইন্টারনেট। নিচের তালিকায় চিহ্ন থাকবে, তাই এক নজরেই দেখা যাবে প্রতি মাসে সেন্টারের বাঁধা খরচ কোনগুলো।',
     submit: 'লিখে রাখুন',
+    /**
+     * The voucher the action just wrote, offered before the owner scrolls anywhere.
+     *
+     * The register below has always linked the voucher number and still does; what was
+     * missing is the moment the money is written down — voucher in hand, receipt for
+     * the person who was paid, printer two taps into a menu.
+     */
+    printVoucher: 'ভাউচার প্রিন্ট করুন',
 
     /**
      * Why the form has no edit button, said before the owner looks for one.
@@ -3045,6 +3053,15 @@ export const bn = {
     unlockHint: 'এই পেমেন্টটি লিখতে উপরের নিশ্চিতকরণ বাক্সে টিক দিন।',
     submit: 'বেতন দেওয়া হলো লিখুন',
     paying: 'লেখা হচ্ছে…',
+    /**
+     * Offered under the confirmation, the instant the salary is on the record.
+     *
+     * The register below still links the voucher number, but the person being paid is
+     * standing at the desk: "বেতন দেওয়া হলো। ভাউচার নং ১০৪২" tells the manager a number in
+     * words and hands them nothing. The number stays in the sentence; this is the way to
+     * the paper it is printed on, in one tap.
+     */
+    printSlip: 'বেতনের রসিদ প্রিন্ট করুন',
     cancel: 'বাতিল',
     /**
      * How a mistake is undone, said in the form rather than only in a document.

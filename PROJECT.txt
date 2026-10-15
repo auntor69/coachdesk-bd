@@ -47,23 +47,35 @@ the recharge screen both link into them. Agreeing is recorded as a
 row: which wording of which document, by whom, and when. No page
 claims a certification nobody has audited.
 
-In progress right now: the prepaid billing engine, and it is nearly
-done. The balance, the daily burn, self-serve recharge and the
-founder's review queue are live in the database, and the founder has
-two levers — money and granted days, each with a written reason. The
-billing screen is built around the balance: how long the money lasts,
-what is left, what it is priced from, how to add more, and every day
-charged so far with its own count and rate. A nightly run settles the
-centers nobody opened that day, so the live balance is current before
-anyone looks. The old seat-based pricing was retired on 2026-09-25:
-the buy controls are gone, the plan page is a redirect, and a
-per-student tier no longer has a student ceiling at all — size sets
-the daily rate instead of a door. The column that held bought places
-is archived rather than dropped, so the payments that bought them
-still explain themselves. The words went with the controls on
-2026-09-29: both dictionaries lost the buy-and-ask vocabulary whose
+Shipped since: the prepaid billing engine. The balance, the daily
+burn, self-serve recharge and the founder's review queue are live, and
+the founder has two levers — money and granted days, each with a
+written reason. The billing screen is built around the balance: how
+long the money lasts, what is left, what it is priced from, how to add
+more, and every day charged so far with its own count and rate. A
+nightly run settles the centers nobody opened that day, so the live
+balance is current before anyone looks. The old seat-based pricing was
+retired on 2026-09-25: the buy controls are gone, the plan page is a
+redirect, and a per-student tier no longer has a student ceiling at
+all — size sets the daily rate instead of a door. The column that held
+bought places is archived rather than dropped, so the payments that
+bought them still explain themselves. The words went with the controls
+on 2026-09-29: both dictionaries lost the buy-and-ask vocabulary whose
 screens no longer exist, and the head office's card reads the asks
 that were already filed as the history they now are.
+
+The rest of the month went to the ways in. An account signs in with
+exactly one of three things — a real email address, a mobile number,
+or a username a center minted for a teacher who has neither — and the
+screens now say which of the three an account holds, and set its
+password, instead of assuming a number and drawing a blank card. The
+founder can reach an owner who signed up with an email, reset their
+password, and read the audit log without naming anybody by a number
+they do not have. The login, signup and onboarding screens read the
+reader's language and carry the switch to change it, and the app draws
+its three meaningful colours from one place — a green for present, a
+red for wrong, an amber for late — so no screen invents a second
+shade of its own.
 
 Still ahead: automated SMS gateway and the real bKash API
 integration.

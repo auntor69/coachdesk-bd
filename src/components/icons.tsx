@@ -55,6 +55,25 @@ export function EyeIcon({ className = 'size-4 shrink-0' }: IconProps) {
   )
 }
 
+/**
+ * The way to a piece of paper.
+ *
+ * The third shape, and the one a button needed rather than a list row: "Print receipt" is
+ * a noun with a verb in front of it, and a wallet of controls that all read as words makes
+ * the one control that leaves the screen look like the ones that do not. The paper tray is
+ * the whole difference from the eye — a rectangle with a slot, and not an outline that
+ * would read as a second document icon beside it.
+ */
+export function PrintIcon({ className = 'size-4 shrink-0' }: IconProps) {
+  return (
+    <Stroked className={className}>
+      <path d="M7 9V3.5h10V9" />
+      <path d="M7 18.5H5.5a2 2 0 0 1-2-2v-4a2 2 0 0 1 2-2h13a2 2 0 0 1 2 2v4a2 2 0 0 1-2 2H17" />
+      <path d="M7 14.5h10v6H7z" />
+    </Stroked>
+  )
+}
+
 /** Change the record. Kept apart from the eye by the nib, not by colour. */
 export function PencilIcon({ className = 'size-4 shrink-0' }: IconProps) {
   return (

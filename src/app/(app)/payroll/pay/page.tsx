@@ -1,6 +1,5 @@
-import Link from 'next/link'
-
 import { PageHeader } from '@/components/page-header'
+import { PaperLink } from '@/components/paper-link'
 import { Card } from '@/components/ui'
 import { Th, Td } from '@/components/table'
 import { getSession, pageCapability } from '@/lib/auth/session'
@@ -546,16 +545,24 @@ export default async function PayrollPayPage({
                           {v.name ?? t.unknownName}
                           {v.job && <span className="block text-ink-faint">{v.job}</span>}
                         </Td>
-                        {/* The voucher number is the way to the payslip, and this is the
-                            only way in: the pay action answers with a finished sentence and
-                            no id, and every voucher of the month is already here. */}
+                        {/*
+                          The voucher number, as a control rather than as an underlined word.
+
+                          It is no longer the only way in — the row above offers the slip the
+                          instant it is written (./actions.ts returns its id) — but it is the
+                          way back to a slip from before, and a register where the numbers are
+                          the doors has to look like one. The number stays the label because
+                          it is also the thing an owner matches against the paper in their
+                          hand, and the printer glyph and the box are what say it is tappable.
+                        */}
                         <Td num>
-                          <Link
+                          <PaperLink
+                            dense
                             href={`/payroll/payslip/${v.id}`}
-                            className="font-medium text-brand-700 underline"
+                            label={`${d.salaryPayForm.printSlip} ${v.voucherNo}`}
                           >
                             {v.voucherNo}
-                          </Link>
+                          </PaperLink>
                         </Td>
                         {/* The Dhaka calendar day, not the raw timestamp: `paid_at` comes
                             back in UTC, and 1 September at 2am there is 31 August here. */}
