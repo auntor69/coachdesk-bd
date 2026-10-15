@@ -1,6 +1,5 @@
-import Link from 'next/link'
-
 import { PageHeader } from '@/components/page-header'
+import { PaperLink } from '@/components/paper-link'
 import { Card } from '@/components/ui'
 import { Th, Td } from '@/components/table'
 import { pageCapability, getSession } from '@/lib/auth/session'
@@ -355,16 +354,21 @@ export default async function ExpensesPage({
                       {rows.map((r) => (
                         <tr key={r.id} className="border-b border-line align-top">
                           <Td num>{formatDate(r.date, locale)}</Td>
-                          {/* The voucher number is the way to the printable, and this is the
-                              only way in: the form's action answers with a finished sentence
-                              and no id, and every voucher of the month is already here. */}
+                          {/*
+                            The voucher number, drawn as the control it is. It is no longer
+                            the only way to a voucher — the form offers the sheet the moment
+                            the action returns its id — but it is the way back to one from
+                            before, and a column of underlined numbers is a column nobody
+                            reads as tappable.
+                          */}
                           <Td num>
-                            <Link
+                            <PaperLink
+                              dense
                               href={`/expenses/voucher/${r.id}`}
-                              className="font-medium text-brand-700 underline"
+                              label={`${t.colVoucher} ${r.voucherNo}`}
                             >
                               {r.voucherNo}
-                            </Link>
+                            </PaperLink>
                           </Td>
                           <Td>
                             {t.categories[r.category]}

@@ -43,6 +43,7 @@
 import { useActionState, useEffect, useRef, useState } from 'react'
 
 import { MethodPicker, type MethodLabels } from '@/components/method-picker'
+import { PaperLink } from '@/components/paper-link'
 import { Alert, Button, Field } from '@/components/ui'
 import type { T } from '@/lib/i18n'
 import { mintIdempotencyKey } from '@/lib/idempotency'
@@ -248,6 +249,27 @@ export function PayRow({
               <p role="status" className="text-sm font-medium text-brand-700">
                 {state.ok}
               </p>
+            )}
+
+            {/*
+              THE SLIP, THE INSTANT IT EXISTS — and this is the button the screen was
+              missing. The sentence above names the voucher number in words; the only way to
+              the paper was to scroll to the register and notice that the number in it was a
+              link, which is not a journey anybody was told about. The person who has just
+              been paid is standing at the desk, so the sheet is one tap from the
+              confirmation, and the sheet is where the Print button is.
+
+              Behind the same `state` as the sentence, so it is drawn on the replay branch
+              too: the second arrival of a submit carries the row the first one wrote, which
+              is the same slip rather than a second one.
+            */}
+            {state?.receipt && (
+              <PaperLink
+                href={`/payroll/payslip/${state.receipt.id}`}
+                label={`${t.printSlip} ${state.receipt.no}`}
+              >
+                {t.printSlip}
+              </PaperLink>
             )}
 
             {/*

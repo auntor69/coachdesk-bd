@@ -67,7 +67,19 @@ import { has } from '@/lib/plans'
 import { createClient } from '@/lib/supabase/server'
 import type { PaymentMethod } from '@/lib/supabase/types'
 
-export type PayState = { error?: string; ok?: string } | null
+/**
+ * The sentence, and the row it is about.
+ *
+ * `receipt` is the half this action was missing, and the complaint that produced it was
+ * exact: the confirmation said "Paid. Voucher no. 1042." and stopped, so the manager holding
+ * a form and a person waiting at the desk had to scroll to the register and guess that the
+ * underlined number in it was tappable. The id travels the way the fee actions' does — one
+ * narrow field, only ever on success — and the row turns it into the button that opens the
+ * payslip, which is where the Print button lives.
+ */
+export type PayState =
+  | { error?: string; ok?: string; receipt?: { id: string; no: number } }
+  | null
 
 /**
  * A membership test rather than a cast, built from the canonical list.
@@ -207,12 +219,12 @@ async function payeeExists(
  * `paid_by` is the caller, from the session and never from the form. It is `on delete set
  * null`, so a manager who leaves takes their name off the voucher without taking the money
  * off the month. `paid_at` is left to its default: the month is what the profit line reads,
- * and the timestamp is bookkeeping for the order of a register.
- *
+ * and the timestamp is bookkeeping for the order of a register. * 
  * The voucher number is not sent and cannot be: it is assigned by a BEFORE INSERT trigger
  * under an advisory lock, which is what lets a rolled-back insert burn no number. It comes
  * back out of the insert rather than being read afterwards, because a second query would be a
- * guess at which row was ours.
+ * guess at which row was ours — and the row's id comes back with it, so the screen can offer
+ * the payslip without the register being re-read.
  */
 export async function paySalary(
   _prev: PayState,
@@ -378,10 +390,13 @@ export async function paySalary(
       paid_by: session.userId,
       idempotency_key: key,
     })
-    .select('voucher_no')
+    // The id as well as the number: the number is what the sentence says, and the id is what
+    // the slip is fetched by, so both come out of the one insert rather than a second read.
+    .select('id, voucher_no')
     .single()
 
   let voucherNo: number
+  let paymentId: string
 
   if (writeError) {
     // The one error that is not a failure: 20260811000051's unique index refusing a second row
@@ -393,7 +408,7 @@ export async function paySalary(
 
     const { data: existing } = await supabase
       .from('salary_payments')
-      .select('voucher_no')
+      .select('id, voucher_no')
       .eq('coaching_center_id', centerId)
       .eq('idempotency_key', key)
       .maybeSingle()
@@ -419,13 +434,19 @@ export async function paySalary(
     }
 
     voucherNo = existing.voucher_no
+    paymentId = existing.id
   } else {
     voucherNo = written.voucher_no
+    paymentId = written.id
   }
 
   revalidatePath('/payroll/pay')
   // The same confirmation whether this was the first arrival or the fourth. Telling an owner
   // the salary was "already paid" would read as a warning that they had paid it twice, which
   // is not what happened and not what the sentence is for.
-  return { ok: t.savedVoucher(voucherNo) }
+  //
+  // The receipt travels with it, and on the replay branch above it is the row the first
+  // arrival wrote — the same slip, not a second one, which is the whole point of the
+  // idempotency index.
+  return { ok: t.savedVoucher(voucherNo), receipt: { id: paymentId, no: voucherNo } }
 }

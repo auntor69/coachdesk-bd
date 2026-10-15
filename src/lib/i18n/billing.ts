@@ -179,7 +179,7 @@ const EN: BillingWords = {
 
   grantLine: (days) => days + ' days',
   reasonLabel: 'Reason',
-  receiptLink: 'Receipt',
+  receiptLink: 'Print receipt',
   receivedOn: (date) => 'received ' + date,
 }
 
@@ -250,7 +250,7 @@ const BN: BillingWords = {
 
   grantLine: (days) => days + ' দিন',
   reasonLabel: 'কারণ',
-  receiptLink: 'রসিদ',
+  receiptLink: 'রসিদ প্রিন্ট করুন',
   receivedOn: (date) => 'পাওয়া গেছে ' + date,
 }
 

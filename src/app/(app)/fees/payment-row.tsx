@@ -17,9 +17,8 @@
  */
 import { useActionState, useEffect, useRef, useState } from 'react'
 
-import Link from 'next/link'
-
 import { MethodPicker } from '@/components/method-picker'
+import { PaperLink } from '@/components/paper-link'
 import { Alert, Button, Field } from '@/components/ui'
 import { digits, formatDate } from '@/lib/bd/time'
 import type { Award } from '@/lib/fees/scholarship'
@@ -240,16 +239,15 @@ export function PaymentRow({
               paper — and a figure in the middle of a translated sentence would have
               to be a template filled in the browser for no gain. */}
           {state?.receipt && (
-            <p className="mt-2">
-              <Link
+            <div className="mt-2 flex items-center gap-2">
+              <PaperLink
                 href={`/fees/receipt/${state.receipt.id}`}
-                className="inline-flex min-h-tap items-center font-medium
-                  text-brand-700 underline"
+                label={`${t.receiptLink} ${state.receipt.no}`}
               >
                 {t.receiptLink}
-              </Link>
-              <span className="num ml-2 text-ink-soft">#{state.receipt.no}</span>
-            </p>
+              </PaperLink>
+              <span className="num text-ink-soft">#{state.receipt.no}</span>
+            </div>
           )}
 
           {/* A settled invoice keeps its history visible but offers no form.

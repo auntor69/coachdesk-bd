@@ -1,6 +1,7 @@
 import Link from 'next/link'
 
 import { Card } from '@/components/ui'
+import { PaperLink } from '@/components/paper-link'
 import { SearchBox, SearchEmpty } from '@/components/search-box'
 import { Th, Td } from '@/components/table'
 import { pageCapability, getSession } from '@/lib/auth/session'
@@ -388,16 +389,24 @@ export default async function RegisterPage({
                   >
                     <Td num>{formatDate(r.date, locale)}</Td>
                     <Td num>
-                      {/* Every row links to its own slip, which is what makes a
-                          parent walking in with "I paid in July" a thirty-second
-                          job: find the month, find the name, tap the number. */}
-                      <Link
+                      {/*
+                        Every row links to its own slip, which is what makes a parent walking
+                        in with "I paid in July" a thirty-second job: find the month, find the
+                        name, tap the number.
+
+                        A bordered chip and not an underlined figure, because a register is
+                        read at arm's length and an underline is not a shape anybody notices
+                        on a column of numbers — the shape comes off on paper and the number
+                        stays, since this sheet is printed and a receipt column that printed
+                        as a gap would be a register nobody could reconcile.
+                      */}
+                      <PaperLink
+                        dense
                         href={`/fees/receipt/${r.id}`}
-                        className="font-medium text-brand-700 underline print:text-ink
-                          print:no-underline"
+                        label={`${t.colReceipt} ${r.receiptNo}`}
                       >
                         {r.receiptNo}
-                      </Link>
+                      </PaperLink>
                     </Td>
                     <Td>
                       {r.name}

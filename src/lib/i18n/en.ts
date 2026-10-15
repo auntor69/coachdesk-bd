@@ -1001,7 +1001,16 @@ export const en: Dictionary = {
     reference: 'Transaction ID',
     receiving: 'Recording…',
     receive: 'Record payment',
-    receiptLink: 'View receipt',
+    /**
+     * The control that appears the moment money is recorded, and it says what it does.
+     *
+     * It was "View receipt" drawn as an underlined link under the confirmation, which read
+     * as a footnote to a sentence rather than as the next thing to do — and the sheet behind
+     * it carries the Print button a parent or an employee is actually waiting for. The words
+     * name the paper and the destination is the paper: one tap from "the money is in" to a
+     * sheet somebody can be handed.
+     */
+    receiptLink: 'Print receipt',
     methods: {
       cash: 'Cash',
       bkash: 'bKash',
@@ -1049,7 +1058,7 @@ export const en: Dictionary = {
     confirm: 'Record the refund',
     refunding: 'Recording…',
     keep: 'No, leave it',
-    receiptLink: 'View refund receipt',
+    receiptLink: 'Print refund receipt',
   },
 
   discount: {
@@ -1452,6 +1461,8 @@ export const en: Dictionary = {
     recurringHint:
       'Rent, electricity, internet. Marked in the list below, so you can see at a glance what the centre pays every month.',
     submit: 'Save this',
+    /** See the Bangla: the voucher the action just wrote, one tap away instead of one scroll. */
+    printVoucher: 'Print voucher',
 
     /**
      * Why the form has no edit button, said before the owner looks for one.
@@ -1755,6 +1766,15 @@ export const en: Dictionary = {
     unlockHint: 'Tick the confirmation box above to record this payment.',
     submit: 'Record this payment',
     paying: 'Saving…',
+    /**
+     * Offered under the confirmation, the instant the salary is on the record.
+     *
+     * The register below has always linked the voucher number, and it still does — but the
+     * person being paid is standing at the desk and the sentence "Paid. Voucher no. 1042."
+     * told the manager a number rather than giving them the slip. The number is in the label
+     * of the sentence above this button; this is the way to the paper it is printed on.
+     */
+    printSlip: 'Print payslip',
     cancel: 'Cancel',
     /** See the Bangla: there is no edit button, so the form has to say what to do instead. */
     correctionHint:
