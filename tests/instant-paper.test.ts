@@ -52,7 +52,6 @@ const codeOnly = (source: string) =>
   source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '')
 
 const PAPER = read('src', 'components', 'paper-link.tsx')
-const PAPER_CODE = codeOnly(PAPER)
 const ICONS = read('src', 'components', 'icons.tsx')
 const PAY_ACTION = read('src', 'app', '(app)', 'payroll', 'pay', 'actions.ts')
 const PAY_ROW = read('src', 'app', '(app)', 'payroll', 'pay', 'pay-row.tsx')
