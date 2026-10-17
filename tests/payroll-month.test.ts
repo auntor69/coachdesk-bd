@@ -879,7 +879,10 @@ test('shape: the tick is the button\u2019s lock, decided by the action\u2019s ow
   assert.match(ROW, /role="status"/)
 
   // The tick is controlled, because a `disabled` attribute cannot follow an uncontrolled box.
-  assert.match(ROW, /onChange=\{\(e\) => setConfirmed\(e\.target\.checked\)\}/)
+  assert.match(
+    ROW,
+    /onChange=\{\(e\) => setConfirmedFor\(e\.target\.checked \? state : NOT_ANSWERED\)\}/,
+  )
 
   // The row starts from the agreement's own sum, so there is no frame of unlocked button on a
   // row that is about to be locked; and the boxes report what they add up to in both shapes of
@@ -895,7 +898,15 @@ test('shape: a tick does not survive the payment it unlocked', () => {
   // agreement's figures, so a tick still standing from the payment before is `confirmed: true`
   // — and the second full salary this whole mechanism exists for goes through already
   // confirmed, which is exactly the tap nobody meant.
-  assert.match(ROW, /if \(state\?\.ok\) setConfirmed\(false\)/)
+  //
+  // It is derived rather than cleared from an effect: the tick is stored as the answer it was
+  // given under, so any new answer — a payment, a refusal — is a new question. The effect
+  // that mints the idempotency key is the only one left in the component, and a `setConfirmed`
+  // in it would be a second render on the frame the button is already locked.
+  assert.match(ROW, /useState<PayState \| typeof NOT_ANSWERED>\(NOT_ANSWERED\)/)
+  assert.match(ROW, /const confirmed = confirmedFor === state/)
+  assert.doesNotMatch(ROW, /setConfirmed\(/)
+  assert.doesNotMatch(ROW, /if \(state\?\.ok\) setConfirmed/)
 })
 
 test('shape: the page hands down the pair the lock is measured from', () => {

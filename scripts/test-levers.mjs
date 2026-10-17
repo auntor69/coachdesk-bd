@@ -105,15 +105,6 @@ const grant = (center, days, reason) =>
     tx.query('select public.founder_grant_days($1, $2, $3) as out', [center, days, reason]),
   )
 
-const grantDenied = async (center, days, reason = 'because') => {
-  try {
-    await grant(center, days, reason)
-    return false
-  } catch {
-    return true
-  }
-}
-
 const adjust = (center, poisha, reason) =>
   asUser(db, founder, (tx) =>
     tx.query('select public.founder_adjust_balance($1, $2, $3) as out', [

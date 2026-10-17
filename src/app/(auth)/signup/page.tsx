@@ -10,6 +10,7 @@ import { passwordTooShort } from '@/lib/i18n/messages'
 import { readerLocale } from '@/lib/i18n/server'
 import { copyFor, policyFor, policyHref } from '@/lib/legal/policies'
 import { Card, Logo } from '@/components/ui'
+import { AuthBrandPanel } from '@/components/auth-brand'
 import { LanguageSwitch } from '@/components/language-switch'
 import { SignupForm } from '../signup-form'
 
@@ -59,49 +60,54 @@ export default async function SignupPage() {
   const privacy = policyFor('privacy')
 
   return (
-    <main className="flex min-h-full flex-1 flex-col justify-center px-5 py-10">
-      <div className="mx-auto w-full max-w-sm">
-        {/* The corner every phone app keeps it in, and the control a reader who cannot read
-            this form is looking for. */}
-        <div className="mb-3 flex justify-end">
-          <LanguageSwitch locale={locale} />
-        </div>
+    /* Same two frames as /login — the panel's own note is on components/auth-brand.tsx. */
+    <main className="flex min-h-full flex-1 flex-col lg:grid lg:grid-cols-[1.15fr_1fr]">
+      <AuthBrandPanel t={t.brand} />
 
-        <div className="mb-8 text-center">
-          <Logo className="text-2xl" />
-          <p className="mt-3 text-ink-soft">
-            {/*
-              * Two templates, one ternary, because English inflects on a count Bangla
-              * ignores — and the free tier is one batch, so the plural wording would have
-              * read "1 batches" on the screen every new centre sees. `daysLate`/`lateLabel`
-              * are the same shape for the same reason.
-              */}
-            {fill(FREE_BATCHES === 1 ? t.signup.freeLineOne : t.signup.freeLine, {
-              batches: digits(FREE_BATCHES, locale),
-              students: digits(FREE_STUDENTS, locale),
-            })}
+      <div className="flex flex-1 flex-col justify-center px-5 py-10 lg:px-12">
+        <div className="mx-auto w-full max-w-sm">
+          {/* The corner every phone app keeps it in, and the control a reader who cannot
+              read this form is looking for. */}
+          <div className="mb-3 flex justify-end">
+            <LanguageSwitch locale={locale} />
+          </div>
+
+          <div className="mb-8 text-center">
+            <Logo className="text-2xl" />
+            <p className="mt-3 text-ink-soft">
+              {/*
+                * Two templates, one ternary, because English inflects on a count Bangla
+                * ignores — and the free tier is one batch, so the plural wording would have
+                * read "1 batches" on the screen every new centre sees. `daysLate`/`lateLabel`
+                * are the same shape for the same reason.
+                */}
+              {fill(FREE_BATCHES === 1 ? t.signup.freeLineOne : t.signup.freeLine, {
+                batches: digits(FREE_BATCHES, locale),
+                students: digits(FREE_STUDENTS, locale),
+              })}
+            </p>
+          </div>
+
+          <Card>
+            <SignupForm
+              // The rule the action refuses on, not a second wording of it: `MIN_PASSWORD`
+              // is the number in this sentence and the number the check reads, and this is
+              // one of the two screens `common.passwordTooShort` was written for.
+              passwordHint={passwordTooShort(locale)}
+              terms={{ href: policyHref(terms.slug), label: copyFor(terms, locale).title }}
+              privacy={{
+                href: policyHref(privacy.slug),
+                label: copyFor(privacy, locale).title,
+              }}
+              t={t.signup}
+              locale={locale}
+            />
+          </Card>
+
+          <p className="mt-5 text-center text-sm text-ink-faint">
+            {t.signup.privacyNote}
           </p>
         </div>
-
-        <Card>
-          <SignupForm
-            // The rule the action refuses on, not a second wording of it: `MIN_PASSWORD` is
-            // the number in this sentence and the number the check reads, and this is one of
-            // the two screens `common.passwordTooShort` was written for.
-            passwordHint={passwordTooShort(locale)}
-            terms={{ href: policyHref(terms.slug), label: copyFor(terms, locale).title }}
-            privacy={{
-              href: policyHref(privacy.slug),
-              label: copyFor(privacy, locale).title,
-            }}
-            t={t.signup}
-            locale={locale}
-          />
-        </Card>
-
-        <p className="mt-5 text-center text-sm text-ink-faint">
-          {t.signup.privacyNote}
-        </p>
       </div>
     </main>
   )

@@ -398,6 +398,23 @@ test('the phone sheet works before the bundle arrives', () => {
   assert.doesNotMatch(NAV_MODULE, /useState|onClick/)
 })
 
+test('the shell lets a keyboard past its own navigation', () => {
+  /*
+   * The sidebar is the first column in the DOM, so without a skip link every keyboard reader
+   * pays for eleven rows on every screen — and pays again after every navigation. The link is
+   * a plain anchor to a focusable `main`: no client component, no JavaScript, nothing to
+   * prefetch. Its words are in the dictionary because the shell draws both languages.
+   */
+  assert.match(SHELL, /href="#content"/)
+  assert.match(SHELL, /id="content"/)
+  assert.match(SHELL, /tabIndex=\{-1\}/)
+  assert.ok(
+    SHELL.indexOf('href="#content"') < SHELL.indexOf('<Sidebar'),
+    'the skip link has to come before the navigation it skips',
+  )
+  assert.match(read('src', 'lib', 'i18n', 'en.ts'), /skipToContent: 'Skip to the main content'/)
+})
+
 test('the sheet closes itself when the route changes', () => {
   /*
    * A layout is not re-rendered when a route inside it changes, so the `<details>` kept

@@ -59,6 +59,13 @@ export const en: Dictionary = {
     logout: 'Log out',
     account: 'My account',
     mainMenu: 'Main menu',
+    /**
+     * The first thing in the shell and the first thing the Tab key reaches: a link that
+     * jumps past the eleven sidebar rows to the screen's own content. Hidden until it is
+     * focused, so it costs a mouse user nothing, and it is a plain anchor — no JavaScript,
+     * and the browser's own fragment jump does the work.
+     */
+    skipToContent: 'Skip to the main content',
     welcome: 'Welcome',
     otherCenter: 'Other centre',
     thisCenter: 'Here now',
@@ -5608,6 +5615,28 @@ export const en: Dictionary = {
    * coaching centre in English, the way it does everywhere else in this product.
    */
   auth: {
+    /**
+     * The panel that fills the left half of a desktop screen, on the two screens a reader
+     * reaches with no session.
+     *
+     * IT EXISTS BECAUSE THESE TWO SCREENS WERE NEVER GIVEN THE DESKTOP TREATMENT. Every
+     * signed-in screen got §20.1's two frames; login and signup stayed a 384px column in
+     * the middle of a 1,440px window — the phone layout drawn at every width, which is
+     * exactly the defect the interface section was written about. The panel is hidden
+     * below `lg`, so the phone is unchanged, and it is static markup: no query, no
+     * JavaScript, nothing for a returning teacher on a phone to download and skip.
+     *
+     * Three lines and not a feature list, because a login form is not where anybody reads
+     * a specification. They are the three things the product is for, and they are the same
+     * three the shell's navigation is grouped by (money, people, families).
+     */
+    brand: {
+      headline: 'The whole coaching centre, in one place',
+      attendance: 'Mark a batch in thirty seconds',
+      money: 'Fees, arrears and receipts that reconcile',
+      families: 'Parents told in Bengali, by SMS',
+      note: 'Built for coaching centres in Bangladesh',
+    },
     login: {
       title: 'Log in',
       tagline: 'Attendance, results and fees — all in one place',

@@ -45,8 +45,12 @@ export function ReminderEntry({
   return (
     <Link
       href="/fees/reminders"
+      // The hover is the whole of the affordance on a desktop: the card is a link, and a
+      // card that does not answer a pointer reads as a summary rather than a door. On a
+      // phone there is no pointer to answer, and `hover:` simply never applies.
       className={`flex min-h-tap items-center justify-between gap-3 rounded-xl
-        border border-line bg-white px-4 py-3 ${className}`}
+        border border-line bg-white px-4 py-3 transition-colors
+        hover:border-brand-300 hover:bg-brand-50/40 ${className}`}
     >
       <span>
         <span className="font-medium text-ink">{t.title}</span>

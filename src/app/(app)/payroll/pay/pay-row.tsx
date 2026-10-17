@@ -19,9 +19,13 @@
  *
  * AND THE TICK DOES NOT SURVIVE THE PAYMENT IT UNLOCKED. The boxes remount to the agreement's
  * figures after a success, so a tick left standing from the payment before would submit the
- * very second full salary this mechanism exists to stop, already confirmed. It is cleared in
- * the same effect that mints the next idempotency key, which is the moment the question is a
- * new one.
+ * very second full salary this mechanism exists to stop, already confirmed. The tick is
+ * therefore stored as the answer it was given under rather than as a boolean: `confirmed` is
+ * true only while the action's last answer is still the one the owner confirmed, so a new
+ * result — a payment, a refusal — is a new question and the tick is off. Derived, not cleared
+ * from an effect, so there is no second render and no frame where the box and the lock
+ * disagree. A refusal asking to be re-ticked is the safe direction: the tick exists to make
+ * somebody look twice, and a retry is a second look.
  *
  * FOUR BOXES OR ONE, decided by whether there is a live monthly agreement behind the row.
  * Four prefilled from the agreement is the ordinary case: `amount_bdt` is generated from
@@ -60,6 +64,13 @@ import { paySalary, type PayState } from './actions'
  * would be read as any of the three, and they differ by however much is still owed.
  */
 export type RowFigure = { label: string; value: string }
+
+/**
+ * "No tick yet" — distinct from `null`, which is the action's state before the first submit.
+ * A module constant and not an inline object, so the comparison is against the same value on
+ * every render; the tick stays off until somebody ticks it.
+ */
+const NOT_ANSWERED = { notAnswered: true } as const
 
 export function PayRow({
   payee,
@@ -127,7 +138,18 @@ export function PayRow({
    * has to follow it, and an uncontrolled box tells React nothing.
    */
   const [amount, setAmount] = useState(agreedAmount(parts))
-  const [confirmed, setConfirmed] = useState(false)
+
+  /*
+   * The tick, paired with the action's answer it was given under. A sentinel rather than
+   * `null`, because `null` is a real answer here — the state before the first submit — and a
+   * first paint that read it as a confirmed tick would draw the lock already open.
+   *
+   * The boxes are uncontrolled beyond `amount`, so this component has no other record of
+   * "what was on screen when the owner ticked"; the state object is that record, and
+   * `useActionState` keeps its identity until the next result arrives.
+   */
+  const [confirmedFor, setConfirmedFor] = useState<PayState | typeof NOT_ANSWERED>(NOT_ANSWERED)
+  const confirmed = confirmedFor === state
 
   /**
    * Cash first, and it survives a save, for the reason the spending form gives: salaries
@@ -151,14 +173,6 @@ export function PayRow({
     // because the input does not exist until the panel does.
     const input = keyRef.current
     if (input && (state?.ok || !input.value)) input.value = mintIdempotencyKey()
-
-    /*
-     * A fresh payment is a fresh question. See the header: the boxes have gone back to the
-     * agreement's figures, and with the tick still on, `confirmed: true` would let the second
-     * full salary straight through. Cleared here and not by remounting the box, so no later
-     * re-render can bring the old answer back.
-     */
-    if (state?.ok) setConfirmed(false)
   }, [state, open])
 
   /*
@@ -338,7 +352,7 @@ export function PayRow({
                     type="checkbox"
                     name="confirmRepeat"
                     checked={confirmed}
-                    onChange={(e) => setConfirmed(e.target.checked)}
+                    onChange={(e) => setConfirmedFor(e.target.checked ? state : NOT_ANSWERED)}
                     className="mt-0.5 h-5 w-5 shrink-0 accent-brand-600"
                   />
                   <span>{t.repeatLabel}</span>

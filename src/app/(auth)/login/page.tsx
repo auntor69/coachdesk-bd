@@ -3,6 +3,7 @@ import { redirect } from 'next/navigation'
 
 import { getSession, homePathFor } from '@/lib/auth/session'
 import { Card, Logo } from '@/components/ui'
+import { AuthBrandPanel } from '@/components/auth-brand'
 import { LanguageSwitch } from '@/components/language-switch'
 import { dict } from '@/lib/i18n'
 import { readerLocale } from '@/lib/i18n/server'
@@ -45,22 +46,33 @@ export default async function LoginPage({ searchParams }: PageProps<'/login'>) {
   const t = dict(locale).auth
 
   return (
-    <main className="flex min-h-full flex-1 flex-col justify-center px-5 py-10">
-      <div className="mx-auto w-full max-w-sm">
-        {/* Above the wordmark, in the corner every phone app keeps it: a reader who cannot
-            read the form has to find this before they read anything else. */}
-        <div className="mb-3 flex justify-end">
-          <LanguageSwitch locale={locale} />
-        </div>
+    /*
+     * TWO FRAMES, ONE PRODUCT — the sentence §20.1 opens with, applied to the two screens
+     * that never got it. Below `lg` this is the phone screen it always was: a column with
+     * the switch at the top and the card in the middle. From `lg` the brand panel takes the
+     * left half and the form sits in the right one, which is where a 1,440px monitor stops
+     * being white space either side of a phone column.
+     */
+    <main className="flex min-h-full flex-1 flex-col lg:grid lg:grid-cols-[1.15fr_1fr]">
+      <AuthBrandPanel t={t.brand} />
 
-        <div className="mb-8 text-center">
-          <Logo className="text-2xl" />
-          <p className="mt-3 text-ink-soft">{t.login.tagline}</p>
-        </div>
+      <div className="flex flex-1 flex-col justify-center px-5 py-10 lg:px-12">
+        <div className="mx-auto w-full max-w-sm">
+          {/* Above the wordmark, in the corner every phone app keeps it: a reader who
+              cannot read the form has to find this before they read anything else. */}
+          <div className="mb-3 flex justify-end">
+            <LanguageSwitch locale={locale} />
+          </div>
 
-        <Card>
-          <LoginForm next={next} t={t.login} />
-        </Card>
+          <div className="mb-8 text-center">
+            <Logo className="text-2xl" />
+            <p className="mt-3 text-ink-soft">{t.login.tagline}</p>
+          </div>
+
+          <Card>
+            <LoginForm next={next} t={t.login} />
+          </Card>
+        </div>
       </div>
     </main>
   )

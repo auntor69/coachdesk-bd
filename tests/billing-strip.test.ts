@@ -59,8 +59,6 @@ describe('the money strip is drawn on every screen and only where money matters'
     // lead with. Replicating the shell's own assembly keeps the test a mirror of the
     // source rather than a pile of selectors that would have to be updated every time
     // the sentence changes shape.
-    const daysLine = '৳1,999 in the balance · The balance covers 30 more days'
-
     assert.equal(
       `${formatTaka(1999_00 / 100)} · ${dict('bn').shell.balanceDays(30)}`,
       '৳1,999 · ব্যালেন্সে আরও 30 দিনের টাকা আছে',
