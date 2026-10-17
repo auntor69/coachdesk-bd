@@ -1,6 +1,4 @@
-import Link from 'next/link'
-
-import { Card } from '@/components/ui'
+import { Card, LinkButton } from '@/components/ui'
 import type { SetupStep, SetupStepId } from '@/lib/setup'
 import type { Dictionary } from '@/lib/i18n'
 
@@ -97,13 +95,9 @@ export function SetupCard({
                 {step.next && (
                   <>
                     <p className="mt-0.5 text-sm text-ink-soft">{copy.why}</p>
-                    <Link
-                      href={HREF[step.id]}
-                      className="mt-2 inline-flex min-h-tap items-center justify-center
-                        rounded-xl bg-brand-600 px-5 font-semibold text-white"
-                    >
+                    <LinkButton href={HREF[step.id]} className="mt-2">
                       {copy.action}
-                    </Link>
+                    </LinkButton>
                   </>
                 )}
               </div>

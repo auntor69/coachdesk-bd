@@ -1,7 +1,7 @@
 import Link from 'next/link'
 import type { Route } from 'next'
 
-import { Card } from '@/components/ui'
+import { buttonClass, Card } from '@/components/ui'
 import { pagePlatformAdmin } from '@/lib/auth/session'
 import { createClient } from '@/lib/supabase/server'
 import { founderQueue } from '@/lib/billing/claims'
@@ -553,8 +553,7 @@ export default async function FounderPage({
                 the browser handles, not a route the app renders. */}
             <a
               href="/api/founder"
-              className="inline-flex min-h-tap items-center rounded-xl bg-brand-600
-                px-5 font-semibold text-white"
+              className={buttonClass('primary')}
             >
               {t.download}
             </a>
@@ -635,7 +634,7 @@ export default async function FounderPage({
 
               <button
                 type="submit"
-                className="min-h-tap rounded-xl bg-brand-600 px-5 font-semibold text-white"
+                className={buttonClass('primary')}
               >
                 {t.filters.apply}
               </button>

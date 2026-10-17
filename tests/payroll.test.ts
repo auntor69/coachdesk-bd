@@ -551,9 +551,15 @@ test('shape: the way on is a door, and who has been missed is still asked', () =
   // twice-a-year errand, so this is the one with the button — and in the bar it is still
   // there once twenty agreements have scrolled past.
   assert.match(BAR, /href="\/payroll\/pay"/)
-  assert.match(BAR, /rounded-xl border-2 border-brand-500/)
   assert.match(BAR, /\{t\.payLink\} →/)
-  assert.match(BAR, /actions=\{\s+<Link/)
+  // The door is the shared tinted button now, and the border it was asserting lives in
+  // `ui.tsx` — asserted there, so this stays a test of the shape rather than of one string
+  // that happened to spell it out twice.
+  assert.match(BAR, /actions=\{\s+<LinkButton href="\/payroll\/pay" variant="tinted">/)
+  assert.match(
+    readFileSync('src/components/ui.tsx', 'utf8'),
+    /tinted: 'border-2 border-brand-500 bg-brand-50/,
+  )
 
   // Not gated on canWrite: a read-only centre can read the month, and the figures are part
   // of what they need to decide whether to renew. Sliced from `actions={` rather than

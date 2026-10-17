@@ -90,7 +90,9 @@ test('the filter rides in the page bar and is not a screen-wide select', () => {
   // once there is room. The button never shrinks.
   assert.ok(PAGE.includes('min-h-tap max-w-44 rounded-xl'))
   assert.ok(PAGE.includes('font-medium text-ink sm:max-w-64'))
-  assert.ok(PAGE.includes('min-h-tap shrink-0 rounded-xl bg-brand-600'))
+  // The button never shrinks, and it is the shared primary now — asserted at the call
+  // site so a later drift back to hand-written classes fails here.
+  assert.ok(PAGE.includes("className={buttonClass('primary', false, 'shrink-0')}"))
 
   // Still a plain GET with a button, and still dropping the cursor when it is applied.
   assert.ok(PAGE.includes('<form method="get" className="flex items-center gap-2">'))

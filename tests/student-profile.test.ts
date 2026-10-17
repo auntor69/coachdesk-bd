@@ -885,7 +885,16 @@ test('layout: the name stays on screen, and the way to edit it is beside the nam
   // is the owner's and the manager's, and a teacher gets no link to a refusal.
   assert.match(head, /actions=\{\s*mayEdit && \(/, 'the edit button is not gated on mayEdit')
   assert.match(head, /href=\{`\/settings\/students\/\$\{student\.id\}`\}/)
-  assert.match(head, /min-h-tap/, 'the edit button is under a thumb target')
+  // The edit door is the shared secondary button now, so the thumb target it used to
+  // spell out at the call site lives in `ui.tsx`'s base — asserted there, the way the
+  // payroll bar asserts the tinted one, so both stay tests of shape rather than of one
+  // class string.
+  assert.match(head, /variant="secondary"/, 'the edit door is a shared button')
+  assert.match(
+    readFileSync('src/components/ui.tsx', 'utf8'),
+    /rounded-xl px-5 min-h-tap /,
+    'the edit button is under a thumb target',
+  )
 
   // The bar is the page's heading, so the page keeps none of its own — two <h1>s is what
   // a screen reader then lists as the title of one screen.

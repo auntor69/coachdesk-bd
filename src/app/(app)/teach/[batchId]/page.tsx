@@ -1,7 +1,7 @@
 import Link from 'next/link'
 import { forbidden, notFound } from 'next/navigation'
 
-import { Card } from '@/components/ui'
+import { Card, LinkButton } from '@/components/ui'
 import { PageHeader } from '@/components/page-header'
 import {
   pageRole,
@@ -629,13 +629,9 @@ export default async function AttendancePage({
               has just pasted its register is nearly always the same fact seen from
               the other end. */}
           {mayEnrol && (
-            <Link
-              href="/settings/students?show=no-batch"
-              className="mt-4 inline-flex min-h-tap items-center justify-center
-                rounded-xl bg-brand-600 px-5 font-semibold text-white"
-            >
+            <LinkButton href="/settings/students?show=no-batch" className="mt-4">
               {t.noStudentsAction}
-            </Link>
+            </LinkButton>
           )}
         </Card>
       ) : lockReason !== null ? (

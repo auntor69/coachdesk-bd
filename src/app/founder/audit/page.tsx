@@ -1,7 +1,7 @@
 import Link from 'next/link'
 import type { Route } from 'next'
 
-import { Card } from '@/components/ui'
+import { buttonClass, Card, LinkButton } from '@/components/ui'
 import { pagePlatformAdmin } from '@/lib/auth/session'
 import { createClient } from '@/lib/supabase/server'
 import {
@@ -231,7 +231,7 @@ export default async function FounderAuditPage({
 
           <button
             type="submit"
-            className="min-h-tap rounded-xl bg-brand-600 px-5 font-semibold text-white"
+            className={buttonClass('primary')}
           >
             {t.apply}
           </button>
@@ -281,20 +281,20 @@ export default async function FounderAuditPage({
 
       <div className="flex flex-wrap items-center gap-2">
         {hasOlder && (
-          <Link
+          <LinkButton
             href={auditHref(filter, { before: entries[entries.length - 1]?.at ?? null }) as Route}
-            className="inline-flex min-h-tap items-center rounded-xl border-2 border-line px-4 font-semibold text-ink"
+            variant="secondary"
           >
             {d.audit.older} →
-          </Link>
+          </LinkButton>
         )}
         {filter.before !== null && (
-          <Link
+          <LinkButton
             href={auditHref(filter, { before: null }) as Route}
-            className="inline-flex min-h-tap items-center rounded-xl border-2 border-line px-4 font-semibold text-ink"
+            variant="secondary"
           >
             {d.audit.newest}
-          </Link>
+          </LinkButton>
         )}
       </div>
 

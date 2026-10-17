@@ -1,7 +1,7 @@
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
 
-import { Card } from '@/components/ui'
+import { Card, LinkButton } from '@/components/ui'
 import { PageHeader } from '@/components/page-header'
 import { RiskLevelChip, RiskReasons } from '@/components/risk-list'
 import {
@@ -472,14 +472,13 @@ export default async function StudentProfilePage({
            UPDATE — and a button to a screen that refuses them is worse than no button. */
         actions={
           mayEdit && (
-            <Link
+            <LinkButton
               href={`/settings/students/${student.id}`}
-              className="inline-flex min-h-tap shrink-0 items-center justify-center
-                rounded-xl border-2 border-line bg-white px-4 font-semibold text-ink
-                hover:border-brand-300"
+              variant="secondary"
+              className="shrink-0"
             >
               {t.edit}
-            </Link>
+            </LinkButton>
           )
         }
       />

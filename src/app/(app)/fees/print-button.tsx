@@ -1,5 +1,7 @@
 'use client'
 
+import { buttonClass } from '@/components/ui'
+
 /**
  * The button that opens the print dialog.
  *
@@ -27,8 +29,9 @@ export function PrintButton({ label }: { label: string }) {
     <button
       type="button"
       onClick={() => window.print()}
-      className="inline-flex min-h-tap items-center rounded-xl border-2 border-brand-500
-        bg-brand-50 px-4 font-medium text-brand-800 hover:bg-brand-100 print:hidden"
+      // `buttonClass` and not `<Button>`: this is the tinted variant on a real `<button>`
+      // with an `onClick`, which is the one case the two shared halves do not cover.
+      className={buttonClass('tinted', false, 'print:hidden')}
     >
       {label}
     </button>

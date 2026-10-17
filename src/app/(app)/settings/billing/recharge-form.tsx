@@ -24,6 +24,8 @@ import { useActionState, useState } from 'react'
 import Link from 'next/link'
 import type { Route } from 'next'
 
+import { Button } from '@/components/ui'
+
 import { submitRechargeClaim, type RechargeState } from './actions'
 
 /**
@@ -227,14 +229,9 @@ export function RechargeForm({
       )}
       {state?.ok && <p className="text-sm font-medium text-present">{state.ok}</p>}
 
-      <button
-        type="submit"
-        disabled={pending}
-        className="min-h-tap rounded-xl bg-brand-600 px-5 font-semibold text-white
-          hover:bg-brand-700 disabled:opacity-60"
-      >
+      <Button type="submit" disabled={pending} className="disabled:opacity-60">
         {pending ? words.confirming : words.confirm}
-      </button>
+      </Button>
     </form>
   )
 }

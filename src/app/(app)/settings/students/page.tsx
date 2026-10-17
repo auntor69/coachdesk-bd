@@ -1,7 +1,7 @@
 import Link from 'next/link'
 
 import { PageHeader } from '@/components/page-header'
-import { Card } from '@/components/ui'
+import { buttonClass, Card } from '@/components/ui'
 import { EyeIcon, PencilIcon } from '@/components/icons'
 import { SearchBox, SearchEmpty } from '@/components/search-box'
 import { Th, Td } from '@/components/table'
@@ -813,11 +813,7 @@ function ScopeFilter({
     <form method="get" className="print:hidden">
       {!active && <input type="hidden" name="show" value="current" />}
       {q !== '' && <input type="hidden" name="q" value={q} />}
-      <button
-        type="submit"
-        className="inline-flex min-h-tap items-center rounded-xl border-2 border-line
-          bg-white px-4 font-medium text-ink-soft hover:text-ink"
-      >
+      <button type="submit" className={buttonClass('secondary')}>
         {active ? clear : showCurrent}
       </button>
     </form>

@@ -1,7 +1,5 @@
-import Link from 'next/link'
-
 import { PageHeader } from '@/components/page-header'
-import { Card } from '@/components/ui'
+import { Card, LinkButton } from '@/components/ui'
 import { ReadOnlyNote } from '@/components/read-only-note'
 import { pagePermission, getSession, isStaffAdmin } from '@/lib/auth/session'
 import { branchChoicesFor, mayChooseBranch } from '@/lib/branches'
@@ -141,13 +139,9 @@ export default async function NewBatchPage() {
               was handed the one control that answers with a 403. They get the sentence
               instead, which names the person who can. */}
           {isStaffAdmin(session) && (
-            <Link
-              href="/settings/subjects"
-              className="mt-4 inline-flex min-h-tap items-center justify-center
-                rounded-xl bg-brand-600 px-5 font-semibold text-white"
-            >
+            <LinkButton href="/settings/subjects" className="mt-4">
               {t.addSubject}
-            </Link>
+            </LinkButton>
           )}
         </Card>
       ) : (

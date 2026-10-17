@@ -25,7 +25,7 @@ import { signOut } from '@/app/(auth)/actions'
 import { switchCenter } from '@/app/(app)/actions'
 import { SideNav, TabBar, type NavEntry, type NavSection } from '@/components/app-nav'
 import { LanguageSwitch } from '@/components/language-switch'
-import { Logo } from '@/components/ui'
+import { buttonClass, LinkButton, Logo } from '@/components/ui'
 import type { MemberRole, CenterStatus } from '@/lib/supabase/types'
 import type { Membership, Session } from '@/lib/auth/session'
 import {
@@ -502,13 +502,9 @@ function ReadOnlyBanner({
               offering a teacher a tab that answers with a 403 is worse than offering
               them nothing, and there is nothing for them to do here anyway. */}
           {canSeePlan && (
-            <Link
-              href="/settings/billing"
-              className="inline-flex min-h-tap items-center rounded-xl border-2
-                border-brand-500 bg-brand-50 px-4 font-medium text-brand-800"
-            >
+            <LinkButton href="/settings/billing" variant="tinted">
               {t.seePlan}
-            </Link>
+            </LinkButton>
           )}
           {salesPhone && (
             <a
@@ -517,8 +513,9 @@ function ReadOnlyBanner({
               // laptop, and a number that can be read off the screen and dialled by
               // hand works on anything.
               href={`tel:${salesPhone}`}
-              className="inline-flex min-h-tap items-center rounded-xl border-2
-                border-line px-4 font-medium text-ink-soft"
+              // An external anchor, not a route: `buttonClass` is the shared half, and
+              // `LinkButton` is for the app's own pages.
+              className={buttonClass('secondary')}
             >
               {t.callUs}
               <span className="num ml-1">{formatBdMobile(salesPhone)}</span>
@@ -587,17 +584,16 @@ function TrialBanner({
           rung today. */}
       {canSeePlan && (
         <div className="mt-3">
-          <Link
+          {/* White while the card is green, or the button's fill would match the card it
+              sits on and all that is left of it is a border — which is why the variant is
+              `tinted` and the fill is the one thing overridden. */}
+          <LinkButton
             href="/settings/billing"
-            // White while the card is green, or the button's fill matches the card it
-            // sits on and all that is left of it is a border.
-            className={`inline-flex min-h-tap items-center rounded-xl border-2
-              border-brand-500 px-4 font-medium text-brand-800 ${
-                ending ? 'bg-brand-50' : 'bg-white'
-              }`}
+            variant="tinted"
+            className={ending ? '' : 'bg-white hover:bg-white'}
           >
             {t.keep(tier)}
-          </Link>
+          </LinkButton>
         </div>
       )}
     </div>
@@ -1059,13 +1055,9 @@ export async function AppShell({
                 plan screen is still where a tier is bought; what a dry balance needs is
                 the top-up, and that is here.
               */}
-              <Link
-                href="/settings/billing"
-                className="inline-flex min-h-tap items-center rounded-xl border-2
-                  border-brand-500 bg-brand-50 px-4 text-sm font-medium text-brand-800"
-              >
+              <LinkButton href="/settings/billing" variant="tinted" className="text-sm">
                 {t.balanceTopUp}
-              </Link>
+              </LinkButton>
             </div>
           )}
           {trial && (
