@@ -14,6 +14,15 @@ const eslintConfig = defineConfig([
     "next-env.d.ts",
   ]),
   {
+    // `scripts/pre-commit-hook.js` is CommonJS because it has to be: package.json declares
+    // no `type`, so a `.js` file is CJS, and Git (or `core.hooksPath`) runs this one outside
+    // any bundler, where an import statement would not parse. The exemption is that file and
+    // not a class of them — `scripts/pre-commit.mjs` is ESM and imports like every other
+    // module, which is what the rule is for.
+    files: ["scripts/pre-commit-hook.js"],
+    rules: { "@typescript-eslint/no-require-imports": "off" },
+  },
+  {
     rules: {
       // A leading underscore means "this argument exists because the signature
       // requires it, not because this body needs it". Two things in this codebase

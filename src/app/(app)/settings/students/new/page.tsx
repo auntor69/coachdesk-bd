@@ -9,6 +9,7 @@ import { slotLabel } from '@/lib/bd/schedule'
 import { branchChoicesFor } from '@/lib/branches'
 import { dict, localName, DEFAULT_LOCALE } from '@/lib/i18n'
 import { createClient } from '@/lib/supabase/server'
+import { rosterDoor } from '@/lib/students/roster-door'
 import { StudentForm } from './student-form'
 
 /** getSession, not pageRole — see the note on teach/page.tsx's own. */
@@ -68,6 +69,34 @@ export default async function NewStudentPage() {
       <div className="flex flex-col gap-5">
         {head}
         <ReadOnlyNote t={d.readOnly} className="max-w-2xl" />
+      </div>
+    )
+  }
+
+  /*
+   * THE TRIAL'S BOUND, BEFORE THE FORM AND AFTER THE LAPSED ARM (20260811000098). Second and
+   * not first because the arm above answers without a single query while this one has to ask
+   * for the policy row and the organisation's headcount — and asks for neither on a paid tier
+   * or a funded balance, which is every ordinary visit (`rosterDoor`). A form that could only
+   * be refused is the one thing this screen must not draw: the reader here has a family at the
+   * desk, and twelve fields of a child's details are an expensive way to find out.
+   */
+  const door = await rosterDoor(supabase, session)
+  if (!door.open) {
+    return (
+      <div className="flex flex-col gap-5">
+        {head}
+        <Card className="max-w-2xl">
+          <p className="font-medium text-ink">{door.title}</p>
+          <p className="mt-1 text-sm text-ink-soft">{door.body}</p>
+          <Link
+            href={door.to}
+            className="mt-3 inline-flex min-h-tap items-center font-medium text-brand-800
+              underline underline-offset-4 hover:text-brand-900"
+          >
+            {door.link}
+          </Link>
+        </Card>
       </div>
     )
   }

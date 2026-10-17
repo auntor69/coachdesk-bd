@@ -341,9 +341,25 @@ test('a lapsed centre keeps the list and loses all three doors out of it', () =>
    */
   assert.match(PAGE, /const mayWrite = session\.access === 'full'/)
 
-  // The New button in the bar, and the paste box below it.
-  assert.match(PAGE, /actions=\{\s*mayWrite && \(\s*<Link\s+href="\/settings\/students\/new"/)
-  assert.match(PAGE, /\{mayWrite && \(\s*<Link\s+href="\/settings\/students\/import"/)
+  /*
+   * The New button in the bar, and the paste box below it — each gated a second time now, and
+   * the second gate is the trial's roster (20260811000098, `door.open`): an organisation that
+   * has never funded its balance is refused another student by `createStudent` and refused a
+   * paste whole by `importStudents`, so a door to either is a door to a refusal for the same
+   * reason a lapsed subscription is one. Two conditions on one door, in this product's own
+   * order: what the reader is entitled to, then what the balance carries.
+   */
+  assert.match(
+    PAGE,
+    /actions=\{\s*mayWrite &&\s*door\.open && \(\s*<Link\s+href="\/settings\/students\/new"/,
+  )
+  assert.match(
+    PAGE,
+    /\{mayWrite && \(\s*<div className="order-3">\s*\{door\.open \? \(\s*<Link\s+href="\/settings\/students\/import"/,
+  )
+  // And the card that stands in its place is the same refusal the action writes, with the
+  // way to the one screen that takes money.
+  assert.match(PAGE, /if \(!door\.open\)|door\.open \? \(/)
 
   // And Edit, which was already narrowed to a role: both have to hold, because an owner of
   // a lapsed centre passes `isStaffAdmin` all day and the edit form would still refuse.

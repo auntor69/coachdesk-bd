@@ -13554,6 +13554,39 @@ check(
 )
 
 // ---------------------------------------------------------------------------
+/**
+ * Money on the balance, the way the founder's own approval writes it.
+ *
+ * A real recharge row and not a hand-set column: the ledger is the truth, `balance_poisha`
+ * is its cache, and the reconciliation at the end of this file would (correctly) raise a
+ * finding over a column that disagreed with the entries behind it.
+ *
+ * IT LIVES HERE BECAUSE THREE SECTIONS BELOW NEED IT, and it is the same errand in all
+ * three: a centre on a per-student tier cannot take a paid dimension of its tier — a
+ * teacher seat (`CD005`, 20260811000097) or a building (`CD004`, 20260811000096) — while
+ * the balance holds nothing, because those are monthly lines the day's rate has to carry
+ * (§11.6). A fixture written before those rules existed is a centre that was never funded
+ * because nothing was watching; funding it is what a real centre does, and it keeps each
+ * section below about the rule it was written for.
+ */
+const fundWith = (centre, poisha) =>
+  asService(
+    `insert into billing_ledger
+       (coaching_center_id, kind, amount_poisha, description, price_version_id)
+     values ($1, 'recharge', $2, 'the suite, for a paid dimension',
+             (select id from price_versions order by effective_from desc limit 1))`,
+    [centre, poisha],
+  )
+
+/*
+ * centerA HAS MONEY ON IT FROM HERE DOWN, and it is the same sentence as the helper's: this
+ * fixture is a Coaching Center for the ten thousand lines around it, and the stamp below is
+ * one of the things it writes a `teachers` row for. Left dry, the branch-stamp section would
+ * be answered by the seat rule instead of by the stamp — which is a real answer to a
+ * different question, and exactly the kind of green that hides the rule a fixture was for.
+ */
+await fundWith(centerA, 500000)
+
 // Filing a new row under the branch that wrote it — 20260811000054.
 //
 // The section above proved that a pinned manager cannot reach another branch. This one
@@ -15382,6 +15415,11 @@ check(
 const paidOwner = await ceilUser()
 const paidCentre = await ceilCentre('Ceiling Centre Plan', paidOwner)
 await db.query(`update coaching_centers set plan = 'center' where id = $1`, [paidCentre])
+// And funded, because there is no ceiling to check on this tier and the seat rule is the
+// only thing left standing there: a centre with nothing on the balance may record the two
+// seats it includes and no more (20260811000097), which is a different refusal with a
+// different code from the one this section is about.
+await fundWith(paidCentre, 500000)
 
 // `max_teachers` is null for a Coaching Center — §5 sells teachers by the head, so there
 // is no number to compare against and the guard returns before it counts. A null read as
@@ -15563,14 +15601,16 @@ check(
   ) === 100,
 )
 
-// --- The fence around the ten functions -------------------------------------
+// --- The fence around the eleven functions ----------------------------------
 
 const ceilGuards = [
   'guard_batch_ceiling', 'guard_subject_ceiling', 'guard_teacher_ceiling', 'guard_batch_seats',
+  // 20260811000096's own, beside the four: same shape, a different sentence.
+  'guard_branch_ceiling',
 ]
 const ceilHelpers = [
   'ceiling_plan', 'plan_ceiling', 'active_batches', 'active_subjects', 'active_teachers',
-  'active_seats',
+  'active_seats', 'active_branches',
 ]
 
 const ceilGrantees = async (names) =>
@@ -15590,20 +15630,20 @@ const anonReach = (await ceilGrantees([...ceilGuards, ...ceilHelpers])).filter(
   (r) => r.who === 'anon',
 )
 check(
-  'nothing anonymous can call any of the ten new functions',
+  'nothing anonymous can call any of the eleven new functions',
   anonReach.length === 0,
   anonReach.map((r) => `${r.name}→${r.who}`).join(', '),
 )
 
 // A trigger function's EXECUTE is checked when the trigger is created, never when it
-// fires, so these four are granted to nobody at all — including the role doing the
+// fires, so these five are granted to nobody at all — including the role doing the
 // insert. Anything reachable here would be a definer function a session could call
 // directly with arguments of its own choosing.
 const guardReach = (await ceilGrantees(ceilGuards)).filter((r) =>
   ['authenticated', 'anon', 'service_role', 'public'].includes(r.who),
 )
 check(
-  'and no session role can call the four guards directly',
+  'and no session role can call the five guards directly',
   guardReach.length === 0,
   guardReach.map((r) => `${r.name}→${r.who}`).join(', '),
 )
@@ -15624,6 +15664,682 @@ check(
   'while every helper a guard calls is reachable by the session running the insert',
   ceilHelpers.every((name) => helperReach.has(name)),
   ceilHelpers.filter((name) => !helperReach.has(name)).join(', '),
+)
+
+// ---------------------------------------------------------------------------
+// BUILDINGS, AND THE BALANCE THAT PAYS FOR THEM (20260811000096).
+//
+// THE HOLE THE OWNER FOUND ON A THREE-DAY TRIAL, and it was the same hole the section
+// above is about, one dimension over: `branches` is where an Institution's paid unit
+// lives — three included, then ৳750 a month each — and it was the only table of its kind
+// with no trigger at all. A center-or-institution signup is given DAYS rather than money
+// (§4.3), so it is perfectly writable with nothing on the balance: every add-on the daily
+// rate prices was free for those days, and the branch is the one with a headline on it.
+// An owner's own token could write fifty buildings on a tier that sells three.
+//
+// Everything below is from a real owner session. That is the direction that matters: the
+// form is a courtesy to the reader, the branch policy is about whose rows these are, and
+// this is the rule about what the tier and the balance allow.
+// ---------------------------------------------------------------------------
+
+console.log('\nBuildings and the balance that pays for them:')
+
+const addBranch = (centre, user, name) =>
+  attempt(user, 'insert into branches (coaching_center_id, name) values ($1, $2)', [
+    centre,
+    name,
+  ])
+
+const branchNames = async (centre) =>
+  (
+    await db.query(
+      'select name from branches where coaching_center_id = $1 order by name',
+      [centre],
+    )
+  ).rows.map((r) => r.name)
+
+const setBranchClosed = (centre, name, closed) =>
+  db.query('update branches set active = not $3 where coaching_center_id = $1 and name = $2', [
+    centre,
+    name,
+    closed,
+  ])
+
+// --- The trial: three buildings, and the fourth needs money -----------------
+
+const trialOwner = await ceilUser()
+const trialCentre = await ceilCentre('Branch Trial Institution', trialOwner)
+await db.query(
+  `update coaching_centers set plan = 'institution', status = 'trial' where id = $1`,
+  [trialCentre],
+)
+
+check(
+  'an institution signup holds days and not money, which is the whole of why this was open',
+  Number(
+    (
+      await db.query('select balance_poisha from coaching_centers where id = $1', [trialCentre])
+    ).rows[0].balance_poisha,
+  ) === 0,
+)
+
+const includedBuildings = []
+for (const name of ['Dhaka', 'Chattogram', 'Cumilla']) {
+  includedBuildings.push(await addBranch(trialCentre, trialOwner, name))
+}
+check(
+  'the three buildings the tier includes are never asked about money',
+  includedBuildings.every((b) => b.code === ''),
+  includedBuildings.map((b) => b.why).join(' | '),
+)
+
+const fourthBuilding = await addBranch(trialCentre, trialOwner, 'Sylhet')
+check(
+  'and the fourth is refused while the balance holds nothing',
+  fourthBuilding.code === 'CD004',
+  `${fourthBuilding.code} ${fourthBuilding.why}`,
+)
+check(
+  'the refusal says which rule it was, so a screen can name it rather than say "could not save"',
+  fourthBuilding.limit === 'limit=branches',
+  fourthBuilding.limit,
+)
+check(
+  'and it tells the reader where the money goes, because that is the whole fix',
+  fourthBuilding.hint.includes('balance'),
+  fourthBuilding.hint,
+)
+check(
+  'and nothing was written — the refusal is the database\'s, from a real owner session',
+  (await branchNames(trialCentre)).length === 3,
+  (await branchNames(trialCentre)).join(', '),
+)
+
+// The allowance is what the tier INCLUDES, not a lifetime budget: a closed building is
+// not a building anybody teaches in, and the bill stopped charging for it.
+await setBranchClosed(trialCentre, 'Cumilla', true)
+const replacement = await addBranch(trialCentre, trialOwner, 'Cumilla Branch')
+check(
+  'a closed building gives its place back',
+  replacement.code === '',
+  replacement.why,
+)
+
+// And a row switched back on is a new claim on that place, asked on the same terms as a
+// new row — the branch section's own version of "re-opening the retired one is refused".
+const reopenedBranch = await attempt(
+  trialOwner,
+  `update branches set active = true where coaching_center_id = $1 and name = 'Cumilla'`,
+  [trialCentre],
+)
+check(
+  'while re-opening the closed one, now the allowance is taken, is refused',
+  reopenedBranch.code === 'CD004' && reopenedBranch.limit === 'limit=branches',
+  `${reopenedBranch.code} ${reopenedBranch.limit} ${reopenedBranch.why}`,
+)
+
+// --- Money on the balance is the whole of what was missing -------------------
+
+await fundWith(trialCentre, 250000)
+
+const funded = await addBranch(trialCentre, trialOwner, 'Sylhet')
+check('with money on the balance the fourth building goes in', funded.code === '', funded.why)
+
+/*
+ * AND IT IS A LINE ON THE DAY'S RATE, which is what the money bought: the Institution
+ * floor plus one branch past the three included, divided by thirty with integer division
+ * flooring in the customer's favour (§11.6). ৳4,999 + ৳750 = ৳5,749 a month, ৳191.63 a
+ * day — 19163 poisha.
+ *
+ * The day is charged at the size the organisation is NOW, which is the only number the
+ * burn can know, and the usage counts ride on the ledger row so the charge explains
+ * itself afterwards.
+ */
+await db.query(
+  `update coaching_centers
+      set charged_through = (now() at time zone 'Asia/Dhaka')::date - 1
+    where id = $1`,
+  [trialCentre],
+)
+const branchDay = (await asService('select public.settle_billing($1) as out', [trialCentre]))
+  .rows[0].out
+check(
+  'and the day it opened is charged at the rate a fourth building makes',
+  branchDay.status === 'settled'
+    && branchDay.dailyPoisha === Math.floor((499900 + 75000) / 30),
+  JSON.stringify(branchDay),
+)
+check(
+  'with the building count on the entry, so the charge can be explained later',
+  Number(
+    (
+      await db.query(
+        `select usage_branches from billing_ledger
+          where coaching_center_id = $1 and kind = 'daily_charge'
+          order by charge_date desc limit 1`,
+        [trialCentre],
+      )
+    ).rows[0].usage_branches,
+  ) === 4,
+)
+
+// The same row that was refused a moment ago, now that there is money. Nothing else
+// changed — which is the point of the rule being about money rather than about novelty.
+const reopenedWithMoney = await attempt(
+  trialOwner,
+  `update branches set active = true where coaching_center_id = $1 and name = 'Cumilla'`,
+  [trialCentre],
+)
+check(
+  'and the row that was refused goes in once there is something to pay for it',
+  reopenedWithMoney.code === '',
+  reopenedWithMoney.why,
+)
+
+// --- A tier that sells no buildings refuses every one of them ----------------
+
+const plainOwner = await ceilUser()
+const plainCentre = await ceilCentre('Branch Center Plan', plainOwner)
+await db.query(`update coaching_centers set plan = 'center' where id = $1`, [plainCentre])
+await fundWith(plainCentre, 250000)
+
+const paidBuilding = await addBranch(plainCentre, plainOwner, 'Mirpur')
+check(
+  'a Coaching Center is one building, money or no money — §2.4 sells it that way',
+  paidBuilding.code === 'CD004',
+  `${paidBuilding.code} ${paidBuilding.why}`,
+)
+check(
+  'and the refusal sends them to the tier that does sell them',
+  paidBuilding.hint.includes('Institution'),
+  paidBuilding.hint,
+)
+
+/*
+ * WHAT IS NEVER A NEW CLAIM, and this fixture is where the assertion is worth anything:
+ * a tier that sells NO buildings at all is the loudest possible version of the rule, so a
+ * rename or a closure that passes here passed without the guard looking at the tier.
+ *
+ * Seeded as the superuser, because the point is what the owner may then do with a row
+ * that already exists — §4.5's "limits apply to new actions, never retroactively" — and
+ * because a centre moved OFF the institution tier keeps the buildings it already named.
+ */
+const keptBuilding = await one(
+  `insert into branches (coaching_center_id, name) values ($1, 'Mirpur Old') returning id`,
+  [plainCentre],
+)
+
+// A name and an address are not in the trigger's `update of` list at all, so this never
+// even reaches the rule — a guard that fired here would freeze a centre's own renaming.
+const renamedKept = await attempt(
+  plainOwner,
+  `update branches set name = 'Mirpur', address = 'Mirpur 10'
+    where coaching_center_id = $1 and name = 'Mirpur Old'`,
+  [plainCentre],
+)
+check(
+  'a rename and an address on a plan that sells no buildings are not refused',
+  renamedKept.code === '',
+  renamedKept.why,
+)
+
+const closedBuilding = await attempt(
+  plainOwner,
+  'update branches set active = false where id = $1',
+  [keptBuilding],
+)
+check(
+  'and closing one never is — that is how a customer stops paying for a building',
+  closedBuilding.code === '',
+  closedBuilding.why,
+)
+
+const reopenedKept = await attempt(
+  plainOwner,
+  'update branches set active = true where id = $1',
+  [keptBuilding],
+)
+check(
+  'while switching it back on is a new claim, and on this tier there is no such thing',
+  reopenedKept.code === 'CD004',
+  `${reopenedKept.code} ${reopenedKept.why}`,
+)
+
+
+// The trial arm of the same flag: a centre trialling the tier above is on that tier for
+// the length of the trial, exactly as the batch and teacher ceilings read it (§4.5).
+const liftedOwner = await ceilUser()
+const liftedCentre = await ceilCentre('Branch Lifted Trial', liftedOwner)
+await db.query(
+  `update coaching_centers
+      set plan = 'center', trial_plan = 'institution', trial_ends_at = now() + interval '7 days'
+    where id = $1`,
+  [liftedCentre],
+)
+const liftedBuilding = await addBranch(liftedCentre, liftedOwner, 'Gazipur')
+check(
+  'a centre trialling Institution may open its buildings',
+  liftedBuilding.code === '',
+  liftedBuilding.why,
+)
+
+await db.query(
+  `update coaching_centers set trial_ends_at = now() - interval '1 day' where id = $1`,
+  [liftedCentre],
+)
+const afterLift = await addBranch(liftedCentre, liftedOwner, 'Bogura')
+check(
+  'and the day the trial ends the tier is one building again, with the row it made left alone',
+  afterLift.code === 'CD004' && (await branchNames(liftedCentre)).length === 1,
+  `${afterLift.code} ${afterLift.why}`,
+)
+
+// --- The worker is not exempt here either ------------------------------------
+
+const workerBuilding = await (async () => {
+  try {
+    await asService('insert into branches (coaching_center_id, name) values ($1, $2)', [
+      plainCentre,
+      'Service Building',
+    ])
+    return { code: '', limit: '' }
+  } catch (error) {
+    return { code: error.code ?? '', limit: error.detail ?? error.details ?? '' }
+  }
+})()
+check(
+  'the service key is refused the building exactly as the browser was',
+  workerBuilding.code === 'CD004' && workerBuilding.limit === 'limit=branches',
+  `${workerBuilding.code} ${workerBuilding.limit}`,
+)
+
+// ---------------------------------------------------------------------------
+// TEACHER SEATS, AND THE BALANCE THAT PAYS FOR THEM (20260811000097).
+//
+// THE OTHER ADD-ON THE DAILY RATE PRICES, and it was found by reading the section above
+// back. `settle_billing` charges exactly two things past what a tier includes —
+//
+//     + greatest(0, v_teachers - card.free_teacher_seats) * card.teacher_seat_poisha
+//     + greatest(0, v_branches - card.included_branches) * card.branch_poisha
+//
+// — and 096 fenced the second. The first was open for the same reason and with the same
+// shape of hole: `plan_allowances.max_teachers` is null on both centre tiers on purpose
+// (a seat is a price, not a quota), `app.guard_teacher_ceiling` returns before it counts
+// on a null, and `teachers` has held INSERT for `authenticated` since 20260811000002. So a
+// trialling organisation could record unlimited staff on a balance of nothing and never
+// send a taka.
+//
+// Everything below is a real owner session, for the reason the buildings section gives.
+// ---------------------------------------------------------------------------
+
+console.log('\nTeacher seats, and the balance that pays for them:')
+
+const teacherNames = async (centre) =>
+  (
+    await db.query('select name from teachers where coaching_center_id = $1 order by name', [
+      centre,
+    ])
+  ).rows.map((r) => r.name)
+
+const setTeacherActive = (centre, name, active) =>
+  db.query('update teachers set active = $3 where coaching_center_id = $1 and name = $2', [
+    centre,
+    name,
+    active,
+  ])
+
+// The card in force, read rather than typed: it is the same row `app.guard_teacher_seat_funding`
+// and `settle_billing` both price the seat from, so a reprice moves the guard, the bill and
+// this assertion together.
+const seatCard = (
+  await db.query(
+    `select free_teacher_seats, teacher_seat_poisha, center_monthly_floor_poisha
+       from price_versions order by effective_from desc limit 1`,
+  )
+).rows[0]
+
+const seatFundOwner = await ceilUser()
+const seatFundCentre = await ceilCentre('Seat Trial Centre', seatFundOwner)
+await db.query(`update coaching_centers set plan = 'center', status = 'trial' where id = $1`, [
+  seatFundCentre,
+])
+
+check(
+  'a centre signup holds days and not money on this dimension too',
+  Number(
+    (await db.query('select balance_poisha from coaching_centers where id = $1', [seatFundCentre]))
+      .rows[0].balance_poisha,
+  ) === 0,
+)
+
+const includedSeats = []
+for (let n = 1; n <= seatCard.free_teacher_seats; n += 1) {
+  includedSeats.push(await addTeacher(seatFundCentre, seatFundOwner, `Seat ${n}`))
+}
+check(
+  'the seats the tier includes are never asked about money',
+  includedSeats.every((s) => s.code === ''),
+  includedSeats.map((s) => s.why).join(' | '),
+)
+
+const thirdSeat = await addTeacher(seatFundCentre, seatFundOwner, 'Seat Three')
+check(
+  'and the one past them is refused while the balance holds nothing',
+  thirdSeat.code === 'CD005',
+  `${thirdSeat.code} ${thirdSeat.why}`,
+)
+check(
+  'the refusal says which rule it was, so a screen can name it rather than say "could not save"',
+  thirdSeat.limit === 'limit=teachers',
+  thirdSeat.limit,
+)
+check(
+  'and it tells the reader where the money goes, because that is the whole fix',
+  thirdSeat.hint.includes('balance'),
+  thirdSeat.hint,
+)
+check(
+  'and nothing was written — the refusal is the database\'s, from a real owner session',
+  (await teacherNames(seatFundCentre)).length === seatCard.free_teacher_seats,
+  (await teacherNames(seatFundCentre)).join(', '),
+)
+
+// The allowance is what the tier INCLUDES, not a lifetime budget: a switched-off teacher
+// is not a seat anybody pays for, and the bill stopped charging for them.
+await setTeacherActive(seatFundCentre, 'Seat 1', false)
+const replacementSeat = await addTeacher(seatFundCentre, seatFundOwner, 'Seat Three')
+check('a switched-off teacher gives their place back', replacementSeat.code === '', replacementSeat.why)
+
+// And a record switched back on is a new claim on that place, asked on the same terms as a
+// new one — which is why `toggleTeacherActive`'s on-branch asks the same question.
+const reopenedSeat = await attempt(
+  seatFundOwner,
+  `update teachers set active = true where coaching_center_id = $1 and name = 'Seat 1'`,
+  [seatFundCentre],
+)
+check(
+  'while switching the stopped one back on, now the allowance is taken, is refused',
+  reopenedSeat.code === 'CD005' && reopenedSeat.limit === 'limit=teachers',
+  `${reopenedSeat.code} ${reopenedSeat.limit} ${reopenedSeat.why}`,
+)
+
+// --- The worker is not exempt here either ------------------------------------
+//
+// Asked while the centre is still dry, because that is the state the rule is about and the
+// only one in which a service-role insert can be refused. `service_role` is deliberately not
+// on the guard's exemption list, matching the four ceilings in 20260811000075 and the branch
+// guard in 096: it is the app's own admin client, and the app has no teacher write path
+// through it.
+
+const workerSeat = await (async () => {
+  try {
+    await asService('insert into teachers (coaching_center_id, name) values ($1, $2)', [
+      seatFundCentre,
+      'Service Seat',
+    ])
+    return { code: '', limit: '' }
+  } catch (error) {
+    return { code: error.code ?? '', limit: error.detail ?? error.details ?? '' }
+  }
+})()
+check(
+  'the service key is refused the seat exactly as the browser was',
+  workerSeat.code === 'CD005' && workerSeat.limit === 'limit=teachers',
+  `${workerSeat.code} ${workerSeat.limit}`,
+)
+
+// --- Money on the balance is the whole of what was missing -------------------
+
+await fundWith(seatFundCentre, 250000)
+
+const fundedSeat = await addTeacher(seatFundCentre, seatFundOwner, 'Seat Four')
+check('with money on the balance the next seat goes in', fundedSeat.code === '', fundedSeat.why)
+
+/*
+ * AND IT IS A LINE ON THE DAY'S RATE, which is what the money bought: the tier's monthly
+ * floor plus one seat past the two included, over thirty, with integer division flooring in
+ * the customer's favour (§11.6). The figures are read off the same card the guard read
+ * rather than typed here, so a reprice moves both.
+ */
+await db.query(
+  `update coaching_centers
+      set charged_through = (now() at time zone 'Asia/Dhaka')::date - 1
+    where id = $1`,
+  [seatFundCentre],
+)
+const seatDay = (await asService('select public.settle_billing($1) as out', [seatFundCentre]))
+  .rows[0].out
+check(
+  'and the day it was taken is charged at the rate the extra seat makes',
+  seatDay.status === 'settled'
+    && seatDay.dailyPoisha
+      === Math.floor((Number(seatCard.center_monthly_floor_poisha) + Number(seatCard.teacher_seat_poisha)) / 30),
+  JSON.stringify(seatDay),
+)
+check(
+  'with the seat count on the entry, so the charge can be explained later',
+  Number(
+    (
+      await db.query(
+        `select usage_teachers from billing_ledger
+          where coaching_center_id = $1 and kind = 'daily_charge'
+          order by charge_date desc limit 1`,
+        [seatFundCentre],
+      )
+    ).rows[0].usage_teachers,
+  ) === seatCard.free_teacher_seats + 1,
+)
+
+/*
+ * THE TWO RULES DO NOT OVERLAP, which is the one structural thing a reader of these two
+ * migrations has to be able to check: a tier that caps seats is refused by
+ * `app.guard_teacher_ceiling` with `CD003` and never reaches the money test, and a tier that
+ * does not cap them is not refused by `CD003` at all. A teacher plan is the loudest possible
+ * version of the first — one seat, at any balance.
+ */
+const soloOwner = await ceilUser()
+const soloCentre = await ceilCentre('Seat Solo Plan', soloOwner)
+await db.query(`update coaching_centers set plan = 'teacher_free' where id = $1`, [soloCentre])
+await fundWith(soloCentre, 250000)
+
+const soloFirst = await addTeacher(soloCentre, soloOwner, 'Solo One')
+check('a teacher plan takes its one seat', soloFirst.code === '', soloFirst.why)
+
+const soloSecond = await addTeacher(soloCentre, soloOwner, 'Solo Two')
+check(
+  'and a second is refused by the ceiling the tier wrote, not by the balance',
+  soloSecond.code === 'CD003' && soloSecond.limit === 'limit=teachers',
+  `${soloSecond.code} ${soloSecond.limit} ${soloSecond.why}`,
+)
+
+
+// ---------------------------------------------------------------------------
+// THE ROSTER A TRIAL MAY HOLD (20260811000098).
+//
+// THE THIRD AND LAST DIMENSION, and the only one money cannot be the whole answer for. A seat
+// (20260811000097) and a building (20260811000096) are add-ons the tier sells, so "what is
+// included is the tier's and the rest is a monthly line" fences them both and money is the
+// remedy. The roster is the product: a per-student tier's price IS the student (§3.2, §3.3),
+// `plan_allowances.included_students` is not a band anybody pays from any more, and a money
+// rule read literally would refuse the first admission to a signup holding nothing — a
+// three-day trial of a product that cannot hold a roster. So the bound is a NUMBER in
+// `platform_settings`, which is the founder's own lever, and ANY MONEY LIFTS IT ENTIRELY.
+//
+// The number is set to three for these assertions rather than five hundred — the figure the
+// guard reads is the figure the founder edits, and writing five hundred children to prove a
+// bound would cost this suite a minute of inserts to say the same thing. It is restored at
+// the end, because every fixture after this one is written to the shipped policy.
+// ---------------------------------------------------------------------------
+
+console.log('\nThe roster a trial may hold:')
+
+const setRosterCeiling = (n) =>
+  db.query('update platform_settings set trial_roster_ceiling = $1 where id', [n])
+
+const addRosterStudent = (centre, user, name) =>
+  attempt(
+    user,
+    `insert into students (coaching_center_id, name, guardian_phone)
+     values ($1, $2, '01766666666')`,
+    [centre, name],
+  )
+
+const rosterSize = async (centre) =>
+  Number(
+    (
+      await db.query(
+        `select count(*)::int as n from students
+          where coaching_center_id = $1 and status = 'active'`,
+        [centre],
+      )
+    ).rows[0].n,
+  )
+
+const rosterDefault = Number(
+  (await db.query('select trial_roster_ceiling from platform_settings where id')).rows[0]
+    .trial_roster_ceiling,
+)
+check(
+  'every organisation starts from a stated roster bound rather than from no row at all',
+  Number.isFinite(rosterDefault) && rosterDefault > 0,
+  String(rosterDefault),
+)
+
+await setRosterCeiling(3)
+
+const rosterOwner = await ceilUser()
+const rosterCentre = await ceilCentre('Roster Trial Centre', rosterOwner)
+await db.query(`update coaching_centers set plan = 'center', status = 'trial' where id = $1`, [
+  rosterCentre,
+])
+
+const allowedStudents = []
+for (let n = 1; n <= 3; n += 1) {
+  allowedStudents.push(await addRosterStudent(rosterCentre, rosterOwner, `Trial Child ${n}`))
+}
+check(
+  'a dry trial takes the whole roster it is allowed',
+  allowedStudents.every((s) => s.code === ''),
+  allowedStudents.map((s) => s.why).join(' | '),
+)
+
+const fourthStudent = await addRosterStudent(rosterCentre, rosterOwner, 'Trial Child 4')
+check(
+  'and the one past it is refused while the balance holds nothing',
+  fourthStudent.code === 'CD006',
+  `${fourthStudent.code} ${fourthStudent.why}`,
+)
+check(
+  'the refusal says which dimension it was, so a screen can name it rather than say "could not save"',
+  fourthStudent.limit === 'limit=students',
+  fourthStudent.limit,
+)
+check(
+  'and it tells the reader where the money goes, because that is the whole fix',
+  fourthStudent.hint.includes('balance'),
+  fourthStudent.hint,
+)
+check(
+  'and nothing was written — the refusal is the database\'s, from a real owner session',
+  (await rosterSize(rosterCentre)) === 3,
+  String(await rosterSize(rosterCentre)),
+)
+
+// The allowance is a bound on ACTIVE rows, so a leaver gives their place back — which is how a
+// centre stays under it without deleting a child's attendance, marks and bills.
+await db.query(
+  `update students set status = 'inactive'
+    where coaching_center_id = $1 and name = 'Trial Child 1'`,
+  [rosterCentre],
+)
+const replacementStudent = await addRosterStudent(rosterCentre, rosterOwner, 'Trial Child 4')
+check(
+  'a student who has left gives their place back',
+  replacementStudent.code === '',
+  replacementStudent.why,
+)
+
+// And a row switched back to active is a new claim on that place, asked on the same terms as a
+// new admission — which is why `updateStudent` asks the same question.
+const revivedStudent = await attempt(
+  rosterOwner,
+  `update students set status = 'active'
+    where coaching_center_id = $1 and name = 'Trial Child 1'`,
+  [rosterCentre],
+)
+check(
+  'while bringing the departed one back, now the allowance is taken, is refused',
+  revivedStudent.code === 'CD006' && revivedStudent.limit === 'limit=students',
+  `${revivedStudent.code} ${revivedStudent.limit} ${revivedStudent.why}`,
+)
+
+// --- Money on the balance is the whole of what was missing -------------------
+
+await fundWith(rosterCentre, 250000)
+
+const fundedStudent = await addRosterStudent(rosterCentre, rosterOwner, 'Trial Child 4')
+check('with money on the balance the next admission goes in', fundedStudent.code === '', fundedStudent.why)
+
+// The service key is not exempt, matching the two fences before this one: it is the app's own
+// admin client, and the app has no student write path through it.
+const dryCentre = await ceilCentre('Roster Dry Service', rosterOwner)
+await db.query(`update coaching_centers set plan = 'center', status = 'trial' where id = $1`, [
+  dryCentre,
+])
+for (let n = 1; n <= 3; n += 1) {
+  await addRosterStudent(dryCentre, rosterOwner, `Dry Child ${n}`)
+}
+const workerStudent = await (async () => {
+  try {
+    await asService(
+      `insert into students (coaching_center_id, name, guardian_phone)
+       values ($1, 'Service Child', '01766666666')`,
+      [dryCentre],
+    )
+    return { code: '', limit: '' }
+  } catch (error) {
+    return { code: error.code ?? '', limit: error.detail ?? error.details ?? '' }
+  }
+})()
+check(
+  'the service key is refused the admission exactly as the browser was',
+  workerStudent.code === 'CD006' && workerStudent.limit === 'limit=students',
+  `${workerStudent.code} ${workerStudent.limit}`,
+)
+
+// --- Zero is the founder's own switch, and a teacher tier is never asked ----
+
+await setRosterCeiling(0)
+const unboundedStudent = await addRosterStudent(dryCentre, rosterOwner, 'Off Switch Child')
+check(
+  'the founder setting the bound to zero opens it, which is the escape hatch rather than a bug',
+  unboundedStudent.code === '',
+  unboundedStudent.why,
+)
+
+await setRosterCeiling(3)
+const soloRosterOwner = await ceilUser()
+const soloRosterCentre = await ceilCentre('Roster Solo Tier', soloRosterOwner)
+await db.query(`update coaching_centers set plan = 'teacher_free' where id = $1`, [
+  soloRosterCentre,
+])
+const soloRoster = []
+for (let n = 1; n <= 4; n += 1) {
+  soloRoster.push(await addRosterStudent(soloRosterCentre, soloRosterOwner, `Solo Child ${n}`))
+}
+check(
+  'a teacher tier is bounded by its own places and never by this rule',
+  soloRoster.every((s) => s.code !== 'CD006'),
+  soloRoster.map((s) => `${s.code} ${s.why}`).join(' | '),
+)
+
+await setRosterCeiling(rosterDefault)
+check(
+  'and the shipped bound is what the fixtures after this one run against',
+  Number(
+    (await db.query('select trial_roster_ceiling from platform_settings where id')).rows[0]
+      .trial_roster_ceiling,
+  ) === rosterDefault,
 )
 
 // --- A centre-issued login cannot found a centre (20260811000077) -----------

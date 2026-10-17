@@ -29,7 +29,12 @@ import { normalizeBdMobile, phoneToLoginEmail } from '@/lib/bd/phone'
 import { elsewhere, mayChooseBranch, postedBranchId } from '@/lib/branches'
 import { usernameBaseFor } from '@/lib/bd/username'
 import { createUsernameLogin } from '@/lib/auth/username-login'
-import { isCapacityRefusal, refusedCeiling } from '@/lib/capacity'
+import {
+  isCapacityRefusal,
+  isSeatRefusal,
+  isTrialRosterRefusal,
+  refusedCeiling,
+} from '@/lib/capacity'
 import {
   MAX_IMPORT_ROWS,
   parseRoster,
@@ -48,7 +53,18 @@ import { PERMISSION_KEYS, type PermissionKey } from '@/lib/permissions'
 import type { Capability } from '@/lib/staff/capabilities'
 import { dict } from '@/lib/i18n'
 import { nameTooLong, passwordTooShort } from '@/lib/i18n/messages'
-import { has, roomFor, wouldExceed, hasStaff, type LimitKey } from '@/lib/plans'
+import {
+  CENTER_FREE_TEACHER_SEATS,
+  CENTER_TEACHER_SEAT_BDT,
+  has,
+  roomFor,
+  teacherSeatOpeningRefusal,
+  wouldExceed,
+  hasStaff,
+  type LimitKey,
+} from '@/lib/plans'
+import { readPlatformSettings } from '@/lib/platform/settings'
+import { formatTaka } from '@/lib/money'
 import {
   examTypeDeleteVerdict,
   subjectDeleteVerdict,
@@ -63,7 +79,7 @@ import {
 } from '@/lib/settings/clash'
 import { readExamTypeUse, readSubjectUse, readTeacherUse } from '@/lib/settings/usage'
 import { asPreferredChannel } from '@/lib/students/channel'
-import { centerStudentCount } from '@/lib/students/headcount'
+import { centerStudentCount, trialRosterVerdict } from '@/lib/students/headcount'
 import { STUDENT_STATUSES } from '@/lib/students/status'
 import type {
   BatchSlot,
@@ -212,6 +228,101 @@ function isSession(value: CenterSession | ActionState): value is CenterSession {
 function noRoomForStudent(session: CenterSession): string {
   const d = dict(session.locale).settings
   return session.plan.pricing === 'per_student' ? d.students.placesTitle : d.errors.planLimit
+}
+
+/**
+ * "A trial holds this many students, and money lifts the bound", in the words that name the
+ * number.
+ *
+ * The figure is the policy row's own rather than a constant here, because it is the founder's
+ * to move: `platform_settings.trial_roster_ceiling`, written from the panel on the same screen
+ * as the trial lengths. A null (a read that failed) is written as the sentence without a
+ * number rather than as a zero — see the fence below, which is where a failed read becomes a
+ * refusal.
+ */
+function rosterNotFunded(session: CenterSession, ceiling: number | null): string {
+  const t = dict(session.locale).settings.students.errors
+  return ceiling === null ? t.rosterUnknown : t.rosterNotFunded(ceiling)
+}
+
+/**
+ * Whether this organisation may add `adding` more active students, as a sentence when it may
+ * not.
+ *
+ * THE THIRD FENCE, AND THE ONE THAT IS NOT PURE MONEY (20260811000098). A seat and a building
+ * are add-ons: the tier includes some and the rest are a monthly line, so an empty balance is
+ * the whole answer (see `seatFence`, and `branchOpeningRefusal` for the building). The roster
+ * is the product — a per-student tier's price IS the student (§3.2, §3.3) — and a money rule
+ * read literally would refuse the first admission to a signup holding nothing, which is a
+ * three-day trial of a product that cannot hold a roster. So the bound is a NUMBER:
+ * `platform_settings.trial_roster_ceiling`, the roster an account that has never paid us may
+ * hold, and ANY MONEY LIFTS IT ENTIRELY.
+ *
+ * MONEY FIRST, SO A PAYING ORGANISATION PAYS FOR NO COUNT. A funded centre lifts the bound, so
+ * the count below is asked only where the answer can still be no. That is `trialRosterRefusal`'s
+ * own last line read before the count it cannot change — an optimisation with one copy of the
+ * rule, not a second one, and tests/plans.test.ts holds the equivalence: money on the balance
+ * means null at every count and every ceiling.
+ *
+ * `adding` IS HOW MANY NEW STUDENTS THIS WRITE PUTS ON THE ROSTER, and the arithmetic is the
+ * trigger's. The guard fires before each insert and compares the rows already there —
+ * `in_use < allowed` — so the count this passes is the roster as it stands plus the rest of
+ * this paste, less the row the rule counts last: one admission passes `count`, and a paste of
+ * forty passes `count + 39`, which is "could all forty fit" read the same way. A paste is what
+ * needs it: `import_students` is one statement, so a refusal on line 200 leaves nothing behind,
+ * and the owner would have lost every name in it.
+ *
+ * A COUNT THAT DID NOT COME BACK IS REFUSED, not read as zero, for the reason `limitRefusal`
+ * gives. A POLICY THAT COULD NOT BE READ IS REFUSED for the same reason, which is why the rule
+ * takes a null ceiling as a refusal rather than as no bound. The count and the order the two
+ * questions are asked in live in `trialRosterVerdict` (lib/students/headcount.ts), which the
+ * roster screens read too — one copy of the arithmetic, three doors held to it.
+ */
+async function rosterFence(
+  session: CenterSession,
+  adding: number,
+): Promise<ActionState | null> {
+  /*
+   * The rule's own last line read before the reads it cannot change: a teacher tier is
+   * bounded by its own ceiling, and money lifts this bound entirely — so neither the count nor
+   * the policy row is asked for on the two paths that answer themselves. tests/plans.test.ts
+   * holds the equivalence rather than trusting this comment.
+   */
+  if (session.plan.maxStudents !== null) return null
+  if (session.billing.balancePoisha !== null && session.billing.balancePoisha > 0) return null
+
+  const supabase = await createClient()
+  const policy = await readPlatformSettings(supabase)
+  const verdict = await trialRosterVerdict(supabase, {
+    centerId: session.active.centerId,
+    plan: session.plan,
+    balancePoisha: session.billing.balancePoisha,
+    ceiling: policy.trialRosterCeiling,
+    adding,
+  })
+
+  if (verdict.state === 'unreadable') {
+    return { error: dict(session.locale).settings.errors.limitUnknown }
+  }
+  if (verdict.state === 'full') return { error: rosterNotFunded(session, verdict.ceiling) }
+  return null
+}
+
+/**
+ * The same refusal with the number in it, read again for the paths that meet the trigger
+ * rather than the count above.
+ *
+ * A race is the only way here — the fence's own count and the trigger's disagree — and it is
+ * the rarest refusal in the product. Re-reading the policy row costs one small query on that
+ * path and buys the sentence the reader can act on: the same words the fence writes, with the
+ * figure in them, rather than a version that admits it does not know the number.
+ *
+ * A read that fails is the numberless sentence and a refusal, never a pass — see
+ * `rosterNotFunded` and `readPlatformSettings`.
+ */
+async function rosterRefusal(session: CenterSession): Promise<ActionState> {
+  const policy = await readPlatformSettings(await createClient())
+  return { error: rosterNotFunded(session, policy.trialRosterCeiling) }
 }
 
 /**
@@ -1617,6 +1728,12 @@ export async function createStudent(
   const studentLimit = await limitRefusal(session, 'students', 'maxStudents')
   if (studentLimit) return studentLimit
 
+  // The plan's own ceiling first — on a teacher tier it is the whole rule — then the bound a
+  // trial holds to before anybody has funded its balance (20260811000098). One admission, so
+  // the count is the roster as it stands, which is exactly what the trigger compares.
+  const rosterLimit = await rosterFence(session, 1)
+  if (rosterLimit) return rosterLimit
+
   const supabase = await createClient()
 
   // Before the insert, not after: a student created and then left un-enrolled
@@ -1709,6 +1826,11 @@ export async function createStudent(
     // why it exists — see migration 36. Same sentence either way, because from the
     // owner's side nothing different happened.
     if (isCapacityRefusal(error)) return { error: noRoomForStudent(session) }
+    // And the trial's bound, reached when the count above and the trigger's disagree — a
+    // second manager admitting the last place at the same moment, or a balance that went to
+    // zero in between. The sentence is read again from the policy row so it can name the
+    // number, and it is the same one the fence above would have given a moment earlier.
+    if (isTrialRosterRefusal(error)) return rosterRefusal(session)
     return { error: t.errors.addFailed }
   }
 
@@ -1892,6 +2014,10 @@ export async function updateStudent(
   if (status === 'active' && before.status !== 'active') {
     const limit = await limitRefusal(session, 'students', 'maxStudents')
     if (limit) return limit
+    // And the trial's bound, on exactly the terms a new admission is held to: a student
+    // brought back is a place taken on the roster that nobody was counting a moment ago.
+    const rosterLimit = await rosterFence(session, 1)
+    if (rosterLimit) return rosterLimit
   }
 
   // Where the child will be filed once this save lands. The form always submits it,
@@ -1992,6 +2118,9 @@ export async function updateStudent(
     // so the two agree; this catches the gap between them, which two managers saving
     // at once can open.
     if (isCapacityRefusal(saveError)) return { error: noRoomForStudent(session) }
+    // And the trial's bound, on the same terms and for the same reason: a status switched back
+    // to active is a place taken, and two managers saving at once is the gap this catches.
+    if (isTrialRosterRefusal(saveError)) return rosterRefusal(session)
     return { error: t.students.errors.saveFailed }
   }
 
@@ -2169,6 +2298,14 @@ export async function importStudents(
   // about it, so the owner tries again instead of going to look at our prices.
   if (fresh === null) return { error: t.errors.limitUnknown }
 
+  // And the trial's bound, over the whole paste: how many of these lines are new is what the
+  // roster would grow by, and a refusal here leaves every one of them on the clipboard rather
+  // than importing the first of the paste and dropping the rest. `fresh.length` and not
+  // `ready.length`: a register re-pasted to fix three names adds nothing to the roster and is
+  // not held to a bound it would not move.
+  const rosterLimit = await rosterFence(session, fresh.length)
+  if (rosterLimit) return rosterLimit
+
   if (room !== null && fresh.length > room) {
     // Two sentences when there is room for some of them, because "there is no room"
     // is not true yet and an owner who is told it stops reading. The second is the one
@@ -2210,6 +2347,9 @@ export async function importStudents(
   // stale page. The whole import is one statement, so a refusal on line 200 leaves
   // nothing behind, which is what this sentence tells the owner.
   if (isCapacityRefusal(error)) return { error: noRoomForStudent(session) }
+  // The trial's own bound, reached when this paste and the trigger disagree — the same two
+  // causes as the single form's, one statement's worth of rows at a time.
+  if (isTrialRosterRefusal(error)) return rosterRefusal(session)
   // And the per-batch ceiling, which an import can hit without the roster being full:
   // 40 pasted names all going into one batch that has room for 12. The RPC is one
   // statement and `security invoker`, so the trigger sees the import as it sees a form
@@ -2385,6 +2525,69 @@ async function ownTeacher(
 }
 
 /**
+ * "Every seat past the two this tier includes is ৳100 a month", in the words that name
+ * both figures.
+ *
+ * The two numbers come from the plan table rather than off the row the reader is looking
+ * at, for `notFunded`'s reason in the branches actions: the refusal is the same sentence
+ * for everybody who sees it, and a seat has one price.
+ */
+function seatNotFunded(session: CenterSession): string {
+  return dict(session.locale).settings.teachers.errors.seatNotFunded(
+    CENTER_FREE_TEACHER_SEATS,
+    formatTaka(CENTER_TEACHER_SEAT_BDT),
+  )
+}
+
+/**
+ * Whether this organisation may take one more seat, as a sentence when it may not.
+ *
+ * THE OTHER HALF OF THE BRANCHES SCREEN'S `fence`, and the same rule one dimension over:
+ * the seats a tier includes change no line on any bill, and every seat past them is a
+ * monthly charge — so it is opened only when there is something on the balance to carry
+ * it (§11.6). A centre-or-institution signup is given granted DAYS and no money (§4.3),
+ * which is exactly why this had to be written: the balance is zero while the roster is
+ * perfectly writable, so a trial could record unlimited staff on a tier that charges per
+ * seat and nobody would ever be billed for them.
+ *
+ * A NULL CAP IS THE QUESTION AND NOT A BYPASS. `plan_allowances.max_teachers` is null on
+ * both centre tiers on purpose — a seat is a price rather than a quota — and the teacher
+ * tiers have a hard one-seat wall that `limitRefusal` refuses with a sentence of its own.
+ * So a cap is the *absence* of this rule, and the first line returns before any count or
+ * any money is asked about. Reading it the other way round would refuse an owner their
+ * own seat.
+ *
+ * A COUNT THAT DID NOT COME BACK IS REFUSED, not read as zero: a failed count is "we
+ * cannot tell just now", and the alternative is recording a colleague against an
+ * allowance nobody could check. NULL IS NOT MONEY for the same reason — an unreadable
+ * balance is a refusal, and the session's figure is the one the last settlement wrote.
+ *
+ * THE DATABASE ASKS THE SAME QUESTION — `app.guard_teacher_seat_funding` in
+ * 20260811000097, on every insert and on every switched-off record switched back on,
+ * whatever route the write came in by. That copy is the fence; this one exists because a
+ * refusal has to name the price and the way to fix it.
+ */
+async function seatFence(session: CenterSession): Promise<ActionState | null> {
+  if (session.plan.maxTeachers !== null) return null
+
+  const supabase = await createClient()
+  const { count } = await supabase
+    .from('teachers')
+    .select('id', { count: 'exact', head: true })
+    .eq('coaching_center_id', session.active.centerId)
+    .eq('active', true)
+
+  if (count === null) return { error: dict(session.locale).settings.errors.limitUnknown }
+
+  const refusal = teacherSeatOpeningRefusal(session.plan, {
+    activeTeachers: count,
+    balancePoisha: session.billing.balancePoisha,
+  })
+
+  return refusal === 'needs_money' ? { error: seatNotFunded(session) } : null
+}
+
+/**
  * Adds a teacher, and optionally gives them a login.
  *
  * The login is optional on purpose: `teachers.user_id` is nullable so a centre
@@ -2444,6 +2647,11 @@ export async function createTeacher(
 
   const teacherLimit = await limitRefusal(session, 'teachers', 'maxTeachers')
   if (teacherLimit) return teacherLimit
+
+  // The plan's own seat wall first, then the money behind a priced seat — in that order,
+  // because only one of them can refuse any given tier and the tier decides which.
+  const seatLimit = await seatFence(session)
+  if (seatLimit) return seatLimit
 
   const supabase = await createClient()
   const centerId = session.active.centerId
@@ -2588,6 +2796,10 @@ export async function createTeacher(
   // is recoverable rather than orphaned: retrying the form finds it through the
   // lookup above and links it instead of failing on the unique phone.
   if (error || !teacher) {
+    // The seat trigger's own refusal, under the count above: two owners at one desk, or a
+    // request that never went near this screen. Without this the reader would be shown
+    // "could not save" for a rule the billing screen states as a price.
+    if (isSeatRefusal(error)) return { error: seatNotFunded(session) }
     return ceilingRefusal(session, error) ?? { error: t.errors.addFailed }
   }
 
@@ -2953,6 +3165,12 @@ export async function toggleTeacherActive(
   if (active) {
     const limit = await limitRefusal(session, 'teachers', 'maxTeachers')
     if (limit) return limit
+
+    // A teacher switched back on is the same claim on the same allowance as a new
+    // appointment, so it is held to the same money test — otherwise off-then-on would be
+    // the way past the one rule the tier has.
+    const seatLimit = await seatFence(session)
+    if (seatLimit) return seatLimit
   }
 
   const { error } = await supabase
@@ -2961,7 +3179,10 @@ export async function toggleTeacherActive(
     .eq('id', teacher.id)
     .eq('coaching_center_id', centerId)
 
-  if (error) return ceilingRefusal(session, error) ?? { error: t.errors.changeFailed }
+  if (error) {
+    if (isSeatRefusal(error)) return { error: seatNotFunded(session) }
+    return ceilingRefusal(session, error) ?? { error: t.errors.changeFailed }
+  }
 
   if (teacher.user_id) {
     if (active) {

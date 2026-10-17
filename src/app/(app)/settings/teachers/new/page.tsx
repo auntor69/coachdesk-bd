@@ -1,10 +1,21 @@
+import Link from 'next/link'
+
 import { PageHeader } from '@/components/page-header'
 import { Card } from '@/components/ui'
 import { ReadOnlyNote } from '@/components/read-only-note'
 import { pageCapability, getSession } from '@/lib/auth/session'
 import { branchChoicesFor } from '@/lib/branches'
 import { createClient } from '@/lib/supabase/server'
-import { wouldExceed, hasStaff, planName, PLANS } from '@/lib/plans'
+import { formatTaka } from '@/lib/money'
+import {
+  CENTER_FREE_TEACHER_SEATS,
+  CENTER_TEACHER_SEAT_BDT,
+  wouldExceed,
+  hasStaff,
+  planName,
+  teacherSeatOpeningRefusal,
+  PLANS,
+} from '@/lib/plans'
 import { dict, localName, DEFAULT_LOCALE } from '@/lib/i18n'
 import { TeacherForm } from './teacher-form'
 
@@ -98,6 +109,19 @@ export default async function NewTeacherPage() {
   const atLimit = wouldExceed(session.plan, 'maxTeachers', active)
 
   /*
+   * The second refusal this page has, and the newer one: a tier that charges per seat
+   * cannot take a third colleague while there is nothing on the balance to carry the
+   * ৳100 a month it adds (§11.6). `undefined` from a failed count is not a yes — the
+   * seat guard reads `active` as the count it could not get, so a dropped read takes the
+   * same branch a determined one would (`createTeacher` asks the same question again and
+   * fails closed there too).
+   */
+  const seatRefusal = teacherSeatOpeningRefusal(session.plan, {
+    activeTeachers: active,
+    balancePoisha: session.billing.balancePoisha,
+  })
+
+  /*
    * `null` goes down as `null`, so the form can say the ticks are missing rather
    * than let a dropped read look like a centre with no subjects on its books.
    *
@@ -134,6 +158,25 @@ export default async function NewTeacherPage() {
               planName(PLANS.center, locale),
             )}
           </p>
+        </Card>
+      ) : seatRefusal === 'needs_money' ? (
+        <Card className="max-w-3xl">
+          {/* The list's own card, in the same words: a form that could only be refused is
+              the one thing this screen must not draw. */}
+          <p className="font-medium text-ink">{t.seatTitle}</p>
+          <p className="mt-1 text-sm text-ink-soft">
+            {t.errors.seatNotFunded(
+              CENTER_FREE_TEACHER_SEATS,
+              formatTaka(CENTER_TEACHER_SEAT_BDT),
+            )}
+          </p>
+          <Link
+            href="/settings/billing"
+            className="mt-3 inline-flex min-h-tap items-center font-medium text-brand-800
+              underline underline-offset-4 hover:text-brand-900"
+          >
+            {t.seatLink}
+          </Link>
         </Card>
       ) : (
         <TeacherForm

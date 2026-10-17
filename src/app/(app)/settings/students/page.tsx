@@ -10,6 +10,7 @@ import { createClient } from '@/lib/supabase/server'
 import { pageAll } from '@/lib/supabase/page'
 import { formatBdMobile } from '@/lib/bd/phone'
 import { MAX_IMPORT_ROWS } from '@/lib/bd/roster'
+import { rosterDoor } from '@/lib/students/roster-door'
 import { searchTerms, matchesSearch, MAX_QUERY } from '@/lib/search'
 import { dict, DEFAULT_LOCALE } from '@/lib/i18n'
 
@@ -305,6 +306,16 @@ export default async function StudentsPage({
     ? kept
     : kept.filter((r) => matchesSearch([r.name, r.code, r.guardianPhone], terms))
 
+  /*
+   * Whether the two ways in may be drawn at all (20260811000098, `CD006`). A per-student tier
+   * has no ceiling to run out of and a trial is bounded by one number instead — the roster it
+   * may hold before anybody has funded it — so this is the screen where a free account meets
+   * it. Read after the list rather than before it for the reason `rosterDoor` gives: the funded
+   * path pays for neither query, and the reader who is over the bound is not waiting on a
+   * count they do not need. See that file for why this is a module and not four lines here.
+   */
+  const door = await rosterDoor(supabase, session)
+
   return (
     <div className="flex flex-col gap-5">
       <PageHeader
@@ -323,7 +334,8 @@ export default async function StudentsPage({
            cap, so the only number left describes the list it sits above. */
         subtitle={t.usedHere(activeCount)}
         actions={
-          mayWrite && (
+          mayWrite &&
+          door.open && (
             <Link
               href="/settings/students/new"
               className="inline-flex min-h-tap items-center justify-center rounded-xl
@@ -364,23 +376,57 @@ export default async function StudentsPage({
             this door leads to an afternoon's typing and nothing saved. A `false` child
             costs no gap in this column, so the three blocks below keep their order.
           */}
+          {/*
+            ONE SLOT, TWO ANSWERS, and it is the same numbered slot either way — `order` and
+            its digit are written once below because this column's phone order is a rule the
+            suite counts (tests/students-roster.test.ts), and two blocks sharing a number
+            would fail it even though only one of them can ever be drawn.
+
+            The tile is the way a centre actually gets its students in: somebody sits down with
+            the register and pastes it, kept in front of the owner rather than hidden behind the
+            one-at-a-time form, because 200 students typed by hand is an evening nobody spends.
+            It is gone on a lapsed centre — §10 refuses a paste whole rather than in part, so
+            that door leads to an afternoon's typing and nothing saved.
+
+            AND THE CARD IS WHAT STANDS THERE WHEN THE TRIAL'S ROSTER IS FULL with nothing on
+            the balance (20260811000098): the same reader, answered before the list they
+            scrolled to, in the action's own words (`lib/students/roster-door.ts`) so a card and
+            a refusal never disagree about the number. Written as a ternary inside the one
+            wrapper below rather than as two blocks each carrying a number of its own.
+          */}
           {mayWrite && (
-            <Link
-              href="/settings/students/import"
-              className="order-3 flex min-h-tap items-center justify-between gap-3
-                rounded-xl border-2 border-dashed border-line bg-white px-4 py-3
-                hover:border-brand-300"
-            >
-              <span>
-                <span className="block font-medium text-ink">{t.importTitle}</span>
-                <span className="block text-sm text-ink-soft">
-                  {t.importBody(MAX_IMPORT_ROWS)}
-                </span>
-              </span>
-              <span aria-hidden className="shrink-0 text-lg text-brand-700">
-                →
-              </span>
-            </Link>
+            <div className="order-3">
+              {door.open ? (
+                <Link
+                  href="/settings/students/import"
+                  className="flex min-h-tap items-center justify-between gap-3
+                    rounded-xl border-2 border-dashed border-line bg-white px-4 py-3
+                    hover:border-brand-300"
+                >
+                  <span>
+                    <span className="block font-medium text-ink">{t.importTitle}</span>
+                    <span className="block text-sm text-ink-soft">
+                      {t.importBody(MAX_IMPORT_ROWS)}
+                    </span>
+                  </span>
+                  <span aria-hidden className="shrink-0 text-lg text-brand-700">
+                    →
+                  </span>
+                </Link>
+              ) : (
+                <Card>
+                  <p className="font-medium text-ink">{door.title}</p>
+                  <p className="mt-1 text-sm text-ink-soft">{door.body}</p>
+                  <Link
+                    href={door.to}
+                    className="mt-3 inline-flex min-h-tap items-center font-medium
+                      text-brand-800 underline underline-offset-4 hover:text-brand-900"
+                  >
+                    {door.link}
+                  </Link>
+                </Card>
+              )}
+            </div>
           )}
 
           {missingPhone > 0 && (

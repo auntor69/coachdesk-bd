@@ -141,23 +141,37 @@ test('the right half is the batches, the warning, then the button', () => {
   assert.equal(count(FORM, 'type="submit"'), 1)
 })
 
-test('the page caps its prose and its two refusals', () => {
-  assert.equal(count(PAGE, 'max-w-2xl'), 2, 'read-only, and a count that did not arrive')
+test('the page caps its prose and its three refusals', () => {
+  assert.equal(count(PAGE, 'max-w-2xl'), 3, 'read-only, a count that did not arrive, and the trial’s bound')
   assert.ok(PAGE.includes('<Card className="max-w-2xl border-late/30 bg-late/5">'))
   assert.ok(PAGE.includes('<ReadOnlyNote t={d.readOnly} className="max-w-2xl" />'))
-  // The third was the full-and-cannot-buy card, and it is gone with the ceiling.
-  assert.doesNotMatch(PAGE, /<Card className="max-w-2xl">/)
+  /*
+   * The third is the trial's bound (20260811000098), and it is `max-w-2xl` for this test's own
+   * reason: one sentence and a way out is a capped card, never a column 1,216px wide. The card
+   * that used to hold this shape was the full-and-cannot-buy one, and it went with the ceiling
+   * (§16.1 step 28) — a plan limit cannot refuse a paste on a per-student tier, while a trial's
+   * roster can, and both are one sentence with the money screen behind them.
+   */
+  assert.ok(PAGE.includes('<Card className="max-w-2xl">'))
+  assert.match(PAGE, /const door = await rosterDoor\(supabase, session\)/)
+  // Drawn instead of the paste box, and after the three reads — an owner who pasted three
+  // hundred lines into a full trial has lost an afternoon, which is the whole cost here.
+  assert.match(PAGE, /if \(!door\.open\) \{/)
+  assert.ok(
+    PAGE.indexOf('if (!door.open) {') < PAGE.indexOf('<ImportForm'),
+    'the bound is answered before the paste box is drawn',
+  )
 
   // The sentence under the title is the bar's subtitle now, which caps itself at 672px
   // — so the page no longer writes a `max-w-2xl` for it.
   assert.ok(PAGE.includes('subtitle={t.body}'))
 
   // Every arm names the screen that refused, and the bar is what names it.
-  assert.equal(count(PAGE, '<PageHeader'), 3)
+  assert.equal(count(PAGE, '<PageHeader'), 4)
   assert.equal(count(PAGE, '<h1'), 0, 'the bar owns the heading')
   assert.equal(
     count(PAGE, "back={{ href: '/settings/students', label: d.settings.students.title }}"),
-    3,
+    4,
     'and the way back is to the roster, not to the settings hub',
   )
 })

@@ -1,3 +1,5 @@
+import Link from 'next/link'
+
 import { Card } from '@/components/ui'
 import { PageHeader } from '@/components/page-header'
 import { ReadOnlyNote } from '@/components/read-only-note'
@@ -6,6 +8,7 @@ import { createClient } from '@/lib/supabase/server'
 import { roomFor } from '@/lib/plans'
 import { rosterKey } from '@/lib/bd/roster'
 import { centerStudentCount } from '@/lib/students/headcount'
+import { rosterDoor } from '@/lib/students/roster-door'
 import { slotLabel } from '@/lib/bd/schedule'
 import { dict, localName, DEFAULT_LOCALE } from '@/lib/i18n'
 import { ImportForm } from './import-form'
@@ -145,6 +148,38 @@ export default async function ImportStudentsPage() {
    */
   const room =
     studentCount === null ? null : roomFor(session.plan, 'maxStudents', studentCount)
+
+  /*
+   * AND THE TRIAL'S BOUND, WHICH IS THE THIRD REFUSAL THIS SCREEN HAS (20260811000098). It is
+   * the dearest of the three to have been missing, for the reason the lapsed arm above gives
+   * and one more of its own: `importStudents` refuses the paste whole (§10), so an owner who
+   * pasted three hundred names into a trial whose roster is full has an afternoon to type
+   * again and nowhere it will land. Asked here — after the three reads the screen already made
+   * — and it costs nothing on the ordinary path, because a tier with a student cap and an
+   * organisation with money on its balance both answer before any query at all.
+   */
+  const door = await rosterDoor(supabase, session)
+  if (!door.open) {
+    return (
+      <div className="flex flex-col gap-5">
+        <PageHeader
+          title={t.title}
+          back={{ href: '/settings/students', label: d.settings.students.title }}
+        />
+        <Card className="max-w-2xl">
+          <p className="font-medium text-ink">{door.title}</p>
+          <p className="mt-1 text-sm text-ink-soft">{door.body}</p>
+          <Link
+            href={door.to}
+            className="mt-3 inline-flex min-h-tap items-center font-medium text-brand-800
+              underline underline-offset-4 hover:text-brand-900"
+          >
+            {door.link}
+          </Link>
+        </Card>
+      </div>
+    )
+  }
 
   return (
     <div className="flex flex-col gap-5">

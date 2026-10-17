@@ -7,9 +7,11 @@ import { isHqMember } from '@/lib/branches'
 import { dict, DEFAULT_LOCALE } from '@/lib/i18n'
 import { formatTaka } from '@/lib/money'
 import {
+  branchOpeningRefusal,
   has,
   planName,
   nextBranchCostBdt,
+  INSTITUTION_BRANCH_BDT,
   INSTITUTION_INCLUDED_BRANCHES,
   PLANS,
 } from '@/lib/plans'
@@ -44,6 +46,18 @@ export async function generateMetadata() {
  * NO CAP AND NO PLAN COUNTER, unlike subjects. A fourth branch is not refused, it is
  * ৳750 a month, so the add form carries the price instead of a quota line. See
  * `nextBranchCostBdt` for why the figure is a difference rather than the constant.
+ *
+ * AND A PRICE THAT CANNOT BE PAYED IS NOT OFFERED, which is the half the owner found
+ * missing on a three-day trial: the included three are the tier's, and everything past
+ * them comes off the balance (§11.6). A signup holds days rather than money, so a
+ * trialling institution used to be able to name fifty buildings for nothing. Where that is
+ * the state, the rail carries the reason and the way to `/settings/billing` instead of a
+ * form that could only refuse — the same choice the locked plan makes two branches up,
+ * for the same reason: a door into a refusal is worse than no door.
+ *
+ * NO EXTRA READ ON THE ORDINARY PATH. `branchOpeningRefusal` needs the balance, which the
+ * session already carries from the settlement, and a count of open buildings, which is
+ * already in hand — the rows were just read. Nothing is counted twice.
  *
  * THE SAME COUNT REACHES THE FOUNDER, since 20260811000066: `platform_centers` returns
  * active branch rows aggregated, so the panel's bill and this screen's price come from
@@ -175,6 +189,16 @@ export default async function BranchesPage() {
       ? t.addFree(INSTITUTION_INCLUDED_BRANCHES)
       : t.addCost(formatTaka(nextCost))
 
+  /* Why the form may not be drawn, when the answer is money. `no_branches` cannot reach
+     this line — the locked screen above returned before the query — so what is left is
+     null or `needs_money`, and the two are the difference between a rail and a card. */
+  const refusal = isHq
+    ? branchOpeningRefusal(session.plan, {
+        activeBranches: activeCount,
+        balancePoisha: session.billing.balancePoisha,
+      })
+    : null
+
   return (
     <div className="flex flex-col gap-5">
       <PageHeader
@@ -283,12 +307,31 @@ export default async function BranchesPage() {
             page bar plus 8px — see components/page-header.tsx. */}
         {isHq && costLine && (
           <div className="xl:sticky xl:top-16 xl:order-3 xl:col-span-5">
-            <AddBranch
-              title={t.addTitle}
-              costLine={costLine}
-              t={d.branchForm}
-              common={d.common}
-            />
+            {refusal === 'needs_money' ? (
+              <Card>
+                <h2 className="font-semibold text-ink">{t.fundTitle}</h2>
+                <p className="mt-1 text-sm text-ink-soft">
+                  {t.fundBody(
+                    INSTITUTION_INCLUDED_BRANCHES,
+                    formatTaka(INSTITUTION_BRANCH_BDT),
+                  )}
+                </p>
+                <Link
+                  href="/settings/billing"
+                  className="mt-3 inline-flex min-h-tap items-center font-medium
+                    text-brand-800 underline underline-offset-4 hover:text-brand-900"
+                >
+                  {t.fundLink}
+                </Link>
+              </Card>
+            ) : (
+              <AddBranch
+                title={t.addTitle}
+                costLine={costLine}
+                t={d.branchForm}
+                common={d.common}
+              />
+            )}
           </div>
         )}
       </div>

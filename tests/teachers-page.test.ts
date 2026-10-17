@@ -78,7 +78,10 @@ test('adding a teacher is beside the heading, not under the last row', () => {
   const list = PAGE.indexOf('<TeacherList')
   assert.ok(add > bar, 'the add link is inside the bar')
   assert.ok(add < list, 'and above the list rather than below it')
-  assert.match(PAGE, /actions=\{\s+staff &&\s+!atLimit && \(/)
+  // Three conditions on the one door, and the third is money rather than a plan: a tier
+  // that charges per seat may not offer the form while the balance holds nothing to pay
+  // the ৳100 a month the next colleague adds. See teacherSeatOpeningRefusal.
+  assert.match(PAGE, /actions=\{\s+staff &&\s+!atLimit &&\s+seatRefusal === null && \(/)
 
   // One door to the add form. Two would be two things to keep in step.
   assert.equal(count(PAGE, 'href="/settings/teachers/new"'), 1)
@@ -113,10 +116,15 @@ test('a one-sentence refusal is capped rather than set across the page', () => {
   // §26: the defect this whole step is about is a narrow column stretched, and the
   // opposite mistake is one sentence set 1,216px wide. The cap is on the card and not
   // on the column, or the bar's `lg:-mx-8` background would stop 672px in.
+  //
+  // Four `max-w-3xl` cards now, and the fourth is the one the seat rule added: what
+  // stands where the add button was when the next seat is a price this centre has no
+  // balance to pay (20260811000097). It sits beside the seat cap in the same shape
+  // because the two are told apart by their sentences, not by their frames.
   assert.equal(count(PAGE, 'flex flex-col gap-5'), 3)
   assert.doesNotMatch(PAGE, /flex max-w-2xl flex-col/)
   assert.equal(count(PAGE, '<Card className="max-w-2xl'), 2)
-  assert.equal(count(PAGE, '<Card className="max-w-3xl">'), 3)
+  assert.equal(count(PAGE, '<Card className="max-w-3xl">'), 4)
 })
 
 test('the reads and the gates the redesign moved past are unchanged', () => {

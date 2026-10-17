@@ -1962,6 +1962,7 @@ export type Database = {
           institution_trial_days: number
           updated_at: string
           updated_by: string | null
+          trial_roster_ceiling: number
         }
         Insert: {
           id?: boolean
@@ -1970,6 +1971,7 @@ export type Database = {
           institution_trial_days: number
           updated_at?: string
           updated_by?: string | null
+          trial_roster_ceiling?: number
         }
         Update: {
           id?: boolean
@@ -1978,6 +1980,7 @@ export type Database = {
           institution_trial_days?: number
           updated_at?: string
           updated_by?: string | null
+          trial_roster_ceiling?: number
         }
         Relationships: [
           {
@@ -3595,6 +3598,7 @@ export type Database = {
           p_teacher_trial_days: number | null
           p_center_trial_days: number | null
           p_institution_trial_days: number | null
+          p_trial_roster_ceiling: number | null
         }
         Returns: Json
       }

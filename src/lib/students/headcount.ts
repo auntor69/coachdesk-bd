@@ -35,7 +35,70 @@
  */
 import type { SupabaseClient } from '@supabase/supabase-js'
 
+import { trialRosterRefusal, type PlanLimits } from '../plans.ts'
 import type { Database } from '../supabase/types.ts'
+
+/**
+ * Whether this organisation may put `adding` more students on its roster.
+ *
+ * THE THIRD FENCE'S READING HALF (20260811000098), and it lives here because this module
+ * already owns the only honest way to count a roster: `centerStudentCount` above, which counts
+ * the organisation rather than the reader's branch. Three surfaces ask the question — the two
+ * Server Actions (`createStudent`, `importStudents`) and the three roster screens that must not
+ * draw a door the action would refuse — and the rule itself is `trialRosterRefusal` in plans.ts,
+ * so what is left here is the count and the order the questions are asked in.
+ *
+ * THE SHORT-CIRCUITS COME FIRST, SO A PAYING ORGANISATION PAYS FOR NOTHING. A teacher tier is
+ * bounded by its own ceiling (`limitRefusal` and `CD001`) and never reaches the bound below;
+ * and money on the balance lifts the bound entirely, so the two reads this function would make
+ * — the organisation's count and the policy row, which the caller loads — are not made at all.
+ * `trialRosterRefusal`'s own last line is what that early return restates, and
+ * tests/plans.test.ts asserts the equivalence rather than trusting it: money on the balance is
+ * null at every count and every ceiling.
+ *
+ * `ceiling` IS THE POLICY ROW as the caller read it (lib/platform/settings.ts), and null there
+ * is a read that failed — a refusal, not a bound of nothing, which is the distinction the type
+ * in that file exists to carry.
+ *
+ * `adding` is how many new students the write puts on the roster: one for an admission, the
+ * size of the paste for an import, and nothing at all for a register re-pasted to fix three
+ * names. The arithmetic is the trigger's — see `rosterFence` in settings/actions.ts — because
+ * the guard counts the rows already there and refuses on `in_use < allowed`.
+ *
+ * `unreadable` IS ITS OWN ANSWER and is not folded into `full`: a count that did not come back
+ * is "we cannot tell just now", which is a different sentence from "the trial is full", and the
+ * one place that confusion would be expensive is the import, where the wrong sentence sends an
+ * owner to buy money they may not need.
+ */
+export type RosterVerdict =
+  | { state: 'ok' }
+  | { state: 'unreadable' }
+  | { state: 'full'; ceiling: number | null }
+
+export async function trialRosterVerdict(
+  supabase: SupabaseClient<Database>,
+  input: {
+    centerId: string
+    plan: PlanLimits
+    balancePoisha: number | null
+    ceiling: number | null
+    adding?: number
+  },
+): Promise<RosterVerdict> {
+  if (input.plan.maxStudents !== null) return { state: 'ok' }
+  if (input.balancePoisha !== null && input.balancePoisha > 0) return { state: 'ok' }
+
+  const count = await centerStudentCount(supabase, input.centerId)
+  if (count === null) return { state: 'unreadable' }
+
+  const refusal = trialRosterRefusal(input.plan, {
+    activeStudents: count + Math.max(1, input.adding ?? 1) - 1,
+    balancePoisha: input.balancePoisha,
+    ceiling: input.ceiling,
+  })
+
+  return refusal === null ? { state: 'ok' } : { state: 'full', ceiling: input.ceiling }
+}
 
 export async function centerStudentCount(
   supabase: SupabaseClient<Database>,

@@ -3,10 +3,12 @@
 // Missing-keys guard: blocks any commit from landing with env vars
 // left at their placeholder values.
 // ------------------------------------------------------------------
-/* eslint-disable no-console */
+//
+// ESM, because the extension is `.mjs` and an `.mjs` file has no `require`: every commit
+// this was wired into died on `require is not defined` before it checked a single key, and
+// a guard that always fails is a guard everybody learns to bypass with `--no-verify`.
 
-const fs = require('node:fs')
-const path = require('node:path')
+import { existsSync, readFileSync } from 'node:fs'
 
 const TARGETS = new Map([
   ['NEXT_PUBLIC_SUPABASE_URL', 'https://your-project.supabase.co'],
@@ -16,7 +18,7 @@ const TARGETS = new Map([
 
 function main() {
   // Only meaningful inside a real project checkout.
-  if (!fs.existsSync('./.git') && !fs.existsSync('../.git')) {
+  if (!existsSync('./.git') && !existsSync('../.git')) {
     console.log('no .git here — skipping key check')
     process.exit(0)
   }
@@ -24,10 +26,10 @@ function main() {
   const checked = []
   for (const [name, placeholder] of TARGETS) {
     checked.push(name)
-    const dotenv = ['.env.local', '.env'].find((f) => fs.existsSync(f))
+    const dotenv = ['.env.local', '.env'].find((f) => existsSync(f))
     let value = ''
     if (dotenv) {
-      const text = fs.readFileSync(dotenv, 'utf8')
+      const text = readFileSync(dotenv, 'utf8')
       const m = new RegExp(`^\\s*${escapeRegExp(name)}\\s*=\\s*(.+)$`, 'm')
       const hit = text.match(m)
       if (hit) value = hit[1].trim()

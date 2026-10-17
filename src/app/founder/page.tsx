@@ -14,7 +14,10 @@ import { formatTaka } from '@/lib/money'
 import { PLANS, isTeacherTier, planFor, planName, type PlanId } from '@/lib/plans'
 import { ACCOUNT_KINDS, type AccountKind } from '@/lib/accounts/kind'
 import { MONTHS_COVERED } from '@/lib/platform/billing'
-import { readPlatformSettings } from '@/lib/platform/settings'
+import {
+  DEFAULT_TRIAL_ROSTER_CEILING,
+  readPlatformSettings,
+} from '@/lib/platform/settings'
 import {
   billLabel,
   customers,
@@ -995,6 +998,15 @@ export default async function FounderPage({
               teacher: settings.teacherTrialDays,
               center: settings.centerTrialDays,
               institution: settings.institutionTrialDays,
+              /*
+               * The fourth number on the same row, and the only bound a free account runs into
+               * on its roster (20260811000098). A failed read arrives here as null, which the
+               * card would print as "null" — so it is shown as the row's own default rather
+               * than as a broken box, while the fence refuses on the null policy it could not
+               * read. The fallback is the column's own default, named once in
+               * lib/platform/settings.ts, and it is only ever a figure to look at.
+               */
+              roster: settings.trialRosterCeiling ?? DEFAULT_TRIAL_ROSTER_CEILING,
             }}
             words={t.settings}
           />
