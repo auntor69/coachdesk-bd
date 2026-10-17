@@ -372,6 +372,24 @@ export function ImportForm({
               <Alert tone="warn">{t.noBatchPicked}</Alert>
             ) : null)}
 
+          {/* The submission's verdict at the button that produced it. The capped
+              banners at the top of the form stay — they sit beside the textarea,
+              where the *next* paste happens, and one is pinned there by test — but
+              after a 500-line paste they are a screenful above this button, where a
+              refusal or a success is invisible exactly when it matters. aria-hidden
+              because the banner above is already `role="alert"`; this is its twin
+              for the eye, and two live regions saying one thing is two announcements. */}
+          {state?.error && (
+            <p aria-hidden="true" className="text-sm font-medium text-absent">
+              {state.error}
+            </p>
+          )}
+          {state?.ok && (
+            <p aria-hidden="true" className="text-sm font-medium text-brand-700">
+              {state.ok}
+            </p>
+          )}
+
           {/* Ends the column that holds the decision, rather than sitting under both:
               in one column it was the last thing after a hundred problem rows, which is
               a scroll away from the count on its own face. Full width because a 386px
