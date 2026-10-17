@@ -184,17 +184,11 @@ export function MarksSheet({
     >
       {!readOnly && <input type="hidden" name="examId" value={examId} />}
 
-      {state?.ok === false && <Alert>{state.error}</Alert>}
-
-      {state?.ok && (
-        <div
-          role="status"
-          className="num rounded-xl border-2 border-brand-200 bg-brand-50 px-4 py-3
-            font-medium text-brand-800"
-        >
-          {state.message}
-        </div>
-      )}
+      {/* Neither the refusal nor the save's confirmation lives above the list any
+          more: the sheet is forty rows long and the save button is sticky at the
+          bottom, so a message at the top is a message the teacher never sees.
+          Both moved onto the button's own bar with the register's — see the note
+          in the sticky div below. */}
 
       {/* One notice, not two. Read-only outranks locked because it is the one that
           answers what the teacher can do about any of it: told that the SMS has
@@ -335,11 +329,28 @@ export function MarksSheet({
 
       {/* The counter stays in read-only mode and the button goes. "12/40 marked" is
           the one thing on this bar that is information rather than an action, and it
-          is what a teacher who cannot enter marks came to find out. */}
+          is what a teacher who cannot enter marks came to find out.
+
+          The save's own answers sit here for the same reason — beside the button that
+          produced them rather than above a list that puts them off screen. */}
       <div
         className="sticky bottom-20 -mx-4 mt-1 border-t border-line bg-white/95
           px-4 py-3 backdrop-blur"
       >
+        {state?.ok === false && (
+          <div className="mb-2">
+            <Alert>{state.error}</Alert>
+          </div>
+        )}
+        {state?.ok && (
+          <p
+            role="status"
+            className="num mb-2 rounded-lg border-2 border-brand-200 bg-brand-50
+              px-3 py-1.5 text-center text-sm font-medium text-brand-800"
+          >
+            {state.message}
+          </p>
+        )}
         <div
           className={`text-center text-sm text-ink-soft ${readOnly ? '' : 'mb-2'}`}
         >

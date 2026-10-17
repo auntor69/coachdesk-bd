@@ -228,18 +228,6 @@ export function AttendanceRoster({
       <input type="hidden" name="batchId" value={batchId} />
       <input type="hidden" name="sessionDate" value={sessionDate} />
 
-      {state?.ok === false && <Alert>{state.error}</Alert>}
-
-      {state?.ok && (
-        <div
-          role="status"
-          className="num rounded-xl border-2 border-brand-200 bg-brand-50 px-4 py-3
-            font-medium text-brand-800"
-        >
-          {state.message}
-        </div>
-      )}
-
       {/* Two things a teacher has no way to know from looking at the screen: that
           tapping costs nothing, and that a taken register has one change left per
           mark. Both go away once there is a result to read instead. */}
@@ -364,11 +352,29 @@ export function AttendanceRoster({
       </label>
 
       {/* Sticky, above the bottom nav. The submit button has to be reachable
-          without scrolling back up past thirty names. */}
+          without scrolling back up past thirty names — and so does the answer.
+          The save and its outcome used to sit at the top of this list, which is
+          exactly where a teacher is not after pressing the button at the bottom
+          of forty rows: a refusal scrolled out of sight reads as a save that
+          did nothing, and a success nobody saw is a save retyped. */}
       <div
         className="sticky bottom-20 -mx-4 mt-1 border-t border-line bg-white/95
           px-4 py-3 backdrop-blur"
       >
+        {state?.ok === false && (
+          <div className="mb-2">
+            <Alert>{state.error}</Alert>
+          </div>
+        )}
+        {state?.ok && (
+          <p
+            role="status"
+            className="num mb-2 rounded-lg border-2 border-brand-200 bg-brand-50
+              px-3 py-1.5 text-center text-sm font-medium text-brand-800"
+          >
+            {state.message}
+          </p>
+        )}
         <div className="mb-2 flex items-center justify-center gap-4 text-sm">
           <span className="font-medium text-present">
             {statusLabels.present}{' '}
