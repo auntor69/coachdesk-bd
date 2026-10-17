@@ -514,6 +514,123 @@ export function nextBranchCostBdt(plan: PlanLimits, activeBranches: number): num
 }
 
 /**
+ * Why this organisation may not open one more building, or null when it may.
+ *
+ * THE RULE BOTH ENGINES ENFORCE, and it is one sentence: the three buildings an
+ * Institution includes are the tier's, and every building past them is a line on the
+ * monthly bill — so there has to be money on the balance to carry it. §11.6 already
+ * prices the branch inside the day's rate; what this answers is the half a prepaid
+ * product needs, which is whether the money to pay that line exists *before* the
+ * customer is given it.
+ *
+ * THE TRIAL IS WHAT MADE THIS NECESSARY. A center or institution signup is given days on
+ * the line (§4.3), not money, so its balance is zero while it is perfectly writable: every
+ * add-on the daily rate prices was free for those days, and a branch was the one with a
+ * headline on it. Nobody was ever meant to run fifty buildings on the house.
+ *
+ * WRITTEN OUT RATHER THAN ASKED OF THE DATABASE, because the form has to know before the
+ * tap and the action has to know before the insert. `app.guard_branch_ceiling()` in
+ * 20260811000096 is the same rule as a trigger, which is the copy that holds for a
+ * request that never went near a form, for a race between two owners, and for a
+ * PostgREST call with no screen behind it at all. The two are held to each other by
+ * `tests/plans.test.ts` and the RLS suite, the way `monthlyBillBdt` and `settle_billing`
+ * are.
+ *
+ * NULL IS NOT MONEY: a balance nobody could read is a refusal, the same direction every
+ * unreadable figure in this product takes. A free tier answers `no_branches` first, so it
+ * never reaches that line.
+ */
+export type BranchRefusal = 'no_branches' | 'needs_money'
+
+export function branchOpeningRefusal(
+  plan: PlanLimits,
+  opening: { activeBranches: number; balancePoisha: number | null },
+): BranchRefusal | null {
+  if (!plan.features.multipleBranches) return 'no_branches'
+  if (opening.activeBranches < INSTITUTION_INCLUDED_BRANCHES) return null
+  return opening.balancePoisha !== null && opening.balancePoisha > 0 ? null : 'needs_money'
+}
+
+/**
+ * Why this centre may not record one more teacher, or null when it may.
+ *
+ * THE SAME SENTENCE AS `branchOpeningRefusal`, ONE DIMENSION OVER, because the daily rate prices
+ * the same way: a seat past the two the tier includes is `CENTER_TEACHER_SEAT_BDT` a month, and
+ * a monthly line is opened only when there is something on the balance to carry it. Both are
+ * asked before the tap and both are enforced by a trigger — `app.guard_teacher_seat_funding` in
+ * 20260811000097 — for the reason 096 gives: a Server Action is a public endpoint, `teachers`
+ * holds INSERT for `authenticated`, and `plan_allowances.max_teachers` is deliberately null on
+ * the centre tiers, so nothing else in the database was ever going to ask.
+ *
+ * `maxTeachers` IS NULL ON EXACTLY THE TIERS THIS IS ABOUT, which is why the first line is the
+ * question rather than a formality. A teacher tier — including a centre trialling one, since
+ * `effectiveEntitlement` resolves the trial — has a hard one-seat wall and `limitRefusal` refuses
+ * on it with a sentence of its own; a null cap is the *absence* of that wall, so it is a null cap
+ * that reaches the money test. Reading it the other way round would refuse a teacher their own
+ * seat, which is the defect `plan-allowances.test.ts` exists to catch in the other copy.
+ *
+ * A TRIAL IS THE CASE THIS EXISTS FOR. A centre or institution signup is given granted days and
+ * no money (§4.3), so it is writable with an empty balance: without this, unlimited staff could
+ * be recorded on a tier that charges per seat, and nobody would ever be billed for them.
+ *
+ * NULL IS NOT MONEY, the same direction every unreadable figure in this product takes.
+ */
+export function teacherSeatOpeningRefusal(
+  plan: PlanLimits,
+  opening: { activeTeachers: number; balancePoisha: number | null },
+): 'needs_money' | null {
+  if (plan.maxTeachers !== null) return null
+  if (opening.activeTeachers < CENTER_FREE_TEACHER_SEATS) return null
+  return opening.balancePoisha !== null && opening.balancePoisha > 0 ? null : 'needs_money'
+}
+
+/**
+ * Why this organisation may not admit one more student, or null when it may.
+ *
+ * THE THIRD OF THE THREE, and the only one whose answer is not purely money. A seat and a
+ * building are add-ons, so "what the tier includes is the tier's and the rest is a monthly
+ * line" is the whole rule and money is the whole remedy. The roster is the product: a
+ * per-student tier's price IS the student (§3.2, §3.3), `plan_allowances.included_students`
+ * is not a band anybody pays from any more, and a money rule read literally would refuse the
+ * first admission to a signup holding nothing — a three-day trial of a product that cannot
+ * hold a roster. So what bounds it is a NUMBER, `platform_settings.trial_roster_ceiling`:
+ * how much of our database we carry for an account that has never paid us. Money lifts the
+ * bound entirely, which is the second half of the sentence a screen writes from this.
+ *
+ * THE TEACHER TIERS KEEP THEIR OWN WALL and never reach this function's second line — a
+ * `maxStudents` that is not null is a tier the ceiling already covers, refused by
+ * `limitRefusal` with a sentence of its own and by `app.guard_student_capacity` with `CD001`.
+ * Reading it the other way round would refuse a Teacher Pro trial the places it was granted.
+ *
+ * NULL IS NOT ZERO, and the difference is a policy rather than a reading:
+ *   `null` — nobody could read the row. REFUSED, because a policy that cannot be stated must
+ *            not be read as no bound;
+ *   `0`    — the founder's own "no bound". Allowed, and the only value that opens this rule.
+ *
+ * NULL IS NOT MONEY either, for the reason `teacherSeatOpeningRefusal` records.
+ *
+ * `app.guard_trial_roster()` in 20260811000098 is the same rule as a trigger, which is the
+ * copy that holds for a request that never went near a form, for a race between two managers,
+ * and for a PostgREST call with no screen behind it at all. The two are held to each other by
+ * tests/plans.test.ts and the RLS suite.
+ */
+export function trialRosterRefusal(
+  plan: PlanLimits,
+  opening: {
+    activeStudents: number
+    balancePoisha: number | null
+    /** `platform_settings.trial_roster_ceiling`, or null when it could not be read. */
+    ceiling: number | null
+  },
+): 'needs_money' | null {
+  if (plan.maxStudents !== null) return null
+  if (opening.ceiling === null) return 'needs_money'
+  if (opening.ceiling === 0) return null
+  if (opening.activeStudents < opening.ceiling) return null
+  return opening.balancePoisha !== null && opening.balancePoisha > 0 ? null : 'needs_money'
+}
+
+/**
  * What we charge this month.
  *
  * COUNTED IN DISTINCT STUDENTS, NOT ENROLLMENTS, and that is a correction rather

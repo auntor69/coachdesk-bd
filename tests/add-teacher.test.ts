@@ -79,13 +79,14 @@ test('a lapsed centre gets no form, and is not sold a bigger plan instead', () =
   assert.ok(PAGE.includes("back={{ href: '/settings/teachers', label: t.title }}"))
 })
 
-test('the two refusals are capped, each the way its twin on the list is', () => {
-  // A refusal is two sentences. `max-w-2xl` for the plan card, and the seat-limit card
-  // takes the `max-w-3xl` its identical twin on the list screen already had. The cap is
-  // on the card and not the column, or the bar's background would stop 672px in.
+test('the refusals are capped, each the way its twin on the list is', () => {
+  // A refusal is two sentences. `max-w-2xl` for the plan card, and the two cards this
+  // screen shares word for word with the list behind it — the seat cap and the seat
+  // nobody has funded (20260811000097) — take the `max-w-3xl` they already had there.
+  // The cap is on the card and not the column, or the bar's background would stop 672px in.
   assert.equal(count(PAGE, '<Card className="max-w-2xl'), 1)
   assert.doesNotMatch(PAGE, /flex max-w-2xl flex-col/)
-  assert.equal(count(PAGE, '<Card className="max-w-3xl">'), 1)
+  assert.equal(count(PAGE, '<Card className="max-w-3xl">'), 2)
   assert.ok(LIST.includes('<Card className="max-w-3xl">'), 'and the list says it too')
 })
 

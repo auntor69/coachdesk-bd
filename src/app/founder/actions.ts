@@ -1277,6 +1277,11 @@ export async function grantCenterDays(
  * `public.bootstrap_center` at signup (20260811000092) and quoted on the onboarding screen
  * from the same row, so this one edit moves all three.
  *
+ * AND A FOURTH NUMBER CAME WITH 20260811000098: the roster a trial may hold before it has to
+ * be funded. It is the same kind of decision — what a new account is given before it pays —
+ * which is why it is on this form and not on a price card, and zero switches the bound off
+ * entirely for a founder who would rather carry the rows than refuse a customer.
+ *
  * THE DATABASE IS ASKED, not trusted: `founder_set_trial_days` checks
  * `app.is_platform_admin()` inside itself and refuses a value outside 0–365, so a
  * hand-posted form with the anon key can neither set its own trial length nor write a
@@ -1302,6 +1307,24 @@ export async function setTrialDays(
     return whole < 0 || whole > 365 ? null : whole
   }
 
+  /**
+   * A whole student count off the wire, or null for anything that is not one.
+   *
+   * A second reader rather than the one above with a wider cap, because the two numbers mean
+   * different things: days run to a year, and a roster runs to a hundred thousand. Refusing the
+   * overlap (0 is both "no trial" and "no bound") would be wrong in both places — a zero-day
+   * trial is a product decision, and a zero-roster bound is the founder switching the fence
+   * off — so the bounds are checked where they belong, and the database checks them again.
+   */
+  const students = (field: string): number | null => {
+    const raw = String(formData.get(field) ?? '').trim()
+    if (!raw) return null
+    const value = parseTaka(raw)
+    if (value === null || !Number.isFinite(value)) return null
+    const whole = Math.floor(value)
+    return whole < 0 || whole > 100000 ? null : whole
+  }
+
   const teacherDays = days('teacherDays')
   const centerDays = days('centerDays')
   const institutionDays = days('institutionDays')
@@ -1309,10 +1332,14 @@ export async function setTrialDays(
     return { error: words.badDays }
   }
 
+  const roster = students('roster')
+  if (roster === null) return { error: words.badRoster }
+
   const ok = await writeTrialDays(await createClient(), {
     teacherDays,
     centerDays,
     institutionDays,
+    roster,
   })
 
   if (!ok) return { error: words.failed }
@@ -1331,12 +1358,18 @@ type TrialDaysRpc = (
     p_teacher_trial_days: number
     p_center_trial_days: number
     p_institution_trial_days: number
+    p_trial_roster_ceiling: number
   },
 ) => PromiseLike<{ data: Json | null; error: { code?: string; message: string } | null }>
 
 async function writeTrialDays(
   supabase: Awaited<ReturnType<typeof createClient>>,
-  input: { teacherDays: number; centerDays: number; institutionDays: number },
+  input: {
+    teacherDays: number
+    centerDays: number
+    institutionDays: number
+    roster: number
+  },
 ): Promise<boolean> {
   // `as never` for the reason `writePayment` records: the generated `Functions` union is
   // what `rpc` is typed against and this function is newer than the types.
@@ -1347,6 +1380,10 @@ async function writeTrialDays(
     p_teacher_trial_days: input.teacherDays,
     p_center_trial_days: input.centerDays,
     p_institution_trial_days: input.institutionDays,
+    // Named after the column it writes and not after the screen's word for it: 20260811000098
+    // added the argument, and the house rule for these casts is that the names are the ones
+    // the function declares.
+    p_trial_roster_ceiling: input.roster,
   })
 
   if (error) return false

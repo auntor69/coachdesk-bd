@@ -28,6 +28,7 @@
 import Link from 'next/link'
 import type { Route } from 'next'
 import { usePathname } from 'next/navigation'
+import { useEffect, useRef } from 'react'
 
 /**
  * A destination, with its label already resolved.
@@ -200,7 +201,12 @@ export function SideNav({
  *
  * A `<details>` and not a client-side sheet, for the reason CenterName is one: this
  * works before the bundle arrives, which on a 3G connection is most of the first ten
- * seconds. Navigating away closes it, because the next page renders it closed.
+ * seconds. It is closed by the effect below rather than by navigation, which was the
+ * first version of this note and was wrong: a layout is not re-rendered when a route
+ * inside it changes, so the element kept its `open` attribute and the sheet stayed up
+ * over the page the tap had just opened, hiding the screen the reader had asked for
+ * until they tapped More a second time. The effect writes the DOM attribute and not
+ * React state — no render, and the sheet still opens with no JavaScript at all.
  */
 export function TabBar({
   items,
@@ -219,6 +225,21 @@ export function TabBar({
 }) {
   const pathname = usePathname()
   const moreHere = more.some((item) => isHere(pathname, item.href))
+
+  /*
+   * Closed on arrival, wherever the arrival came from: a link in the sheet, the browser's
+   * back button, or a redirect the screen behind the tap chose. Keyed on the pathname and
+   * not on a tap, because the row that navigates is a plain anchor and the panel surrounds
+   * it — a handler on the row would miss the back button and the redirected case alike.
+   *
+   * `open` is a DOM property on a native element, so this is not the "setState in an
+   * effect" the lint rule warns about: nothing re-renders, and the sheet's first paint is
+   * the server's, still closed.
+   */
+  const sheet = useRef<HTMLDetailsElement>(null)
+  useEffect(() => {
+    if (sheet.current) sheet.current.open = false
+  }, [pathname])
 
   /*
    * The pad under the tabs, and the reason there is anything to pad: layout.tsx
@@ -260,7 +281,7 @@ export function TabBar({
 
         {more.length > 0 && (
           <li className="flex-1">
-            <details className="group">
+            <details ref={sheet} className="group">
               <summary
                 // `true` rather than `page`: this is the current item in the bar, but it
                 // is not a link to the page — the row inside the sheet is.

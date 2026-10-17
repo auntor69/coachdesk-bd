@@ -391,9 +391,26 @@ test('the phone sheet works before the bundle arrives', () => {
   // first ten seconds have no JavaScript in them, and a menu that needs React to open
   // is a menu that does not open. `usePathname` is the only client-side thing here and
   // it renders into the first HTML.
-  assert.match(NAV_MODULE, /<details className="group">/)
+  assert.match(NAV_MODULE, /<details ref=\{sheet\} className="group">/)
   assert.match(NAV_MODULE, /<summary/)
+  // Still nothing that needs React to *open* it: no controlled state, no click handler —
+  // the browser opens a `<details>`. The one ref is for closing it afterwards.
   assert.doesNotMatch(NAV_MODULE, /useState|onClick/)
+})
+
+test('the sheet closes itself when the route changes', () => {
+  /*
+   * A layout is not re-rendered when a route inside it changes, so the `<details>` kept
+   * its `open` attribute after a tap on one of its own rows and covered the screen the
+   * tap had just opened. The effect writes the DOM property rather than React state, which
+   * is why `useState` is still absent above: no render happens, and the element's first
+   * paint is the server's.
+   */
+  assert.match(NAV_MODULE, /const sheet = useRef<HTMLDetailsElement>\(null\)/)
+  assert.match(NAV_MODULE, /if \(sheet\.current\) sheet\.current\.open = false/)
+  // Keyed on the pathname, so the back button and a server redirect close it too — a
+  // handler on the row would catch neither.
+  assert.match(NAV_MODULE, /\}, \[pathname\]\)/)
 })
 
 /* -------------------------------------------------------------------------- */

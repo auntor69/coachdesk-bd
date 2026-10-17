@@ -4038,6 +4038,19 @@ export const en: Dictionary = {
       usedHere: (n: number) =>
         `${n} ${n === 1 ? 'student' : 'students'} at this branch`,
       new: 'New',
+      /**
+       * What stands where the two ways in were, when the roster is at the size a trial
+       * holds and nothing is on the balance (20260811000098, `CD006`).
+       *
+       * The reader this is written for is the signup: a per-student tier's price is the
+       * student, so there is no "included" band to run out of and no bought places to sell —
+       * what bounds a trial is one number, and money on the balance lifts it entirely. A button
+       * that could only be refused is the one thing these screens must not draw. The sentence
+       * underneath is `errors.rosterNotFunded`, the same refusal the actions write.
+       */
+      rosterTitle: 'This trial’s roster is full',
+      /** The way to the one screen that takes money (§20.4). */
+      rosterLink: 'Add money to the balance',
       importTitle: 'Add a whole register at once',
       importBody: (max: number) => `Paste a list of names — up to ${max} at a time`,
       missingPhone: (n: number) =>
@@ -4166,6 +4179,21 @@ export const en: Dictionary = {
         duplicateCode: 'A student with this ID already exists.',
         notFound: 'Student not found.',
         saveFailed: 'Could not save those details.',
+        /**
+         * Past the roster a trial holds, with nothing on the balance (`CD006`, in
+         * 20260811000098). The trigger cannot name either figure, so this does — and the
+         * second sentence is the half that matters, because the bound is not a wall the
+         * customer runs into: any money at all lifts it, and the daily rate then prices the
+         * whole roster exactly as it always did.
+         */
+        rosterNotFunded: (ceiling: number) =>
+          `A trial holds ${ceiling} students. Add money to the balance and the bound lifts entirely — the daily rate then carries as many as you run.`,
+        /**
+         * The same refusal when the policy row itself could not be read, which is a refusal
+         * rather than a pass: a bound nobody can state must not be treated as no bound.
+         */
+        rosterUnknown:
+          'How many students a trial holds could not be read just now, so nothing was saved. Please try again in a moment, or add money to the balance — that lifts the bound entirely.',
 
         /**
          * The student row is written before the batches are, so these two are the
@@ -4331,6 +4359,20 @@ export const en: Dictionary = {
       trimTitle: 'More teachers switched on than this plan covers',
       trimBody: (plan: string, active: number, limit: number) =>
         `${plan} covers ${limit} ${limit === 1 ? 'teacher' : 'teachers'}, and ${active} are switched on here. Switch off the ones who no longer teach at your centre — the attendance and marks they entered stay. Until you do, they can still take attendance for their own batches, but they no longer see fees or send SMS.`,
+      /**
+       * What stands where the add button was, when the next seat is a price this centre
+       * has no balance to pay (see `teacherSeatOpeningRefusal`).
+       *
+       * The reader this is written for is the trial: a signup is given days and not money
+       * (§4.3), so it runs the two seats its tier includes and cannot take a third until
+       * something is on the balance. A button that could only be refused is the one thing
+       * this screen must not draw. The sentence underneath is `errors.seatNotFunded` — the
+       * same refusal the add form writes, in the same words — and the heading and the way
+       * to the billing screen are the list's own.
+       */
+      seatTitle: 'Every seat past this plan’s two is a line on the bill',
+      /** The way to the one screen that takes money (§20.4). */
+      seatLink: 'Add money to the balance',
       addedWithLogin: 'Teacher and their login created',
       addedNoLogin: 'Teacher added (no login)',
       addedWithUsername: (username: string) =>
@@ -4389,6 +4431,13 @@ export const en: Dictionary = {
         notFound: 'Teacher not found.',
         keepOwnSeat:
           'This is your own teacher record — the one seat this plan covers. Switch a colleague off instead.',
+        /**
+         * Past the seats the tier includes with nothing on the balance (`CD005`), the same
+         * refusal `settings.branches.errors.notFunded` writes for a building. The trigger
+         * cannot name a price or a number, so this does.
+         */
+        seatNotFunded: (included: number, taka: string) =>
+          `This plan includes ${included} teacher seats, and each seat after that is ${taka} a month — paid out of your balance like everything else. Add money to the balance to take on another teacher, or to switch one back on.`,
         /*
          * The eight refusals behind Remove, and every one of them names the switch
          * instead. That is the point of the wording: turning a teacher off is the
@@ -4502,6 +4551,20 @@ export const en: Dictionary = {
         `The first ${n} are included, so this one adds nothing to the bill.`,
       /** And after they are. See §3.7 for why a form has to say this at all. */
       addCost: (taka: string) => `This one adds ${taka} a month to the bill.`,
+      /**
+       * What stands in the rail's place when there is no form to draw.
+       *
+       * The reader this is written for is the trial: a signup is given days, not money
+       * (§4.3), so it runs the three buildings the tier includes and cannot open a
+       * fourth until there is a balance to pay for it (`branchOpeningRefusal`). A form
+       * that could only refuse is the one thing this screen must not draw, and a
+       * paragraph explaining why is what goes there instead.
+       */
+      fundTitle: 'A fourth building is a line on the bill',
+      fundBody: (n: number, taka: string) =>
+        `${n} buildings are included in the Institution plan. The next one adds ${taka} a month, and a monthly bill is paid from your balance — which holds nothing yet. Add money to the balance and this form opens.`,
+      /** The way to the one screen that takes money (§20.4). */
+      fundLink: 'Add money to the balance',
       mineTitle: 'Your branch',
       mineBody:
         'Opening a branch, renaming one and closing one belong to the head office, because a branch is a line on the monthly bill. Everything you add is filed under your own branch without you having to say so.',
@@ -4514,6 +4577,13 @@ export const en: Dictionary = {
         notFound: 'That branch is not on your list.',
         /** A branch manager, refused. Names who can, because they will have to ask. */
         hqOnly: 'Only the head office can add, rename or close a branch.',
+        /**
+         * Past the included three with nothing on the balance — the database's own
+         * refusal, and the one the action writes when its count and the trigger's
+         * disagree. The trigger cannot name a price, so this does.
+         */
+        notFunded: (included: number, taka: string) =>
+          `The first ${included} buildings are included; the next one adds ${taka} a month, and the bill comes off your balance. Add money to your balance first.`,
       },
     },
 
@@ -5115,10 +5185,20 @@ export const en: Dictionary = {
       teacherDays: 'Teacher trial (days)',
       centerDays: 'Coaching centre trial (days)',
       institutionDays: 'Institution trial (days)',
+      /**
+       * The fourth number, and the only one that is not a length of time: how many active
+       * students a trial may hold before it has to be funded (20260811000098). It sits here
+       * rather than on a price card because nothing about it appears on a bill — it is policy,
+       * like the days beside it, and 0 is the way to switch the bound off.
+       */
+      roster: 'Students a trial may hold',
+      rosterHint:
+        'Any money on the balance lifts this bound entirely. 0 means no bound at all.',
       save: 'Save trials',
       saving: 'Saving…',
       saved: 'Saved.',
       badDays: 'Whole days, between 0 and 365.',
+      badRoster: 'The roster is a whole number of students, between 0 and 100000.',
       failed: 'Could not save it. Try again.',
     },
     planSaved: (plan: string, state: string) => `Now ${plan} · ${state}.`,

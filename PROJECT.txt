@@ -11,7 +11,7 @@ the staff already owns.
 
 ----------------------------------------------------------------------------
 Stack: Next.js (App Router) + Supabase (Postgres, RLS, Auth) + Tailwind,
-deployed on Vercel. 95 SQL migrations. 1,777 unit tests and 1,503
+deployed on Vercel. 98 SQL migrations. 1,809 unit tests and 1,559
 row-level-security assertions, all green.
 ----------------------------------------------------------------------------
 
@@ -36,8 +36,8 @@ in taka, bKash payments, month close the way centers actually run it.
 
 Status: in active development — not launched yet.
 
-Working today: the full center workflow above, held up by 1,777
-unit tests and 1,503 security assertions, all green.
+Working today: the full center workflow above, held up by 1,809
+unit tests and 1,559 security assertions, all green.
 
 Terms exist now. Seven pages — the prepaid billing terms leading
 it, then refunds, the terms of service, privacy, acceptable use,
@@ -76,6 +76,29 @@ reader's language and carry the switch to change it, and the app draws
 its three meaningful colours from one place — a green for present, a
 red for wrong, an amber for late — so no screen invents a second
 shade of its own.
+
+A building past the three an institution includes is bought, not
+granted: it opens only when there is money on the balance to carry the
+৳750 a month it adds, which is enforced by a trigger on `branches`
+as well as by the form. A three-day signup is given days and not
+money, so it runs the three buildings its tier includes and no more —
+before that it could name fifty for nothing. Every other dimension a
+plan prices is fenced the same way: the two teacher seats a centre
+includes are the tier's and each one past them is ৳100 a month off the
+balance, refused by a second trigger on `teachers` and by the action
+behind the form, and the screens say why instead of offering a button
+that could only be refused.
+
+The last dimension a free account could grow is its roster, and it is
+bounded by a number rather than by money — because a per-student
+tier's price IS the student, a money rule there would refuse a trial's
+very first admission. An organisation that has never funded its
+balance holds up to five hundred active students, which is one bulk
+import, and any money at all lifts the bound entirely. The number is
+the founder's, set beside the three trial lengths on the same screen,
+and zero switches the fence off. What is left unfenced is deliberate
+and written down: the free SMS credits a signup is given, which the
+OTP gate closes rather than the plan.
 
 Still ahead: automated SMS gateway and the real bKash API
 integration.

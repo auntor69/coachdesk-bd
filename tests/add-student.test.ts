@@ -78,7 +78,7 @@ function code(source: string): string {
 
 const PAGE_CODE = code(PAGE)
 
-test('the screen has two shapes, and no wall at all', () => {
+test('the screen has three shapes, and no wall at all', () => {
   assert.ok(LAPSED_AT > 0, 'the read-only arm is gone from the add-student screen')
   assert.ok(GRID_AT > LAPSED_AT, 'the grid should be written after the read-only arm')
 
@@ -89,10 +89,25 @@ test('the screen has two shapes, and no wall at all', () => {
     assert.equal(PAGE_CODE.includes(gone), false, `${gone} is back on the add-student screen`)
   }
 
-  // And the bar is the same JSX on both shapes, so a back link cannot go missing from one.
+  /*
+   * AND THE THIRD SHAPE IS THE TRIAL'S ROSTER (20260811000098). A per-student tier has no
+   * ceiling to be full of, so the wall this test was written to prove absent cannot come back
+   * as a plan limit — but a trial is bounded by one number instead, and `createStudent` refuses
+   * past it exactly as it refuses a lapsed centre. The arm is asserted here rather than left to
+   * the roster's own test file because it shares this screen's bar: a form drawn for a reader
+   * who could only be refused is the defect this screen is written against.
+   */
+  assert.match(PAGE, /const door = await rosterDoor\(supabase, session\)/)
+  assert.match(PAGE, /if \(!door\.open\) \{/)
+  assert.ok(
+    PAGE.indexOf('if (!door.open) {') < GRID_AT,
+    'the bound is answered before the form is drawn',
+  )
+
+  // And the bar is the same JSX on all three shapes, so a back link cannot go missing from one.
   assert.equal([...PAGE.matchAll(/const head = \(/g)].length, 1)
   assert.match(PAGE, /const head = \(\s+<PageHeader title=\{t\.newTitle\}/)
-  assert.equal([...PAGE.matchAll(/\{head\}/g)].length, 2)
+  assert.equal([...PAGE.matchAll(/\{head\}/g)].length, 3)
 })
 
 test('a lapsed centre gets no form, and is told that before anything is read', () => {

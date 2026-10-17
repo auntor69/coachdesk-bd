@@ -7,7 +7,17 @@ import { usernamesFor } from '@/lib/auth/username-login'
 import { branchChoicesFor } from '@/lib/branches'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { createClient } from '@/lib/supabase/server'
-import { wouldExceed, hasStaff, overStaffSeats, planName, PLANS } from '@/lib/plans'
+import { formatTaka } from '@/lib/money'
+import {
+  CENTER_FREE_TEACHER_SEATS,
+  CENTER_TEACHER_SEAT_BDT,
+  wouldExceed,
+  hasStaff,
+  overStaffSeats,
+  planName,
+  teacherSeatOpeningRefusal,
+  PLANS,
+} from '@/lib/plans'
 import { PERMISSION_DEFAULTS } from '@/lib/permissions'
 import { dict, localName, DEFAULT_LOCALE } from '@/lib/i18n'
 import { TeacherList, type TeacherRow } from './teacher-list'
@@ -291,6 +301,23 @@ export default async function TeachersPage() {
    */
   const atLimit = wouldExceed(session.plan, 'maxTeachers', activeCount)
 
+  /*
+   * And the question `atLimit` is not: the seat is not a wall the tier runs into, it is a
+   * price it pays — so past the two a centre includes, a balance with nothing on it is
+   * what stops the next colleague (`teacherSeatOpeningRefusal`, and `CD005` underneath it
+   * in 20260811000097).
+   *
+   * NO EXTRA QUERY: `activeCount` is off the rows this screen has already read, and the
+   * balance is on the session the last settlement wrote. The form the button leads to is
+   * not refused — the action behind it gives the same sentence — but a button that can
+   * only be refused is worse than no button, which is the branches screen's judgement and
+   * this one's.
+   */
+  const seatRefusal = teacherSeatOpeningRefusal(session.plan, {
+    activeTeachers: activeCount,
+    balancePoisha: session.billing.balancePoisha,
+  })
+
   return (
     /*
      * ONE COLUMN, DELIBERATELY, AND THE WIDTH SPENT INSIDE THE LIST.
@@ -312,7 +339,8 @@ export default async function TeachersPage() {
            already says the way out is down, not up. */
         actions={
           staff &&
-          !atLimit && (
+          !atLimit &&
+          seatRefusal === null && (
             <Link
               href="/settings/teachers/new"
               className="flex min-h-tap items-center justify-center rounded-xl border-2
@@ -360,6 +388,27 @@ export default async function TeachersPage() {
               planName(PLANS.center, locale),
             )}
           </p>
+        </Card>
+      )}
+
+      {staff && seatRefusal === 'needs_money' && (
+        <Card className="max-w-3xl">
+          {/* The heading and the way out are the list's; the sentence is the add form's
+              own refusal, in its own words, so a refusal and a card cannot disagree. */}
+          <p className="font-medium text-ink">{t.seatTitle}</p>
+          <p className="mt-1 text-sm text-ink-soft">
+            {t.errors.seatNotFunded(
+              CENTER_FREE_TEACHER_SEATS,
+              formatTaka(CENTER_TEACHER_SEAT_BDT),
+            )}
+          </p>
+          <Link
+            href="/settings/billing"
+            className="mt-3 inline-flex min-h-tap items-center font-medium text-brand-800
+              underline underline-offset-4 hover:text-brand-900"
+          >
+            {t.seatLink}
+          </Link>
         </Card>
       )}
 
