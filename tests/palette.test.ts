@@ -227,3 +227,58 @@ test('the palette is one green, one red, one amber, and the ink beside them', ()
   assert.match(css, /--color-absent: #[0-9a-f]{6};/)
   assert.match(css, /--color-late: #[0-9a-f]{6};/)
 })
+
+/**
+ * WCAG 2.1 relative luminance, and the contrast ratio two colours make with it.
+ *
+ * The arithmetic rather than an eyeball, because the token that failed this was invisible
+ * to every screen review it went through: `ink-faint` was #9ca3af, which looks like a
+ * perfectly ordinary light grey on white and measures 2.54:1 — under AA's 4.5:1 for text
+ * below 18pt, and this token is nav group headings, hints and the login screen's "forgot"
+ * line rather than decoration. On a mid-range Android in a bright room, which is the device
+ * MASTERPLAN's whole interface section is written for, it is the difference between faint
+ * and absent.
+ */
+function luminance(hex: string): number {
+  const value = Number.parseInt(hex.slice(1), 16)
+  const [r, g, b] = [value >> 16, (value >> 8) & 0xff, value & 0xff]
+    .map((channel) => channel / 255)
+    .map((c) => (c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4))
+  return 0.2126 * r + 0.7152 * g + 0.0722 * b
+}
+
+function contrast(a: string, b: string): number {
+  const [high, low] = [luminance(a), luminance(b)].sort((x, y) => y - x)
+  return (high + 0.05) / (low + 0.05)
+}
+
+test('every ink is readable on every surface it is drawn on', () => {
+  const css = read('src', 'app', 'globals.css')
+  const token = (name: string) => {
+    const found = css.match(new RegExp('--color-' + name + ': (#[0-9a-f]{6});'))
+    assert.ok(found, 'no such token: ' + name)
+    return found[1]
+  }
+
+  // The three inks against the three backgrounds they are actually set on: the page, a
+  // card, and the brand-tinted panel the dashboard's headline figure uses. `line` is a
+  // border and is not text, so it is not here.
+  for (const ink of ['ink', 'ink-soft', 'ink-faint']) {
+    for (const surface of ['surface', 'surface-alt', 'brand-50']) {
+      const ratio = contrast(token(ink), token(surface))
+      assert.ok(
+        ratio >= 4.5,
+        ink + ' on ' + surface + ' is ' + ratio.toFixed(2) + ':1, under AA 4.5:1',
+      )
+    }
+  }
+
+  // And the hierarchy those three names carry survives being legible: the faint ink has to
+  // stay a clear step lighter than the soft one, or "faint" becomes a third word for the
+  // same grey and the sheet has two inks rather than three.
+  const onWhite = ['ink', 'ink-soft', 'ink-faint'].map((ink) =>
+    contrast(token(ink), token('surface')),
+  )
+  assert.ok(onWhite[0] > onWhite[1], 'soft must be lighter than ink')
+  assert.ok(onWhite[1] > onWhite[2], 'faint must be lighter than soft')
+})

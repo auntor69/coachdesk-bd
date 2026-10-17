@@ -128,17 +128,32 @@ export function Alert({
   )
 }
 
-export function Logo({ className = '' }: { className?: string }) {
+export function Logo({
+  className = '',
+  tone = 'brand',
+}: {
+  className?: string
+  /**
+   * `inverse` for the brand panel that fills the left half of a desktop `/login` and
+   * `/signup` — the wordmark sits on `brand-700` there, where `text-brand-800` is a green
+   * on a green. Two tones and not a colour prop: a logo tinted by hand at each call site is
+   * how a product ends up with two wordmarks a shade apart.
+   */
+  tone?: 'brand' | 'inverse'
+}) {
   return (
     <span className={`inline-flex items-center gap-2 font-bold ${className}`}>
       <span
         aria-hidden
-        className="grid h-9 w-9 place-items-center rounded-xl bg-brand-600
-          text-lg text-white"
+        className={`grid h-9 w-9 place-items-center rounded-xl text-lg ${
+          tone === 'inverse' ? 'bg-white text-brand-700' : 'bg-brand-600 text-white'
+        }`}
       >
         ক
       </span>
-      <span className="text-brand-800">CoachDesk</span>
+      <span className={tone === 'inverse' ? 'text-white' : 'text-brand-800'}>
+        CoachDesk
+      </span>
     </span>
   )
 }

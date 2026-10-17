@@ -362,9 +362,17 @@ test('the days box clears on success, and never on submit', () => {
    * `./settings/billing/recharge-form.tsx`'s rule, which this now follows: a refusal leaves
    * what was typed alone.
    */
+  assert.match(LEVERS_UI, /const answered = draft\.under !== grantState/)
+  assert.match(LEVERS_UI, /const days = answered && grantState\?\.ok \? '' : draft\.text/)
+  assert.doesNotMatch(LEVERS_UI, /onSubmit=\{\(\) => setDays\(''\)\}/)
+
+  // Derived, not cleared from an effect: a `setState` in an effect is a second render and one
+  // frame in which the box and the sentence under it disagree. The pairing is also what keeps
+  // a refusal from clearing the field — see the test above it.
+  assert.doesNotMatch(LEVERS_UI, /useEffect/)
+  assert.doesNotMatch(LEVERS_UI, /setDays\(/)
   assert.match(
     LEVERS_UI,
-    /useEffect\(\(\) => \{\n\s+if \(grantState\?\.ok\) setDays\(''\)\n\s+\}, \[grantState\]\)/,
+    /onChange=\{\(event\) => setDraft\(\{ text: event\.target\.value, under: grantState \}\)\}/,
   )
-  assert.doesNotMatch(LEVERS_UI, /onSubmit=\{\(\) => setDays\(''\)\}/)
 })

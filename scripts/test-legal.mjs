@@ -60,13 +60,6 @@ const centreA = (
     [ownerA],
   )
 ).rows[0].id
-const centreB = (
-  await asService(
-    `insert into coaching_centers (name, created_by) values ('Consent Test B', $1) returning id`,
-    [ownerB],
-  )
-).rows[0].id
-
 /** 2026-09-18 is the version every page in src/lib/legal carries today. */
 const accept = (kind, centerSql) =>
   `insert into policy_acceptances (profile_id, coaching_center_id, policy_kind, policy_version)

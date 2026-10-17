@@ -217,6 +217,12 @@ export const bn = {
      */
     account: 'আমার অ্যাকাউন্ট',
     mainMenu: 'প্রধান মেনু',
+    /**
+     * The skip link's words, read aloud the moment the Tab key lands on it. The verb is
+     * "go up to", not "skip": a reader being told to skip their own product is being told
+     * it wastes their time, and the shortcut is the same either way.
+     */
+    skipToContent: 'সরাসরি মূল অংশে যান',
     /** Greets a reader whose name and phone are both missing. */
     welcome: 'স্বাগতম',
     /**
@@ -8128,6 +8134,14 @@ export const bn = {
    * reader's own numerals by the time it is passed.
    */
   auth: {
+    /** The desktop panel on /login and /signup — see en.ts on why it exists and its shape. */
+    brand: {
+      headline: 'পুরো কোচিং, এক জায়গায়',
+      attendance: 'শ্রেণির হাজিরা ত্রিশ সেকেন্ডে',
+      money: 'ফি, বকেয়া আর রশিদ — সব মিলে যায়',
+      families: 'অভিভাবককে বাংলায় SMS',
+      note: 'বাংলাদেশের কোচিং সেন্টারের জন্য বানানো',
+    },
     login: {
       /** The browser tab, the app switcher and the installed app's title. */
       title: 'লগইন',

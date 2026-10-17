@@ -909,6 +909,33 @@ export async function AppShell({
 
   return (
     <div className="flex min-h-full flex-col lg:flex-row">
+      {/*
+       * THE FIRST THING IN THE DOCUMENT AND THE FIRST THING TAB REACHES. Without it a
+       * keyboard reader pays for the navigation on every screen — eleven sidebar rows on a
+       * laptop, three header controls on a phone — before they reach the content they came
+       * for, and that tax is paid again after every link. The sidebar is drawn before the
+       * workspace in the DOM (it is the first column), so there is no other place to put
+       * this and no reordering that would let the content come first without breaking the
+       * visual order at `lg`.
+       *
+       * A PLAIN ANCHOR AND NOT A CLIENT COMPONENT: the browser's own fragment jump moves
+       * focus to the target because `main` is focusable (`tabIndex={-1}`), and nothing here
+       * needs JavaScript, a provider or a render. `sr-only` until focused, then a real
+       * button-shaped chip in the top-left corner — `focus:not-sr-only` is what makes it
+       * visible rather than merely focusable.
+       *
+       * Hidden on paper: a print shop does not need a skip link above a receipt.
+       */}
+      <a
+        href="#content"
+        className="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-50
+          focus:rounded-xl focus:border-2 focus:border-brand-600 focus:bg-white
+          focus:px-4 focus:py-3 focus:font-semibold focus:text-ink focus:shadow-lg
+          print:hidden"
+      >
+        {t.skipToContent}
+      </a>
+
       <Sidebar session={session} sections={sections} rows={entries.length} t={t} />
 
       {/* min-w-0 so a wide table inside the workspace scrolls itself instead of
@@ -943,16 +970,23 @@ export async function AppShell({
                 signed in on this shared phone. The letter is the first character of
                 the greeting, which is the name if there is one and the number if
                 there is not.
-              */}
-              <Link
+              */}                <Link
                 href="/account"
                 aria-label={t.account}
                 title={t.account}
-                className="grid h-9 w-9 shrink-0 place-items-center rounded-full
-                  bg-brand-50 text-sm font-semibold text-brand-700
-                  hover:bg-brand-100"
+                // 48px of tappable box around a 36px circle: `--spacing-tap` is the
+                // size this product measures a thumb by, and the circle stays small so
+                // a 320px header can hold three controls and the centre's name.
+                className="group grid h-12 w-12 shrink-0 place-items-center"
               >
-                <span aria-hidden>{initialFor(session)}</span>
+                <span
+                  aria-hidden
+                  className="grid h-9 w-9 place-items-center rounded-full
+                    bg-brand-50 text-sm font-semibold text-brand-700
+                    group-hover:bg-brand-100"
+                >
+                  {initialFor(session)}
+                </span>
               </Link>
 
               <LanguageSwitch locale={session.locale} />
@@ -960,8 +994,12 @@ export async function AppShell({
               <form action={signOut}>
                 <button
                   type="submit"
-                  className="rounded-lg px-3 py-2 text-sm font-medium text-ink-soft
-                    hover:bg-surface-alt hover:text-ink"
+                  // `min-h-tap` and not padding guesses: the words are what a thumb aims
+                  // at, and a 34px-tall button is under the line this whole design is
+                  // measured against. The header has room — the logo block beside it is
+                  // already taller than 48px — so this costs no height.
+                  className="min-h-tap rounded-lg px-3 py-2 text-sm font-medium
+                    text-ink-soft hover:bg-surface-alt hover:text-ink"
                 >
                   {t.logout}
                 </button>
@@ -983,8 +1021,16 @@ export async function AppShell({
             off: @page owns the margins, and max-w-3xl left standing would waste a
             third of an A4 sheet the register wants for its columns. */}
         <main
-          className="mx-auto w-full max-w-3xl flex-1 px-4 py-5 pb-24
-            lg:max-w-7xl lg:px-8 lg:py-8 lg:pb-8
+          // The skip link's target. `tabIndex={-1}` is what lets a fragment jump move
+          // focus here rather than only scrolling to it, which is the difference between
+          // a keyboard reader landing on the screen and landing back where they were.
+          id="content"
+          tabIndex={-1}
+          // `scroll-mt-16` on a phone, because the header above this is sticky and 64px
+          // tall: without it the skip link lands with the first heading under it. Zero
+          // from `lg`, where that header is gone and the page bar sticks inside main.
+          className="mx-auto w-full max-w-3xl flex-1 scroll-mt-16 px-4 py-5 pb-24
+            lg:max-w-7xl lg:scroll-mt-0 lg:px-8 lg:py-8 lg:pb-8
             print:max-w-none print:px-0 print:py-0 print:pb-0"
         >
           {readOnly && (

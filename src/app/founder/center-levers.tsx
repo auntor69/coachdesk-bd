@@ -20,7 +20,7 @@
  * clock would be wrong for whoever is six time zones away.
  */
 
-import { useActionState, useEffect, useState } from 'react'
+import { useActionState, useState } from 'react'
 
 import { Alert, Button, Field } from '@/components/ui'
 import { grantReach, parseDays } from '@/lib/billing/levers'
@@ -58,18 +58,14 @@ export function CenterLevers({
   // The days box is controlled, and it is the only controlled field on this screen: what is
   // typed here changes another sentence on the page, so the value has to be readable during
   // render. Money stays uncontrolled — nothing under it moves as it is typed.
-  const [days, setDays] = useState('')
-  const parsed = parseDays(days)
-
-  /*
-   * The preview, and it says nothing at all when the box holds something unreadable. A blank
-   * where a date would be is the honest answer to "3.5 days" — a date computed from a number
-   * we refused would be a promise the write then declines to keep.
-   */
-  const reach =
-    parsed === null
-      ? null
-      : fill(labels.reaches, { date: formatDate(grantReach(line, parsed, today), locale) })
+  //
+  // The number is kept WITH the answer it was typed under, which is what makes the clearing
+  // below a comparison rather than an effect: `answered` is true exactly when the action has
+  // come back since the last keystroke.
+  const [draft, setDraft] = useState<{ text: string; under: FounderState }>({
+    text: '',
+    under: null,
+  })
 
   /*
    * The days box clears itself once a grant has landed, and only then.
@@ -81,10 +77,28 @@ export function CenterLevers({
    * granted a second time. That is not hypothetical: this centre's line carries two
    * identical thirty-day grants made thirty-six minutes apart. Same rule
    * `./settings/billing/recharge-form.tsx` follows — a refusal leaves what was typed alone.
+   *
+   * `days` IS DERIVED, not stored and then cleared from an effect. Two states that disagree
+   * for one render are how a cleared box flickers back for a frame, and a `setState` inside
+   * an effect is a second render this screen does not need: the value is a question with the
+   * answer it belongs to, and "this text was typed after the last answer" is the whole rule.
+   * A success is a new question, so the box is empty; a refusal is the same question, so the
+   * text is still there. Typing re-pairs the text with the answer on screen, which is what
+   * keeps a refusal from clearing what is being retyped.
    */
-  useEffect(() => {
-    if (grantState?.ok) setDays('')
-  }, [grantState])
+  const answered = draft.under !== grantState
+  const days = answered && grantState?.ok ? '' : draft.text
+  const parsed = parseDays(days)
+
+  /*
+   * The preview, and it says nothing at all when the box holds something unreadable. A blank
+   * where a date would be is the honest answer to "3.5 days" — a date computed from a number
+   * we refused would be a promise the write then declines to keep.
+   */
+  const reach =
+    parsed === null
+      ? null
+      : fill(labels.reaches, { date: formatDate(grantReach(line, parsed, today), locale) })
 
   // Unique DOM ids, because eleven customer cards each hold a field named `amount` — the same
   // reason `fid()` exists next door.
@@ -115,7 +129,7 @@ export function CenterLevers({
           type="text"
           inputMode="numeric"
           value={days}
-          onChange={(event) => setDays(event.target.value)}
+          onChange={(event) => setDraft({ text: event.target.value, under: grantState })}
           required
           maxLength={4}
           className="num"

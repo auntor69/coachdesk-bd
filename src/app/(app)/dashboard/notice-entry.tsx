@@ -24,8 +24,11 @@ export function NoticeEntry({ t }: { t: Dictionary['notices'] }) {
   return (
     <Link
       href="/notices"
+      // `hover:` only ever fires where there is a pointer, so this costs the phone
+      // nothing and tells a desktop reader that the card is the link it looks like.
       className="flex min-h-tap items-center justify-between gap-3 rounded-xl
-        border border-line bg-white px-4 py-3"
+        border border-line bg-white px-4 py-3 transition-colors
+        hover:border-brand-300 hover:bg-brand-50/40"
     >
       <span>
         <span className="font-medium text-ink">{t.title}</span>

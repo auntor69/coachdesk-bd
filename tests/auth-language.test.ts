@@ -266,4 +266,28 @@ test('the group is a translation and not the same copy pasted twice', () => {
       assert.ok(mode.title && mode.body && mode.nameLabel && mode.namePlaceholder, kind)
     }
   }
+
+  /*
+   * The desktop frame on the two signed-out screens. §20.1 gives every screen in the product
+   * two frames; these two were left as a 384px column at every width, and they are the first
+   * thing a prospective owner sees. The panel is `hidden` below `lg`, so the phone is the
+   * screen it always was — and it is static markup with the dictionary's words, so it costs
+   * no query and switches language with the form beside it.
+   */
+  for (const page of [LOGIN_PAGE, SIGNUP_PAGE]) {
+    assert.match(page, /<AuthBrandPanel t=\{t\.brand\} \/>/)
+    assert.match(page, /lg:grid-cols-\[1\.15fr_1fr\]/)
+  }
+
+  const panel = read('src', 'components', 'auth-brand.tsx')
+  assert.match(panel, /className="hidden bg-brand-700/)
+  assert.match(panel, /lg:flex lg:flex-col/)
+  assert.match(panel, /Dictionary\['auth'\]\['brand'\]/)
+
+  // Four lines of copy in two languages, and none of them a translation of the other by
+  // accident: a panel that says the same thing in both is a panel nobody translated.
+  for (const key of ['headline', 'attendance', 'money', 'families', 'note'] as const) {
+    assert.ok(dict('bn').auth.brand[key] && dict('en').auth.brand[key], key)
+    assert.notEqual(dict('bn').auth.brand[key], dict('en').auth.brand[key], key)
+  }
 })
