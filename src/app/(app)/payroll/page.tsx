@@ -1,7 +1,5 @@
-import Link from 'next/link'
-
 import { PageHeader } from '@/components/page-header'
-import { Card } from '@/components/ui'
+import { Card, LinkButton } from '@/components/ui'
 import { getSession, pageCapability } from '@/lib/auth/session'
 import { formatDate, todayInDhaka } from '@/lib/bd/time'
 import { dict, DEFAULT_LOCALE } from '@/lib/i18n'
@@ -238,13 +236,9 @@ export default async function PayrollPage() {
          * month, and the figures are part of what they need to decide whether to renew.
          */
         actions={
-          <Link
-            href="/payroll/pay"
-            className="inline-flex min-h-tap items-center rounded-xl border-2 border-brand-500
-              bg-brand-50 px-4 font-medium text-brand-800"
-          >
+          <LinkButton href="/payroll/pay" variant="tinted">
             {t.payLink} →
-          </Link>
+          </LinkButton>
         }
       />
 

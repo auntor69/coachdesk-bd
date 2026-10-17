@@ -1,7 +1,6 @@
-import Link from 'next/link'
 import { forbidden } from 'next/navigation'
 
-import { Card } from '@/components/ui'
+import { Card, LinkButton } from '@/components/ui'
 import { PageHeader } from '@/components/page-header'
 import { ReadOnlyNote } from '@/components/read-only-note'
 import {
@@ -189,13 +188,9 @@ export default async function NewExamPage() {
             {isAdmin ? t.needBatchBody : d.teach.noBatchesBody}
           </p>
           {isAdmin && (
-            <Link
-              href="/settings/batches/new"
-              className="mt-4 inline-flex min-h-tap items-center justify-center
-                rounded-xl bg-brand-600 px-5 font-semibold text-white"
-            >
+            <LinkButton href="/settings/batches/new" className="mt-4">
               {t.createBatch}
-            </Link>
+            </LinkButton>
           )}
         </Card>
       ) : (

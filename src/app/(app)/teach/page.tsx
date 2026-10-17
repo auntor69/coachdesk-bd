@@ -1,6 +1,6 @@
 import Link from 'next/link'
 
-import { Card } from '@/components/ui'
+import { Card, LinkButton } from '@/components/ui'
 import { PageHeader } from '@/components/page-header'
 import { pageRole, getSession, isStaffAdmin, myTeacherIds } from '@/lib/auth/session'
 import { createClient } from '@/lib/supabase/server'
@@ -456,13 +456,9 @@ export default async function TeachPage() {
           <Card className="max-w-2xl">
             <h2 className="font-semibold text-ink">{t.firstBatchTitle}</h2>
             <p className="mt-1 text-sm text-ink-soft">{t.firstBatchBody}</p>
-            <Link
-              href="/settings/batches/new"
-              className="mt-4 inline-flex min-h-tap items-center justify-center
-                rounded-xl bg-brand-600 px-5 font-semibold text-white"
-            >
+            <LinkButton href="/settings/batches/new" className="mt-4">
               {t.addBatch}
-            </Link>
+            </LinkButton>
           </Card>
         ) : (
           /* The same emptiness, without the button. /settings/batches/new is

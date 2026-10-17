@@ -1,7 +1,7 @@
 import Link from 'next/link'
 import type { Route } from 'next'
 
-import { Alert, Card } from '@/components/ui'
+import { Alert, buttonClass, Card } from '@/components/ui'
 import { PageHeader } from '@/components/page-header'
 import { getSession, pageRole } from '@/lib/auth/session'
 import { createClient } from '@/lib/supabase/server'
@@ -276,8 +276,7 @@ export default async function ActivityPage({
             </select>
             <button
               type="submit"
-              className="min-h-tap shrink-0 rounded-xl bg-brand-600 px-5 font-semibold
-                text-white"
+              className={buttonClass('primary', false, 'shrink-0')}
             >
               {t.show}
             </button>
@@ -339,8 +338,11 @@ export default async function ActivityPage({
   )
 }
 
-const PAGER_CLASS =
-  'inline-flex min-h-tap items-center rounded-xl border-2 border-line px-4 font-semibold text-ink'
+/*
+ * The shared button styles, so the pager cannot drift from the buttons on every other
+ * screen — it was `px-4` against this file's own `px-5` before it was extracted.
+ */
+const PAGER_CLASS = buttonClass('secondary')
 
 function hrefFor(entity: AuditedTable | null, before: string | null): Route {
   const search = new URLSearchParams()

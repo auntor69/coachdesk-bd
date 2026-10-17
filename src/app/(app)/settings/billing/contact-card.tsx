@@ -1,4 +1,4 @@
-import { Card } from '@/components/ui'
+import { buttonClass, Card } from '@/components/ui'
 import { getSession } from '@/lib/auth/session'
 import { formatBdMobile, normalizeBdMobile } from '@/lib/bd/phone'
 import { formatDate, todayInDhaka } from '@/lib/bd/time'
@@ -152,8 +152,7 @@ export async function ContactCard() {
             href={`https://wa.me/${salesPhone.slice(1)}?text=${encodeURIComponent(salesMessage)}`}
             target="_blank"
             rel="noopener noreferrer"
-            className="inline-flex min-h-tap items-center rounded-xl border-2
-              border-brand-500 bg-brand-50 px-4 font-medium text-brand-800"
+            className={buttonClass('tinted')}
           >
             {t.contactWhatsapp}
           </a>
@@ -163,8 +162,7 @@ export async function ContactCard() {
             // centre decides to start paying us. A dead button here is a lost sale; the
             // digits work on any device. ASCII in both languages — it is dialled, not read.
             href={`tel:${salesPhone}`}
-            className="inline-flex min-h-tap items-center rounded-xl border-2
-              border-line px-4 font-medium text-ink-soft"
+            className={buttonClass('secondary')}
           >
             {t.contactCall}
             {/* `ml-1` and not a JSX space. This anchor is an inline-flex, and a space

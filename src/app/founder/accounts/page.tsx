@@ -1,7 +1,7 @@
 import Link from 'next/link'
 import type { Route } from 'next'
 
-import { Card } from '@/components/ui'
+import { buttonClass, Card } from '@/components/ui'
 import { pagePlatformAdmin } from '@/lib/auth/session'
 import { loginIdentifierOf } from '@/lib/auth/identifier'
 import { createClient } from '@/lib/supabase/server'
@@ -236,7 +236,7 @@ export default async function FounderAccountsPage({
 
           <button
             type="submit"
-            className="min-h-tap rounded-xl bg-brand-600 px-5 font-semibold text-white"
+            className={buttonClass('primary')}
           >
             {t.accounts.apply}
           </button>

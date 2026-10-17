@@ -832,8 +832,8 @@ export default async function DashboardPage() {
               </div>
               <Link
                 href="/teach"
-                className="shrink-0 rounded-lg px-3 py-2 font-medium text-brand-700
-                  hover:bg-brand-50"
+                className="inline-flex min-h-tap shrink-0 items-center rounded-lg px-3
+                  font-medium text-brand-700 hover:bg-brand-50"
               >
                 {d.common.view} →
               </Link>
@@ -879,7 +879,9 @@ export default async function DashboardPage() {
             <div className="order-last">
               <div className="mb-2 flex items-baseline justify-between gap-3">
                 <h2 className="font-semibold text-ink">{t.overdueTitle}</h2>
-                <Link href="/fees" className="text-sm font-medium text-brand-700">
+                {/* A 44px target on one line: the py is what a thumb aims at and the
+                    -my puts the row back where it was. */}
+                <Link href="/fees" className="-my-3 py-3 text-sm font-medium text-brand-700">
                   {d.common.seeAll}
                 </Link>
               </div>

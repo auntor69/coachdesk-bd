@@ -1,6 +1,6 @@
 import { PageHeader } from '@/components/page-header'
 import { PaperLink } from '@/components/paper-link'
-import { Card } from '@/components/ui'
+import { buttonClass, Card } from '@/components/ui'
 import { Th, Td } from '@/components/table'
 import { pageCapability, getSession } from '@/lib/auth/session'
 import { branchChoicesFor } from '@/lib/branches'
@@ -199,8 +199,9 @@ export default async function ExpensesPage({
             </select>
             <button
               type="submit"
-              className="min-h-tap shrink-0 rounded-xl border-2 border-brand-500
-                bg-brand-50 px-4 font-medium text-brand-800"
+              // The shared tinted styles: this apply button had drifted to px-4 against
+              // the sheet's own px-5, and it never answered a tap.
+              className={buttonClass('tinted', false, 'shrink-0')}
             >
               {t.show}
             </button>
