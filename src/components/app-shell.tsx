@@ -23,7 +23,7 @@ import type { Route } from 'next'
 
 import { signOut } from '@/app/(auth)/actions'
 import { switchCenter } from '@/app/(app)/actions'
-import { SideNav, TabBar, type NavEntry, type NavSection } from '@/components/app-nav'
+import { SideNav, TabBar, type IconName, type NavEntry, type NavSection } from '@/components/app-nav'
 import { LanguageSwitch } from '@/components/language-switch'
 import { buttonClass, LinkButton, Logo } from '@/components/ui'
 import type { MemberRole, CenterStatus } from '@/lib/supabase/types'
@@ -70,7 +70,12 @@ type NavGate = (ctx: { plan: PlanLimits; member: Membership }) => boolean
 type NavItem = {
   href: Route
   label: keyof Dictionary['shell']['nav']
-  icon: string
+  /**
+   * A key into the navigation icon set (`app-nav.tsx`), drawn as an inline SVG so
+   * every tab and row reads in one visual grammar instead of whatever weight the
+   * Bangla font happened to give a text glyph.
+   */
+  icon: IconName
   group?: NavGroup
   when?: NavGate
   /**
@@ -99,13 +104,13 @@ type NavItem = {
 const FEES_TAB: NavItem = {
   href: '/fees',
   label: 'fees',
-  icon: '৳',
+  icon: 'banknote',
   group: 'money',
   when: ({ member }) => can(member.capabilities, 'fees'),
 }
 
 /** Named for the same reason, now that three roles reach it. */
-const EXAMS_TAB: NavItem = { href: '/exams', label: 'exams', icon: '✎' }
+const EXAMS_TAB: NavItem = { href: '/exams', label: 'exams', icon: 'pencil' }
 
 /**
  * Settings, named for the same reason the fee tab is.
@@ -119,7 +124,7 @@ const EXAMS_TAB: NavItem = { href: '/exams', label: 'exams', icon: '✎' }
 const SETTINGS_TAB: NavItem = {
   href: '/settings',
   label: 'settings',
-  icon: '⚙',
+  icon: 'sliders',
   group: 'organisation',
 }
 
@@ -144,8 +149,8 @@ const SETTINGS_TAB: NavItem = {
  * the phone keeps it.
  */
 const STAFF_ADMIN_NAV: NavItem[] = [
-  { href: '/dashboard', label: 'home', icon: '⌂' },
-  { href: '/teach', label: 'attendance', icon: '✓' },
+  { href: '/dashboard', label: 'home', icon: 'home' },
+  { href: '/teach', label: 'attendance', icon: 'register' },
   EXAMS_TAB,
   FEES_TAB,
   /*
@@ -162,11 +167,11 @@ const STAFF_ADMIN_NAV: NavItem[] = [
    * this table — theirs is a grant on the row, and they keep reaching the roster
    * through Settings, which `navFor` already opens for them.
    */
-  { href: '/settings/students', label: 'students', icon: '☰' },
+  { href: '/settings/students', label: 'students', icon: 'students' },
   {
     href: '/expenses',
     label: 'expenses',
-    icon: '↓',
+    icon: 'expenses',
     group: 'money',
     // pageCapability('expenses'), and the plan half as `needs` so the row is drawn
     // locked rather than hidden — the screen behind it is the upsell card.
@@ -176,17 +181,17 @@ const STAFF_ADMIN_NAV: NavItem[] = [
   {
     href: '/payroll',
     label: 'payroll',
-    icon: '⛁',
+    icon: 'calendar',
     group: 'money',
     when: ({ member }) => can(member.capabilities, 'payroll'),
     needs: 'centerWideReporting',
   },
   // pageRole('manager') and nothing else: every tier has students who stop coming.
-  { href: '/at-risk', label: 'atRisk', icon: '!', group: 'families' },
+  { href: '/at-risk', label: 'atRisk', icon: 'alert', group: 'families' },
   {
     href: '/notices',
     label: 'notices',
-    icon: '✉',
+    icon: 'envelope',
     group: 'families',
     // No plan gate on this one at all — a solo teacher on the free plan can tell a
     // batch's parents the room is shut on Thursday, and always could.
@@ -195,7 +200,7 @@ const STAFF_ADMIN_NAV: NavItem[] = [
   {
     href: '/progress',
     label: 'progress',
-    icon: '★',
+    icon: 'star',
     group: 'families',
     when: ({ member }) => can(member.capabilities, 'messages'),
     needs: 'parentSummary',
@@ -203,7 +208,7 @@ const STAFF_ADMIN_NAV: NavItem[] = [
   {
     href: '/hq',
     label: 'hq',
-    icon: '⌗',
+    icon: 'buildings',
     group: 'organisation',
     // The screen's other two checks, both of which hide rather than lock: a manager
     // pinned to one branch is not being sold anything by a row leading to a card that
@@ -237,9 +242,9 @@ const NAV_GROUPS: NavGroup[] = ['money', 'families', 'organisation']
 const NAV: Record<MemberRole, NavItem[]> = {
   owner: STAFF_ADMIN_NAV,
   manager: STAFF_ADMIN_NAV,
-  teacher: [{ href: '/teach', label: 'attendance', icon: '✓' }, EXAMS_TAB],
-  student: [{ href: '/me', label: 'mine', icon: '⌂' }],
-  guardian: [{ href: '/me', label: 'myChild', icon: '⌂' }],
+  teacher: [{ href: '/teach', label: 'attendance', icon: 'register' }, EXAMS_TAB],
+  student: [{ href: '/me', label: 'mine', icon: 'person' }],
+  guardian: [{ href: '/me', label: 'myChild', icon: 'person' }],
 }
 
 /**
@@ -562,11 +567,9 @@ function TrialBanner({
       // `status` for the same reason the read-only banner uses it: this is the state of
       // the screen as opened, not an event, and `alert` would interrupt a screen reader
       // on every navigation for a fortnight.
-      role="status"
-      className={`mb-5 rounded-xl border-2 px-4 py-3 print:hidden ${
-        ending ? 'border-late/40 bg-late/5' : 'border-brand-200 bg-brand-50'
-      }`}
-    >
+      role="status"      className={`mb-5 rounded-xl border px-4 py-3 print:hidden ${
+        ending ? 'border-late/40 bg-late/5' : 'border-brand-200 bg-brand-50 shadow-sm'
+      }`}>
       <p className={`font-semibold ${ending ? 'text-late' : 'text-brand-800'}`}>
         {standing.state === 'ended'
           ? t.endedTitle(tier)
@@ -652,11 +655,14 @@ function Sidebar({
 
       {/* mt-auto so the account block sits at the foot whether or not there is a menu
           above it, and without the menu having to be a flex-1 that is sometimes absent. */}
+      {/* The account block, finished: the reader's own corner of the sidebar.
+          A soft surface instead of bare rows is what makes it read as a place
+          rather than the list's leftovers — and it is still rows of 44px+. */}
       <div className="mt-auto border-t border-line p-2">
         <Link
           href="/account"
           className="flex min-h-tap items-center gap-3 rounded-xl px-2
-            text-sm text-ink-soft hover:bg-surface-alt hover:text-ink"
+            text-sm text-ink-soft transition-colors hover:bg-surface-alt hover:text-ink"
         >
           <span
             aria-hidden
@@ -1042,8 +1048,8 @@ export async function AppShell({
             <div
               role="status"
               className={`mb-5 flex flex-wrap items-center justify-between gap-2
-                rounded-xl border-2 px-4 py-3 print:hidden ${
-                  railLow ? 'border-late/40 bg-late/5' : 'border-line bg-surface-alt'
+                rounded-xl border px-4 py-3 print:hidden shadow-sm ${
+                  railLow ? 'border-late/40 bg-late/5' : 'border-line bg-white'
                 }`}
             >
               <p className={`text-sm font-medium ${railLow ? 'text-late' : 'text-ink-soft'}`}>

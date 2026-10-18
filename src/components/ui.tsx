@@ -46,7 +46,9 @@ const BUTTON_BASE =
  * forms, which are labels.
  */
 const BUTTON_VARIANTS: Record<ButtonVariant, string> = {
-  primary: 'bg-brand-600 text-white hover:bg-brand-700',
+  /* `shadow-sm` on the primary only: the app's one unambiguous action per screen
+     gets the room's one lift, at token level, and everything quieter stays flat. */
+  primary: 'bg-brand-600 text-white shadow-sm hover:bg-brand-700',
   secondary: 'bg-white text-ink border-2 border-line hover:border-brand-300',
   ghost: 'text-brand-700 hover:bg-brand-50',
   danger: 'bg-absent text-white hover:brightness-95',
@@ -210,14 +212,18 @@ export function Logo({
    */
   tone?: 'brand' | 'inverse'
 }) {
-  return (
-    <span className={`inline-flex items-center gap-2 font-bold ${className}`}>
+  return (    <span className={`inline-flex items-center gap-2.5 font-bold tracking-tight ${className}`}>
+      {/*
+        ক in a tile, redrawn for the ledger identity: the glyph gets a baseline
+        lift so it sits optically centred in a tile that is now one radius step
+        softer than the cards beside it, and the inverse tone also drops scale
+        so the wordmark and the panel it sits on read as one object.
+      */}
       <span
         aria-hidden
-        className={`grid h-9 w-9 place-items-center rounded-xl text-lg ${
+        className={`grid h-9 w-9 place-items-center rounded-lg pt-0.5 text-[1.35rem] leading-none shadow-sm ${
           tone === 'inverse' ? 'bg-white text-brand-700' : 'bg-brand-600 text-white'
-        }`}
-      >
+        }`}>
         ক
       </span>
       <span className={tone === 'inverse' ? 'text-white' : 'text-brand-800'}>

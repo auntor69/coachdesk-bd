@@ -30,7 +30,8 @@ import { Logo } from '@/components/ui'
 export function AuthBrandPanel({ t }: { t: Dictionary['auth']['brand'] }) {
   return (
     <aside
-      className="hidden bg-brand-700 px-12 py-12 lg:flex lg:flex-col
+      className="hidden bg-brand-700 bg-[radial-gradient(60rem_20rem_at_50%_-8rem,rgb(255_255_255/0.10),transparent_70%)]
+        px-12 py-12 lg:flex lg:flex-col
         lg:justify-between print:hidden"
     >
       <Logo tone="inverse" className="text-xl" />

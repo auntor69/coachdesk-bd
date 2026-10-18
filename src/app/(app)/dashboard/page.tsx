@@ -772,9 +772,11 @@ export default async function DashboardPage() {
           )}
 
           {seeFees && moneyProblem === null && (
-            <Card className="order-3 border-brand-200 bg-brand-50">
-              <p className="text-sm font-medium text-brand-800">{t.outstanding}</p>
-              <p className="num mt-1 text-4xl font-bold text-brand-900">
+            <Card className="order-3 border-brand-200 bg-brand-50
+              bg-[radial-gradient(48rem_14rem_at_0%_-120%,rgb(255_255_255/0.45),transparent_75%)]">
+              <p className="text-sm font-semibold text-brand-700">{t.outstanding}</p>
+              <p className="num mt-1 text-[2.5rem] font-bold leading-tight
+                text-brand-900 lg:text-5xl">
                 {taka(outstanding)}
               </p>
               {/* The fee board's own caption, borrowed rather than restated. A
@@ -1096,12 +1098,12 @@ export default async function DashboardPage() {
 function Stat({ label, value }: { label: string; value: string }) {
   return (
     <div
-      className="rounded-xl border border-line bg-white px-3 py-3 text-center
+      className="rounded-xl px-3 py-3 text-center
         lg:flex lg:items-baseline lg:justify-between lg:gap-3 lg:rounded-none
-        lg:border-0 lg:bg-transparent lg:px-4 lg:text-left"
+        lg:px-4 lg:text-left"
     >
-      <p className="num text-lg font-bold text-ink lg:order-2">{value}</p>
-      <p className="mt-0.5 text-xs text-ink-soft lg:order-1 lg:mt-0 lg:text-sm">
+      <p className="num text-xl font-bold text-ink lg:order-2">{value}</p>
+      <p className="mt-0.5 text-xs font-medium text-ink-soft lg:order-1 lg:mt-0 lg:text-sm">
         {label}
       </p>
     </div>
