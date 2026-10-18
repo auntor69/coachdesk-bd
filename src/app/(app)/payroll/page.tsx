@@ -1,6 +1,7 @@
 import Link from 'next/link'
 
 import { PageHeader } from '@/components/page-header'
+import { SearchBox, SearchEmpty } from '@/components/search-box'
 import { Card, LinkButton } from '@/components/ui'
 import { getSession, pageCapability } from '@/lib/auth/session'
 import { formatDate, todayInDhaka } from '@/lib/bd/time'
@@ -9,6 +10,7 @@ import { formatTaka } from '@/lib/money'
 import { PER_CLASS_BASIS } from '@/lib/payroll/basis'
 import { billRows, payeeValue, tallyBill, withoutTerms, type Payee } from '@/lib/payroll/bill'
 import { has, planName, PLANS } from '@/lib/plans'
+import { matchesSearch, searchTerms } from '@/lib/search'
 import { can } from '@/lib/staff/capabilities'
 import { EMPLOYEE_ROLES, jobTitle } from '@/lib/staff/roles'
 import { createClient } from '@/lib/supabase/server'
@@ -78,7 +80,7 @@ export default async function PayrollPage({
    * below, so a hand-typed id is ignored rather than answered with a selection that is not
    * in the list.
    */
-  searchParams: Promise<{ payee?: string }>
+  searchParams: Promise<{ payee?: string; q?: string }>
 }) {
   const session = await pageCapability('payroll')
 
@@ -232,12 +234,47 @@ export default async function PayrollPage({
    * looking at. Somebody who has left is not `pickable` and so is not offered by a URL
    * either, exactly as they are not offered by the select.
    */
-  const { payee: wantedPayee } = await searchParams
+  const { payee: wantedPayee, q: rawQuery } = await searchParams
   const defaultPayee =
     typeof wantedPayee === 'string' &&
     pickable.some((p) => payeeValue(p.kind, p.id) === wantedPayee)
       ? wantedPayee
       : ''
+
+  /*
+   * THE BOX THAT FINDS ONE AGREEMENT IN TWENTY, which is what this screen is opened for.
+   * Every other long list in the product has one — the fee board, the register, the exams
+   * list, the roster, the weekly list — and the wage bill was the odd one out: a centre pays
+   * fourteen people and an owner looking for one of them was reading fourteen cards. It
+   * matters more here than on those, because the question is usually "what does she earn"
+   * or "give her a rise", asked about a name somebody already has in mind.
+   *
+   * IT FILTERS THE LIST AND NOTHING ELSE, the fee board's own rule and the reason
+   * `lib/search.ts` matches in memory: the total in the rail, the count of monthly
+   * agreements and the warning about somebody who has left are all computed from the
+   * unfiltered rows. An owner typing a name is asking which row is hers, not asking the
+   * centre's wage bill to become hers.
+   *
+   * Two lists narrow, because two lists answer the same question about the same people:
+   * the bill, and the people with nothing agreed yet. `?payee=` is not one of the box's
+   * `keep` values on purpose: choosing a person is the form's job, and a search that left
+   * the last pick behind would open the form on somebody the reader is no longer looking
+   * at.
+   */
+  const query = typeof rawQuery === 'string' ? rawQuery : ''
+  // `words` and not `terms`: this page already has one of those, and it is the live salary
+  // agreements the bill is built from.
+  const words = searchTerms(query)
+
+  const shown =
+    words.length === 0
+      ? rows
+      : rows.filter((row) => matchesSearch([row.name, row.job, row.note], words))
+
+  const shownMissing =
+    words.length === 0
+      ? missing
+      : missing.filter((p) => matchesSearch([p.name, p.job], words))
 
   /*
    * Whether this centre may write, answered once for the form and for every row's stop
@@ -403,7 +440,7 @@ export default async function PayrollPage({
             empty and this list is most of the screen, and on every later visit the bill is
             what they came for.
           */}
-          {missing.length > 0 && (
+          {shownMissing.length > 0 && (
             <section
               className="order-6 rounded-xl border border-dashed border-line bg-surface-alt
                 p-4"
@@ -416,7 +453,7 @@ export default async function PayrollPage({
                   tap now opens the form on that person — the same `?payee=` the bill's rows
                   use. */}
               <ul className="mt-2 flex flex-col">
-                {missing.map((p) => (
+                {shownMissing.map((p) => (
                   <li key={`${p.kind}:${p.id}`}>
                     <Link
                       href={`/payroll?payee=${payeeValue(p.kind, p.id)}#agree`}
@@ -460,48 +497,66 @@ export default async function PayrollPage({
               <>
                 <h2 className="font-medium text-ink">{t.billTitle}</h2>
 
+                {/* Under the heading rather than above it, unlike the other lists: here the
+                    heading names what the cards are, and the box filters them. On the fee
+                    board the box is the whole control surface and there is no heading over
+                    the rows at all. */}
+                <SearchBox
+                  q={query}
+                  t={d.search}
+                  count={{ shown: shown.length, total: rows.length }}
+                />
+
                 {/* Two cards abreast wherever there is room for two, one where there is not.
                     Each card is a name, a figure, a line of small print and a verb — a shape
                     that wastes two thirds of its width on a wide row, and a centre with twenty
                     agreements was scrolling all twenty. The middle step back to one column is
                     not fussiness: from `lg` this column is 401px, and half of that is narrower
                     than the phone the card was drawn for. */}
-                <ul className="grid gap-2 sm:grid-cols-2 lg:grid-cols-1 xl:grid-cols-2">
-                  {rows.map((row) => (
-                    <TermsRow
-                      key={row.termsId}
-                      termsId={row.termsId}
-                      name={row.name ?? d.common.unknown}
-                      job={row.job ?? t.teacherJob}
-                      gone={row.gone}
-                      offLabel={t.inactive}
-                      // The figure the row prints, built here because both shapes of it take
-                      // an argument and `T` maps a function leaf to `never`. A per-class row
-                      // shows a rate and says so in words: ৳350 printed where the row above
-                      // prints ৳13,000 is a teacher who looks very cheap.
-                      figure={
-                        row.basis === PER_CLASS_BASIS
-                          ? row.perClass === null
-                            ? '—'
-                            : t.perClassRate(formatTaka(row.perClass))
-                          : formatTaka(row.net)
-                      }
-                      // How the salary is worked out and the day it began, joined here the way
-                      // the staff list joins its own small print: `since` takes an argument, so
-                      // the row cannot be handed the words to build it for itself. The basis is
-                      // in the faint line rather than beside the figure — under a per-class
-                      // figure that already says "per class" it would be the same word twice.
-                      meta={`${t.bases[row.basis]} · ${t.since(formatDate(row.since, locale))}`}
-                      note={row.note}
-                      // The way to a raise, with the person already chosen. Null for somebody
-                      // who has left: the form refuses them and does not offer them, so a
-                      // link that lands on an empty picker would be a door into a wall.
-                      changeTo={row.gone ? null : payeeValue(row.payeeKind, row.payeeId)}
-                      canWrite={canWrite}
-                      t={d.salaryRow}
-                    />
-                  ))}
-                </ul>
+                {shown.length === 0 ? (
+                  /* Not `t.empty`, which is a fact about the centre. "No salary has been
+                     agreed with anybody yet" under a filtered bill is the app telling an
+                     owner their payroll is empty because they typed a name wrong — the
+                     same trap SearchEmpty exists for on the board. */
+                  <SearchEmpty t={d.search} />
+                ) : (
+                  <ul className="grid gap-2 sm:grid-cols-2 lg:grid-cols-1 xl:grid-cols-2">
+                    {shown.map((row) => (
+                      <TermsRow
+                        key={row.termsId}
+                        termsId={row.termsId}
+                        name={row.name ?? d.common.unknown}
+                        job={row.job ?? t.teacherJob}
+                        gone={row.gone}
+                        offLabel={t.inactive}
+                        // The figure the row prints, built here because both shapes of it take
+                        // an argument and `T` maps a function leaf to `never`. A per-class row
+                        // shows a rate and says so in words: ৳350 printed where the row above
+                        // prints ৳13,000 is a teacher who looks very cheap.
+                        figure={
+                          row.basis === PER_CLASS_BASIS
+                            ? row.perClass === null
+                              ? '—'
+                              : t.perClassRate(formatTaka(row.perClass))
+                            : formatTaka(row.net)
+                        }
+                        // How the salary is worked out and the day it began, joined here the way
+                        // the staff list joins its own small print: `since` takes an argument, so
+                        // the row cannot be handed the words to build it for itself. The basis is
+                        // in the faint line rather than beside the figure — under a per-class
+                        // figure that already says "per class" it would be the same word twice.
+                        meta={`${t.bases[row.basis]} · ${t.since(formatDate(row.since, locale))}`}
+                        note={row.note}
+                        // The way to a raise, with the person already chosen. Null for somebody
+                        // who has left: the form refuses them and does not offer them, so a
+                        // link that lands on an empty picker would be a door into a wall.
+                        changeTo={row.gone ? null : payeeValue(row.payeeKind, row.payeeId)}
+                        canWrite={canWrite}
+                        t={d.salaryRow}
+                      />
+                    ))}
+                  </ul>
+                )}
               </>
             )}
           </div>

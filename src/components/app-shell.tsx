@@ -223,9 +223,13 @@ const STAFF_ADMIN_NAV: NavItem[] = [
 const NAV_GROUPS: NavGroup[] = ['money', 'families', 'organisation']
 
 /**
- * What each role sees. Icons are text glyphs rather than an icon font or SVG
- * sprite — one less network request on a 3G connection, and they inherit the
- * Bangla font's baseline so nothing sits half a pixel off.
+ * What each role sees. Each entry names an icon by key rather than carrying one: the
+ * shapes are inline SVG in app-nav.tsx, which is a client component, and a component
+ * reference does not serialise across that boundary. The set is drawn rather than
+ * fetched — no sprite, no font, no network request on a 3G connection — and it
+ * replaced the text glyphs (`⌂`, `৳`, `✎`) this table used to carry, which landed on
+ * a different baseline in every Bangla font and read as decoration rather than as
+ * navigation.
  *
  * Keyed by MemberRole rather than string: adding a role to the enum then breaks
  * here until someone decides what that role's navigation is, instead of

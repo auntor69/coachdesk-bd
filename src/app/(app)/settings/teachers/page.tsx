@@ -1,6 +1,7 @@
 import Link from 'next/link'
 
 import { PageHeader } from '@/components/page-header'
+import { SearchBox, SearchEmpty } from '@/components/search-box'
 import { Card } from '@/components/ui'
 import { pageCapability, getSession } from '@/lib/auth/session'
 import { usernamesFor } from '@/lib/auth/username-login'
@@ -19,6 +20,7 @@ import {
   PLANS,
 } from '@/lib/plans'
 import { PERMISSION_DEFAULTS } from '@/lib/permissions'
+import { matchesSearch, searchTerms } from '@/lib/search'
 import { dict, localName, DEFAULT_LOCALE } from '@/lib/i18n'
 import { TeacherList, type TeacherRow } from './teacher-list'
 
@@ -48,7 +50,12 @@ export async function generateMetadata() {
  * the whole screen and the only other thing on it is one button, so the width is spent
  * inside the list instead — see the note on the return, and TeacherList for what it buys.
  */
-export default async function TeachersPage() {
+export default async function TeachersPage({
+  searchParams,
+}: {
+  /** The find box, the same one the roster, the staff list and the fee board carry. */
+  searchParams: Promise<{ q?: string }>
+}) {
   const session = await pageCapability('staff')
   const locale = session.locale
   const d = dict(locale)
@@ -302,6 +309,25 @@ export default async function TeachersPage() {
   const atLimit = wouldExceed(session.plan, 'maxTeachers', activeCount)
 
   /*
+   * THE BOX OVER A LIST OF PEOPLE, matched on the four things somebody arrives holding: a
+   * name, a number, the subject they teach, or the username they cannot remember. A centre
+   * with fifteen teachers reads fifteen rows to find the one whose password needs resetting.
+   *
+   * It filters the rows the screen already has — `lib/search.ts`'s rule, and the reason the
+   * seat count above and the "N teachers" under the heading stay about the centre rather
+   * than about the query.
+   */
+  const { q: rawQ } = await searchParams
+  const query = typeof rawQ === 'string' ? rawQ : ''
+  const words = searchTerms(query)
+  const shown =
+    words.length === 0
+      ? rows
+      : rows.filter((row) =>
+          matchesSearch([row.name, row.phone, row.username, ...row.subjects], words),
+        )
+
+  /*
    * And the question `atLimit` is not: the seat is not a wall the tier runs into, it is a
    * price it pays — so past the two a centre includes, a balance with nothing on it is
    * what stops the next colleague (`teacherSeatOpeningRefusal`, and `CD005` underneath it
@@ -418,17 +444,31 @@ export default async function TeachersPage() {
           <p className="mt-1 text-sm text-ink-soft">{t.emptyBody}</p>
         </Card>
       ) : (
-        <TeacherList
-          teachers={rows}
-          subjects={subjectOptions}
-          t={d.teacherList}
-          permissions={d.teacherPermissions}
-          common={d.common}
-          branchPick={d.branchPick}
-          branchAccess={d.branchAccess}
-          branches={branches}
-          trim={!staff}
-        />
+        <div className="flex flex-col gap-3">
+          <SearchBox
+            q={query}
+            t={d.search}
+            count={{ shown: shown.length, total: rows.length }}
+          />
+
+          {/* Not `t.emptyTitle` — "no teachers added yet" under a filtered list is the app
+              telling an owner their staff are gone because they mistyped a name. */}
+          {shown.length === 0 ? (
+            <SearchEmpty t={d.search} />
+          ) : (
+            <TeacherList
+              teachers={shown}
+              subjects={subjectOptions}
+              t={d.teacherList}
+              permissions={d.teacherPermissions}
+              common={d.common}
+              branchPick={d.branchPick}
+              branchAccess={d.branchAccess}
+              branches={branches}
+              trim={!staff}
+            />
+          )}
+        </div>
       )}
     </div>
   )

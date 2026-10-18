@@ -621,3 +621,38 @@ test('the removal words say the person is out, and claim nothing about their log
     }
   }
 })
+
+test('the teacher list can be searched, and the seat count does not move with it', () => {
+  /*
+   * Fifteen teachers, and an owner looking for the one whose password has to be reset —
+   * holding a name, a number, a subject or a username they cannot remember. Read off the
+   * source, like the rest of this file.
+   *
+   * What it catches is the drift a screenshot does not show. `shown` and not `rows`: the
+   * list is drawn from the narrowed set, and the seat figure under the heading is not — a
+   * centre with fifteen teachers who types one name must not be told it employs one, on the
+   * screen where a seat costs ৳100 a month.
+   */
+  assert.match(PAGE, /searchParams: Promise<\{ q\?: string \}>/)
+  assert.match(PAGE, /import \{ SearchBox, SearchEmpty \} from '@\/components\/search-box'/)
+  assert.match(PAGE, /import \{ matchesSearch, searchTerms \} from '@\/lib\/search'/)
+
+  // The four things an owner arrives holding, and the subjects are already strings by the
+  // time the rows are built — see `subjects` above.
+  assert.match(
+    PAGE,
+    /matchesSearch\(\[row\.name, row\.phone, row\.username, \.\.\.row\.subjects\], words\)/,
+  )
+
+  // The count is the narrowed one over the whole list.
+  assert.match(PAGE, /count=\{\{ shown: shown\.length, total: rows\.length \}\}/)
+
+  // The heading still counts the centre: active count and the seat limit.
+  assert.match(PAGE, /subtitle=\{limit === null \? t\.count\(activeCount\) : t\.used\(activeCount, limit\)\}/)
+
+  // A filtered list that matched nobody says so in the search's own words.
+  assert.match(PAGE, /\{shown\.length === 0 \? \(\s*\r?\n\s*<SearchEmpty t=\{d\.search\} \/>/)
+
+  // And the list is handed the narrowed rows.
+  assert.match(PAGE, /<TeacherList\s*\r?\n\s*teachers=\{shown\}/)
+})

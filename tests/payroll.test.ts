@@ -574,8 +574,10 @@ test('shape: the way on is a door, and who has been missed is still asked', () =
   assert.doesNotMatch(PAGE, /text-xl font-bold text-ink lg:text-2xl/)
   assert.doesNotMatch(PAGE, /<BackToFees/, 'a hand-rolled crumb is back above the bar')
 
-  // And the list of people with no agreement is still drawn, last.
-  assert.match(RAIL, /\{missing\.length > 0 && \(/)
+  // And the list of people with no agreement is still drawn, last. It is the narrowed
+  // list now — the find box above the bill narrows both, because both answer the same
+  // question about the same people.
+  assert.match(RAIL, /\{shownMissing\.length > 0 && \(/)
   assert.match(RAIL, /\{t\.missingTitle\}/)
 })
 
@@ -713,7 +715,7 @@ test('every name on the bill is one tap from the form that changes it', () => {
 
   // The list of people with no agreement is a list of doors too: each name is where the
   // owner would have had to pick it out of twenty.
-  const missing = RAIL.slice(RAIL.indexOf('{missing.length > 0 && ('))
+  const missing = RAIL.slice(RAIL.indexOf('{shownMissing.length > 0 && ('))
   assert.match(missing, /href=\{`\/payroll\?payee=\$\{payeeValue\(p\.kind, p\.id\)\}#agree`\}/)
 })
 
@@ -736,4 +738,50 @@ test('adding a person needs both permissions on the page as well as in the actio
     PAGE,
     /canWrite && can\(session\.active\.capabilities, 'staff'\) && has\(session\.plan, 'staffManagement'\)/,
   )
+})
+
+test('the wage bill can be searched, and the figures do not move with it', () => {
+  /*
+   * Fourteen people on the payroll, and the question the screen is actually opened with is
+   * about one of them — "what does she earn", "give her a rise". Every other long list in the
+   * product already had a find box; the bill was the screen where an owner read fourteen
+   * cards to find one row.
+   *
+   * Read off the source, and the load-bearing assertions are the negative ones: the total in
+   * the rail, the count of monthly agreements and the warning about somebody who has left are
+   * all computed from `rows`, while the bill and the list of people with nothing agreed draw
+   * `shown`. An owner typing a name is asking which row is hers, not asking the centre's wage
+   * bill to become hers.
+   */
+  assert.match(PAGE, /searchParams: Promise<\{ payee\?: string; q\?: string \}>/)
+  assert.match(PAGE, /import \{ SearchBox, SearchEmpty \} from '@\/components\/search-box'/)
+  assert.match(PAGE, /import \{ matchesSearch, searchTerms \} from '@\/lib\/search'/)
+
+  // Both lists narrow off one set of words: the bill, and the people with nothing agreed.
+  assert.match(PAGE, /const words = searchTerms\(query\)/)
+  assert.match(PAGE, /rows\.filter\(\(row\) => matchesSearch\(\[row\.name, row\.job, row\.note\], words\)\)/)
+  assert.match(PAGE, /missing\.filter\(\(p\) => matchesSearch\(\[p\.name, p\.job\], words\)\)/)
+
+  // The count is the narrowed one over the whole list…
+  assert.match(MAIN, /count=\{\{ shown: shown\.length, total: rows\.length \}\}/)
+
+  // …and every figure is still about the whole list: the tally is over `rows`, and the
+  // rail prints the unfiltered total rather than a total of what the box matched.
+  assert.match(PAGE, /const tally = tallyBill\(rows\)/)
+  assert.match(RAIL, /\{t\.monthlyCount\(tally\.monthlyCount\)\}/)
+  assert.match(RAIL, /\{t\.goneCount\(tally\.goneCount\)\}/)
+  assert.doesNotMatch(PAGE, /tallyBill\(shown\)/, 'the totals followed the search box')
+
+  // A filtered bill that matched nobody gets the search's own empty state, not the centre's
+  // — "no salary has been agreed with anybody yet" under a mistyped name is the app telling
+  // an owner their payroll is empty.
+  assert.match(MAIN, /\{shown\.length === 0 \? \(/)
+  assert.match(MAIN, /<SearchEmpty t=\{d\.search\} \/>/)
+
+  // The list the reader actually sees is the narrowed one.
+  assert.match(MAIN, /\{shown\.map\(\(row\) => \(/)
+  assert.ok(!/^\s*\{rows\.map\(\(row\) => \(/m.test(PAGE), 'the bill is drawn unfiltered')
+
+  // And the two ways in from a row still carry the person rather than the query.
+  assert.match(PAGE, /changeTo=\{row\.gone \? null : payeeValue\(row\.payeeKind, row\.payeeId\)\}/)
 })
