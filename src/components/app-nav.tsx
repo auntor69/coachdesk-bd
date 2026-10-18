@@ -30,6 +30,49 @@ import type { Route } from 'next'
 import { usePathname } from 'next/navigation'
 import { useEffect, useRef } from 'react'
 
+import {
+  AlertIcon,
+  BanknoteIcon,
+  BuildingsIcon,
+  CalendarIcon,
+  EnvelopeIcon,
+  ExpensesIcon,
+  HomeIcon,
+  PencilIcon,
+  PersonBadgeIcon,
+  RegisterIcon,
+  SlidersIcon,
+  StarIcon,
+  StudentsIcon,
+} from './icons'
+
+/**
+ * The navigation icon set, keyed by name.
+ *
+ * The shell's table names an icon by key and hands the key across the
+ * Server→Client boundary — a component reference would not serialise — and
+ * this table is where the key becomes a shape. One stroke weight, one
+ * grammar (see icons.tsx), so a teacher's register tab and a row in an
+ * owner's sidebar read as the same interface.
+ */
+const ICONS = {
+  home: HomeIcon,
+  register: RegisterIcon,
+  pencil: PencilIcon,
+  banknote: BanknoteIcon,
+  students: StudentsIcon,
+  expenses: ExpensesIcon,
+  calendar: CalendarIcon,
+  alert: AlertIcon,
+  envelope: EnvelopeIcon,
+  star: StarIcon,
+  buildings: BuildingsIcon,
+  sliders: SlidersIcon,
+  person: PersonBadgeIcon,
+} as const
+
+export type IconName = keyof typeof ICONS
+
 /**
  * A destination, with its label already resolved.
  *
@@ -40,7 +83,7 @@ import { useEffect, useRef } from 'react'
 export type NavEntry = {
   href: Route
   label: string
-  icon: string
+  icon: IconName
   /**
    * True when the reader's plan does not include this screen.
    *
@@ -108,16 +151,16 @@ function SideRow({
         className={`flex min-h-tap items-center gap-3 rounded-xl px-3
           text-sm ${
             here
-              ? 'bg-brand-50 font-semibold text-brand-800'
+              ? 'bg-brand-50 font-semibold text-brand-800 ring-1 ring-inset ring-brand-200/70'
               : item.locked
                 ? 'font-medium text-ink-faint hover:bg-surface-alt'
                 : 'font-medium text-ink-soft hover:bg-surface-alt hover:text-ink'
           }`}
       >
-        {/* Fixed width so ten labels start on the same pixel — a ৳ and a ⌂
-            are nothing like the same width in any font we ship. */}
-        <span aria-hidden className="w-5 shrink-0 text-center text-lg leading-none">
-          {item.icon}
+        {/* Fixed width so ten labels start on the same pixel — the shape is
+            drawn to a grid so a ৳ label and a ⌂ one align without nudging. */}
+        <span aria-hidden className="w-5 shrink-0">
+          <NavIcon name={item.icon} className="mx-auto size-5" />
         </span>
         <span className="truncate">{item.label}</span>
         {item.locked && (
@@ -270,8 +313,12 @@ export function TabBar({
                   }`}
               >
                 {here && <TabAccent />}
-                <span aria-hidden className="text-xl leading-none">
-                  {item.icon}
+                <span
+                  aria-hidden
+                  className={`grid h-9 w-9 place-items-center rounded-xl
+                    transition-colors ${here ? 'bg-brand-600 text-white shadow-sm' : ''}`}
+                >
+                  <NavIcon name={item.icon} className="size-5" />
                 </span>
                 <TabLabel label={item.label} here={here} />
               </Link>
@@ -296,8 +343,11 @@ export function TabBar({
                 {/* Rotates when open, so the control says which way it goes. */}
                 <span
                   aria-hidden
-                  className="text-xl leading-none transition-transform
-                    group-open:-rotate-180"
+                  className={`grid h-9 w-9 place-items-center rounded-xl text-xl
+                    leading-none transition-transform
+                    group-open:-rotate-180 ${
+                      moreHere ? 'bg-brand-600 text-white shadow-sm' : ''
+                    }`}
                 >
                   ⌃
                 </span>
@@ -341,6 +391,18 @@ function TabAccent() {
       className="absolute inset-x-3 top-0 h-0.5 rounded-b bg-brand-600"
     />
   )
+}
+
+/**
+ * One navigation shape by key.
+ *
+ * A tiny indirection so no call site has to know the table exists — and so a
+ * key with no shape fails to typecheck here rather than rendering nothing in
+ * the browser.
+ */
+function NavIcon({ name, className }: { name: IconName; className: string }) {
+  const Icon = ICONS[name]
+  return <Icon className={className} />
 }
 
 /**

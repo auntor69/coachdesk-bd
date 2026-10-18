@@ -9,7 +9,7 @@
  * save. Blank means "not entered yet", and the SMS gate downstream counts those
  * separately so nobody messages parents about half a class.
  */
-import { useActionState, useEffect, useMemo, useRef, useState } from 'react'
+import { memo, useActionState, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import { useOffline } from 'next/offline'
 
@@ -169,6 +169,40 @@ export function MarksSheet({
     edit({ marks: from.marks, notes: { ...from.notes, [enrollmentId]: value } })
   }
 
+  /*
+   * STABLE HANDLERS FOR A MEMOISED ROW, same shape as the register's.
+   *
+   * `setMark` and `setNote` read the `sheet` of the last render, so handing
+   * them straight down would break a memoised row on every keystroke — and a
+   * keystroke already goes through a server-side draft write here. The
+   * `openNote` toggle is its own stable callback; the row derives "is it me"
+   * from the boolean it is given, which moves for two rows (the one opening
+   * and the one closing) instead of every row that re-renders anyway.
+   *
+   * Like the register's, the ref writes sit in an effect, not at render: the
+   * compiler's ref rules refuse a render-phase write, and there is no gap to
+   * lose — edits only happen after the user types, which is after the effect.
+   */
+  const handlerRef = useRef({ setMark, setNote })
+  const toggleRef = useRef(openNote)
+  useEffect(() => {
+    handlerRef.current = { setMark, setNote }
+    toggleRef.current = openNote
+  })
+  const onMark = useCallback(
+    (enrollmentId: string, value: string) =>
+      handlerRef.current.setMark(enrollmentId, value),
+    [],
+  )
+  const onNote = useCallback(
+    (enrollmentId: string, value: string) =>
+      handlerRef.current.setNote(enrollmentId, value),
+    [],
+  )
+  const onToggleNote = useCallback((enrollmentId: string) => {
+    setOpenNote(toggleRef.current === enrollmentId ? null : enrollmentId)
+  }, [])
+
   const entered = rows.filter((r) => sheet.marks[r.enrollmentId] !== '').length
 
   const remaining = rows.length - entered
@@ -201,130 +235,22 @@ export function MarksSheet({
       )}
 
       <ul className="flex flex-col gap-2">
-        {rows.map((row, index) => {
-          const value = sheet.marks[row.enrollmentId] ?? ''
-          const note = sheet.notes[row.enrollmentId] ?? ''
-          const isAbsent = value === 'absent'
-          const numeric = Number(value)
-          const failed =
-            passMarks !== null &&
-            value !== '' &&
-            !isAbsent &&
-            Number.isFinite(numeric) &&
-            numeric < passMarks
-
-          return (
-            <li
-              key={row.enrollmentId}
-              className="rounded-xl border border-line bg-white px-3 py-2"
-            >
-              <div className="flex items-center gap-2">
-                <span className="num w-6 shrink-0 text-sm text-ink-faint">
-                  {index + 1}
-                </span>
-
-                <div className="min-w-0 flex-1">
-                  <p className="truncate font-medium text-ink">{row.name}</p>
-                  {row.studentCode && (
-                    <p className="num truncate text-xs text-ink-faint">
-                      {row.studentCode}
-                    </p>
-                  )}
-                </div>
-
-                {!readOnly && (
-                  <>
-                    <input
-                      type="hidden"
-                      name={`mark:${row.enrollmentId}`}
-                      value={value}
-                    />
-                    <input
-                      type="hidden"
-                      name={`note:${row.enrollmentId}`}
-                      value={note}
-                    />
-                  </>
-                )}
-
-                {/* inputMode="decimal" brings up the numeric keypad on Android
-                    without blocking a half mark. */}
-                <input
-                  type="text"
-                  inputMode="decimal"
-                  aria-label={fill(t.markLabel, { name: row.name })}
-                  value={isAbsent ? '' : value}
-                  disabled={isAbsent || readOnly}
-                  placeholder="—"
-                  onChange={(e) =>
-                    setMark(row.enrollmentId, e.target.value.replace(/[^\d.]/g, ''))
-                  }
-                  className={`num h-11 w-16 shrink-0 rounded-lg border-2 bg-white
-                    text-center text-base outline-none focus:border-brand-500
-                    disabled:bg-surface-alt ${
-                      failed ? 'border-absent text-absent' : 'border-line text-ink'
-                    }`}
-                />
-
-                {/* Still says who is absent when it cannot be changed — the cross is
-                    the only place that fact is written, so greying it out rather
-                    than hiding it keeps the sheet readable. */}
-                <button
-                  type="button"
-                  aria-pressed={isAbsent}
-                  aria-label={fill(t.absentLabel, { name: row.name })}
-                  disabled={readOnly}
-                  onClick={() => setMark(row.enrollmentId, isAbsent ? '' : 'absent')}
-                  className={`grid h-11 w-11 shrink-0 place-items-center rounded-lg
-                    border-2 text-lg disabled:opacity-60 ${
-                      isAbsent
-                        ? 'border-absent bg-absent text-white'
-                        : 'border-line bg-white text-ink-faint'
-                    }`}
-                >
-                  <span aria-hidden>✕</span>
-                </button>
-
-                {/* Not disabled in read-only mode, and that is the point: this
-                    button writes nothing, it only opens the row. A note is the one
-                    thing on this sheet that cannot be seen without tapping
-                    something, so disabling it would hide the teacher's own words
-                    from them. The field it opens is where the read-only part is. */}
-                <button
-                  type="button"
-                  aria-label={fill(t.noteLabel, { name: row.name })}
-                  aria-expanded={openNote === row.enrollmentId}
-                  onClick={() =>
-                    setOpenNote(openNote === row.enrollmentId ? null : row.enrollmentId)
-                  }
-                  className={`grid h-11 w-11 shrink-0 place-items-center rounded-lg
-                    border-2 text-lg ${
-                      note
-                        ? 'border-brand-500 bg-brand-50 text-brand-700'
-                        : 'border-line bg-white text-ink-faint'
-                    }`}
-                >
-                  <span aria-hidden>✎</span>
-                </button>
-              </div>
-
-              {openNote === row.enrollmentId && (
-                <input
-                  type="text"
-                  autoFocus
-                  maxLength={MAX_NOTE}
-                  readOnly={readOnly}
-                  value={note}
-                  placeholder={t.notePlaceholder}
-                  onChange={(e) => setNote(row.enrollmentId, e.target.value)}
-                  className="mt-2 min-h-tap w-full rounded-lg border-2 border-line
-                    bg-white px-3 text-base outline-none read-only:bg-surface-alt
-                    read-only:text-ink-soft focus:border-brand-500"
-                />
-              )}
-            </li>
-          )
-        })}
+        {rows.map((row, index) => (
+          <MarksRowItem
+            key={row.enrollmentId}
+            row={row}
+            index={index}
+            value={sheet.marks[row.enrollmentId] ?? ''}
+            note={sheet.notes[row.enrollmentId] ?? ''}
+            passMarks={passMarks}
+            openNote={openNote === row.enrollmentId}
+            readOnly={readOnly}
+            onMark={onMark}
+            onNote={onNote}
+            onToggle={onToggleNote}
+            t={t}
+          />
+        ))}
       </ul>
 
       {/* The counter stays in read-only mode and the button goes. "12/40 marked" is
@@ -373,3 +299,159 @@ export function MarksSheet({
     </form>
   )
 }
+
+/**
+ * ONE ROW OF MARKS, RENDERED ON ITS OWN.
+ *
+ * A marks sheet is `rows.map` inside a form whose inputs are controlled, so
+ * without this every keystroke re-rendered the whole sheet: on a 200-student
+ * batch that was ~8,000 nodes reconciled per character typed, on the mid-range
+ * Android a teacher completes this screen on. Wrapped in `memo`, a keystroke
+ * re-renders one row and the counter bar — `row`, `index`, `passMarks`,
+ * `readOnly` and `t` are stable between renders, and the four handler props
+ * never change identity (see the ref above), so the only prop that moves per
+ * keystroke is the edited row's own `value`.
+ *
+ * The markup is byte-for-byte what was inlined; nothing about a row changed.
+ */
+const MarksRowItem = memo(function MarksRowItem({
+  row,
+  index,
+  value,
+  note,
+  passMarks,
+  openNote,
+  readOnly,
+  onMark,
+  onNote,
+  onToggle,
+  t,
+}: {
+  row: MarksRow
+  index: number
+  value: string
+  note: string
+  passMarks: number | null
+  openNote: boolean
+  readOnly: boolean
+  onMark: (enrollmentId: string, value: string) => void
+  onNote: (enrollmentId: string, value: string) => void
+  onToggle: (enrollmentId: string) => void
+  t: T<'marksSheet'>
+}) {
+  const isAbsent = value === 'absent'
+  const numeric = Number(value)
+  const failed =
+    passMarks !== null &&
+    value !== '' &&
+    !isAbsent &&
+    Number.isFinite(numeric) &&
+    numeric < passMarks
+
+  return (
+    <li className="rounded-xl border border-line bg-white px-3 py-2">
+      <div className="flex items-center gap-2">
+        <span className="num w-6 shrink-0 text-sm text-ink-faint">
+          {index + 1}
+        </span>
+
+        <div className="min-w-0 flex-1">
+          <p className="truncate font-medium text-ink">{row.name}</p>
+          {row.studentCode && (
+            <p className="num truncate text-xs text-ink-faint">
+              {row.studentCode}
+            </p>
+          )}
+        </div>
+
+        {!readOnly && (
+          <>
+            <input
+              type="hidden"
+              name={`mark:${row.enrollmentId}`}
+              value={value}
+            />
+            <input
+              type="hidden"
+              name={`note:${row.enrollmentId}`}
+              value={note}
+            />
+          </>
+        )}
+
+        {/* inputMode="decimal" brings up the numeric keypad on Android
+            without blocking a half mark. */}
+        <input
+          type="text"
+          inputMode="decimal"
+          aria-label={fill(t.markLabel, { name: row.name })}
+          value={isAbsent ? '' : value}
+          disabled={isAbsent || readOnly}
+          placeholder="—"
+          onChange={(e) =>
+            onMark(row.enrollmentId, e.target.value.replace(/[^\d.]/g, ''))
+          }
+          className={`num h-11 w-16 shrink-0 rounded-lg border-2 bg-white
+            text-center text-base outline-none focus:border-brand-500
+            disabled:bg-surface-alt ${
+              failed ? 'border-absent text-absent' : 'border-line text-ink'
+            }`}
+        />
+
+        {/* Still says who is absent when it cannot be changed — the cross is
+            the only place that fact is written, so greying it out rather
+            than hiding it keeps the sheet readable. */}
+        <button
+          type="button"
+          aria-pressed={isAbsent}
+          aria-label={fill(t.absentLabel, { name: row.name })}
+          disabled={readOnly}
+          onClick={() => onMark(row.enrollmentId, isAbsent ? '' : 'absent')}
+          className={`grid h-11 w-11 shrink-0 place-items-center rounded-lg
+            border-2 text-lg disabled:opacity-60 ${
+              isAbsent
+                ? 'border-absent bg-absent text-white'
+                : 'border-line bg-white text-ink-faint'
+            }`}
+        >
+          <span aria-hidden>✕</span>
+        </button>
+
+        {/* Not disabled in read-only mode, and that is the point: this
+            button writes nothing, it only opens the row. A note is the one
+            thing on this sheet that cannot be seen without tapping
+            something, so disabling it would hide the teacher's own words
+            from them. The field it opens is where the read-only part is. */}
+        <button
+          type="button"
+          aria-label={fill(t.noteLabel, { name: row.name })}
+          aria-expanded={openNote}
+          onClick={() => onToggle(row.enrollmentId)}
+          className={`grid h-11 w-11 shrink-0 place-items-center rounded-lg
+            border-2 text-lg ${
+              note
+                ? 'border-brand-500 bg-brand-50 text-brand-700'
+                : 'border-line bg-white text-ink-faint'
+            }`}
+        >
+          <span aria-hidden>✎</span>
+        </button>
+      </div>
+
+      {openNote && (
+        <input
+          type="text"
+          autoFocus
+          maxLength={MAX_NOTE}
+          readOnly={readOnly}
+          value={note}
+          placeholder={t.notePlaceholder}
+          onChange={(e) => onNote(row.enrollmentId, e.target.value)}
+          className="mt-2 min-h-tap w-full rounded-lg border-2 border-line
+            bg-white px-3 text-base outline-none read-only:bg-surface-alt
+            read-only:text-ink-soft focus:border-brand-500"
+        />
+      )}
+    </li>
+  )
+})

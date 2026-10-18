@@ -45,7 +45,7 @@ export const metadata: Metadata = {
 }
 
 export const viewport: Viewport = {
-  themeColor: '#137e50',
+  themeColor: '#0b6f48',
   width: 'device-width',
   initialScale: 1,
   // No user-scalable: false. Pinch-zoom is an accessibility right, and a

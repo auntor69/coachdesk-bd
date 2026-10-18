@@ -8,7 +8,7 @@
  * three absentees and submits, not thirty confirmations. That single default is
  * the difference between beating the paper register and losing to it.
  */
-import { useActionState, useEffect, useMemo, useRef, useState } from 'react'
+import { memo, useActionState, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import { useOffline } from 'next/offline'
 
@@ -223,6 +223,29 @@ export function AttendanceRoster({
   const counts = { present: 0, late: 0, absent: 0, excused: 0 }
   for (const s of students) counts[marks[s.enrollmentId] ?? 'present']++
 
+  /*
+   * THE HANDLER THE ROWS SEE NEVER CHANGES IDENTITY.
+   *
+   * `setStatus` is rebuilt every tap (its closure reads the updated `marks`), so
+   * handing it straight to a memoised row would defeat the memo and re-render
+   * every row per tap — the whole class again, thirty-four times a register.
+   * The ref keeps the fresh closure under a stable function, so a tap re-renders
+   * exactly the row that changed and the bar beneath the list.
+   *
+   * The assignment is in an effect rather than at render: the compiler's ref
+   * rules refuse a write during render, and there is no gap to lose — actions
+   * only run after the user can tap a row, which is after the effect has run.
+   */
+  const setStatusRef = useRef(setStatus)
+  useEffect(() => {
+    setStatusRef.current = setStatus
+  })
+  const onSetStatus = useCallback(
+    (enrollmentId: string, status: AttendanceStatus) =>
+      setStatusRef.current(enrollmentId, status),
+    [],
+  )
+
   return (
     <form action={formAction} className="flex flex-col gap-4">
       <input type="hidden" name="batchId" value={batchId} />
@@ -243,97 +266,17 @@ export function AttendanceRoster({
       )}
 
       <ul className="flex flex-col gap-2">
-        {students.map((student, index) => {
-          const current = marks[student.enrollmentId] ?? 'present'
-          return (
-            <li
-              key={student.enrollmentId}
-              className="flex items-center gap-3 rounded-xl border border-line
-                bg-white py-2 pl-3 pr-2"
-            >
-              {/* Roll number, not a name-only list: teachers call the register
-                  in order and lose their place otherwise. */}
-              <span className="num w-6 shrink-0 text-sm text-ink-faint">
-                {index + 1}
-              </span>
-
-              <div className="min-w-0 flex-1">
-                <p className="truncate font-medium text-ink">{student.name}</p>
-                {student.studentCode && (
-                  <p className="num truncate text-xs text-ink-faint">
-                    {student.studentCode}
-                  </p>
-                )}
-                {/* Under the name and not beside the status, because it is a fact
-                    about this child's mark rather than about the mark's value — and
-                    the right-hand side of a settled row is already spoken for. */}
-                {student.history !== 'asCalled' && (
-                  <p
-                    className={`truncate text-xs ${
-                      student.history === 'overridden' ? 'text-late' : 'text-ink-faint'
-                    }`}
-                  >
-                    {student.history === 'overridden' ? t.wasOverridden : t.wasCorrected}
-                    {student.changedOn && (
-                      <span className="num"> · {student.changedOn}</span>
-                    )}
-                  </p>
-                )}
-              </div>
-
-              <input
-                type="hidden"
-                name={`status:${student.enrollmentId}`}
-                value={current}
-              />
-
-              {student.locked ? (
-                /* A mark that is now the record. Same height as a live row so a
-                   register with one settled name in it does not look broken, and
-                   the status is spelled out rather than left as a colour — this is
-                   the one row a teacher cannot re-read by tapping it. */
-                <div
-                  className="grid h-11 shrink-0 place-items-center rounded-lg border-2
-                    border-line bg-surface-alt px-3"
-                >
-                  <span className="text-sm font-medium text-ink-soft">
-                    <span aria-hidden>{GLYPH[current]} </span>
-                    {statusLabels[current]}
-                    <span className="sr-only"> — {t.lockedRow}</span>
-                  </span>
-                </div>
-              ) : (
-                <div
-                  role="radiogroup"
-                  aria-label={student.rowLabel}
-                  className="flex shrink-0 gap-1"
-                >
-                  {CHOICES.map((choice) => {
-                    const on = current === choice.status
-                    return (
-                      <button
-                        key={choice.status}
-                        type="button"
-                        role="radio"
-                        aria-checked={on}
-                        aria-label={statusLabels[choice.status]}
-                        onClick={() => setStatus(student.enrollmentId, choice.status)}
-                        className={`grid h-11 w-11 place-items-center rounded-lg border-2
-                          text-lg transition-colors ${
-                            on
-                              ? CHOICE_ON[choice.status]
-                              : 'border-line bg-white text-ink-faint'
-                          }`}
-                      >
-                        <span aria-hidden>{GLYPH[choice.status]}</span>
-                      </button>
-                    )
-                  })}
-                </div>
-              )}
-            </li>
-          )
-        })}
+        {students.map((student, index) => (
+          <RosterRow
+            key={student.enrollmentId}
+            student={student}
+            index={index}
+            current={marks[student.enrollmentId] ?? 'present'}
+            onSet={onSetStatus}
+            t={t}
+            statusLabels={statusLabels}
+          />
+        ))}
       </ul>
 
       <label className="flex flex-col gap-1.5">
@@ -399,3 +342,120 @@ export function AttendanceRoster({
     </form>
   )
 }
+
+/**
+ * ONE ROW, RENDERED ON ITS OWN.
+ *
+ * A register is `students.map` inside a form, and without this every tap run
+ * the whole map again: a 30-student register re-rendered ~1,300 nodes to change
+ * one `aria-checked`, on the screen a teacher holds while tapping fast. Wrapped
+ * in `memo`, a tap re-renders the row whose mark changed and nothing else —
+ * `student`, `index`, `t` and `statusLabels` are stable between renders (`onSet`
+ * is stable by construction; see the ref above), and `current` moves only for
+ * the row that was tapped.
+ *
+ * The markup is byte-for-byte what was inlined; nothing about a row changed.
+ */
+const RosterRow = memo(function RosterRow({
+  student,
+  index,
+  current,
+  onSet,
+  t,
+  statusLabels,
+}: {
+  student: RosterStudent
+  index: number
+  current: AttendanceStatus
+  onSet: (enrollmentId: string, status: AttendanceStatus) => void
+  t: T<'roster'>
+  statusLabels: T<'attendance'>
+}) {
+  return (
+    <li
+      className="flex items-center gap-3 rounded-xl border border-line
+        bg-white py-2 pl-3 pr-2"
+    >
+      {/* Roll number, not a name-only list: teachers call the register
+          in order and lose their place otherwise. */}
+      <span className="num w-6 shrink-0 text-sm text-ink-faint">
+        {index + 1}
+      </span>
+
+      <div className="min-w-0 flex-1">
+        <p className="truncate font-medium text-ink">{student.name}</p>
+        {student.studentCode && (
+          <p className="num truncate text-xs text-ink-faint">
+            {student.studentCode}
+          </p>
+        )}
+        {/* Under the name and not beside the status, because it is a fact
+            about this child's mark rather than about the mark's value — and
+            the right-hand side of a settled row is already spoken for. */}
+        {student.history !== 'asCalled' && (
+          <p
+            className={`truncate text-xs ${
+              student.history === 'overridden' ? 'text-late' : 'text-ink-faint'
+            }`}
+          >
+            {student.history === 'overridden' ? t.wasOverridden : t.wasCorrected}
+            {student.changedOn && (
+              <span className="num"> · {student.changedOn}</span>
+            )}
+          </p>
+        )}
+      </div>
+
+      <input
+        type="hidden"
+        name={`status:${student.enrollmentId}`}
+        value={current}
+      />
+
+      {student.locked ? (
+        /* A mark that is now the record. Same height as a live row so a
+           register with one settled name in it does not look broken, and
+           the status is spelled out rather than left as a colour — this is
+           the one row a teacher cannot re-read by tapping it. */
+        <div
+          className="grid h-11 shrink-0 place-items-center rounded-lg border-2
+            border-line bg-surface-alt px-3"
+        >
+          <span className="text-sm font-medium text-ink-soft">
+            <span aria-hidden>{GLYPH[current]} </span>
+            {statusLabels[current]}
+            <span className="sr-only"> — {t.lockedRow}</span>
+          </span>
+        </div>
+      ) : (
+        <div
+          role="radiogroup"
+          aria-label={student.rowLabel}
+          className="flex shrink-0 gap-1"
+        >
+          {CHOICES.map((choice) => {
+            const on = current === choice.status
+            return (
+              <button
+                key={choice.status}
+                type="button"
+                role="radio"
+                aria-checked={on}
+                aria-label={statusLabels[choice.status]}
+                onClick={() => onSet(student.enrollmentId, choice.status)}
+                className={`grid h-11 w-11 place-items-center rounded-lg border-2
+                  text-lg transition-colors ${
+                    on
+                      ? CHOICE_ON[choice.status]
+                      : 'border-line bg-white text-ink-faint'
+                  }`}
+              >
+                <span aria-hidden>{GLYPH[choice.status]}</span>
+              </button>
+            )
+          })}
+        </div>
+      )}
+    </li>
+  )
+})

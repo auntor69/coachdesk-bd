@@ -185,10 +185,15 @@ test('who owes is a table, and shows a morning of it', () => {
 
 test('the tiles are three across on a phone and three rows in the rail', () => {
   // At a quarter of the width, three boxes put "৳1,24,000" on two lines. Same markup with
-  // the border moving from each tile to the container, which is also §20.7's typography
-  // over boxes — one card of ruled rows rather than three floating ones.
+  // the border living on the container alone — §20.7's typography over boxes — one card
+  // of ruled rows rather than three floating ones. The Stat tile goes further now: it
+  // draws no border at any width, so the container's is the only one on the block.
   assert.match(PAGE, /lg:grid-cols-1 lg:gap-0 lg:divide-y/)
-  assert.match(PAGE, /lg:rounded-none\s+lg:border-0 lg:bg-transparent/)
+  assert.doesNotMatch(PAGE, /lg:border-0/, 'a tile reserving an override for a border it does not draw')
+
+  // The glance figures are the bigger text in the block, and read figure-first on a phone
+  // and to the right of their label in the rail.
+  assert.match(PAGE, /<p className="num text-xl font-bold text-ink lg:order-2">\{value\}<\/p>/)
 
   // Two or three columns on the phone, both written out so Tailwind's scanner sees them.
   assert.match(PAGE, /seeCollected \? 'grid-cols-3' : 'grid-cols-2'/)
