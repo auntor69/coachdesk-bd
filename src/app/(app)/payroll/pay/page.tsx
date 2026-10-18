@@ -1,3 +1,5 @@
+import Link from 'next/link'
+
 import { PageHeader } from '@/components/page-header'
 import { PaperLink } from '@/components/paper-link'
 import { buttonClass, Card } from '@/components/ui'
@@ -390,8 +392,22 @@ export default async function PayrollPayPage({
               </p>
             </Card>
           ) : rows.length === 0 ? (
+            /*
+             * NOT A DEAD END. "No salary has been agreed" is true and complete, and it is
+             * also the one state this screen cannot act on: every row here is a person with
+             * an agreement, so an empty month means the previous screen has not been visited
+             * yet. It used to be a sentence and nothing else, which left an owner holding a
+             * fact and no next step on the screen they opened to pay people.
+             */
             <Card>
               <p className="text-ink-soft">{t.empty}</p>
+              <Link
+                href="/payroll"
+                className="mt-3 inline-flex min-h-tap items-center font-medium text-brand-800
+                  underline underline-offset-4 hover:text-brand-900"
+              >
+                {t.emptyDoor} →
+              </Link>
             </Card>
           ) : (
             <>
