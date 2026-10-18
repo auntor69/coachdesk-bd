@@ -313,3 +313,39 @@ test('the salaries link in the bar asks for the salaries box', () => {
   const add = PAGE.indexOf('href="/settings/staff/new"')
   assert.ok(add > 0 && !PAGE.slice(add - 120, add).includes('mayReadPayroll'))
 })
+
+test('the staff list can be searched, and the count under the heading does not move', () => {
+  /*
+   * The list is ordered by whether people still work here and then by name, which is right
+   * for reading and useless for finding — and this is the screen an owner opens to change a
+   * number or fix a job title, holding a name they already know. Every other long list in
+   * the product grew a find box; this one was left where an owner with fourteen employees
+   * read fourteen rows.
+   *
+   * Read off the source like the rest of this file. What it catches is the drift no
+   * screenshot shows: the box filtering the count as well as the list (so an owner typing a
+   * name is told the centre employs one person), and the empty card coming back under a
+   * filtered list — "no staff added yet" on a centre with fourteen of them.
+   */
+  assert.match(PAGE, /searchParams: Promise<\{ q\?: string \}>/)
+  assert.match(PAGE, /import \{ SearchBox, SearchEmpty \} from '@\/components\/search-box'/)
+  assert.match(PAGE, /import \{ matchesSearch, searchTerms \} from '@\/lib\/search'/)
+
+  // Narrowed on the name, the job and the number — the three things an owner arrives
+  // holding, and the number is the reason this list prints one per row.
+  assert.match(PAGE, /matchesSearch\(\[row\.name, row\.title, row\.phone\], words\)/)
+
+  // The box, and the count it carries is the narrowed one over the whole list.
+  assert.match(PAGE, /count=\{\{ shown: shown\.length, total: rows\.length \}\}/)
+
+  // The heading's own count is still the whole staff list, not the box's answer.
+  assert.match(PAGE, /const activeCount = rows\.filter\(\(row\) => row\.active\)\.length/)
+  assert.match(PAGE, /subtitle=\{rows\.length === 0 \? t\.subtitle : t\.count\(activeCount\)\}/)
+
+  // A filtered list that matched nobody says so in the search's own words.
+  assert.match(PAGE, /\{shown\.length === 0 \? \(\s*\r?\n\s*<SearchEmpty t=\{d\.search\} \/>/)
+
+  // And the rows the box matched are the rows handed to the list.
+  assert.match(PAGE, /\{shown\.map\(\(row\) => \(/)
+  assert.ok(!/^\s*\{rows\.map\(\(row\) => \(/m.test(PAGE), 'the list is drawn unfiltered')
+})

@@ -231,9 +231,14 @@ export function SideNav({
 /**
  * The phone's bottom bar: four destinations, and a sheet for everything else.
  *
- * The accent is a bar along the top edge of the tab rather than a fill: a filled tab
- * in a 56px-tall bar is a large block of colour at the bottom of every screen, and
- * the icon and label carry the change well enough on their own.
+ * WHAT MARKS THE TAB YOU ARE ON, and why it is three things. A 2px rule along the top
+ * edge of the tab, the icon in a filled emerald pill, and the label going semibold. The
+ * rule alone was the first version of this and it did not survive a photograph: a
+ * hairline at the very edge of a bright screen is invisible in a staff room, which left
+ * only a colour difference between one tab and the next. The fill is the icon's own 36px
+ * square rather than the whole tab — a full-height block of colour along the bottom of
+ * every screen is exactly the heavy shape this bar was drawn to avoid — and the word
+ * underneath says which tab it is for anybody who cannot tell the two greens apart.
  *
  * WHY A SHEET AND NOT MORE TABS. Six screens — spending, salaries, notices, the week,
  * drifting away, the head office — had no navigation entry anywhere and were reachable

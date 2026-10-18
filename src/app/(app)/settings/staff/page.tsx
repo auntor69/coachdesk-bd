@@ -1,6 +1,7 @@
 import Link from 'next/link'
 
 import { PageHeader } from '@/components/page-header'
+import { SearchBox, SearchEmpty } from '@/components/search-box'
 import { Card } from '@/components/ui'
 import { pageCapability, getSession } from '@/lib/auth/session'
 import { can } from '@/lib/staff/capabilities'
@@ -8,6 +9,7 @@ import { formatDate, todayInDhaka } from '@/lib/bd/time'
 import { branchChoicesFor } from '@/lib/branches'
 import { dict, DEFAULT_LOCALE } from '@/lib/i18n'
 import { has, planName, PLANS } from '@/lib/plans'
+import { matchesSearch, searchTerms } from '@/lib/search'
 import { EMPLOYEE_ROLES, jobTitle } from '@/lib/staff/roles'
 import { createClient } from '@/lib/supabase/server'
 import { StaffRow, type StaffMember } from './staff-row'
@@ -48,7 +50,12 @@ export async function generateMetadata() {
  * from `lg` under a strip that names them, and the number to ring is one of the three —
  * it used to be behind the Edit tap, on the screen whose whole subject is employment.
  */
-export default async function StaffPage() {
+export default async function StaffPage({
+  searchParams,
+}: {
+  /** The find box, which this list did not have. See the note under the query. */
+  searchParams: Promise<{ q?: string }>
+}) {
   const session = await pageCapability('staff')
   const locale = session.locale
   const d = dict(locale)
@@ -191,6 +198,30 @@ export default async function StaffPage() {
 
   const activeCount = rows.filter((row) => row.active).length
 
+  /*
+   * FIVE MINUTES OF SCROLLING, REPLACED BY A NAME. This is the screen an owner opens to
+   * change somebody's number or fix a job title, and the row they want is one they can
+   * name — while the list is ordered by whether people still work here and then by name,
+   * which is right for reading and useless for finding. The roster, the fee board, the
+   * register and the exams list all grew this box already; the staff list was the one
+   * screen left where an owner with fourteen employees read fourteen rows.
+   *
+   * It narrows the list and nothing else: the count under the heading is everybody who
+   * still works here, not everybody the box matched — see lib/search.ts for why matching
+   * happens in memory rather than in the query.
+   *
+   * Matched on the number and the job as well as the name, because those are the other
+   * two things an owner arrives holding: "whose mobile is this" is a question asked of
+   * this exact screen, and "the cook" is how a centre refers to somebody it pays.
+   */
+  const { q: rawQ } = await searchParams
+  const query = typeof rawQ === 'string' ? rawQ : ''
+  const words = searchTerms(query)
+  const shown =
+    words.length === 0
+      ? rows
+      : rows.filter((row) => matchesSearch([row.name, row.title, row.phone], words))
+
   return (
     /*
      * ONE COLUMN AND NO RAIL, the same decision the teacher roster reached and for the
@@ -241,6 +272,12 @@ export default async function StaffPage() {
         </Card>
       ) : (
         <div className="flex flex-col gap-2">
+          <SearchBox
+            q={query}
+            t={d.search}
+            count={{ shown: shown.length, total: rows.length }}
+          />
+
           {/* The column heads, from `lg` only, and decoration rather than structure: a
               <table> would tie them to the cells beneath, but every row opens into a
               form and a disclosure cannot wrap <tr>s. Below `lg` each row is three
@@ -258,8 +295,14 @@ export default async function StaffPage() {
             <span className="w-44 text-right">{t.colPhone}</span>
           </div>
 
+          {/* Not `t.emptyTitle` under a filtered list — "no staff added yet" would read as a
+              lost database rather than as a name typed wrong, and the owner's next move
+              would be to add somebody who is already there. */}
+          {shown.length === 0 ? (
+            <SearchEmpty t={d.search} />
+          ) : (
           <ul className="flex flex-col gap-2">
-            {rows.map((row) => (
+            {shown.map((row) => (
               <StaffRow
                 key={row.id}
                 employee={row}
@@ -274,6 +317,7 @@ export default async function StaffPage() {
               />
             ))}
           </ul>
+          )}
         </div>
       )}
     </div>
