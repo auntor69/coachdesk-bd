@@ -2614,6 +2614,8 @@ export const bn = {
 
     billTitle: 'যাঁদের বেতন ঠিক করা আছে',
     empty: 'এখনো কারও বেতন ঠিক করা হয়নি।',
+    /** The way out of that sentence, which is the form on this same screen. */
+    emptyDoor: 'প্রথমজনের বেতন ঠিক করুন',
     /**
      * All three reads fail closed together, so one sentence covers them.
      *
@@ -2714,6 +2716,18 @@ export const bn = {
        */
       payeeGone:
         'তিনি তালিকা থেকে বাদ আছেন। আবার কাজ করছেন হলে আগে কর্মী বা শিক্ষকের তালিকায় তাঁকে ফিরিয়ে নিন, তারপর বেতন ঠিক করুন।',
+      /** Adding a person is `staff` and the centre plan — not the `payroll` narrowing. */
+      cantHire:
+        'কর্মী তালিকায় নিজে কাউকে যোগ করার অনুমতি আপনার নেই। মালিক বা যিনি কর্মী তালিকা রাখেন তাঁকে বলে লোকটিকে যোগ করান — তারপর এখানেই বেতন ঠিক করা যাবে।',
+      newNameRequired: 'যাঁর বেতন ঠিক করছেন, তাঁর নাম লিখুন।',
+      newRoleRequired: 'তিনি কেন্দ্রে কী কাজ করেন, তা বেছে নিন।',
+      /**
+       * The two writes are one press: if the person could not be added, no agreement was
+       * written either. Saying so plainly is the difference between "try again" and an
+       * owner wondering whether half of it landed.
+       */
+      hireFailed:
+        'লোকটিকে কর্মী তালিকায় যোগ করা যায়নি, তাই বেতনটিও সংরক্ষণ হয়নি। আবার চেষ্টা করুন।',
       basisRequired: 'বেতন কীভাবে হিসাব হবে, তা বেছে নিন।',
       dateRequired: 'কোন তারিখ থেকে এই বেতন, তা লিখুন।',
       /** A year typed into a date field. Same trap as the expense screen's own. */
@@ -2785,6 +2799,32 @@ export const bn = {
     /** The two groups in the picker, because an id alone does not say which table. */
     payeeTeachers: 'শিক্ষক',
     payeeStaff: 'কর্মী',
+    /**
+     * The picker's third answer: somebody who is not on either list yet.
+     *
+     * এই তালিকায় কেউ না থাকলে আগে সেটিংসে গিয়ে কর্মী যোগ করে ফিরে আসতে হতো, তারপর
+     * আবার এই পর্দায় নিজের জায়গা খুঁজতে হতো। এখন নাম আর কাজ এখানেই লেখা যায়, আর একই
+     * বোতামে তিনি কর্মী তালিকায় যোগ হন আর বেতনটাও ঠিক হয়ে যায়।
+     */
+    newPersonOption: '＋ নতুন কেউ',
+    newPersonHint:
+      'এই বোতামেই তিনি কর্মী তালিকায় যোগ হবেন — বেতন ঠিক করতে অন্য পর্দায় যেতে হবে না, ফিরেও আসতে হবে না।',
+    newNameLabel: 'তাঁর নাম',
+    newRoleLabel: 'এখানে কী কাজ করেন',
+    /**
+     * Only shown to a centre that has no teacher row yet — a teacher filed as staff can be
+     * paid but cannot be given a batch, and nothing on the screen would say why.
+     */
+    newPersonTeachers:
+      'এখানে যোগ হবে একজন কর্মী। তিনি ক্লাস নিলে বরং শিক্ষক হিসেবেই যোগ করুন —',
+    newPersonTeacherLink: 'শিক্ষক যোগ করুন',
+    /** The empty picker, for a reader who may add somebody. */
+    noPeopleTitle: 'কর্মী তালিকায় এখনো কেউ নেই',
+    noPeopleBody:
+      'নিচেই প্রথমজনের নাম আর কাজ লিখে দিন — একই বোতামে তিনি যোগ হবেন আর বেতনটাও ঠিক হয়ে যাবে।',
+    /** And the same card for a manager the owner has narrowed out of the staff list. */
+    noPeopleAsk:
+      'বেতন দিতে হলে আগে কাউকে কর্মী তালিকায় যোগ করতে হবে। যিনি কর্মী তালিকা দেখেন — মালিক বা সেই দায়িত্ব পাওয়া ম্যানেজার — তাঁকে বলুন; তারপর এই তালিকা নিজেই ভরে যাবে।',
     basisLabel: 'বেতন কীভাবে হিসাব হবে',
     basicLabel: 'মূল বেতন',
     allowancesLabel: 'ভাতা',
@@ -2823,6 +2863,11 @@ export const bn = {
    * row. Same call as `cancel` beside `feeRow` on the fee board.
    */
   salaryRow: {
+    /**
+     * The door back to the form with this person already chosen — the form is this
+     * screen's edit button, and this is how you arrive at it from a row.
+     */
+    change: 'এই বেতন বদলান',
     /** A plain underlined word, not a button. See CancelBill for why. */
     open: 'এই বেতন বন্ধ করুন',
     heading: 'এই বেতন বন্ধ করে দেব?',
@@ -2882,6 +2927,8 @@ export const bn = {
       'এই মাসে বেতনের সারি এত বেশি যে এক পর্দায় ধরছে না। আমাদের জানান, আমরা ঠিক করে দেব।',
     empty:
       'এখনো কারও বেতনের অঙ্ক ঠিক করা হয়নি, আর এই মাসে কাউকে বেতনও দেওয়া হয়নি।',
+    /** The way out of that sentence, rather than leaving the reader on it. */
+    emptyDoor: 'আগে বেতনগুলো ঠিক করুন',
 
     peopleTitle: 'কার বেতন বাকি',
     /** The three figures on every row, which must never collapse into one. */
@@ -3559,7 +3606,11 @@ export const bn = {
 
     emptyTitle: 'ধরার মতো কোনো শিক্ষার্থী নেই',
     emptyBody: 'এই ব্যাচে এখনো কেউ নেই। আগে শিক্ষার্থীদের ভর্তি করুন।',
+    /** The door under that sentence — see the page. */
+    emptyDoor: 'শিক্ষার্থীর তালিকা খুলুন',
     noBatches: 'এখনো কোনো ব্যাচ নেই, তাই পুরো কোচিং বেছে নিন।',
+    /** And the door inside this one, which leads to making the first batch. */
+    noBatchesDoor: 'নতুন ব্যাচ খুলুন',
     /** See arrears.unreadable for why a failed read takes the whole form away. */
     unreadable:
       'তালিকাটি এখন তৈরি করা গেল না, তাই দেখানো হয়নি — কিছুই হারায়নি। একটু পরে আবার চেষ্টা করুন।',

@@ -27,14 +27,37 @@
  * TODAY ARRIVES AS A PROP, for the reason ExpenseForm gives: a client component that read
  * the clock would render one date on the server and another in the browser for six hours
  * out of every twenty-four.
+ *
+ * AND NOBODY HAS TO LEAVE THIS SCREEN TO BECOME PAYABLE. The picker's third answer is
+ * "somebody new": a name and a job, beside the figure, and one press writes both the staff
+ * row and the agreement. This is the first-visit case — a centre that has written down no
+ * staff at all opens this screen, finds a required picker with nothing in it, and used to be
+ * told to go to Settings, add an employee, and come back to a page it would have to find its
+ * place on again. The old answer was two screens to reply to a question this form was
+ * already asking; the new one is the same press it always was.
+ *
+ * The empty case opens on those two boxes rather than on an empty select, because a required
+ * picker with one option in it is a control that says "there is nothing here" in the shape of
+ * something to use. And the branch is only drawn for a reader who could actually write the
+ * row — `staff` and the centre plan — so a manager narrowed out of the staff list is told to
+ * ask somebody rather than handed fields that would be refused.
+ *
+ * ARRIVING WITH A NAME ALREADY CHOSEN (`defaultPayee`). The bill's own rows and the rail's
+ * "nobody has agreed a salary with these people" list both link back here carrying
+ * `?payee=`, because the two questions an owner opens this screen with — what does she earn,
+ * and give her a rise — are about a person they are already looking at. Before this, the
+ * only way to raise a salary from a row was to find the form again and pick the name out of
+ * twenty.
  */
+import Link from 'next/link'
 import { useActionState, useState } from 'react'
 
 import { Alert, Button, Field } from '@/components/ui'
 import type { T } from '@/lib/i18n'
-import { MAX_TEXT } from '@/lib/limits'
+import { MAX_NAME, MAX_TEXT } from '@/lib/limits'
 import { PER_CLASS_BASIS, SALARY_BASES, type BasisLabels } from '@/lib/payroll/basis'
-import { payeeValue, type Payee } from '@/lib/payroll/bill'
+import { NEW_PAYEE, payeeValue, type Payee } from '@/lib/payroll/bill'
+import type { EmployeeRole } from '@/lib/supabase/types'
 import { setSalaryTerms, type PayrollState } from './actions'
 
 /** The expense form's select, to the pixel: one control, one look. */
@@ -48,6 +71,10 @@ const EARLIEST_TERMS = '2000-01-01'
 export function TermsForm({
   people,
   bases,
+  roles,
+  canHire,
+  noTeachers,
+  defaultPayee,
   t,
   common,
   today,
@@ -60,6 +87,27 @@ export function TermsForm({
   people: readonly Payee[]
   /** The page's own basis labels, passed down rather than duplicated. */
   bases: BasisLabels
+  /** The fourteen jobs, labelled by the page — the one field the new-person branch asks. */
+  roles: readonly { value: EmployeeRole; label: string }[]
+  /**
+   * Whether this reader may put somebody on the staff list at all: `staff` (§6.2) and a
+   * plan that includes staff management. Read once by the page, because the action checks
+   * the same two things and a field that could only be refused is worse than no field.
+   */
+  canHire: boolean
+  /**
+   * The centre has no teacher row at all, which is the one case where adding the wrong
+   * kind of person goes unnoticed. A teacher is a row in another table — batches, marks
+   * and subjects hang off it — so a physics teacher written down here as staff is somebody
+   * who can be paid and cannot be given a class. The note says so while it still matters.
+   */
+  noTeachers: boolean
+  /**
+   * The `?payee=` the page validated against the people it is offering, or ''. Arriving
+   * from a row on the bill or from the list of people with no agreement uses it so the
+   * reader lands on the person they were already looking at.
+   */
+  defaultPayee: string
   t: T<'salaryForm'>
   common: T<'common'>
   /** Today in Dhaka, as YYYY-MM-DD, written by the page. */
@@ -79,6 +127,41 @@ export function TermsForm({
    * actually carries.
    */
   const [basis, setBasis] = useState('')
+
+  /**
+   * Who the figure is for: a payee value, `NEW_PAYEE`, or '' for not answered yet.
+   *
+   * Controlled, unlike the old picker's `defaultValue`, for two reasons. The name and role
+   * boxes exist only while "somebody new" is chosen, so the choice decides the shape of the
+   * form; and arriving from a row (`defaultPayee`) has to be a real selection rather than a
+   * pre-selected option in a list somebody then scrolls past.
+   *
+   * A centre with nobody on its staff list opens on "somebody new" — see the header. That is
+   * the only case where an unanswered picker is not the right starting point.
+   */
+  const [pick, setPick] = useState(() =>
+    defaultPayee || (people.length === 0 && canHire ? NEW_PAYEE : ''),
+  )
+
+  const hiring = pick === NEW_PAYEE
+
+  /*
+   * A PERSON HAS JUST BEEN CREATED BY THIS FORM, so the form stops offering to create them
+   * again. Left on "somebody new", the next press would write a second staff row with the
+   * same name — and unlike the duplicate agreement this screen shrugs off, a duplicate
+   * person is a row somebody has to go and switch off. The figures stay, so the four
+   * assistants on one wage still takes one press each; only the name goes.
+   *
+   * Adjusted during the render that first sees the new result rather than in an effect,
+   * which is React's own answer for state that has to follow a prop — an effect here would
+   * paint the stale picker once and then re-render, and the lint rule that bans it exists
+   * because that second paint is the one a slow phone drops.
+   */
+  const [seen, setSeen] = useState<PayrollState>(state)
+  if (state !== seen) {
+    setSeen(state)
+    if (state?.ok && pick === NEW_PAYEE) setPick('')
+  }
 
   // Teachers first: a coaching centre agrees far more teachers' salaries than cooks'.
   // Two passes over a few dozen people rather than one building two arrays, because the
@@ -108,38 +191,104 @@ export function TermsForm({
         </p>
       )}
 
-      <label className="flex flex-col gap-1.5">
-        <span className="font-medium text-ink">{t.payeeLabel}</span>
-        {/* One select over two tables, and the value carries which of them — see
-            `payeeValue`. Grouped, because a flat list of twenty names cannot say why the
-            cook and the physics teacher are next to each other. A group with nobody in
-            it is not drawn at all: an empty "Teachers" heading reads as a fault. */}
-        <select name="payee" required defaultValue="" className={SELECT_CLASS}>
-          <option value="">—</option>
-          {teachers.length > 0 && (
-            <optgroup label={t.payeeTeachers}>
-              {teachers.map((p) => (
-                <option key={payeeValue(p.kind, p.id)} value={payeeValue(p.kind, p.id)}>
-                  {p.name}
+      {/* The picker, or the sentence saying why there is nothing to pick. Never both:
+          an empty select under a note is a control the reader tries first. */}
+      {people.length > 0 ? (
+        <label className="flex flex-col gap-1.5">
+          <span className="font-medium text-ink">{t.payeeLabel}</span>
+          {/* One select over two tables, and the value carries which of them — see
+              `payeeValue`. Grouped, because a flat list of twenty names cannot say why the
+              cook and the physics teacher are next to each other. A group with nobody in
+              it is not drawn at all: an empty "Teachers" heading reads as a fault. */}
+          <select
+            name="payee"
+            required
+            value={pick}
+            onChange={(e) => setPick(e.target.value)}
+            className={SELECT_CLASS}
+          >
+            <option value="">—</option>
+            {teachers.length > 0 && (
+              <optgroup label={t.payeeTeachers}>
+                {teachers.map((p) => (
+                  <option key={payeeValue(p.kind, p.id)} value={payeeValue(p.kind, p.id)}>
+                    {p.name}
+                  </option>
+                ))}
+              </optgroup>
+            )}
+            {staff.length > 0 && (
+              <optgroup label={t.payeeStaff}>
+                {/* The job goes in the option and not just on the bill: two people called
+                    Rahim, one who cooks and one who keeps the books, are the same word
+                    twice in a picker of bare names. A teacher has no job title because
+                    teaching is the job. */}
+                {staff.map((p) => (
+                  <option key={payeeValue(p.kind, p.id)} value={payeeValue(p.kind, p.id)}>
+                    {p.job ? `${p.name} — ${p.job}` : p.name}
+                  </option>
+                ))}
+              </optgroup>
+            )}
+            {/* Last, and not in either group: it is not a person and it is not one of the
+                two tables — `NEW_PAYEE` opens the two boxes below instead. */}
+            {canHire && <option value={NEW_PAYEE}>{t.newPersonOption}</option>}
+          </select>
+        </label>
+      ) : (
+        <>
+          {/* The value is posted either way, so the form has one picker field rather than
+              a shape that changes with what the centre happens to have written down. */}
+          <input type="hidden" name="payee" value={canHire ? NEW_PAYEE : ''} />
+          <div className="rounded-xl border border-dashed border-line bg-surface-alt p-3">
+            <p className="font-medium text-ink">{t.noPeopleTitle}</p>
+            <p className="mt-1 text-sm text-ink-soft">
+              {canHire ? t.noPeopleBody : t.noPeopleAsk}
+            </p>
+          </div>
+        </>
+      )}
+
+      {/* Both boxes, only while somebody new is being written down. The name takes the
+          width because a name is a name; the job is a picker because it is one of fourteen
+          words and a typo in it would print as a job title nobody recognises. */}
+      {hiring && canHire && (
+        <div className="flex flex-col gap-3 rounded-xl border border-dashed border-line
+          bg-surface-alt p-3">
+          <p className="text-sm text-ink-soft">{t.newPersonHint}</p>
+          {/* Only where it can bite: a centre that has teachers already knows which kind
+              of person it is looking at here. */}
+          {noTeachers && (
+            <p className="text-sm text-ink-soft">
+              {t.newPersonTeachers}{' '}
+              <Link
+                href="/settings/teachers/new"
+                className="font-medium text-brand-800 underline underline-offset-4"
+              >
+                {t.newPersonTeacherLink}
+              </Link>
+            </p>
+          )}
+          <Field
+            label={t.newNameLabel}
+            name="newName"
+            required
+            maxLength={MAX_NAME}
+            autoComplete="off"
+          />
+          <label className="flex flex-col gap-1.5">
+            <span className="font-medium text-ink">{t.newRoleLabel}</span>
+            <select name="newRole" required defaultValue="" className={SELECT_CLASS}>
+              <option value="">—</option>
+              {roles.map((role) => (
+                <option key={role.value} value={role.value}>
+                  {role.label}
                 </option>
               ))}
-            </optgroup>
-          )}
-          {staff.length > 0 && (
-            <optgroup label={t.payeeStaff}>
-              {/* The job goes in the option and not just on the bill: two people called
-                  Rahim, one who cooks and one who keeps the books, are the same word
-                  twice in a picker of bare names. A teacher has no job title because
-                  teaching is the job. */}
-              {staff.map((p) => (
-                <option key={payeeValue(p.kind, p.id)} value={payeeValue(p.kind, p.id)}>
-                  {p.job ? `${p.name} — ${p.job}` : p.name}
-                </option>
-              ))}
-            </optgroup>
-          )}
-        </select>
-      </label>
+            </select>
+          </label>
+        </div>
+      )}
 
       <label className="flex flex-col gap-1.5">
         <span className="font-medium text-ink">{t.basisLabel}</span>

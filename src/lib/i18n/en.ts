@@ -1545,6 +1545,8 @@ export const en: Dictionary = {
 
     billTitle: 'Salaries agreed',
     empty: 'No salary has been agreed with anybody yet.',
+    /** The way out of that sentence, which is the form on this same screen. */
+    emptyDoor: 'Agree the first one',
     unreadable:
       'The salary list cannot be read just now, so nothing is being shown — half a list is worse than none. Please try again.',
 
@@ -1580,6 +1582,14 @@ export const en: Dictionary = {
       payeeNotFound: 'There is nobody like that at this centre. Please reload the screen.',
       payeeGone:
         'They are marked as no longer here. If they are working again, put them back on the staff or teacher list first, then agree a salary.',
+      /** Adding a person is `staff` and the centre plan, not this screen's own permission. */
+      cantHire:
+        'You cannot add somebody to the staff list yourself. Ask the owner, or a manager who keeps the staff list, to add them — the salary can then be agreed here.',
+      newNameRequired: 'Write the name of the person this salary is for.',
+      newRoleRequired: 'Choose what they do at the centre.',
+      /** See the Bangla: the two writes are one press, and neither half is kept alone. */
+      hireFailed:
+        'That person could not be added to the staff list, so no salary was saved either. Please try again.',
       basisRequired: 'Choose how the salary is worked out.',
       dateRequired: 'Write the date this salary starts from.',
       dateTooOld: 'That date does not look right — please check the year.',
@@ -1608,6 +1618,31 @@ export const en: Dictionary = {
     payeeLabel: 'Whose salary',
     payeeTeachers: 'Teachers',
     payeeStaff: 'Staff',
+    /**
+     * The picker's third answer, and the one sentence that turns two screens into one.
+     *
+     * A centre with nobody written down used to be told to go and add an employee first.
+     * This option writes them here, in the same press as the figure — see terms-form.tsx.
+     */
+    newPersonOption: '＋ Somebody new',
+    newPersonHint:
+      'They are added to the staff list by this same button, so you do not have to leave this screen and come back.',
+    newNameLabel: 'Their name',
+    newRoleLabel: 'What they do here',
+    /**
+     * Only shown to a centre that has no teacher row yet — the one case where adding the
+     * wrong kind of person goes unnoticed, because a teacher who is filed as staff can be
+     * paid and cannot be given a batch.
+     */
+    newPersonTeachers: 'This adds a staff member. If they teach, add them as a teacher instead —',
+    newPersonTeacherLink: 'add a teacher',
+    /** The empty-picker card, for a reader who may add somebody. */
+    noPeopleTitle: 'Nobody is on the staff list yet',
+    noPeopleBody:
+      'Write the first name and job below — the person and the salary are saved together, in one press.',
+    /** And the same card for a manager the owner has narrowed out of the staff list. */
+    noPeopleAsk:
+      'A salary needs somebody to pay. Ask an owner or a manager who can see the staff list to add them, then this picker will fill itself.',
     basisLabel: 'How the salary is worked out',
     basicLabel: 'Basic',
     allowancesLabel: 'Allowances',
@@ -1628,6 +1663,13 @@ export const en: Dictionary = {
 
   /** See the Bangla for why the row's words are a section of their own. */
   salaryRow: {
+    /**
+     * The door back to the form with this person already chosen. The form is the edit
+     * button on this screen — picking somebody who already has a figure is how a rise is
+     * recorded — and until this link existed the only way to find it was to scroll up and
+     * pick the same name out of twenty.
+     */
+    change: 'Change this salary',
     open: 'Stop this salary',
     heading: 'Stop this salary?',
     warning:
@@ -1658,6 +1700,8 @@ export const en: Dictionary = {
     tooLarge:
       'There are more rows this month than one screen holds. Tell us and we will sort it out.',
     empty: 'No salary has been agreed with anybody, and nobody has been paid this month.',
+    /** The way out of that sentence, rather than leaving the reader on it. */
+    emptyDoor: 'Agree the salaries first',
 
     peopleTitle: 'Who is still owed',
     agreedLabel: 'Agreed',
@@ -2130,7 +2174,11 @@ export const en: Dictionary = {
 
     emptyTitle: 'No students to charge',
     emptyBody: 'There is nobody in this batch yet. Enrol the students first.',
+    /** The door under that sentence — see the page. */
+    emptyDoor: 'Open the students list',
     noBatches: 'There are no batches yet, so pick the whole centre.',
+    /** And the door inside this one, which leads to making the first batch. */
+    noBatchesDoor: 'Make a batch',
     /** See arrears.unreadable for why a failed read takes the form away entirely. */
     unreadable:
       'The list could not be put together just now, so it is not shown — nothing has been lost. Please try again in a moment.',

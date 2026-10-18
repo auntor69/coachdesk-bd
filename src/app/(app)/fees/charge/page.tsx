@@ -1,3 +1,5 @@
+import Link from 'next/link'
+
 import { PageHeader } from '@/components/page-header'
 import { ReadOnlyNote } from '@/components/read-only-note'
 import { Button, Card } from '@/components/ui'
@@ -188,8 +190,19 @@ export default async function ChargePage({
                 </option>
               ))}
             </select>
+            {/* The one case where "everyone in the centre" is the only answer, said with the
+                way to make the batch list worth having. A sentence on its own here is an
+                owner learning that their centre is set up wrong with nothing to press. */}
             {batches !== null && batches.length === 0 && (
-              <span className="text-sm text-ink-soft">{t.noBatches}</span>
+              <span className="text-sm text-ink-soft">
+                {t.noBatches}{' '}
+                <Link
+                  href="/settings/batches/new"
+                  className="font-medium text-brand-800 underline underline-offset-4"
+                >
+                  {t.noBatchesDoor}
+                </Link>
+              </span>
             )}
           </div>
           {/* Beside the select from `sm`, where it reads as the one thing to do with it.
@@ -226,9 +239,19 @@ export default async function ChargePage({
           <p className="text-sm text-ink-soft">{t.pickFirst}</p>
         </Card>
       ) : roster.rows.length === 0 ? (
+        // The same door as the batch sentence above, for the other empty list: a batch that
+        // exists but holds nobody yet. Enrolling is the students screen's job, one screen
+        // away, and this is the moment the reader finds out they need it.
         <Card className="lg:max-w-2xl">
           <h2 className="font-semibold text-ink">{t.emptyTitle}</h2>
           <p className="mt-1 text-sm text-ink-soft">{t.emptyBody}</p>
+          <Link
+            href="/settings/students"
+            className="mt-3 inline-flex min-h-tap items-center font-medium text-brand-800
+              underline underline-offset-4 hover:text-brand-900"
+          >
+            {t.emptyDoor} →
+          </Link>
         </Card>
       ) : (
         <ChargeForm
