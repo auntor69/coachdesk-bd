@@ -511,7 +511,7 @@ function ReadOnlyBanner({
               offering a teacher a tab that answers with a 403 is worse than offering
               them nothing, and there is nothing for them to do here anyway. */}
           {canSeePlan && (
-            <LinkButton href="/settings/billing" variant="tinted">
+            <LinkButton href="/settings/billing" variant="tinted" prefetch={false}>
               {t.seePlan}
             </LinkButton>
           )}
@@ -978,6 +978,10 @@ export async function AppShell({
                 there is not.
               */}                <Link
                 href="/account"
+                // Not prefetched: the account screen is opened to change a password or
+                // read a number off it, never mid-task, and prefetching it cost a
+                // backend render on every screen to save a tap that happens monthly.
+                prefetch={false}
                 aria-label={t.account}
                 title={t.account}
                 // 48px of tappable box around a 36px circle: `--spacing-tap` is the
@@ -1065,7 +1069,12 @@ export async function AppShell({
                 plan screen is still where a tier is bought; what a dry balance needs is
                 the top-up, and that is here.
               */}
-              <LinkButton href="/settings/billing" variant="tinted" className="text-sm">
+              <LinkButton
+                href="/settings/billing"
+                variant="tinted"
+                className="text-sm"
+                prefetch={false}
+              >
                 {t.balanceTopUp}
               </LinkButton>
             </div>

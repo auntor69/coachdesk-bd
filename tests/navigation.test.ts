@@ -312,6 +312,47 @@ test('the roster is a row of the menu itself, not only a card behind the hub', (
   assert.ok(existsSync(path.join(ROOT, 'src', 'app', '(app)', 'settings', 'students', 'page.tsx')))
 })
 
+test('only the four daily screens are prefetched', () => {
+  /*
+   * WHAT THIS GUARDS. `(app)/loading.tsx` turns prefetching on for every dynamic route
+   * under it, so each `<Link>` on screen costs a full backend render of the shell behind
+   * it — session gate included — whether or not anybody taps. The sidebar draws twelve
+   * rows, so the app was starting twelve of those per screen, and six destinations were
+   * fetched twice as the router state changed.
+   *
+   * The fix is a prop, and a prop is the kind of thing that grows back: the next row
+   * someone adds inherits `prefetch` from nothing and the menu quietly starts paying for
+   * it again. So the list itself is asserted — and asserted against the table's own first
+   * four, because that is the same four the phone bar carries and the same four §6.5 says
+   * must feel instant. A row added to the top of the table then fails here rather than
+   * silently becoming free to prefetch.
+   */
+  const declared = NAV_MODULE.match(/const DAILY: ReadonlySet<string> = new Set\(\[([^\]]*)\]\)/)
+  assert.ok(declared, 'the prefetch list is gone')
+
+  const daily = [...declared[1].matchAll(/'([^']+)'/g)].map((m) => m[1])
+  assert.deepEqual(daily, ORDER.slice(0, PHONE_TABS), 'the prefetched set is not the daily four')
+
+  // The sidebar asks it, and refuses a locked row outright — the screen behind one is
+  // the upsell card, and an advertisement is not worth a render.
+  assert.match(NAV_MODULE, /prefetch=\{!item\.locked && DAILY\.has\(item\.href\)\}/)
+
+  // AND IT IS THE ONLY `prefetch` IN THE FILE. The phone bar keeps Next's default,
+  // because its rows are the reader's daily screens by construction: four for a staff
+  // admin, and the whole bar for a teacher or a student — the one screen a student has is
+  // the one they open every day, and gating it on the staff table's four would take a
+  // single-shell prefetch away from the role that can least afford a wait.
+
+  // And the two shell links the audit found in the same fourteen: the account screen and
+  // the top-up, neither of which is opened mid-task.
+  assert.match(SHELL, /href="\/account"[\s\S]{0,600}?prefetch=\{false\}/)
+  assert.equal(
+    [...SHELL.matchAll(/href="\/settings\/billing"[\s\S]{0,120}?prefetch=\{false\}/g)].length,
+    2,
+    'both top-up links stay unprefetched',
+  )
+})
+
 test('the phone bar pads itself out from under the home indicator', () => {
   // The safe-area fix: on a notched iPhone with `viewportFit: 'cover'` the home
   // indicator is drawn over the bottom of the viewport, and this bar is fixed to

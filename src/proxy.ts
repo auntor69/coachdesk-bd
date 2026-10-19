@@ -114,6 +114,32 @@ export async function proxy(request: NextRequest) {
     return isPublic ? NextResponse.next({ request }) : loginRedirect(request, pathname)
   }
 
+  /*
+   * A PREFETCH IS A GUESS, AND A GUESS DOES NOT PAY FOR A ROUND TRIP.
+   *
+   * Next sends `next-router-prefetch` on the requests it issues on its own — a `<Link>`
+   * that scrolled into view, before anybody clicked it (see app-nav.tsx's `DAILY`, which
+   * is what keeps that list down to four). The proxy cannot refresh a session that is
+   * not expiring and cannot decide anything a page will not decide again: the layout's
+   * `getSession()` still calls `getUser()` and still redirects, and RLS still refuses.
+   * What this call buys on a prefetch is nothing, and what it costs is one auth round
+   * trip per menu row, in parallel with the navigation the reader actually asked for.
+   *
+   * A HINT IS NOT A BYPASS. Nothing is served here that a real navigation would not be
+   * served: the same request is rendered by the same layout, which refuses a signed-out
+   * or expired session exactly as it does on a click, and RLS still scopes every row. The
+   * only thing skipped is this file's *redirect* decision for a request whose answer may
+   * never be shown — and where Next does show a prefetched shell, that shell came from a
+   * render that made the same refusal one layer down.
+   *
+   * The presence of the header is the test, not its value: this Next writes `1` for a
+   * loading-boundary prefetch, `2` and `3` for the PPR strategies, and nothing at all on
+   * a real navigation (`FetchStrategy.Full` in the segment cache).
+   */
+  if (request.headers.get('next-router-prefetch') !== null) {
+    return NextResponse.next({ request })
+  }
+
   let response = NextResponse.next({ request })
 
   const supabase = createServerClient(
