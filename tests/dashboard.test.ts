@@ -183,6 +183,54 @@ test('who owes is a table, and shows a morning of it', () => {
   assert.match(PAGE, /href="\/fees"[\s\S]{0,120}seeAll/)
 })
 
+test('the two aggregates stream instead of holding the page', () => {
+  /*
+   * WHAT THIS GUARDS, and why it is asserted rather than left to review. The dashboard
+   * used to await seventeen reads before it could return a byte, and two of them are
+   * aggregates over the centre's whole history — `student_risk` measured 2.24 s at 250
+   * students, `batch_attendance_monthly` 1.2 s (docs/PERFORMANCE-AUDIT.md §2.2b). The
+   * arrears figure, the chase door and today's registers waited on the slowest of them,
+   * which is most of why the screen felt slow with nothing on it to explain why.
+   *
+   * The fix is structural and silent: the queries moved into `RatesBlock` and `RiskBlock`,
+   * each behind its own `<Suspense>`. Put either `.from(...)` back into the page's
+   * `Promise.all` and the page still renders correctly — just slowly again — so nothing
+   * but this test would notice.
+   */
+  const read = (...parts: string[]) =>
+    readFileSync(path.join(ROOT, 'src', 'app', '(app)', 'dashboard', ...parts), 'utf8')
+
+  assert.match(PAGE, /<Suspense fallback=\{<LoadingCard rows=\{2\} \/>\}>\s*\n\s*<RatesBlock/)
+  assert.match(PAGE, /<Suspense fallback=\{<LoadingCard \/>\}>\s*\n\s*<RiskBlock/)
+  assert.match(PAGE, /<Suspense fallback=\{<LoadingCard rows=\{1\} \/>\}>\s*\n\s*<ProgressBlock/)
+
+  // And the reads are the blocks' own business now. A page that asks for them again
+  // would be doing the work twice, slowly, and the boundary would be decoration.
+  assert.doesNotMatch(PAGE, /from\('student_risk'\)/, 'student_risk is back in the page')
+  assert.doesNotMatch(PAGE, /from\('batch_attendance_monthly'\)/, 'the rates read is back')
+  assert.doesNotMatch(PAGE, /from\('student_progress_week'\)/, 'the progress read is back')
+  assert.match(read('rates-block.tsx'), /\.from\('batch_attendance_monthly'\)/)
+  assert.match(read('risk-block.tsx'), /\.from\('student_risk'\)/)
+  assert.match(read('progress-block.tsx'), /\.from\('student_progress_week'\)/)
+
+  // `[&:empty]:hidden` on both wrappers: each block renders null for the ordinary empty
+  // case, and an empty box in this column still contributes the column's `gap-5` — twenty
+  // pixels of nothing where a card is not. Without it, a centre with no registers gets a
+  // gap that reads as a card that failed to load.
+  for (const order of ['order-9', 'order-10']) {
+    assert.match(
+      PAGE,
+      new RegExp(`className="${order} \\[&:empty\\]:hidden"`),
+      `${order} would leave a gap when its card has nothing to draw`,
+    )
+  }
+
+  // A teacher is not staff-admin, and the risk view refuses them in SQL — so their read
+  // came back empty from a round trip. It is its own request now, so the role check the
+  // view enforces anyway is the cheap way not to send it.
+  assert.match(PAGE, /\{isAdmin && \(\s*\n\s*<div className="order-10/)
+})
+
 test('the tiles are three across on a phone and three rows in the rail', () => {
   // At a quarter of the width, three boxes put "৳1,24,000" on two lines. Same markup with
   // the border living on the container alone — §20.7's typography over boxes — one card

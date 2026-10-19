@@ -5,8 +5,10 @@ import { PageHeader } from '@/components/page-header'
 import { greetingFor } from '@/components/app-shell'
 import { pageRole, getSession, isStaffAdmin, canReadFees, myTeacherIds } from '@/lib/auth/session'
 import { isHqMember } from '@/lib/branches'
+import { Suspense } from 'react'
+
 import { createClient } from '@/lib/supabase/server'
-import { pageAll, pageOrNull, type Paged, worstFailure } from '@/lib/supabase/page'
+import { pageAll, worstFailure } from '@/lib/supabase/page'
 import {
   todayInDhaka,
   currentPeriodMonth,
@@ -18,20 +20,14 @@ import { can, canReadMoney } from '@/lib/staff/capabilities'
 import { setupSteps } from '@/lib/setup'
 import { countChasesDue } from '@/lib/fees/reminder-schedule'
 import { categoryBills, monthBills, monthMoney, payrollState } from '@/lib/finance/profit'
-import { ratesForDashboard } from '@/lib/attendance/rates'
-import { studentsAtRisk, RISK_COLUMNS } from '@/lib/students/risk'
-import {
-  progressToTell,
-  PROGRESS_COUNT_COLUMNS,
-  type ProgressCountRow,
-} from '@/lib/students/progress'
 import { tallyOutstanding, formatTaka as taka } from '@/lib/money'
 import { dict, DEFAULT_LOCALE } from '@/lib/i18n'
 import { ReminderEntry } from '@/app/(app)/fees/reminder-entry'
 import { ProfitCard } from './profit-card'
-import { AttendanceRates } from './attendance-rates'
-import { AtRiskCard } from './at-risk-card'
-import { ProgressEntry } from './progress-entry'
+import { RatesBlock } from './rates-block'
+import { RiskBlock } from './risk-block'
+import { LoadingCard } from './loading-card'
+import { ProgressBlock } from './progress-block'
 import { NoticeEntry } from './notice-entry'
 import { SetupCard } from './setup-card'
 
@@ -166,13 +162,6 @@ export default async function DashboardPage() {
    */
   const seeProgress = seeMessages && has(session.plan, 'parentSummary')
 
-  // Resolved, not queried, when the door is not being drawn. `{ rows: [] }` rather
-  // than a failure, because nothing was asked for and nothing went wrong — and the
-  // door this counts for is not drawn either way, since `seeProgress` gates both.
-  // Typed so the destructured `weekly` below is the view's rows or the reason there
-  // are none, rather than `any`.
-  const noProgress: Paged<ProgressCountRow> = { rows: [] }
-
   /**
    * Stand-in for a head count that was not asked for.
    *
@@ -218,9 +207,6 @@ export default async function DashboardPage() {
     { data: collectedRow, error: collectedError },
     { data: todaySessions },
     chased,
-    { data: rates },
-    risky,
-    weekly,
     { count: enrolmentCount },
     { count: sessionCount },
     { data: profitRow, error: profitError },
@@ -313,71 +299,6 @@ export default async function DashboardPage() {
         .order('id')
         .range(from, to),
     ),
-    // Attendance rate per batch, counted by Postgres — forty students taking
-    // class twenty times is eight hundred rows per batch, and this screen is
-    // opened several times a day on a 3G phone.
-    //
-    // Two months, not one. A card that reads "no attendance yet" for the first
-    // days of every month is empty exactly when an owner is thinking hardest
-    // about the month that just closed, so the current month is used when it has
-    // anything in it and last month is the fallback. The view's index is on
-    // (coaching_center_id, period_month), which is what makes asking for two
-    // months no more work than asking for one.
-    //
-    // Active batches only: a closed batch's history stays readable through the
-    // view — that is why batch_active is exposed rather than filtered there — but
-    // it does not belong on today's dashboard.
-    //
-    // Unconditional, like the reminder query above. The view is staff-admin only,
-    // so a teacher gets an empty array from a round trip that was already
-    // happening inside this Promise.all.
-    supabase
-      .from('batch_attendance_monthly')
-      .select('batch_id, batch_name, period_month, sessions, counted, rate_pct')
-      .eq('coaching_center_id', session.active.centerId)
-      .eq('batch_active', true)
-      .in('period_month', [period, addMonths(period, -1)]),
-    // Who is drifting away. Unconditional for the same reason as the two queries
-    // above — the view is staff-admin only, so a teacher gets an empty array out
-    // of a round trip that was already in flight.
-    //
-    // No `.limit()`, though the card shows three. The count under the heading has
-    // to be the real one: "3 students" over the three that fit, when eleven are
-    // flagged, is the card lying about the size of the problem. Every row is one
-    // student with at least one signal, so the worst case is a fraction of the
-    // centre's roll and the ordering has to happen over all of them anyway.
-    //
-    // Which is also why it is paged. The ceiling would cap that count at a thousand
-    // on a large enough roll, and a count that has been quietly capped is the same
-    // lie this comment already refuses.
-    //
-    // Still pageOrNull, unlike the three reads around it. This card is drawn only
-    // when somebody is flagged, so a read that did not arrive takes it off the page
-    // instead of putting a wrong number on it — and an absent card is the ordinary
-    // state of a centre where nobody is drifting. The claim itself is made on
-    // /at-risk, in a sentence, and that screen refuses rather than making it.
-    pageOrNull((from, to) =>
-      supabase
-        .from('student_risk')
-        .select(RISK_COLUMNS)
-        .eq('coaching_center_id', session.active.centerId)
-        .order('student_id')
-        .range(from, to),
-    ),
-    // How many guardians can be told how their child's week went. Six columns of
-    // the twenty the /progress screen reads — the door needs a number, not names —
-    // and counted by the same function that screen lists with, so the two cannot
-    // disagree. Conditional; see `seeProgress` above for why this one query is.
-    seeProgress
-      ? pageAll((from, to) =>
-          supabase
-            .from('student_progress_week')
-            .select(PROGRESS_COUNT_COLUMNS)
-            .eq('coaching_center_id', session.active.centerId)
-            .order('student_id')
-            .range(from, to),
-        )
-      : noProgress,
     /*
      * The two counts behind the setup card, and the reason they are counts rather than
      * rows: both questions are "is there at least one", over tables that hold one row
@@ -646,26 +567,6 @@ export default async function DashboardPage() {
   // was, which reads as a figure that failed rather than as one nobody is owed.
   const seeCollected = isAdmin && seeFees
 
-  // The month the rate card describes and the batches in it, worst first — both
-  // decided in one tested place, because both invert without leaving a mark on
-  // the screen. See the note on the query for why two months are fetched.
-  const { month: rateMonth, rates: batchRates } = ratesForDashboard(
-    rates,
-    period,
-    t.unknownBatch,
-  )
-
-  // And the students behind those rates who are on their way out. Worst first,
-  // with the reason for each one already chosen — every threshold is in the view
-  // and the ordering is in one tested function, so this page decides neither.
-  const atRisk = studentsAtRisk(risky, d.risk.noName)
-
-  // And the families who can be told how that week went. Zero is a real answer here
-  // rather than a reason to hide the door — see the note on ProgressEntry — which is
-  // exactly why a failed read must not arrive as one: the door would say “nobody new
-  // to tell today” about a week nobody has been told anything about.
-  const toTell = 'rows' in weekly ? progressToTell(weekly.rows) : null
-
   // How far this centre is from the product doing anything at all, or null once it is
   // doing it. Null for a teacher too, because their two counts were never asked for —
   // see `noCount`.
@@ -842,29 +743,63 @@ export default async function DashboardPage() {
             </div>
           </Card>
 
-          {/* Directly under the card that counts today's registers, because this is
-              what they add up to. A centre that has never taken attendance gets no
-              card at all rather than one explaining its own emptiness — the line
-              above already says nothing has been taken. */}
-          {isAdmin && batchRates.length > 0 && (
-            <div className="order-9">
-              <AttendanceRates
-                month={rateMonth}
-                rows={batchRates}
-                isCurrentMonth={rateMonth === period}
-                locale={locale}
-                t={t}
-              />
+          {/* THE TWO CARDS THAT ARE ALLOWED TO ARRIVE LATE, and the reason this page can
+              paint at all. Both are aggregates over the centre's whole history — the
+              rates view scans every register it has, and `student_risk` was measured at
+              2.24 s at 250 students (audit §2.2b). Awaiting them here meant the arrears
+              figure, the chase door and today's registers all waited for the slowest of
+              the three, which is what made this screen feel slow for no visible reason.
+
+              Each block now fetches its own data inside its own `<Suspense>`, so the
+              page's own figures stream on the first flush and these two land when they
+              land, worst-first below the thing they explain. Nothing is cached and
+              nothing is fetched twice: `RatesBlock` and `RiskBlock` own exactly the query
+              that used to sit in the `Promise.all` above.
+
+              `[&:empty]:hidden` IS LOAD-BEARING, not tidiness. Both blocks render null
+              for the ordinary empty case — a centre that has never taken a register, a
+              roll where nobody is drifting — and an empty box in this column still
+              contributes a `gap-5`, which is twenty pixels of nothing where a card
+              should not be. The arbitrary variant is used rather than Tailwind's `empty:`
+              because it is the one form that means the same thing in this version and
+              the next.
+
+              Directly under the card that counts today's registers, because this is what
+              they add up to. A centre that has never taken attendance gets no card at all
+              rather than one explaining its own emptiness — the line above already says
+              nothing has been taken. */}
+          {isAdmin && (
+            <div className="order-9 [&:empty]:hidden">
+              <Suspense fallback={<LoadingCard rows={2} />}>
+                <RatesBlock
+                  centerId={session.active.centerId}
+                  period={period}
+                  locale={locale}
+                  t={t}
+                />
+              </Suspense>
             </div>
           )}
 
           {/* Under the rate card, because that one is the aggregate and this one is the
               individuals inside it — the same reading order as the outstanding figure
-              above the list of who owes it. Only when somebody is flagged; see the note
-              on the card for why an empty version of it would be worse than none. */}
-          {atRisk.length > 0 && (
-            <div className="order-10">
-              <AtRiskCard students={atRisk} view={d.common.view} t={d.risk} />
+              above the list of who owes it.
+
+              `isAdmin` and not merely the rows' own absence: `student_risk` is
+              staff-admin only in SQL, which is the gate that counts, so a teacher's read
+              came back empty from a round trip that was already in flight. It is not in
+              flight any more — this is its own request now — so the role check that the
+              view enforces anyway is the cheap way not to send it. */}
+          {isAdmin && (
+            <div className="order-10 [&:empty]:hidden">
+              <Suspense fallback={<LoadingCard />}>
+                <RiskBlock
+                  centerId={session.active.centerId}
+                  noName={d.risk.noName}
+                  view={d.common.view}
+                  t={d.risk}
+                />
+              </Suspense>
             </div>
           )}
 
@@ -1056,7 +991,9 @@ export default async function DashboardPage() {
               open, and one screen cannot have two most-important errands. */}
           {seeProgress && (
             <div className="order-11">
-              <ProgressEntry toTell={toTell} t={d.progress} />
+              <Suspense fallback={<LoadingCard rows={1} />}>
+                <ProgressBlock centerId={session.active.centerId} t={d.progress} />
+              </Suspense>
             </div>
           )}
 

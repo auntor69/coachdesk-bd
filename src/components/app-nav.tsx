@@ -107,6 +107,33 @@ export type NavEntry = {
 export type NavSection = { label: string | null; items: NavEntry[] }
 
 /**
+ * The destinations worth fetching before the reader asks for them.
+ *
+ * PREFETCH IS NOT FREE, and the app was paying for fourteen of them on every screen.
+ * `(app)/loading.tsx` exists on purpose (offline retry, tap feedback — see its own
+ * note), and one of its consequences is that Next prefetches *dynamic* routes: a link
+ * laid out on screen costs a full backend render of the shell behind it, session gate
+ * included, whether or not anybody taps it. The sidebar draws twelve rows, so a
+ * dashboard load was starting twelve of those in the background, competing with the
+ * navigation the reader did ask for.
+ *
+ * These four are the exception because they are the four a centre opens every day —
+ * the same four the phone bar carries, and the same argument `PHONE_TABS` in
+ * app-shell.tsx makes. Prefetching them is what makes the register and the fee board
+ * feel instant on a 3G phone, and §6.5's rule that this must never be traded away is
+ * why the list is written down here rather than being "everything except Settings".
+ *
+ * Everything else — spending, salaries, notices, the week, drifting away, the head
+ * office, settings, the roster, the account — is opened once a week at most and is
+ * still hover-prefetched on a desktop and fetched on tap on a phone. Nothing is lost
+ * but the work nobody asked for.
+ *
+ * A locked row never prefetches whatever it is: the screen behind it is an upsell
+ * card, and fetching that on sight is fetching an advertisement.
+ */
+const DAILY: ReadonlySet<string> = new Set(['/dashboard', '/teach', '/exams', '/fees'])
+
+/**
  * Whether a link is the screen the reader is on.
  *
  * Prefix matching, not equality, because half these destinations have children a
@@ -145,6 +172,10 @@ function SideRow({
     <li>
       <Link
         href={item.href}
+        // The four daily screens only — see `DAILY`. This one line is the whole of
+        // the fix for the fourteen-shells-per-screen problem: the sidebar is where
+        // the other eleven destinations were being fetched from.
+        prefetch={!item.locked && DAILY.has(item.href)}
         // `aria-current`, not just a colour. The whole point of the state is
         // "you are here", and a screen reader has no access to a background.
         aria-current={here ? 'page' : undefined}
@@ -309,6 +340,16 @@ export function TabBar({
           const here = isHere(pathname, item.href)
           return (
             <li key={item.href} className="flex-1">
+              {/*
+                NO `prefetch` HERE, and that is the policy rather than an omission.
+
+                The bar is the reader's own daily screens by construction —
+                `splitForPhone` picks the first four unlocked rows, and a locked one never
+                takes a slot — so every tab is one of the four `DAILY` covers for a staff
+                admin, and the whole of a teacher's or a student's bar. The one tab a
+                student has is the one screen they open, every day: fetching it on sight
+                costs one shell, exactly as the four cost a staff admin four.
+              */}
               <Link
                 href={item.href}
                 aria-current={here ? 'page' : undefined}

@@ -60,6 +60,47 @@ test('the proxy decides from the cookie before it builds a client or calls Supab
   assert.ok(client < call, 'getUser is called before the client that makes it exists')
 })
 
+test('a prefetch is answered without asking Supabase', () => {
+  /*
+   * The second cost lever in this file, and the same shape as the first: a request that
+   * cannot learn anything from `getUser()` is decided without it. A prefetch is such a
+   * request — Next issues it on its own for a `<Link>` that scrolled into view, and the
+   * layout that renders it still verifies the session and still redirects. What the call
+   * bought on that path was nothing; what it cost was one auth round trip per menu row,
+   * in parallel with the navigation the reader actually asked for.
+   *
+   * ORDER MATTERS TWICE HERE. The branch has to come after the cookie decision (a request
+   * with no cookie is already answered, and needs no client) and before `createServerClient`
+   * — a branch below it would leave the round trip it exists to refuse.
+   */
+  const prefetch = PROXY.indexOf("headers.get('next-router-prefetch')")
+  const client = PROXY.indexOf('createServerClient(')
+
+  assert.ok(prefetch > -1, 'the proxy no longer looks for the prefetch header')
+  assert.ok(
+    PROXY.indexOf('hasSessionCookie(request.cookies.getAll())') < prefetch,
+    'the prefetch branch has to come after the cookie decision, not replace it',
+  )
+  assert.ok(prefetch < client, 'the prefetch branch comes after the client is built')
+
+  const branch = PROXY.slice(prefetch, client)
+  assert.match(branch, /return NextResponse\.next\(\{ request \}\)/, 'a prefetch is served')
+
+  // AND NEVER A REDIRECT. A 307 answering a prefetch is a redirect the router caches
+  // against a destination nobody asked for, and the layout is what refuses a session on
+  // this path — it does it in the same response, with a page that says so.
+  assert.doesNotMatch(branch, /loginRedirect/, 'a prefetch must not be redirected from here')
+
+  // The header Next actually sends, checked against this install rather than against a
+  // memory of it: a Next upgrade that renamed it would turn the saving off silently, and
+  // nothing else in the product would notice.
+  const headers = readFileSync(
+    path.join(process.cwd(), 'node_modules', 'next', 'dist', 'esm', 'client', 'components', 'app-router-headers.js'),
+    'utf8',
+  )
+  assert.match(headers, /NEXT_ROUTER_PREFETCH_HEADER = 'next-router-prefetch'/, 'Next renamed the prefetch header')
+})
+
 test('both answers of that branch are the answers the round trip used to produce', () => {
   // A public route is served, and a private one goes to the login form carrying the page
   // that was asked for — the same two outcomes `!user && !isPublic` produced, which is the
