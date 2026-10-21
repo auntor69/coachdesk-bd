@@ -827,8 +827,8 @@ test('the exam’s own date decides its month, and the range is half-open', asyn
     'gte exam_date 2026-08-01',
     'lt exam_date 2026-09-01',
   ])
-  // Date first, then title: two tests on one day should not come back interleaved.
-  assert.deepEqual(f.queries[0].orders, ['exam_date', 'title'])
+  // Date first, then title, then id as a deterministic tie-breaker across pages.
+  assert.deepEqual(f.queries[0].orders, ['exam_date', 'title', 'id'])
 })
 
 test('a month with no exams costs one query, not two', async () => {

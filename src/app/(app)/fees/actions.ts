@@ -284,7 +284,7 @@ export async function recordPayment(
   if (!invoiceId) return { error: t.errors.noInvoice }
 
   const amount = parseTaka(String(formData.get('amount') ?? ''))
-  if (amount === null) return { error: t.errors.amountUnreadable }
+  if (amount === null || amount > MAX_TAKA) return { error: t.errors.amountUnreadable }
   if (amount === 0) return { error: t.errors.amountZero }
   // A refund is a negative payment and has its own form below this one, which turns a
   // positive figure negative on the way in. So a negative typed *here* is a slipped

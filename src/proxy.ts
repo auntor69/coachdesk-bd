@@ -25,7 +25,7 @@ import { hasSessionCookie } from '@/lib/auth/session-cookie'
  * unreachable in exactly the state that makes it matter (MASTERPLAN.md §14.1). The pages
  * read no tenant data: every word is a constant in src/lib/legal.
  */
-const PUBLIC_ROUTES = ['/login', '/signup', '/onboarding', '/auth', '/offline', '/legal']
+const PUBLIC_ROUTES = ['/login', '/signup', '/onboarding', '/auth', '/offline', '/legal', '/terms']
 
 /**
  * Routes authenticated by a bearer token instead of a cookie.

@@ -1,4 +1,5 @@
 import type { createClient } from '../supabase/server.ts'
+import { pageOrNull } from '../supabase/page.ts'
 import type { ExamTypeUse, SubjectUse, TeacherUse } from './retire.ts'
 
 type Supabase = Awaited<ReturnType<typeof createClient>>
@@ -100,18 +101,33 @@ export async function readSubjectUses(
   centerId: string,
 ): Promise<Map<string, SubjectUse> | null> {
   const [batches, enrolments, exams] = await Promise.all([
-    supabase
-      .from('batches')
-      .select('subject_id, active')
-      .eq('coaching_center_id', centerId),
-    supabase
-      .from('enrollments')
-      .select('subject_id')
-      .eq('coaching_center_id', centerId),
-    supabase.from('exams').select('subject_id').eq('coaching_center_id', centerId),
+    pageOrNull<{ subject_id: string; active: boolean }>((from, to) =>
+      supabase
+        .from('batches')
+        .select('subject_id, active')
+        .eq('coaching_center_id', centerId)
+        .order('id', { ascending: true })
+        .range(from, to),
+    ),
+    pageOrNull<{ subject_id: string }>((from, to) =>
+      supabase
+        .from('enrollments')
+        .select('subject_id')
+        .eq('coaching_center_id', centerId)
+        .order('id', { ascending: true })
+        .range(from, to),
+    ),
+    pageOrNull<{ subject_id: string }>((from, to) =>
+      supabase
+        .from('exams')
+        .select('subject_id')
+        .eq('coaching_center_id', centerId)
+        .order('id', { ascending: true })
+        .range(from, to),
+    ),
   ])
 
-  if (!batches.data || !enrolments.data || !exams.data) return null
+  if (!batches || !enrolments || !exams) return null
 
   const uses = new Map<string, SubjectUse>()
   const at = (id: string): SubjectUse => {
@@ -122,13 +138,13 @@ export async function readSubjectUses(
     return fresh
   }
 
-  for (const batch of batches.data) {
+  for (const batch of batches) {
     const use = at(batch.subject_id)
     use.batchCount += 1
     if (batch.active) use.liveBatchCount += 1
   }
-  for (const enrolment of enrolments.data) at(enrolment.subject_id).enrolmentCount += 1
-  for (const exam of exams.data) at(exam.subject_id).examCount += 1
+  for (const enrolment of enrolments) at(enrolment.subject_id).enrolmentCount += 1
+  for (const exam of exams) at(exam.subject_id).examCount += 1
 
   return uses
 }
@@ -159,10 +175,14 @@ export async function readExamTypeUses(
   supabase: Supabase,
   centerId: string,
 ): Promise<Map<string, ExamTypeUse> | null> {
-  const { data } = await supabase
-    .from('exams')
-    .select('exam_type_id')
-    .eq('coaching_center_id', centerId)
+  const data = await pageOrNull<{ exam_type_id: string | null }>((from, to) =>
+    supabase
+      .from('exams')
+      .select('exam_type_id')
+      .eq('coaching_center_id', centerId)
+      .order('id', { ascending: true })
+      .range(from, to),
+  )
 
   if (!data) return null
 

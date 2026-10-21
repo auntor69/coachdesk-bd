@@ -161,6 +161,10 @@ export function AttendanceRoster({
 
   /** Only what has been tapped since the page opened. Empty on arrival. */
   const [tapped, setTapped] = useState<Record<string, AttendanceStatus>>({})
+  const [typedNote, setTypedNote] = useState<string | null>(null)
+  const latestNote = useRef<string | null>(null)
+  const savedNote = typeof draft?.__note === 'string' ? draft.__note : null
+  const currentNote = typedNote ?? savedNote ?? note
 
   // Built from the roster the server sent, so a stale draft cannot resurrect a
   // student who has since left the batch: an id nobody is enrolled under never
@@ -217,7 +221,14 @@ export function AttendanceRoster({
     // Written here rather than in an effect on `marks`: the tab may never get
     // another frame, and an effect would also fire once on mount — before the
     // draft had been read — and overwrite the thing it was about to restore.
-    writeDraft(draftKey, next)
+    const noteToSave = latestNote.current ?? savedNote
+    writeDraft(draftKey, noteToSave !== null ? { ...next, __note: noteToSave } : next)
+  }
+
+  function setNoteValue(value: string) {
+    latestNote.current = value
+    setTypedNote(value)
+    writeDraft(draftKey, { ...(latest.current ?? marks), __note: value })
   }
 
   const counts = { present: 0, late: 0, absent: 0, excused: 0 }
@@ -285,7 +296,8 @@ export function AttendanceRoster({
         </span>
         <textarea
           name="note"
-          defaultValue={note}
+          value={currentNote}
+          onChange={(e) => setNoteValue(e.target.value)}
           rows={2}
           maxLength={MAX_TEXT}
           placeholder={t.notePlaceholder}

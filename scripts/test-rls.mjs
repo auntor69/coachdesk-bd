@@ -17313,6 +17313,37 @@ check(
   await deniedAsUser(db, null, 'select * from platform_reconciliation()'),
 )
 
+// --- PERF-02 & PERF-03 indexes and view pushdown (20260811000099) ------------
+
+check(
+  'all 18 hot-path composite and FK indexes from 20260811000099 exist',
+  (await n(
+    db,
+    `select count(*)::int as n from pg_indexes
+      where schemaname = 'public'
+        and indexname in (
+          'fee_invoices_center_month_idx',
+          'fee_payments_center_invoice_idx',
+          'fee_payments_student_idx',
+          'attendance_records_center_session_idx',
+          'exam_results_center_exam_idx',
+          'enrollments_center_student_idx',
+          'students_center_name_idx',
+          'batches_center_subject_idx',
+          'enrollments_center_subject_idx',
+          'exams_center_subject_idx',
+          'exams_center_exam_type_idx',
+          'teacher_subjects_center_subject_idx',
+          'teacher_permissions_center_teacher_idx',
+          'batch_schedules_center_batch_idx',
+          'teachers_center_branch_idx',
+          'employees_center_branch_idx',
+          'batches_center_branch_idx',
+          'notices_center_branch_idx'
+        )`,
+  )) === 18,
+)
+
 console.log(`\n${passed} passed, ${failed} failed`)
 await db.close()
 process.exit(failed ? 1 : 0)

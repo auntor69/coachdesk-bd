@@ -14,6 +14,8 @@
  */
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
+import { readdirSync, readFileSync } from 'node:fs'
+import { join } from 'node:path'
 
 import {
   pageAll,
@@ -199,4 +201,39 @@ test('worstFailure mixes reads of different row types', () => {
   const invoices = { rows: [{ id: 'i1' }] }
   const payments: { failed: 'unreadable' } = { failed: 'unreadable' }
   assert.equal(worstFailure(invoices, payments), 'unreadable')
+})
+
+test('every paged range(from, to) query in src/ carries a unique tie-breaker order (PERF-01)', () => {
+  const files: string[] = []
+  function walk(dir: string) {
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      const full = join(dir, entry.name)
+      if (entry.isDirectory()) walk(full)
+      else if (entry.name.endsWith('.ts') || entry.name.endsWith('.tsx')) files.push(full)
+    }
+  }
+  walk(join(process.cwd(), 'src'))
+
+  const missing: string[] = []
+  let totalPaged = 0
+
+  for (const file of files) {
+    const src = readFileSync(file, 'utf8')
+    const lines = src.split('\n')
+    for (let i = 0; i < lines.length; i++) {
+      const trimmed = lines[i].trim()
+      if (trimmed.startsWith('*') || trimmed.startsWith('//')) continue
+      if (lines[i].includes('.range(from, to)')) {
+        totalPaged += 1
+        const window = lines.slice(Math.max(0, i - 18), i + 1).join('\n')
+        const hasTieBreaker = /\.order\(\s*'(id|student_id|receipt_no)'/.test(window)
+        if (!hasTieBreaker) {
+          missing.push(`${file}:${i + 1}`)
+        }
+      }
+    }
+  }
+
+  assert.ok(totalPaged >= 45, `expected at least 45 paged queries, found ${totalPaged}`)
+  assert.deepEqual(missing, [], `paged queries without a unique tie-breaker order: ${missing.join(', ')}`)
 })

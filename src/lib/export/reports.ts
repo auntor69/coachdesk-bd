@@ -306,6 +306,7 @@ async function buildStudents(ctx: ReportContext): Promise<BuildResult> {
       // one file — and a file is the one place that would never be noticed.
       .eq('coaching_center_id', ctx.centerId)
       .order('name', { ascending: true })
+      .order('id', { ascending: true })
       .range(from, to),
   )
   if ('failed' in got) return { ok: false, reason: got.failed }
@@ -478,6 +479,7 @@ async function buildDues(ctx: ReportContext): Promise<BuildResult> {
       .eq('period_month', ctx.month)
       .is('voided_at', null)
       .order('student_name', { ascending: true })
+      .order('id', { ascending: true })
       .range(from, to),
   )
   if ('failed' in got) return { ok: false, reason: got.failed }
@@ -598,20 +600,32 @@ async function buildAttendance(ctx: ReportContext): Promise<BuildResult> {
   const t = d.exportSheet
   const nextMonth = addMonths(ctx.month, 1)
 
-  const sessions = await pageAll<SessionRow>((from, to) =>
-    ctx.supabase
-      .from('attendance_sessions')
-      .select(ATTENDANCE_SESSION_COLUMNS)
-      .eq('coaching_center_id', ctx.centerId)
-      // `session_date` is a date and not a timestamptz, so these are plain calendar
-      // bounds that need none of the +06:00 the collections sheet lives or dies by.
-      // Half-open anyway, so both monthly sheets are read the same way.
-      .gte('session_date', ctx.month)
-      .lt('session_date', nextMonth)
-      .order('session_date', { ascending: true })
-      .range(from, to),
-  )
+  const [sessions, roster] = await Promise.all([
+    pageAll<SessionRow>((from, to) =>
+      ctx.supabase
+        .from('attendance_sessions')
+        .select(ATTENDANCE_SESSION_COLUMNS)
+        .eq('coaching_center_id', ctx.centerId)
+        // `session_date` is a date and not a timestamptz, so these are plain calendar
+        // bounds that need none of the +06:00 the collections sheet lives or dies by.
+        // Half-open anyway, so both monthly sheets are read the same way.
+        .gte('session_date', ctx.month)
+        .lt('session_date', nextMonth)
+        .order('session_date', { ascending: true })
+        .order('id', { ascending: true })
+        .range(from, to),
+    ),
+    pageAll<RosterRow>((from, to) =>
+      ctx.supabase
+        .from('enrollments')
+        .select(ROSTER_COLUMNS)
+        .eq('coaching_center_id', ctx.centerId)
+        .order('id', { ascending: true })
+        .range(from, to),
+    ),
+  ])
   if ('failed' in sessions) return { ok: false, reason: sessions.failed }
+  if ('failed' in roster) return { ok: false, reason: roster.failed }
 
   // When each batch met, and what each student was marked, off the same pass. A
   // second query for the records would have to name every session id in a URL.
@@ -631,20 +645,6 @@ async function buildAttendance(ctx: ReportContext): Promise<BuildResult> {
       tally.set(record.enrollment_id, counts)
     }
   }
-
-  // The whole centre's enrolments, filtered here rather than in the query — the same
-  // trade the fee sheet makes, and for the same reason. The month test needs two
-  // comparisons against a nullable timestamp, which is a PostgREST `or(…)` string
-  // that no reader of this file could check; in JS it is three lines.
-  const roster = await pageAll<RosterRow>((from, to) =>
-    ctx.supabase
-      .from('enrollments')
-      .select(ROSTER_COLUMNS)
-      .eq('coaching_center_id', ctx.centerId)
-      .order('id', { ascending: true })
-      .range(from, to),
-  )
-  if ('failed' in roster) return { ok: false, reason: roster.failed }
 
   const monthStart = Date.parse(`${ctx.month}T00:00:00+06:00`)
   const monthEnd = Date.parse(`${nextMonth}T00:00:00+06:00`)
@@ -777,6 +777,7 @@ async function buildMarks(ctx: ReportContext): Promise<BuildResult> {
       .lt('exam_date', nextMonth)
       .order('exam_date', { ascending: true })
       .order('title', { ascending: true })
+      .order('id', { ascending: true })
       .range(from, to),
   )
   if ('failed' in exams) return { ok: false, reason: exams.failed }

@@ -125,6 +125,7 @@ export async function planResultSms(
       `id, obtained_marks, is_absent, note,
        enrollments (
          id,
+         status,
          students (
            id, name, guardian_phone, sms_opt_out, preferred_channel,
            guardians (id, phone, is_primary, sms_opt_out)
@@ -138,11 +139,15 @@ export async function planResultSms(
   const notesTrimmed: string[] = []
   let skippedOptedOut = 0
   let skippedNoPhone = 0
+  let activeResultCount = 0
 
   for (const result of results ?? []) {
     const enrollment = Array.isArray(result.enrollments)
       ? result.enrollments[0]
       : result.enrollments
+    if (!enrollment?.status || enrollment.status === 'active') {
+      activeResultCount++
+    }
     const student = Array.isArray(enrollment?.students)
       ? enrollment?.students[0]
       : enrollment?.students
@@ -223,7 +228,7 @@ export async function planResultSms(
     recipients,
     skippedOptedOut,
     skippedNoPhone,
-    withoutMarks: Math.max(0, rosterSize - (results ?? []).length),
+    withoutMarks: Math.max(0, rosterSize - activeResultCount),
     notesTrimmed,
     creditCost: recipients.reduce((sum, r) => sum + r.segments, 0),
     anyMultiSegment: recipients.some((r) => r.segments > 1),
