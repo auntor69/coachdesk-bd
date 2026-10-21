@@ -135,7 +135,7 @@ export async function changeOwnPassword(
    * reported as a wrong password. It is reachable for a real-email account created
    * outside the app; the founder's own is the only one, and it has both.
    */
-  const identifier = session.phone ?? session.username
+  const identifier = session.email ?? session.username ?? session.phone
   const loginEmail = identifier ? loginEmailFor(identifier) : null
   if (!loginEmail) return { error: t.errors.failed }
 

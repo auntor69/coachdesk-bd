@@ -353,7 +353,7 @@ export async function createCenter(
    * is here so the refusal arrives as a sentence under the field rather than as a
    * Postgres error string.
    */
-  if (session.username) {
+  if (session.username || !session.email) {
     return { error: dict(session.locale).noCenter.refused, field: 'center' }
   }
 

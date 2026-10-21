@@ -287,7 +287,7 @@ export async function saveEmployee(
     return { error: t.staff.errors.leftBeforeJoined }
   }
 
-  const { error } = await supabase
+  const { data: saved, error } = await supabase
     .from('employees')
     .update({
       name: fields.name,
@@ -301,10 +301,12 @@ export async function saveEmployee(
     })
     .eq('id', employeeId)
     .eq('coaching_center_id', session.active.centerId)
+    .select('id')
 
-  if (error) return { error: t.errors.saveFailed }
+  if (error || !saved || saved.length === 0) return { error: t.errors.saveFailed }
 
   revalidatePath('/settings/staff')
+  revalidatePath('/payroll')
   return { ok: t.saved }
 }
 
@@ -335,14 +337,16 @@ export async function setEmployeeActive(
   const supabase = await createClient()
 
   if (next === 'on') {
-    const { error } = await supabase
+    const { data: saved, error } = await supabase
       .from('employees')
       .update({ active: true, left_on: null })
       .eq('id', employeeId)
       .eq('coaching_center_id', session.active.centerId)
+      .select('id')
 
-    if (error) return { error: t.errors.changeFailed }
+    if (error || !saved || saved.length === 0) return { error: t.errors.changeFailed }
     revalidatePath('/settings/staff')
+    revalidatePath('/payroll')
     return { ok: t.saved }
   }
 
@@ -360,7 +364,7 @@ export async function setEmployeeActive(
   if (leftOn > todayInDhaka()) return { error: t.staff.errors.dateFuture }
   if (leftOn < dates.joined_on) return { error: t.staff.errors.leftBeforeJoined }
 
-  const { error } = await supabase
+  const { data: saved, error } = await supabase
     .from('employees')
     .update({
       active: false,
@@ -368,9 +372,11 @@ export async function setEmployeeActive(
     })
     .eq('id', employeeId)
     .eq('coaching_center_id', session.active.centerId)
+    .select('id')
 
-  if (error) return { error: t.errors.changeFailed }
+  if (error || !saved || saved.length === 0) return { error: t.errors.changeFailed }
 
   revalidatePath('/settings/staff')
+  revalidatePath('/payroll')
   return { ok: t.saved }
 }

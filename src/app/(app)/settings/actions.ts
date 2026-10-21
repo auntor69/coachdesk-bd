@@ -44,6 +44,7 @@ import {
 import { SLOT_ORDER } from '@/lib/bd/schedule'
 import { dayName, formatTime } from '@/lib/bd/time'
 import { MAX_NAME, MAX_LABEL, clamp } from '@/lib/limits'
+import { MAX_TAKA } from '@/lib/money'
 import { PERMISSION_KEYS, type PermissionKey } from '@/lib/permissions'
 import type { Capability } from '@/lib/staff/capabilities'
 import { dict } from '@/lib/i18n'
@@ -1145,7 +1146,7 @@ export async function createBatch(
   if (!name) return { error: t.batches.errors.nameRequired }
   if (name.length > MAX_NAME) return { error: nameTooLong(session.locale) }
   if (!subjectId) return { error: t.batches.errors.pickSubject }
-  if (!Number.isFinite(monthlyFee) || monthlyFee < 0) {
+  if (!Number.isFinite(monthlyFee) || monthlyFee < 0 || monthlyFee > MAX_TAKA) {
     return { error: t.batches.errors.feeUnreadable }
   }
   // The database has the same check; catching it here gives a field-level
@@ -1331,7 +1332,7 @@ export async function updateBatch(
   if (!name) return { error: t.batches.errors.nameRequired }
   if (name.length > MAX_NAME) return { error: nameTooLong(session.locale) }
   if (!subjectId) return { error: t.batches.errors.pickSubject }
-  if (!Number.isFinite(monthlyFee) || monthlyFee < 0) {
+  if (!Number.isFinite(monthlyFee) || monthlyFee < 0 || monthlyFee > MAX_TAKA) {
     return { error: t.batches.errors.feeUnreadable }
   }
   if (startTime && endTime && endTime <= startTime) {
@@ -1531,11 +1532,12 @@ export async function updateBatch(
   // actually sat in, and rewriting history to match a correction made later would
   // move marks under a subject nobody was taught.
   if (subjectRow.id !== before.subject_id) {
-    await supabase
+    const { error: subjectSyncError } = await supabase
       .from('enrollments')
       .update({ subject_id: subjectRow.id })
       .eq('coaching_center_id', session.active.centerId)
       .eq('batch_id', batchId)
+    if (subjectSyncError) return { error: t.batches.errors.saveFailed }
   }
 
   // The days are edited as a set, so they are written as one: whatever is on the
@@ -1720,13 +1722,21 @@ export async function createStudent(
 
   // The guardian row is what the SMS sender reads. students.guardian_phone is
   // kept in step for display, so a roster never has to join to show a number.
-  await supabase.from('guardians').insert({
+  const { error: guardianError } = await supabase.from('guardians').insert({
     coaching_center_id: session.active.centerId,
     student_id: student.id,
     name: guardianName || null,
     phone: guardianPhone,
     is_primary: true,
   })
+  if (guardianError) {
+    await supabase
+      .from('students')
+      .delete()
+      .eq('coaching_center_id', session.active.centerId)
+      .eq('id', student.id)
+    return { error: t.errors.addFailed }
+  }
 
   // Captured, not dropped: see `enrolmentRefusal`. The revalidations below still have
   // to run either way, because the student is on the roster whatever happened here.
@@ -2007,7 +2017,7 @@ export async function updateStudent(
   // Updating only one of them fixes half the product and leaves the other half
   // texting a stranger — which is worse than the original typo, because the owner
   // has now watched themselves correct it.
-  const { data: touched } = await supabase
+  const { data: touched, error: touchError } = await supabase
     .from('guardians')
     .update({ phone: guardianPhone, name: guardianName || null })
     .eq('coaching_center_id', session.active.centerId)
@@ -2015,17 +2025,20 @@ export async function updateStudent(
     .eq('is_primary', true)
     .select('id')
 
+  if (touchError) return { error: t.students.errors.saveFailed }
+
   // No primary guardian row at all: a student imported before guardians existed, or
   // one whose guardian insert failed. The edit is where that gets repaired rather
   // than noticed, so it is created instead of skipped.
   if ((touched ?? []).length === 0) {
-    await supabase.from('guardians').insert({
+    const { error: guardianInsertError } = await supabase.from('guardians').insert({
       coaching_center_id: session.active.centerId,
       student_id: studentId,
       name: guardianName || null,
       phone: guardianPhone,
       is_primary: true,
     })
+    if (guardianInsertError) return { error: t.students.errors.saveFailed }
   }
 
   let enrolFailure: unknown = null
@@ -2035,7 +2048,7 @@ export async function updateStudent(
     // The invoices already raised for these months are left alone: the student was
     // taught, so the money is owed, and a bill that disappears when somebody leaves
     // is a bill the centre never collects.
-    await supabase
+    const { error: endError } = await supabase
       .from('enrollments')
       .update({
         status: status === 'active' ? 'dropped' : ENROLMENT_END[status],
@@ -2046,6 +2059,7 @@ export async function updateStudent(
         'id',
         toEnd.map((e) => e.id),
       )
+    if (endError) enrolFailure = enrolFailure ?? endError
   }
 
   if (toRevive.length > 0) {
@@ -2085,6 +2099,8 @@ export async function updateStudent(
   }
 
   revalidatePath('/settings/students')
+  revalidatePath(`/settings/students/${studentId}`)
+  revalidatePath(`/students/${studentId}`)
   revalidatePath('/teach')
   revalidatePath('/dashboard')
   // The two screens that read a guardian's number: the fee board and the reminder
@@ -2598,29 +2614,39 @@ export async function createTeacher(
   // reads as "no restrictions" downstream — the SMS gate only closes on an
   // explicit `can_send_sms === false`. Absent means allowed, so absent is not an
   // option for a teacher an owner just configured.
-  await supabase.from('teacher_permissions').insert({
+  //
+  // AND SO ITS RESULT IS READ. It used to be awaited and dropped, which made the
+  // sentence above a hope: a write that failed left exactly the absent row it says
+  // is not an option, so a teacher whose owner unticked marks and SMS could enter
+  // marks and spend credits anyway, and the boxes the owner did tick (fees, roster,
+  // batches) were silently never granted. Each of the three writes below now stops
+  // the add, and the add is taken back rather than left half-made — see the end.
+  const { error: permissionsError } = await supabase.from('teacher_permissions').insert({
     teacher_id: teacher.id,
     coaching_center_id: centerId,
     ...permissions,
   })
 
-  if (ownSubjectIds.length > 0) {
-    await supabase.from('teacher_subjects').insert(
+  let childError = permissionsError
+
+  if (!childError && ownSubjectIds.length > 0) {
+    const { error: subjectsError } = await supabase.from('teacher_subjects').insert(
       ownSubjectIds.map((subjectId) => ({
         teacher_id: teacher.id,
         subject_id: subjectId,
         coaching_center_id: centerId,
       })),
     )
+    childError = subjectsError
   }
 
-  if (userId) {
+  if (!childError && userId) {
     // The membership is what makes the centre visible to them at all, and its branch is
     // how much of it. Unique on (center, user, role), so a re-linked teacher who is
     // already a member is a no-op rather than an error — and `ignoreDuplicates` means
     // their existing access is left where the owner set it rather than reset by a form
     // that was really about a name.
-    await supabase.from('center_members').upsert(
+    const { error: memberError } = await supabase.from('center_members').upsert(
       {
         coaching_center_id: centerId,
         user_id: userId,
@@ -2629,6 +2655,35 @@ export async function createTeacher(
       },
       { onConflict: 'coaching_center_id,user_id,role', ignoreDuplicates: true },
     )
+    childError = memberError
+  }
+
+  /*
+   * One of the three did not arrive, so the teacher row this call inserted is taken back
+   * and the owner is told nothing was added — which is then true, and the retry they make
+   * starts clean instead of making a second row for the same person.
+   *
+   * Taking it back is enough: teacher_permissions and teacher_subjects cascade from the
+   * row (see retire.ts), and the membership is the last write, so it never exists when
+   * this runs. The auth account is left alone for the reason given above the insert and
+   * on deleteTeacher: it may be somebody's login elsewhere, and a retry relinks it.
+   *
+   * If the take-back fails too, the row stays with whatever arrived. The owner still sees
+   * addFailed, and /settings/teachers draws a missing permissions row as the defaults that
+   * are actually in force, so what the teacher may do is on screen to be corrected.
+   */
+  if (childError) {
+    const { data: undone, error: undoError } = await supabase
+      .from('teachers')
+      .delete()
+      .eq('coaching_center_id', centerId)
+      .eq('id', teacher.id)
+      .select('id')
+
+    if (undoError || !undone || undone.length === 0) {
+      console.error('[createTeacher] could not take back a half-added teacher', teacher.id)
+    }
+    return { error: t.errors.addFailed }
   }
 
   revalidatePath('/settings/teachers')
@@ -2794,22 +2849,24 @@ export async function updateTeacher(
   const added = wanted.filter((id) => !had.includes(id))
 
   if (gone.length > 0) {
-    await supabase
+    const { error: clearSubjectsError } = await supabase
       .from('teacher_subjects')
       .delete()
       .eq('coaching_center_id', centerId)
       .eq('teacher_id', teacherId)
       .in('subject_id', gone)
+    if (clearSubjectsError) return { error: t.errors.saveFailed }
   }
 
   if (added.length > 0) {
-    await supabase.from('teacher_subjects').insert(
+    const { error: insertSubjectsError } = await supabase.from('teacher_subjects').insert(
       added.map((subjectId) => ({
         teacher_id: teacherId,
         subject_id: subjectId,
         coaching_center_id: centerId,
       })),
     )
+    if (insertSubjectsError) return { error: t.errors.saveFailed }
   }
 
   /*
@@ -2967,27 +3024,27 @@ export async function toggleTeacherActive(
   if (error) return ceilingRefusal(session, error) ?? { error: t.errors.changeFailed }
 
   if (teacher.user_id) {
-    if (active) {
-      // Back on, and back to seeing the building they teach in. Switching off deleted
-      // the row, so there is no pin left to preserve, and null would hand somebody
-      // returning to a Mirpur job the whole organisation. The list can widen it.
-      await supabase.from('center_members').upsert(
-        {
-          coaching_center_id: centerId,
-          user_id: teacher.user_id,
-          role: 'teacher',
-          branch_id: teacher.branch_id,
-        },
-        { onConflict: 'coaching_center_id,user_id,role', ignoreDuplicates: true },
-      )
-    } else {
-      await supabase
-        .from('center_members')
-        .delete()
-        .eq('coaching_center_id', centerId)
-        .eq('user_id', teacher.user_id)
-        .eq('role', 'teacher')
-    }
+    const { error: memberError } = active
+      ? // Back on, and back to seeing the building they teach in. Switching off deleted
+        // the row, so there is no pin left to preserve, and null would hand somebody
+        // returning to a Mirpur job the whole organisation. The list can widen it.
+        await supabase.from('center_members').upsert(
+          {
+            coaching_center_id: centerId,
+            user_id: teacher.user_id,
+            role: 'teacher',
+            branch_id: teacher.branch_id,
+          },
+          { onConflict: 'coaching_center_id,user_id,role', ignoreDuplicates: true },
+        )
+      : await supabase
+          .from('center_members')
+          .delete()
+          .eq('coaching_center_id', centerId)
+          .eq('user_id', teacher.user_id)
+          .eq('role', 'teacher')
+
+    if (memberError) return { error: t.errors.changeFailed }
   }
 
   revalidatePath('/settings/teachers')
@@ -3293,7 +3350,7 @@ export async function giveTeacherLogin(
   // numbers — so writing one here would quietly let somebody back in through the
   // login screen an owner has just been given a button for.
   if (teacher.active) {
-    await supabase.from('center_members').upsert(
+    const { error: memberError } = await supabase.from('center_members').upsert(
       {
         coaching_center_id: centerId,
         user_id: userId,
@@ -3304,6 +3361,7 @@ export async function giveTeacherLogin(
       },
       { onConflict: 'coaching_center_id,user_id,role', ignoreDuplicates: true },
     )
+    if (memberError) return { error: t.teachers.errors.loginFailed }
   }
 
   revalidatePath('/settings/teachers')

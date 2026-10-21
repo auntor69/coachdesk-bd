@@ -16,7 +16,7 @@ import { createServerClient } from '@supabase/ssr'
  * shows a login form it cannot submit. The page reads no session and no cookie by
  * design, precisely so that being public costs nothing; see its own note.
  */
-const PUBLIC_ROUTES = ['/login', '/signup', '/onboarding', '/auth', '/offline']
+const PUBLIC_ROUTES = ['/login', '/signup', '/onboarding', '/auth', '/offline', '/terms']
 
 /**
  * Routes authenticated by a bearer token instead of a cookie.

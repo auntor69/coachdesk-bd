@@ -151,6 +151,16 @@ export type OrgBilling = {
    * 20260811000059 — never hand-set, and unwritable from a browser.
    */
   paid_through: string | null
+  /**
+   * `coaching_centers.created_at` — used to bound the legacy unrecorded-coverage
+   * grace period. A new centre on a paid tier with no coverage after cutover lapses
+   * after 14 days.
+   */
+  created_at?: string | Date | null
+  /** `coaching_centers.charged_through` — the date up to which daily rate was settled. */
+  charged_through?: string | null
+  /** `coaching_centers.balance_poisha` — the prepaid balance in poisha. */
+  balance_poisha?: number | null
 }
 
 /** The answer. Three fields, and none of them says how it was arrived at. */
@@ -229,7 +239,26 @@ function trialPlan(org: OrgBilling, paid: PlanLimits, now: Date): PlanLimits | n
  */
 function coverageLapsed(org: OrgBilling, paid: PlanLimits, now: Date): boolean {
   if (org.status !== 'active') return false
-  if (!org.paid_through) return false
+  if (!org.paid_through) {
+    // Null coverage on free plan never lapses.
+    if (paid.pricing === 'free') return false
+
+    // BILL-03: For new centres created after the prepaid cutover on a paid plan with
+    // no paid_through recorded, lapse after 14 days so newly created centres cannot
+    // retain perpetual free access on paid tiers without payment or wallet balance.
+    // Legacy centres with no created_at recorded continue to fail open.
+    if (org.created_at) {
+      const created =
+        org.created_at instanceof Date ? org.created_at : new Date(org.created_at)
+      if (Number.isFinite(created.getTime())) {
+        const createdDay = todayInDhaka(created)
+        if (daysBetween(createdDay, todayInDhaka(now)) > 14) {
+          return true
+        }
+      }
+    }
+    return false
+  }
   if (paid.pricing === 'free') return false
 
   // Calendar days in Dhaka on both sides, because `paid_through` is a `date` with no

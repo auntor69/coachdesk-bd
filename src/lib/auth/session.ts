@@ -81,6 +81,7 @@ export type Membership = {
    * Null is not lapsed, here as everywhere: see `coverageLapsed`.
    */
   paidThrough: string | null
+  createdAt: string | null
   /**
    * What this person may do at this centre, narrowed one capability at a time
    * (MASTERPLAN.md §6.2), or null for the whole of the role.
@@ -120,6 +121,7 @@ export function billingOf(m: Membership): OrgBilling {
     trial_ends_at: m.trialEndsAt,
     student_capacity: m.studentCapacity,
     paid_through: m.paidThrough,
+    created_at: m.createdAt,
   }
 }
 
@@ -280,7 +282,7 @@ export const getSession = cache(async (): Promise<Session | null> => {
       // `'a' + 'b'` widens to `string` and every column on the row comes back as
       // `GenericStringError`. Wrapping this for width costs the whole embed's typing.
       .select(
-        'coaching_center_id, role, branch_id, capabilities, coaching_centers (name, plan, status, sms_credit_balance, student_capacity, trial_plan, trial_ends_at, paid_through)',
+        'coaching_center_id, role, branch_id, capabilities, coaching_centers (name, plan, status, sms_credit_balance, student_capacity, trial_plan, trial_ends_at, paid_through, created_at)',
       )
       .eq('user_id', user.id)
       .eq('active', true),
@@ -331,6 +333,7 @@ export const getSession = cache(async (): Promise<Session | null> => {
           trialEndsAt: center.trial_ends_at,
           studentCapacity: center.student_capacity,
           paidThrough: center.paid_through,
+          createdAt: center.created_at ?? null,
           capabilities: narrowed.get(row.coaching_center_id) ?? null,
         }
       })

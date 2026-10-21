@@ -121,6 +121,8 @@ export const en: Dictionary = {
     usernameLabel: 'Login username',
     usernameHint:
       'This is what you sign in with. To change it, ask the centre owner.',
+    emailLabel: 'Login email',
+    emailHint: 'This is the email address you sign in with.',
     passwordTitle: 'Change your password',
     passwordBody:
       'The new password works straight away. Another phone that is already signed in will not be signed out on its own — you have to log out on that phone.',
@@ -5246,6 +5248,7 @@ export const en: Dictionary = {
       payments: 'Paid to us',
       payment_intents: 'Payment requests',
       subscriptions: 'Subscription',
+      policy_acceptances: 'Policy acceptances',
     },
     actions: {
       planChanged: 'Plan changed',

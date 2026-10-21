@@ -425,6 +425,35 @@ test('no coverage recorded never suspends anybody', () => {
   assert.equal(effectiveEntitlement(org({ paid_through: null }), NOW).access, 'full')
 })
 
+test('new center on paid tier without coverage lapses after 14 days', () => {
+  // BILL-03: Centres created after cutover on a paid tier with no coverage record
+  // are allowed 14 days of setup, after which unrecorded coverage lapses.
+  assert.equal(
+    effectiveEntitlement(
+      org({ plan: 'center', paid_through: null, created_at: '2026-08-20T00:00:00Z' }),
+      NOW,
+    ).access,
+    'full',
+    'within 14 days of creation on paid tier still has access',
+  )
+  assert.equal(
+    effectiveEntitlement(
+      org({ plan: 'center', paid_through: null, created_at: '2026-08-01T00:00:00Z' }),
+      NOW,
+    ).access,
+    'read_only',
+    'past 14 days without coverage on paid tier lapses to read_only',
+  )
+  assert.equal(
+    effectiveEntitlement(
+      org({ plan: 'teacher_free', paid_through: null, created_at: '2026-08-01T00:00:00Z' }),
+      NOW,
+    ).access,
+    'full',
+    'free tier never lapses regardless of created_at',
+  )
+})
+
 test('a coverage date that is not a date grants access rather than removing it', () => {
   // The one fallback in this file that points the loose way, and the reason is that the
   // two directions are not symmetrical: an unreadable trial date falls back to what the

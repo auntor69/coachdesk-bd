@@ -369,8 +369,9 @@ test('only the seventeen tables with triggers are audited', () => {
   // the other direction — that no trigger exists without a name here.
   assert.equal(isAuditedTable('payment_intents'), true)
   assert.equal(isAuditedTable('fee_scholarships'), true)
+  assert.equal(isAuditedTable('policy_acceptances'), true)
   assert.equal(isAuditedTable(''), false)
-  assert.equal(AUDITED_TABLES.length, 17)
+  assert.equal(AUDITED_TABLES.length, 18)
 })
 
 test('a payment request is named by which end it reached', () => {

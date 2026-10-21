@@ -96,7 +96,7 @@ export default async function OnboardingPage() {
   const d = dict(session.locale)
   const t = d.noCenter
 
-  if (session.username) {
+  if (session.username || !session.email) {
     return (
       <main className="flex min-h-full flex-1 flex-col justify-center px-5 py-10">
         <div className="mx-auto w-full max-w-md">

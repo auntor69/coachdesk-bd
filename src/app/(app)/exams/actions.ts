@@ -338,7 +338,7 @@ export async function saveMarks(
   }
 
   if (toClear.length > 0) {
-    await supabase
+    const { error: clearError } = await supabase
       .from('exam_results')
       .delete()
       .eq('coaching_center_id', session.active.centerId)
@@ -347,6 +347,8 @@ export async function saveMarks(
         'enrollment_id',
         toClear.map((m) => m.enrollmentId),
       )
+
+    if (clearError) return { ok: false, error: t.errors.saveFailed }
   }
 
   revalidatePath(`/exams/${exam.id}`)

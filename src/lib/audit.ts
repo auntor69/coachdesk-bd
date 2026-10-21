@@ -66,6 +66,7 @@ export const AUDITED_TABLES = [
   'payments',
   'payment_intents',
   'subscriptions',
+  'policy_acceptances',
 ] as const
 
 export type AuditedTable = (typeof AUDITED_TABLES)[number]
@@ -366,6 +367,9 @@ const RULES: Record<AuditedTable, Rule[]> = {
     { on: 'created', action: 'subscriptionStarted' },
     { column: 'plan', action: 'planChanged', shift: 'plan' },
     { column: 'status', action: 'centerStatusChanged', shift: 'centerStatus' },
+  ],
+  policy_acceptances: [
+    { on: 'created', action: 'rowCreated' },
   ],
 }
 

@@ -35,10 +35,10 @@ const MIGRATION = read('supabase', 'migrations', '20260811000079_email_signup.sq
 const SQL = MIGRATION.replace(/^\s*--.*$/gm, '')
 
 test('the screen refuses the form to a login the centre minted', () => {
-  assert.match(PAGE, /if \(session\.username\) \{/)
+  assert.match(PAGE, /if \(session\.username \|\| !session\.email\) \{/)
 
   // The form is below the refusal, and the refusal returns before reaching it.
-  const branch = PAGE.indexOf('if (session.username) {')
+  const branch = PAGE.indexOf('if (session.username || !session.email) {')
   const form = PAGE.indexOf('<OnboardingForm />')
   assert.ok(branch > 0 && form > branch, 'the form is not behind the username check')
   assert.match(PAGE.slice(branch, form), /return \(/, 'the username branch renders nothing')
@@ -74,7 +74,7 @@ test('the founder is redirected rather than offered a centre', () => {
 
   // And the two readers the page is *for* keep their arms: a minted login still
   // gets the refusal and a real signup still gets the form.
-  assert.match(PAGE, /if \(session\.username\) \{/)
+  assert.match(PAGE, /if \(session\.username \|\| !session\.email\) \{/)
   assert.match(PAGE, /<OnboardingForm \/>/)
 })
 
@@ -85,7 +85,7 @@ test('both readers can leave, which is the part nothing else in the product offe
   // Twice: once per branch. One sign-out on the refusal screen would leave the new
   // signup with no way out, and one under the form would leave the teacher stuck.
   assert.equal(PAGE.split('<SignOut ').length - 1, 2, 'a branch has no way out')
-  const branch = PAGE.indexOf('if (session.username) {')
+  const branch = PAGE.indexOf('if (session.username || !session.email) {')
   const form = PAGE.indexOf('<OnboardingForm />')
   assert.match(PAGE.slice(branch, form), /<SignOut /, 'the refusal screen has no way out')
   assert.match(PAGE.slice(form), /<SignOut /, 'the form has no way out')
@@ -124,7 +124,7 @@ test('the action asks again, because it is a public endpoint', () => {
   assert.ok(start > 0, 'createCenter is not where this test looks')
   const body = ACTIONS.slice(start, ACTIONS.indexOf('\nexport ', start + 10))
 
-  const check = body.indexOf('session.username')
+  const check = body.indexOf('session.username || !session.email')
   const rpc = body.indexOf("rpc('bootstrap_center'")
   assert.ok(check > 0, 'createCenter does not re-check the login it was called with')
   assert.ok(rpc > check, 'createCenter creates the centre before checking who asked')

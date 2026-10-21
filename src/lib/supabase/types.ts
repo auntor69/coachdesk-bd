@@ -1884,6 +1884,51 @@ export type Database = {
         }
         Relationships: []
       }
+      policy_acceptances: {
+        Row: {
+          id: string
+          profile_id: string
+          coaching_center_id: string
+          policy_kind: string
+          policy_version: string
+          accepted_at: string
+          ip: string | null
+        }
+        Insert: {
+          id?: string
+          profile_id: string
+          coaching_center_id: string
+          policy_kind: string
+          policy_version: string
+          accepted_at?: string
+          ip?: string | null
+        }
+        Update: {
+          id?: string
+          profile_id?: string
+          coaching_center_id?: string
+          policy_kind?: string
+          policy_version?: string
+          accepted_at?: string
+          ip?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'policy_acceptances_profile_id_fkey'
+            columns: ['profile_id']
+            isOneToOne: false
+            referencedRelation: 'profiles'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'policy_acceptances_coaching_center_id_fkey'
+            columns: ['coaching_center_id']
+            isOneToOne: false
+            referencedRelation: 'coaching_centers'
+            referencedColumns: ['id']
+          },
+        ]
+      }
       price_versions: {
         Row: {
           id: string

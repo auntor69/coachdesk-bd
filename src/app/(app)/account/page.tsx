@@ -64,17 +64,23 @@ export default async function AccountPage() {
             fact they have an identifier and it is the one they cannot see anywhere
             else. `session.username` comes off the login address itself, so this card
             cannot show one thing while another signs them in. */}
-        {session.phone || !session.username ? (
+        {session.email ? (
           <>
-            <p className="text-sm text-ink-faint">{t.phoneLabel}</p>
-            <p className="num font-medium text-ink">{formatBdMobile(session.phone)}</p>
-            <p className="mt-1 text-sm text-ink-soft">{t.phoneHint}</p>
+            <p className="text-sm text-ink-faint">{t.emailLabel}</p>
+            <p className="font-medium text-ink">{session.email}</p>
+            <p className="mt-1 text-sm text-ink-soft">{t.emailHint}</p>
           </>
-        ) : (
+        ) : session.username ? (
           <>
             <p className="text-sm text-ink-faint">{t.usernameLabel}</p>
             <p className="font-medium text-ink">{session.username}</p>
             <p className="mt-1 text-sm text-ink-soft">{t.usernameHint}</p>
+          </>
+        ) : (
+          <>
+            <p className="text-sm text-ink-faint">{t.phoneLabel}</p>
+            <p className="num font-medium text-ink">{formatBdMobile(session.phone)}</p>
+            <p className="mt-1 text-sm text-ink-soft">{t.phoneHint}</p>
           </>
         )}
       </Card>

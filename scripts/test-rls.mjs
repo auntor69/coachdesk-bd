@@ -15657,6 +15657,7 @@ console.log('\nThe burn (settle, top up, catch up, refuse):')
 const settleMigrations = [
   'supabase/migrations/20260811000080_price_versions.sql',
   'supabase/migrations/20260811000081_settle_billing.sql',
+  'supabase/migrations/20260811000082_settle_billing_and_hardening.sql',
 ]
   // Prose taken off, the same way onboarding.test.ts reads a migration: a
   // comment naming a rule is not the rule, and the header of 81 names
@@ -15999,6 +16000,96 @@ check(
   JSON.stringify(memberSettle.rows[0].out),
 )
 
+// --- DB-01, BILL-01, SEC-02 regressions (20260811000082) --------------------
+
+// 1. Repeated insufficient_balance calls on the same day increment attempt (DB-01)
+const brokeSettleSecond = (
+  await asService('select public.settle_billing($1) as out', [brokeCentre])
+).rows[0].out
+check(
+  'a second insufficient_balance call on the same day increments attempt without 23505',
+  brokeSettleSecond.status === 'insufficient_balance' && brokeSettleSecond.days === 0,
+  JSON.stringify(brokeSettleSecond),
+)
+check(
+  'both insufficient_balance attempts are recorded in settlement_runs',
+  (await n(
+    db,
+    `select count(*)::int as n from app.settlement_runs
+      where coaching_center_id = $1 and charge_date = $2
+        and status = 'insufficient_balance' and attempt in (1, 2)`,
+    [brokeCentre, today],
+  )) === 2,
+)
+
+// 2. Morning base charge (attempt 1) + same-day growth with insufficient balance
+//    records attempt 2 (DB-01) and coerces spoofed ran_by='founder' from a member
+//    session to 'session' (SEC-02).
+const topUpShortCentre = await burnCentre('center', { recharge: 6663 })
+await asService(
+  'update coaching_centers set student_capacity = 100 where id = $1',
+  [topUpShortCentre],
+)
+await asService(
+  `insert into center_members (coaching_center_id, user_id, role)
+   values ($1, $2, 'owner')`,
+  [topUpShortCentre, ids.ownerA],
+)
+const morningBase = (
+  await asService('select public.settle_billing($1) as out', [topUpShortCentre])
+).rows[0].out
+check(
+  'morning base charge settles the floor rate leaving zero balance',
+  morningBase.status === 'settled' && morningBase.dailyPoisha === 6663 && morningBase.balanceAfter === 0,
+  JSON.stringify(morningBase),
+)
+for (let i = 0; i < 3; i += 1) {
+  await asService(
+    `insert into teachers (coaching_center_id, name) values ($1, 'TopUp Teacher ' || $2)`,
+    [topUpShortCentre, String(i)],
+  )
+}
+const noonTopUpShort = (
+  await asUser(db, ids.ownerA, (tx) =>
+    tx.query("select public.settle_billing($1, 'founder') as out", [topUpShortCentre]),
+  )
+).rows[0].out
+check(
+  'same-day top-up with insufficient balance returns insufficient_balance without 23505',
+  noonTopUpShort.ok === true && noonTopUpShort.status === 'insufficient_balance',
+  JSON.stringify(noonTopUpShort),
+)
+check(
+  'same-day top-up refusal is attempt 2 and coerced spoofed ran_by to session',
+  (await n(
+    db,
+    `select count(*)::int as n from app.settlement_runs
+      where coaching_center_id = $1 and charge_date = $2
+        and attempt = 2 and status = 'insufficient_balance' and ran_by = 'session'`,
+    [topUpShortCentre, today],
+  )) === 1,
+)
+
+// 3. Upgrading from teacher_free to a paid plan advances charged_through to at
+//    least yesterday so historical free-tier days are never back-charged (BILL-01).
+const upgradedFreeCentre = await burnCentre('teacher_free', { recharge: 50000 })
+await asService(
+  'update coaching_centers set charged_through = ($2::date - 30) where id = $1',
+  [upgradedFreeCentre, today],
+)
+await asService(
+  "update coaching_centers set plan = 'center' where id = $1",
+  [upgradedFreeCentre],
+)
+const upgradedSettle = (
+  await asService('select public.settle_billing($1) as out', [upgradedFreeCentre])
+).rows[0].out
+check(
+  'upgrading from teacher_free charges only today and never historical free days',
+  upgradedSettle.status === 'settled' && upgradedSettle.days === 1,
+  JSON.stringify(upgradedSettle),
+)
+
 // --- The reconciliation (§11.13) ---------------------------------------------------------
 
 const founderRow = (
@@ -16026,6 +16117,152 @@ check(
 check(
   'nor can a signed-out request',
   await deniedAsUser(db, null, 'select * from platform_reconciliation()'),
+)
+
+// --- PERF-02 & PERF-03 indexes and view pushdown (20260811000083) ------------
+
+check(
+  'all 18 hot-path composite and FK indexes from 20260811000083 exist',
+  (await n(
+    db,
+    `select count(*)::int as n from pg_indexes
+      where schemaname = 'public'
+        and indexname in (
+          'fee_invoices_center_month_idx',
+          'fee_payments_center_invoice_idx',
+          'fee_payments_student_idx',
+          'attendance_records_center_session_idx',
+          'exam_results_center_exam_idx',
+          'enrollments_center_student_idx',
+          'students_center_name_idx',
+          'batches_center_subject_idx',
+          'enrollments_center_subject_idx',
+          'exams_center_subject_idx',
+          'exams_center_exam_type_idx',
+          'teacher_subjects_center_subject_idx',
+          'teacher_permissions_center_teacher_idx',
+          'batch_schedules_center_batch_idx',
+          'teachers_center_branch_idx',
+          'employees_center_branch_idx',
+          'batches_center_branch_idx',
+          'notices_center_branch_idx'
+        )`,
+  )) === 18,
+)
+
+await db.query('set enable_seqscan = off')
+const explainFeeBalances = await db.query(
+  `explain (format json)
+   select * from public.fee_invoice_balances
+   where coaching_center_id = $1 and period_month = '2026-08-01' and voided_at is null`,
+  [centerA],
+)
+await db.query('reset enable_seqscan')
+const explainText = JSON.stringify(explainFeeBalances)
+check(
+  'fee_invoice_balances uses fee_invoices_center_month_idx and fee_payments_center_invoice_idx',
+  explainText.includes('fee_invoices_center_month_idx') &&
+    explainText.includes('fee_payments_center_invoice_idx'),
+  explainText,
+)
+
+// Policy acceptances (MASTERPLAN §14.1):
+// Consent is a row, not a checkbox. Versioned, append-only, tenant-scoped, and audited.
+await asUser(db, ids.ownerA, async (tx) => {
+  await tx.query(
+    `insert into policy_acceptances (profile_id, coaching_center_id, policy_kind, policy_version)
+     values ($1, $2, 'prepaid_billing', '2026-09-05')`,
+    [ids.ownerA, centerA],
+  )
+})
+check('owner A can insert policy_acceptances for own center', true)
+
+const auditPa = await db.query(
+  `select count(*)::int as n from public.audit_log where entity = 'policy_acceptances'`,
+)
+check('audit log records policy_acceptances row creation', auditPa.rows[0].n === 1)
+
+await asUser(db, ids.karim, async (tx) => {
+  await tx.query(
+    `insert into policy_acceptances (profile_id, coaching_center_id, policy_kind, policy_version)
+     values ($1, $2, 'terms_of_service', '2026-09-05')`,
+    [ids.karim, centerA],
+  )
+})
+check('teacher Karim can record own policy acceptance at Center A', true)
+
+check(
+  'teacher Karim cannot record policy acceptance on behalf of teacher Nasrin',
+  await deniedAsUser(
+    db,
+    ids.karim,
+    `insert into policy_acceptances (profile_id, coaching_center_id, policy_kind, policy_version)
+     values ($1, $2, 'prepaid_billing', '2026-09-05')`,
+    [ids.nasrin, centerA],
+  ),
+)
+
+check(
+  'teacher Karim cannot record policy acceptance for Center B',
+  await deniedAsUser(
+    db,
+    ids.karim,
+    `insert into policy_acceptances (profile_id, coaching_center_id, policy_kind, policy_version)
+     values ($1, $2, 'prepaid_billing', '2026-09-05')`,
+    [ids.karim, centerB],
+  ),
+)
+
+check(
+  'signed-out request cannot insert into policy_acceptances',
+  await deniedAsUser(
+    db,
+    null,
+    `insert into policy_acceptances (profile_id, coaching_center_id, policy_kind, policy_version)
+     values ($1, $2, 'prepaid_billing', '2026-09-05')`,
+    [ids.ownerA, centerA],
+  ),
+)
+
+await asUser(db, ids.ownerB, async (tx) => {
+  const bRows = await tx.query(
+    'select count(*)::int as n from policy_acceptances where coaching_center_id = $1',
+    [centerA],
+  )
+  check('owner B cannot read Center A policy acceptances', bRows.rows[0].n === 0)
+})
+
+await asUser(db, ids.karim, async (tx) => {
+  const kRows = await tx.query('select count(*)::int as n from policy_acceptances')
+  check('teacher Karim reads only own acceptance row (not owner A)', kRows.rows[0].n === 1)
+})
+
+await asUser(db, ids.ownerA, async (tx) => {
+  const aRows = await tx.query(
+    'select count(*)::int as n from policy_acceptances where coaching_center_id = $1',
+    [centerA],
+  )
+  check('owner A reads all policy acceptances for Center A (both owner & teacher)', aRows.rows[0].n === 2)
+})
+
+check(
+  'client cannot update policy_acceptances (append-only ledger)',
+  await deniedAsUser(
+    db,
+    ids.ownerA,
+    `update policy_acceptances set policy_version = '2027-01-01' where coaching_center_id = $1`,
+    [centerA],
+  ),
+)
+
+check(
+  'client cannot delete policy_acceptances (append-only ledger)',
+  await deniedAsUser(
+    db,
+    ids.ownerA,
+    `delete from policy_acceptances where coaching_center_id = $1`,
+    [centerA],
+  ),
 )
 
 console.log(`\n${passed} passed, ${failed} failed`)

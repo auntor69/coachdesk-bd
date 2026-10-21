@@ -309,6 +309,8 @@ export const bn = {
     usernameLabel: 'লগইন ইউজারনেম',
     usernameHint:
       'এই ইউজারনেম দিয়েই আপনি লগইন করেন। বদলাতে হলে কোচিংয়ের মালিককে বলুন।',
+    emailLabel: 'লগইন ইমেইল',
+    emailHint: 'এই ইমেইল ঠিকানা দিয়েই আপনি লগইন করেন।',
     passwordTitle: 'পাসওয়ার্ড বদলান',
     /**
      * The second sentence is the honest one. A password change does not throw other
@@ -7728,6 +7730,7 @@ export const bn = {
       payments: 'আমাদের দেওয়া টাকা',
       payment_intents: 'টাকা পাঠানোর অনুরোধ',
       subscriptions: 'সাবস্ক্রিপশন',
+      policy_acceptances: 'নীতিমালা সম্মতি',
     },
     actions: {
       planChanged: 'প্ল্যান বদলেছে',
