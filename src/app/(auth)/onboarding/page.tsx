@@ -109,7 +109,7 @@ export default async function OnboardingPage() {
   const a = d.auth.onboarding
   const settings = await readPlatformSettings(await createClient())
 
-  if (session.username || !session.email) {
+  if (session.username) {
     return (
       <main className="flex min-h-full flex-1 flex-col justify-center px-5 py-10">
         <div className="mx-auto w-full max-w-md">
