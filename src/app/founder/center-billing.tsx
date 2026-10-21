@@ -31,8 +31,11 @@
 
 import { useActionState, useEffect, useRef } from 'react'
 
+import type { Locale } from '@/lib/i18n/locale'
+
 import { Alert, Button, Field } from '@/components/ui'
 import { mintIdempotencyKey } from '@/lib/idempotency'
+import type { LeverLabels } from '@/lib/i18n/levers'
 import { MAX_LABEL, MAX_TEXT } from '@/lib/limits'
 import type { CenterStatus, PaymentMethod } from '@/lib/supabase/types'
 import type { PlanId } from '@/lib/plans'
@@ -42,6 +45,7 @@ import {
   setCenterPlan,
   type FounderState,
 } from './actions'
+import { CenterLevers } from './center-levers'
 
 /**
  * Labels for both forms.
@@ -57,6 +61,11 @@ export type BillingWords = {
   payTitle: string
   amount: string
   amountHint: string
+  /**
+   * Said instead of nothing on a teacher's card, where the figure is not the founder's to
+   * type: a subscription is priced from the card in force (20260811000092).
+   */
+  amountPriced: string
   method: string
   coversFrom: string
   months: string
@@ -99,12 +108,17 @@ export function CenterBilling({
   plan,
   status,
   suggestedAmount,
-  periods,
+  sellsMonths,
   months,
   plans,
   statuses,
   words,
   methods,
+  levers,
+  holding,
+  line,
+  today,
+  locale,
 }: {
   centerId: string
   /** The centre's current tier and state, so both `<select>`s open on the truth. */
@@ -118,8 +132,15 @@ export function CenterBilling({
    * and a prefilled ৳0 would be refused on submit.
    */
   suggestedAmount: number
-  /** The months a payment may be recorded against, already formatted. */
-  periods: Choice<string>[]
+  /**
+   * Whether this customer buys months or balance — a teacher or a centre.
+   *
+   * DECIDED BY THE SERVER FROM THE PLAN, and the database decides it again from the row
+   * when the payment is written, so a card drawn for the wrong shape cannot record the
+   * wrong thing: the RPC's own branch is the authority (`founder_record_payment`), and this
+   * only chooses which controls are drawn.
+   */
+  sellsMonths: boolean
   /** 1 / 3 / 6 / 12, labelled in the reader's own numerals. */
   months: Choice<number>[]
   plans: Choice<PlanId>[]
@@ -133,6 +154,26 @@ export function CenterBilling({
    * for a year. One owner for the words, two readers.
    */
   methods: Record<PaymentMethod, string>
+  /**
+   * The two levers' own words, in a fragment of their own — see lib/i18n/levers.ts for why
+   * they are not in the dictionaries yet. Passed as strings: the group crosses the boundary
+   * whole, so it cannot hold a function.
+   */
+  levers: LeverLabels
+  /**
+   * What the centre holds and how far its days reach, already a sentence — composed on the
+   * server from `formatTaka` and `formatDate`, because the founder's panel is the one screen
+   * where both figures have to be read before a lever is touched. Null where the read
+   * failed, together with `line`: a lever drawn beside a blank is a lever granted blind.
+   */
+  holding: string | null
+  /**
+   * `charged_through` and the Dhaka day, raw, for the days form's live preview — the only
+   * sentence on this card that changes as somebody types. See ./center-levers.tsx.
+   */
+  line: string | null
+  today: string
+  locale: Locale
 }) {
   const [payState, payAction, paying] = useActionState<FounderState, FormData>(
     recordCenterPayment,
@@ -234,6 +275,18 @@ export function CenterBilling({
           )}
           {payState?.warn && <Alert tone="warn">{payState.warn}</Alert>}
 
+          {/*
+           * The amount, which a centre's receipt is typed from and a teacher's is not.
+           *
+           * WHAT USED TO BE HERE WAS A WINDOW — "covers from August, three months" — and
+           * it was the bug this change closes: nothing reads `covers_period_*` any more,
+           * so a receipt with a window on it took the customer's money, granted no days,
+           * and left them read-only until somebody reached for a different control
+           * (20260811000092). The money now goes onto the balance, which is the only thing
+           * that buys days, and a teacher's figure is priced from the price list rather
+           * than typed. The field stays for a teacher because the form is one form — the
+           * database picks the branch — and `amountPriced` says which figure will be used.
+           */}
           <Field
             label={words.amount}
             hint={words.amountHint}
@@ -244,10 +297,16 @@ export function CenterBilling({
             type="text"
             inputMode="decimal"
             defaultValue={suggestedAmount > 0 ? String(suggestedAmount) : ''}
-            required
+            // A teacher's amount is the server's to work out, so a blank is allowed there
+            // and refused by the action for a centre — with a sentence, not a constraint.
+            required={!sellsMonths}
             maxLength={12}
             className="num"
           />
+
+          {sellsMonths && (
+            <p className="text-xs text-ink-faint">{words.amountPriced}</p>
+          )}
 
           <Select
             label={words.method}
@@ -262,23 +321,9 @@ export function CenterBilling({
             ))}
           </Select>
 
-          {/* The window, as two controls rather than a start and an end date. A
-              founder knows "August, for a year"; asking them for 2027-07-31 is asking
-              them to do the arithmetic the server does in one tested line. */}
-          <div className="grid grid-cols-2 gap-3">
-            <Select
-              label={words.coversFrom}
-              id={fid('coversFrom')}
-              name="coversFrom"
-              defaultValue={periods[Math.floor(periods.length / 2)]?.value}
-            >
-              {periods.map((p) => (
-                <option key={p.value} value={p.value}>
-                  {p.label}
-                </option>
-              ))}
-            </Select>
-
+          {/* How many months, for a subscription. A centre never sees it: its money is
+              balance and the balance is not sold in months. */}
+          {sellsMonths && (
             <Select
               label={words.months}
               id={fid('months')}
@@ -291,7 +336,7 @@ export function CenterBilling({
                 </option>
               ))}
             </Select>
-          </div>
+          )}
 
           <Field
             label={words.reference}
@@ -303,11 +348,15 @@ export function CenterBilling({
             className="num"
           />
 
+          {/* Required, because the row cannot be edited or deleted and the note is the
+              only part of it that can say what was agreed on the phone — 20260811000092
+              refuses a payment with no reason at the database too. */}
           <Field
             label={words.note}
             id={fid('note')}
             name="note"
             maxLength={MAX_TEXT}
+            required
           />
 
           <Button type="submit" disabled={paying} full>
@@ -435,6 +484,36 @@ export function CenterBilling({
             {applying ? words.applying : words.apply}
           </Button>
         </form>
+
+        {/* ---------------------------------------------------------------- */}
+        {/* The levers (§11.7)                                                 */}
+        {/* ---------------------------------------------------------------- */}
+        {/* Last, because it is the rarest errand on the card: a bill is the
+            ordinary phone call, and a grant is the one that follows a closure, a
+            mis-paste or a founder who was asleep. The line above them is what makes
+            them legible — a balance is not a figure this panel has ever drawn. */}
+        {holding === null || line === null ? (
+          /* Said rather than drawn with a dash beside it. Both levers work from the line,
+             and a grant worked out from a line nobody could read is a date nobody can
+             predict — so the refusal is the whole block, not an empty field in it. */
+          <p className="border-t border-line pt-4 text-sm text-ink-soft">
+            {levers.unreadable}
+          </p>
+        ) : (
+          <>
+            <p className="text-sm text-ink-soft">
+              <span className="num">{holding}</span>
+            </p>
+
+            <CenterLevers
+              centerId={centerId}
+              line={line}
+              today={today}
+              locale={locale}
+              labels={levers}
+            />
+          </>
+        )}
       </div>
     </details>
   )

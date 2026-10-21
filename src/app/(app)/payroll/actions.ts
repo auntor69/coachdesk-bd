@@ -51,13 +51,15 @@ import {
 } from '@/lib/auth/session'
 import { todayInDhaka } from '@/lib/bd/time'
 import { dict } from '@/lib/i18n'
-import { MAX_TEXT, clamp } from '@/lib/limits'
+import { MAX_NAME, MAX_TEXT, clamp } from '@/lib/limits'
 import { MAX_TAKA, parseTaka, sumTaka } from '@/lib/money'
 import { PER_CLASS_BASIS, SALARY_BASES } from '@/lib/payroll/basis'
-import { readPayeeValue, type PayeeKind } from '@/lib/payroll/bill'
+import { NEW_PAYEE, readPayeeValue, type PayeeKind } from '@/lib/payroll/bill'
 import { has } from '@/lib/plans'
+import { can } from '@/lib/staff/capabilities'
+import { EMPLOYEE_ROLES } from '@/lib/staff/roles'
 import { createClient } from '@/lib/supabase/server'
-import type { SalaryBasis } from '@/lib/supabase/types'
+import type { EmployeeRole, SalaryBasis } from '@/lib/supabase/types'
 
 export type PayrollState = { error?: string; ok?: string } | null
 
@@ -71,6 +73,14 @@ export type PayrollState = { error?: string; ok?: string } | null
  * silently refuses.
  */
 const BASES = new Set<SalaryBasis>(SALARY_BASES)
+
+/**
+ * The fourteen jobs, for the one field the new-person branch reads.
+ *
+ * A membership test rather than a cast, for `BASES`'s reason one line up: a role cast off
+ * a form reaches Postgres as `22P02` and the reader is told the salary could not be saved.
+ */
+const ROLES = new Set<EmployeeRole>(EMPLOYEE_ROLES)
 
 /** The shape a date input submits and a `date` column takes. See the expense action. */
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/
@@ -204,8 +214,47 @@ export async function setSalaryTerms(
 
   const t = dict(session.locale).payroll
 
-  const payee = readPayeeValue(String(formData.get('payee') ?? ''))
-  if (!payee) return { error: t.errors.payeeRequired }
+  /*
+   * WHO THE FIGURE IS FOR, in one of the two shapes the picker offers.
+   *
+   * `NEW_PAYEE` is the form saying "nobody on this list — take the name below". That is not
+   * a payee and is not handed to `readPayeeValue`; it becomes an `employees` row further
+   * down, in the same submit that writes the agreement. The alternative this replaces was
+   * the reader leaving for the staff screen, adding somebody and coming back — for a
+   * sentence the form was already asking them to answer.
+   *
+   * The name and the role are validated here, before anything at all is written, so a
+   * mistake in either leaves the database exactly as it was: an employee created by a form
+   * that then refused the salary is a person on the staff list nobody meant to add.
+   */
+  const rawPayee = String(formData.get('payee') ?? '')
+  const wantsNew = rawPayee === NEW_PAYEE
+
+  let payee = wantsNew ? null : readPayeeValue(rawPayee)
+  let newPerson: { name: string; role: EmployeeRole } | null = null
+
+  if (wantsNew) {
+    /*
+     * TWO PERMISSIONS, because the write this branch makes is not the one this screen is
+     * behind. `payroll` gets somebody to this action; adding a person is `staff` and the
+     * `staffManagement` plan, and the policies on `employees` would refuse the insert
+     * anyway. Checked here so the answer is a sentence rather than a constraint name, and
+     * checked before any typing is looked at so a reader without it learns why from the
+     * empty picker instead of from a refusal after filling in a salary.
+     */
+    if (!can(session.active.capabilities, 'staff')) return { error: t.errors.cantHire }
+    if (!has(session.plan, 'staffManagement')) {
+      return { error: dict(session.locale).settings.errors.staffNeedsCenter }
+    }
+
+    const name = clamp(String(formData.get('newName') ?? '').trim(), MAX_NAME)
+    const role = String(formData.get('newRole') ?? '') as EmployeeRole
+    if (!name) return { error: t.errors.newNameRequired }
+    if (!ROLES.has(role)) return { error: t.errors.newRoleRequired }
+    newPerson = { name, role }
+  } else if (!payee) {
+    return { error: t.errors.payeeRequired }
+  }
 
   const basis = String(formData.get('basis') ?? '')
   if (!BASES.has(basis as SalaryBasis)) return { error: t.errors.basisRequired }
@@ -268,13 +317,56 @@ export async function setSalaryTerms(
 
   const supabase = await createClient()
 
-  const where = await payeeState(supabase, session, payee.kind, payee.id)
-  if (where === 'missing') return { error: t.errors.payeeNotFound }
-  // Refused rather than written, though the bill knows how to draw it: an agreement made
-  // with somebody who has left is either the wrong person picked off a stale form, or a
-  // centre that has taken somebody back and not said so on the staff screen. The second
-  // one has a fix, and the sentence names it.
-  if (where === 'gone') return { error: t.errors.payeeGone }
+  /*
+   * THE PERSON FIRST, when the form brought one, and only after every figure above has been
+   * read. That order is the point: the boxes have all been checked by now, so a refusal
+   * further up never leaves a half-added cook on the staff list.
+   *
+   * `branch_id` is left out on purpose — 20260811000054's stamp files the row under the
+   * branch of whoever is writing it, which is the honest answer for a desk that is pinned
+   * to one building and for a head office that is not pinned to any.
+   *
+   * No phone, no note, no start date: joined_on is today, and the staff screen is where
+   * those are filled in later if anybody wants to. Insisting on them here would be the
+   * form asking four questions to answer one.
+   */
+  let newEmployeeId: string | null = null
+
+  if (newPerson) {
+    const { data, error } = await supabase
+      .from('employees')
+      .insert({
+        coaching_center_id: session.active.centerId,
+        name: newPerson.name,
+        role: newPerson.role,
+        joined_on: todayInDhaka(),
+      })
+      .select('id')
+      .maybeSingle()
+
+    if (error || !data) return { error: t.errors.hireFailed }
+    newEmployeeId = data.id
+    // The staff list is one screen away and reads the same table; without this it keeps
+    // saying the centre employs nobody until the next full load.
+    revalidatePath('/settings/staff')
+  }
+
+  if (newEmployeeId) {
+    payee = { kind: 'employee', id: newEmployeeId }
+  } else if (payee) {
+    const where = await payeeState(supabase, session, payee.kind, payee.id)
+    if (where === 'missing') return { error: t.errors.payeeNotFound }
+    // Refused rather than written, though the bill knows how to draw it: an agreement made
+    // with somebody who has left is either the wrong person picked off a stale form, or a
+    // centre that has taken somebody back and not said so on the staff screen. The second
+    // one has a fix, and the sentence names it.
+    if (where === 'gone') return { error: t.errors.payeeGone }
+  }
+
+  // Unreachable — every branch above either set one or returned — and kept as a guard
+  // rather than an assertion, because the day a fourth branch arrives this is the line
+  // that should fail loudly instead of passing `null` down to a foreign key.
+  if (!payee) return { error: t.errors.payeeRequired }
 
   const { error } = await supabase.from('salary_terms').insert({
     coaching_center_id: session.active.centerId,

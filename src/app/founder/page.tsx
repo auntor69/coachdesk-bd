@@ -1,26 +1,39 @@
 import Link from 'next/link'
+import type { Route } from 'next'
 
-import { Card } from '@/components/ui'
+import { buttonClass, Card } from '@/components/ui'
 import { pagePlatformAdmin } from '@/lib/auth/session'
 import { createClient } from '@/lib/supabase/server'
+import { founderQueue } from '@/lib/billing/claims'
 import { transferReference } from '@/lib/billing/receipt'
+import { rechargeWords } from '@/lib/i18n/recharge'
 import { formatBdMobile } from '@/lib/bd/phone'
-import { digits, formatDate, formatMonth, hasPassed, todayInDhaka } from '@/lib/bd/time'
+import { digits, formatDate, hasPassed, todayInDhaka } from '@/lib/bd/time'
 import { dict } from '@/lib/i18n'
 import { formatTaka } from '@/lib/money'
-import { PLANS, planFor, planName, type PlanId } from '@/lib/plans'
-import { MONTHS_COVERED, periodChoices } from '@/lib/platform/billing'
+import { PLANS, isTeacherTier, planFor, planName, type PlanId } from '@/lib/plans'
+import { ACCOUNT_KINDS, type AccountKind } from '@/lib/accounts/kind'
+import { MONTHS_COVERED } from '@/lib/platform/billing'
+import {
+  DEFAULT_TRIAL_ROSTER_CEILING,
+  readPlatformSettings,
+} from '@/lib/platform/settings'
 import {
   billLabel,
   customers,
   platformTotals,
   sizeLine,
   type CenterStatus,
+  type Customer,
 } from '@/lib/platform/centers'
+import { leverLabels, leverSentences } from '@/lib/i18n/levers'
 import { CenterBilling } from './center-billing'
 import { CenterPurchases, type OpenPurchase } from './center-purchases'
 import { AskedToUpgrade } from './asked-to-upgrade'
 import { StaffReset } from './staff-reset'
+import { RechargeQueue, type QueueClaim, type QueueWords } from './recharge-queue'
+import { PlatformSettings } from './platform-settings'
+import { FounderNav } from './nav'
 
 /*
  * NO generateMetadata, on purpose.
@@ -33,11 +46,19 @@ import { StaffReset } from './staff-reset'
  * introduce itself to anyone who has not been told about it.
  */
 
-/** Badge colours per center_status. Cancelled is grey — it is over, not urgent. */
+/**
+ * Badge colours per center_status. Cancelled is grey — it is over, not urgent.
+ *
+ * From the semantic tokens and not from Tailwind's own red and amber, which is the rule
+ * everywhere else in the app: `absent` and `late` are the two colours this product has one
+ * meaning for each, the same pair the register uses for a missing child and a late one. A
+ * chip in `text-red-700` is a second red beside them, a shade off, and the founder panel is
+ * where it was found — see the note in ./money/page.tsx.
+ */
 const STATUS_STYLE: Record<CenterStatus, string> = {
   active: 'border-brand-200 bg-brand-50 text-brand-800',
-  trial: 'border-amber-200 bg-amber-50 text-amber-800',
-  suspended: 'border-red-200 bg-red-50 text-red-700',
+  trial: 'border-late/40 bg-late/5 text-late',
+  suspended: 'border-absent/30 bg-absent/5 text-absent',
   cancelled: 'border-line bg-surface-alt text-ink-soft',
 }
 
@@ -46,6 +67,43 @@ const PLAN_ORDER = Object.keys(PLANS) as PlanId[]
 
 /** The order the status dropdown offers, matching center_status. */
 const STATUS_ORDER: CenterStatus[] = ['trial', 'active', 'suspended', 'cancelled']
+
+/**
+ * The orders the list can be read in, and the one the page opens on.
+ *
+ * FOUR, AND EACH ANSWERS A DIFFERENT MORNING. `bill` is the default and not a
+ * preference: this panel exists to say who is worth what, and a founder who has not
+ * chosen an order has asked the only question the screen was built for. `quiet` is the
+ * churn list — a centre that stopped using the product last week is the one worth a
+ * phone call, and by the time it is on the money screens it has already decided.
+ *
+ * A CLOSED LIST, like STATUS_ORDER, because the key arrives in a URL: anything not in
+ * it is ignored rather than passed to a comparator.
+ */
+const SORTS = ['bill', 'quiet', 'newest', 'name'] as const
+
+type SortKey = (typeof SORTS)[number]
+
+/**
+ * The four comparators, always biggest-and-first.
+ *
+ * A RECORD RATHER THAN A SWITCH so the compiler counts them: a fifth key added to
+ * SORTS without a comparator is a type error rather than a dropdown entry that leaves
+ * the list in whatever order it arrived in.
+ *
+ * `quiet` puts the gone-quiet ahead and orders them by how long, and a centre that has
+ * never been used sorts at the end of that group rather than the start — it is the
+ * loudest call to make, but `daysQuiet` is null for it and a screen sorted by a number
+ * it does not have would be inventing one. `newest` reads the ISO strings, which sort
+ * as dates without parsing them: a `timestamptz` from PostgREST is fixed-width UTC.
+ */
+const ORDER: Record<SortKey, (a: Customer, b: Customer) => number> = {
+  bill: (a, b) => b.billBdt - a.billBdt,
+  quiet: (a, b) =>
+    Number(b.quiet) - Number(a.quiet) || (b.daysQuiet ?? 0) - (a.daysQuiet ?? 0),
+  newest: (a, b) => (b.createdAt ?? '').localeCompare(a.createdAt ?? ''),
+  name: (a, b) => a.name.localeCompare(b.name),
+}
 
 /**
  * The founder's own screen: every centre, what it costs them, and whether they
@@ -70,17 +128,47 @@ const STATUS_ORDER: CenterStatus[] = ['trial', 'active', 'suspended', 'cancelled
  * purchases, which is a plain read: `payment_intents_owner_read` already answers
  * `app.is_platform_admin()`, so there is nothing for a function to do.
  *
- * WHAT IT DOES NOT HAVE: filters, sorting, a search box, or a link into any
- * centre's data. With a customer list this size every control would be a way to
- * arrive at a worse view of it, and a link inward would be a founder reading a
- * child's marks. The CSV button covers the one thing a page cannot: taking the
- * numbers somewhere they can be added up.
+ * WHAT IT HAS NOW: a search, a kind filter, a standing filter and four orders — see
+ * SORTS and the note on `matched`. They narrow what is already on the page and nothing
+ * else: the search reads names, areas, and every way the panel holds to reach somebody —
+ * the owner's address, the owner's number and the centre's own — so a founder can find
+ * the customer who is on the line with them without scrolling eleven cards, and the kind
+ * filter answers the one question the panel could not before (§16.1: a solo teacher and a
+ * coaching centre were the same row here, and they are two different conversations).
+ *
+ * AND ONE THING BEHIND A CUSTOMER: their name opens `./[centerId]/page.tsx`, the record —
+ * what they are, what they use, what their money has done, who can get in, and what we have
+ * done to them. That is *our* side of one customer, and it is the reason this list can stay a
+ * list: the questions that need five kinds of fact in one place have somewhere to go.
+ *
+ * WHAT IT STILL DOES NOT HAVE is a link into any centre's *data*. The record behind a
+ * customer holds none of their students, their register or their fees, and there will never
+ * be a screen that does: a founder reading a child's marks is the failure this whole
+ * arrangement — a definer function that returns counts and nothing else — is built to prevent.
+ * The CSV button covers the one thing a page cannot: taking the numbers somewhere they can be
+ * added up.
  */
-export default async function FounderPage() {
+export default async function FounderPage({
+  searchParams,
+}: {
+  /**
+   * The list's own controls, read from the URL.
+   *
+   * A GET form and not client state, and that is the whole design: the founder's list is
+   * read, telephoned from and returned to, and a filter that lives in memory is lost the
+   * moment they open a customer in another tab. It also means the screen keeps working with
+   * no JavaScript at all, and a filtered view is a URL somebody can send themselves.
+   */
+  searchParams: Promise<Record<string, string | string[] | undefined>>
+}) {
   const session = await pagePlatformAdmin()
   const locale = session.locale
   const d = dict(locale)
   const t = d.founder
+
+  // The recharge card's words, which are a fragment of their own: see
+  // lib/i18n/recharge.ts for why the two dictionaries cannot carry them yet.
+  const words = rechargeWords(locale)
 
   const supabase = await createClient()
 
@@ -89,7 +177,14 @@ export default async function FounderPage() {
   // the second it is the same call inside the policy. The third is §11.13's
   // reconciliation — three questions over every centre's ledger, returning only the
   // rows that are wrong, so no rows is the all-clear rather than an empty answer.
-  const [{ data, error }, { data: intents }, { data: findings }] = await Promise.all([
+  const [
+    { data, error },
+    { data: intents },
+    { data: findings },
+    queue,
+    { data: moneyRows },
+    { data: kindRows, error: kindsError },
+  ] = await Promise.all([
     // scoped-by: platform_centers() is a security definer RPC over all centres,
     // gated on app.is_platform_admin(). See 20260811000020_platform_panel.sql.
     supabase.rpc('platform_centers'),
@@ -109,10 +204,116 @@ export default async function FounderPage() {
     // scoped-by: platform_reconciliation() is gated on app.is_platform_admin() the
     // same way platform_centers is. See 20260811000081_settle_billing.sql.
     supabase.rpc('platform_reconciliation'),
+    // The recharges customers say they have sent, oldest first, and the one read here
+    // that is deliberately every centre at once — see lib/billing/claims.ts, where
+    // `recharge_claims_owner_read` answering app.is_platform_admin() is written down.
+    founderQueue(supabase),
+    // The prepaid balance and the line it pays for, for every centre — §11.7's two levers
+    // work from both, and neither is on `platform_centers()`, whose shape is the panel's
+    // roster of usage rather than its money. A plain read because nothing has to be
+    // computed: `centers_member_read` already answers `app.is_platform_admin()`, so there
+    // is no definer function to write.
+    // scoped-by: every centre is the point of this panel; centers_member_read in
+    // 20260811000002_rls_policies.sql is what authorises it.
+    supabase
+      .from('coaching_centers')
+      .select('id, balance_poisha, charged_through'),
+    /*
+     * What each account says it is — in a read of its own, and the reason is a deployment order
+     * rather than tidiness.
+     *
+     * `account_kind` arrived in 20260811000091, and an app deploy can land before the migration
+     * that adds it. Named in the read above, a database one migration behind would fail *that*
+     * read — and the two levers on every card are drawn from it, so the whole panel would refuse
+     * to move a balance over one decorative column. So the money is read with the columns the
+     * panel has always had, and the kind is asked for separately; a failed read here costs the
+     * kind filter and nothing else.
+     */
+    supabase.from('coaching_centers').select('id, account_kind'),
   ])
 
   const list = customers(data, t.unnamed)
   const totals = platformTotals(list)
+
+  /*
+   * The money, per centre, for the card's two levers.
+   *
+   * A MISSING ROW IS NULL AND NOT A ZERO, which is the distinction every screen in this
+   * product draws: a centre whose balance could not be read is not a centre holding
+   * nothing, and a grant worked out from an assumed line would be a date nobody can
+   * predict. `./center-billing.tsx` says what the card does with the null.
+   */
+  const money = new Map((moneyRows ?? []).map((row) => [row.id, row]))
+
+  /**
+   * What each account said it was (20260811000091).
+   *
+   * A MISSING ROW IS READ AS A TEACHER — the column's own default, and the safe direction: a
+   * teacher and a centre are two different conversations, and hiding a customer from a founder
+   * who is looking for them is the worse failure of the two.
+   *
+   * A FAILED READ IS NOT THE SAME THING, and that is what `kindsReadable` is for. If the column
+   * does not exist yet — an app deploy ahead of its migration — every row would read as a teacher
+   * and the filter would answer "here are the teachers" with the whole book. So the filter is not
+   * drawn at all in that case: a control we cannot evaluate is a control that lies, and this page
+   * already has one shape for "we could not read that": say so.
+   */
+  const kinds = new Map((kindRows ?? []).map((row) => [row.id, row.account_kind]))
+  const kindsReadable = !kindsError
+
+  /*
+   * The list's controls: a search, two filters and an order.
+   *
+   * NARROWING IS DONE HERE, ON THE SERVER, over the rows the page has already read. There is
+   * no second query and no query builder in the client: eleven customers fit in memory and a
+   * thousand would fit in the RPC's own page — the day this needs SQL paging is the day it
+   * needs a screen of its own, which the header already says.
+   *
+   * EVERY VALUE IS VALIDATED AGAINST A CLOSED LIST and a bad one is ignored rather than
+   * refused: these arrive from a URL, so a typo in a bookmark must draw the whole book rather
+   * than an error page.
+   */
+  const params = await searchParams
+  const one = (value: string | string[] | undefined) =>
+    (Array.isArray(value) ? value[0] : value) ?? ''
+
+  // Capped, because it is only ever compared against a name and a number: a 60-character
+  // search is already wider than anything in the table.
+  const query = one(params.q).trim().slice(0, 60).toLowerCase()
+  const askedKind = one(params.kind)
+  const askedStatus = one(params.standing)
+  const askedSort = one(params.order)
+
+  const kindFilter =
+    kindsReadable && ACCOUNT_KINDS.includes(askedKind as AccountKind)
+      ? (askedKind as AccountKind)
+      : null
+  const statusFilter = STATUS_ORDER.includes(askedStatus as CenterStatus)
+    ? (askedStatus as CenterStatus)
+    : null
+  const sort: SortKey = SORTS.includes(askedSort as SortKey)
+    ? (askedSort as SortKey)
+    : 'bill'
+
+  const searching = query !== '' || kindFilter !== null || statusFilter !== null
+
+  const matched = list
+    .filter((c) => {
+      if (kindFilter && (kinds.get(c.centerId) ?? 'teacher') !== kindFilter) return false
+      if (statusFilter && c.status !== statusFilter) return false
+      if (!query) return true
+      // Name, area, and whoever the founder would ring — the three things they have in
+      // front of them when they are looking somebody up.
+      const haystack = [c.name, c.area, c.ownerName, c.ownerEmail, c.ownerPhone, c.phone]
+        .filter(Boolean)
+        .join(' ')
+        .toLowerCase()
+      return haystack.includes(query)
+    })
+    .sort(ORDER[sort])
+
+  /** Dhaka's calendar day, the one every line and every grant is counted in (§11.7). */
+  const dhakaToday = todayInDhaka(new Date())
 
   // A Dhaka calendar date from a UTC timestamp. A centre that signed up at 1am
   // local is stamped the previous day in UTC, and a founder checking "who joined
@@ -164,28 +365,106 @@ export default async function FounderPage() {
   }
 
   /*
+   * The queue, with every sentence composed here.
+   *
+   * THE SIZE IS THE CLAIM'S OWN SNAPSHOT — the three counts the quote was priced from —
+   * and not the centre's live roster, because the question this line answers is "what was
+   * this priced at". It is also the only size there is: the claim is read without a join,
+   * so the centre's name comes from the list this page already has.
+   *
+   * `t.unnamed` is the fallback for a centre missing from that list, which cannot happen
+   * while the list read succeeded — a claim's centre is a foreign key — and it is the same
+   * word `customers` uses for the same absence. The sender's number has no such word and
+   * gets a dash: it is required on the form that files a claim, so a missing one is an old
+   * row rather than a centre we could not name.
+   */
+  const byCenter = new Map(list.map((c) => [c.centerId, c]))
+
+  const queueClaims: QueueClaim[] = (queue ?? []).map((claim) => {
+    const customer = byCenter.get(claim.centerId)
+    const usage = claim.usage
+
+    const size =
+      usage === null
+        ? null
+        : [
+            `${digits(usage.students, locale)} ${t.size.students}`,
+            `${digits(usage.teachers, locale)} ${t.size.teachers}`,
+            // Only past the first, the rule `sizeLine` follows: a centre is one building.
+            ...(usage.branches > 1
+              ? [`${digits(usage.branches, locale)} ${t.size.branches}`]
+              : []),
+          ].join(' · ')
+
+    const sentOn = dhakaDay(claim.submittedAt)
+    const name = customer?.name ?? t.unnamed
+
+    return {
+      id: claim.id,
+      centre: size === null ? name : words.queueCentre(name, size),
+      sent: words.queueSent(formatTaka(claim.quotedPoisha / 100), sentOn ?? ''),
+      quoted: words.queueQuoted(
+        formatTaka(claim.quotedPoisha / 100),
+        formatTaka(claim.quotedBonusPoisha / 100),
+      ),
+      trx: words.queueTrx(
+        claim.trxId,
+        claim.senderMsisdn === null ? '—' : formatBdMobile(claim.senderMsisdn),
+      ),
+      quotedTaka: String(claim.quotedPoisha / 100),
+    }
+  })
+
+  /*
+   * The card's own words, handed over field by field.
+   *
+   * `RechargeWords` carries functions — `queueCentre`, `queueSent`, the four sentences
+   * above are the ones this page just called — and a group with a function in it cannot
+   * cross into a client component at all. So the finished sentences travel on the claims
+   * and only the labels and the four reasons travel here.
+   */
+  const queueWords: QueueWords = {
+    queueTitle: words.queueTitle,
+    queueBody: words.queueBody,
+    queueEmpty: words.queueEmpty,
+    queueUnreadable: words.queueUnreadable,
+    arrivedLabel: words.arrivedLabel,
+    arrivedHint: words.arrivedHint,
+    approve: words.approve,
+    approving: words.approving,
+    reject: words.reject,
+    reasonLabel: words.reasonLabel,
+    noteLabel: words.noteLabel,
+    reasons: words.reason,
+  }
+
+  /*
    * The dropdown contents, built once for the whole list rather than per card.
    *
-   * All four are localised here and travel as `{ value, label }`, so the client
-   * component that renders them holds no dictionary and no formatter — see the note at
-   * the top of ./center-billing.tsx. The months a payment may cover are re-derived
-   * inside the action from the same function, which is what makes the `<select>`
-   * unnecessary to trust.
+   * Localised here and travelled as `{ value, label }`, so the client component that renders
+   * them holds no dictionary and no formatter — see the note at the top of
+   * ./center-billing.tsx. The months are re-derived inside the action from the same list,
+   * which is what makes the `<select>` unnecessary to trust.
+   *
+   * THERE ARE NO PAYMENT PERIODS ANY MORE (20260811000092). The form used to offer the
+   * months a receipt covered, and nothing in the product reads `covers_period_*`: the money
+   * goes onto the balance and the burn turns it into days. A teacher's card offers months,
+   * because that is what a subscription is; a centre's offers an amount.
    */
-  const periods = periodChoices().map((month) => ({
-    value: month,
-    label: formatMonth(month, locale),
-  }))
-
-  // Just the numeral. The control's own label says "how many months", so repeating the
-  // unit in every option would be four words of noise — and it sidesteps English
-  // needing "1 month" against "3 months" for no gain.
   const months = MONTHS_COVERED.map((n) => ({ value: n, label: digits(n, locale) }))
 
   const plans = PLAN_ORDER.map((id) => ({
     value: id,
     label: planName(PLANS[id], locale),
   }))
+
+  /**
+   * The trial lengths, from the row `bootstrap_center` reads at signup.
+   *
+   * Read on the server and handed down as three numbers, so the panel's own form and the
+   * onboarding screen's promise cannot disagree about what a signup is given.
+   */
+  const settings = await readPlatformSettings(supabase)
 
   const statuses = STATUS_ORDER.map((s) => ({ value: s, label: t.status[s] }))
 
@@ -202,6 +481,10 @@ export default async function FounderPage() {
         <h1 className="mt-1 text-xl font-bold text-ink">{t.title}</h1>
         <p className="mt-1 text-ink-soft">{t.lead}</p>
       </div>
+
+      {/* The panel's other four questions. A row of links rather than tabs — this panel has
+          no client state at all. */}
+      <FounderNav here="customers" words={t.nav} />
 
       {/* The error branch says so rather than rendering an empty list. A founder
           who reads "no centres yet" on a day they have eleven would go looking for
@@ -270,26 +553,145 @@ export default async function FounderPage() {
                 the browser handles, not a route the app renders. */}
             <a
               href="/api/founder"
-              className="inline-flex min-h-tap items-center rounded-xl bg-brand-600
-                px-5 font-semibold text-white"
+              className={buttonClass('primary')}
             >
               {t.download}
             </a>
           </p>
 
+          {/* Money a customer says they have already sent us, sitting in our own bKash
+              account with nothing recorded against it. The first block under the figures,
+              because it is the only thing on this screen that somebody else is waiting on
+              — see ./recharge-queue.tsx. */}
+          <RechargeQueue claims={queue === null ? null : queueClaims} words={queueWords} />
+
+          {/* The controls. A GET form: the URL is the state, so a filtered list can be
+              bookmarked, reloaded or sent to somebody else, and the screen works with no
+              JavaScript at all. */}
+          <form method="get" className="flex flex-col gap-3 rounded-2xl border border-line bg-white p-3">
+            <div className="flex flex-wrap items-end gap-2">
+              <label className="flex min-w-48 flex-1 flex-col gap-1">
+                <span className="text-xs text-ink-soft">{t.filters.search}</span>
+                <input
+                  type="search"
+                  name="q"
+                  defaultValue={one(params.q)}
+                  placeholder={t.filters.searchHint}
+                  maxLength={60}
+                  className="min-h-tap rounded-xl border border-line px-3 text-ink"
+                />
+              </label>
+
+              {/* Only when the column behind it could be read. See `kindsReadable`. */}
+              {kindsReadable && (
+                <label className="flex flex-col gap-1">
+                  <span className="text-xs text-ink-soft">{t.filters.kind}</span>
+                  <select
+                    name="kind"
+                    defaultValue={kindFilter ?? ''}
+                    className="min-h-tap rounded-xl border border-line bg-white px-3 text-ink"
+                  >
+                    <option value="">{t.filters.kinds.any}</option>
+                    {ACCOUNT_KINDS.map((k) => (
+                      <option key={k} value={k}>
+                        {t.filters.kinds[k]}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              )}
+
+              <label className="flex flex-col gap-1">
+                <span className="text-xs text-ink-soft">{t.filters.standing}</span>
+                <select
+                  name="standing"
+                  defaultValue={statusFilter ?? ''}
+                  className="min-h-tap rounded-xl border border-line bg-white px-3 text-ink"
+                >
+                  <option value="">{t.filters.any}</option>
+                  {STATUS_ORDER.map((s) => (
+                    <option key={s} value={s}>
+                      {t.status[s]}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <label className="flex flex-col gap-1">
+                <span className="text-xs text-ink-soft">{t.filters.order}</span>
+                <select
+                  name="order"
+                  defaultValue={sort}
+                  className="min-h-tap rounded-xl border border-line bg-white px-3 text-ink"
+                >
+                  {SORTS.map((key) => (
+                    <option key={key} value={key}>
+                      {t.filters.orders[key]}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <button
+                type="submit"
+                className={buttonClass('primary')}
+              >
+                {t.filters.apply}
+              </button>
+
+              {/* Only once something is narrowed — a Clear on a list that is not filtered
+                  is a button that does nothing. */}
+              {searching && (
+                <Link
+                  href="/founder"
+                  className="inline-flex min-h-tap items-center px-3 text-sm font-medium text-ink-soft hover:text-ink"
+                >
+                  {t.filters.clear}
+                </Link>
+              )}
+            </div>
+
+            {/* Always said, and it is the line that makes the filters trustworthy: a list
+                of four customers from a book of eleven must not look like a book of four. */}
+            <p className="text-xs text-ink-faint">
+              {t.filters.showing(digits(matched.length, locale), digits(list.length, locale))}
+            </p>
+          </form>
+
+          {matched.length === 0 && (
+            <Card>
+              <p className="font-medium text-ink">{t.filters.none}</p>
+              <p className="mt-1 text-sm text-ink-soft">{t.filters.noneHint}</p>
+            </Card>
+          )}
+
           <ul className="flex flex-col gap-3">
-            {list.map((c) => {
+            {matched.map((c) => {
               const signedUp = dhakaDay(c.createdAt)
               const lastActive = dhakaDay(c.lastActiveAt)
               const waitingSince = dhakaDay(c.asksSince)
               const open = purchases.get(c.centerId)
+              // The card's two levers work from these, and both are null together when the
+              // money read did not answer — see the note on the map above.
+              const held = money.get(c.centerId)
+              const line = held ? held.charged_through : null
 
               return (
                 <li key={c.centerId}>
                   <Card>
                     <div className="flex items-start justify-between gap-3">
                       <div className="min-w-0">
-                        <h2 className="truncate font-semibold text-ink">{c.name}</h2>
+                        {/* The customer's name is the way into their record: it is what a
+                            founder is already looking at when they decide to open one, and
+                            a separate "Details" button would be a second thing to aim at. */}
+                        <h2 className="truncate font-semibold text-ink">
+                          <Link
+                            href={`/founder/${c.centerId}` as Route}
+                            className="hover:text-brand-700"
+                          >
+                            {c.name}
+                          </Link>
+                        </h2>
                         <p className="truncate text-sm text-ink-soft">
                           {[c.area, planName(planFor(c.plan), locale)]
                             .filter(Boolean)
@@ -333,8 +735,8 @@ export default async function FounderPage() {
                           className={`rounded-lg border px-2 py-0.5 text-xs
                             ${
                               c.trialDaysLeft < 0
-                                ? 'border-red-600 bg-red-600 font-semibold text-white'
-                                : 'border-amber-200 bg-amber-50 font-medium text-amber-800'
+                                ? 'border-absent bg-absent font-semibold text-white'
+                                : 'border-late/40 bg-late/5 font-medium text-late'
                             }`}
                         >
                           {c.trialDaysLeft < 0
@@ -352,7 +754,7 @@ export default async function FounderPage() {
                           three weeks late. */}
                       {c.owes && (
                         <span
-                          className="rounded-lg border border-red-600 bg-red-600
+                          className="rounded-lg border border-absent bg-absent
                             px-2 py-0.5 text-xs font-semibold text-white"
                         >
                           {t.owed.badge}
@@ -361,8 +763,8 @@ export default async function FounderPage() {
                       {/* Marked, not moved — see the note on `customers`. */}
                       {c.quiet && (
                         <span
-                          className="rounded-lg border border-red-200 bg-red-50 px-2
-                            py-0.5 text-xs font-medium text-red-700"
+                          className="rounded-lg border border-absent/30 bg-absent/5 px-2
+                            py-0.5 text-xs font-medium text-absent"
                         >
                           {c.daysQuiet === null
                             ? t.neverActive
@@ -380,7 +782,7 @@ export default async function FounderPage() {
                         chip with a button — the owner answers it on their own plan
                         screen, and there is nothing here for the founder to press. */}
                     {c.asksOpen > 0 && (
-                      <p className="num mt-1 text-sm font-medium text-amber-800">
+                      <p className="num mt-1 text-sm font-medium text-late">
                         {[
                           t.outOfPlaces(c.asksOpen, c.asksPlaces),
                           waitingSince && t.outOfPlacesSince(waitingSince),
@@ -424,11 +826,27 @@ export default async function FounderPage() {
                       />
                     )}
 
-                    {/* Who to ring, as a link that dials on the phone the founder
-                        is holding. The one contact detail this panel carries, and
-                        the founder already has it — they signed them up. */}
+                    {/* Who to reach, as the link that works on the screen the founder
+                        is holding: an address opens their mail app, a number dials.
+                        Exactly one of the two is set — a staff login is keyed on a
+                        number, a self-serve signup on an address (§5.4) — so this draws
+                        one link rather than offering a choice, and the centre that
+                        signs up through the app is the one with no number at all. */}
                     <p className="mt-1 text-sm text-ink-soft">
                       {c.ownerName ?? t.noOwner}
+                      {c.ownerEmail && (
+                        <>
+                          {' — '}
+                          {/* `break-all`, because an address is twice the width of a
+                              number and this card is a column on a phone. */}
+                          <a
+                            href={`mailto:${c.ownerEmail}`}
+                            className="break-all font-medium text-brand-700"
+                          >
+                            {c.ownerEmail}
+                          </a>
+                        </>
+                      )}
                       {c.ownerPhone && (
                         <>
                           {' — '}
@@ -497,13 +915,32 @@ export default async function FounderPage() {
                       plan={c.plan}
                       status={c.status}
                       suggestedAmount={c.billBdt}
-                      periods={periods}
+                      // A teacher buys months of Pro; a centre buys balance. Decided from
+                      // the plan here, and decided again from the row by the function that
+                      // writes the receipt — so a card drawn for the wrong shape cannot
+                      // record the wrong thing.
+                      sellsMonths={isTeacherTier(planFor(c.plan))}
                       months={months}
                       plans={plans}
                       statuses={statuses}
                       words={t.money}
                       // The fee board's own wallet names, not a second copy.
                       methods={d.feeRow.methods}
+                      // The two levers' words, and the two figures they work from.
+                      // Both sentences are composed here, where the locale is: the
+                      // client component fills nothing but the days preview.
+                      levers={leverLabels(locale)}
+                      holding={
+                        held && line
+                          ? leverSentences(locale).holding(
+                              formatTaka(Number(held.balance_poisha) / 100),
+                              formatDate(line, locale),
+                            )
+                          : null
+                      }
+                      line={line}
+                      today={dhakaToday}
+                      locale={locale}
                     />
 
                     {/* Below the money, because that is the order of the calls: most
@@ -549,6 +986,29 @@ export default async function FounderPage() {
               </div>
             )}
           </Card>
+
+          {/*
+           * §4.3's trial lengths, which are the founder's own policy rather than any single
+           * customer's business — so they sit with the reconciliation and the window notes
+           * instead of inside a card.
+           */}
+          <PlatformSettings
+            days={{
+              teacher: settings.teacherTrialDays,
+              center: settings.centerTrialDays,
+              institution: settings.institutionTrialDays,
+              /*
+               * The fourth number on the same row, and the only bound a free account runs into
+               * on its roster (20260811000098). A failed read arrives here as null, which the
+               * card would print as "null" — so it is shown as the row's own default rather
+               * than as a broken box, while the fence refuses on the null policy it could not
+               * read. The fallback is the column's own default, named once in
+               * lib/platform/settings.ts, and it is only ever a figure to look at.
+               */
+              roster: settings.trialRosterCeiling ?? DEFAULT_TRIAL_ROSTER_CEILING,
+            }}
+            words={t.settings}
+          />
 
           {/* The two things easiest to misread, stated once at the bottom. */}
           <p className="text-xs text-ink-faint">{t.window}</p>

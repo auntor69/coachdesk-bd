@@ -69,9 +69,12 @@ export function AtRiskCard({
           "See everyone" over a list that was already everyone is a link an owner
           taps once and stops believing, so when nothing is hidden this is the same
           plain "View →" the attendance card uses. */}
+      {/* The same 44px-that-costs-no-height trick as the overdue card's "see all": the
+          padding is the target and the negative margin puts the card's foot back. */}
       <Link
         href="/at-risk"
-        className="num mt-3 inline-block text-sm font-medium text-brand-700"
+        className="num -mb-3 mt-3 inline-flex items-center py-3 text-sm font-medium
+          text-brand-700"
       >
         {hidden > 0 ? `${t.seeAll} (+${hidden})` : `${view} →`}
       </Link>

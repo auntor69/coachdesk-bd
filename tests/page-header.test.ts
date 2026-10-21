@@ -242,12 +242,43 @@ const NO_BAR = [
   'src/app/(app)/fees/receipt/[paymentId]/page.tsx',
   'src/app/(app)/fees/register/page.tsx',
   'src/app/(app)/payroll/payslip/[paymentId]/page.tsx',
+  'src/app/(app)/settings/billing/receipt/[paymentId]/page.tsx',
+]
+
+/**
+ * The routes that are not screens at all, and draw nothing because they draw nothing.
+ *
+ * `/settings/plan` is a redirect since §16.1 step 27 demolished the page: a shipped URL
+ * with a live replacement, kept so an old bookmark and the receipt sheets' crumb still
+ * arrive somewhere. Under it, the receipt path forwards the id to the sheet's new address,
+ * because the old one is what printed copies and the app's own history carried. A route
+ * that returns `redirect()` has no heading to owe the reader and no reader to address, so
+ * it is settled rather than pending — and asserted to be one, in the loop below, because a
+ * list like this is exactly how the next heading-less screen would try to escape the gate.
+ */
+const REDIRECTS = [
+  'src/app/(app)/settings/plan/page.tsx',
   'src/app/(app)/settings/plan/receipt/[paymentId]/page.tsx',
 ]
 
 test('every screen in the app draws the bar, or is one of the five printed exceptions', () => {
-  const without = PAGES.filter((f) => !f.source.includes('<PageHeader')).map((f) => f.path)
+  const without = PAGES.filter(
+    (f) => !f.source.includes('<PageHeader') && !REDIRECTS.includes(f.path),
+  ).map((f) => f.path)
   assert.deepEqual(without.sort(), [...NO_BAR].sort())
+
+  // A page on the redirect list has to be a redirect, and nothing else: the call, and not
+  // one tag. Otherwise the list becomes the hole this gate exists to close.
+  for (const path of REDIRECTS) {
+    const page = TSX.find((f) => f.path === path)
+    assert.ok(page, `${path} is listed as a redirect and is not a page`)
+    assert.match(page.source, /^\s*redirect\((?:'|`)/m, `${path}: drawn as a screen, not redirected`)
+    assert.doesNotMatch(
+      page.source,
+      /<\/?[A-Za-z]/,
+      `${path}: a redirect may not render anything`,
+    )
+  }
 
 
   // Over every `.tsx` and not just the pages, because a shared block that drew a bar of
@@ -323,7 +354,7 @@ test('every arm of every screen draws the bar, not just the one an owner reaches
   const offenders: string[] = []
 
   for (const { path: file, source } of PAGES) {
-    if (NO_BAR.includes(file)) continue
+    if (NO_BAR.includes(file) || REDIRECTS.includes(file)) continue
 
     const body = pageBody(source, file)
     const blocks = localBlocks(body)

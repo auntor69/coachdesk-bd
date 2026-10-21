@@ -488,7 +488,7 @@ convenient the copy is.
    blocked twice over:** it needs an aggregator account, and it needs your
    resell-versus-bring-your-own answer before the shape of the columns is even
    decidable.
-6. **Centre pricing calculator. — Built.** `settings/plan/calculator.tsx`: students
+6. **Centre pricing calculator. — Built.** `settings/billing/calculator.tsx`: students
    and staff in, the marginal bands applied, the floor called out when it is doing
    the work, the seat charge shown separately, one total out. It reads
    `STUDENT_BANDS` and `CENTER_MONTHLY_FLOOR_BDT` directly, so it cannot drift from
@@ -499,8 +499,7 @@ convenient the copy is.
    gap it closes only became visible once item 6 shipped. The calculator told an
    owner exactly what Center would cost them and then the screen ended: the one
    control that turned that into money was a contact card gated on a config value
-   nobody had filled in. So an owner asks in-app instead — migration
-   `20260811000027`, `settings/plan/upgrade-request.tsx`, and three new columns on
+   nobody had filled in. So an owner asks in-app instead — migration    `20260811000027`, `settings/billing/upgrade-request.tsx`, and three new columns on
    `platform_centers()` that put the request on the customer's own card in the
    founder panel, next to their counts, their bill and their mobile number. Owner
    only, no plan gate — a free teacher tapping it is the most valuable caller this

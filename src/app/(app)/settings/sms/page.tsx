@@ -3,7 +3,7 @@ import { PageHeader } from '@/components/page-header'
 import { pageRole, getSession } from '@/lib/auth/session'
 import { createClient } from '@/lib/supabase/server'
 import { pageAll, worstFailure } from '@/lib/supabase/page'
-import { formatDate } from '@/lib/bd/time'
+import { dhakaMoment, formatDate } from '@/lib/bd/time'
 import { planName } from '@/lib/plans'
 import { smsProviderConfigured } from '@/lib/sms/provider'
 import { UCS2_SEGMENT } from '@/lib/sms/encoding'
@@ -163,9 +163,9 @@ export default async function SmsSettingsPage() {
           every number below it, and a reader who meets it after the tallies has
           already believed them. */}
       {!smsProviderConfigured() && (
-        <div className="max-w-4xl rounded-xl border-2 border-amber-300 bg-amber-50 px-4 py-3">
-          <p className="font-semibold text-amber-900">{t.notLiveTitle}</p>
-          <p className="mt-1 text-sm text-amber-900/90">{t.notLiveBody}</p>
+        <div className="max-w-4xl rounded-xl border-2 border-late/40 bg-late/5 px-4 py-3">
+          <p className="font-semibold text-late">{t.notLiveTitle}</p>
+          <p className="mt-1 text-sm text-late/90">{t.notLiveBody}</p>
         </div>
       )}
 
@@ -256,7 +256,14 @@ export default async function SmsSettingsPage() {
                   <div className="min-w-0 flex-1">
                     <p className="font-medium text-ink">{d.smsKinds[dispatch.kind]}</p>
                     <p className="text-sm text-ink-faint">
-                      {formatDate(dispatch.created_at.slice(0, 10), locale)}
+                      {/*
+                        `dhakaMoment` and never ten characters off the timestamp: `created_at`
+                        is a timestamptz that Postgres returns in UTC, so a message queued at
+                        1am Dhaka would be dated the day before on the one screen that records
+                        what the centre spent its credits on. The same conversion the fee board's
+                        chase history makes, and the register's date beside it.
+                      */}
+                      {formatDate(dhakaMoment(dispatch.created_at).date, locale)}
                     </p>
                   </div>
                   <div className="shrink-0 text-right">

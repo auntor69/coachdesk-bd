@@ -157,7 +157,7 @@ function Purchase({
         </span>
         {item.lapsed && (
           <span
-            className="rounded-lg border border-red-600 bg-red-600 px-2 py-0.5 text-xs
+            className="rounded-lg border border-absent bg-absent px-2 py-0.5 text-xs
               font-semibold text-white"
           >
             {words.lapsed}

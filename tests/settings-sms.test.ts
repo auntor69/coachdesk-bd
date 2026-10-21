@@ -62,9 +62,12 @@ test('the not-live banner is above every figure it is the caveat on', () => {
   // put it and where a reader meets it after believing the numbers.
   assert.ok(PAGE.indexOf('{t.notLiveTitle}') < PAGE.indexOf('{t.balance}'))
   assert.ok(PAGE.includes('{!smsProviderConfigured() && ('), 'and still only when it is true')
+  // The app's own attention colour, not a hand-picked amber: `late` is the one
+  // warning token every other notice on every other screen is built from, and a
+  // second amber in the palette is how two warnings stop looking alike.
   assert.ok(
     PAGE.includes(
-      '<div className="max-w-4xl rounded-xl border-2 border-amber-300 bg-amber-50 px-4 py-3">',
+      '<div className="max-w-4xl rounded-xl border-2 border-late/40 bg-late/5 px-4 py-3">',
     ),
     'capped: two sentences of warning are unreadable at 1,216px',
   )
@@ -176,6 +179,16 @@ test('a figure that cannot be proved is a dash and never a flattering zero', () 
   assert.ok(PAGE.includes("statusProblem === null && counts.failed > 0 ? 'text-absent' : 'text-ink'"))
   assert.ok(PAGE.includes("{statusProblem === 'tooLarge' ? t.statusTooLarge : t.statusUnknown}"))
   assert.ok(PAGE.includes("{rosterProblem === 'tooLarge' ? t.rosterTooLarge : t.rosterUnreadable}"))
+})
+
+test('a dispatch is dated by the Dhaka day it was queued on, not the UTC one', () => {
+  // `created_at` is a timestamptz Postgres returns in UTC, so ten characters off it is
+  // yesterday for the first six hours of every Bangladeshi day — on the list that records
+  // what the centre spent its credits on. `dhakaMoment` is the conversion every other
+  // dated row in the app makes; see tests/notices-page.test.ts for the arithmetic.
+  assert.match(PAGE, /formatDate\(dhakaMoment\(dispatch\.created_at\)\.date, locale\)/)
+  assert.doesNotMatch(PAGE, /created_at\.slice\(0, 10\)/)
+  assert.match(PAGE, /import \{ dhakaMoment, formatDate \} from '@\/lib\/bd\/time'/)
 })
 
 test('a failed dispatch read says so instead of sending the owner on an errand', () => {

@@ -108,6 +108,26 @@ export function payeeValue(kind: PayeeKind, id: string): string {
 }
 
 /**
+ * The picker's third answer: somebody who is not on either staff list yet.
+ *
+ * A COACHING CENTRE'S FIRST VISIT TO THE SALARY SCREEN IS OFTEN ITS FIRST VISIT TO
+ * ANYTHING. Nothing has been written down yet, so the picker that asks *whose* salary is
+ * empty — and an empty required picker is a form that cannot be submitted, under a
+ * sentence telling the reader to go to Settings, find the staff screen and come back. Two
+ * screens and a lost place on the page, to answer a question the form was already asking.
+ *
+ * So the picker carries one value that is not a person: choosing it opens the two boxes
+ * that make one — a name and what they do — and the same submit writes the staff row and
+ * the agreement together. `readPayeeValue` still refuses it, deliberately: this is not a
+ * payee, and the action branches on it before asking that function anything.
+ *
+ * Here rather than in the form because the form writes it and the action reads it, and a
+ * sentinel invented in a client component and re-typed in a server file is two strings
+ * that can drift apart without either failing to compile.
+ */
+export const NEW_PAYEE = '__new__'
+
+/**
  * The other direction, and null for anything that is not one of ours.
  *
  * The id is not validated beyond being non-empty: whether it names somebody at this centre

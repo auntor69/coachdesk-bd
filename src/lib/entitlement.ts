@@ -16,7 +16,7 @@
  * still holding a paid tier or has lost the free one.
  *
  * AND NOTHING DOWNSTREAM LEARNS WHY. A feature gate, a cap check and a permission
- * helper all read the *result* — a plan, a ceiling, and whether writing is allowed.
+ * helper all read the *result* — a plan, and whether writing is allowed.
  * None of them is told that the plan came from a trial, that a payment lapsed, or
  * which status produced the answer. That is the whole point of the indirection:
  * `isTrial` asked at one call site is a branch, asked at forty it is a second plan
@@ -36,15 +36,19 @@
  *
  * A LAPSE IS THE SAME COMPARISON, and §4.4 asks for it in those words: the transition
  * to read-only is "computed from coverage, not from a flag somebody remembered to set".
- * That is the one part of the monthly bKash conversation that has to be automatic,
+ * Under the prepaid balance (§11.6) what is compared is *money*: `owed` is a day count
+ * times the day's rate, and a centre whose balance cannot cover it is read-only until
+ * it tops up. That is the one part of the money conversation that has to be automatic,
  * because it is the part a founder cannot be trusted to do consistently to a customer
- * they like. `paid_through` plus `GRACE_DAYS` is read on every session, so it happens
- * on the right day whether or not anybody is watching, and un-happens the moment a
- * receipt is recorded — no job to run, and none to forget to run backwards.
+ * they like — so `owed` grows by itself, with no job to run and none to forget to run
+ * backwards, and a recharge un-lapses the centre the moment it is recorded because
+ * there is no state to unset.
  *
  * NOT THE BOUNDARY. RLS in Postgres decides whose rows these are, and
- * `app.guard_center_billing` and `app.guard_student_capacity` are what a browser
- * cannot talk its way past. This is one layer in: narrower than the boundary, never
+ * `app.guard_center_billing` is what a browser cannot talk its way past, and
+ * `app.guard_student_capacity` is the third — it still refuses an admission past the
+ * plan's allowance on the teacher tiers, and since §16.1 step 28 it no longer counts
+ * places that were bought. This is one layer in: narrower than the boundary, never
  * wider. If the two ever disagree in this direction, a screen draws and its queries
  * come back empty.
  */
@@ -52,10 +56,9 @@
 import { daysBetween, todayInDhaka } from './bd/time.ts'
 import {
   PLAN_RANK,
+  isTeacherTier,
   planFor,
-  studentCeiling,
   type PlanLimits,
-  type StudentCeiling,
 } from './plans.ts'
 import type { CenterStatus } from './supabase/types.ts'
 
@@ -82,14 +85,15 @@ export type Access = 'full' | 'read_only'
  *
  * `trial` is full access on purpose: it is the founder's 30-day sales trial from
  * MASTERPLAN.md §9, where nobody has paid yet and the entire point is that the
- * centre runs its real term on the product. It is not the Teacher Pro trial below —
- * that one is a plan for a fortnight, this one is a standing with no plan of its own,
- * and merging the two clocks would put a fourteen-day timer on a customer the
- * founder is still selling to.
+ * centre runs its real term on the product — and under §4.4 a sales trial is granted
+ * *days*, so it ends when the balance cannot carry the next one rather than on a
+ * status change. It is not the Teacher Pro trial below: that one is a plan for a
+ * fortnight, this one is a standing with no plan of its own, and merging the two
+ * clocks would put a fourteen-day timer on a customer the founder is still selling to.
  *
  * THIS IS THE FLOOR AND NOT THE WHOLE ANSWER. `active` earns full access from the
- * status column and can still lose it to a lapse — see `coverageLapsed`. Nothing goes
- * the other way: no coverage can talk a `suspended` row into writing.
+ * status column and can still lose it to a dry balance — see `billingStanding`.
+ * Nothing goes the other way: no balance can talk a `suspended` row into writing.
  */
 const ACCESS_BY_STATUS: Record<CenterStatus, Access> = {
   trial: 'full',
@@ -97,22 +101,6 @@ const ACCESS_BY_STATUS: Record<CenterStatus, Access> = {
   suspended: 'read_only',
   cancelled: 'read_only',
 }
-
-/**
- * How long after coverage runs out a centre keeps writing. MASTERPLAN.md §4.4's
- * proposed constant, and the whole of the grace window.
- *
- * SEVEN AND NOT THIRTY, because the bill is monthly: a grace window as long as the
- * cycle means a customer can be a full period behind and never notice, and the
- * conversation that catches churn never happens. Seven days is a week to get to a
- * bKash agent, which is the real-world obstacle.
- *
- * SEVEN AND NOT ZERO, because `covers_period_end` is a date somebody typed while
- * looking at a transfer, and the last day of a month is a Friday often enough. A
- * customer who paid on time should never see this banner because their receipt was
- * entered on Sunday.
- */
-export const GRACE_DAYS = 7
 
 /**
  * The columns entitlement is derived from. Exactly these, from
@@ -124,7 +112,7 @@ export const GRACE_DAYS = 7
  *
  * EVERY KEY IS REQUIRED AND EVERY VALUE MAY BE NULL, which is deliberate and is not
  * the same as making the keys optional. Null is a real state for four of these —
- * no trial, no plan recorded, no capacity bought — but *forgetting* one is not a
+ * no trial, no plan recorded — but *forgetting* one is not a
  * state at all: it is a `select` that did not ask for the column, and with optional
  * keys that compiles into "no trial" for a centre that is trialling. So the compiler
  * makes the caller write each one down, including the ones it has nothing to say
@@ -139,37 +127,50 @@ export type OrgBilling = {
   trial_plan: string | null
   /** `coaching_centers.trial_ends_at` — timestamptz, so an ISO string over the wire. */
   trial_ends_at: string | Date | null
-  /** `coaching_centers.student_capacity` — places bought beyond the plan allowance. */
-  student_capacity: number | null
   /**
-   * `coaching_centers.paid_through` — the furthest date any payment covers, as
-   * YYYY-MM-DD, or null when no payment says what period it bought.
+   * `coaching_centers.balance_poisha` — the money available to settle days that are
+   * not yet paid for. MASTERPLAN.md §11.7's first lever.
+   *
+   * A cache of `sum(billing_ledger.amount_poisha)`, maintained by the trigger in
+   * 20260811000078 and unwritable from a browser: the ledger is the truth and this is
+   * the one column a session guard can read without a scan. A test asserts the two
+   * agree (§11.13's first reconciliation question).
+   */
+  balance_poisha: number | null
+  /**
+   * `coaching_centers.charged_through` — the last Dhaka date that *is* paid for, as
+   * YYYY-MM-DD, or null when the centre has no line at all. §11.7's second lever.
    *
    * A `date` and therefore a string, unlike `trial_ends_at`: it names a calendar day
    * with no time of day, and letting a `Date` in would invite a UTC midnight to be
-   * compared against a Dhaka morning. Maintained by the trigger in
-   * 20260811000059 — never hand-set, and unwritable from a browser.
+   * compared against a Dhaka morning. Advanced by the ledger's own trigger when a
+   * daily charge lands, and by a founder granting days — never hand-set by a customer,
+   * and it only ever moves forward, because backwards is charging a day twice.
    */
-  paid_through: string | null
+  charged_through: string | null
   /**
-   * `coaching_centers.created_at` — used to bound the legacy unrecorded-coverage
-   * grace period. A new centre on a paid tier with no coverage after cutover lapses
-   * after 14 days.
+   * What one day costs this centre at today's size, in poisha, or null when nobody
+   * has read it.
+   *
+   * NOT A COLUMN AND NOT DERIVED HERE, which is the one thing about this field worth
+   * being careful with. It is `public.settle_billing`'s `dailyPoisha` (§11.7), handed
+   * back by the settlement that has just run — so the resolver compares the balance
+   * against the same rate the burn charged at, in the same transaction, rather than
+   * recomputing a figure from head counts it does not have and cannot read.
+   *
+   * NULL MEANS "NOT READ", NEVER "ZERO". Zero is a rate that has been read and is
+   * nothing, which is the free tier; null is a number that either was not needed
+   * (the centre is paid up, so `owed` is zero without it) or could not be read (the
+   * counts failed, and §4.4's answer where the rate *is* needed is read-only).
    */
-  created_at?: string | Date | null
-  /** `coaching_centers.charged_through` — the date up to which daily rate was settled. */
-  charged_through?: string | null
-  /** `coaching_centers.balance_poisha` — the prepaid balance in poisha. */
-  balance_poisha?: number | null
+  daily_rate_poisha: number | null
 }
 
-/** The answer. Three fields, and none of them says how it was arrived at. */
+/** The answer. Two fields, and neither of them says how it was arrived at. */
 export type Entitlement = {
   access: Access
   /** The tier in force — the trial's while it lasts, otherwise the paid one. */
   plan: PlanLimits
-  /** How many active students are allowed, and what to do when they run out. */
-  ceiling: StudentCeiling
 }
 
 /**
@@ -211,67 +212,214 @@ function trialPlan(org: OrgBilling, paid: PlanLimits, now: Date): PlanLimits | n
 }
 
 /**
- * Whether this centre's paid coverage ran out more than the grace window ago.
+ * Where the prepaid balance stands, right now — the figures, and the answer they give.
  *
- * NULL COVERAGE IS NOT A LAPSE, and it is the line in this file most worth getting the
- * right way round. A centre with no `paid_through` has no payment row saying what
- * period it bought — which is the state of every customer who paid before the receipt
- * screen existed, including the first real one on this product. Reading null as "ran
- * out in 1970" would put a paying customer into read-only for the crime of being early.
+ * OWED IS ARITHMETIC OVER TWO COLUMNS AND NOT A ROW ANYWHERE. `greatest(0, today −
+ * charged_through) × rate` — so a centre that never opens the app still lapses on
+ * exactly the right day, and a recharge un-lapses it the moment the money is recorded,
+ * because nothing was ever written to say otherwise.
  *
- * ONLY `active` LAPSES. `trial` has nothing to lapse and is full access by design;
- * `suspended` and `cancelled` are already read-only and cannot be made more so. A
- * status outside the enum never reaches here.
+ * ONE ARITHMETIC AND THREE READERS. The resolver below uses `lapsed`; the app shell's
+ * rail uses `daysLeft` and the pillars it is built from; the banner uses the whole
+ * thing to say what happened and what to do about it. A second copy of this division
+ * is how a screen and a refusal come to disagree about whether a centre may write.
  *
- * A FREE PLAN NEVER LAPSES. Coverage is what money bought, and a tier that costs
- * nothing has nothing to cover — so a teacher who once paid for a month of Pro and has
- * since dropped to Free keeps Free forever. Read from the PAID plan and not the
- * resolved one: a trial in force does not change what the customer is buying.
- *
- * AND IT FAILS OPEN, DELIBERATELY, WHICH THE REST OF THIS FILE DOES NOT. A date that
- * will not parse gives `daysBetween` zero, and zero is never past the window, so a
- * garbled column grants access rather than removing it. That is the opposite of the
- * trial's fallback, for a reason the trial does not share: an unreadable
- * `trial_ends_at` falls back to what the customer already paid for, while an
- * unreadable `paid_through` would fall back to taking the product away from somebody
- * who may have paid us this morning. A bad string is not evidence of non-payment. The
- * founder can still suspend by hand, and that path is untouched.
+ * NULL IS NOT ZERO, in either column, and the two directions fail differently on
+ * purpose. A `charged_through` that is absent or unreadable is *not* an accusation of
+ * non-payment — `daysBetween` answers 0 for a date it cannot parse, and 0 days behind
+ * is paid up, so a garbled line grants access rather than removing it. A missing
+ * *rate* while the centre is behind is the other way round: the answer is read-only,
+ * as §4.4 says everywhere the rate is needed and cannot be read. A bad date is
+ * evidence of nothing; a count we could not take is evidence we cannot price the day.
  */
-function coverageLapsed(org: OrgBilling, paid: PlanLimits, now: Date): boolean {
-  if (org.status !== 'active') return false
-  if (!org.paid_through) {
-    // Null coverage on free plan never lapses.
-    if (paid.pricing === 'free') return false
-
-    // BILL-03: For new centres created after the prepaid cutover on a paid plan with
-    // no paid_through recorded, lapse after 14 days so newly created centres cannot
-    // retain perpetual free access on paid tiers without payment or wallet balance.
-    // Legacy centres with no created_at recorded continue to fail open.
-    if (org.created_at) {
-      const created =
-        org.created_at instanceof Date ? org.created_at : new Date(org.created_at)
-      if (Number.isFinite(created.getTime())) {
-        const createdDay = todayInDhaka(created)
-        if (daysBetween(createdDay, todayInDhaka(now)) > 14) {
-          return true
-        }
-      }
-    }
-    return false
-  }
-  if (paid.pricing === 'free') return false
-
-  // Calendar days in Dhaka on both sides, because `paid_through` is a `date` with no
-  // time of day to compare an instant against. Coverage runs to the end of the day it
-  // names, so that day is zero days overdue and the window counts from the next one:
-  // strictly greater, so the seventh day of grace is still a day of grace.
-  return daysBetween(org.paid_through, todayInDhaka(now)) > GRACE_DAYS
+export type BillingStanding = {
+  /**
+   * The Dhaka day this was resolved against, as YYYY-MM-DD, or null when the instant it
+   * was given is not one — see the guard in `billingStanding`.
+   */
+  today: string | null
+  /** The last day paid for, as YYYY-MM-DD, or null when the row has no line. */
+  chargedThrough: string | null
+  /** Whole Dhaka days owed right now. Zero for a centre that is paid up. */
+  daysOwed: number
+  /** What one day costs at today's size, in poisha, or null when it was not read. */
+  dailyRatePoisha: number | null
+  /** Money available, in poisha, or null when the column could not be read. */
+  balancePoisha: number | null
+  /**
+   * Whole days the balance still covers *after* the line, or null when there is no
+   * rate to divide by — which is a free tier (nothing to spend, no day to run out of)
+   * or a rate nobody read (and then the rail has nothing to draw, rather than a zero).
+   */
+  daysLeft: number | null
+  /** Whether the balance alone takes the writing away. The status floor is separate. */
+  lapsed: boolean
 }
 
 /**
- * The resolver. MASTERPLAN.md §4.2, in the order it is written there: access from
- * the status, plan from the trial or the subscription, ceiling from the plan and
- * what has been bought.
+ * A `date` column, normalised to the `YYYY-MM-DD` every comparison in here assumes.
+ *
+ * A `Date` only ever arrives from a test: PostgREST hands a `date` back as a string,
+ * and the generated row types say so. It is accepted rather than banned because a
+ * fixture written with `new Date(...)` should not need to know which half of the wire
+ * it is standing in for, and because `toISOString` throws on an invalid `Date` where
+ * every other path in this file answers with a number.
+ */
+function dayOf(value: string | Date | null): string | null {
+  if (value === null) return null
+  if (value instanceof Date) {
+    return Number.isFinite(value.getTime()) ? value.toISOString().slice(0, 10) : null
+  }
+  return value.slice(0, 10)
+}
+
+/**
+ * The standing, resolved. §11.7's comparison and §11.6's arithmetic, once.
+ *
+ * A FREE PLAN OWES NOTHING, and not as a special case: a tier with no price has a rate
+ * that is zero by construction, so `owed` is zero however far behind the line has
+ * fallen — a teacher who once bought a month of Pro and has since dropped to Free keeps
+ * Free forever. Read off the *stored* plan and never the trialled one, the same rule the
+ * old coverage derivation used: a trial in force does not change what is being bought,
+ * and the days it grants are granted by moving the line, not by changing the rate here.
+ */
+export function billingStanding(org: OrgBilling | null, now: Date): BillingStanding {
+  /*
+   * A CLOCK THAT IS NOT A CLOCK IS NOT A DEBT.
+   *
+   * `todayInDhaka` formats, so it throws on an invalid `Date` rather than answering
+   * `NaN` the way the arithmetic in here does — and this file's promise is that an
+   * unreadable clock says nothing rather than throwing, because the alternative is a
+   * crash on every screen rather than a wrong number on one. The reading taken is the
+   * trial's, in the other direction: a clock nobody can read is not evidence of a debt,
+   * so nothing is owed and the status floor stands on its own.
+   *
+   * Sessions pass `new Date()`, so a bad instant here is a caller's bug — and a bug must
+   * not freeze a customer's register. A hidden test asserts it, and it broke the first
+   * time this function formatted the clock unconditionally.
+   */
+  const today = Number.isFinite(now.getTime()) ? todayInDhaka(now) : null
+
+  // NO ORGANISATION IN VIEW: all three figures are absent and nothing is owed, which is
+  // the same total answer the resolver's own floor gives — a reader with no centre is
+  // read-only because there is nothing to write to, not because of money. A banner or a
+  // rail drawn from this draws nothing, which is what it should do on a screen that
+  // belongs to no centre yet.
+  if (!org) {
+    return {
+      today,
+      chargedThrough: null,
+      daysOwed: 0,
+      dailyRatePoisha: null,
+      balancePoisha: null,
+      daysLeft: null,
+      lapsed: false,
+    }
+  }
+
+  const chargedThrough = dayOf(org.charged_through)
+  const dailyRatePoisha = org.daily_rate_poisha
+  const balancePoisha = org.balance_poisha
+
+  // Zero behind is the ordinary state of a paying centre, and negative is a line that
+  // has run past today — granted days, or a payment recorded forward — which owes
+  // nothing either. Only a positive gap is a debt.
+  const behind = today && chargedThrough ? daysBetween(chargedThrough, today) : 0
+
+  const free = planFor(org.plan).pricing === 'free'
+
+  // A FREE TIER OWES NOTHING IN DAYS EITHER, not just in money. Its line never moves and
+  // there is no rate that could ever pay these days down, so a count of them would be a
+  // figure with no arithmetic behind it — the kind a rail prints because it was there.
+  // Zero is the true answer to "how many days does this centre owe".
+  const daysOwed = free || behind <= 0 ? 0 : behind
+
+  // Floored, and floored in the customer's favour: ৳86.66 of rate against ৳86.66 of
+  // balance is one day, and 3.4 days' worth is three, because the fourth day cannot be
+  // bought whole and §11.7's rule is that a partial day buys nothing.
+  const daysLeft =
+    free || dailyRatePoisha === null || dailyRatePoisha <= 0 || balancePoisha === null
+      ? null
+      : Math.floor(balancePoisha / dailyRatePoisha)
+
+  // `daysOwed` IS ZERO FOR A FREE TIER, which is why the rate is not consulted to get
+  // here: a plan with no price has nothing to be short of. Behind, with a rate that
+  // could not be read or a balance nobody could read, is read-only — the same
+  // narrow direction every other fallback in this file takes.
+  const lapsed =
+    daysOwed > 0 &&
+    (dailyRatePoisha === null ||
+      balancePoisha === null ||
+      balancePoisha < daysOwed * dailyRatePoisha)
+
+  return {
+    today,
+    chargedThrough,
+    daysOwed,
+    dailyRatePoisha,
+    balancePoisha,
+    daysLeft,
+    lapsed,
+  }
+}
+
+/**
+ * Whether this centre's days cost money at all — the one condition under which the burn
+ * is worth asking for (MASTERPLAN.md §11.6, §11.7).
+ *
+ * THE FREE TIER IS THE ONLY THING THAT SAYS NO, and it says it because its rate is zero:
+ * a free centre's line never moves, nothing it does can move it, and a settlement would
+ * be a round trip that returns `nothing_due` for the rest of that centre's life. Every
+ * other centre burns something, so every other centre is worth asking.
+ *
+ * IT DELIBERATELY DOES *NOT* PREDICT WHETHER ANYTHING IS OWED, and the first draft did:
+ * "behind today, and holding money" — which was the right filter when a repeated refusal
+ * threw a unique violation and every extra call was a crash. 20260811000082 took that
+ * away at the database (`settlement_runs_one_note_per_day` and `on conflict do nothing`),
+ * so what is left is the cost of a call that charges nothing: a price card read, the same
+ * two head counts the day's rate is priced from, and a balance sum. In exchange, every
+ * request knows the day's rate and the current balance, which is what the rail above the
+ * content and the read-only banner are drawn from — and neither of them could draw a
+ * figure on a day when no settlement happened.
+ *
+ * PREDICTING IT HERE WOULD ALSO BE A SECOND OPINION ABOUT THE MONEY. Whether the balance
+ * covers a day is answered by the burn itself, under the ledger's own advisory lock; a
+ * test in JavaScript that guessed at it first would be one more rule to keep in step, and
+ * the day it drifted would be the day it let a centre write on an empty purse.
+ */
+export function dailyBurn(org: OrgBilling): boolean {
+  return burnsMoney(org.plan)
+}
+
+/**
+ * The same rule, for a caller that has a plan id and no session (MASTERPLAN.md §11.7).
+ *
+ * The nightly settle cron has a row from `coaching_centers` and nothing else — no
+ * membership, no embedded billing record — and it needs exactly this question answered
+ * before it spends a round trip on a centre. Splitting it out is the alternative to the
+ * cron reading `pricing !== 'free'` for itself, which would be a second copy of a money
+ * rule in a second file: the day the free tier gained a rate, one of the two would keep
+ * skipping it.
+ *
+ * It takes a loose string because the two callers disagree about types on purpose — the
+ * session's `plan` is a `PlanId` narrowed by the resolver, and a database row's is whatever
+ * the column holds — and `planFor` is the one function in this product allowed to be
+ * generous about that, refusing an unknown plan rather than guessing (§12.2).
+ */
+export function burnsMoney(plan: string | null | undefined): boolean {
+  return planFor(plan).pricing !== 'free'
+}
+
+/**
+ * The resolver. MASTERPLAN.md §4.2: access from the status, plan from the trial or the
+ * subscription.
+ *
+ * IT USED TO RESOLVE A CEILING TOO, and it does not any more (§16.1 step 28). That
+ * third field was the plan's allowance plus whatever had been bought, which is what
+ * every "places" figure in the app read. Capacity is retired: a per-student tier has
+ * no student limit at all (§3.3), so there is nothing left to resolve — and the fence
+ * that remains, `app.guard_student_capacity`, is the database's own answer for the
+ * teacher tiers, where the allowance is the plan's and not something bought.
  *
  * FAIL CLOSED, IN THE ESTABLISHED DIRECTION. Every fallback here is the narrow one:
  * an unrecognised status may not write, an unrecognised plan is Teacher Free, an
@@ -280,8 +428,8 @@ function coverageLapsed(org: OrgBilling, paid: PlanLimits, now: Date): boolean {
  *
  * ONE THING IS NOT FAILED CLOSED HERE, and it is on purpose: a *count* that could
  * not be read is refused by its caller rather than treated as zero. This function
- * never sees a count. One failed count would not let one extra student past a
- * ceiling, it would let eighty — so `limitRefusal` answers "we cannot tell just now"
+ * never sees a count. One failed count would not let one extra student past a cap, it
+ * would let eighty — so `limitRefusal` answers "we cannot tell just now"
  * and adds nobody, and this file has no opinion to offer it.
  *
  * `now` IS A PARAMETER rather than a `new Date()` inside, so a test can stand either
@@ -289,11 +437,11 @@ function coverageLapsed(org: OrgBilling, paid: PlanLimits, now: Date): boolean {
  * centres resolves all of them against one instant instead of one per row.
  *
  * TWO CLOCKS, AND THEY PULL OPPOSITE WAYS. A trial can only raise what is allowed and
- * a lapse can only lower it, so the order they are applied in cannot matter — which is
- * why the plan is resolved from the trial and the access from the coverage, with
- * neither consulting the other's answer. A centre whose trial is live and whose
- * coverage has lapsed reads the trial's tier in read-only, and that is the correct
- * reading of a row that has been told two things at once.
+ * a dry balance can only lower it, so the order they are applied in cannot matter —
+ * which is why the plan is resolved from the trial and the access from the balance,
+ * with neither consulting the other's answer. A centre whose trial is live and whose
+ * balance cannot cover the day reads the trial's tier in read-only, and that is the
+ * correct reading of a row that has been told two things at once.
  */
 export function effectiveEntitlement(org: OrgBilling | null, now: Date): Entitlement {
   // NO ORGANISATION IN VIEW, which is two situations and needs no third answer: an
@@ -308,26 +456,60 @@ export function effectiveEntitlement(org: OrgBilling | null, now: Date): Entitle
   // a future caller which forgets that guard fails closed instead of wide.
   if (!org) {
     const plan = planFor(null)
-    return { access: 'read_only', plan, ceiling: studentCeiling(plan, 0) }
+    return { access: 'read_only', plan }
   }
 
   const paid = planFor(org.plan)
-  const plan = trialPlan(org, paid, now) ?? paid
+
+  // Resolved even when the status already forbids writing, because the caller may be
+  // the rail rather than this function: one call answers "may they write" and "how long
+  // has the money got" off the same read. The verdict below is the only place the two
+  // are combined.
+  const billing = billingStanding(org, now)
+
+  /*
+   * TEACHERS SUBSCRIBE, CENTRES PREPAY — so a dry purse means two different things.
+   *
+   * §11.6 sells a centre a balance and burns it a day at a time; the morning it cannot
+   * cover the day, the centre goes read-only and stays that way until it tops up. That is
+   * the right answer for an organisation: it is running a business, the term is running,
+   * and the person who has to act is the owner with the money.
+   *
+   * A teacher is one person, paying ৳499 a month, and the register they are holding is
+   * thirty children in a room. Taking that away the day a subscription lapses — to collect
+   * a month's fee from somebody who is standing in front of a class — is the failure §4.4
+   * warns about in the other direction: it turns a renewal conversation into an angry one.
+   * So the month the money runs out, a teacher is a Teacher Free account. Free is a real
+   * tier, not a demo: one batch, thirty students, attendance and the fee book, no printed
+   * receipts and no parent summaries. They keep working, they lose Pro, and renewing puts
+   * it back the moment the money is recorded.
+   *
+   * THE PLAN FALLS, THE STATUS DOES NOT. `status` is still the floor and still means what
+   * it means — a suspended teacher account cannot write — so this rule can only ever take
+   * a tier away, never a suspension. And a trial is untouched by it: a trialling teacher's
+   * paid plan is Teacher Free, whose rate is zero, so there is nothing to lapse and the
+   * fortnight runs its course.
+   */
+  const teacherTier = isTeacherTier(paid)
+  const lapsedTo = teacherTier && billing.lapsed ? planFor('teacher_free') : paid
+  const plan = trialPlan(org, lapsedTo, now) ?? lapsedTo
 
   // A status outside the enum is a row that has gone wrong, not a new kind of customer,
   // so it reads as read-only.
   const standing = ACCESS_BY_STATUS[org.status as CenterStatus] ?? 'read_only'
 
+  // Only a centre's purse takes the writing away. A teacher's is read as a tier above.
+  const moneyTakesItAway = !teacherTier && billing.lapsed
+
   return {
-    // The lapse can only take access away, never grant it — see `coverageLapsed`, which
-    // refuses to look at anything but an `active` centre for exactly that reason.
-    access: coverageLapsed(org, paid, now) ? 'read_only' : standing,
+    // THE BALANCE CAN ONLY TAKE ACCESS AWAY, NEVER GRANT IT, which is the same
+    // one-directional rule the coverage date carried and is why the comparison is
+    // guarded by the floor rather than OR-ed with it: a row has to be both in good
+    // standing *and* paid up to write. A suspended centre with a healthy balance is
+    // still suspended — a human threw that switch for a reason that is not money —
+    // and an unrecognised status cannot borrow access from a full purse either.
+    access: standing === 'full' && moneyTakesItAway ? 'read_only' : standing,
     plan,
-    // The trial's plan, not the paid one, and that is the point of resolving the plan
-    // first: a teacher trialling Pro gets Pro's 150 places for the fortnight, and
-    // keeps every student they added when it ends. Limits apply to new actions,
-    // never retroactively — §4.5.
-    ceiling: studentCeiling(plan, org.student_capacity ?? 0),
   }
 }
 

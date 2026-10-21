@@ -16,7 +16,7 @@
  * the number is chosen rather than read:
  *
  *   - a purchase code, `transferReference(intent_id)`, whenever there is an intent. This is
- *     the code the owner was shown on /settings/plan and quoted in the bKash reference when
+ *     the code the owner was shown on /settings/billing and quoted in the bKash reference when
  *     they sent the money, and it is what the founder panel lists open purchases by — so
  *     the paper closes the loop it opened rather than opening a second one.
  *   - failing that the provider's own `reference`, the TrxID, which is the only identifier
@@ -34,10 +34,12 @@
  * AND WHAT IT WAS PRICED AT, which since 20260811000068 is read rather than missing. §3.8
  * wants "which band(s) priced them, at what rate" on the record, and the record now has it:
  * `payment_intents.priced_lines` is the quote's own breakdown, frozen by the guard alongside
- * the amount. It could never have been recomputed here — `student_capacity` has already risen
- * by the time this sheet is printed, so `capacityBands` would price the *next* purchase, and a
- * per-place average matches no published band whenever a purchase straddles two. So this reads
- * the document and prints nothing at all if it is not the shape it should be.
+ * the amount. It could never have been recomputed here, and the reason is general rather than
+ * about student places: a purchase settles against the counts and the price list of the day it
+ * was quoted, so re-deriving its lines from the row as it reads *now* prices the next purchase
+ * rather than this one, and a per-unit average matches no published band whenever a purchase
+ * straddles two. So this reads the document and prints nothing at all if it is not the shape it
+ * should be.
  *
  * AND WHETHER IT IS A RECEIPT AT ALL. Since 20260811000074 a `payments` row can be negative:
  * a credit, money we owe the centre back, which is the only correction that table permits.

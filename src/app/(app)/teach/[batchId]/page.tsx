@@ -1,7 +1,7 @@
 import Link from 'next/link'
 import { forbidden, notFound } from 'next/navigation'
 
-import { Card } from '@/components/ui'
+import { Card, LinkButton } from '@/components/ui'
 import { PageHeader } from '@/components/page-header'
 import {
   pageRole,
@@ -13,7 +13,14 @@ import {
 } from '@/lib/auth/session'
 import { createClient } from '@/lib/supabase/server'
 import { BatchSlot } from '@/lib/bd/schedule'
-import { todayInDhaka, formatDate, formatTime, dhakaMoment } from '@/lib/bd/time'
+import {
+  todayInDhaka,
+  formatDate,
+  formatTime,
+  dhakaMoment,
+  dhakaClock,
+  dayOfWeekOn,
+} from '@/lib/bd/time'
 import {
   ATTENDANCE_MAX_REVISION,
   attendanceVerdict,
@@ -22,11 +29,13 @@ import {
   markHistory,
   registerAct,
 } from '@/lib/attendance/window'
+import { classState, classWindow, clockEnforced, unlockFor } from '@/lib/attendance/clock'
 import { planAbsenceNotices } from '@/lib/sms/absence-dispatch'
 import { dict, localName, DEFAULT_LOCALE } from '@/lib/i18n'
 import type { AttendanceStatus } from '@/lib/supabase/types'
 import { AttendanceRoster, type RosterStudent } from './attendance-roster'
 import { AbsenceNotices, type AbsenceRowView } from './absence-notices'
+import { AttendanceUnlock } from './attendance-unlock'
 
 /** See /teach: a title needs the session, and a static export cannot read one. */
 export async function generateMetadata() {
@@ -176,6 +185,7 @@ export default async function AttendancePage({
     { data: existingSession, error: existingError },
     { data: schedules },
     { data: recent },
+    { data: unlocks },
   ] = await Promise.all([
       supabase
         .from('enrollments')
@@ -195,9 +205,12 @@ export default async function AttendancePage({
         .eq('batch_id', batchId)
         .eq('session_date', sessionDate)
         .maybeSingle(),
+      // The day's hours as well as its day numbers: the clock gate is drawn from
+      // them (`classWindow`, which mirrors app.class_window()), and reading them here
+      // costs nothing — the timetable is five rows.
       supabase
         .from('batch_schedules')
-        .select('day_of_week')
+        .select('day_of_week, start_time, end_time')
         .eq('coaching_center_id', session.active.centerId)
         .eq('batch_id', batchId),
       // The last day this batch has a register for, which reopens an extra class
@@ -211,6 +224,20 @@ export default async function AttendancePage({
         .order('session_date', { ascending: false })
         .limit(1)
         .maybeSingle(),
+      /*
+       * Any signature for this day, and deliberately not filtered to this reader's own.
+       *
+       * The row is the centre's notice as well as the teacher's licence, so the owner
+       * opening somebody else's register sees the same line — "signed and filed early at
+       * 11:20am" — and that is the point of it being a row rather than a flag. The read
+       * is scoped to the batch and the day, which is as narrow as the question gets.
+       */
+      supabase
+        .from('attendance_unlocks')
+        .select('reason, claimed_at, batch_name, starts_at, ends_at')
+        .eq('coaching_center_id', session.active.centerId)
+        .eq('batch_id', batchId)
+        .eq('session_date', sessionDate),
     ])
 
   /*
@@ -268,6 +295,56 @@ export default async function AttendancePage({
   // An owner or manager may still write into a closed day, and is told that is
   // what they are doing. A teacher gets the card below instead of a form.
   const writable = verdict === 'open' || (verdict === 'closed' && isAdmin)
+
+  /*
+   * THE CLOCK, which is the second gate on a register and the narrower one.
+   *
+   * `window` is the day's class hours, read through the same three columns the guard
+   * reads — `dayOfWeekOn(sessionDate)` rather than today's day, because the page can be
+   * showing `?date=` and the hours belong to the day being marked. Then the state, and
+   * the signature it needs.
+   *
+   * ON THE DAY AND ONLY THE DAY. `sessionDate === today` gates both halves: a class that
+   * has not started is a today-shaped fact, and an earlier day's register is a correction
+   * of history (the window `verdict` already decided). Doing it this way also means the
+   * clock cannot refuse a register the date rule has already opened, which would be two
+   * rules disagreeing in front of a teacher.
+   *
+   * A SIGNATURE THAT IS ALREADY IN LIFTS IT for the rest of the day, and that is the one
+   * thing a signature buys: the teacher who signed at eleven in the morning comes back at
+   * four and finds their register, not the card again. It is read off the row rather than
+   * remembered anywhere, so a second visit from a different phone sees it too.
+   */
+  const window = classWindow({
+    dayOfWeek: dayOfWeekOn(sessionDate),
+    schedules: schedules ?? [],
+    batch,
+  })
+  const clock =
+    sessionDate === today
+      ? classState({
+          now: dhakaClock(),
+          startsAt: window.startsAt,
+          endsAt: window.endsAt,
+          taken: Boolean(existingSession),
+          // On the two teacher tiers there is no gate: the state is 'open' at any
+          // hour, so no card is drawn and nothing has to be signed (20260811000090).
+          enforced: clockEnforced(session.plan),
+        })
+      : 'open'
+  const needed = unlockFor(clock)
+  const signature = needed
+    ? (unlocks ?? []).find((u) => u.reason === needed) ?? null
+    : null
+  // What stops the register being drawn. The state has to be a locked one AND no
+  // signature for it: an unsigned early class is the card, a signed one is the register.
+  // Held as the reason rather than as a boolean, because the card below has to know
+  // which sentence it is asking for and `needed` alone cannot be narrowed by it.
+  const lockReason: 'early' | 'forgot' | null =
+    needed !== null && signature === null ? needed : null
+  const signedAt = signature
+    ? formatTime(dhakaMoment(signature.claimed_at).time, locale)
+    : null
 
   /**
    * The saved register, by enrolment.
@@ -552,33 +629,73 @@ export default async function AttendancePage({
               has just pasted its register is nearly always the same fact seen from
               the other end. */}
           {mayEnrol && (
-            <Link
-              href="/settings/students?show=no-batch"
-              className="mt-4 inline-flex min-h-tap items-center justify-center
-                rounded-xl bg-brand-600 px-5 font-semibold text-white"
-            >
+            <LinkButton href="/settings/students?show=no-batch" className="mt-4">
               {t.noStudentsAction}
-            </Link>
+            </LinkButton>
           )}
         </Card>
+      ) : lockReason !== null ? (
+        /*
+         * The signature card, and not the register.
+         *
+         * §20.4's rule about controls that refuse: the reader is told before they tap,
+         * and what they are told is what to do instead. It is the same card for both
+         * reasons — the class has not started, or it ended with nothing filed — because
+         * the two differ in the words and in nothing else: a tick, a submit, and a row
+         * that names them afterwards.
+         */
+        <AttendanceUnlock
+          batchId={batch.id}
+          sessionDate={sessionDate}
+          reason={lockReason}
+          words={
+            lockReason === 'early'
+              ? {
+                  title: t.lockedSignTitle,
+                  body: t.lockedSignBody,
+                  label: t.lockedSignLabel,
+                  action: t.lockedSignAction,
+                  saving: d.common.saving,
+                }
+              : {
+                  title: t.lateSignTitle,
+                  body: t.lateSignBody,
+                  label: t.lateSignLabel,
+                  action: t.lateSignAction,
+                  saving: d.common.saving,
+                }
+          }
+        />
       ) : (
         <div className="flex max-w-2xl flex-col gap-4">
+          {/* The signature that let this register through, said on the register itself.
+              A signed early class draws as soon as the row exists, and without this line
+              the teacher (or the owner reading it afterwards) would have no way of
+              knowing the class was filed outside its hours or who agreed to it —
+              which is the whole record the signature was supposed to leave. */}
+          {signature && signedAt && (
+            <p className="rounded-xl border border-line bg-surface-alt px-4 py-2 text-sm
+              font-medium text-ink-soft">
+              ✓ {needed === 'early' ? t.signedEarly(signedAt) : t.signedLate(signedAt)}
+            </p>
+          )}
+
           {/* Section 6.3: the manager's access is not removed, and it is visibly not
               the default. Above the register rather than beside the button, because it
               has to be read before the first tap and not after forty of them — and
               above the closed-day notice too, which is about *which* day this is
               rather than about whose register it is. It carries a heading so the two
-              do not read as one amber box repeated. */}
+              do not read as one notice repeated. */}
           {act === 'correction' && (
-            <div className="rounded-xl border-2 border-amber-300 bg-amber-50 px-4 py-3">
-              <h2 className="font-semibold text-amber-900">{t.correctionTitle}</h2>
-              <p className="mt-1 text-sm text-amber-900">{t.correctionBody}</p>
+            <div className="rounded-xl border-2 border-late/40 bg-late/5 px-4 py-3">
+              <h2 className="font-semibold text-late">{t.correctionTitle}</h2>
+              <p className="mt-1 text-sm text-late">{t.correctionBody}</p>
             </div>
           )}
 
           {verdict === 'closed' && (
-            <div className="rounded-xl border-2 border-amber-300 bg-amber-50 px-4 py-3">
-              <p className="text-sm text-amber-900">{t.closedAdmin}</p>
+            <div className="rounded-xl border-2 border-late/40 bg-late/5 px-4 py-3">
+              <p className="text-sm text-late">{t.closedAdmin}</p>
             </div>
           )}
 

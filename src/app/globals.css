@@ -1,46 +1,84 @@
 @import "tailwindcss";
 
 /*
- * CoachDesk design tokens.
+ * CoachDesk design tokens — the "ledger" identity.
  *
- * Built for the actual device: a mid-range Android phone, held in one hand,
- * often in a bright room or outdoors. That means high contrast, large type,
- * and tap targets you can hit without looking. Every decision below is
- * downstream of "a teacher marking 30 students in under 30 seconds".
+ * A coaching centre's owner runs this app like a set of books: fees owed,
+ * money in, days of balance left. The visual identity is built for that
+ * reader: a warm paper canvas instead of admin-template grey, a deep
+ * institutional emerald instead of SaaS blue, hairline warm borders instead
+ * of heavy boxes, and rooms of white space resolved by hierarchy.
+ *
+ * Everything below is downstream of the two devices this product actually
+ * runs on: a mid-range Android phone held one-handed in a bright room, and
+ * the laptop that reconciles a month against a bKash statement. That means
+ * high contrast, large type, and tap targets you can hit without looking.
+ * Every decision is documented here; the palette test measures the numbers
+ * rather than trusting this commentary.
  */
 
 @theme {
-  /* Deep green — the colour of school and of BD institutional signage, and
-     distinct from every telecom brand (red Robi, orange Banglalink, blue GP). */
-  --color-brand-50: #eefbf3;
-  --color-brand-100: #d6f5e1;
-  --color-brand-200: #b0e9c8;
-  --color-brand-300: #7cd7a7;
-  --color-brand-400: #45bd82;
-  --color-brand-500: #1f9d64;
-  --color-brand-600: #137e50;
-  --color-brand-700: #106442;
-  --color-brand-800: #105036;
-  --color-brand-900: #0e422e;
+  /* Deep institutional emerald — the colour of school and of BD institutional
+     signage, distinct from every telecom brand (red Robi, orange Banglalink,
+     blue GP) and from the default admin blue. Slightly cooler than the last
+     ramp so the warm paper canvas reads warm by contrast. */
+  --color-brand-50: #e9f4ee;
+  --color-brand-100: #d3e9dd;
+  --color-brand-200: #aad7bd;
+  --color-brand-300: #78be9e;
+  --color-brand-400: #48a17a;
+  --color-brand-500: #0e8757;
+  --color-brand-600: #0b6f48;
+  --color-brand-700: #0b5a3b;
+  --color-brand-800: #0c4931;
+  --color-brand-900: #0a3b29;
 
   /* Present / absent / late. Never colour alone — always paired with a glyph
-     or a word, because red-green colour blindness is ~8% of men. */
-  --color-present: #1f9d64;
-  --color-absent: #dc2626;
-  --color-late: #d97706;
+     or a word, because red-green colour blindness is ~8% of men.
+     `late` darkens the old amber to a shade that passes 4.5:1 as text. */
+  --color-present: #0e8757;
+  --color-absent: #d92d20;
+  --color-late: #b54708;
 
-  --color-ink: #111827;
-  --color-ink-soft: #4b5563;
-  --color-ink-faint: #9ca3af;
+  /*
+   * Four inks. The hierarchy is the design: a near-black ledger figure, a
+   * soft body ink, a faint caption ink, and nothing else — borders and type
+   * carry the structure, which is why `line` is a hairline rather than a
+   * grey surface.
+   *
+   * `ink-faint` measures 5.17:1 on white, 4.78:1 on `surface-alt` and
+   * 4.59:1 on `brand-50` — over WCAG AA's 4.5:1 everywhere it is drawn. The
+   * palette test measures all three pairs rather than trusting this note.
+   */
+  --color-ink: #1a211d;
+  --color-ink-soft: #525a53;
+  --color-ink-faint: #686f68;
   --color-surface: #ffffff;
-  --color-surface-alt: #f6f7f9;
-  --color-line: #e5e7eb;
+  --color-surface-alt: #f7f6f2;
+  --color-line: #e5e2da;
 
   --font-sans: var(--font-bangla), ui-sans-serif, system-ui, sans-serif;
 
   /* Minimum comfortable tap target. Material says 48dp; teachers tapping fast
      with a thumb need every bit of it. */
   --spacing-tap: 3rem;
+
+  /*
+   * A softer radius and elevation vocabulary for the whole app, in one place.
+   *
+   * Screens say `rounded-xl`, `rounded-2xl`, `shadow-sm` — hundreds of them,
+   * each asserted by the layout tests in the class's own words — so the
+   * values are re-tuned here rather than rewritten on a screen. The radii
+   * step up gently (10px, 14px, 18px) so a card inside a card reads as a
+   * softer cousin of its container, and the shadows are warm, light and
+   * diffuse — paper driven on paper, not web-glare.
+   */
+  --radius-lg: 0.625rem;
+  --radius-xl: 0.875rem;
+  --radius-2xl: 1.125rem;
+  --shadow-sm: 0 1px 2px rgb(28 25 23 / 0.04), 0 1px 3px 0 rgb(28 25 23 / 0.04);
+  --shadow-lg: 0 12px 32px -12px rgb(28 25 23 / 0.28),
+    0 4px 8px -4px rgb(28 25 23 / 0.06);
 }
 
 /*
@@ -58,7 +96,14 @@ html {
 }
 
 body {
-  background: var(--color-surface-alt);
+  /* The canvas: warm paper with the brand's own light gathered at the top of
+     the page, so a screen opens with depth before a single line is read. The
+     gradient is laid over the token rather than replacing it and costs the
+     browser one paint layer on load — no element, no script. Print takes the
+     plain sheet back below; a receipt is not where this belongs. */
+  background:
+    radial-gradient(64rem 28rem at 50% -12rem, rgb(11 111 72 / 0.05), transparent 70%),
+    var(--color-surface-alt);
   color: var(--color-ink);
   font-family: var(--font-sans);
   font-size: 1.0625rem;
@@ -72,6 +117,38 @@ body {
 h1, h2, h3, h4 {
   line-height: 1.4;
   text-wrap: balance;
+}
+
+/*
+ * Body prose gets `pretty` rather than `balance`: a heading is worth balancing because it
+ * is three words and every line is read, while a sentence is not — what it needs is not to
+ * end on one orphaned word, which is exactly the difference between the two values.
+ * Bangla and English both benefit, and neither pays for it: the browser does this in the
+ * line box it was already laying out.
+ */
+p {
+  text-wrap: pretty;
+}
+
+/*
+ * Selection, caret and the form controls' accent, in the product's own green.
+ *
+ * All three are the browser's defaults today, which means they are blue on Chrome, grey
+ * on an older Android WebView and whatever the OEM theme says on a Chinese phone — three
+ * answers to a question this sheet already has one colour for. A CSS property rather than
+ * a class per control: a checkbox drawn by the browser cannot be styled any other way, and
+ * the accent colour is what turns a native tick into this app's tick.
+ */
+::selection {
+  background: var(--color-brand-200);
+  color: var(--color-brand-900);
+}
+
+input,
+textarea,
+select {
+  accent-color: var(--color-brand-600);
+  caret-color: var(--color-brand-600);
 }
 
 /* Numbers stay Latin even in Bangla copy — every Bangladeshi reads both, and
@@ -121,6 +198,13 @@ summary::-webkit-details-marker {
 }
 
 @media print {
+  /* The screen's gathered light at the top of the page is furniture, not
+     information, and on paper it would be a grey-green wash behind a
+     letterhead. The plain sheet is the print identity of the app. */
+  body {
+    background: none;
+  }
+
   /* Browsers drop backgrounds when printing, which turns every tinted panel into
      an unlabelled box. On these two screens the tint is carrying meaning — the
      paid banner on a receipt, the total row of the register — so ask for it back.

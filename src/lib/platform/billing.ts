@@ -86,7 +86,7 @@ export function coverageEnd(from: string, months: MonthsCovered): string {
  * every window this product sells is whole months. That errs by at most one month and
  * it errs in the customer's favour.
  *
- * SHARED WITH THE FORM ON PURPOSE. /settings/plan draws the window this returns and
+ * SHARED WITH THE FORM ON PURPOSE. /settings/billing draws the window this returns and
  * `buySubscription` bills it; the same call in both is why the screen cannot promise
  * coverage the receipt then contradicts.
  */

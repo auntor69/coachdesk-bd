@@ -1,6 +1,6 @@
 import Link from 'next/link'
 
-import { Card } from '@/components/ui'
+import { buttonClass, Card } from '@/components/ui'
 import { PageHeader } from '@/components/page-header'
 import { pageRole, getSession } from '@/lib/auth/session'
 import { has, planName, PLANS } from '@/lib/plans'
@@ -80,7 +80,7 @@ export default async function ExportPage({
           </p>
           <p className="mt-3">
             <Link
-              href="/settings/plan"
+              href="/settings/billing"
               className="inline-flex min-h-tap items-center font-medium
                 text-brand-700 underline"
             >
@@ -174,8 +174,9 @@ export default async function ExportPage({
                   <p className="mt-2">
                     <a
                       href={href}
-                      className="inline-flex min-h-tap items-center rounded-xl
-                        bg-brand-600 px-5 font-semibold text-white"
+                      // A download the browser handles, so an anchor and the shared half of
+                      // the button styles — `LinkButton` is for the app's own routes.
+                      className={buttonClass('primary')}
                     >
                       {t.download}
                     </a>

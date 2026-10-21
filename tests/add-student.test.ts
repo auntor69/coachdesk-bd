@@ -7,7 +7,7 @@ import { bn } from '../src/lib/i18n/bn.ts'
 import { en } from '../src/lib/i18n/en.ts'
 
 /**
- * Admitting one student: the three shapes of the screen, and the one bug that is invisible.
+ * Admitting one student: the two shapes of the screen, and the one bug that is invisible.
  *
  * THREE THINGS ARE GUARDED HERE, and they fail in three different ways.
  *
@@ -16,15 +16,17 @@ import { en } from '../src/lib/i18n/en.ts'
  * block with no order lands at 0, above the heading; a reused number swaps two blocks.
  * That one is at least visible to whoever opens the page.
  *
- * The third shape is the lapsed centre, and it fails in the most expensive way of the
- * three: `createStudent` runs `requireWritable`, so the form drawn to a read-only centre
- * is twelve fields somebody fills in with a family at the desk to be refused on save.
+ * The lapsed centre is the second, and it fails in the most expensive way of the three:
+ * `createStudent` runs `requireWritable`, so the form drawn to a read-only centre is
+ * twelve fields somebody fills in with a family at the desk to be refused on save.
  *
- * §3.4 is a business rule and fails quietly. The refusal used to end with "ask for more
- * places on the plan screen" — the journey the masterplan opens by forbidding, because it
- * sends an owner with a family at the desk to another screen to work out how many places
- * to buy. The price, the control and the reference now live on this card, and the words no
- * longer name a destination.
+ * THE THIRD SHAPE IS GONE (§16.1 step 28). This screen used to fork a second time on
+ * `atLimit` — no places left, so one column whose whole content was the way out: the
+ * price of the next place, the control that bought it, the reference for the transfer and
+ * the branch manager's ask. §3.4 exists because that refusal used to name a destination
+ * instead of a price. A per-student tier has no ceiling now, so the wall is gone rather
+ * than moved: what is left is asserted as an absence, because a fork that comes back
+ * comes back with a priced card on the product's most-used write path.
  *
  * THE FORM'S TICKS FAIL SILENTLY AND THAT IS WHY THEY ARE TESTED IN SOURCE. React 19 wraps
  * every form action as `requestFormReset(form); return action(formData)` and calls the
@@ -43,16 +45,13 @@ const read = (...parts: string[]) => readFileSync(path.join(ROOT, ...parts), 'ut
 
 const PAGE = read('src', 'app', '(app)', 'settings', 'students', 'new', 'page.tsx')
 const FORM = read('src', 'app', '(app)', 'settings', 'students', 'new', 'student-form.tsx')
-const ACTIONS = read('src', 'app', '(app)', 'settings', 'plan', 'actions.ts')
+const BILLING = read('src', 'app', '(app)', 'settings', 'billing', 'actions.ts')
 
-/** The at-limit shape, from its early return to the end of it. */
-const WALL_AT = PAGE.indexOf('if (atLimit) {')
 /** The lapsed-centre shape, which is written first because it answers first. */
 const LAPSED_AT = PAGE.indexOf("if (session.access !== 'full') {")
 const LAPSED = PAGE.slice(LAPSED_AT, PAGE.indexOf('const [{ data: batches }'))
 /** The ordinary shape: the grid that opens it to the end of the component. */
 const GRID_AT = PAGE.indexOf('<div className="flex flex-col gap-5 lg:grid')
-const WALL = PAGE.slice(WALL_AT, GRID_AT)
 const RENDER = PAGE.slice(GRID_AT)
 
 const MAIN_AT = RENDER.indexOf('contents lg:order-2 lg:col-span-7')
@@ -63,40 +62,64 @@ function ordersIn(source: string): string[] {
   return [...source.matchAll(/(?<=["\s])order-(\d+|last)\b/g)].map((m) => m[1])
 }
 
-test('the screen has three shapes and the wall is the narrow one', () => {
-  assert.ok(WALL_AT > 0, 'the at-limit early return is not where this test expects it')
-  assert.ok(GRID_AT > WALL_AT, 'the grid should be written after the early return')
+/**
+ * Source with its comments removed.
+ *
+ * THE ABSENCE CHECKS BELOW ARE ABOUT CODE, and half of this cut's evidence is prose: every
+ * place that used to hold a ceiling now carries a sentence naming what went and why (§18).
+ * Those sentences have to name the vocabulary — that is what makes them useful — so they
+ * are taken out before the scan. See pinned-manager.test.ts for the same helper.
+ */
+function code(source: string): string {
+  return source
+    .replace(/\/\*[\s\S]*?\*\//g, '')
+    .replace(/(^|[^:'"`\w])\/\/[^\n]*/g, '$1')
+}
 
-  // One column and capped — on the card rather than on the column, or the bar's
-  // `lg:-mx-8` background would stop 672px into a 1,216px workspace. A 7/5 split with an
-  // empty rail beside a single card is a third of a laptop screen saying nothing.
-  assert.match(WALL, /<div className="flex flex-col gap-5">/)
-  assert.match(WALL, /<Card className="max-w-2xl">/)
-  assert.doesNotMatch(WALL, /lg:grid-cols-12/, 'the wall is not a twelve-column grid')
+const PAGE_CODE = code(PAGE)
 
-  // And the bar is the same JSX on all three, so a back link cannot go missing from one.
+test('the screen has three shapes, and no wall at all', () => {
+  assert.ok(LAPSED_AT > 0, 'the read-only arm is gone from the add-student screen')
+  assert.ok(GRID_AT > LAPSED_AT, 'the grid should be written after the read-only arm')
+
+  // §16.1 step 28: the at-limit fork, its priced card and the two controls on it are gone,
+  // and nothing replaced them. Asserted by name rather than by counting returns, because
+  // the fork would come back as a *conditional*, which is what a return count misses.
+  for (const gone of ['atLimit', 'mayBuy', 'mayAsk', 'PlacesWarning', 'BuyPlaces', 'AskPlaces']) {
+    assert.equal(PAGE_CODE.includes(gone), false, `${gone} is back on the add-student screen`)
+  }
+
+  /*
+   * AND THE THIRD SHAPE IS THE TRIAL'S ROSTER (20260811000098). A per-student tier has no
+   * ceiling to be full of, so the wall this test was written to prove absent cannot come back
+   * as a plan limit — but a trial is bounded by one number instead, and `createStudent` refuses
+   * past it exactly as it refuses a lapsed centre. The arm is asserted here rather than left to
+   * the roster's own test file because it shares this screen's bar: a form drawn for a reader
+   * who could only be refused is the defect this screen is written against.
+   */
+  assert.match(PAGE, /const door = await rosterDoor\(supabase, session\)/)
+  assert.match(PAGE, /if \(!door\.open\) \{/)
+  assert.ok(
+    PAGE.indexOf('if (!door.open) {') < GRID_AT,
+    'the bound is answered before the form is drawn',
+  )
+
+  // And the bar is the same JSX on all three shapes, so a back link cannot go missing from one.
   assert.equal([...PAGE.matchAll(/const head = \(/g)].length, 1)
   assert.match(PAGE, /const head = \(\s+<PageHeader title=\{t\.newTitle\}/)
   assert.equal([...PAGE.matchAll(/\{head\}/g)].length, 3)
-  assert.match(WALL, /\{head\}/)
 })
 
-test('a lapsed centre gets no form, and is told that before the wall is', () => {
+test('a lapsed centre gets no form, and is told that before anything is read', () => {
   // `createStudent` runs requireWritable, so the form could only ever be filled in and
   // refused — with a family at the desk, which is the whole cost of this screen's version
   // of the defect.
-  assert.ok(LAPSED_AT > 0, 'the read-only arm is gone from the add-student screen')
   assert.match(LAPSED, /\{head\}/, 'the arm draws no heading, so nothing names the screen')
   assert.match(LAPSED, /<ReadOnlyNote t=\{d\.readOnly\}/)
   assert.match(PAGE, /import \{ ReadOnlyNote \} from '@\/components\/read-only-note'/)
 
-  // Above the at-limit wall, whose ask is "buy more places" — capacity nobody can use
-  // until the bill is settled. Same one-ask-per-screen rule the shell applies to the
-  // trial notice, and the bill wins.
-  assert.ok(LAPSED_AT < WALL_AT, 'the wall answers a lapsed centre before the bill does')
-
-  // And before every read, so the arm costs no round trips rather than four wasted ones.
-  for (const query of ['centerStudentCount(supabase', 'branchChoicesFor(supabase', 'openAsk(supabase']) {
+  // And before every read, so the arm costs no round trips rather than two wasted ones.
+  for (const query of ['branchChoicesFor(supabase', "from('batches')"]) {
     assert.ok(PAGE.indexOf(query) > LAPSED_AT, `${query} runs for a centre that cannot write`)
   }
 })
@@ -147,117 +170,66 @@ test('every block has a place in the phone order, and no two share one', () => {
     assert.equal(n, 1, `order-${value} is used ${n} times`)
   }
 
-  // 2 to 5 with nothing missing: warning, form, import door, saves card. There is no
-  // `order-1` any more — that was the heading's twelfth-column cell, and the bar above
-  // the grid replaced it. The numbers were left where they were rather than shifted down,
-  // because only their relative order matters and renumbering four blocks to save a 1 is
-  // four chances to swap two of them.
+  // 3 to 5 with nothing missing: form, import door, saves card. There is no `order-1` — that
+  // was the heading's twelfth-column cell, replaced by the bar above the grid — and no
+  // `order-2`, which was the places warning and went with the ceiling. The numbers were left
+  // where they were rather than shifted down, because only their relative order matters and
+  // renumbering three blocks to save a 1 is three chances to swap two of them.
   const used = [...counts.keys()]
-  for (let n = 2; n <= 5; n += 1) {
+  for (let n = 3; n <= 5; n += 1) {
     assert.ok(used.includes(String(n)), `no block is order-${n}`)
   }
-  assert.equal(used.length, 4, `${used.length} distinct positions, expected 4`)
+  assert.equal(used.length, 3, `${used.length} distinct positions, expected 3`)
 })
 
-test('the warning draws above the form on a phone, and each column draws as written', () => {
-  // The whole reason the numbers are not in source order. Eighteen students short of the
-  // ceiling is something to read before typing a name, not after submitting one — and on
-  // a phone the rail is written second, so only `order-2` puts it first.
+test('each column draws in the order it is written', () => {
   const main = RENDER.slice(MAIN_AT, RAIL_AT)
   const rail = RENDER.slice(RAIL_AT)
 
   assert.match(main, /<StudentForm/, 'the form left the main column')
-  assert.match(rail, /<PlacesWarning/, 'the warning left the rail')
   assert.equal(ordersIn(main).join(), '3', 'the form is not the only block in the main column')
-  assert.equal(ordersIn(rail)[0], '2', 'the warning does not draw above the form')
+  assert.equal(ordersIn(rail).join(), '4,5', 'the rail is the door then the card')
 
-  // Inside each wrapper the numbers still apply at `lg`, so a column whose numbers do
-  // not ascend in source order is a phone and a laptop that disagree.
+  // Inside each wrapper the numbers still apply at `lg`, so a column whose numbers do not
+  // ascend in source order is a phone and a laptop that disagree.
   for (const [name, values] of [['main', ordersIn(main)], ['rail', ordersIn(rail)]] as const) {
     const numeric = values.map((v) => (v === 'last' ? Infinity : Number(v)))
     assert.deepEqual([...numeric].sort((a, b) => a - b), numeric,
       `${name} draws in a different order than it is written`)
   }
 
-  // The warning is placed with a className rather than wrapped in a div, because it
-  // returns null while there is room and a wrapper would cost a flex gap on every
-  // screen where there is nothing to warn about.
-  assert.match(rail, /<PlacesWarning\s+className="order-2"/)
-
-  // Staff admins only, exactly as the roster gates it: the warning ends in a link to
-  // /settings/plan, which a teacher on `can_manage_students` would be refused at.
-  assert.match(rail, /\{isStaffAdmin\(session\) && \(\s*<PlacesWarning/)
+  // The import door, word for word the roster's: two hundred names typed one at a time is
+  // an evening nobody spends, and this form is where somebody finds that out on student
+  // four. The count comes from the same constant the paste box enforces.
+  assert.match(rail, /href="\/settings\/students\/import"/)
+  assert.match(rail, /t\.importBody\(MAX_IMPORT_ROWS\)/)
 })
 
-test('the wall carries every way out that its reader actually has', () => {
-  // §3.4: the buy control on the screen the refusal happened on, priced from the paid
-  // ceiling because that is the number `settle_payment_intent` bills from.
-  assert.match(WALL, /<BuyPlaces\s+ceiling=\{paid\.ceiling\}/)
+test('the wall is gone, with every control it carried', () => {
+  // §3.4's card, §3.7's ask, the paid-ceiling arithmetic behind both, and the two reads
+  // they needed. Each is named, because each was a way for the purchase to come back.
+  for (const gone of [
+    'studentRoom',
+    'studentCeiling',
+    'capacityPressure',
+    'nextSeatCostBdt',
+    'ASK_PLACES',
+    'placesNext',
+    'placesFreeLink',
+    "'student_capacity'",
+  ]) {
+    assert.equal(PAGE_CODE.includes(gone), false, `${gone} is back on the add-student screen`)
+  }
 
-  // §20.5, in as many words: the refusal names the price rather than the constraint,
-  // from the same function the control quotes with and off the paid ceiling.
-  assert.match(WALL, /t\.placesNext\(formatTaka\(nextSeatCostBdt\(paid\.ceiling\)\)\)/)
+  // The action it submitted to is gone from the billing module as well, and so are the
+  // three that answered and withdrew a branch's ask. A control is not the only half.
+  for (const gone of ['buyStudentPlaces', 'requestPlaces', 'withdrawPlacesRequest', 'answerAsk']) {
+    assert.equal(BILLING.includes(`export async function ${gone}`), false, `${gone} is back`)
+  }
 
-  // §22, and it is the sentence that changes what the owner does with the family in
-  // front of them: the money is sent by hand, so this form admits nobody.
-  const buyAt = WALL.indexOf('<BuyPlaces')
-  assert.ok(WALL.indexOf('t.placesBuyNote') < buyAt, 'the honest note is not above the control')
-  assert.ok(WALL.indexOf('t.placesNext') < WALL.indexOf('t.placesBuyNote'))
-
-  // The reference below the control, because `places.opened` says to send the money as
-  // shown below and after the revalidate this is what is below.
-  assert.ok(WALL.indexOf('<OpenPurchase') > buyAt, 'the waiting purchase is above the control')
-  assert.match(WALL, /places\.waitingTitle/)
-  assert.match(WALL, /buys\.error &&/, 'a dropped purchase read says nothing')
-
-  // The manager's ask, the free-a-place link every tier has, and the plan link last.
-  assert.match(WALL, /\{mayAsk && \(\s*<AskPlaces/)
-  assert.match(WALL, /t\.placesFreeLink/)
-  assert.ok(
-    WALL.indexOf('t.placesFreeLink') < WALL.indexOf('t.placesPlanLink'),
-    'the plan link is offered before the one that costs nothing',
-  )
-  assert.match(WALL, /\{isStaffAdmin\(session\) && \(\s*<Link\s+href="\/settings\/plan"/)
-})
-
-test('who may buy and who may ask is decided the way the actions decide it', () => {
-  // §3.7. `buyStudentPlaces` is planOwner() and `capacity_requests_manager_insert` is
-  // the manager's only write here, so a control offered to the other reader is a button
-  // that refuses. Exactly one of the two can ever be true.
-  assert.match(PAGE, /const mayBuy = atLimit && sells && session\.active\.role === 'owner'/)
-  assert.match(PAGE, /const mayAsk = atLimit && sells && session\.active\.role === 'manager'/)
-
-  // Both gated on the PAID plan, not the effective ceiling: a trial of a teacher tier
-  // over a paid centre subscription would otherwise hide the way out on the one centre
-  // that could have had the places by the evening.
-  assert.match(
-    PAGE,
-    /const paid = studentCeiling\(planFor\(session\.active\.plan\), session\.active\.studentCapacity\)/,
-  )
-  assert.match(PAGE, /const sells = paid\.kind === 'purchased'/)
-
-  // A read that failed draws the form. `createStudent` refuses on the write if the
-  // count is still unknown; turning a family away over a number nobody has would be
-  // the wrong half to fail on.
-  assert.match(PAGE, /const atLimit = studentRoom\(session\.ceiling, studentCount \?\? 0\) === 0/)
-
-  // And the batch list is scoped as well as governed by RLS: an owner of two centres
+  // The batch list is still scoped as well as governed by RLS: an owner of two centres
   // passes is_staff_admin for both, so the policy alone offers the other one's batches.
   assert.match(PAGE, /\.from\('batches'\)[\s\S]{0,400}\.eq\('coaching_center_id', session\.active\.centerId\)/)
-})
-
-test('a purchase opened here refreshes the screen it was opened on', () => {
-  // Without this the confirmation says "send the money as shown below" above nothing,
-  // because the reference is read off the row rather than carried in the action state.
-  //
-  // Scoped to the one function that needed it. Five actions in the file revalidate this
-  // path, so a bare search over the source passes on somebody else's line — which is
-  // exactly what happened the first time this was asserted.
-  const from = ACTIONS.indexOf('export async function buyStudentPlaces(')
-  assert.ok(from > 0, 'buyStudentPlaces has been renamed')
-  const body = ACTIONS.slice(from, ACTIONS.indexOf('export async function', from + 10))
-  assert.match(body, /revalidatePath\('\/settings\/students\/new'\)/)
-  assert.match(body, /revalidatePath\('\/settings\/plan'\)/)
 })
 
 test('the refusal that keeps the record also keeps the ticks', () => {
@@ -281,31 +253,19 @@ test('the refusal that keeps the record also keeps the ticks', () => {
   assert.doesNotMatch(FORM, /<details[^>]*\sopen=/)
 })
 
-test('neither language sends a refused reader to another screen', () => {
-  // §3.4's regression, and it is a regression in prose: every way out is on the card
-  // now, so a sentence that names a destination is one the reader has to leave for.
-  for (const [name, places] of [
-    ['en', en.settings.students.places(120)],
-    ['bn', bn.settings.students.places(120)],
-  ] as const) {
-    assert.doesNotMatch(places, /plan screen|প্ল্যানের পাতা/, `${name} still points elsewhere`)
-    assert.ok(places.length > 40, `${name} says too little to be the whole card's opening`)
-  }
-
-  // Bangla numerals in Bangla, ASCII in English — the figure is a count of places.
-  assert.match(en.settings.students.places(120), /120/)
-  assert.match(bn.settings.students.places(120), /১২০/)
-
-  // The new leaves exist in both, and none of them is a stub. A key added to en and
-  // forgotten in bn is a screen that reads half in each language.
+test('both languages still say what saving the form does', () => {
+  // THE PLACES COPY IS STILL HERE AND NOTHING DRAWS IT (§16.1 step 28): `places`,
+  // `placesNext`, `placesBuyNote`, `placesFreeLink`, `placesPlanLink` and the ask leaves
+  // are retired words waiting on the dictionary pass, so this asserts the half that is
+  // drawn rather than the half that is orphaned. A key deleted from en and left in bn is
+  // the failure this catches, and it is the same failure either way.
   for (const [name, dict] of [['en', en], ['bn', bn]] as const) {
     const t = dict.settings.students
     for (const [key, least] of [
-      ['placesBuyNote', 80],
-      ['placesFreeLink', 12],
       ['savesTitle', 8],
       ['savesPhone', 40],
       ['savesBatch', 40],
+      ['importTitle', 10],
     ] as const) {
       const value = t[key]
       assert.equal(typeof value, 'string', `${name}.settings.students.${key} is missing`)
@@ -315,19 +275,9 @@ test('neither language sends a refused reader to another screen', () => {
       )
     }
 
-    // The price line is a template, and the figure has to survive being put in it:
-    // `formatTaka` hands over '৳25' already formatted, so a leaf that dropped the
-    // parameter would print a sentence with no price in the place §20.5 wants one.
-    assert.match(t.placesNext('৳25'), /৳25/, `${name}.placesNext drops the price`)
-
-    // §22 in the one line that could quietly promise otherwise. The places arrive when a
-    // human has matched a transfer; a note that says "instantly" or "automatically" would
-    // have an owner keeping a family at the desk waiting for a form to finish.
-    assert.doesNotMatch(
-      t.placesBuyNote,
-      /instant|automatic|straight away|at once|সঙ্গে সঙ্গে|স্বয়ংক্রিয়/i,
-      `${name}.placesBuyNote promises the places arrive by themselves`,
-    )
+    // The list line is a function and not a template: it counts, and a count-dependent
+    // string cannot be serialised into a client component. See `T`.
+    assert.match(t.importBody(200), /200/, `${name}.importBody drops the count`)
   }
 })
 
@@ -336,10 +286,4 @@ test('the rail says what saving the form actually does', () => {
   for (const key of ['savesTitle', 'savesPhone', 'savesBatch']) {
     assert.ok(rail.includes(`t.${key}`), `the rail does not draw t.${key}`)
   }
-
-  // The import door, word for word the roster's: two hundred names typed one at a time
-  // is an evening nobody spends, and this form is where somebody finds that out on
-  // student four. The count comes from the same constant the paste box enforces.
-  assert.match(rail, /href="\/settings\/students\/import"/)
-  assert.match(rail, /t\.importBody\(MAX_IMPORT_ROWS\)/)
 })

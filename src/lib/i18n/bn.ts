@@ -217,6 +217,12 @@ export const bn = {
      */
     account: 'আমার অ্যাকাউন্ট',
     mainMenu: 'প্রধান মেনু',
+    /**
+     * The skip link's words, read aloud the moment the Tab key lands on it. The verb is
+     * "go up to", not "skip": a reader being told to skip their own product is being told
+     * it wastes their time, and the shortcut is the same either way.
+     */
+    skipToContent: 'সরাসরি মূল অংশে যান',
     /** Greets a reader whose name and phone are both missing. */
     welcome: 'স্বাগতম',
     /**
@@ -235,10 +241,43 @@ export const bn = {
     more: 'আরও',
     /** The loanword, which every phone in the country already uses for this. */
     locked: 'আপগ্রেড',
+    /**
+     * The balance rail above the content (MASTERPLAN §4.4): how many more days the
+     * money in the balance covers, for the owner who is the only one who can top it up.
+     *
+     * DAYS AND NOT A DATE, which is the whole point of the prepaid model: a date asks
+     * the owner to remember what a period was bought for, and a day count is the honest
+     * unit once the money is theirs (§17 — "price in months, burn in days"). The zero
+     * case names today rather than saying "no days", because on that day the centre is
+     * still working and the sentence has to be true.
+     */
+    /**
+     * What is actually in the balance, in taka — the figure that leads the strip.
+     *
+     * THE STRIP USED TO BE A COUNTDOWN ONLY, and it only appeared inside fourteen days of
+     * the money running out. So the one number an owner checks before they spend anything
+     * was two taps away — Settings, then Billing — and a balance is a fact about today
+     * rather than a warning about a fortnight's time (§20.4 asks it second for that
+     * reason). Drawn on every screen now, for the reader the countdown was always drawn
+     * for.
+     */
+    balanceHeld: (taka: string) => 'ব্যালেন্সে ' + taka,
+    /**
+     * The granted line, in the strip, in the words the billing screen already uses —
+     * `billing.leftGranted` says 'এই কেন্দ্রকে … পর্যন্ত দিন দেওয়া আছে' and this is its
+     * one-line form. Same fact, same vocabulary, said where the owner reads it first.
+     */
+    balanceGranted: (date: string) => date + ' পর্যন্ত দিন দেওয়া আছে',
+    balanceDays: (days: number) =>
+      days === 1 ? 'ব্যালেন্সে আরেক দিনের টাকা আছে' : `ব্যালেন্সে আরও ${days} দিনের টাকা আছে`,
+    balanceEmpty: 'ব্যালেন্স খালি — আজ পরিশোধিত, কাল নয়',
+    /** The rail's own call to action, which lands on the plan screen. */
+    balanceTopUp: 'টাকা জমা দিন',
     nav: {
       home: 'হোম',
       attendance: 'হাজিরা',
       fees: 'ফি',
+      students: 'শিক্ষার্থী',
       settings: 'সেটিংস',
       exams: 'পরীক্ষা',
       mine: 'আমার',
@@ -309,8 +348,19 @@ export const bn = {
     usernameLabel: 'লগইন ইউজারনেম',
     usernameHint:
       'এই ইউজারনেম দিয়েই আপনি লগইন করেন। বদলাতে হলে কোচিংয়ের মালিককে বলুন।',
+    /*
+     * §5.4's third identifier, and the one the two above are wrong about. A self-serve
+     * signup is a real address with neither a number nor a username, so the card that
+     * tested for the number first printed an empty one under this heading — and told the
+     * owner of the account to ask the owner of the account.
+     *
+     * The second sentence is shorter than the other two hints on purpose: there is no
+     * owner to ask here, because this reader is the owner, and an address change is not
+     * something this app can do yet. Saying so costs one line and stops the search.
+     */
     emailLabel: 'লগইন ইমেইল',
-    emailHint: 'এই ইমেইল ঠিকানা দিয়েই আপনি লগইন করেন।',
+    emailHint:
+      'এই ইমেইল দিয়েই আপনি লগইন করেন। অ্যাপ থেকে এখন এটি বদলানো যায় না।',
     passwordTitle: 'পাসওয়ার্ড বদলান',
     /**
      * The second sentence is the honest one. A password change does not throw other
@@ -470,6 +520,23 @@ export const bn = {
      * ran out" cannot be checked, so it gets ignored or resented.
      */
     coveredTo: (date: string) => `শেষ যে টাকা জমা হয়েছে তাতে ${date} পর্যন্ত চলেছে।`,
+    /**
+     * The two sentences the banner uses instead of the plan ones when it is the *balance*
+     * that stopped the writing (§4.4, §11.6).
+     *
+     * A DIFFERENT FACT AND NOT A SOFTER WORDING. "The plan has run out" is about a tier
+     * and a date; this is about a purse and a day, and the fix is a top-up rather than a
+     * renewal. An owner who reads the wrong one questions their plan instead of their
+     * bKash history, and the second sentence below is the one they can check.
+     */
+    balanceTitle: 'ব্যালেন্স শেষ — নতুন কিছু সেভ হচ্ছে না',
+    balanceBody:
+      'প্রতিদিন ব্যবহারের জন্য টাকা কাটা হয়, আর ব্যালেন্সে পরের দিনটির টাকা নেই — তাই নতুন '
+      + 'নতুন শিক্ষার্থী, হাজিরা, টাকা জমা বা মেসেজ কিছুই সেভ হচ্ছে না। আগের হাজিরা, নম্বর আর '
+      + 'ফির হিসাব সব যেখানে ছিল সেখানেই আছে। টাকা জমা পড়লেই আবার সব চলবে।',
+    /** Takes the day's cost and what is left, both already formatted as taka. */
+    balanceOut: (cost: string, balance: string) =>
+      `এক দিনের খরচ ${cost}, আপনার ব্যালেন্সে আছে ${balance}।`,
     /** On the banner's tel: chip, which appears only where a sales number is set. */
     callUs: 'ফোন দিন',
     /** Owners and managers only — a teacher cannot open the plan screen. */
@@ -741,6 +808,53 @@ export const bn = {
       'এই ক্লাসের হাজিরা আগেই নেওয়া হয়েছে। আপনি যা বদলাবেন তা আপনার নাম আর সময় সহ লেখা থাকবে — যিনি হাজিরা নিয়েছিলেন, তাঁর নামও পাশে থেকে যাবে।',
     takeToday: 'আজকের হাজিরা নিন',
 
+    /*
+     * ঘড়ির নিয়ম (২০২৬০৮১১০০০০০৮৯) — তিনটি অবস্থা আর দুটি সই।
+     *
+     * এখন ব্যাচের দিনের সঙ্গে সময়ও যুক্ত: ক্লাসের সময় হলেই রেজিস্টার নিজে থেকে
+     * খুলে যায়, আগে নিতে হলে শিক্ষক সই করেন, আর ক্লাস শেষ হওয়ার পরও হাজিরা না উঠলে
+     * সেটি বাতিল ক্লাস হিসেবে গণ্য হয় — যতক্ষণ না কেউ সই করে জানান যে ক্লাসটি
+     * সত্যিই হয়েছিল এবং হাজিরা দেরিতে লেখা হচ্ছে। মালিকের নিজের ভাষায় চাওয়াটি
+     * src/lib/attendance/clock.ts-এ লেখা আছে।
+     *
+     * দুই রকম সুর, ইচ্ছা করেই। প্রথম কার্ডটি শিক্ষককে তাঁর নিজের দিনের কথা বলে, কিছু
+     * চায় না — কারণ এটি পড়ে যিনি আছেন, তিনি শ্রেণিকক্ষের সামনে দাঁড়িয়ে ভাবছেন বোতামটি
+     * কোথায় গেল। পরের দুটি সই চায়, তাই তারা বলে সইটির অর্থ কী এবং কাকে জানানো হবে।
+     */
+    lockedTitle: 'এই ক্লাস এখনো শুরু হয়নি',
+    lockedBody: (time: string) =>
+      `${time}-এ ক্লাস শুরু হবে, তারপর রেজিস্টার নিজে থেকেই খুলে যাবে — আপনাকে আলাদা করে কিছু করতে হবে না।`,
+    lockedSignTitle: 'ক্লাস শুরুর আগেই নিচ্ছি',
+    lockedSignBody:
+      'এখনই এই রেজিস্টার নিতে হলে নিচে সই করুন। মালিক ও ম্যানেজারদের জানানো হবে — আপনার নাম ও সময়সহ — আর সইটি ক্লাসটির সঙ্গে থেকে যাবে।',
+    lockedSignLabel:
+      'ক্লাস শুরু হওয়ার আগেই আমি এই ক্লাসের হাজিরা নিচ্ছি, এবং রেজিস্টারটি আমিই লিখছি।',
+    lockedSignAction: 'সই করে আগেই নিন',
+    lateTitle: 'কোনো হাজিরা নেওয়া হয়নি',
+    lateBody: (time: string) =>
+      `${time}-এ ক্লাস শেষ হয়েছে, হাজিরা ওঠেনি — রেজিস্টার না ওঠা পর্যন্ত দিনটি বাতিল ক্লাস হিসেবে গণ্য হবে।`,
+    lateSignTitle: 'ক্লাস সত্যিই হয়েছে — সই করে দেরিতে লিখুন',
+    lateSignBody:
+      'ক্লাস সত্যিই হয়ে থাকলে এবং এটিই সেই ক্লাসের রেজিস্টার হলে নিচে সই করুন। মালিক ও ম্যানেজারদের জানানো হবে যে এটি দেরিতে লেখা হয়েছে, আর দিনটি আর বাতিল হিসেবে গণ্য হবে না।',
+    lateSignLabel:
+      'ক্লাস সত্যিই হয়েছিল, সময়মতো হাজিরা লিখতে ভুলে গেছি, এবং এটিই সেই ক্লাসের রেজিস্টার।',
+    lateSignAction: 'সই করে দেরিতে লিখুন',
+    /** সই করা রেজিস্টারটি পরে যিনি খুলবেন, তাঁকে নিজের সম্পর্কে যা বলে। */
+    signedEarly: (time: string) => `${time}-এ সই করে ক্লাসের আগেই নেওয়া হয়েছে`,
+    signedLate: (time: string) => `${time}-এ সই করে দেরিতে নেওয়া হয়েছে`,
+    /**
+     * কেন্দ্রকে জানানোর বার্তা — মালিকের চাওয়ার সেই অর্ধেক, যেখানে বলা আছে খবরটা
+     * অন্যকেও পৌঁছাতে হবে। `time` হলো সই করার সময়, ক্লাসের সময় নয়।
+     */
+    notifyEarly: (name: string, time: string) =>
+      `${name} আজ ${time}-এ সই করে ক্লাসের আগেই এই হাজিরা নিয়েছেন`,
+    notifyLate: (name: string, time: string) =>
+      `${name} আজ ${time}-এ সই করে দেরিতে এই হাজিরা নিয়েছেন`,
+    signaturesTitle: 'আজ ক্লাসের সময়ের বাইরে সই করে নেওয়া হাজিরা',
+    /** রো-তে বোতামের জায়গায় বসা দুটি শব্দ। */
+    opensAt: (time: string) => `${time}-এ খুলবে`,
+    countedCancelled: 'বাতিল হিসেবে গণ্য',
+
     /**
      * The strings the register shows but cannot be handed: each takes an argument,
      * and a function cannot cross into a client component. So they live on this
@@ -810,6 +924,19 @@ export const bn = {
       rosterUnreadable: 'শিক্ষার্থীর তালিকা পড়া যায়নি।',
       emptyBatch: 'এই ব্যাচে কোনো শিক্ষার্থী নেই।',
       saveFailed: 'হাজিরা সেভ হয়নি। আবার চেষ্টা করুন।',
+      /*
+       * ঘড়ির নিয়মের দুটি আটকানো, আর কোনোটিই ডেটাবেজের নিজের বার্তা নয়। গার্ডটি
+       * সত্যিটা বলে; এরা বলে এরপর কী করতে হবে।
+       */
+      unsigned: 'সই করতে বাক্সে টিক দিন, তারপর আবার চেষ্টা করুন — সই ছাড়া হাজিরা লেখা যাবে না।',
+      unlockFailed: 'সইটি সংরক্ষণ হয়নি। আবার চেষ্টা করুন।',
+      clockChanged:
+        'পেজটি খোলার পর এই ক্লাসের সময় বদলেছে। পেজটি নতুন করে খুলে আবার চেষ্টা করুন।',
+      /** সই কার্ডের পেছনের ভরসা — সরাসরি অ্যাকশনে পাঠানো ফর্ম, বা ক্লাস শুরু হয়ে যাওয়ার পরও খোলা রাখা পেজ। */
+      earlyLocked:
+        'এই ক্লাস এখনো শুরু হয়নি, তাই সই ছাড়া এর হাজিরা লেখা যাবে না। রেজিস্টার খুলে সই করে আগেই নিন।',
+      lateLocked:
+        'ক্লাস শেষ, হাজিরা ওঠেনি — দিনটি এখন বাতিল হিসেবে গণ্য হচ্ছে। রেজিস্টার খুলে সই করে দেরিতে লিখুন।',
     },
   },
 
@@ -1480,7 +1607,7 @@ export const bn = {
      * paper the parent is waiting for, and they may well save it as a PDF and send
      * it on WhatsApp instead of printing anything.
      */
-    receiptLink: 'রসিদ দেখুন',
+    receiptLink: 'রসিদ প্রিন্ট করুন',
     /**
      * Keyed by fee_payments.method, so the radio group is one list in both
      * languages and a method added to the enum without a label is a compile error.
@@ -1646,7 +1773,7 @@ export const bn = {
      * the parent is being handed a second piece of paper and the two must not look like
      * two payments — the printed slip says so as well.
      */
-    receiptLink: 'ফেরতের রসিদ দেখুন',
+    receiptLink: 'ফেরতের রসিদ প্রিন্ট করুন',
   },
 
   /**
@@ -2324,6 +2451,14 @@ export const bn = {
     recurringHint:
       'ভাড়া, বিদ্যুৎ, ইন্টারনেট। নিচের তালিকায় চিহ্ন থাকবে, তাই এক নজরেই দেখা যাবে প্রতি মাসে সেন্টারের বাঁধা খরচ কোনগুলো।',
     submit: 'লিখে রাখুন',
+    /**
+     * The voucher the action just wrote, offered before the owner scrolls anywhere.
+     *
+     * The register below has always linked the voucher number and still does; what was
+     * missing is the moment the money is written down — voucher in hand, receipt for
+     * the person who was paid, printer two taps into a menu.
+     */
+    printVoucher: 'ভাউচার প্রিন্ট করুন',
 
     /**
      * Why the form has no edit button, said before the owner looks for one.
@@ -2479,6 +2614,8 @@ export const bn = {
 
     billTitle: 'যাঁদের বেতন ঠিক করা আছে',
     empty: 'এখনো কারও বেতন ঠিক করা হয়নি।',
+    /** The way out of that sentence, which is the form on this same screen. */
+    emptyDoor: 'প্রথমজনের বেতন ঠিক করুন',
     /**
      * All three reads fail closed together, so one sentence covers them.
      *
@@ -2579,6 +2716,18 @@ export const bn = {
        */
       payeeGone:
         'তিনি তালিকা থেকে বাদ আছেন। আবার কাজ করছেন হলে আগে কর্মী বা শিক্ষকের তালিকায় তাঁকে ফিরিয়ে নিন, তারপর বেতন ঠিক করুন।',
+      /** Adding a person is `staff` and the centre plan — not the `payroll` narrowing. */
+      cantHire:
+        'কর্মী তালিকায় নিজে কাউকে যোগ করার অনুমতি আপনার নেই। মালিক বা যিনি কর্মী তালিকা রাখেন তাঁকে বলে লোকটিকে যোগ করান — তারপর এখানেই বেতন ঠিক করা যাবে।',
+      newNameRequired: 'যাঁর বেতন ঠিক করছেন, তাঁর নাম লিখুন।',
+      newRoleRequired: 'তিনি কেন্দ্রে কী কাজ করেন, তা বেছে নিন।',
+      /**
+       * The two writes are one press: if the person could not be added, no agreement was
+       * written either. Saying so plainly is the difference between "try again" and an
+       * owner wondering whether half of it landed.
+       */
+      hireFailed:
+        'লোকটিকে কর্মী তালিকায় যোগ করা যায়নি, তাই বেতনটিও সংরক্ষণ হয়নি। আবার চেষ্টা করুন।',
       basisRequired: 'বেতন কীভাবে হিসাব হবে, তা বেছে নিন।',
       dateRequired: 'কোন তারিখ থেকে এই বেতন, তা লিখুন।',
       /** A year typed into a date field. Same trap as the expense screen's own. */
@@ -2650,6 +2799,32 @@ export const bn = {
     /** The two groups in the picker, because an id alone does not say which table. */
     payeeTeachers: 'শিক্ষক',
     payeeStaff: 'কর্মী',
+    /**
+     * The picker's third answer: somebody who is not on either list yet.
+     *
+     * এই তালিকায় কেউ না থাকলে আগে সেটিংসে গিয়ে কর্মী যোগ করে ফিরে আসতে হতো, তারপর
+     * আবার এই পর্দায় নিজের জায়গা খুঁজতে হতো। এখন নাম আর কাজ এখানেই লেখা যায়, আর একই
+     * বোতামে তিনি কর্মী তালিকায় যোগ হন আর বেতনটাও ঠিক হয়ে যায়।
+     */
+    newPersonOption: '＋ নতুন কেউ',
+    newPersonHint:
+      'এই বোতামেই তিনি কর্মী তালিকায় যোগ হবেন — বেতন ঠিক করতে অন্য পর্দায় যেতে হবে না, ফিরেও আসতে হবে না।',
+    newNameLabel: 'তাঁর নাম',
+    newRoleLabel: 'এখানে কী কাজ করেন',
+    /**
+     * Only shown to a centre that has no teacher row yet — a teacher filed as staff can be
+     * paid but cannot be given a batch, and nothing on the screen would say why.
+     */
+    newPersonTeachers:
+      'এখানে যোগ হবে একজন কর্মী। তিনি ক্লাস নিলে বরং শিক্ষক হিসেবেই যোগ করুন —',
+    newPersonTeacherLink: 'শিক্ষক যোগ করুন',
+    /** The empty picker, for a reader who may add somebody. */
+    noPeopleTitle: 'কর্মী তালিকায় এখনো কেউ নেই',
+    noPeopleBody:
+      'নিচেই প্রথমজনের নাম আর কাজ লিখে দিন — একই বোতামে তিনি যোগ হবেন আর বেতনটাও ঠিক হয়ে যাবে।',
+    /** And the same card for a manager the owner has narrowed out of the staff list. */
+    noPeopleAsk:
+      'বেতন দিতে হলে আগে কাউকে কর্মী তালিকায় যোগ করতে হবে। যিনি কর্মী তালিকা দেখেন — মালিক বা সেই দায়িত্ব পাওয়া ম্যানেজার — তাঁকে বলুন; তারপর এই তালিকা নিজেই ভরে যাবে।',
     basisLabel: 'বেতন কীভাবে হিসাব হবে',
     basicLabel: 'মূল বেতন',
     allowancesLabel: 'ভাতা',
@@ -2688,6 +2863,11 @@ export const bn = {
    * row. Same call as `cancel` beside `feeRow` on the fee board.
    */
   salaryRow: {
+    /**
+     * The door back to the form with this person already chosen — the form is this
+     * screen's edit button, and this is how you arrive at it from a row.
+     */
+    change: 'এই বেতন বদলান',
     /** A plain underlined word, not a button. See CancelBill for why. */
     open: 'এই বেতন বন্ধ করুন',
     heading: 'এই বেতন বন্ধ করে দেব?',
@@ -2747,6 +2927,8 @@ export const bn = {
       'এই মাসে বেতনের সারি এত বেশি যে এক পর্দায় ধরছে না। আমাদের জানান, আমরা ঠিক করে দেব।',
     empty:
       'এখনো কারও বেতনের অঙ্ক ঠিক করা হয়নি, আর এই মাসে কাউকে বেতনও দেওয়া হয়নি।',
+    /** The way out of that sentence, rather than leaving the reader on it. */
+    emptyDoor: 'আগে বেতনগুলো ঠিক করুন',
 
     peopleTitle: 'কার বেতন বাকি',
     /** The three figures on every row, which must never collapse into one. */
@@ -2855,6 +3037,15 @@ export const bn = {
        */
       savedUnknown:
         'বেতনটি সম্ভবত লেখা হয়ে গেছে, কিন্তু রসিদ নম্বরটি এখন পড়া যাচ্ছে না। নিচের তালিকায় দেখে নিন — আবার দেবেন না, নইলে দুবার লেখা হয়ে যাবে।',
+      /**
+       * নিশ্চিতকরণ ছাড়া অঙ্কটা ঠিক করা বেতনের বেশি হয়ে গেলে এই বাক্যটি আসে।
+       *
+       * বাইরের পথটা বলা আছে, শুধু বারণ নয়: যে মালিক সত্যিই দ্বিতীয় কিস্তি বা
+       * বোনাস দিতে চান, তিনি জানেন কোন ঘরে টিক দিতে হবে — বাক্সটি বোতামের ঠিক
+       * উপরে। `paid` আর `agreed` এখানে আগেই টাকার অঙ্কে সাজানো অবস্থায় আসে।
+       */
+      repeatConfirm: (paid: string, agreed: string) =>
+        `এই মাসে ইতিমধ্যে ${paid} লেখা আছে, আর এই পেমেন্ট দিলে ঠিক করা ${agreed}-এর বেশি হয়ে যাবে। ইচ্ছাকৃত হলে ফর্মের নিশ্চিতকরণ বাক্সে টিক দিয়ে আবার জমা দিন — যেমন দ্বিতীয় কিস্তি, আগাম বেতন বা বোনাস।`,
     },
   },
 
@@ -2896,8 +3087,34 @@ export const bn = {
      * not four numbers they are expected to add up on a phone.
      */
     totalLabel: 'মোট',
+    /**
+     * নিশ্চিতকরণের টিক, শুধু সেই সারিতে আঁকা হয় যেখানে এই মাসে আগেই টাকা লেখা আছে।
+     *
+     * এটি ইঙ্গিত, বেড়া নয়: ./actions.ts নিজেই একই হিসাব পড়ে এবং ঠিক করা অঙ্কের বেশি
+     * হলে নিশ্চিতকরণ ছাড়া লিখতে দেয় না। বাক্সটি এখানে থাকে যাতে মালিক জমা দেওয়ার আগেই
+     * প্রশ্নটা দেখেন, পরে আটকে যাওয়ার বদলে।
+     */
+    repeatLabel:
+      'এই মাসে ইতিমধ্যে টাকা লেখা আছে। ঠিক করা অঙ্কের চেয়ে বেশি দিতে চাইলে টিক দিন — যেমন দ্বিতীয় কিস্তি, আগাম বেতন বা বোনাস।',
+    /**
+     * বন্ধ থাকা বোতামের পাশের বাক্যটি।
+     *
+     * যে পেমেন্ট ঠিক করা অঙ্কের বেশি হয়ে যাবে অথচ টিক দেওয়া হয়নি, ততক্ষণ জমা বোতামটি
+     * নিষ্ক্রিয় — ./actions.ts যে নিয়মে আটকায়, ঠিক সেই নিয়মেই। চাপা যায় না এমন বোতাম
+     * কেন চাপা যায় না তা না বললে মালিক বোতাম চেপে পাতা রিলোড করেন।
+     */
+    unlockHint: 'এই পেমেন্টটি লিখতে উপরের নিশ্চিতকরণ বাক্সে টিক দিন।',
     submit: 'বেতন দেওয়া হলো লিখুন',
     paying: 'লেখা হচ্ছে…',
+    /**
+     * Offered under the confirmation, the instant the salary is on the record.
+     *
+     * The register below still links the voucher number, but the person being paid is
+     * standing at the desk: "বেতন দেওয়া হলো। ভাউচার নং ১০৪২" tells the manager a number in
+     * words and hands them nothing. The number stays in the sentence; this is the way to
+     * the paper it is printed on, in one tap.
+     */
+    printSlip: 'বেতনের রসিদ প্রিন্ট করুন',
     cancel: 'বাতিল',
     /**
      * How a mistake is undone, said in the form rather than only in a document.
@@ -3389,7 +3606,11 @@ export const bn = {
 
     emptyTitle: 'ধরার মতো কোনো শিক্ষার্থী নেই',
     emptyBody: 'এই ব্যাচে এখনো কেউ নেই। আগে শিক্ষার্থীদের ভর্তি করুন।',
+    /** The door under that sentence — see the page. */
+    emptyDoor: 'শিক্ষার্থীর তালিকা খুলুন',
     noBatches: 'এখনো কোনো ব্যাচ নেই, তাই পুরো কোচিং বেছে নিন।',
+    /** And the door inside this one, which leads to making the first batch. */
+    noBatchesDoor: 'নতুন ব্যাচ খুলুন',
     /** See arrears.unreadable for why a failed read takes the whole form away. */
     unreadable:
       'তালিকাটি এখন তৈরি করা গেল না, তাই দেখানো হয়নি — কিছুই হারায়নি। একটু পরে আবার চেষ্টা করুন।',
@@ -3966,26 +4187,6 @@ export const bn = {
     willSkip: '{n} লাইন বাদ পড়বে',
     tooMany: 'একবারে সর্বোচ্চ {max} লাইন দিন, বাকিগুলো পরের বার। এখানে {got} লাইন আছে।',
     overRoom: 'এই প্ল্যানে আর {room} জন যোগ করা যাবে, কিন্তু তালিকায় {fresh} জন নতুন।',
-    /** §3.5-এর দাম দেখানো ঘাটতি — যে প্ল্যানে জায়গা কেনা যায়, সেখানে overRoom-এর জায়গায়। */
-    shortTitle: 'আরও {n}টি জায়গা লাগবে',
-    shortBody:
-      'তালিকায় নতুন: {fresh}। খালি জায়গা: {room}। আগে জায়গা কিনে নিন, তাহলে পুরো তালিকা একসাথে যোগ হবে।',
-    shortBand: '{n}টি, প্রতিটি {rate}',
-    shortTotal: 'মোট',
-    shortBuy: 'জায়গা কিনুন — {taka}',
-    shortBuying: 'শুরু হচ্ছে…',
-    shortAsk: 'জায়গা কেবল মালিক কিনতে পারেন। তাঁকে এই স্ক্রিনটি দেখান।',
-    /**
-     * §3.7's fork for a branch manager. "HQ" stays as হেড অফিস — the word a manager
-     * actually uses for the office that pays, and not মালিক, because on an institution
-     * the two are not the same person.
-     */
-    shortAskFor: 'হেড অফিসে আরও {n}টি জায়গার অনুরোধ পাঠান',
-    shortAsking: 'পাঠানো হচ্ছে…',
-    shortAsked:
-      'হেড অফিসে আরও {n}টি জায়গার অনুরোধ গেছে। তাঁরা টাকা দিয়ে জায়গা যোগ করবেন — হয়ে গেলে এই পাতাটি রিলোড করলেই তালিকা যোগ করা যাবে।',
-    shortAskWithdraw: 'অনুরোধ বাতিল করুন',
-    shortPlanLink: 'জায়গা ও প্ল্যান',
     bought:
       'কেনা শুরু হয়েছে। প্ল্যান পাতায় দেওয়া রেফারেন্স কোড দিয়ে টাকা পাঠান — টাকা পৌঁছালে এই পাতাটি রিলোড করলেই তালিকা যোগ করা যাবে।',
     problemsTitle: 'এই লাইনগুলো যোগ হবে না — ঠিক করে আবার দিন',
@@ -4554,38 +4755,6 @@ export const bn = {
     collected: 'এ মাসে আদায়',
     students: 'শিক্ষার্থী',
     batches: 'ব্যাচ',
-
-    /**
-     * PLACES REMAINING — see en.dashboard.placesLeft for why it is on every plan and
-     * not only the paid ones.
-     *
-     * ASCII digits, interpolated, like `batchesTaken` two keys down: money and counts
-     * stay ASCII across this product while dates go Bangla, and a line that mixed the
-     * two numeral systems would be harder to read than either convention alone.
-     */
-    placesLeft: (left: number, total: number) => `${total}-এর মধ্যে ${left}টি জায়গা খালি`,
-    /**
-     * এক শাখায় নিয়োজিত ম্যানেজারের জন্য একই লাইন — কেন আলাদা বাক্য, তা
-     * en.dashboard.placesPooled-এ লেখা আছে: উপরের সংখ্যাটি তাঁর শাখার, আর জায়গাগুলো
-     * পুরো প্রতিষ্ঠানের।
-     */
-    placesPooled: (left: number, total: number) =>
-      `পুরো প্রতিষ্ঠানে ${total}-এর মধ্যে ${left}টি জায়গা খালি`,
-    /** The ceiling reached. See en.dashboard.placesFull for why it is its own sentence. */
-    placesFull: 'এই প্ল্যানে শিক্ষার্থীর সব জায়গা পূরণ হয়ে গেছে',
-    placesLink: 'প্ল্যান ও জায়গা',
-    /**
-     * §3.7-এর জরুরি অবস্থা — সীমার এক-বিশ ভাগ বাকি, বা কিছুই বাকি নেই। কেন আলাদা বাক্য,
-     * আর কেন "এখনই" নয় বরং "ভর্তির আগে", তা en.dashboard.placesTight-এ লেখা আছে।
-     *
-     * উপরের নিয়ম মেনে সংখ্যাগুলো ASCII।
-     */
-    placesTight: (left: number, total: number) =>
-      `${total}-এর মধ্যে মাত্র ${left}টি জায়গা বাকি`,
-    placesTightBody:
-      'পরের ভর্তির আগেই জায়গা বাড়িয়ে নিন, নাহলে সেদিন ফর্মটি খুলবে না।',
-    /** সীমা পূরণ। কেন আলাদা বাক্য, দেখুন en.dashboard.placesFullBody। */
-    placesFullBody: 'জায়গা না বাড়ানো পর্যন্ত নতুন শিক্ষার্থীর ফর্ম কাজ করবে না।',
 
     /**
      * THE PROFIT LINE — MASTERPLAN.md §9.8, on the home screen because §9.10 puts it
@@ -5472,19 +5641,11 @@ export const bn = {
       limitUnknown:
         'প্ল্যানে জায়গা আছে কিনা এখন দেখা গেল না, তাই কিছু যোগ হয়নি। আবার চেষ্টা করুন।',
       /**
-       * planLimit-এর বদলে এটি, যখন সেন্টার শিক্ষার্থী-প্রতি টাকা দেয়: তার উপরে
-       * আর কোনো প্ল্যান নেই, তাই 'প্ল্যান বদলান' বলার কোনো মানে হয় না — যা শেষ
-       * হয়েছে তা হলো জায়গা, আর জায়গা প্ল্যান বদলে নয়, ব্যান্ড ধরে কেনা হয়।
-       *
-       * planLimit সংখ্যাটি বলে না, এটি বলে: এই সংখ্যাটি আমাদের বসানো সীমা নয়,
-       * সেন্টার নিজে যা কিনেছে — আর আরও কত লাগবে তার হিসাব এটি ছাড়া হয় না।
-       * See en.settings.errors.placesFull.
-       */
-      placesFull: (places: number) =>
-        `এই সেন্টারের ${digits(places, 'bn')}টি শিক্ষার্থীর জায়গা সবই ব্যবহার হচ্ছে, তাই কিছু যোগ হয়নি। কোনো শিক্ষার্থীকে বন্ধ করুন, বা প্ল্যানের পাতা থেকে আরও জায়গা চান।`,
-      /**
-       * Not a cap being hit — a feature that does not exist on this plan. Worded
-       * as what the centre tier is for, because the owner did nothing wrong.
+       * এটি যে জায়গায় বসেছিল (en.settings.errors.placesFull), সেটি §16.1 step 28
+       * -এর সাথে সরানো হয়েছে: per-student টিয়ার এখন সীমাহীন, তাই শিক্ষার্থী-প্রতি
+       * টাকা দেওয়া সেন্টার আর জায়গার অভাবে আটকাতে পারে না। শিক্ষক প্ল্যানের
+       * প্রত্যাখ্যান হলো students স্ক্রিনের `cap`, যা বেঁচে থাকা
+       * `app.guard_student_capacity` থেকে আসে।
        */
       staffNeedsCenter: 'একাধিক শিক্ষক আর অনুমতি কোচিং সেন্টার প্ল্যানের ফিচার।',
       /** staffNeedsCenter one tier up. See settings.branches for the screen's own card. */
@@ -5792,106 +5953,16 @@ export const bn = {
        * `opened` says so instead of congratulating anybody.
        */
       places: {
-        title: 'শিক্ষার্থীর জায়গা কিনুন',
-        body: 'সীমা যত দরকার তত বাড়ানো যায়। টাকা পৌঁছালে আমরা জায়গা যোগ করে দেব।',
-        label: 'কতটি জায়গা?',
-        hint: 'পরের জায়গাটির দাম {taka}।',
-        quote: 'আরও {n}টি জায়গা, দাম {taka} — সীমা হবে {to} জন।',
-        submit: 'জায়গা কিনুন',
-        submitting: 'কেনা হচ্ছে…',
-        opened: 'হয়ে গেছে। নিচে দেখানো নিয়মে টাকা পাঠান, আমরা জায়গা যোগ করে দেব।',
-        waitingTitle: 'টাকার অপেক্ষায়',
-        ref: 'রেফারেন্স কোড',
-        refHint:
-          'টাকা পাঠানোর সময় এই কোডটি রেফারেন্সে লিখে দিন — নাহলে টাকা কোন কেনাকাটার, তা মেলাতে দেরি হবে।',
-        noContact: 'নম্বরটি এখনও এই পর্দায় আসেনি — আমরা নিজেরাই ফোন করে জানাব।',
-        lapsedNote:
-          'এই দামের সময় শেষ, তাই এটি আর নিশ্চিত করা যাবে না। নতুন করে কিনুন — টাকা পাঠিয়ে ফেলে থাকলে আমাদের ফোন করুন।',
         /**
-         * উপরের `pendingUnreadable`-এর উল্টো পরামর্শ। ওই ফর্ম একই সারিতে বসে, তাই দুবার
-         * পাঠালে ক্ষতি নেই; এটি প্রতিবার নতুন কেনাকাটা খোলে, তাই পড়া না গেলে আবার
-         * চাপলে দুটো বিল দাঁড়িয়ে যায়।
+         * §3.7-এর asks কার্ড /hq -তে এখনও যা আঁকে — পুরনো জায়গার শব্দভাণ্ডারের শেষ
+         * টিকে থাকা পৃষ্ঠ (§16.1 step 28)। কার্ডটি এখন ইতিহাস: জায়গা চাওয়ার পথ
+         * বন্ধ, তাই ব্লকে কেবল ইতিহাসের তালিকার যা লাগে তাই আছে, আর শেষ অনুরোধের
+         * উত্তর হলে কার্ডটিও মিলিয়ে যাবে।
          */
-        unreadable:
-          'আপনার কোনো কেনাকাটা অপেক্ষায় আছে কি না, তা এখন পড়া যায়নি। কেনাকাটা খুলে টাকা পাঠিয়ে থাকলে আবার না কিনে আমাদের ফোন করুন।',
-        badCount: 'কতটি জায়গা লাগবে লিখুন।',
-        notOnThisPlan:
-          'এই প্ল্যানে জায়গা আলাদা করে কেনা যায় না। বেশি শিক্ষার্থীর জন্য প্ল্যান বদলাতে হবে।',
-        closed: 'কেনাকাটাটা আর খোলা নেই। পর্দাটি আবার লোড করে দেখুন।',
-        failed: 'কেনাকাটা শুরু করা যায়নি। আবার চেষ্টা করুন।',
-        /** See en.settings.plan.places.ownerBuys for why both refusals name the button. */
-        ownerBuys: 'আপনি নিজেই জায়গা কিনতে পারেন। অনুরোধ পাঠানো ম্যানেজারের জন্য।',
-        managerOnly: 'কেবল ব্রাঞ্চ ম্যানেজার হেড অফিসে জায়গার অনুরোধ পাঠাতে পারেন।',
-        asked: 'হেড অফিসে জানানো হয়েছে। তাঁরা টাকা দিয়ে জায়গা যোগ করবেন।',
-        askWithdrawn: 'অনুরোধ বাতিল হয়েছে।',
-        askFailed: 'অনুরোধ পাঠানো যায়নি। আবার চেষ্টা করুন।',
-        /** §3.7's answer — see en.settings.plan.places.asksTitle. */
         asksTitle: 'একটি ব্রাঞ্চে জায়গা শেষ',
-        asksBody:
-          'জায়গা কিনলেই অনুরোধের জবাব হয়ে যায়। কেনাকাটা খোলার সঙ্গেই অনুরোধ বন্ধ হয়; টাকা আমাদের কাছে পৌঁছালে জায়গা যোগ হয়।',
         askLine: (where: string, places: number, when: string) =>
           `${where} ${when} তারিখে আরও ${digits(places, 'bn')}টি জায়গার অনুরোধ করেছে।`,
-        askBuy: (places: number, taka: string) =>
-          `${digits(places, 'bn')}টি জায়গা ${taka} দিয়ে কিনুন`,
-        askDecline: 'এখন নয়',
-        askDeclined: 'কেনাকাটা ছাড়াই বন্ধ হয়েছে। ব্রাঞ্চ আবার অনুরোধ করতে পারবে।',
-        askGone: 'অনুরোধটি আর খোলা নেই। পর্দাটি আবার লোড করে দেখুন।',
-        asksUnreadable: 'কোনো ব্রাঞ্চ জায়গার অপেক্ষায় আছে কিনা এখন পড়া যায়নি।',
-      },
-
-      /**
-       * প্ল্যানের মাসিক টাকা — আর যাঁরা এখনও কোনো প্ল্যানে নেই, তাঁদের জন্য প্ল্যানটাও।
-       *
-       * এই ঘরটাই এখন সেন্টারের একমাত্র জায়গা যেখান থেকে টাকা দিয়ে প্ল্যান বদলানো যায়,
-       * তাই ভাষাটা "অনুরোধ" নয়, "কিনছি" — নিচের যোগাযোগের ঘরটা তার উল্টো দিক, যেখানে
-       * টাকার বদলে কথা হয়।
-       */
-      subscribe: {
-        title: 'প্ল্যানের টাকা দিন',
-        body: 'যত মাসের ইচ্ছা, একবারেই। টাকা পৌঁছালে হিসাব সেই মাস পর্যন্ত চালু থাকবে।',
-        /** কোন তারিখ পর্যন্ত হিসাব চোকানো আছে — শেষ দিনটাই, মাস নয়। */
-        coveredUntil: (date: string) => `${date} পর্যন্ত চোকানো আছে।`,
-        notCovered: 'এখনও কোনো মাসের টাকা আমাদের খাতায় ওঠেনি।',
-        planLabel: 'কোন প্ল্যানে?',
-        /** একই প্ল্যানে থাকা মানে শুধু মাস বাড়ানো, তাই এটিই প্রথম ও ডিফল্ট পছন্দ। */
-        renewOption: 'একই প্ল্যানে থাকব',
-        monthsLabel: 'কত মাসের?',
-        monthsOption: (n: number) => `${digits(n, 'bn')} মাস`,
-        /** সার্ভার যা বিল করবে, ঠিক সেটাই — ./buy-subscription.tsx-এর মন্তব্য দেখুন। */
-        quote: 'মোট {taka} — {from} থেকে {until} পর্যন্ত।',
-        submit: 'টাকা পাঠাব',
-        submitting: 'খোলা হচ্ছে…',
-        opened: 'হয়ে গেছে। নিচে দেখানো নিয়মে টাকা পাঠান — টাকা বুঝে পেলেই প্ল্যান চালু হবে।',
-        waitingTitle: 'টাকার অপেক্ষায়',
-        waitingLine: (months: string, taka: string, until: string) =>
-          `${months} মাসের ${taka} — ${until} পর্যন্ত।`,
-        /** একই সারিতে প্ল্যান বদলও থাকতে পারে, তাই কোনটায় যাচ্ছে সেটাও লেখা থাকে। */
-        waitingPlan: (name: string) => `প্ল্যান হবে ${name}।`,
-        cancel: 'কেনাকাটা বাতিল করুন',
-        cancelling: 'বাতিল হচ্ছে…',
-        cancelled: 'বাতিল হয়েছে। এখন নতুন করে কেনা যাবে।',
-        gone: 'কেনাকাটাটি আর খোলা নেই। পর্দাটি আবার লোড করে দেখুন।',
-        badMonths: 'কত মাসের টাকা দিচ্ছেন, তালিকা থেকে বেছে নিন।',
-        badPlan: 'প্ল্যানটি চেনা গেল না। তালিকা থেকে বেছে নিন।',
-        /**
-         * নিচের প্ল্যানে নামা এখানে হয় না — সেটা কথা বলার বিষয়, `upgrade` ঘরের ফর্মটি
-         * তার জন্যই। কারণটা ../../app/(app)/settings/plan/actions.ts-এ লেখা আছে।
-         */
-        downgradeIsACall:
-          'ছোট প্ল্যানে নামার কাজটা এখান থেকে হয় না। নিচের ফর্মে জানান, আমরা ফোন করব।',
-        midTermIsACall:
-          'চলতি মাসগুলোর টাকা আগেই দেওয়া আছে, তাই মাঝপথে প্ল্যান বদলের হিসাবটা আমরা হাতে করি। নিচের ফর্মে জানান, আমরা ফোন করব।',
-        alreadyOpen:
-          'একটি কেনাকাটা এখনও টাকার অপেক্ষায় আছে। সেটির টাকা পাঠান, নয়তো বাতিল করে নতুন করে কিনুন।',
-        notOnThisPlan: 'এই প্ল্যানে মাসিক কোনো টাকা নেই, তাই কেনার কিছু নেই।',
-        tooMuch: (taka: string) =>
-          `একবারে ${taka}-এর বেশি এখান থেকে নেওয়া যায় না। আমাদের ফোন করুন, আমরা হিসাব করে দেব।`,
-        closed: 'কেনাকাটাটা আর খোলা নেই। পর্দাটি আবার লোড করে দেখুন।',
-        failed: 'কেনাকাটা শুরু করা যায়নি। আবার চেষ্টা করুন।',
-        unreadable:
-          'আপনার কোনো কেনাকাটা অপেক্ষায় আছে কি না, তা এখন পড়া যায়নি। টাকা পাঠিয়ে থাকলে আবার না কিনে আমাদের ফোন করুন।',
-        priceUnreadable:
-          'আপনার প্ল্যানের হিসাবটা এখন বের করা গেল না। পর্দাটি আবার লোড করুন, নয়তো আমাদের ফোন করুন — আমরা বলে দেব।',
+        title: 'অপেক্ষায় থাকা ব্রাঞ্চগুলো',
       },
 
       /**
@@ -6113,6 +6184,19 @@ export const bn = {
       /** On the button beside the heading. Short: it shares a row with the count. */
       new: 'নতুন',
       /**
+       * যে দুইটি পথ বন্ধ করে দিয়ে এই কার্ডটি বসে, যখন তালিকা ট্রায়ালের সীমায় পৌঁছে গেছে আর
+       * ব্যালান্সে কিছু নেই (20260811000098, `CD006`)।
+       *
+       * যাঁর জন্য লেখা, তিনি নতুন সাইনআপ: প্রতি-শিক্ষার্থী প্ল্যানের দামটাই শিক্ষার্থী, তাই
+       * "অন্তর্ভুক্ত" বলতে কোনো ব্যান্ড নেই আর কিনে নেওয়ার জায়গাও নেই — ট্রায়ালকে বাঁধে
+       * একটিমাত্র সংখ্যা, আর ব্যালান্সে টাকা দিলে সীমাটি পুরোপুরি উঠে যায়। যে বোতাম শুধু
+       * ফিরিয়ে দিতেই পারে, সেটি এই পর্দায় আঁকা যাবে না। নিচের বাক্যটি
+       * `errors.rosterNotFunded` — অ্যাকশন যেটিই লেখে, একই শব্দে।
+       */
+      rosterTitle: 'এই ট্রায়ালের শিক্ষার্থী-সীমা পূর্ণ',
+      /** টাকা নেওয়ার একমাত্র পর্দার পথ (§20.4)। */
+      rosterLink: 'ব্যালান্সে টাকা দিন',
+      /**
        * The bulk paste. Names its ceiling in the same breath, because an owner
        * holding a two-hundred-name register needs that number before they paste,
        * not in an error afterwards.
@@ -6178,33 +6262,11 @@ export const bn = {
       cap: (name: string, limit: number) =>
         `${name} প্ল্যানে ${digits(limit, 'bn')} জন শিক্ষার্থী।`,
       /**
-       * একই কার্ড, তবে শিক্ষার্থী-প্রতি টাকা দেওয়া সেন্টারের জন্য: তার সীমা
-       * প্ল্যানে যত জন ধরে তা নয়, সে যত জায়গা কিনেছে তত।
-       * See en.settings.students.places and lib/plans.ts studentCeiling.
+       * `cap`-এর শিক্ষার্থী-প্রতি সংস্করণ, CD001 প্রত্যাখ্যানের পরেই — যা §16.1 step 28
+       * -এর পর থেকে কেবল শিক্ষক প্ল্যানের সীমা থেকে আসে (per-student টিয়ার সীমাহীন,
+       * `app.guard_student_capacity` বেঁচে আছে)।
        */
       placesTitle: 'শিক্ষার্থীর আর জায়গা নেই',
-      /** See en — the tail that sent the reader to another screen is gone (§3.4). */
-      places: (places: number) =>
-        `এই সেন্টারে ${digits(places, 'bn')}টি শিক্ষার্থীর জায়গা, সবই ব্যবহার হচ্ছে। আরেকজন শিক্ষার্থীর জন্য আরেকটি জায়গা লাগবে।`,
-      /**
-       * §3.4 and §20.5 — the refusal names the price, and the owner buys from here. The
-       * figure is already formatted with ৳ and ASCII digits, like every other taka string
-       * that crosses from a page (see settings.plan.placesLine). The note is §22's half,
-       * and it is the half that changes what the owner does with the family in front of
-       * them.
-       */
-      placesNext: (taka: string) => `আরেকটি জায়গার দাম ${taka}।`,
-      placesBuyNote:
-        'টাকা আপনি নিজে পাঠাবেন, আর আমরা তা মিলিয়ে দেখে জায়গা যোগ করে দেব। এই ফর্ম নিজে থেকে কিছু যোগ করে না — তাই কেউ অপেক্ষা করছেন থাকলে অভিভাবকের নম্বরটি লিখে রাখুন, জায়গা এলে শিক্ষার্থীকে ভর্তি করবেন।',
-      /** §3.7 — the same card for a manager, whose only way forward is the button. */
-      placesAsk: (n: number) => `হেড অফিসে আরও ${digits(n, 'bn')}টি জায়গার অনুরোধ পাঠান`,
-      placesAsking: 'পাঠানো হচ্ছে…',
-      placesAsked: (n: number) =>
-        `হেড অফিসে আরও ${digits(n, 'bn')}টি জায়গার অনুরোধ গেছে। তাঁরা টাকা দিয়ে জায়গা যোগ করবেন।`,
-      placesAskWithdraw: 'অনুরোধ বাতিল করুন',
-      /** The route that costs nothing, on every tier — and a teacher's only one here. */
-      placesFreeLink: 'জায়গা খালি করতে কোনো শিক্ষার্থীকে বন্ধ করুন',
-      placesPlanLink: 'জায়গা ও প্ল্যান',
       /** See en.settings.students.savesTitle — the two ways a record looks finished. */
       savesTitle: 'সেভ করলে কী হয়',
       savesPhone:
@@ -6243,6 +6305,20 @@ export const bn = {
         notFound: 'শিক্ষার্থী পাওয়া যায়নি।',
         /** The save itself failed — see errors.addFailed for the add path's twin. */
         saveFailed: 'তথ্য সেভ করা যায়নি।',
+        /**
+         * ট্রায়ালের তালিকা-সীমার পরে, ব্যালান্সে কিছু না থাকলে (`CD006`, 20260811000098)।
+         * ট্রিগার কোনো সংখ্যা বলতে পারে না, তাই এই বাকিটিই বলে — আর দ্বিতীয় বাকিটিই আসল
+         * কথা: এটি কোনো দেয়াল নয়, সামান্য টাকা দিলেও সীমাটি পুরোপুরি উঠে যায় এবং প্রতিদিনের
+         * রেটেই আগের মতো পুরো তালিকা চলে।
+         */
+        rosterNotFunded: (ceiling: number) =>
+          `ট্রায়ালে ${digits(ceiling, 'bn')} জন শিক্ষার্থী রাখা যায়। ব্যালান্সে টাকা দিলেই এই সীমা পুরোপুরি উঠে যায় — এরপর যতজন চালান, প্রতিদিনের রেটেই কাটা হবে।`,
+        /**
+         * একই রকম ফিরিয়ে দেওয়া, কিন্তু কারণ পলিসি-সারিটাই পড়া যায়নি — আর পড়তে না পারা
+         * মানে অনুমতি নয়: যে সীমা কেউ বলতে পারে না, তাকে সীমাহীন ধরে নেওয়া যাবে না।
+         */
+        rosterUnknown:
+          'এই মুহূর্তে ট্রায়ালের শিক্ষার্থী-সীমা পড়া গেল না, তাই কিছুই সেভ হয়নি। একটু পরে আবার চেষ্টা করুন, অথবা ব্যালান্সে টাকা দিন — সীমাটি পুরোপুরি উঠে যাবে।',
 
         /** See en.students.errors.enrolFailed for why both name what survived. */
         enrolFailed:
@@ -6455,6 +6531,19 @@ export const bn = {
       trimTitle: 'এই প্ল্যানের চেয়ে বেশি শিক্ষক চালু আছে',
       trimBody: (plan: string, active: number, limit: number) =>
         `${plan} প্ল্যানে ${digits(limit, 'bn')} জন শিক্ষক, কিন্তু এখানে ${digits(active, 'bn')} জন চালু আছেন। যাঁরা আর পড়ান না তাঁদের বন্ধ করে দিন — তাঁদের দেওয়া হাজিরা আর নম্বর মুছবে না। বন্ধ করার আগে পর্যন্ত তাঁরা নিজের ব্যাচের হাজিরা দিতে পারবেন, তবে ফি দেখা বা SMS পাঠানো আর পারবেন না।`,
+      /**
+       * শিক্ষক যোগ করার বোতামটির জায়গায় যা বসে, যখন পরের জায়গাটি একটি দাম এবং তা দেওয়ার
+       * মতো ব্যালান্স নেই (`teacherSeatOpeningRefusal` দেখুন)।
+       *
+       * যাঁর জন্য লেখা, তিনি ট্রায়াল: সাইনআপে টাকা নয়, দিন দেওয়া হয় (§4.3), তাই তিনি
+       * নিজের প্ল্যানের দুইটি জায়গা চালান এবং ব্যালান্সে কিছু না এলে তৃতীয়টি নিতে পারেন না।
+       * যে বোতাম শুধু ফিরিয়ে দিতেই পারে, সেটি এই পর্দায় আঁকা যাবে না। নিচের বাক্যটি
+       * `errors.seatNotFunded` — যোগ করার ফর্ম যেটিই লেখে, একই শব্দে — আর শিরোনাম ও
+       * বিলিং পর্দার পথটি এই তালিকার নিজের।
+       */
+      seatTitle: 'এই প্ল্যানের দুইটি জায়গার পরের প্রতিটি জায়গা বিলের একটি লাইন',
+      /** টাকা নেওয়ার একমাত্র পর্দার পথ (§20.4)। */
+      seatLink: 'ব্যালান্সে টাকা দিন',
       addedWithLogin: 'শিক্ষক ও তাঁর লগইন তৈরি হয়েছে',
       addedNoLogin: 'শিক্ষক যোগ হয়েছে (লগইন ছাড়া)',
       /**
@@ -6550,6 +6639,12 @@ export const bn = {
          */
         keepOwnSeat:
           'এটি আপনার নিজের শিক্ষক রেকর্ড — এই প্ল্যানে এই একটি জায়গাই আছে। অন্য কাউকে বন্ধ করুন।',
+        /**
+         * The seat half of `settings.branches.errors.notFunded`, with the two figures the
+         * database's own refusal (`CD005`) cannot name.
+         */
+        seatNotFunded: (included: number, taka: string) =>
+          `এই প্ল্যানে ${digits(included, 'bn')}টি শিক্ষকের জায়গা আছে, এর পরে প্রতিটি জায়গার জন্য মাসে ${taka} — বাকি সবকিছুর মতোই আপনার ব্যালান্স থেকে কাটা হবে। আরেকজন শিক্ষক নিতে, বা বন্ধ করা কাউকে আবার চালু করতে, আগে ব্যালান্সে টাকা দিন।`,
         /*
          * The eight refusals behind "রেকর্ডটি সরিয়ে ফেলুন", and each one points back
          * at the switch. That is deliberate: বন্ধ করা is the right ending for almost
@@ -6731,6 +6826,15 @@ export const bn = {
        * `nextBranchCostBdt`, not the total the branches cost together.
        */
       addCost: (taka: string) => `এটির জন্য মাসে ${taka} বিলে যোগ হবে।`,
+      /**
+       * The rail's replacement when there is no form to draw. The reader is the
+       * three-day signup, which holds days and not money (§4.3).
+       */
+      fundTitle: 'চতুর্থ ভবনটি বিলের একটি লাইন',
+      fundBody: (n: number, taka: string) =>
+        `ইনস্টিটিউশন প্ল্যানে ${digits(n, 'bn')}টি ভবন এর মধ্যেই আছে। পরের ভবনের জন্য মাসে ${taka} যোগ হবে, আর মাসের বিল শোধ হয় আপনার ব্যালান্স থেকে — যেখানে এখনো কিছু নেই। ব্যালান্সে টাকা যোগ করলেই এই ফর্ম খুলে যাবে।`,
+      /** The way to the one screen that takes money (§20.4). */
+      fundLink: 'ব্যালান্সে টাকা যোগ করুন',
       mineTitle: 'আপনার শাখা',
       mineBody:
         'শাখা খোলা, নাম বদলানো আর বন্ধ করা হেড অফিসের কাজ, কারণ প্রতিটি শাখা মাসের বিলের একটি লাইন। আপনি যা যোগ করবেন, আলাদা করে বলার দরকার ছাড়াই আপনার নিজের শাখাতেই জমা হবে।',
@@ -6745,6 +6849,9 @@ export const bn = {
         notFound: 'এই শাখা আপনার তালিকায় নেই।',
         /** A branch manager, refused. Names who can, because they will have to ask. */
         hqOnly: 'শাখা যোগ করা, নাম বদলানো বা বন্ধ করা শুধু হেড অফিস করতে পারে।',
+        /** The database's own refusal, with the two figures it cannot name itself. */
+        notFunded: (included: number, taka: string) =>
+          `প্রথম ${digits(included, 'bn')}টি ভবন প্ল্যানেই আছে; পরের ভবনের জন্য মাসে ${taka} যোগ হবে, আর সেই বিল কাটা হবে আপনার ব্যালান্স থেকে। আগে ব্যালান্সে টাকা যোগ করুন।`,
       },
     },
 
@@ -7124,6 +7231,217 @@ export const bn = {
      * that it was never switched on.
      */
     gatewayNote: 'গেটওয়ে SMS সব সেন্টারে শূন্য — এখনও BTRC sender ID নেওয়া হয়নি।',
+    /**
+     * তালিকার নিজের কন্ট্রোল, আর তার নিচের লাইনটা যা বলে দেয় কী হলো।
+     *
+     * `showing` সবচেয়ে জরুরি। চুপচাপ লুকিয়ে রাখা ফিল্টার এগারো জনের প্যানেলকে চারজন
+     * বানিয়ে দেয়, আর কোন ফিল্টার চালু আছে ভুলে যাওয়া মালিকই ভাবেন সাতজন গ্রাহক হারিয়ে
+     * গেছে। তাই এই সংখ্যা সাজসজ্জা নয় — প্রতিবারই আঁকা হয়, ফিল্টার থাকুক বা না থাকুক।
+     *
+     * দুই সংখ্যাই এখানে আগেই স্থানীয় অঙ্কে আসে, কারণ `digits`-এর locale লাগে আর এই
+     * ফাইলে সেটা নেই — `queueSent` আর `sizeLine`-এর মতো একই ভাগ।
+     */
+    /**
+     * প্যানেলের পাঁচটি বিভাগ। `label` নেভের নিজের নাম — স্ক্রিন রিডার লিংকের আগে এটাই পড়ে,
+     * স্ক্রিনে আঁকা হয় না।
+     */
+    nav: {
+      label: 'ফাউন্ডার প্যানেল',
+      customers: 'গ্রাহক',
+      money: 'টাকা ও বৃদ্ধি',
+      health: 'সিস্টেমের অবস্থা',
+      accounts: 'অ্যাকাউন্ট ও কর্মী',
+      audit: 'অডিট লগ',
+    },
+    filters: {
+      search: 'খুঁজুন',
+      searchHint: 'নাম, এলাকা, ইমেইল বা ফোন নম্বর',
+      /** কে, কী করতে পারবে তা নয় — দেখুন lib/accounts/kind.ts. */
+      kind: 'কে',
+      standing: 'অবস্থা',
+      order: 'সাজানো',
+      kinds: {
+        any: 'সবাই',
+        teacher: 'শিক্ষক',
+        center: 'কোচিং সেন্টার',
+        institution: 'প্রতিষ্ঠান',
+      },
+      /** দুই ড্রপডাউনেরই খালি অপশন। "যে কেউ" এবং "যেকোনো" — কোনোটাই ফিল্টার করে না। */
+      any: 'যেকোনো',
+      orders: {
+        bill: 'বড় বিল আগে',
+        quiet: 'চুপচাপ আগে',
+        newest: 'নতুন আগে',
+        name: 'নাম',
+      },
+      apply: 'দেখান',
+      clear: 'মুছে ফেলুন',
+      showing: (shown: string, all: string) => `${all} জনের মধ্যে ${shown} জন`,
+      none: 'এই শর্তে কোনও গ্রাহক নেই।',
+      noneHint: 'ফিল্টার মুছে দিলে সবাইকে আবার দেখা যাবে।',
+    },
+    /**
+     * আমাদের নিজেদের দিকের লগ — §১০-এর প্রশ্নটা বেড়ার এপাশ থেকে।
+     *
+     * তিনটা অপারেশন-শব্দ লগের নিজের enum নয়: পঞ্চাশটা লাইন চোখ বুলিয়ে যাওয়া মালিক
+     * জানতে চান কেউ কিছু যোগ করল, বদলাল, নাকি তুলে ফেলল — `created` ডেটাবেসের শব্দ, সেই
+     * প্রশ্নের না।
+     *
+     * `scope` লাইনটা থাকতেই হবে। এই স্ক্রিন লগের পাঁচ ভাগের এক ভাগ দেখায় (দেখুন
+     * lib/platform/audit.ts), আর পুরোটা ভাবলে মালিক গ্রাহককে ভুল উত্তর দেবেন।
+     */
+    audit: {
+      title: 'অডিট লগ',
+      lead: 'গ্রাহক, পেমেন্ট, সাবস্ক্রিপশন বা লগইনে যা যা বদলেছে — কে করেছে আর কখন।',
+      center: 'গ্রাহক',
+      allCenters: 'সব গ্রাহক',
+      entity: 'কী',
+      allEntities: 'সবকিছু',
+      operation: 'কীভাবে',
+      anyOperation: 'যেকোনো ধরনের',
+      operations: {
+        created: 'যোগ',
+        updated: 'পরিবর্তন',
+        deleted: 'মুছে ফেলা',
+      },
+      apply: 'দেখান',
+      clear: 'মুছে ফেলুন',
+      lines: (shown: string) => `${shown}টি লাইন, নতুন আগে`,
+      none: 'এই ধরনের কিছু এখনও নেই।',
+      noneHint: 'ফিল্টার মুছে দিলে পুরো লগ দেখা যাবে।',
+      /** যার সেন্টারের নাম পাওয়া যায়নি। লাইনটা তবু আঁকা হয়, আর সেটা বলে দেয়। */
+      unknownCenter: 'নাম পাওয়া যায়নি এমন গ্রাহক',
+      scope:
+        'এটা আমাদের দিকের হিসাব: সেন্টার নিজে, পেমেন্ট, পেমেন্টের অনুরোধ, সাবস্ক্রিপশন '
+        + 'আর লগইন। সেন্টারের ভিতরের ঘটনা — তার হাজিরা, তার ফি, তার শিক্ষার্থী — ওই '
+        + 'সেন্টারের নিজের লগে থাকে, সেখানেই থাকে।',
+    },
+    /**
+     * ব্যবসার ছয় মাস।
+     *
+     * "রিচার্জ" আর "পুড়েছে" — §৯.১ পুরো প্রোডাক্টে "রেভিনিউ" শব্দটা নিষিদ্ধ করেছে, আর প্রতিটি
+     * সেন্টার যে দুই সংখ্যা খরচ করে তার নামও গ্রাহকের নিজের বিলিং স্ক্রিনের একই দুই শব্দ।
+     *
+     * `whatCounts` লাইনটাই টেবিলটাকে সৎ রাখে। অনুদান, সমন্বয়, ফেরত আর ব্যর্থ সেটেলমেন্ট — সবই
+     * লেজারের সত্যিকারের সারি, অথচ কোনোটাই এই দুই কলামে নেই; যে মালিক সেগুলোর একটা মনে রেখেছেন
+     * তিনি এটাকে বাগ ভাববেন।
+     */
+    growth: {
+      title: 'টাকা ও বৃদ্ধি',
+      lead: 'ব্যবসার ছয় মাস: কে যোগ দিল, কত এলো, আর সেন্টারগুলো কত পুড়ল।',
+      /** গ্রাহকদের জন্য আমরা যা ধরে রেখেছি — তাদের পাওনা দিন, আলাদা করে আঁকা। */
+      held: 'হাতে থাকা ব্যালেন্স',
+      monthsTitle: 'ছয় মাস',
+      monthsLead: 'ভিতরে আসা মানে গ্রাহকের রিচার্জ। বাইরে যাওয়া মানে তাদের সেন্টারের দিনের বিল।',
+      month: 'মাস',
+      signups: 'নতুন',
+      recharged: 'এলো',
+      burned: 'পুড়ল',
+      net: 'বাকি',
+      truncated: 'লেজার পড়ার সীমা শেষ, তাই পুরনো মাসগুলো কম দেখাতে পারে — কমপক্ষে এত ধরে নিন।',
+      unreadable: 'লেজার পড়া যায়নি, তাই মাসগুলো আঁকা হয়নি। উপরের সংখ্যাগুলো ঠিকই আছে।',
+      whatCounts:
+        'শুধু রিচার্জ আর তার বোনাস ভিতরে আসা হিসেবে গোনা হয়, আর শুধু এক দিনের বিল বাইরে যাওয়া '
+        + 'হিসেবে। অনুদানের দিন, সমন্বয়, ফেরত আর ব্যর্থ সেটেলমেন্ট — এগুলো সংশোধন, আয় নয়; তাই '
+        + 'এগুলো গ্রাহকের নিজের হিসাবে থাকে, এখানে কোনও কলামে নয়।',
+    },
+    /**
+     * চুপচাপ কী ভাঙা আছে।
+     *
+     * প্রতিটি বাক্যের তিনটি হাত — খালি, ভরা, আর *পড়া যায়নি* — তৃতীয়টা ভদ্রতা নয়: এই পেজের
+     * পুরো কাজই "কিছু ভুল নেই" আর "কিছু পড়া যায়নি" আলাদা করা, আর ব্যর্থ read-কে শুন্য করে
+     * আঁকাই সেই ভুল যা ধরতে এই পেজ।
+     */
+    health: {
+      title: 'সিস্টেমের অবস্থা',
+      lead: 'আমাদের উপর কী বাকি, আর কোন হিসাব মিলছে না।',
+      clear: 'কিছুই বাকি নেই, আর সব হিসাব মিলছে।',
+      clearHint: 'প্রতিটি রিচার্জ নিশ্চিত, প্রতিটি কেনাকাটা শেষ, আর কেউ আমাদের কাছে বাকি নেই।',
+      waitingTitle: 'আমাদের উপর বাকি',
+      claims: (count: string, oldest: string) =>
+        `${count}টি রিচার্জ নিশ্চিত করতে হবে — সবচেয়ে পুরনোটা পাঠানো হয়েছে ${oldest}`,
+      claimsNone: 'নিশ্চিত করার মতো কোনও রিচার্জ বাকি নেই।',
+      claimsUnknown: 'রিচার্জগুলো পড়া যায়নি — গ্রাহক তালিকায় দেখে নিন।',
+      purchases: (count: string, oldest: string) =>
+        `${count}টি কেনাকাটা শুরু হয়ে থেমে আছে — পুরনোটা ${oldest} তারিখের`,
+      purchasesNone: 'কোনও কেনাকাটা অসমাপ্ত পড়ে নেই।',
+      purchasesUnknown: 'কেনাকাটাগুলো পড়া যায়নি।',
+      atLeast: (count: string) => `কমপক্ষে ${count}`,
+      owing: (count: string, amount: string) =>
+        `${count}জন গ্রাহকের গত মাসের বিল বাকি — মিলিয়ে ${amount}`,
+      owingNone: 'কেউ বিল পরিশোধে পিছিয়ে নেই।',
+      blindSpots:
+        'এই পেজ দুইটা জিনিস দেখতে পারে না। গেটওয়ে মিটার করা আর বন্ধ, তাই সেখানে শূন্য মানে ত্রুটি নয়। '
+        + 'আর এই প্যানেলের প্রতিটি সংখ্যা ত্রিশ দিনের: পুরনো কোনও সমস্যা যা এর মধ্যে ঠিক হয়ে গেছে, '
+        + 'এখানে একেবারেই আসে না।',
+    },
+    /**
+     * প্রতিটি লগইন, আর আমাদের নিজেদের দল।
+     *
+     * `adminsHint` সংখ্যাটার মানে বলে, কারা আছে তা নয় — প্যানেলে নিজেদের নিয়ে এটাই একমাত্র
+     * সংখ্যা, আর এটা সেই লোকের সংখ্যা যারা প্রতিটি গ্রাহকের হিসাব পড়তে পারেন।
+     */
+    accounts: {
+      title: 'অ্যাকাউন্ট ও কর্মী',
+      lead: 'প্রতিটি গ্রাহকের প্রতিটি লগইন, আর আমাদের সবাই যাতে এই প্যানেল খুলতে পারে।',
+      adminsTitle: 'আমাদের দল',
+      adminsHint: 'যে অ্যাকাউন্টগুলো প্রতিটি গ্রাহকের হিসাব পড়তে পারে।',
+      adminsEmpty: 'কোনও প্ল্যাটফর্ম অ্যাডমিন পড়া যায়নি, যা ঠিক হতে পারে না — আবার লোড করুন।',
+      search: 'খুঁজুন',
+      searchHint: 'নাম, ইমেইল, নম্বর বা ইউজারনেম',
+      customer: 'গ্রাহক',
+      allCustomers: 'সব গ্রাহক',
+      role: 'ভূমিকা',
+      allRoles: 'যেকোনো ভূমিকা',
+      apply: 'দেখান',
+      clear: 'মুছে ফেলুন',
+      showing: (shown: string, all: string) => `${all}টি লগইনের মধ্যে ${shown}টি`,
+      stopped: 'বন্ধ',
+      noName: 'নাম পাওয়া যায়নি',
+      unknownCustomer: 'নাম পাওয়া যায়নি এমন গ্রাহক',
+      since: (date: string) => `${date} থেকে`,
+      none: 'এই শর্তে কোনও লগইন নেই।',
+      noneHint: 'ফিল্টার মুছে দিলে সবাইকে দেখা যাবে।',
+      unreadable: 'লগইনগুলো পড়া যায়নি।',
+      unreadableHint: 'আবার লোড করুন। ঠিক না হলে ডেটাবেস দেখতে হবে।',
+    },
+    /**
+     * একজন গ্রাহকের পুরো হিসাব — তালিকার প্রতিটি সারির পিছনের ড্রিল-ডাউন।
+     *
+     * দুই জিনিস নতুন করে লেখা হয়নি: ৩০ দিনের নয়টি সংখ্যা তালিকার নিজের `usage` লেবেল, আর
+     * চারটি অবস্থা তার `status` শব্দ। একই নয়টি সংখ্যার জন্য দ্বিতীয় শব্দভান্ডার বানালেই
+     * একই সংখ্যা দুই স্ক্রিনে দুই নামে ডাকা শুরু করে।
+     *
+     * `ledgerAfter`-এ "বাকি" লেখা, "ব্যালেন্স" নয়: ফোনে বসে ত্রিশটা লাইন পড়ার সময় চলতি
+     * সংখ্যাটা বাক্যের মতো পড়া দরকার, আর কলামের নিখুঁত নামটা ডেটাবেসে আছেই।
+     */
+    record: {
+      accountTitle: 'অ্যাকাউন্ট',
+      owner: 'মালিক',
+      phone: 'সেন্টারের নম্বর',
+      area: 'এলাকা',
+      signedUp: 'যোগ দিয়েছে',
+      lastUsed: 'শেষ ব্যবহার',
+      trial: 'ট্রায়াল শেষ',
+      paidThrough: 'পরিশোধিত',
+      moneyTitle: 'টাকা',
+      ledgerTitle: 'ব্যালেন্স, এক লাইন করে',
+      ledgerLead: 'এই গ্রাহকের ব্যালেন্স নাড়া দেওয়া শেষ ত্রিশটি ঘটনা।',
+      ledgerEmpty: 'এখনও ব্যালেন্সে কিছু আসেনি।',
+      ledgerCharge: 'এক দিনের বিল',
+      ledgerTopUp: 'শিক্ষার্থী বাড়ায় আবার একই দিনের বিল',
+      ledgerAfter: (amount: string) => `বাকি ${amount}`,
+      daysGranted: (days: string) => `${days} দিন দেওয়া`,
+      staffTitle: 'কে ঢুকতে পারে',
+      staffEmpty: 'এই সেন্টারে এখনও কারও লগইন নেই।',
+      staffStopped: 'বন্ধ',
+      staffSince: (date: string) => `${date} থেকে`,
+      auditTitle: 'আমরা কী করেছি',
+      auditEmpty: 'এই গ্রাহকের ব্যাপারে আমাদের কোনও কাজ এখনও রেকর্ড হয়নি।',
+      auditAll: 'পুরো লগ',
+      unreadable: 'এই গ্রাহককে পড়া যায়নি।',
+      unreadableHint: 'আবার লোড করুন। ঠিক না হলে ডেটাবেস দেখতে হবে।',
+    },
     /** center_status, in the words the founder would use about a customer. */
     status: {
       trial: 'ট্রায়াল',
@@ -7273,6 +7591,43 @@ export const bn = {
     /** One month covered, where "August to August" would read like a mistake. */
     paymentSavedMonth: (amount: string, month: string) =>
       `${amount} লেখা হয়েছে — ${month}-এর জন্য।`,
+    /**
+     * The receipt for money that went onto the balance — a centre's payment since
+     * 20260811000092. No window and no months: the balance buys days a day at a time, and
+     * the sentence this replaced described a coverage window nothing reads any more.
+     */
+    paidBalance: (amount: string) => `${amount} ব্যালেন্সে লেখা হয়েছে।`,
+    /**
+     * And a teacher's, which buys months of Teacher Pro. The amount is the one the price
+     * card produced rather than the one the form held.
+     */
+    paidMonths: (amount: string, months: string) =>
+      `${amount} লেখা হয়েছে — ${months} মাসের টিচার প্রো।`,
+    /**
+     * What a signup is given, in days. §4.3, 20260811000091 — a policy rather than a
+     * price, changed here rather than in a migration.
+     */
+    settings: {
+      title: 'ট্রায়াল',
+      lead: 'টাকা দেওয়ার আগে নতুন অ্যাকাউন্ট কী পাবে। শিক্ষক পায় একটি প্ল্যানের ট্রায়াল, '
+        + 'আর কোচিং সেন্টার বা প্রতিষ্ঠান পায় নিজের প্ল্যানে দিন।',
+      teacherDays: 'শিক্ষকের ট্রায়াল (দিন)',
+      centerDays: 'কোচিং সেন্টারের ট্রায়াল (দিন)',
+      institutionDays: 'প্রতিষ্ঠানের ট্রায়াল (দিন)',
+      /**
+       * চতুর্থ সংখ্যাটি, আর এটিই একমাত্র সময় নয়: টাকার হিসাবে ওঠার আগে একটি ট্রায়াল কতজন
+       * সক্রিয় শিক্ষার্থী রাখতে পারে (20260811000098)। বিলে এর কোনো ছাপ নেই, তাই এটি
+       * দামের কার্ডে নয় — পাশের দিনগুলোর মতোই নীতি, আর 0 লিখলে সীমাটি বন্ধ।
+       */
+      roster: 'ট্রায়ালে কতজন শিক্ষার্থী',
+      rosterHint: 'ব্যালান্সে সামান্য টাকা দিলেই সীমাটি পুরোপুরি উঠে যায়। 0 মানে কোনো সীমা নেই।',
+      save: 'ট্রায়াল সেভ করুন',
+      saving: 'সেভ হচ্ছে…',
+      saved: 'সেভ হয়েছে।',
+      badDays: '০ থেকে ৩৬৫-এর মধ্যে পূর্ণ দিন লিখুন।',
+      badRoster: 'শিক্ষার্থীসংখ্যা ০ থেকে ১০০০০০-এর মধ্যে পূর্ণ সংখ্যা হতে হবে।',
+      failed: 'সেভ করা যায়নি। আবার চেষ্টা করুন।',
+    },
     planSaved: (plan: string, state: string) => `এখন ${plan} · ${state}।`,
     /**
      * A credit. "ফেরত দেওয়ার কথা" rather than "ফেরত দেওয়া হয়েছে" — the row records the
@@ -7302,6 +7657,11 @@ export const bn = {
       amount: 'কত টাকা',
       /** Said because the field is not empty, and a prefilled figure gets trusted. */
       amountHint: 'এই মাসের বিল বসানো আছে — অন্য অঙ্ক হলে বদলে নিন।',
+      /**
+       * Said on a teacher's card, where the figure above is not the founder's to give: a
+       * subscription is priced from the price list by the database (20260811000092).
+       */
+      amountPriced: 'শিক্ষকের অঙ্কটা রেট-কার্ড থেকে আসে — এই ঘরটা শুধু সেন্টারের জন্য।',
       method: 'কীভাবে এসেছে',
       coversFrom: 'কোন মাস থেকে',
       months: 'কত মাসের',
@@ -7367,8 +7727,6 @@ export const bn = {
     boughtMovesTo: (plan: string) => `এবং তাদের ${plan}-এ নিয়ে যাবে`,
     /** Composed by the Server Action once the receipt is written, like `paymentSaved`. */
     purchaseConfirmed: (amount: string) => `${amount} নিশ্চিত করা হয়েছে।`,
-    purchaseHolds: (places: number) =>
-      `এই সেন্টারে এখন ${digits(places, 'bn')} জন শিক্ষার্থী রাখা যাবে।`,
     purchaseMovedTo: (plan: string) => `তারা এখন ${plan}-এ আছে।`,
     /**
      * The purchases a customer has started and not paid for.
@@ -7408,7 +7766,7 @@ export const bn = {
       failed: 'কাজটা হয়নি। আবার চেষ্টা করুন।',
     },
     /**
-     * "সেন্টার প্ল্যান চেয়েছে" — an owner raised their hand on /settings/plan.
+     * "সেন্টার প্ল্যান চেয়েছে" — an owner raised their hand on /settings/billing.
      *
      * OUTSIDE `asked`, and for the same reason `paymentSaved` sits outside `money`:
      * this one takes an argument, and `asked` goes to a client component whole. The
@@ -7478,18 +7836,25 @@ export const bn = {
     lockout: {
       summary: 'কেউ ঢুকতে পারছে না',
       body:
-        'যে নম্বর দিয়ে তারা লগইন করে সেটি আর একটি নতুন পাসওয়ার্ড লিখুন, তারপর '
-        + 'ফোনেই পড়ে শোনান। এই সেন্টারের মালিক, ম্যানেজার বা শিক্ষক — যে কারও '
-        + 'চলবে। আগে থেকে লগইন করা অন্য ফোন নিজে থেকে লগআউট হবে না।',
-      phone: 'লগইন নম্বর',
-      phoneHint: 'যে নম্বর থেকে ফোন করছে, সাধারণত সেটিই।',
+        'তারা যে নম্বর, ইউজারনেম বা ইমেইল দিয়ে লগইন করে সেটি লিখুন আর একটি নতুন '
+        + 'পাসওয়ার্ড দিন, তারপর ফোনেই পড়ে শোনান। এই সেন্টারের মালিক, ম্যানেজার বা '
+        + 'শিক্ষক — যে কারও চলবে। আগে থেকে লগইন করা অন্য ফোন নিজে থেকে লগআউট হবে না।',
+      /*
+       * Three identifiers in one label, because the field takes all three: a number for a
+       * staff login, §5.2's username for a teacher who was given one, and §5.4's address for
+       * anybody who signed up through the app — which is most customers now, and the shape
+       * this label read as "নম্বর" only until it was fixed.
+       */
+      identifier: 'লগইন নম্বর, ইউজারনেম বা ইমেইল',
+      identifierHint: 'গ্রাহকের নিজের স্ক্রিনে যা লেখা আছে — তিনটির যেটি দিয়েই সে ঢোকে।',
       password: 'নতুন পাসওয়ার্ড',
       passwordHint: 'স্ক্রিনে দেখা যাবে, কারণ এটি পড়ে শোনাতে হবে।',
       submit: 'পাসওয়ার্ড দিন',
       saving: 'দেওয়া হচ্ছে…',
       failed: 'করা যায়নি। আবার চেষ্টা করুন।',
       errors: {
-        noAccount: 'এই নম্বরে কোনো অ্যাকাউন্ট নেই। নম্বরটি আবার মিলিয়ে নিন।',
+        noAccount:
+          'এই নম্বর, ইউজারনেম বা ইমেইলের কোনো অ্যাকাউন্ট নেই। আরেকবার মিলিয়ে নিন।',
         self:
           'এটি আপনার নিজের অ্যাকাউন্ট। নিজের পাসওয়ার্ড বদলানোর জায়গা এটি নয় — '
           + 'অ্যাকাউন্ট স্ক্রিন থেকে বদলান।',
@@ -7497,7 +7862,7 @@ export const bn = {
           'এই অ্যাকাউন্ট পুরো প্ল্যাটফর্মের, কোনো সেন্টারের নয়। এখান থেকে এটির '
           + 'পাসওয়ার্ড দেওয়া যাবে না।',
         notStaff:
-          'এই নম্বরের অ্যাকাউন্ট এই সেন্টারে কাজ করে না। নম্বর আর সেন্টার — '
+          'এই আইডির অ্যাকাউন্ট এই সেন্টারে কাজ করে না। আইডি আর সেন্টার — '
           + 'দুটোই মিলিয়ে নিন।',
       },
     },
@@ -7514,6 +7879,10 @@ export const bn = {
       plan: 'প্ল্যান',
       bill: 'মাসিক বিল',
       owner: 'মালিক',
+      /* §5.4's identifier, and the one that exists for a centre which signed up through
+         the app: an address and no number at all. Both columns are in the sheet, so
+         whichever a founder filters on, the other stays beside it. */
+      ownerEmail: 'মালিকের ইমেইল',
       ownerPhone: 'মালিকের নম্বর',
       centerPhone: 'সেন্টারের নম্বর',
       students: 'শিক্ষার্থী',
@@ -7663,23 +8032,6 @@ export const bn = {
     payrollSome: (branches: string) => `বেতনের হিসাব নেই: ${branches}`,
     payrollSomeNote:
       'বেতন যদি হেড অফিস থেকে একসাথে দেওয়া হয়, তবে বাকি শাখাগুলোর লাভ বেশি দেখাবে। যে শাখার লোকের বেতন, সেই শাখার নামেই লিখলে তুলনাটা ঠিক হবে।',
-    /** §17, on the screen that would otherwise invite per-branch quotas. */
-    poolNote:
-      'জায়গার হিসাব পুরো প্রতিষ্ঠানের জন্য একটাই — সব শাখা এই একই ভাণ্ডার থেকে নেয়, শাখা ধরে ধরে ভাগ করা নেই।',
-    growingTitle: 'জায়গাগুলো কোথায় যাচ্ছে',
-    growingBranch: (branch: string, students: number) =>
-      `${branch} ${digits(students, 'bn')} জন`,
-    growingLine: (branches: string) => `গত তিন মাসে নতুন ভর্তি: ${branches}।`,
-    growingOthers: (count: number) =>
-      count === 1
-        ? 'আরও একটি শাখাতেও কিছু ভর্তি হয়েছে।'
-        : `আরও ${digits(count, 'bn')}টি শাখাতেও কিছু ভর্তি হয়েছে।`,
-    growingNote:
-      'আরও জায়গা কিনলে তা এই একই ভাণ্ডারে যোগ হয়, ফলে পরে যে শাখা ভরে উঠবে সে-ই ব্যবহার করতে পারবে। এখানে শুধু দেখানো হচ্ছে বৃদ্ধিটা কোন শাখায়।',
-    growingNone:
-      'গত তিন মাসে কোনো শাখায় নতুন শিক্ষার্থী ভর্তি হয়নি — অর্থাৎ খাতা ভরে আছে আগে থেকেই থাকা শিক্ষার্থীতে, নতুন আসায় নয়।',
-    growingUnreadable:
-      'সাম্প্রতিক ভর্তিগুলো কোন শাখায় হয়েছে তা এখন পড়া গেল না। আপনার তথ্যে কোনো সমস্যা নেই — উপরের হিসাবগুলো ঠিকই আছে।',
   },
 
   /**
@@ -7722,6 +8074,7 @@ export const bn = {
       students: 'ছাত্রছাত্রী',
       guardians: 'অভিভাবক',
       attendance_records: 'হাজিরা বদল',
+      attendance_unlocks: 'ক্লাসের সময়ের বাইরে নেওয়া হাজিরা',
       teachers: 'শিক্ষক',
       teacher_permissions: 'অনুমতি',
       employees: 'স্টাফ',
@@ -7730,7 +8083,6 @@ export const bn = {
       payments: 'আমাদের দেওয়া টাকা',
       payment_intents: 'টাকা পাঠানোর অনুরোধ',
       subscriptions: 'সাবস্ক্রিপশন',
-      policy_acceptances: 'নীতিমালা সম্মতি',
     },
     actions: {
       planChanged: 'প্ল্যান বদলেছে',
@@ -7760,6 +8112,13 @@ export const bn = {
       consentChanged: 'বার্তা পাঠানোর সম্মতি বদলেছে',
       /** যে শিক্ষক হাজিরা নিয়েছিলেন, তিনি ছাড়া অন্য কেউ বদলেছেন — সেটাই এখানে থাকে। */
       attendanceOverridden: 'হাজিরা অন্যজন বদলেছেন',
+      /**
+       * ঘড়ির নিয়মের দুটি লাইন (২০২৬০৮১১০০০০০০৮৯)। কোনোটিই “রেজিস্টার খোলা হলো” নয়:
+       * মালিকের লগে দরকারি তথ্য হলো হাজিরা ক্লাসের কোন দিকে লেখা হলো — অভিভাবকের
+       * অভিযোগ বা বেতনের হিসাব শেষে ঠিক এই প্রশ্নেই ঠেকে।
+       */
+      attendanceFiledEarly: 'ক্লাসের আগে হাজিরা নেওয়া হয়েছে',
+      attendanceFiledLate: 'ক্লাসের পরে হাজিরা নেওয়া হয়েছে',
       feeRaised: 'ফির বিল হয়েছে',
       feeVoided: 'বিল বাতিল হয়েছে',
       discountGranted: 'ছাড় দেওয়া হয়েছে',
@@ -7777,6 +8136,7 @@ export const bn = {
       salaryPaid: 'বেতন দেওয়া হয়েছে',
       expenseRecorded: 'খরচ লেখা হয়েছে',
       platformPaymentRecorded: 'আমাদের টাকা দেওয়া হয়েছে',
+      balanceChanged: 'ব্যালেন্স বদলেছে',
       /** "অনুরোধ", কারণ কেউ নিশ্চিত না করা পর্যন্ত টাকাটা আসলে আসেনি। */
       paymentRequested: 'টাকা পাঠানোর অনুরোধ হয়েছে',
       paymentSettled: 'টাকা পাওয়া গেছে বলে নিশ্চিত হয়েছে',
@@ -7795,6 +8155,134 @@ export const bn = {
       teacher: 'শিক্ষক',
       student: 'ছাত্র',
       guardian: 'অভিভাবক',
+    },
+  },
+
+  /**
+   * The three screens a reader sees before they have a workspace: the two a signed-out
+   * visitor reaches, and the one a brand-new account is sent to.
+   *
+   * WHY THIS GROUP EXISTS AT ALL, and it is the group's whole justification. Every other
+   * screen in the product reads its words through `dict(session.locale)`; the (auth) screens
+   * were Bangla by hand, which was consistent and fine until the locale cookie existed.
+   * `lib/i18n/server.ts`, `lib/i18n/actions.ts` and `lib/i18n/locale.ts` all describe that
+   * cookie's entire purpose the same way — "an English reader who signs out does not get
+   * handed a Bangla login form" — and `components/language-switch.tsx` names the login screen
+   * as the reason the switch is a form rather than a `<select>`: "somebody who cannot read the
+   * form can still change it". Nothing read the cookie on either screen and the switch was
+   * drawn on neither, so the reader those three notes describe had a Bangla form with no
+   * control on it to say otherwise — the one state the switch was built for.
+   *
+   * The onboarding screen is in here rather than left Bangla, because leaving it would be a
+   * worse bug than the one being fixed: a signup that answers in English and is handed a
+   * Bangla form one second later has had its language flipped in the middle of the one flow
+   * where nothing has been saved yet. It reads `session.locale` like every signed-in screen.
+   *
+   * PLACEHOLDERS AND NOT FUNCTIONS, throughout, because two of these three screens are client
+   * components and `T<'auth'>` poisons function leaves. The three that carry a figure — the
+   * free-tier line, the address a code went to, and the trial offer whose length is chosen in
+   * the browser — are `{name}` templates filled by ./fill.ts, with the number already in the
+   * reader's own numerals by the time it is passed.
+   */
+  auth: {
+    /** The desktop panel on /login and /signup — see en.ts on why it exists and its shape. */
+    brand: {
+      headline: 'পুরো কোচিং, এক জায়গায়',
+      attendance: 'শ্রেণির হাজিরা ত্রিশ সেকেন্ডে',
+      money: 'ফি, বকেয়া আর রশিদ — সব মিলে যায়',
+      families: 'অভিভাবককে বাংলায় SMS',
+      note: 'বাংলাদেশের কোচিং সেন্টারের জন্য বানানো',
+    },
+    login: {
+      /** The browser tab, the app switcher and the installed app's title. */
+      title: 'লগইন',
+      /** Under the wordmark, where a marketing page would put its hero. */
+      tagline: 'হাজিরা, ফলাফল আর ফি — এক জায়গায়',
+      identifier: 'ইমেইল, মোবাইল নম্বর বা ইউজারনেম',
+      identifierHint: 'যেমন name@gmail.com, ০১৭১২৩৪৫৬৭৮, বা rahim',
+      password: 'পাসওয়ার্ড',
+      submit: 'লগইন করুন',
+      submitting: 'অপেক্ষা করুন…',
+      noAccount: 'অ্যাকাউন্ট নেই?',
+      signUp: 'নতুন অ্যাকাউন্ট খুলুন',
+      forgot: 'পাসওয়ার্ড ভুলে গেলে আপনার কোচিংয়ের মালিককে বলুন — তিনি নতুন পাসওয়ার্ড দিতে পারবেন।',
+    },
+
+    signup: {
+      title: 'নতুন অ্যাকাউন্ট',
+      /**
+       * The free tier, described by the tier — the numbers are read off `PLANS`.
+       *
+       * TWO KEYS AND NOT ONE, for English's sake rather than Bangla's: "1 batches" is the
+       * first thing an English-medium teacher notices on the signup screen, and the free tier
+       * is one batch today, so the plural wording would have shipped wrong on the only screen
+       * this sentence appears on. The page picks with a ternary off `PLANS.maxBatches` — the
+       * same shape `dayLate`/`daysLate` take, and for the same reason: a template cannot
+       * branch. Bangla has one form, so both values are the same word for word, which is the
+       * honest translation and not a duplication.
+       */
+      freeLine: 'ফ্রি — {batches} ব্যাচ, {students} জন শিক্ষার্থী পর্যন্ত',
+      freeLineOne: 'ফ্রি — {batches} ব্যাচ, {students} জন শিক্ষার্থী পর্যন্ত',
+      privacyNote: 'শিক্ষার্থীদের তথ্য শুধু আপনার কোচিং দেখতে পাবে। অন্য কেউ নয়।',
+      name: 'আপনার নাম',
+      namePlaceholder: 'মোঃ রফিকুল ইসলাম',
+      email: 'ইমেইল',
+      emailHint: 'এই ইমেইলে কোড যাবে, এবং এই ইমেইল দিয়েই লগইন করবেন',
+      password: 'পাসওয়ার্ড',
+      codeSent: '{email} ঠিকানায় একটি ভেরিফিকেশন কোড পাঠানো হয়েছে। কোডটি না এলে স্প্যাম ফোল্ডারটাও একবার দেখে নিন।',
+      code: 'ইমেইলে আসা কোড',
+      submitCreate: 'অ্যাকাউন্ট খুলুন',
+      submittingCreate: 'অ্যাকাউন্ট হচ্ছে…',
+      submitSend: 'কোড নিন',
+      submittingSend: 'কোড পাঠানো হচ্ছে…',
+      resend: 'নতুন কোড পাঠান',
+      resendWait: 'আরও {n} সেকেন্ড',
+      changeEmail: 'ইমেইল বদলান',
+      /*
+       * The consent sentence, in three pieces because two of them are links. Bangla puts the
+       * verb last, so `agreeAfter` carries a leading space that English's full stop does not
+       * need — the alternative was a space before the period on one side or the other.
+       */
+      agreePrefix: 'আমি',
+      agreeAnd: 'ও',
+      agreeAfter: ' পড়েছি এবং সম্মতি দিচ্ছি।',
+      haveAccount: 'আগে থেকেই অ্যাকাউন্ট আছে?',
+      login: 'লগইন করুন',
+    },
+
+    onboarding: {
+      title: 'শুরু করুন',
+      welcome: 'স্বাগতম',
+      welcomeNamed: 'স্বাগতম, {name}',
+      question: 'আপনি কোনটি?',
+      /* One fragment each, poured into `trialLine` by the form. */
+      thenSubscribe: 'সাবস্ক্রিপশন নিতে',
+      thenTopUp: 'ব্যালেন্স যোগ করতে',
+      trialLine: 'প্রথম {days} দিন সম্পূর্ণ ফ্রি — কার্ড বা পেমেন্ট লাগবে না। এরপর ব্যবহার চালিয়ে যেতে {how} হবে।',
+      submit: 'শুরু করুন',
+      submitting: 'তৈরি হচ্ছে…',
+      nameNote: 'পরে নাম বদলাতে পারবেন। একাধিক শিক্ষক লাগলে সেন্টার প্ল্যান নিতে হবে — অ্যাপ থেকেই আমাদের বলতে পারবেন।',
+      /** One per `ACCOUNT_KINDS`, and the keys are that union, so a fourth kind cannot ship nameless. */
+      modes: {
+        teacher: {
+          title: 'আমি একা পড়াই',
+          body: 'নিজের ব্যাচ, নিজের শিক্ষার্থী। হাজিরা আর ফলাফল আপনিই নেবেন।',
+          nameLabel: 'আপনার কোচিং/ব্যাচের নাম',
+          namePlaceholder: 'রফিক স্যারের গণিত',
+        },
+        center: {
+          title: 'আমার কোচিং সেন্টার আছে',
+          body: 'একাধিক শিক্ষক ও ব্যাচ, কর্মচারী আর হিসাব এক জায়গায়।',
+          nameLabel: 'কোচিং সেন্টারের নাম',
+          namePlaceholder: 'উত্তরা আইডিয়াল কোচিং',
+        },
+        institution: {
+          title: 'আমার একাধিক শাখা আছে',
+          body: 'প্রতিষ্ঠান — একাধিক শাখা, শাখাভিত্তিক হিসাব আর একসাথে রিপোর্ট।',
+          nameLabel: 'প্রতিষ্ঠানের নাম',
+          namePlaceholder: 'আদর্শ একাডেমি',
+        },
+      },
     },
   },
 } as const

@@ -3,7 +3,7 @@ import { PageHeader } from '@/components/page-header'
 import { ReadOnlyNote } from '@/components/read-only-note'
 import { pageCapability, getSession } from '@/lib/auth/session'
 import { createClient } from '@/lib/supabase/server'
-import { formatDate } from '@/lib/bd/time'
+import { dhakaMoment, formatDate } from '@/lib/bd/time'
 import { buildNoticeSms } from '@/lib/sms/templates'
 import { noticeReach, readAudienceRows, chunkPhones } from '@/lib/notices/audience'
 import { worstFailure } from '@/lib/supabase/page'
@@ -161,7 +161,13 @@ export default async function NoticesPage() {
         id: row.id,
         title: row.title,
         body: row.body,
-        when: formatDate(row.published_at.slice(0, 10), locale),
+        // Through `dhakaMoment`, not ten characters off the timestamp. `published_at` is a
+        // timestamptz and Postgres hands it back in UTC, so for the first six hours of every
+        // Bangladeshi day the slice is *yesterday* — a notice posted at 1am read its own date
+        // as the previous one, in the log an owner opens to check whether Thursday's notice
+        // actually went out. The same conversion the register, the fee board and the activity
+        // log make, and for the same reason.
+        when: formatDate(dhakaMoment(row.published_at).date, locale),
         // A batch that has since been switched off keeps its notice in the log and
         // loses its name from it, and so does one whose list did not arrive at all.
         // The alternative to the first is a second query for archived batches to label

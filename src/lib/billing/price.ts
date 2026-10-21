@@ -2,12 +2,17 @@
  * What a purchase costs, computed from facts the server read rather than numbers a
  * browser sent.
  *
- * MASTERPLAN §11.4 is a table of five things a request may never carry, and four of
- * them are inputs to this file: the amount, the plan, the student capacity and the
- * entitlement. So none of them are parameters a caller can invent — the plan arrives
- * as a `PlanLimits` looked up from `coaching_centers.plan`, the capacity as the
- * `student_capacity` column, and the amount is the return value. What a request MAY
- * carry is a quantity: "forty places", "twelve months". That is a wish, not a price.
+ * MASTERPLAN §11.4 is a table of five things a request may never carry, and three of
+ * them are inputs to this file: the amount, the plan and the entitlement. So none of
+ * them are parameters a caller can invent — the plan arrives as a `PlanLimits` looked
+ * up from `coaching_centers.plan`, and the amount is the return value. What a request
+ * MAY carry is a quantity: "three seats", "twelve months". That is a wish, not a price.
+ *
+ * THE FOURTH INPUT WAS STUDENT CAPACITY, and it went with the rest of it (§16.1 step
+ * 28): a place was the one purchase whose price lived here and whose ceiling lived in
+ * a column, so this file held `quoteSeats`'s arithmetic as well as a price. A
+ * per-student tier has no student limit to buy past, so there is nothing left to
+ * price.
  *
  * Every figure here comes out of ../plans.ts, which is where the price list lives and
  * what the monthly bill already reads. A second copy of ৳18 in this file would be a
@@ -22,10 +27,7 @@ import {
   CENTER_TEACHER_SEAT_BDT,
   INSTITUTION_BRANCH_BDT,
   branchChargeBdt,
-  capacityBands,
-  capacityCostBdt,
   monthlyBillBdt,
-  studentCeiling,
   teacherChargeBdt,
   type PlanId,
   type PlanLimits,
@@ -35,10 +37,10 @@ import type { PaymentPurpose } from '../supabase/types.ts'
 /**
  * One line of the breakdown, in the units the customer thinks in.
  *
- * `count` is what is BILLABLE and not what was asked for, which is the same
- * distinction `quoteSeats` draws: a centre buying its second branch is buying one
- * branch and paying for none of it, and a line saying "1 branch at ৳0" is a clearer
- * answer than a total of zero with nothing above it.
+ * `count` is what is BILLABLE and not what was asked for, which is a distinction every
+ * kind here draws: a centre buying its second branch is buying one branch and paying for
+ * none of it, and a line saying "1 branch at ৳0" is a clearer answer than a total of zero
+ * with nothing above it.
  */
 /** The four units a line may count in, as one list so the reader and the labels agree. */
 export const QUOTE_UNITS = ['places', 'seats', 'branches', 'months'] as const
@@ -57,7 +59,16 @@ export type Quote = {
   /** What was bought, in whole units. Zero means there is nothing to sell. */
   quantity: number
   amountBdt: number
-  /** Places this adds to the ceiling, and only ever on a capacity purchase. */
+  /**
+   * Places this adds to the ceiling.
+   *
+   * ALWAYS ZERO NOW, and kept rather than removed because the column it feeds is not
+   * this cut's to retire: §11.14 **preserves** `payment_intents.grants_capacity` and
+   * every value of `payment_purpose`, so a historic intent still reads. What §16.1 step
+   * 28 retired is the live mechanism — `app.student_ceiling` no longer reads the column,
+   * and `settle_payment_intent` refuses an intent carrying a grant rather than taking
+   * money for a ceiling it cannot raise.
+   */
   grantsCapacity: number
   /**
    * The tier this purchase moves the centre onto, or null for a renewal on the tier it
@@ -89,13 +100,6 @@ export type PurchaseRequest =
        * product. They have to agree or there is no quote.
        */
       targetPlan?: PlanId | null
-    }
-  | {
-      purpose: 'student_capacity'
-      plan: PlanLimits
-      /** `coaching_centers.student_capacity`, which is an absolute ceiling. */
-      purchasedCapacity: number
-      places: number
     }
   | {
       purpose: 'teacher_seat'
@@ -141,8 +145,6 @@ export function priceIntent(request: PurchaseRequest): Quote {
   switch (request.purpose) {
     case 'subscription':
       return subscription(request)
-    case 'student_capacity':
-      return capacity(request)
     case 'teacher_seat':
       return seats(request)
     case 'branch':
@@ -209,46 +211,6 @@ function subscription(
 function firstOfMonth(isoDate: string): string | null {
   const parts = /^(\d{4})-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/.exec(isoDate)
   return parts ? `${parts[1]}-${parts[2]}-01` : null
-}
-
-/**
- * Places above the ceiling the centre already has.
- *
- * Measured from `studentCeiling`, which is `greatest(what the floor included, what has
- * been bought)` — the same reading `app.student_ceiling` gives a purchase, and
- * deliberately not the trial-aware one the capacity trigger admits by. Measuring
- * from `student_capacity` alone would sell a fresh centre the 79 places its ৳1,999
- * already paid for.
- *
- * A teacher tier gets a zero quote. Its ceiling comes from the plan and no amount of
- * money moves it, so a price here would be a Pay button that cannot be honoured —
- * `settle_payment_intent` refuses the same purchase from the other end.
- */
-function capacity(
-  request: Extract<PurchaseRequest, { purpose: 'student_capacity' }>,
-): Quote {
-  const places = whole(request.places)
-  if (places === 0) return none('student_capacity')
-
-  const ceiling = studentCeiling(request.plan, request.purchasedCapacity)
-  if (ceiling.kind === 'plan') return none('student_capacity')
-
-  const to = ceiling.ceiling + places
-  return {
-    purpose: 'student_capacity',
-    quantity: places,
-    amountBdt: capacityCostBdt(ceiling.ceiling, to),
-    grantsCapacity: places,
-    targetPlan: null,
-    coversPeriodStart: null,
-    coversPeriodEnd: null,
-    lines: capacityBands(ceiling.ceiling, to).map((band) => ({
-      what: 'places' as const,
-      count: band.seats,
-      rateBdt: band.rateBdt,
-      costBdt: band.costBdt,
-    })),
-  }
 }
 
 /**

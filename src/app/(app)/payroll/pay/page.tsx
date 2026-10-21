@@ -1,7 +1,8 @@
 import Link from 'next/link'
 
 import { PageHeader } from '@/components/page-header'
-import { Card } from '@/components/ui'
+import { PaperLink } from '@/components/paper-link'
+import { buttonClass, Card } from '@/components/ui'
 import { Th, Td } from '@/components/table'
 import { getSession, pageCapability } from '@/lib/auth/session'
 import {
@@ -60,14 +61,18 @@ const MONTH_RE = /^\d{4}-\d{2}-01$/
  * the same people, and a single page answering both would have two month pickers on it —
  * one of which did nothing.
  *
- * WHAT STOPS SOMEBODY BEING PAID TWICE IS THE SHAPE OF THIS PAGE. 20260811000044
- * deliberately has no unique index on (payee, for_month): half a salary on the 5th and
- * half on the 20th is two real rows, and a reversing correction is a third. So the database
- * will not refuse a second payment and ./actions.ts does not either — which leaves this
- * screen as the only thing that can tell an owner what is already on the record. Every row
- * prints paid, agreed and left *before* its form opens, and the register underneath prints
- * every voucher. The other half of the problem — one tap arriving twice — is the
- * idempotency token, and 20260811000051 is the index behind it.
+ * WHAT STOPS SOMEBODY BEING PAID TWICE IS THIS PAGE AND THE ACTION, IN THAT ORDER.
+ * 20260811000044 deliberately has no unique index on (payee, for_month): half a salary on
+ * the 5th and half on the 20th is two real rows, and a reversing correction is a third. So
+ * the database will not refuse a second payment, and every row prints paid, agreed and left
+ * *before* its form opens — which is what tells an owner what is already on the record.
+ * Since the audit of 2026-10-04 the form is no longer the only guard: a payment that would
+ * take the month past the agreed figure is refused by ./actions.ts until the form carries
+ * an explicit tick, which is why the rows below hand `needsRepeat` down to the form. That
+ * tick is the button's lock as well as a question — pay-row.tsx disables the submit until it
+ * is on, measured with the same rule, so an owner meets a dead control rather than a refusal
+ * after the tap. The other half of the problem — one tap arriving twice — is the idempotency
+ * token, and 20260811000051 is the index behind it.
  *
  * THE JOIN IS DONE IN TYPESCRIPT, as on /payroll and for the same reason: 20260811000005
  * replaced every simple foreign key with one on (sibling_id, coaching_center_id), so both
@@ -286,8 +291,9 @@ export default async function PayrollPayPage({
             </select>
             <button
               type="submit"
-              className="min-h-tap shrink-0 rounded-xl border-2 border-brand-500
-                bg-brand-50 px-4 font-medium text-brand-800"
+              // The shared tinted styles: this apply button had drifted to px-4 against
+              // the sheet's own px-5, and it never answered a tap.
+              className={buttonClass('tinted', false, 'shrink-0')}
             >
               {t.show}
             </button>
@@ -386,8 +392,22 @@ export default async function PayrollPayPage({
               </p>
             </Card>
           ) : rows.length === 0 ? (
+            /*
+             * NOT A DEAD END. "No salary has been agreed" is true and complete, and it is
+             * also the one state this screen cannot act on: every row here is a person with
+             * an agreement, so an empty month means the previous screen has not been visited
+             * yet. It used to be a sentence and nothing else, which left an owner holding a
+             * fact and no next step on the screen they opened to pay people.
+             */
             <Card>
               <p className="text-ink-soft">{t.empty}</p>
+              <Link
+                href="/payroll"
+                className="mt-3 inline-flex min-h-tap items-center font-medium text-brand-800
+                  underline underline-offset-4 hover:text-brand-900"
+              >
+                {t.emptyDoor} →
+              </Link>
             </Card>
           ) : (
             <>
@@ -400,6 +420,17 @@ export default async function PayrollPayPage({
               <ul className="flex flex-col gap-2">
                 {rows.map((row) => {
                   const perClass = row.terms?.basis === PER_CLASS_BASIS
+
+                  /*
+                   * Whether the form the reader is about to open offers the confirmation
+                   * tick ./actions.ts asks for. True for every monthly row that already
+                   * has money on the month — the one case a further payment can take
+                   * somebody past their agreement — and false for a first payment, for a
+                   * per-class rate and for a row that has already been corrected back to
+                   * nothing. It is a hint and never the fence: the action reads the same
+                   * facts for itself and refuses the overshoot with or without this flag.
+                   */
+                  const needsRepeat = row.payments > 0 && row.remaining !== null
 
                   /*
                    * The three figures, built here because two of the three take an argument
@@ -466,6 +497,14 @@ export default async function PayrollPayPage({
                       // from. A per-class teacher gets one, because what the month cost is
                       // not knowable from here and four empty boxes are four questions.
                       parts={row.terms !== null && !perClass ? row.terms.parts : null}
+                      needsRepeat={needsRepeat}
+                      // The pair the form's own lock is measured from, and the same pair
+                      // ./actions.ts reads for itself — so the disabled button and the
+                      // refusal name one rule rather than two. Null for a per-class rate or
+                      // no agreement at all: there is nothing to overshoot, and the form
+                      // stays unlocked.
+                      alreadyPaid={row.paid}
+                      agreedNet={row.terms === null || perClass ? null : row.terms.net}
                       canWrite={canWrite}
                       methods={d.feeRow.methods}
                       t={d.salaryPayForm}
@@ -523,16 +562,24 @@ export default async function PayrollPayPage({
                           {v.name ?? t.unknownName}
                           {v.job && <span className="block text-ink-faint">{v.job}</span>}
                         </Td>
-                        {/* The voucher number is the way to the payslip, and this is the
-                            only way in: the pay action answers with a finished sentence and
-                            no id, and every voucher of the month is already here. */}
+                        {/*
+                          The voucher number, as a control rather than as an underlined word.
+
+                          It is no longer the only way in — the row above offers the slip the
+                          instant it is written (./actions.ts returns its id) — but it is the
+                          way back to a slip from before, and a register where the numbers are
+                          the doors has to look like one. The number stays the label because
+                          it is also the thing an owner matches against the paper in their
+                          hand, and the printer glyph and the box are what say it is tappable.
+                        */}
                         <Td num>
-                          <Link
+                          <PaperLink
+                            dense
                             href={`/payroll/payslip/${v.id}`}
-                            className="font-medium text-brand-700 underline"
+                            label={`${d.salaryPayForm.printSlip} ${v.voucherNo}`}
                           >
                             {v.voucherNo}
-                          </Link>
+                          </PaperLink>
                         </Td>
                         {/* The Dhaka calendar day, not the raw timestamp: `paid_at` comes
                             back in UTC, and 1 September at 2am there is 31 August here. */}

@@ -27,7 +27,7 @@ import { createClient as createStatelessClient } from '@supabase/supabase-js'
 import { createClient } from '@/lib/supabase/server'
 import { requireCenter, getSession, AuthError } from '@/lib/auth/session'
 import { MIN_PASSWORD } from '@/lib/auth/password'
-import { loginEmailFor } from '@/lib/bd/username'
+import { loginAddressOf } from '@/lib/auth/identifier'
 import { MAX_NAME } from '@/lib/limits'
 import { dict, DEFAULT_LOCALE } from '@/lib/i18n'
 import { nameTooLong, passwordTooShort } from '@/lib/i18n/messages'
@@ -79,9 +79,9 @@ function isSession(value: CenterSession | AccountState): value is CenterSession 
  * there is no hash on our side to compare against, and there should not be.
  *
  * Takes the login address rather than a number, because as of §5.2 an account's
- * identifier is a number *or* a username and only the address covers both. The
- * caller builds it with the same dispatch the login screen uses, so this check
- * cannot drift away from what actually signs somebody in.
+ * identifier is a number *or* a username *or* the address a self-serve signup owns, and
+ * only the address covers all three. The caller builds it with the same dispatch the login
+ * screen uses, so this check cannot drift away from what actually signs somebody in.
  *
  * On a client of its own, built from the anon key with `persistSession` off, because
  * `signInWithPassword` on the request-scoped client would mint a second session and
@@ -126,17 +126,19 @@ export async function changeOwnPassword(
   if (next === current) return { error: t.errors.same }
 
   /*
-   * The address this account signs in with, from whichever identifier it has: a
-   * number for an owner, §5.2's username for a teacher who never gave one. Built
-   * with `loginEmailFor` — the login screen's own dispatch — so that the password
-   * this screen verifies is the password that screen accepts.
+   * The address this account signs in with, from whichever of the three identifiers it
+   * holds: a number for an owner, §5.2's username for a teacher who never gave one, or
+   * §5.4's real email for anybody who signed up through the app. Built with
+   * `loginAddressOf` — the login screen's own dispatch, applied to the identifier the
+   * session holds — so that the password verified here is the password that screen accepts.
    *
-   * Null means an account with neither, which is not a reader's mistake and is not
-   * reported as a wrong password. It is reachable for a real-email account created
-   * outside the app; the founder's own is the only one, and it has both.
+   * THIS IS WHERE THE SCREEN USED TO BREAK, and the reason the resolution lives in one
+   * module now. It asked for a number and then for a username, and an email account has
+   * neither, so everybody who signed up through the app was told their password could not
+   * be changed and to try again. Null now means a session with none of the three, which the
+   * session cannot produce; it is refused rather than reported as a wrong password.
    */
-  const identifier = session.email ?? session.username ?? session.phone
-  const loginEmail = identifier ? loginEmailFor(identifier) : null
+  const loginEmail = loginAddressOf(session)
   if (!loginEmail) return { error: t.errors.failed }
 
   if (!(await passwordIsCurrent(loginEmail, current))) {

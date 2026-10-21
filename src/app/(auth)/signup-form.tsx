@@ -2,12 +2,15 @@
 
 import { useActionState, useEffect, useState } from 'react'
 import Link from 'next/link'
+import type { Route } from 'next'
 
 import { signUp, type SignupState } from './actions'
 import { Alert, Button, Field } from '@/components/ui'
 import { MIN_PASSWORD } from '@/lib/auth/password'
 import { EMAIL_CODE_MAX, RESEND_COOLDOWN_SECONDS } from '@/lib/auth/email-otp'
 import { digits } from '@/lib/bd/time'
+import { fill } from '@/lib/i18n/fill'
+import type { Locale, T } from '@/lib/i18n'
 
 /**
  * One form, two steps (§5.4).
@@ -17,6 +20,14 @@ import { digits } from '@/lib/bd/time'
  * form refuses below is `MIN_PASSWORD`, so they cannot drift apart — but the
  * digit in the sentence has to be Bangla, and the constants live in a module a
  * browser bundle must not re-derive, so both come down as imports it can hold.
+ *
+ * EVERY OTHER WORD COMES DOWN TOO, as `t`, and the reason is on the page that
+ * hands it over: this is a screen a reader reaches with no session, so the
+ * language cookie is the only record of what they can read, and a form whose copy
+ * was typed into this file could not follow the switch drawn above it. `locale`
+ * rides along for the one number this form writes itself — the resend countdown —
+ * because Bangla digits in a Bangla sentence have to come from the reader's own
+ * locale and not from a constant.
  *
  * Step one's inputs stay mounted and hidden while the code box is up, so the
  * address, name and password are still submitted with the code — the account is
@@ -31,8 +42,19 @@ import { digits } from '@/lib/bd/time'
  */
 export function SignupForm({
   passwordHint,
+  terms,
+  privacy,
+  t,
+  locale,
 }: {
   passwordHint: string
+  /** Where the two documents the checkbox names are read, and what they are called. */
+  terms: { href: Route; label: string }
+  privacy: { href: Route; label: string }
+  /** `auth.signup`, and every sentence on the screen is in it. */
+  t: T<'auth'>['signup']
+  /** For the one number this form formats for itself. See the note above. */
+  locale: Locale
 }) {
   const [state, formAction, pending] = useActionState<SignupState, FormData>(
     signUp,
@@ -42,6 +64,12 @@ export function SignupForm({
   const [name, setName] = useState('')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
+  // Controlled for the same reason the three above are, and it matters more here: React
+  // empties an uncontrolled field when a form action returns, so an untracked tick box would
+  // be cleared the moment the code step appeared — and the code step is the one that records
+  // the consent. It would post nothing, and the account would be refused after the email had
+  // been confirmed, which is the worst order for that to happen in.
+  const [agreed, setAgreed] = useState(false)
 
   // Both pieces of local state are pinned to the answer they belong to, rather than
   // reset by an effect when a new one arrives. `useActionState` hands back a fresh
@@ -76,26 +104,40 @@ export function SignupForm({
     return () => clearTimeout(timer)
   }, [wait, state])
 
+  // The code-sent sentence, cut in two around the address it names.
+  const [codeSentBefore, codeSentAfter] = t.codeSent.split('{email}')
+
   // Which of the two sentences the submit button carries. Written out because the
   // button means two different things: on step one it asks for the code to be sent,
   // and on step two it confirms it.
   const submitLabel = showCode
     ? pending
-      ? 'অ্যাকাউন্ট হচ্ছে…'
-      : 'অ্যাকাউন্ট খুলুন'
+      ? t.submittingCreate
+      : t.submitCreate
     : pending
-      ? 'কোড পাঠানো হচ্ছে…'
-      : 'কোড নিন'
+      ? t.submittingSend
+      : t.submitSend
 
   return (
     <form action={formAction} className="flex flex-col gap-4">
       {state?.error && !state.field && <Alert>{state.error}</Alert>}
 
       {showCode && (
+        /*
+         * Split on the placeholder rather than filled, and the difference is the address.
+         * It is the one word in this sentence a reader checks against the inbox they just
+         * opened, so it keeps the weight it has always had — and `break-all`, without which
+         * a long address runs off the side of a 320px phone instead of wrapping. The words
+         * around it are the dictionary's, so Bangla can put ঠিকানায় where Bangla puts it and
+         * English can open with the verb.
+         *
+         * A template and not a function: `state.sentTo` is browser state, and a function
+         * cannot cross into a client component at all.
+         */
         <p className="text-ink-soft">
-          <span className="font-semibold text-ink break-all">{state?.sentTo}</span>{' '}
-          ঠিকানায় একটি ভেরিফিকেশন কোড পাঠানো হয়েছে। কোডটি না এলে স্প্যাম ফোল্ডারটাও
-          একবার দেখে নিন।
+          {codeSentBefore}
+          <span className="font-semibold text-ink break-all">{state?.sentTo}</span>
+          {codeSentAfter}
         </p>
       )}
 
@@ -103,10 +145,10 @@ export function SignupForm({
           have to travel with the code. */}
       <div hidden={showCode} className="flex flex-col gap-4">
         <Field
-          label="আপনার নাম"
+          label={t.name}
           name="name"
           autoComplete="name"
-          placeholder="মোঃ রফিকুল ইসলাম"
+          placeholder={t.namePlaceholder}
           value={name}
           onChange={(e) => setName(e.target.value)}
           // A required input the visitor cannot see is a submit that fails with a
@@ -117,8 +159,8 @@ export function SignupForm({
         />
 
         <Field
-          label="ইমেইল"
-          hint="এই ইমেইলে কোড যাবে, এবং এই ইমেইল দিয়েই লগইন করবেন"
+          label={t.email}
+          hint={t.emailHint}
           name="email"
           type="email"
           inputMode="email"
@@ -131,7 +173,7 @@ export function SignupForm({
         />
 
         <Field
-          label="পাসওয়ার্ড"
+          label={t.password}
           hint={passwordHint}
           name="password"
           type="password"
@@ -146,7 +188,7 @@ export function SignupForm({
 
       {showCode && (
         <Field
-          label="ইমেইলে আসা কোড"
+          label={t.code}
           name="code"
           type="text"
           inputMode="numeric"
@@ -178,8 +220,8 @@ export function SignupForm({
             disabled={pending || wait > 0}
           >
             {wait > 0
-              ? `আরও ${digits(wait, 'bn')} সেকেন্ড`
-              : 'নতুন কোড পাঠান'}
+              ? fill(t.resendWait, { n: digits(wait, locale) })
+              : t.resend}
           </Button>
 
           <Button
@@ -189,15 +231,74 @@ export function SignupForm({
             disabled={pending}
             onClick={() => setEditingFor(state)}
           >
-            ইমেইল বদলান
+            {t.changeEmail}
           </Button>
         </div>
       )}
 
+      {!showCode && (
+        <div className="flex flex-col gap-1.5">
+          <label className="flex items-start gap-2.5 text-sm text-ink-soft">
+            <input
+              type="checkbox"
+              name="agree"
+              value="on"
+              checked={agreed}
+              onChange={(e) => setAgreed(e.target.checked)}
+              // A required control the visitor cannot see is a submit that fails with a
+              // message no browser will show — the same rule the three fields above
+              // follow. The server refuses an untick either way; this is the sentence
+              // landing next to the box instead of on the next render.
+              required
+              aria-invalid={state?.field === 'agree' ? true : undefined}
+              className="mt-0.5 size-4 shrink-0 accent-brand-600"
+            />
+            {/*
+              * Three pieces rather than one sentence, because two of them are links and the
+              * only way a link can be a link is if the sentence is broken around it. Bangla
+              * puts the verb last and English puts the full stop where Bangla's does not go,
+              * which is why the trailing piece carries its own spacing — see bn.ts.
+              */}
+            <span>
+              {t.agreePrefix}{' '}
+              <Link
+                href={terms.href}
+                target="_blank"
+                className="font-semibold text-brand-700 underline"
+              >
+                {terms.label}
+              </Link>{' '}
+              {t.agreeAnd}{' '}
+              <Link
+                href={privacy.href}
+                target="_blank"
+                className="font-semibold text-brand-700 underline"
+              >
+                {privacy.label}
+              </Link>
+              {t.agreeAfter}
+            </span>
+          </label>
+
+          {state?.field === 'agree' && (
+            <span role="alert" className="text-sm font-medium text-absent">
+              {state.error}
+            </span>
+          )}
+        </div>
+      )}
+
+      {showCode && (
+        // The tick travels with the code as a hidden field rather than being re-asked.
+        // The box has already been answered on this form; asking twice would be a second
+        // tick for the same act, and the record is one row per person per version.
+        <input type="hidden" name="agree" value={agreed ? 'on' : ''} />
+      )}
+
       <p className="text-center text-ink-soft">
-        আগে থেকেই অ্যাকাউন্ট আছে?{' '}
+        {t.haveAccount}{' '}
         <Link href="/login" className="font-semibold text-brand-700 underline">
-          লগইন করুন
+          {t.login}
         </Link>
       </p>
     </form>

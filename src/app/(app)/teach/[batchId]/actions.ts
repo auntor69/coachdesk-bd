@@ -21,6 +21,12 @@
  * defaulting to today is precisely how a forged post overwrites a correct
  * register with a screen that starts everybody present — which is what the line
  * this replaced actually did, under a comment claiming it rejected the date.
+ *
+ * AND THE HOUR, as of 20260811000089: a register for a class that has not started, or
+ * for one that ended with nothing filed, needs a signature before this action will
+ * write it — and `unlockAttendance` below is the action that records one. The gate is
+ * enforced here, in `src/lib/attendance/clock.ts` for the screens, and in the database
+ * three times over; the database is the one that holds.
  */
 import { revalidatePath } from 'next/cache'
 
@@ -33,7 +39,7 @@ import {
   canSendSms,
   AuthError,
 } from '@/lib/auth/session'
-import { todayInDhaka } from '@/lib/bd/time'
+import { dhakaClock, dhakaDayOfWeek, todayInDhaka } from '@/lib/bd/time'
 import { normalizeBdMobile } from '@/lib/bd/phone'
 import {
   ATTENDANCE_MAX_REVISION,
@@ -41,6 +47,13 @@ import {
   isDateString,
   lastClassDate,
 } from '@/lib/attendance/window'
+import {
+  ATTENDANCE_SIGNATURE_VERSION,
+  classState,
+  classWindow,
+  clockEnforced,
+  unlockFor,
+} from '@/lib/attendance/clock'
 import { MAX_TEXT, clamp } from '@/lib/limits'
 import { dict } from '@/lib/i18n'
 import type { AttendanceStatus, OutreachChannel } from '@/lib/supabase/types'
@@ -126,6 +139,8 @@ export async function saveAttendance(
     { data: schedules },
     { data: recent },
     { data: existing, error: existingError },
+    { data: batch },
+    { data: unlocks },
   ] = await Promise.all([
     // RLS already limits the read to this centre, and this narrows it to this
     // batch — so a forged enrollment ID from another batch is dropped rather
@@ -145,9 +160,13 @@ export async function saveAttendance(
       .eq('coaching_center_id', session.active.centerId)
       .eq('user_id', session.userId)
       .maybeSingle(),
+    // The whole day's timetable and not just its day numbers: the clock gate needs
+    // the hours as well, and reading them here costs nothing on the ordinary save —
+    // the same three columns decide the window the page drew (`classWindow`, which
+    // mirrors app.class_window()).
     supabase
       .from('batch_schedules')
-      .select('day_of_week')
+      .select('day_of_week, start_time, end_time')
       .eq('coaching_center_id', session.active.centerId)
       .eq('batch_id', batchId),
     // The last day this batch actually has a register for, which reopens a class
@@ -172,6 +191,23 @@ export async function saveAttendance(
       .eq('batch_id', batchId)
       .eq('session_date', sessionDate)
       .maybeSingle(),
+    // The batch's own two times, which `classWindow` falls back on when the day has
+    // no schedule rows — the same fallback the guard makes.
+    supabase
+      .from('batches')
+      .select('start_time, end_time')
+      .eq('coaching_center_id', session.active.centerId)
+      .eq('id', batchId)
+      .maybeSingle(),
+    // Today's signatures for this batch, and only ever today's: the clock gate exists
+    // on the day the class is on (see the migration), so a signature for another day
+    // has nothing to do with this save.
+    supabase
+      .from('attendance_unlocks')
+      .select('reason')
+      .eq('coaching_center_id', session.active.centerId)
+      .eq('batch_id', batchId)
+      .eq('session_date', today),
   ])
 
   if (rosterError) {
@@ -209,6 +245,46 @@ export async function saveAttendance(
   // refused, and an owner or manager fixing a register from last month is not.
   if (verdict === 'closed' && !isStaffAdmin(session)) {
     return { ok: false, error: t.errors.closedDate }
+  }
+
+  /*
+   * THE CLOCK, checked a second time (20260811000089). The register page draws the
+   * signature card instead of the form, and the signature itself is what the guard in
+   * the database reads — but this action is a public endpoint, and a form posted
+   * straight at it is exactly the caller the page's own drawing cannot refuse.
+   *
+   * TODAY ONLY. A register for an earlier day is a correction of history and the date
+   * window's business; the clock only exists on the day the class is on.
+   *
+   * `unlocks` unreadable fails OPEN, deliberately. A dropped read here cannot leave a
+   * register unsaved: the database's own guard is the thing that holds, and it will
+   * refuse honestly with its own sentence. Failing closed on a read we could not make
+   * would refuse a legitimate save for a reason the teacher could do nothing about.
+   */
+  if (sessionDate === today) {
+    const window = classWindow({
+      dayOfWeek: dhakaDayOfWeek(),
+      schedules: schedules ?? [],
+      batch: batch ?? { start_time: null, end_time: null },
+    })
+    const state = classState({
+      now: dhakaClock(),
+      startsAt: window.startsAt,
+      endsAt: window.endsAt,
+      taken: Boolean(existing),
+      // A plan with no clock gate asks for nothing here: the state comes back 'open',
+      // `unlockFor` is null, and a save for a solo teacher sails through — the same
+      // answer `app.clock_enforced()` gives the guard on the other side of the wire.
+      enforced: clockEnforced(session.plan),
+    })
+    const needed = unlockFor(state)
+
+    if (needed !== null && !(unlocks ?? []).some((u) => u.reason === needed)) {
+      return {
+        ok: false,
+        error: needed === 'early' ? t.errors.earlyLocked : t.errors.lateLocked,
+      }
+    }
   }
 
   const validIds = new Set((enrollments ?? []).map((e) => e.id))
@@ -409,5 +485,157 @@ export async function logAbsenceNotice(
   revalidatePath(`/teach/${register.batch_id}`)
 
   return { logged: true }
+}
+
+/* -------------------------------------------------------------------------- */
+/* Signing for a register taken outside its class time                        */
+/* -------------------------------------------------------------------------- */
+
+export type UnlockState = { ok: true } | { ok: false; error: string } | null
+
+/**
+ * Record that a teacher signed for a register their class's clock did not allow.
+ *
+ * THE SIGNATURE IS THE TICK, and the row is the record of it. There is no typed name
+ * and no password: this is not a legal instrument, it is a named person saying "I
+ * know the class has not started / has already ended, and I am filing it anyway", in
+ * a product whose whole purpose is that the centre can see what its staff did. The
+ * words they agreed to are named by `signature_version` and live in the dictionary;
+ * who and when are stamped by the database and never sent from here.
+ *
+ * IT WRITES NOTHING ELSE. The register itself is saved by `saveAttendance`, which the
+ * page re-renders for once this row exists — so a signature can never be a way to
+ * write a register through a different door, and a teacher who signs and then walks
+ * away has left a signature and no attendance, which is an honest account of what
+ * happened.
+ *
+ * THE REASON IS CHECKED AGAINST THE CLOCK HERE, not only in the guard. The guard is
+ * what holds, but it can only answer with its own sentence, and a teacher told "a
+ * signature has to match the clock" has been told nothing they can act on. This one
+ * catches the real case too: a class that started while the page was open, where the
+ * sentence they were about to sign stopped being true between the render and the tap.
+ *
+ * A SECOND TAP IS SUCCESS, not a refusal. The unique index on (batch, day, reason) is
+ * what makes it so, and 23505 is read as "already signed" for the same reason
+ * `recordAcceptance` reads it that way: the row the screen needs is there, and
+ * refusing would ask somebody to sign again for the sentence they just signed.
+ */
+export async function unlockAttendance(
+  _prev: UnlockState,
+  formData: FormData,
+): Promise<UnlockState> {
+  let session
+  try {
+    session = requireWritable(await requireRole('teacher'))
+  } catch (err) {
+    if (err instanceof AuthError) {
+      return { ok: false, error: await authRefusal(err, (d) => d.teach.errors.forbidden) }
+    }
+    throw err
+  }
+
+  const t = dict(session.locale).teach
+
+  const batchId = String(formData.get('batchId') ?? '')
+  const sessionDate = String(formData.get('sessionDate') ?? '')
+  const reason = String(formData.get('reason') ?? '')
+
+  if (!batchId || !isDateString(sessionDate)) return { ok: false, error: t.errors.badDate }
+  if (reason !== 'early' && reason !== 'forgot') {
+    return { ok: false, error: t.errors.unlockFailed }
+  }
+
+  // The tick is the whole of the signature, and it is read before anything else can
+  // fail — a form posted with no tick must not be able to reach the database at all.
+  if (formData.get('signed') !== 'on') return { ok: false, error: t.errors.unsigned }
+
+  const today = todayInDhaka()
+  // The clock only exists on the day the class is on (see the migration), so a
+  // signature for another day is refused with the sentence the page would have used
+  // for a moved class time. This is the one case where the page and this action can
+  // disagree without anybody having done anything wrong: a tab left open past
+  // midnight.
+  if (sessionDate !== today) return { ok: false, error: t.errors.clockChanged }
+
+  const supabase = await createClient()
+
+  const [{ data: batch, error: batchError }, { data: schedules }, { data: register }] =
+    await Promise.all([
+      supabase
+        .from('batches')
+        .select('id, name, start_time, end_time, teacher_id')
+        .eq('coaching_center_id', session.active.centerId)
+        .eq('id', batchId)
+        .maybeSingle(),
+      supabase
+        .from('batch_schedules')
+        .select('day_of_week, start_time, end_time')
+        .eq('coaching_center_id', session.active.centerId)
+        .eq('batch_id', batchId),
+      supabase
+        .from('attendance_sessions')
+        .select('id')
+        .eq('coaching_center_id', session.active.centerId)
+        .eq('batch_id', batchId)
+        .eq('session_date', sessionDate)
+        .maybeSingle(),
+    ])
+
+  // The batch is RLS's question and a miss is refused rather than 404'd: this is a
+  // form post, and the page it came from has already answered that question properly.
+  if (batchError || !batch) return { ok: false, error: t.errors.noBatch }
+  // An unreadable timetable is treated as no timetable — never as a reason to refuse,
+  // for the reason `classWindow` gives. A batch whose routine could not be read has no
+  // window, so no state, so nothing to sign for.
+  if (schedules === null) return { ok: false, error: t.errors.unlockFailed }
+
+  const window = classWindow({
+    dayOfWeek: dhakaDayOfWeek(),
+    schedules,
+    batch,
+  })
+  const state = classState({
+    now: dhakaClock(),
+    startsAt: window.startsAt,
+    endsAt: window.endsAt,
+    taken: Boolean(register),
+    // Off the gate, every state is 'open' and `unlockFor(state)` is null, so this
+    // action refuses below — the card that posts it never draws either (20260811000090).
+    enforced: clockEnforced(session.plan),
+  })
+
+  if (unlockFor(state) !== reason) {
+    // Either the class moved under the reader, or the form was posted by hand. Both
+    // are the same sentence, and neither is a thing the teacher can fix by retrying
+    // this page — hence the reload rather than a "try again".
+    return { ok: false, error: t.errors.clockChanged }
+  }
+
+  const { error } = await supabase.from('attendance_unlocks').insert({
+    coaching_center_id: session.active.centerId,
+    batch_id: batchId,
+    session_date: sessionDate,
+    reason,
+    // The batch's own name at the moment of signing. A timetable edited in December
+    // must not rewrite what somebody agreed to in October (see the table's own note).
+    batch_name: batch.name,
+    // `starts_at` and `ends_at` are NOT sent, though the action has both in hand: the
+    // guard stamps them from the batch's own timetable, exactly as it stamps the signer
+    // and the moment. What the row says the class's hours were is therefore the
+    // database's answer and not this form's, and a hand-made call cannot describe a
+    // class time that never existed.
+    signature_version: ATTENDANCE_SIGNATURE_VERSION,
+  })
+
+  if (error && error.code !== '23505') {
+    return { ok: false, error: t.errors.unlockFailed }
+  }
+
+  // Both screens: this register now draws as signed, and /teach's review line and
+  // the centre's notification list are one row longer.
+  revalidatePath('/teach')
+  revalidatePath(`/teach/${batchId}`)
+
+  return { ok: true }
 }
 

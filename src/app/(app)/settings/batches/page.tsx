@@ -1,7 +1,7 @@
 import Link from 'next/link'
 
 import { PageHeader } from '@/components/page-header'
-import { Card } from '@/components/ui'
+import { Card, LinkButton } from '@/components/ui'
 import { pagePermission, canManageStudents, isStaffAdmin, getSession } from '@/lib/auth/session'
 import { createClient } from '@/lib/supabase/server'
 import { BatchSlot } from '@/lib/bd/schedule'
@@ -142,13 +142,9 @@ export default async function BatchesPage() {
           </>
         }
         actions={
-          <Link
-            href="/settings/batches/new"
-            className="inline-flex min-h-tap items-center justify-center rounded-xl
-              bg-brand-600 px-5 font-semibold text-white hover:bg-brand-700"
-          >
+          <LinkButton href="/settings/batches/new">
             {t.new}
-          </Link>
+          </LinkButton>
         }
       />
 

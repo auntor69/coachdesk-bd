@@ -49,9 +49,9 @@ test('the list is titled by what it is, not by the hour of day', () => {
 test('the day is a capped list and not a column stretched over a desktop', () => {
   // Two to six rows and no second subject to put beside them: the other batches are a
   // closed disclosure, which is a line of chrome rather than rail content. So the width
-  // goes back. Five caps: the failed read, the two empty states, today's list and the
-  // disclosure.
-  assert.equal(count(LIST, 'max-w-2xl'), 5)
+  // goes back. Six caps: the failed read, the two empty states, today's signatures, the
+  // list and the disclosure.
+  assert.equal(count(LIST, 'max-w-2xl'), 6)
   assert.ok(LIST.includes('<ul className="flex max-w-2xl flex-col gap-3">'))
   assert.ok(LIST.includes('<details className="max-w-2xl rounded-2xl'))
 
@@ -59,6 +59,28 @@ test('the day is a capped list and not a column stretched over a desktop', () =>
   // on the page root stops its border 672px into a 1,216px screen.
   assert.doesNotMatch(LIST, /flex flex-col gap-5[^"]*max-w-/)
   assert.doesNotMatch(LIST, /lg:grid-cols/, 'no rail was invented for a six-row list')
+})
+
+test('the clock is said on the row, and the centre is told who signed', () => {
+  // 20260811000089. A class whose hour has not arrived says when it opens, one that
+  // ended with nothing filed says what the day counts as, and a signature already given
+  // replaces both — the three are one chain and never two at once.
+  assert.ok(LIST.includes('classState({'), 'the row no longer reads the clock')
+  assert.ok(LIST.includes('classWindow({'), 'the row no longer reads the batch hours')
+  for (const key of ['t.opensAt', 't.countedCancelled', 't.signedEarly', 't.signedLate']) {
+    assert.ok(LIST.includes(key), `${key} left the row`)
+  }
+
+  // The centre's notification, which is the half of the owner's request that has to
+  // reach somebody other than the person who signed. Both sentences and the heading,
+  // because a list that drew them without the words would render blank lines.
+  assert.ok(LIST.includes('t.signaturesTitle'))
+  assert.ok(LIST.includes('t.notifyEarly') && LIST.includes('t.notifyLate'))
+  assert.ok(LIST.includes("from('attendance_unlocks')"))
+
+  // And the Mark button stays on all three states: the gate is a signature and not a
+  // wall, and a teacher with a class to file needs the door to it.
+  assert.ok(LIST.includes('{t.take}'))
 })
 
 test('what the list says about the day survives the layout edit', () => {
@@ -164,11 +186,14 @@ test('the day the register is for is still decided outside the layout', () => {
   // day would spend the one revision the trigger allows on twelve wrong corrections.
   assert.ok(ROSTER.includes('if (enrollments === null || existingError) {'))
 
-  // The window, the admin's exception, and the two amber notices that say which of the
-  // two a reader is looking at. Both survived being moved inside the cap.
+  // The window, the admin's exception, and the two notices that say which of the two a
+  // reader is looking at. Both survived being moved inside the cap. Both are drawn in
+  // the app's one attention colour — `late`, the token every other warning on every
+  // other screen uses — rather than a hand-picked amber, so a third notice added here
+  // cannot quietly look like a different kind of warning.
   assert.ok(ROSTER.includes("const writable = verdict === 'open' || (verdict === 'closed' && isAdmin)"))
   assert.ok(ROSTER.includes('attendanceVerdict(sessionDate, today, lastClass)'))
-  assert.equal(count(ROSTER, 'rounded-xl border-2 border-amber-300 bg-amber-50 px-4 py-3'), 2)
+  assert.equal(count(ROSTER, 'rounded-xl border-2 border-late/40 bg-late/5 px-4 py-3'), 2)
   assert.ok(ROSTER.includes('{t.correctionTitle}'))
   assert.ok(ROSTER.includes('{t.closedAdmin}'))
 

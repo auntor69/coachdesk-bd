@@ -14,15 +14,21 @@
     "test:scoping": "node scripts/check-scoping.mjs",
     "test:exports": "node scripts/check-server-exports.mjs",
     "test:rls": "node scripts/test-rls.mjs",
+    "test:billing": "node scripts/test-billing.mjs",
+    "test:recharge": "node scripts/test-recharge.mjs",
+    "test:legal": "node scripts/test-legal.mjs",
+    "test:levers": "node scripts/test-levers.mjs",
     "test:rls:live": "node --env-file=.env.local scripts/test-rls-live.mjs",
     "test:embeds": "node --env-file=.env.local scripts/check-embeds.mjs",
     "test:unit": "node --test \"tests/**/*.test.ts\"",
-    "test": "npm run test:sql && npm run test:schema && npm run test:scoping && npm run test:exports && npm run test:rls && npm run test:unit",
-    "test:live": "npm run test:rls:live && npm run test:embeds"
+    "test": "npm run test:sql && npm run test:schema && npm run test:scoping && npm run test:exports && npm run test:rls && npm run test:billing && npm run test:recharge && npm run test:legal && npm run test:levers && npm run test:unit",
+    "test:live": "npm run test:rls:live && npm run test:embeds",
+    "prepare": "husky"
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.4",
     "@supabase/supabase-js": "^2.112.2",
+    "@vercel/speed-insights": "^2.0.0",
     "next": "16.3.0",
     "react": "19.2.8",
     "react-dom": "19.2.8"
@@ -35,6 +41,7 @@
     "@types/react-dom": "^19",
     "eslint": "^9",
     "eslint-config-next": "16.3.0",
+    "husky": "^9.1.7",
     "pg": "^8.23.0",
     "pgsql-parser": "^17.9.17",
     "tailwindcss": "^4",

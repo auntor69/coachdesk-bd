@@ -16,16 +16,20 @@ import { en } from '../src/lib/i18n/en.ts'
 /**
  * The five characters that turn a database refusal into a sentence an owner can act on.
  *
- * `app.guard_student_capacity` raises `CD001` when a centre is out of student places,
- * and three Server Actions — the one-at-a-time form, the edit that turns a student back
- * on, and the bulk paste — recognise it to say "you are using all 120 of your places"
- * rather than "could not add". The code is written in two files that cannot import each
- * other, which is exactly the arrangement that drifts: the assertions below hold the
- * migration and the constant to the same string.
+ * `app.guard_student_capacity` raises `CD001` when a centre has reached the number of
+ * active students its plan allows, and three Server Actions — the one-at-a-time form, the
+ * edit that turns a student back on, and the bulk paste — recognise it to say "your plan
+ * allows 150 active students" rather than "could not add". The code is written in two
+ * files that cannot import each other, which is exactly the arrangement that drifts: the
+ * assertions below hold the migration and the constant to the same string.
+ *
+ * ONLY THE TEACHER TIERS CAN STILL RAISE IT (§16.1 step 28). A per-student tier answers
+ * with an uncapped ceiling, so it never refuses an admission and never reaches this file —
+ * and the refusal that is left no longer offers to sell a place, because there are none.
  *
  * The failure this prevents is not a crash. A `CD001` nobody recognises falls through to
- * the generic "could not add", so a paying centre that has run out of the thing it pays
- * for is told the product is broken — and the fix they need to buy is never mentioned.
+ * the generic "could not add", so a centre that has reached the limit of its plan is told
+ * the product is broken — and the plan that would fix it is never named.
  */
 
 const ROOT = path.join(import.meta.dirname, '..')
@@ -66,9 +70,9 @@ test('a capacity refusal is recognised through the shape Supabase hands over', (
   assert.equal(
     isCapacityRefusal({
       code: CAPACITY_EXCEEDED,
-      message: 'this centre has 120 of 120 student places in use',
+      message: 'this plan allows 150 active students and 150 are already active',
       details: 'coaching_center_id=adadcd99-e913-4617-9198-05a7ee96f259',
-      hint: 'Buy more student places',
+      hint: 'A higher plan includes more active students',
     }),
     true,
   )
@@ -80,9 +84,9 @@ test('a capacity refusal is recognised through the shape Supabase hands over', (
 })
 
 test('every other failure stays the failure it was', () => {
-  // The direction that matters. A false positive here tells somebody to go and buy
-  // student places to fix an error that had nothing to do with capacity — so they buy
-  // them, and it is still broken. Each of these is a real error one of the three
+  // The direction that matters. A false positive here tells somebody to move up a plan to
+  // fix an error that had nothing to do with how many students their plan allows — so they
+  // pay more, and it is still broken. Each of these is a real error one of the three
   // callers can see: a duplicate student code, a batch id from another centre, the
   // billing-column guard, and a plain `raise` from any other trigger in the schema.
   for (const code of ['23505', '23503', '23514', '42501', 'P0001', '', 'cd001', 'CD002']) {

@@ -28,6 +28,50 @@
 import Link from 'next/link'
 import type { Route } from 'next'
 import { usePathname } from 'next/navigation'
+import { useEffect, useRef } from 'react'
+
+import {
+  AlertIcon,
+  BanknoteIcon,
+  BuildingsIcon,
+  CalendarIcon,
+  EnvelopeIcon,
+  ExpensesIcon,
+  HomeIcon,
+  PencilIcon,
+  PersonBadgeIcon,
+  RegisterIcon,
+  SlidersIcon,
+  StarIcon,
+  StudentsIcon,
+} from './icons'
+
+/**
+ * The navigation icon set, keyed by name.
+ *
+ * The shell's table names an icon by key and hands the key across the
+ * Server→Client boundary — a component reference would not serialise — and
+ * this table is where the key becomes a shape. One stroke weight, one
+ * grammar (see icons.tsx), so a teacher's register tab and a row in an
+ * owner's sidebar read as the same interface.
+ */
+const ICONS = {
+  home: HomeIcon,
+  register: RegisterIcon,
+  pencil: PencilIcon,
+  banknote: BanknoteIcon,
+  students: StudentsIcon,
+  expenses: ExpensesIcon,
+  calendar: CalendarIcon,
+  alert: AlertIcon,
+  envelope: EnvelopeIcon,
+  star: StarIcon,
+  buildings: BuildingsIcon,
+  sliders: SlidersIcon,
+  person: PersonBadgeIcon,
+} as const
+
+export type IconName = keyof typeof ICONS
 
 /**
  * A destination, with its label already resolved.
@@ -39,7 +83,7 @@ import { usePathname } from 'next/navigation'
 export type NavEntry = {
   href: Route
   label: string
-  icon: string
+  icon: IconName
   /**
    * True when the reader's plan does not include this screen.
    *
@@ -61,6 +105,33 @@ export type NavEntry = {
  * group: a heading over Home is a heading over the whole app.
  */
 export type NavSection = { label: string | null; items: NavEntry[] }
+
+/**
+ * The destinations worth fetching before the reader asks for them.
+ *
+ * PREFETCH IS NOT FREE, and the app was paying for fourteen of them on every screen.
+ * `(app)/loading.tsx` exists on purpose (offline retry, tap feedback — see its own
+ * note), and one of its consequences is that Next prefetches *dynamic* routes: a link
+ * laid out on screen costs a full backend render of the shell behind it, session gate
+ * included, whether or not anybody taps it. The sidebar draws twelve rows, so a
+ * dashboard load was starting twelve of those in the background, competing with the
+ * navigation the reader did ask for.
+ *
+ * These four are the exception because they are the four a centre opens every day —
+ * the same four the phone bar carries, and the same argument `PHONE_TABS` in
+ * app-shell.tsx makes. Prefetching them is what makes the register and the fee board
+ * feel instant on a 3G phone, and §6.5's rule that this must never be traded away is
+ * why the list is written down here rather than being "everything except Settings".
+ *
+ * Everything else — spending, salaries, notices, the week, drifting away, the head
+ * office, settings, the roster, the account — is opened once a week at most and is
+ * still hover-prefetched on a desktop and fetched on tap on a phone. Nothing is lost
+ * but the work nobody asked for.
+ *
+ * A locked row never prefetches whatever it is: the screen behind it is an upsell
+ * card, and fetching that on sight is fetching an advertisement.
+ */
+const DAILY: ReadonlySet<string> = new Set(['/dashboard', '/teach', '/exams', '/fees'])
 
 /**
  * Whether a link is the screen the reader is on.
@@ -101,22 +172,26 @@ function SideRow({
     <li>
       <Link
         href={item.href}
+        // The four daily screens only — see `DAILY`. This one line is the whole of
+        // the fix for the fourteen-shells-per-screen problem: the sidebar is where
+        // the other eleven destinations were being fetched from.
+        prefetch={!item.locked && DAILY.has(item.href)}
         // `aria-current`, not just a colour. The whole point of the state is
         // "you are here", and a screen reader has no access to a background.
         aria-current={here ? 'page' : undefined}
         className={`flex min-h-tap items-center gap-3 rounded-xl px-3
           text-sm ${
             here
-              ? 'bg-brand-50 font-semibold text-brand-800'
+              ? 'bg-brand-50 font-semibold text-brand-800 ring-1 ring-inset ring-brand-200/70'
               : item.locked
                 ? 'font-medium text-ink-faint hover:bg-surface-alt'
                 : 'font-medium text-ink-soft hover:bg-surface-alt hover:text-ink'
           }`}
       >
-        {/* Fixed width so ten labels start on the same pixel — a ৳ and a ⌂
-            are nothing like the same width in any font we ship. */}
-        <span aria-hidden className="w-5 shrink-0 text-center text-lg leading-none">
-          {item.icon}
+        {/* Fixed width so ten labels start on the same pixel — the shape is
+            drawn to a grid so a ৳ label and a ⌂ one align without nudging. */}
+        <span aria-hidden className="w-5 shrink-0">
+          <NavIcon name={item.icon} className="mx-auto size-5" />
         </span>
         <span className="truncate">{item.label}</span>
         {item.locked && (
@@ -187,9 +262,14 @@ export function SideNav({
 /**
  * The phone's bottom bar: four destinations, and a sheet for everything else.
  *
- * The accent is a bar along the top edge of the tab rather than a fill: a filled tab
- * in a 56px-tall bar is a large block of colour at the bottom of every screen, and
- * the icon and label carry the change well enough on their own.
+ * WHAT MARKS THE TAB YOU ARE ON, and why it is three things. A 2px rule along the top
+ * edge of the tab, the icon in a filled emerald pill, and the label going semibold. The
+ * rule alone was the first version of this and it did not survive a photograph: a
+ * hairline at the very edge of a bright screen is invisible in a staff room, which left
+ * only a colour difference between one tab and the next. The fill is the icon's own 36px
+ * square rather than the whole tab — a full-height block of colour along the bottom of
+ * every screen is exactly the heavy shape this bar was drawn to avoid — and the word
+ * underneath says which tab it is for anybody who cannot tell the two greens apart.
  *
  * WHY A SHEET AND NOT MORE TABS. Six screens — spending, salaries, notices, the week,
  * drifting away, the head office — had no navigation entry anywhere and were reachable
@@ -200,7 +280,12 @@ export function SideNav({
  *
  * A `<details>` and not a client-side sheet, for the reason CenterName is one: this
  * works before the bundle arrives, which on a 3G connection is most of the first ten
- * seconds. Navigating away closes it, because the next page renders it closed.
+ * seconds. It is closed by the effect below rather than by navigation, which was the
+ * first version of this note and was wrong: a layout is not re-rendered when a route
+ * inside it changes, so the element kept its `open` attribute and the sheet stayed up
+ * over the page the tap had just opened, hiding the screen the reader had asked for
+ * until they tapped More a second time. The effect writes the DOM attribute and not
+ * React state — no render, and the sheet still opens with no JavaScript at all.
  */
 export function TabBar({
   items,
@@ -220,17 +305,51 @@ export function TabBar({
   const pathname = usePathname()
   const moreHere = more.some((item) => isHere(pathname, item.href))
 
+  /*
+   * Closed on arrival, wherever the arrival came from: a link in the sheet, the browser's
+   * back button, or a redirect the screen behind the tap chose. Keyed on the pathname and
+   * not on a tap, because the row that navigates is a plain anchor and the panel surrounds
+   * it — a handler on the row would miss the back button and the redirected case alike.
+   *
+   * `open` is a DOM property on a native element, so this is not the "setState in an
+   * effect" the lint rule warns about: nothing re-renders, and the sheet's first paint is
+   * the server's, still closed.
+   */
+  const sheet = useRef<HTMLDetailsElement>(null)
+  useEffect(() => {
+    if (sheet.current) sheet.current.open = false
+  }, [pathname])
+
+  /*
+   * The pad under the tabs, and the reason there is anything to pad: layout.tsx
+   * sets `viewportFit: 'cover'`, so on a notched iPhone the home indicator is
+   * drawn *over* the bottom of the viewport — which is exactly where this bar is
+   * fixed. Without it the lower third of every tab sits under the indicator: the
+   * tap lands in the system gesture area instead of on the link, and the More
+   * sheet's last row cannot be reached at all. `env()` is 0 on a screen with no
+   * indicator, so a laptop, an Android and print all keep the bar they had.
+   */
   return (
     <nav
       aria-label={label}
       className="fixed inset-x-0 bottom-0 z-10 border-t border-line bg-white
-        lg:hidden print:hidden"
+        pb-[env(safe-area-inset-bottom)] lg:hidden print:hidden"
     >
       <ul className="relative mx-auto flex w-full max-w-3xl">
         {items.map((item) => {
           const here = isHere(pathname, item.href)
           return (
             <li key={item.href} className="flex-1">
+              {/*
+                NO `prefetch` HERE, and that is the policy rather than an omission.
+
+                The bar is the reader's own daily screens by construction —
+                `splitForPhone` picks the first four unlocked rows, and a locked one never
+                takes a slot — so every tab is one of the four `DAILY` covers for a staff
+                admin, and the whole of a teacher's or a student's bar. The one tab a
+                student has is the one screen they open, every day: fetching it on sight
+                costs one shell, exactly as the four cost a staff admin four.
+              */}
               <Link
                 href={item.href}
                 aria-current={here ? 'page' : undefined}
@@ -240,8 +359,12 @@ export function TabBar({
                   }`}
               >
                 {here && <TabAccent />}
-                <span aria-hidden className="text-xl leading-none">
-                  {item.icon}
+                <span
+                  aria-hidden
+                  className={`grid h-9 w-9 place-items-center rounded-xl
+                    transition-colors ${here ? 'bg-brand-600 text-white shadow-sm' : ''}`}
+                >
+                  <NavIcon name={item.icon} className="size-5" />
                 </span>
                 <TabLabel label={item.label} here={here} />
               </Link>
@@ -251,7 +374,7 @@ export function TabBar({
 
         {more.length > 0 && (
           <li className="flex-1">
-            <details className="group">
+            <details ref={sheet} className="group">
               <summary
                 // `true` rather than `page`: this is the current item in the bar, but it
                 // is not a link to the page — the row inside the sheet is.
@@ -266,8 +389,11 @@ export function TabBar({
                 {/* Rotates when open, so the control says which way it goes. */}
                 <span
                   aria-hidden
-                  className="text-xl leading-none transition-transform
-                    group-open:-rotate-180"
+                  className={`grid h-9 w-9 place-items-center rounded-xl text-xl
+                    leading-none transition-transform
+                    group-open:-rotate-180 ${
+                      moreHere ? 'bg-brand-600 text-white shadow-sm' : ''
+                    }`}
                 >
                   ⌃
                 </span>
@@ -311,6 +437,18 @@ function TabAccent() {
       className="absolute inset-x-3 top-0 h-0.5 rounded-b bg-brand-600"
     />
   )
+}
+
+/**
+ * One navigation shape by key.
+ *
+ * A tiny indirection so no call site has to know the table exists — and so a
+ * key with no shape fails to typecheck here rather than rendering nothing in
+ * the browser.
+ */
+function NavIcon({ name, className }: { name: IconName; className: string }) {
+  const Icon = ICONS[name]
+  return <Icon className={className} />
 }
 
 /**

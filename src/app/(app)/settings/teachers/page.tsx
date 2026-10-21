@@ -1,14 +1,26 @@
 import Link from 'next/link'
 
 import { PageHeader } from '@/components/page-header'
+import { SearchBox, SearchEmpty } from '@/components/search-box'
 import { Card } from '@/components/ui'
 import { pageCapability, getSession } from '@/lib/auth/session'
 import { usernamesFor } from '@/lib/auth/username-login'
 import { branchChoicesFor } from '@/lib/branches'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { createClient } from '@/lib/supabase/server'
-import { wouldExceed, hasStaff, overStaffSeats, planName, PLANS } from '@/lib/plans'
+import { formatTaka } from '@/lib/money'
+import {
+  CENTER_FREE_TEACHER_SEATS,
+  CENTER_TEACHER_SEAT_BDT,
+  wouldExceed,
+  hasStaff,
+  overStaffSeats,
+  planName,
+  teacherSeatOpeningRefusal,
+  PLANS,
+} from '@/lib/plans'
 import { PERMISSION_DEFAULTS } from '@/lib/permissions'
+import { matchesSearch, searchTerms } from '@/lib/search'
 import { dict, localName, DEFAULT_LOCALE } from '@/lib/i18n'
 import { TeacherList, type TeacherRow } from './teacher-list'
 
@@ -38,7 +50,12 @@ export async function generateMetadata() {
  * the whole screen and the only other thing on it is one button, so the width is spent
  * inside the list instead — see the note on the return, and TeacherList for what it buys.
  */
-export default async function TeachersPage() {
+export default async function TeachersPage({
+  searchParams,
+}: {
+  /** The find box, the same one the roster, the staff list and the fee board carry. */
+  searchParams: Promise<{ q?: string }>
+}) {
   const session = await pageCapability('staff')
   const locale = session.locale
   const d = dict(locale)
@@ -54,7 +71,7 @@ export default async function TeachersPage() {
    * `setCenterPlan` writes the new plan and only warns when the centre is over its
    * seat count, so six teachers stay switched on under a plan that covers one, and
    * this is the only screen that can switch them off. It refused to draw. So the
-   * count is now read before the decision is made, and /settings and /settings/plan
+   * count is now read before the decision is made, and /settings and /settings/billing
    * both stop hiding the fact under the same condition.
    *
    * Which costs one query on a screen that used to cost none for these plans. A
@@ -291,6 +308,42 @@ export default async function TeachersPage() {
    */
   const atLimit = wouldExceed(session.plan, 'maxTeachers', activeCount)
 
+  /*
+   * THE BOX OVER A LIST OF PEOPLE, matched on the four things somebody arrives holding: a
+   * name, a number, the subject they teach, or the username they cannot remember. A centre
+   * with fifteen teachers reads fifteen rows to find the one whose password needs resetting.
+   *
+   * It filters the rows the screen already has — `lib/search.ts`'s rule, and the reason the
+   * seat count above and the "N teachers" under the heading stay about the centre rather
+   * than about the query.
+   */
+  const { q: rawQ } = await searchParams
+  const query = typeof rawQ === 'string' ? rawQ : ''
+  const words = searchTerms(query)
+  const shown =
+    words.length === 0
+      ? rows
+      : rows.filter((row) =>
+          matchesSearch([row.name, row.phone, row.username, ...row.subjects], words),
+        )
+
+  /*
+   * And the question `atLimit` is not: the seat is not a wall the tier runs into, it is a
+   * price it pays — so past the two a centre includes, a balance with nothing on it is
+   * what stops the next colleague (`teacherSeatOpeningRefusal`, and `CD005` underneath it
+   * in 20260811000097).
+   *
+   * NO EXTRA QUERY: `activeCount` is off the rows this screen has already read, and the
+   * balance is on the session the last settlement wrote. The form the button leads to is
+   * not refused — the action behind it gives the same sentence — but a button that can
+   * only be refused is worse than no button, which is the branches screen's judgement and
+   * this one's.
+   */
+  const seatRefusal = teacherSeatOpeningRefusal(session.plan, {
+    activeTeachers: activeCount,
+    balancePoisha: session.billing.balancePoisha,
+  })
+
   return (
     /*
      * ONE COLUMN, DELIBERATELY, AND THE WIDTH SPENT INSIDE THE LIST.
@@ -312,7 +365,8 @@ export default async function TeachersPage() {
            already says the way out is down, not up. */
         actions={
           staff &&
-          !atLimit && (
+          !atLimit &&
+          seatRefusal === null && (
             <Link
               href="/settings/teachers/new"
               className="flex min-h-tap items-center justify-center rounded-xl border-2
@@ -363,23 +417,58 @@ export default async function TeachersPage() {
         </Card>
       )}
 
+      {staff && seatRefusal === 'needs_money' && (
+        <Card className="max-w-3xl">
+          {/* The heading and the way out are the list's; the sentence is the add form's
+              own refusal, in its own words, so a refusal and a card cannot disagree. */}
+          <p className="font-medium text-ink">{t.seatTitle}</p>
+          <p className="mt-1 text-sm text-ink-soft">
+            {t.errors.seatNotFunded(
+              CENTER_FREE_TEACHER_SEATS,
+              formatTaka(CENTER_TEACHER_SEAT_BDT),
+            )}
+          </p>
+          <Link
+            href="/settings/billing"
+            className="mt-3 inline-flex min-h-tap items-center font-medium text-brand-800
+              underline underline-offset-4 hover:text-brand-900"
+          >
+            {t.seatLink}
+          </Link>
+        </Card>
+      )}
+
       {rows.length === 0 ? (
         <Card className="max-w-3xl">
           <h2 className="font-semibold text-ink">{t.emptyTitle}</h2>
           <p className="mt-1 text-sm text-ink-soft">{t.emptyBody}</p>
         </Card>
       ) : (
-        <TeacherList
-          teachers={rows}
-          subjects={subjectOptions}
-          t={d.teacherList}
-          permissions={d.teacherPermissions}
-          common={d.common}
-          branchPick={d.branchPick}
-          branchAccess={d.branchAccess}
-          branches={branches}
-          trim={!staff}
-        />
+        <div className="flex flex-col gap-3">
+          <SearchBox
+            q={query}
+            t={d.search}
+            count={{ shown: shown.length, total: rows.length }}
+          />
+
+          {/* Not `t.emptyTitle` — "no teachers added yet" under a filtered list is the app
+              telling an owner their staff are gone because they mistyped a name. */}
+          {shown.length === 0 ? (
+            <SearchEmpty t={d.search} />
+          ) : (
+            <TeacherList
+              teachers={shown}
+              subjects={subjectOptions}
+              t={d.teacherList}
+              permissions={d.teacherPermissions}
+              common={d.common}
+              branchPick={d.branchPick}
+              branchAccess={d.branchAccess}
+              branches={branches}
+              trim={!staff}
+            />
+          )}
+        </div>
       )}
     </div>
   )

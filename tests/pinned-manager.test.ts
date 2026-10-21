@@ -29,6 +29,13 @@ import { en } from '../src/lib/i18n/en.ts'
  * past RLS under an advisory lock and refuses at the true ceiling; test-rls.mjs proves
  * that. What is tested here is the half a browser sees, and it fails in one direction
  * only — a screen may never promise room the database will refuse.
+ *
+ * AND THE DEFECT IS NOW STRUCTURALLY IMPOSSIBLE rather than merely asserted (§16.1 step
+ * 28). The ceiling went, so there is no second half to pair a count with, and the sweep
+ * below is over the whole app: it fails on the vocabulary itself, which is the one form
+ * of this gate that cannot pass by drifting. What survives of the original lesson is the
+ * headcount read — 20260811000076, which still exists — and the two places that need a
+ * figure about the whole organisation rather than one branch's.
  */
 
 const ROOT = path.join(import.meta.dirname, '..')
@@ -46,7 +53,7 @@ const DASHBOARD = src('app', '(app)', 'dashboard', 'page.tsx')
 const ROSTER = src('app', '(app)', 'settings', 'students', 'page.tsx')
 const ADD = src('app', '(app)', 'settings', 'students', 'new', 'page.tsx')
 const IMPORT = src('app', '(app)', 'settings', 'students', 'import', 'page.tsx')
-const PLAN = src('app', '(app)', 'settings', 'plan', 'page.tsx')
+const BILL = src('app', '(app)', 'settings', 'billing', 'page.tsx')
 const ACTIONS = src('app', '(app)', 'settings', 'actions.ts')
 const HQ = src('app', '(app)', 'hq', 'page.tsx')
 
@@ -68,79 +75,100 @@ function walk(dir: string): string[] {
 const APP_FILES = walk(path.join(ROOT, 'src', 'app'))
 
 /**
- * The two functions that turn a headcount into a places figure, and the pooled ceiling
- * they are asked about. Anything matching this is a site where the defect can reappear.
+ * Source with its comments removed.
+ *
+ * THE SWEEP BELOW IS ABOUT CODE, and half of this cut's evidentiary value is in prose:
+ * every place that used to hold a ceiling now carries a sentence saying what went and
+ * why (§18). Those sentences name the retired vocabulary, which is the point of them —
+ * so they are taken out before the scan, and a name surviving in a *statement* is what
+ * fails. The `:` guard keeps the `//` of a `https://` inside a string from eating a line.
  */
-const PAIRING = /(?:capacityPressure|studentRoom)\(\s*session\.ceiling\s*,\s*([^)]+?)\s*\)/g
+function code(source: string): string {
+  return source
+    .replace(/\/\*[\s\S]*?\*\//g, '')
+    .replace(/(^|[^:'"`\w])\/\/[^\n]*/g, '$1')
+}
 
-test('every places figure in the app is counted past the branch scope', () => {
+/**
+ * The vocabulary that could build a places figure, named once. Every one of these was a
+ * way to turn a headcount into a number on a screen, and every one of them is gone from
+ * `src/` (§16.1 step 28).
+ *
+ * LISTED RATHER THAN MATCHED. The sweep this file used to run was a regex for the *call*
+ * — `capacityPressure(session.ceiling, …)` — which is the right shape for a defect that
+ * is a pairing and the wrong one now that both halves are gone: a regex that stops
+ * matching passes forever, and the names below cannot stop matching without a name being
+ * written back into the source.
+ */
+const RETIRED = [
+  'session.ceiling',
+  'studentCeiling',
+  'studentRoom',
+  'capacityPressure',
+  'capacityBands',
+  'capacityCostBdt',
+  'nextSeatCostBdt',
+  'quoteSeats',
+  'ASK_PLACES',
+  'CapacityPressure',
+  'StudentCeiling',
+  'SeatBand',
+  'SeatQuote',
+] as const
+
+test('no screen can build a places figure, because the vocabulary is gone', () => {
   const offenders: string[] = []
 
   for (const file of APP_FILES) {
-    const source = readFileSync(file, 'utf8').replaceAll('\r\n', '\n')
-    const sites = [...source.matchAll(PAIRING)]
-    if (sites.length === 0) continue
-
+    const source = code(readFileSync(file, 'utf8').replaceAll('\r\n', '\n'))
     const rel = path.relative(ROOT, file).replaceAll('\\', '/')
 
-    /*
-     * The mechanism, not the variable name. An allow-list of identifiers would pass the
-     * day somebody names a branch-scoped count `pooledStudents`, so what is asserted is
-     * that the file gets its number from the RPC — or, for /hq, that it never serves a
-     * pinned reader at all (it returns its own card above the query; the comment there
-     * says their figures belong on their dashboard).
-     */
-    const pooled =
-      source.includes('centerStudentCount(') ||
-      source.includes('if (!isHqMember(session.active)) {')
-
-    if (!pooled) {
-      offenders.push(
-        `${rel}: ${sites.length} places figure(s) built without centerStudentCount()`,
-      )
-      continue
-    }
-
-    /*
-     * And where a branch-scoped count SURVIVES beside the pooled one, the screen has to
-     * say so. The dashboard is the case: its student tile is deliberately this building's
-     * — /hq refuses a pinned manager and tells them their own figures are on their
-     * dashboard — so two scopes share one screen, and §9.1 says an unqualified pair
-     * invites the reader to subtract them. The qualifier is a fork on the pin, which is
-     * `isHqMember(session.active)` wherever it appears.
-     */
-    const scoped = /\.from\('students'\)[\s\S]{0,400}?count: 'exact'/.test(source)
-    if (scoped && !source.includes('isHqMember(session.active)')) {
-      offenders.push(
-        `${rel}: a branch-scoped student count sits beside the pooled ceiling unqualified`,
-      )
+    for (const name of RETIRED) {
+      if (source.includes(name)) offenders.push(`${rel}: ${name}`)
     }
   }
 
   assert.deepEqual(
     offenders,
     [],
-    'Read the organisation\'s count with centerStudentCount() from @/lib/students/headcount '
-      + '— see 20260811000076 and this file\'s header.',
+    'Capacity is retired (§18): there is no ceiling left to count against, so a screen '
+      + 'reading one has brought the whole defect back with it.',
   )
 })
 
-test('the sweep is looking at something, and at all six screens', () => {
-  // A regex that silently stops matching is a gate that passes forever. The six files
-  // named here are the ones that print or enforce a places figure today; the count is
-  // deliberately exact, so a seventh site has to be added above with a reason.
-  const holders = APP_FILES.filter((file) =>
-    PAIRING.test(readFileSync(file, 'utf8').replaceAll('\r\n', '\n')),
-  ).map((file) => path.relative(ROOT, file).replaceAll('\\', '/'))
+test('and the exported half of it left the plan table too', () => {
+  // The screens are the consumers; this is the source. An export is an invitation, and the
+  // two halves this cut deliberately kept are the ones that were never about capacity: the
+  // per-student bands, and the room a plan's own student cap leaves.
+  const plans = code(src('lib', 'plans.ts'))
 
-  assert.deepEqual(holders.sort(), [
-    'src/app/(app)/dashboard/page.tsx',
-    'src/app/(app)/hq/page.tsx',
-    'src/app/(app)/settings/actions.ts',
-    'src/app/(app)/settings/students/import/page.tsx',
-    'src/app/(app)/settings/students/new/page.tsx',
-    'src/app/(app)/settings/students/page.tsx',
-  ])
+  for (const name of RETIRED) {
+    const escaped = name.replace('.', '\\.')
+    assert.doesNotMatch(
+      plans,
+      new RegExp(`export (?:const|function|type) ${escaped}\\b`),
+      `${name} is exported again`,
+    )
+  }
+
+  for (const kept of ['STUDENT_BANDS', 'studentChargeBdt', 'roomFor', 'includedStudents']) {
+    assert.ok(plans.includes(`export const ${kept}`) || plans.includes(`export function ${kept}`),
+      `${kept} left the plan table`)
+  }
+})
+
+test('the sweep is looking at something, and the headcount is still the RPC', () => {
+  // A list that silently stops mattering is a gate that passes forever. Two halves: the
+  // retired names really are absent (asserted above, over every file), and the one read
+  // this file was written for — the organisation's headcount, past
+  // `students_branch_scope` — is still the one the places that need it use.
+  assert.ok(
+    APP_FILES.some((file) => readFileSync(file, 'utf8').includes('centerStudentCount(')),
+    'nothing in the app counts the organisation any more',
+  )
+  assert.ok(BILL.includes('centerStudentCount(supabase, session.active.centerId)'))
+  assert.ok(ACTIONS.includes('? await centerStudentCount(supabase, centerId)'))
+  assert.ok(ACTIONS.includes('roomFor(session.plan'))
 })
 
 /* -------------------------------------------------------------------------- */
@@ -215,14 +243,18 @@ test('a failed count stays null, and a real zero survives', () => {
 test('each screen answers a failed count the way that screen can afford to', () => {
   // The paste box is taken away: `importStudents` refuses a paste whole (§10), so a
   // wrong `room` costs an afternoon of typing rather than one rejected form.
-  assert.ok(IMPORT.includes('if (batches === null || studentCount === null) {'))
+  assert.ok(
+    IMPORT.includes(
+      'if (batches === null || (session.plan.maxStudents !== null && studentCount === null)) {',
+    ),
+  )
 
-  // Both actions refuse rather than read zero. One admitted row past the ceiling is one
-  // thing; a failed count on a paste would admit eighty. Anchored between the read and
-  // the arithmetic in each, because `batchRoomRefusal` next door has a line of identical
-  // text and an `includes` would go on passing while this one was deleted.
+  // Both actions refuse rather than read zero. One admitted row past a cap is one thing;
+  // a failed count on a paste would admit eighty. Anchored between the read and the
+  // arithmetic in each, because `batchRoomRefusal` next door has a line of identical text
+  // and an `includes` would go on passing while this one was deleted.
   const limitRefusal = ACTIONS.indexOf('? await centerStudentCount(supabase, centerId)')
-  const limitRoom = ACTIONS.indexOf('return studentRoom(session.ceiling, count) === 0')
+  const limitRoom = ACTIONS.indexOf('return wouldExceed(session.plan, key, count)')
   assert.ok(limitRefusal > 0 && limitRoom > limitRefusal)
   assert.equal(
     count(
@@ -232,75 +264,77 @@ test('each screen answers a failed count the way that screen can afford to', () 
     1,
   )
 
-  const importCount = ACTIONS.indexOf('const count = await centerStudentCount(supabase, centerId)')
-  const importRoom = ACTIONS.indexOf('const room = studentRoom(session.ceiling, count)')
+  const importCount = ACTIONS.indexOf(
+    'const count = cap === null ? null : await centerStudentCount(supabase, centerId)',
+  )
+  const importRoom = ACTIONS.indexOf(
+    "const room = count === null ? null : roomFor(session.plan, 'maxStudents', count)",
+  )
   assert.ok(importCount > 0 && importRoom > importCount)
   assert.equal(
     count(
       ACTIONS.slice(importCount, importRoom),
-      'if (count === null) return { error: t.errors.limitUnknown }',
+      'if (cap !== null && count === null) return { error: t.errors.limitUnknown }',
     ),
     1,
   )
 
-  // The two screens that fail OPEN, and both only ever hide a warning by doing so — the
-  // form still saves through `createStudent`, which re-counts and refuses. Turning a
-  // family away at the desk over a number nobody has is the worse trade.
-  assert.ok(ADD.includes('studentRoom(session.ceiling, studentCount ?? 0)'))
-  assert.ok(
-    DASHBOARD.includes(
-      'pooledStudents === null ? null : capacityPressure(session.ceiling, pooledStudents)',
-    ),
-  )
-  assert.ok(
-    ROSTER.includes(
-      'pooledStudents === null ? null : capacityPressure(session.ceiling, pooledStudents)',
-    ),
-  )
+  // `limitRefusal` answers the same way, and a null cap is taken before the read — the
+  // rule this cut adds, and the reason a per-student tier can no longer have an
+  // admission refused because a count it does not need failed.
+  const refusal = ACTIONS.indexOf('async function limitRefusal(')
+  const nullCap = ACTIONS.indexOf('if (session.plan[key] === null) return null', refusal)
+  const counted = ACTIONS.indexOf('? await centerStudentCount(supabase, centerId)', refusal)
+  assert.ok(refusal > 0 && nullCap > refusal && counted > nullCap, 'a null cap is read first')
+
+  // The screens that used to fail OPEN no longer count at all, which is the strongest
+  // form of failing open: the add-student form draws, and `createStudent` refuses on the
+  // write if a teacher tier is genuinely full. Turning a family away at the desk over a
+  // number nobody has is the worse trade.
+  assert.doesNotMatch(ADD, /studentCount|centerStudentCount/)
+  assert.doesNotMatch(DASHBOARD, /pooledStudents|centerStudentCount/)
+  assert.doesNotMatch(ROSTER, /pooledStudents|centerStudentCount/)
 })
 
 /* -------------------------------------------------------------------------- */
 /* §9.1: two scopes on one screen have to say so                               */
 /* -------------------------------------------------------------------------- */
 
-test('the dashboard tile stays this building, so the line under it says otherwise', () => {
-  // The tile is deliberately the branch's count — /hq refuses a pinned manager and tells
-  // them their own figures are on their dashboard, so their dashboard had better be
-  // theirs. That makes two scopes on one screen, which §9.1 says must be spelled out.
-  assert.ok(DASHBOARD.includes('const pooledPlaces = !isHqMember(session.active)'))
-  assert.ok(
-    DASHBOARD.includes(`{pooledPlaces
-                    ? t.placesPooled(pressure.remaining, pressure.ceiling)`),
-  )
-  assert.ok(DASHBOARD.includes('note={pooledPlaces ? d.hq.poolNote : undefined}'))
+test('the dashboard reads one scope now, so nothing needs a qualifier', () => {
+  // The tile was deliberately the branch's count while a line under it was the
+  // organisation's, and §9.1 says an unqualified pair invites the reader to subtract
+  // them. The line is gone (§16.1 step 28) and the organisation's headcount went with it:
+  // one scope on one screen needs no sentence about scopes.
+  assert.doesNotMatch(DASHBOARD, /pooledPlaces|placesPooled|centerStudentCount|poolNote/)
+
+  // The pin still decides something here — the branch comparison is head office's alone —
+  // which is why the fork is qualified rather than simply deleted.
+  assert.ok(DASHBOARD.includes('isHqMember(session.active)'))
 })
 
-test('the roster drops the ceiling rather than pairing it with one branch', () => {
-  // "40/300 students" is two true halves making a false claim, and the subtitle has no
-  // room to explain itself. So a pinned reader gets their branch named and no ceiling;
-  // the organisation's pressure is in the rail beside the list, with the pool note.
-  assert.ok(ROSTER.includes('const pooled = isHqMember(session.active)'))
-  assert.ok(
-    ROSTER.includes('subtitle={pooled ? t.used(activeCount, limit) : t.usedHere(activeCount)}'),
+test('the roster drops the whole line rather than pairing it with one branch', () => {
+  // "40/300 students" was two true halves making a false claim, and the subtitle has no
+  // room to explain itself. There is no 300 any more — a per-student tier has no student
+  // limit — so every reader gets their own list's count and the fork is gone with the
+  // figure that made it necessary.
+  assert.ok(ROSTER.includes('subtitle={t.usedHere(activeCount)}'))
+  assert.doesNotMatch(
+    code(ROSTER),
+    /pooledStudents|pooledPlaces|warnPlaces|PlacesWarning|centerStudentCount|poolNote/,
   )
-  assert.ok(ROSTER.includes('note={pooled ? undefined : d.hq.poolNote}'))
 })
 
-test('both qualifiers exist in both languages', () => {
+test('the surviving branch qualifier exists in both languages, and the pooled figure does not', () => {
   for (const d of [en, bn]) {
-    assert.equal(typeof d.dashboard.placesPooled, 'function')
     assert.equal(typeof d.settings.students.usedHere, 'function')
-    // The note is reused rather than reworded: one sentence about the pool, so two
-    // screens cannot end up describing it differently.
-    assert.equal(typeof d.hq.poolNote, 'string')
+    // The retired qualifiers stayed down (§16.1 step 28): there is no ceiling to pool
+    // across, so no sentence may describe one.
+    assert.equal('placesPooled' in d.dashboard, false)
+    assert.equal('poolNote' in d.hq, false)
   }
 
-  // The English says which scope it means, and the Bangla keeps ASCII digits (house rule)
-  // and no Latin letters.
-  assert.match(en.dashboard.placesPooled(5, 300), /across the organisation/)
+  // The English says which scope it means, and the Bangla keeps no Latin letters.
   assert.match(en.settings.students.usedHere(40), /at this branch/)
-  assert.match(bn.dashboard.placesPooled(5, 300), /5|300/)
-  assert.doesNotMatch(bn.dashboard.placesPooled(5, 300), /[A-Za-z]/)
   assert.doesNotMatch(bn.settings.students.usedHere(40), /[A-Za-z]/)
 })
 
@@ -308,18 +342,24 @@ test('both qualifiers exist in both languages', () => {
 /* The bill, which is the one figure that is not only a display               */
 /* -------------------------------------------------------------------------- */
 
-test('the plan screen bills from the organisation, not from whoever is reading', () => {
+test('the money screen bills from the organisation, not from whoever is reading', () => {
   // `counts.students` is the basis of a subscription that becomes a receipt. It is
   // owner-gated and only manager rows are ever pinned — but that invariant is
   // `.eq('role','manager')` in application code, not a database constraint, and a bill
-  // basis may not rest on it.
-  assert.ok(PLAN.includes('centerStudentCount(supabase, session.active.centerId)'))
-  assert.ok(PLAN.includes('{ label: t.students, used: studentCount, limit: session.ceiling.ceiling }'))
-  assert.match(PLAN, /students: studentCount/)
+  // basis may not rest on it. Since §16.1 step 28 removed the cards that outlived the plan
+  // screen, the billing page itself is the reader: its third question prices the rate from
+  // this count, so the rule is asserted there now.
+  assert.ok(BILL.includes('centerStudentCount(supabase, session.active.centerId)'))
+  assert.match(
+    BILL,
+    /dailyRatePoisha\(plan, counts\.students, counts\.teachers, counts\.branches\)/,
+  )
 
-  // The batch row keeps its own scoped count on purpose: §8.4 caps batches per branch, so
-  // a narrowed count against a per-branch ceiling is the correct pair there.
-  assert.ok(PLAN.includes("from('batches')"))
+  // The usage table and its batch row left with the plan screen (§16.1 step 27, §20.4):
+  // there is no ceiling bar to draw on a per-student tier, and the tier is a line in the
+  // billing screen's third question instead. Asserted as an absence so the scoped batch
+  // count cannot come back with the table.
+  assert.ok(!BILL.includes("from('batches')"), 'the usage table is back')
 })
 
 test('/hq needs none of this because it never serves a pinned reader', () => {
@@ -328,5 +368,11 @@ test('/hq needs none of this because it never serves a pinned reader', () => {
   // Above the reads, so a manager of one building never pays for a comparison of five
   // and never sees one branch reported as the organisation.
   assert.ok(refusal < HQ.indexOf('await Promise.all(['))
-  assert.ok(HQ.includes('capacityPressure(session.ceiling, totalHeads)'))
+
+  // And what this screen used to build for the owner above the table — the pool card, the
+  // threshold warning past a fifth and the growth box below it — went with the ceiling
+  // (§16.1 step 28). The refusal above is what is left of the same rule: a pinned manager
+  // still never sees an organisation-wide figure they could subtract their own from.
+  assert.doesNotMatch(HQ, /capacityPressure|PlacesWarning|recentIntake|growingBranches/)
+  assert.ok(HQ.includes('const totalHeads = centerHeads.error ? null : centerHeads.count'))
 })

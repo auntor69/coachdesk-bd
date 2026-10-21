@@ -15,6 +15,8 @@ import {
   studentChargeBdt,
   teacherChargeBdt,
   branchChargeBdt,
+  branchOpeningRefusal,
+  teacherSeatOpeningRefusal,
   nextBranchCostBdt,
   STUDENT_BANDS,
   CENTER_MONTHLY_FLOOR_BDT,
@@ -335,6 +337,182 @@ test('the add-a-branch form names what the next one costs, not what all of them 
   // Nothing on a tier that has no branches to add. Correct without being useful —
   // those tiers have no form to print it on.
   assert.equal(nextBranchCostBdt(PLANS.center, 9), 0)
+})
+
+test('past the included three, a building needs money on the balance', () => {
+  const money = 250_000
+
+  // The three the tier includes change no line on any bill, so they are never asked
+  // about money — not even on the signup, which holds days rather than taka (§4.3).
+  for (let n = 0; n < INSTITUTION_INCLUDED_BRANCHES; n += 1) {
+    assert.equal(
+      branchOpeningRefusal(PLANS.institution, { activeBranches: n, balancePoisha: 0 }),
+      null,
+      `${n} buildings`,
+    )
+  }
+
+  // The fourth is a line on the bill, and the bill comes off the balance. This is the
+  // three-day trial the owner found: writable, owing nothing, holding nothing.
+  assert.equal(
+    branchOpeningRefusal(PLANS.institution, {
+      activeBranches: INSTITUTION_INCLUDED_BRANCHES,
+      balancePoisha: 0,
+    }),
+    'needs_money',
+  )
+
+  // And money is the whole of what was missing, however little of it there is. The burn
+  // prices the building from the day it opens, so an organisation that funds one badly
+  // takes itself read-only the next morning rather than being refused here.
+  assert.equal(
+    branchOpeningRefusal(PLANS.institution, {
+      activeBranches: INSTITUTION_INCLUDED_BRANCHES,
+      balancePoisha: 1,
+    }),
+    null,
+  )
+  assert.equal(
+    branchOpeningRefusal(PLANS.institution, {
+      activeBranches: 40,
+      balancePoisha: money,
+    }),
+    null,
+  )
+
+  // NULL IS NOT MONEY. A balance nobody could read is a refusal, the same direction
+  // every unreadable figure in this product takes — and a debt is not money either.
+  assert.equal(
+    branchOpeningRefusal(PLANS.institution, {
+      activeBranches: INSTITUTION_INCLUDED_BRANCHES,
+      balancePoisha: null,
+    }),
+    'needs_money',
+  )
+  assert.equal(
+    branchOpeningRefusal(PLANS.institution, {
+      activeBranches: INSTITUTION_INCLUDED_BRANCHES,
+      balancePoisha: -1,
+    }),
+    'needs_money',
+  )
+})
+
+test('one tier sells buildings, and that is the sentence the database repeats', () => {
+  // `app.guard_branch_ceiling()` names `institution` rather than reading this flag,
+  // because there is no plan table in SQL — the same hardcode `settle_billing` bills
+  // with. This is the assertion that keeps the two honest: a second tier gaining the
+  // feature would be refused in the app and allowed by the trigger.
+  assert.deepEqual(
+    Object.values(PLANS)
+      .filter((plan) => plan.features.multipleBranches)
+      .map((plan) => plan.id),
+    ['institution'],
+  )
+
+  // And no amount of money buys them elsewhere — a Coaching Center is one building by
+  // price and by shape (§2.4), so the answer is a tier and not a top-up.
+  for (const plan of [PLANS.teacher_free, PLANS.teacher_plus, PLANS.center]) {
+    assert.equal(
+      branchOpeningRefusal(plan, { activeBranches: 0, balancePoisha: 500_000 }),
+      'no_branches',
+      plan.id,
+    )
+  }
+})
+
+test('past the two included seats, a teacher needs money on the balance', () => {
+  const money = 250_000
+
+  // The two a centre includes change no line on any bill, so they are never asked about
+  // money — which is exactly why a three-day trial may record its staff. This is the same
+  // sentence `branchOpeningRefusal` states three buildings over, and the reason the two
+  // are tested apart is that neither tier's number is the other's.
+  for (const plan of [PLANS.center, PLANS.institution]) {
+    for (let n = 0; n < CENTER_FREE_TEACHER_SEATS; n += 1) {
+      assert.equal(
+        teacherSeatOpeningRefusal(plan, { activeTeachers: n, balancePoisha: 0 }),
+        null,
+        `${plan.id}: ${n} seats`,
+      )
+    }
+
+    // The third is ৳100 a month, and the bill comes off the balance: the trial the owner
+    // found, writable, owing nothing, holding nothing.
+    assert.equal(
+      teacherSeatOpeningRefusal(plan, {
+        activeTeachers: CENTER_FREE_TEACHER_SEATS,
+        balancePoisha: 0,
+      }),
+      'needs_money',
+      plan.id,
+    )
+
+    // And money is the whole of what was missing, however little of it there is: the burn
+    // prices the seat from the day it is taken, so an organisation that funds one badly
+    // takes itself read-only the next morning rather than being refused here.
+    assert.equal(
+      teacherSeatOpeningRefusal(plan, {
+        activeTeachers: CENTER_FREE_TEACHER_SEATS,
+        balancePoisha: 1,
+      }),
+      null,
+      plan.id,
+    )
+    assert.equal(
+      teacherSeatOpeningRefusal(plan, { activeTeachers: 40, balancePoisha: money }),
+      null,
+      plan.id,
+    )
+
+    // NULL IS NOT MONEY, and a debt is not money either — the direction every unreadable
+    // figure in this product takes.
+    assert.equal(
+      teacherSeatOpeningRefusal(plan, {
+        activeTeachers: CENTER_FREE_TEACHER_SEATS,
+        balancePoisha: null,
+      }),
+      'needs_money',
+      plan.id,
+    )
+    assert.equal(
+      teacherSeatOpeningRefusal(plan, {
+        activeTeachers: CENTER_FREE_TEACHER_SEATS,
+        balancePoisha: -1,
+      }),
+      'needs_money',
+      plan.id,
+    )
+  }
+
+  // THE TEACHER TIERS ARE NOT THIS RULE, and reading `maxTeachers` backwards would refuse a
+  // teacher their own seat: their wall is a hard one seat, answered by `limitRefusal` with a
+  // sentence of its own, and `app.guard_teacher_ceiling` refuses it in the database with
+  // `CD003`. So this function has nothing to say on those tiers at all, at any count, funded
+  // or not.
+  for (const plan of [PLANS.teacher_free, PLANS.teacher_plus]) {
+    assert.equal(
+      teacherSeatOpeningRefusal(plan, { activeTeachers: 9, balancePoisha: 0 }),
+      null,
+      plan.id,
+    )
+  }
+
+  /*
+   * AND EVERY TIER HAS ONE OF THE TWO ANSWERS, which is the invariant that makes the first
+   * line of this function safe. `limitRefusal` returns early on a null cap, so a null cap is
+   * a dimension nothing else in the app is watching: this rule is the only thing standing
+   * there, and it is a money test rather than a number. A tier added with `maxTeachers: null`
+   * and a flat price would therefore sell unlimited staff for a fixed fee — asserted here so
+   * that tier fails in the suite rather than on a customer's roster.
+   */
+  for (const plan of Object.values(PLANS)) {
+    assert.equal(
+      plan.maxTeachers === null,
+      plan.pricing === 'per_student',
+      `${plan.id}: a null seat cap belongs to a per-student tier and nowhere else`,
+    )
+  }
 })
 
 test('a tier without branches is never charged for one', () => {

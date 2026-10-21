@@ -3,37 +3,31 @@ import Link from 'next/link'
 import { Card } from '@/components/ui'
 import { PageHeader } from '@/components/page-header'
 import { greetingFor } from '@/components/app-shell'
-import { PlacesWarning } from '@/components/places-warning'
 import { pageRole, getSession, isStaffAdmin, canReadFees, myTeacherIds } from '@/lib/auth/session'
 import { isHqMember } from '@/lib/branches'
+import { Suspense } from 'react'
+
 import { createClient } from '@/lib/supabase/server'
-import { pageAll, pageOrNull, type Paged, worstFailure } from '@/lib/supabase/page'
+import { pageAll, worstFailure } from '@/lib/supabase/page'
 import {
   todayInDhaka,
   currentPeriodMonth,
   addMonths,
   formatDate,
 } from '@/lib/bd/time'
-import { has, capacityPressure } from '@/lib/plans'
+import { has } from '@/lib/plans'
 import { can, canReadMoney } from '@/lib/staff/capabilities'
 import { setupSteps } from '@/lib/setup'
 import { countChasesDue } from '@/lib/fees/reminder-schedule'
 import { categoryBills, monthBills, monthMoney, payrollState } from '@/lib/finance/profit'
-import { ratesForDashboard } from '@/lib/attendance/rates'
-import { studentsAtRisk, RISK_COLUMNS } from '@/lib/students/risk'
-import { centerStudentCount } from '@/lib/students/headcount'
-import {
-  progressToTell,
-  PROGRESS_COUNT_COLUMNS,
-  type ProgressCountRow,
-} from '@/lib/students/progress'
 import { tallyOutstanding, formatTaka as taka } from '@/lib/money'
 import { dict, DEFAULT_LOCALE } from '@/lib/i18n'
 import { ReminderEntry } from '@/app/(app)/fees/reminder-entry'
 import { ProfitCard } from './profit-card'
-import { AttendanceRates } from './attendance-rates'
-import { AtRiskCard } from './at-risk-card'
-import { ProgressEntry } from './progress-entry'
+import { RatesBlock } from './rates-block'
+import { RiskBlock } from './risk-block'
+import { LoadingCard } from './loading-card'
+import { ProgressBlock } from './progress-block'
 import { NoticeEntry } from './notice-entry'
 import { SetupCard } from './setup-card'
 
@@ -168,13 +162,6 @@ export default async function DashboardPage() {
    */
   const seeProgress = seeMessages && has(session.plan, 'parentSummary')
 
-  // Resolved, not queried, when the door is not being drawn. `{ rows: [] }` rather
-  // than a failure, because nothing was asked for and nothing went wrong — and the
-  // door this counts for is not drawn either way, since `seeProgress` gates both.
-  // Typed so the destructured `weekly` below is the view's rows or the reason there
-  // are none, rather than `any`.
-  const noProgress: Paged<ProgressCountRow> = { rows: [] }
-
   /**
    * Stand-in for a head count that was not asked for.
    *
@@ -197,8 +184,7 @@ export default async function DashboardPage() {
    * whether five queries are sent.
    *
    * NO LOCKED TEASER on FREE or PRO, unlike the plan-gated doors elsewhere. A paywall
-   * card on the screen an owner opens six times a day is furniture inside a week, and
-   * /settings/plan already lists what the centre tiers add. The three tiles above stay
+   * card on the screen an owner opens six times a day is furniture inside a week, and    * /settings/billing already lists what the centre tiers add. The three tiles above stay
    * on every plan either way, so nobody loses a figure they had.
    *
    * AND EVERY TERM OF THE SUBTRACTION HAS TO BE READABLE (§6.2). `center_profit_month` is
@@ -221,9 +207,6 @@ export default async function DashboardPage() {
     { data: collectedRow, error: collectedError },
     { data: todaySessions },
     chased,
-    { data: rates },
-    risky,
-    weekly,
     { count: enrolmentCount },
     { count: sessionCount },
     { data: profitRow, error: profitError },
@@ -232,7 +215,6 @@ export default async function DashboardPage() {
     { count: termsCount },
     { count: salaryPayCount },
     { count: salaryExpenseCount },
-    pooledStudents,
   ] = await Promise.all([
     supabase
       .from('students')
@@ -317,71 +299,6 @@ export default async function DashboardPage() {
         .order('id')
         .range(from, to),
     ),
-    // Attendance rate per batch, counted by Postgres — forty students taking
-    // class twenty times is eight hundred rows per batch, and this screen is
-    // opened several times a day on a 3G phone.
-    //
-    // Two months, not one. A card that reads "no attendance yet" for the first
-    // days of every month is empty exactly when an owner is thinking hardest
-    // about the month that just closed, so the current month is used when it has
-    // anything in it and last month is the fallback. The view's index is on
-    // (coaching_center_id, period_month), which is what makes asking for two
-    // months no more work than asking for one.
-    //
-    // Active batches only: a closed batch's history stays readable through the
-    // view — that is why batch_active is exposed rather than filtered there — but
-    // it does not belong on today's dashboard.
-    //
-    // Unconditional, like the reminder query above. The view is staff-admin only,
-    // so a teacher gets an empty array from a round trip that was already
-    // happening inside this Promise.all.
-    supabase
-      .from('batch_attendance_monthly')
-      .select('batch_id, batch_name, period_month, sessions, counted, rate_pct')
-      .eq('coaching_center_id', session.active.centerId)
-      .eq('batch_active', true)
-      .in('period_month', [period, addMonths(period, -1)]),
-    // Who is drifting away. Unconditional for the same reason as the two queries
-    // above — the view is staff-admin only, so a teacher gets an empty array out
-    // of a round trip that was already in flight.
-    //
-    // No `.limit()`, though the card shows three. The count under the heading has
-    // to be the real one: "3 students" over the three that fit, when eleven are
-    // flagged, is the card lying about the size of the problem. Every row is one
-    // student with at least one signal, so the worst case is a fraction of the
-    // centre's roll and the ordering has to happen over all of them anyway.
-    //
-    // Which is also why it is paged. The ceiling would cap that count at a thousand
-    // on a large enough roll, and a count that has been quietly capped is the same
-    // lie this comment already refuses.
-    //
-    // Still pageOrNull, unlike the three reads around it. This card is drawn only
-    // when somebody is flagged, so a read that did not arrive takes it off the page
-    // instead of putting a wrong number on it — and an absent card is the ordinary
-    // state of a centre where nobody is drifting. The claim itself is made on
-    // /at-risk, in a sentence, and that screen refuses rather than making it.
-    pageOrNull((from, to) =>
-      supabase
-        .from('student_risk')
-        .select(RISK_COLUMNS)
-        .eq('coaching_center_id', session.active.centerId)
-        .order('student_id')
-        .range(from, to),
-    ),
-    // How many guardians can be told how their child's week went. Six columns of
-    // the twenty the /progress screen reads — the door needs a number, not names —
-    // and counted by the same function that screen lists with, so the two cannot
-    // disagree. Conditional; see `seeProgress` above for why this one query is.
-    seeProgress
-      ? pageAll((from, to) =>
-          supabase
-            .from('student_progress_week')
-            .select(PROGRESS_COUNT_COLUMNS)
-            .eq('coaching_center_id', session.active.centerId)
-            .order('student_id')
-            .range(from, to),
-        )
-      : noProgress,
     /*
      * The two counts behind the setup card, and the reason they are counts rather than
      * rows: both questions are "is there at least one", over tables that hold one row
@@ -525,23 +442,6 @@ export default async function DashboardPage() {
           .gte('spent_on', period)
           .lt('spent_on', addMonths(period, 1))
       : noCount,
-    /*
-     * The organisation's headcount, which is not the same number as the tile above.
-     *
-     * The tile is what this reader can see, and for a manager pinned to one building
-     * that is their building — `students_branch_scope`. Places pool across the whole
-     * institution (§3.6), so the places line has to be told the organisation's count or
-     * it pairs 40 students with a 300-place ceiling and reports 260 free when there are
-     * five. 20260811000076 is the read that sees past the scope, gated inside on the
-     * same staff-admin word `isAdmin` is.
-     *
-     * Asked of every staff admin rather than only a pinned one: for head office it
-     * returns exactly what the tile already says, and putting a branch test on the
-     * condition would be a second copy of the scoping rule inside a page. A teacher is
-     * skipped because the line it feeds is `isAdmin`-gated — the RPC would refuse them
-     * anyway — and the ternary keeps the tuple's shape, which is what `noCount` is for.
-     */
-    isAdmin ? centerStudentCount(supabase, session.active.centerId) : null,
   ])
 
   /*
@@ -667,26 +567,6 @@ export default async function DashboardPage() {
   // was, which reads as a figure that failed rather than as one nobody is owed.
   const seeCollected = isAdmin && seeFees
 
-  // The month the rate card describes and the batches in it, worst first — both
-  // decided in one tested place, because both invert without leaving a mark on
-  // the screen. See the note on the query for why two months are fetched.
-  const { month: rateMonth, rates: batchRates } = ratesForDashboard(
-    rates,
-    period,
-    t.unknownBatch,
-  )
-
-  // And the students behind those rates who are on their way out. Worst first,
-  // with the reason for each one already chosen — every threshold is in the view
-  // and the ordering is in one tested function, so this page decides neither.
-  const atRisk = studentsAtRisk(risky, d.risk.noName)
-
-  // And the families who can be told how that week went. Zero is a real answer here
-  // rather than a reason to hide the door — see the note on ProgressEntry — which is
-  // exactly why a failed read must not arrive as one: the door would say “nobody new
-  // to tell today” about a week nobody has been told anything about.
-  const toTell = 'rows' in weekly ? progressToTell(weekly.rows) : null
-
   // How far this centre is from the product doing anything at all, or null once it is
   // doing it. Null for a teacher too, because their two counts were never asked for —
   // see `noCount`.
@@ -713,39 +593,13 @@ export default async function DashboardPage() {
   const payroll = payrollState(termsCount, salaryPayCount)
 
   /*
-   * Places remaining — §9.10's last item.
-   *
-   * Drawn on every plan rather than behind `showMoney`. Capacity is not a centre
-   * feature — the ceiling is nearest on free, where it is thirty — and an owner who
-   * finds out about it by being refused at student thirty-one has already had the
-   * afternoon this line exists to prevent.
-   *
-   * `capacityPressure` and not `studentRoom`, because the same call now decides how loud
-   * the line is: §3.7's thresholds live in lib/plans.ts, where the other two screens that
-   * print a place count read them from. `remaining` is what `studentRoom` returned.
-   *
-   * FED THE ORGANISATION'S COUNT AND NOT THE TILE'S, which is the one thing this line
-   * cannot get wrong. `capacityPressure` says so itself — "ORGANISATION-WIDE, ALWAYS …
-   * never a branch's own" — and `studentCount` is a branch's own for a pinned manager,
-   * because it comes through their policies. So the count comes from the RPC and the
-   * whole line goes away when that read fails: a pinned manager shown their branch's
-   * figure against the pool spends the afternoon admitting students CD001 refuses one at
-   * a time, and no figure at all is better than that one.
+   * §9.10'S LAST ITEM IS GONE (§16.1 step 28), and with it the one figure on this screen
+   * that was not this reader's own. It was a places-remaining line fed the organisation's
+   * pooled headcount against `session.ceiling`, loud past §3.7's thresholds — and a
+   * per-student tier has no student limit, so there is no remaining to report and no door
+   * to a purchase. The pooled read went with it: it existed only to pair with a ceiling,
+   * and the students tile below is the reader's own branch on purpose.
    */
-  const pressure =
-    pooledStudents === null ? null : capacityPressure(session.ceiling, pooledStudents)
-
-  /*
-   * And a pinned manager is told whose places these are.
-   *
-   * Two figures answering different questions on one screen, which §9.1 says the screen
-   * has to spell out: the tile above is this building's forty students and the line below
-   * is the institution's five remaining places. Unqualified, the arithmetic between them
-   * invites "so we have 260 spare". Head office needs none of this — for them the tile
-   * and the ceiling are the same organisation — so the qualifier turns on the pin and not
-   * on the plan.
-   */
-  const pooledPlaces = !isHqMember(session.active)
 
   return (
     <div className="flex flex-col gap-5">
@@ -819,9 +673,11 @@ export default async function DashboardPage() {
           )}
 
           {seeFees && moneyProblem === null && (
-            <Card className="order-3 border-brand-200 bg-brand-50">
-              <p className="text-sm font-medium text-brand-800">{t.outstanding}</p>
-              <p className="num mt-1 text-4xl font-bold text-brand-900">
+            <Card className="order-3 border-brand-200 bg-brand-50
+              bg-[radial-gradient(48rem_14rem_at_0%_-120%,rgb(255_255_255/0.45),transparent_75%)]">
+              <p className="text-sm font-semibold text-brand-700">{t.outstanding}</p>
+              <p className="num mt-1 text-[2.5rem] font-bold leading-tight
+                text-brand-900 lg:text-5xl">
                 {taka(outstanding)}
               </p>
               {/* The fee board's own caption, borrowed rather than restated. A
@@ -879,37 +735,71 @@ export default async function DashboardPage() {
               </div>
               <Link
                 href="/teach"
-                className="shrink-0 rounded-lg px-3 py-2 font-medium text-brand-700
-                  hover:bg-brand-50"
+                className="inline-flex min-h-tap shrink-0 items-center rounded-lg px-3
+                  font-medium text-brand-700 hover:bg-brand-50"
               >
                 {d.common.view} →
               </Link>
             </div>
           </Card>
 
-          {/* Directly under the card that counts today's registers, because this is
-              what they add up to. A centre that has never taken attendance gets no
-              card at all rather than one explaining its own emptiness — the line
-              above already says nothing has been taken. */}
-          {isAdmin && batchRates.length > 0 && (
-            <div className="order-9">
-              <AttendanceRates
-                month={rateMonth}
-                rows={batchRates}
-                isCurrentMonth={rateMonth === period}
-                locale={locale}
-                t={t}
-              />
+          {/* THE TWO CARDS THAT ARE ALLOWED TO ARRIVE LATE, and the reason this page can
+              paint at all. Both are aggregates over the centre's whole history — the
+              rates view scans every register it has, and `student_risk` was measured at
+              2.24 s at 250 students (audit §2.2b). Awaiting them here meant the arrears
+              figure, the chase door and today's registers all waited for the slowest of
+              the three, which is what made this screen feel slow for no visible reason.
+
+              Each block now fetches its own data inside its own `<Suspense>`, so the
+              page's own figures stream on the first flush and these two land when they
+              land, worst-first below the thing they explain. Nothing is cached and
+              nothing is fetched twice: `RatesBlock` and `RiskBlock` own exactly the query
+              that used to sit in the `Promise.all` above.
+
+              `[&:empty]:hidden` IS LOAD-BEARING, not tidiness. Both blocks render null
+              for the ordinary empty case — a centre that has never taken a register, a
+              roll where nobody is drifting — and an empty box in this column still
+              contributes a `gap-5`, which is twenty pixels of nothing where a card
+              should not be. The arbitrary variant is used rather than Tailwind's `empty:`
+              because it is the one form that means the same thing in this version and
+              the next.
+
+              Directly under the card that counts today's registers, because this is what
+              they add up to. A centre that has never taken attendance gets no card at all
+              rather than one explaining its own emptiness — the line above already says
+              nothing has been taken. */}
+          {isAdmin && (
+            <div className="order-9 [&:empty]:hidden">
+              <Suspense fallback={<LoadingCard rows={2} />}>
+                <RatesBlock
+                  centerId={session.active.centerId}
+                  period={period}
+                  locale={locale}
+                  t={t}
+                />
+              </Suspense>
             </div>
           )}
 
           {/* Under the rate card, because that one is the aggregate and this one is the
               individuals inside it — the same reading order as the outstanding figure
-              above the list of who owes it. Only when somebody is flagged; see the note
-              on the card for why an empty version of it would be worse than none. */}
-          {atRisk.length > 0 && (
-            <div className="order-10">
-              <AtRiskCard students={atRisk} view={d.common.view} t={d.risk} />
+              above the list of who owes it.
+
+              `isAdmin` and not merely the rows' own absence: `student_risk` is
+              staff-admin only in SQL, which is the gate that counts, so a teacher's read
+              came back empty from a round trip that was already in flight. It is not in
+              flight any more — this is its own request now — so the role check that the
+              view enforces anyway is the cheap way not to send it. */}
+          {isAdmin && (
+            <div className="order-10 [&:empty]:hidden">
+              <Suspense fallback={<LoadingCard />}>
+                <RiskBlock
+                  centerId={session.active.centerId}
+                  noName={d.risk.noName}
+                  view={d.common.view}
+                  t={d.risk}
+                />
+              </Suspense>
             </div>
           )}
 
@@ -926,7 +816,9 @@ export default async function DashboardPage() {
             <div className="order-last">
               <div className="mb-2 flex items-baseline justify-between gap-3">
                 <h2 className="font-semibold text-ink">{t.overdueTitle}</h2>
-                <Link href="/fees" className="text-sm font-medium text-brand-700">
+                {/* A 44px target on one line: the py is what a thumb aims at and the
+                    -my puts the row back where it was. */}
+                <Link href="/fees" className="-my-3 py-3 text-sm font-medium text-brand-700">
                   {d.common.seeAll}
                 </Link>
               </div>
@@ -1039,43 +931,6 @@ export default async function DashboardPage() {
               />
             </div>
 
-            {/* Places remaining, on every plan — see the note on `pressure`. One faint line
-                and a door while there is room, because it is a fact an owner needs to have
-                seen rather than one they act on today, and the day they do act on it the
-                door is the only thing on this line that matters.
-
-                That day is what `pressure` names. Past a fifth left the faint line has
-                stopped being honest about how close this is, so §3.7's warning takes its
-                place — never both, or the screen says one thing twice in two weights. */}
-            {isAdmin &&
-              pressure !== null &&
-              (pressure.level === 'fine' ? (
-                <p className="num mt-2 text-sm text-ink-soft">
-                  {pooledPlaces
-                    ? t.placesPooled(pressure.remaining, pressure.ceiling)
-                    : t.placesLeft(pressure.remaining, pressure.ceiling)}{' '}
-                  <Link
-                    href="/settings/plan"
-                    className="font-medium text-brand-800 underline"
-                  >
-                    {t.placesLink} →
-                  </Link>
-                </p>
-              ) : (
-                <div className="mt-3">
-                  {/* The pool sentence, in the box where the warning is loud enough to
-                      act on: a branch manager reading "only 5 places left" needs to know
-                      those five are the organisation's and not their building's ration,
-                      or the next thing they do is ask head office for a bigger quota
-                      that does not exist. HQ's own wording, so the two screens that
-                      explain the pool cannot drift. */}
-                  <PlacesWarning
-                    pressure={pressure}
-                    t={t}
-                    note={pooledPlaces ? d.hq.poolNote : undefined}
-                  />
-                </div>
-              ))}
           </div>
 
           {/* THE PROFIT LINE — §9.8's box, here because §9.10 puts it on this screen and
@@ -1136,7 +991,9 @@ export default async function DashboardPage() {
               open, and one screen cannot have two most-important errands. */}
           {seeProgress && (
             <div className="order-11">
-              <ProgressEntry toTell={toTell} t={d.progress} />
+              <Suspense fallback={<LoadingCard rows={1} />}>
+                <ProgressBlock centerId={session.active.centerId} t={d.progress} />
+              </Suspense>
             </div>
           )}
 
@@ -1178,12 +1035,12 @@ export default async function DashboardPage() {
 function Stat({ label, value }: { label: string; value: string }) {
   return (
     <div
-      className="rounded-xl border border-line bg-white px-3 py-3 text-center
+      className="rounded-xl px-3 py-3 text-center
         lg:flex lg:items-baseline lg:justify-between lg:gap-3 lg:rounded-none
-        lg:border-0 lg:bg-transparent lg:px-4 lg:text-left"
+        lg:px-4 lg:text-left"
     >
-      <p className="num text-lg font-bold text-ink lg:order-2">{value}</p>
-      <p className="mt-0.5 text-xs text-ink-soft lg:order-1 lg:mt-0 lg:text-sm">
+      <p className="num text-xl font-bold text-ink lg:order-2">{value}</p>
+      <p className="mt-0.5 text-xs font-medium text-ink-soft lg:order-1 lg:mt-0 lg:text-sm">
         {label}
       </p>
     </div>

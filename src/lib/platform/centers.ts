@@ -9,7 +9,7 @@
  *
  * THE BILL IS NOT COMPUTED HERE EITHER. `monthlyBillBdt` in ../plans.ts is called,
  * never reimplemented — the bands, the ৳1999 floor and the ৳100 seat live there
- * once, because the pricing calculator an owner reads on /settings/plan and this
+ * once, because the pricing calculator an owner reads on /settings/billing and this
  * panel have to quote the same figure. A centre told ৳2,400 on their screen and
  * invoiced ৳2,700 from this one is a refund and an apology.
  *
@@ -57,6 +57,13 @@ export type PlatformCenterRow = {
   created_at: string | null
   owner_name: string | null
   owner_phone: string | null
+  /**
+   * The founding owner's address, and the contact detail that actually exists for a
+   * centre which signed up through the app: §5.4's signup writes a real email and no
+   * number at all. Exactly one of this and `owner_phone` is set — a staff login is keyed
+   * on a number, a self-serve owner on an address. See 20260811000095.
+   */
+  owner_email: string | null
   students: number | null
   teachers: number | null
   batches: number | null
@@ -177,7 +184,13 @@ export type Customer = {
   /** ISO timestamp of signup, straight through for formatting by the caller. */
   createdAt: string | null
   ownerName: string | null
+  /**
+   * The two ways to reach the founding owner, and exactly one of them is set — a staff
+   * login is keyed on a number, a self-serve signup on an address. A screen that draws
+   * both draws one link, and a screen that picks one has to pick the one that exists.
+   */
   ownerPhone: string | null
+  ownerEmail: string | null
   students: number
   teachers: number
   batches: number
@@ -280,7 +293,7 @@ export type Customer = {
    * Branches waiting on student places, and the places they want.
    *
    * NOT A JOB FOR THE FOUNDER, unlike `wantsPlan` — an owner answers this themselves
-   * on /settings/plan, at a price the app already quotes. It is here because a centre
+   * on /settings/billing, at a price the app already quotes. It is here because a centre
    * whose branches are hitting the ceiling is a centre that is growing, and that is
    * either the easiest call of the week or a customer who has been stuck for a
    * fortnight and has not said so.
@@ -387,6 +400,7 @@ export function customers(
       createdAt: row.created_at ?? null,
       ownerName: row.owner_name ?? null,
       ownerPhone: row.owner_phone ?? null,
+      ownerEmail: row.owner_email ?? null,
       students,
       teachers,
       batches: count(row.batches),
@@ -588,6 +602,7 @@ export type CustomerCsvHeadings = {
   bill: string
   owner: string
   ownerPhone: string
+  ownerEmail: string
   centerPhone: string
   students: string
   teachers: string
@@ -656,6 +671,7 @@ export function customersSheet(
     h.plan,
     h.bill,
     h.owner,
+    h.ownerEmail,
     h.ownerPhone,
     h.centerPhone,
     h.students,
@@ -697,6 +713,10 @@ export function customersSheet(
     planName(planFor(c.plan), 'en'),
     c.billBdt,
     c.ownerName,
+    // The address before the number, and both columns kept: a spreadsheet sorted by
+    // reachability is the reason somebody downloads this, and a founder who filters the
+    // sheet by one column should not lose the rows in the other.
+    c.ownerEmail,
     c.ownerPhone,
     c.phone,
     c.students,

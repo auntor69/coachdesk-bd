@@ -1,36 +1,45 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# CoachDesk BD
 
-## Getting Started
+The operating system for coaching centers in Bangladesh: admissions and roster with bulk
+import, batches, attendance, exams and marks, a fee board with invoices, installments,
+scholarships and a four-stage chase list, payroll, expenses, notices, weekly progress
+reports, multi-branch HQ, and a full audit log — in Bengali and English, offline-first, on
+any phone the staff already owns.
 
-First, run the development server:
+`PROJECT.txt` is the product's own one-page description. `MASTERPLAN.md` is the build log:
+which migration and which screen exists for what, and why.
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
-```
+## Stack
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+- Next.js (App Router) + React, TypeScript, Tailwind CSS
+- Supabase — Postgres with row-level security, Auth
+- Vercel for hosting and the two cron jobs (`/api/cron/settle`, `/api/cron/sms`)
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+Two rules run through everything. Money is integer poisha, and no float touches a balance —
+not in the app, not in the database. Billing is prepaid: one balance per centre, charged for
+each day it is open by a database function, and when the balance cannot cover a day the app
+goes read-only — access is derived from money, not a subscription date.
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## Running it
 
-## Learn More
+1. `npm install`
+2. Copy `.env.example` to `.env.local` and fill in the Supabase keys. `db:push` also needs a
+   direct Postgres connection string (`SUPABASE_DB_URL`).
+3. `npm run db:push` applies `supabase/migrations/*.sql` in filename order and records them
+   in Supabase's own migration ledger.
+4. `npm run dev`, then open http://localhost:3000.
 
-To learn more about Next.js, take a look at the following resources:
+## Tests
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+`npm test` is the full gate and needs no network: SQL lint, migration replay, tenant
+scoping, server-export shape, the PGlite RLS suite, billing, recharge, legal, the founder
+levers, and the unit tests.
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+Faster subsets while working:
 
-## Deploy on Vercel
+- `npm run test:unit` — the TypeScript unit suites alone
+- `npm run test:scoping` — every query against a centre-scoped relation
+- `npm run test:rls` — the long one: every table against every role, in PGlite
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+`npm run test:live` checks RLS and PostgREST embeds against a real Supabase project, and
+reads `.env.local` for its connection.

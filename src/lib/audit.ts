@@ -58,6 +58,7 @@ export const AUDITED_TABLES = [
   'students',
   'guardians',
   'attendance_records',
+  'attendance_unlocks',
   'teachers',
   'teacher_permissions',
   'employees',
@@ -66,7 +67,6 @@ export const AUDITED_TABLES = [
   'payments',
   'payment_intents',
   'subscriptions',
-  'policy_acceptances',
 ] as const
 
 export type AuditedTable = (typeof AUDITED_TABLES)[number]
@@ -85,6 +85,7 @@ export type AuditAction =
   | 'trialChanged'
   | 'paymentNumberChanged'
   | 'creditsChanged'
+  | 'balanceChanged'
   | 'roleChanged'
   | 'memberAdded'
   | 'memberStopped'
@@ -103,6 +104,8 @@ export type AuditAction =
   | 'guardianPhoneChanged'
   | 'consentChanged'
   | 'attendanceOverridden'
+  | 'attendanceFiledEarly'
+  | 'attendanceFiledLate'
   | 'feeRaised'
   | 'feeVoided'
   | 'discountGranted'
@@ -254,6 +257,24 @@ const RULES: Record<AuditedTable, Rule[]> = {
     },
     { column: 'student_capacity', action: 'placesReduced', shift: 'count' },
     { column: 'status', action: 'centerStatusChanged', shift: 'centerStatus' },
+    /*
+     * The prepaid balance, and the line it pays for (MASTERPLAN §11.7).
+     *
+     * THE ORDER OF THESE TWO IS THE POINT, because first match wins and the ledger's own
+     * trigger moves both columns in one UPDATE. Money is the more useful half of that
+     * line, so a recharge landing or a day being burned reads as the balance with a
+     * before-and-after on it — and the second rule is then reached by exactly one thing: a
+     * founder's grant of days, which carries no money at all by construction (§11.7, and
+     * `billing_ledger_amount_sign` in 20260811000086), so it is the only entry that moves
+     * the line without moving the balance.
+     */
+    { column: 'balance_poisha', action: 'balanceChanged', shift: 'money' },
+    {
+      column: 'charged_through',
+      is: (f) => !f.moved.has('balance_poisha'),
+      action: 'subscriptionExtended',
+      shift: 'date',
+    },
     { column: 'paid_through', action: 'subscriptionExtended', shift: 'date' },
     { column: 'trial_ends_at', action: 'trialChanged' },
     { column: 'trial_plan', action: 'trialChanged' },
@@ -306,6 +327,10 @@ const RULES: Record<AuditedTable, Rule[]> = {
   // already follows an invoice.
   attendance_records: [
     { column: 'status', action: 'attendanceOverridden', shift: 'attendanceStatus' },
+  ],
+  attendance_unlocks: [
+    { on: 'created', is: (f) => f.after.reason === 'early', action: 'attendanceFiledEarly' },
+    { on: 'created', action: 'attendanceFiledLate' },
   ],
   fee_invoices: [
     { on: 'created', action: 'feeRaised' },
@@ -367,9 +392,6 @@ const RULES: Record<AuditedTable, Rule[]> = {
     { on: 'created', action: 'subscriptionStarted' },
     { column: 'plan', action: 'planChanged', shift: 'plan' },
     { column: 'status', action: 'centerStatusChanged', shift: 'centerStatus' },
-  ],
-  policy_acceptances: [
-    { on: 'created', action: 'rowCreated' },
   ],
 }
 

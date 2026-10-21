@@ -45,6 +45,7 @@ function row(over: Partial<PlatformCenterRow> = {}): PlatformCenterRow {
     created_at: '2026-06-01T04:00:00.000Z',
     owner_name: 'Jamshed Rahman',
     owner_phone: '+8801711000111',
+    owner_email: 'jamshed@udvash.example',
     students: 40,
     teachers: 3,
     batches: 6,
@@ -590,9 +591,10 @@ test('the branch asks come through as a count, a sum and the oldest wait', () =>
   assert.equal(c.asksOpen, 2)
   assert.equal(c.asksPlaces, 35)
   assert.equal(c.asksSince, '2026-08-20T05:00:00.000Z')
-  // Nothing about the asking moves what the centre is entitled to. The places are
-  // bought on the owner's own plan screen and land in center_members.student_capacity;
-  // a shaper that added them here would bill for room nobody has paid for.
+  // Nothing about the asking moves what the centre is entitled to. Places are not bought
+  // any more: `coaching_centers.student_capacity` is archived and `app.student_ceiling`
+  // stopped reading it (§16.1 step 28). A shaper that added these asks to the headcount
+  // would bill a centre for students its plan never admitted.
   assert.equal(c.students, 40)
 })
 
@@ -728,6 +730,7 @@ const HEADINGS = {
   plan: 'প্ল্যান',
   bill: 'মাসিক বিল',
   owner: 'মালিক',
+  ownerEmail: 'মালিকের ইমেইল',
   ownerPhone: 'মালিকের নম্বর',
   centerPhone: 'সেন্টারের নম্বর',
   students: 'শিক্ষার্থী',
@@ -781,6 +784,24 @@ test('the sheet has one row per centre and a heading for every column', () => {
   for (const r of rows) {
     assert.equal(r.length, header.length, 'a row shorter than the header shifts columns')
   }
+})
+
+test('the owner is reachable in the sheet by address as well as by number', () => {
+  // §5.4's owner has an address and no number, so a sheet whose only contact column is
+  // `owner_phone` cannot reach the customers who signed up through the app. Both columns
+  // stay, and they are separate cells rather than one "contact" — a founder who filters on
+  // either should not lose the rows in the other.
+  const { header, rows } = customersSheet(customers([row()], 'x', NOW), WORDS)
+  const at = (heading: string) => rows[0][header.indexOf(heading)]
+
+  assert.equal(at(HEADINGS.ownerEmail), 'jamshed@udvash.example')
+  assert.equal(at(HEADINGS.ownerPhone), '+8801711000111')
+  assert.notEqual(header.indexOf(HEADINGS.ownerEmail), header.indexOf(HEADINGS.ownerPhone))
+
+  // And the shape the fix exists for: the number gone, the address still there.
+  const lone = customersSheet(customers([row({ owner_phone: null })], 'x', NOW), WORDS)
+  assert.equal(lone.rows[0][lone.header.indexOf(HEADINGS.ownerEmail)], 'jamshed@udvash.example')
+  assert.equal(lone.rows[0][lone.header.indexOf(HEADINGS.ownerPhone)], null)
 })
 
 test('money and counts leave as bare numbers a spreadsheet can total', () => {
@@ -928,7 +949,7 @@ test('the branch asks leave as numbers a founder can sort and total', () => {
 
 test('a note a centre owner typed cannot run in the founder’s spreadsheet', () => {
   // The one free-text field on this sheet a customer controls end to end: an owner
-  // types it into /settings/plan and the founder opens it in Excel. `+` rather than
+  // types it into /settings/billing and the founder opens it in Excel. `+` rather than
   // `=` because it is the realistic case — the note most owners will write is the
   // number they want ringing, and a cell beginning `+880` is a formula to Excel.
   const list = customers(

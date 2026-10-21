@@ -27,6 +27,7 @@ import path from 'node:path'
 import {
   billRows,
   payeeValue,
+  NEW_PAYEE,
   readPayeeValue,
   tallyBill,
   withoutTerms,
@@ -551,9 +552,15 @@ test('shape: the way on is a door, and who has been missed is still asked', () =
   // twice-a-year errand, so this is the one with the button — and in the bar it is still
   // there once twenty agreements have scrolled past.
   assert.match(BAR, /href="\/payroll\/pay"/)
-  assert.match(BAR, /rounded-xl border-2 border-brand-500/)
   assert.match(BAR, /\{t\.payLink\} →/)
-  assert.match(BAR, /actions=\{\s+<Link/)
+  // The door is the shared tinted button now, and the border it was asserting lives in
+  // `ui.tsx` — asserted there, so this stays a test of the shape rather than of one string
+  // that happened to spell it out twice.
+  assert.match(BAR, /actions=\{\s+<LinkButton href="\/payroll\/pay" variant="tinted">/)
+  assert.match(
+    readFileSync('src/components/ui.tsx', 'utf8'),
+    /tinted: 'border-2 border-brand-500 bg-brand-50/,
+  )
 
   // Not gated on canWrite: a read-only centre can read the month, and the figures are part
   // of what they need to decide whether to renew. Sliced from `actions={` rather than
@@ -567,8 +574,10 @@ test('shape: the way on is a door, and who has been missed is still asked', () =
   assert.doesNotMatch(PAGE, /text-xl font-bold text-ink lg:text-2xl/)
   assert.doesNotMatch(PAGE, /<BackToFees/, 'a hand-rolled crumb is back above the bar')
 
-  // And the list of people with no agreement is still drawn, last.
-  assert.match(RAIL, /\{missing\.length > 0 && \(/)
+  // And the list of people with no agreement is still drawn, last. It is the narrowed
+  // list now — the find box above the bill narrows both, because both answer the same
+  // question about the same people.
+  assert.match(RAIL, /\{shownMissing\.length > 0 && \(/)
   assert.match(RAIL, /\{t\.missingTitle\}/)
 })
 
@@ -591,4 +600,188 @@ test('shape: nothing about who may read or write this has moved', () => {
   assert.match(PAGE, /const pickable = people\r?\n\s+\.filter\(\(p\) => p\.active\)/)
   assert.match(PAGE, /const canWrite = session\.access === 'full'/)
   assert.match(RAIL, /\{canWrite && \(/)
+})
+
+/**
+ * Somebody who is not on the staff list yet — the picker's third answer.
+ *
+ * The screen this replaces asked an owner to leave for Settings, add an employee, and come
+ * back to a page they then had to find their place on again. What is asserted below is the
+ * shape of the fix: one form that writes the person and the agreement together, an action
+ * that refuses the first write without the permission for it, and the order the two writes
+ * happen in — because a person written by a submit that then refused the salary is a name
+ * on the staff list nobody meant to add.
+ *
+ * Read off the sources, like the section above, because there is no renderer and no
+ * database here.
+ */
+const ACTIONS = readFileSync(
+  path.join(import.meta.dirname, '..', 'src', 'app', '(app)', 'payroll', 'actions.ts'),
+  'utf8',
+)
+const FORM = readFileSync(
+  path.join(import.meta.dirname, '..', 'src', 'app', '(app)', 'payroll', 'terms-form.tsx'),
+  'utf8',
+)
+const ROW = readFileSync(
+  path.join(import.meta.dirname, '..', 'src', 'app', '(app)', 'payroll', 'terms-row.tsx'),
+  'utf8',
+)
+
+test('the sentinel is not a payee, and the reader that parses one refuses it', () => {
+  // `NEW_PAYEE` is a value in a picker, not a pair of (kind, id). If `readPayeeValue` ever
+  // started accepting it, the action would walk into `payeeState` with a kind of '__new__'
+  // and then write a foreign key with a sentinel in it.
+  assert.equal(readPayeeValue(NEW_PAYEE), null)
+
+  // And it cannot collide with a real value: every real one has a colon in it.
+  assert.ok(!NEW_PAYEE.includes(':'))
+})
+
+test('the action checks the permission before it writes the person', () => {
+  const newBranch = ACTIONS.slice(
+    ACTIONS.indexOf('if (wantsNew) {'),
+    ACTIONS.indexOf('const basis = String'),
+  )
+  assert.ok(newBranch.length > 200, 'the new-person branch is not where this test expects it')
+
+  // `staff` and the centre plan, both re-checked here: `payroll` got the reader to this
+  // action, and adding a person is not what that capability buys.
+  assert.match(newBranch, /can\(session\.active\.capabilities, 'staff'\)/)
+  assert.match(newBranch, /t\.errors\.cantHire/)
+  assert.match(newBranch, /has\(session\.plan, 'staffManagement'\)/)
+
+  // The name and the job, both read before anything is written.
+  assert.match(newBranch, /formData\.get\('newName'\)/)
+  assert.match(newBranch, /formData\.get\('newRole'\)/)
+  assert.match(newBranch, /ROLES\.has\(role\)/)
+})
+
+test('the person is written before the agreement, and only after every figure is valid', () => {
+  // The insert, not the first mention of the table: `payeeState` reads `employees` long
+  // before this, and anchoring on that would compare the two writes against the wrong line.
+  const insertEmployee = ACTIONS.search(/\.from\('employees'\)\s*\r?\n\s*\.insert\(\{/)
+  const insertTerms = ACTIONS.indexOf(".from('salary_terms').insert")
+  assert.ok(insertEmployee > 0, 'the staff row is not written from this action')
+  assert.ok(insertTerms > insertEmployee, 'the two writes are out of order')
+
+  // Every figure above — basis, date, the four parts — is validated before the first
+  // write, so a refusal leaves the staff list exactly as it was.
+  const money = ACTIONS.indexOf('money.basic = basic')
+  assert.ok(money > 0 && money < insertEmployee)
+
+  // And the staff list is told, because it reads the same table one screen away.
+  assert.match(ACTIONS, /revalidatePath\('\/settings\/staff'\)/)
+})
+
+test('the form offers "somebody new" only to a reader who could write one', () => {
+  // The option is behind `canHire`, which the page answers from `staff` and the plan — a
+  // field that could only be refused is the thing this whole change exists to remove.
+  assert.match(FORM, /\{canHire && <option value=\{NEW_PAYEE\}>\{t\.newPersonOption\}<\/option>\}/)
+
+  // Two boxes, and they appear only while the sentinel is chosen.
+  assert.match(FORM, /\{hiring && canHire && \(/)
+  assert.match(FORM, /name="newName"/)
+  assert.match(FORM, /name="newRole"/)
+
+  // A centre with nobody written down opens on those boxes rather than on a required
+  // picker with nothing in it — and still posts one `payee`, so the action has one shape
+  // of form to read.
+  assert.match(FORM, /people\.length === 0 && canHire \? NEW_PAYEE : ''/)
+  assert.match(FORM, /<input type="hidden" name="payee" value=\{canHire \? NEW_PAYEE : ''\} \/>/)
+
+  // And the form stops offering to create the same person again the moment one exists.
+  assert.match(FORM, /if \(state\?\.ok && pick === NEW_PAYEE\) setPick\(''\)/)
+
+  // A centre with no teacher row at all is warned that this box writes staff, with the
+  // door to the teachers screen beside it — a teacher filed here can be paid and cannot be
+  // given a batch, and nothing else on the screen would say why.
+  assert.match(FORM, /\{noTeachers && \(/)
+  assert.match(FORM, /href="\/settings\/teachers\/new"/)
+  assert.match(PAGE, /const noTeachers = \(teachers \?\? \[\]\)\.length === 0/)
+  assert.match(PAGE, /noTeachers=\{noTeachers\}/)
+})
+
+test('every name on the bill is one tap from the form that changes it', () => {
+  // The row: a link back to the form with this person already chosen, inside the write
+  // gate, and absent for somebody who has left.
+  assert.match(ROW, /href=\{`\/payroll\?payee=\$\{changeTo\}#agree`\}/)
+  assert.match(ROW, /\{changeTo && \(/)
+  assert.match(ROW, /\{t\.change\}/)
+
+  // Built from the payee value the page passed, so the two screens cannot disagree about
+  // what the URL means.
+  assert.match(PAGE, /changeTo=\{row\.gone \? null : payeeValue\(row\.payeeKind, row\.payeeId\)\}/)
+
+  // The list of people with no agreement is a list of doors too: each name is where the
+  // owner would have had to pick it out of twenty.
+  const missing = RAIL.slice(RAIL.indexOf('{shownMissing.length > 0 && ('))
+  assert.match(missing, /href=\{`\/payroll\?payee=\$\{payeeValue\(p\.kind, p\.id\)\}#agree`\}/)
+})
+
+test('the form opens on the person the URL named, and only if that person is offered', () => {
+  // A hand-typed or stale value is ignored rather than answered with a selection that is
+  // not in the list.
+  assert.match(PAGE, /pickable\.some\(\(p\) => payeeValue\(p\.kind, p\.id\) === wantedPayee\)/)
+  assert.match(PAGE, /defaultPayee=\{defaultPayee\}/)
+
+  // Keyed on it, because a client component reads `useState`'s initial value once — a soft
+  // navigation from one row to another would otherwise keep the last person.
+  assert.match(PAGE, /key=\{defaultPayee \|\| 'none'\}/)
+
+  // And the anchor the links land on.
+  assert.match(PAGE, /<Card className="order-4 scroll-mt-4" id="agree">/)
+})
+
+test('adding a person needs both permissions on the page as well as in the action', () => {
+  assert.match(
+    PAGE,
+    /canWrite && can\(session\.active\.capabilities, 'staff'\) && has\(session\.plan, 'staffManagement'\)/,
+  )
+})
+
+test('the wage bill can be searched, and the figures do not move with it', () => {
+  /*
+   * Fourteen people on the payroll, and the question the screen is actually opened with is
+   * about one of them — "what does she earn", "give her a rise". Every other long list in the
+   * product already had a find box; the bill was the screen where an owner read fourteen
+   * cards to find one row.
+   *
+   * Read off the source, and the load-bearing assertions are the negative ones: the total in
+   * the rail, the count of monthly agreements and the warning about somebody who has left are
+   * all computed from `rows`, while the bill and the list of people with nothing agreed draw
+   * `shown`. An owner typing a name is asking which row is hers, not asking the centre's wage
+   * bill to become hers.
+   */
+  assert.match(PAGE, /searchParams: Promise<\{ payee\?: string; q\?: string \}>/)
+  assert.match(PAGE, /import \{ SearchBox, SearchEmpty \} from '@\/components\/search-box'/)
+  assert.match(PAGE, /import \{ matchesSearch, searchTerms \} from '@\/lib\/search'/)
+
+  // Both lists narrow off one set of words: the bill, and the people with nothing agreed.
+  assert.match(PAGE, /const words = searchTerms\(query\)/)
+  assert.match(PAGE, /rows\.filter\(\(row\) => matchesSearch\(\[row\.name, row\.job, row\.note\], words\)\)/)
+  assert.match(PAGE, /missing\.filter\(\(p\) => matchesSearch\(\[p\.name, p\.job\], words\)\)/)
+
+  // The count is the narrowed one over the whole list…
+  assert.match(MAIN, /count=\{\{ shown: shown\.length, total: rows\.length \}\}/)
+
+  // …and every figure is still about the whole list: the tally is over `rows`, and the
+  // rail prints the unfiltered total rather than a total of what the box matched.
+  assert.match(PAGE, /const tally = tallyBill\(rows\)/)
+  assert.match(RAIL, /\{t\.monthlyCount\(tally\.monthlyCount\)\}/)
+  assert.match(RAIL, /\{t\.goneCount\(tally\.goneCount\)\}/)
+  assert.doesNotMatch(PAGE, /tallyBill\(shown\)/, 'the totals followed the search box')
+
+  // A filtered bill that matched nobody gets the search's own empty state, not the centre's
+  // — "no salary has been agreed with anybody yet" under a mistyped name is the app telling
+  // an owner their payroll is empty.
+  assert.match(MAIN, /\{shown\.length === 0 \? \(/)
+  assert.match(MAIN, /<SearchEmpty t=\{d\.search\} \/>/)
+
+  // The list the reader actually sees is the narrowed one.
+  assert.match(MAIN, /\{shown\.map\(\(row\) => \(/)
+  assert.ok(!/^\s*\{rows\.map\(\(row\) => \(/m.test(PAGE), 'the bill is drawn unfiltered')
+
+  // And the two ways in from a row still carry the person rather than the query.
+  assert.match(PAGE, /changeTo=\{row\.gone \? null : payeeValue\(row\.payeeKind, row\.payeeId\)\}/)
 })

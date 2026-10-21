@@ -13,7 +13,8 @@ import {
 import { createClient } from '@/lib/supabase/server'
 import { formatBdMobile } from '@/lib/bd/phone'
 import { dict, DEFAULT_LOCALE } from '@/lib/i18n'
-import { planName, hasStaff, has, overStaffSeats, capIsQuota } from '@/lib/plans'
+import { billingWords } from '@/lib/i18n/billing'
+import { hasStaff, has, overStaffSeats } from '@/lib/plans'
 import { can } from '@/lib/staff/capabilities'
 
 /** getSession, not pageRole — see the note on teach/page.tsx's own. */
@@ -216,6 +217,10 @@ export default async function SettingsPage() {
   const supabase = await createClient()
   const locale = session.locale
   const t = dict(locale).settings.hub
+  // The billing row's own words, out of the screen's fragment rather than the dictionary
+  // for the reason that module records: the dictionaries are past what the editor can
+  // write. See src/lib/i18n/billing.ts.
+  const billing = billingWords(locale)
 
   const [{ count: batchCount }, { count: studentCount }, staffOnly] =
     await Promise.all([
@@ -245,20 +250,6 @@ export default async function SettingsPage() {
     : staffOnly?.center?.payment_number
       ? t.feesGoTo(formatBdMobile(staffOnly.center.payment_number))
       : t.noPaymentNumber
-
-  // The centre's own plan, not the free one. Every tier below `center` has caps,
-  // so this line is read by paying owners too.
-  //
-  // capIsQuota rather than `=== null`: both centre tiers now cap batches at a hundred
-  // as an abuse ceiling, and "Coaching Center plan: 100 batches" would tell a paying
-  // owner the guardrail is what they bought. What they bought is students. The
-  // unlimited sentence stays true for them — the ceiling sits far above any need it
-  // claims to cover, which is the whole reason it was set where it was.
-  const maxBatches = capIsQuota(session.plan, 'maxBatches') ? session.plan.maxBatches : null
-  const planLine =
-    maxBatches === null
-      ? t.planUnlimited(planName(session.plan, locale))
-      : t.plan(planName(session.plan, locale), maxBatches)
 
   const items: HubItem[] = [
     ...(staff
@@ -462,15 +453,19 @@ export default async function SettingsPage() {
               ]
             : []),
           /*
-           * The plan, last, and now a row rather than the grey line this page used
-           * to end with. The sentence is unchanged — it is still the plan and its
-           * batch cap — but it has somewhere to lead. An owner who reads "৫টি ব্যাচ"
-           * and wants a sixth had no next step from a paragraph.
+           * Billing (§20.4, build-order step 27): how long the money lasts, what a day
+           * costs, and every day it has paid for.
+           *
+           * THE ONLY MONEY ROW NOW, and it used to have a plan row under it. That screen
+           * is gone — §16.1 step 27 folded it into this one — and two rows leading to one
+           * destination is not a hub. Its sentence, "your plan and its batch cap", is the
+           * one thing that went with it: the tier is a line in this screen's third
+           * question, and §20.4 answers the ceilings there rather than as a bar.
            */
           {
-            href: '/settings/plan' as Route,
-            label: t.plans,
-            hint: planLine,
+            href: '/settings/billing' as Route,
+            label: billing.hubLabel,
+            hint: billing.hubHint,
             count: null,
             group: 'centre' as HubGroup,
           },

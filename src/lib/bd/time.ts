@@ -315,6 +315,35 @@ export function currentPeriodMonth(now: Date = new Date()): string {
 }
 
 /**
+ * The wall clock in Dhaka, as HH:MM.
+ *
+ * The hour half of `todayInDhaka`, and the only way this app is allowed to ask what
+ * time it is. Two rules follow from that and both are enforced by where this function
+ * is rather than by a comment: a page cannot call `new Date()` during render (React
+ * refuses the impure call), so the clock arrives as a value; and the value is Dhaka's
+ * rather than the server's, which for the first six hours of a Bangladeshi day would
+ * otherwise be six hours behind the classes it is being compared with.
+ *
+ * Minutes and no seconds, because every class time it is compared against is stored
+ * as `time` without them and a class at 16:00 is starting at 16:00, not at 16:00:00
+ * plus whatever the request took to arrive. `hourCycle: 'h23'` for `dhakaMoment`'s
+ * reason: some ICU builds answer midnight as 24 under `hour12: false`.
+ */
+export function dhakaClock(now: Date = new Date()): string {
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: DHAKA_TZ,
+    hour: '2-digit',
+    minute: '2-digit',
+    hourCycle: 'h23',
+  }).formatToParts(now)
+
+  const part = (type: Intl.DateTimeFormatPartTypes) =>
+    parts.find((p) => p.type === type)?.value ?? '00'
+
+  return `${part('hour')}:${part('minute')}`
+}
+
+/**
  * Whether a `timestamptz` from the database has already gone by.
  *
  * A moment rather than a calendar day, so no timezone comes into it: both sides are

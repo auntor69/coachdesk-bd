@@ -59,6 +59,13 @@ export const en: Dictionary = {
     logout: 'Log out',
     account: 'My account',
     mainMenu: 'Main menu',
+    /**
+     * The first thing in the shell and the first thing the Tab key reaches: a link that
+     * jumps past the eleven sidebar rows to the screen's own content. Hidden until it is
+     * focused, so it costs a mouse user nothing, and it is a plain anchor — no JavaScript,
+     * and the browser's own fragment jump does the work.
+     */
+    skipToContent: 'Skip to the main content',
     welcome: 'Welcome',
     otherCenter: 'Other centre',
     thisCenter: 'Here now',
@@ -73,6 +80,47 @@ export const en: Dictionary = {
      */
     locked: 'Upgrade',
     /**
+     * The balance rail above the content (MASTERPLAN §4.4): how many more days the money
+     * in the balance covers, for the owner who is the only one who can top it up.
+     *
+     * DAYS AND NOT A DATE, which is the whole point of the prepaid model: a date asks the
+     * owner to remember what a period was bought for, and a day count is the honest unit
+     * once the money is theirs (§17 — "price in months, burn in days"). The zero case
+     * names today rather than saying "no days", because on that day the centre is still
+     * working and the sentence has to be true.
+     */
+    /**
+     * What is actually in the balance, in taka — the figure that leads the strip.
+     *
+     * THE STRIP USED TO BE A COUNTDOWN ONLY, and it only appeared inside fourteen days of
+     * the money running out. So the one number an owner checks before they spend anything
+     * was two taps away — Settings, then Billing — and a balance is a fact about today
+     * rather than a warning about a fortnight's time (§20.4 asks it second for that
+     * reason). Drawn on every screen now, for the reader the countdown was always drawn
+     * for.
+     */
+    balanceHeld: (taka: string) => taka + ' in the balance',
+    /**
+     * THE DAY COUNT IS THE MONEY'S OWN COUNT, AND A GRANTED LINE DOES NOT MOVE IT.
+     *
+     * §11.7: a founder's grant is days and not fake money, so a centre can hold a real
+     * balance with its line two months out while the burn charges nothing — correctly,
+     * because there is no day left to buy. The billing screen has explained that since the
+     * granted-days pass (`billing.leftGranted`); the strip is the surface an owner reads
+     * on every screen without opening anything, and it printed the same unmoving count
+     * with no explanation, which is the one state that reads as broken billing. The same
+     * fact in the same words, on the screen that shows it first.
+     *
+     * Short, because the strip is one line by construction — see the shell's own note on
+     * why it is not two.
+     */
+    balanceGranted: (date: string) => 'granted until ' + date,
+    balanceDays: (days: number) =>
+      days === 1 ? 'The balance covers one more day' : `The balance covers ${days} more days`,
+    balanceEmpty: 'Nothing left in the balance — today is paid, tomorrow is not',
+    /** The rail's own call to action, which lands on the plan screen. */
+    balanceTopUp: 'Top up',
+    /**
      * Short enough for a 48px tab at 375px, which is the constraint the Bangla
      * labels were written to and the one English loses most easily: "Attendance"
      * is ten characters where হাজিরা is six.
@@ -85,6 +133,7 @@ export const en: Dictionary = {
       home: 'Home',
       attendance: 'Attendance',
       fees: 'Fees',
+      students: 'Students',
       settings: 'Settings',
       exams: 'Exams',
       mine: 'Mine',
@@ -122,7 +171,7 @@ export const en: Dictionary = {
     usernameHint:
       'This is what you sign in with. To change it, ask the centre owner.',
     emailLabel: 'Login email',
-    emailHint: 'This is the email address you sign in with.',
+    emailHint: 'This is the email you sign in with. It cannot be changed from the app yet.',
     passwordTitle: 'Change your password',
     passwordBody:
       'The new password works straight away. Another phone that is already signed in will not be signed out on its own — you have to log out on that phone.',
@@ -197,6 +246,24 @@ export const en: Dictionary = {
      * coverage is what caused this. See the Bangla note.
      */
     coveredTo: (date: string) => `The last payment covered you up to ${date}.`,
+    /**
+     * The two sentences the banner uses instead of the plan ones when it is the *balance*
+     * that stopped the writing (§4.4, §11.6).
+     *
+     * A DIFFERENT FACT AND NOT A SOFTER WORDING. "The plan has run out" is about a tier
+     * and a date; this is about a purse and a day, and the fix is a top-up rather than a
+     * renewal. An owner who reads the wrong one questions their plan instead of their
+     * bKash history, and the second sentence below is the one they can check.
+     */
+    balanceTitle: 'The balance has run out, so nothing new is saving',
+    balanceBody:
+      'Each day of use costs money, and the balance cannot cover the next one — so no '
+      + 'new students, no attendance, no payments, no messages. Every register, mark '
+      + 'and fee already recorded is exactly where it was. Top up and it all works as '
+      + 'before.',
+    /** Takes the day's cost and what is left, both already formatted as taka. */
+    balanceOut: (cost: string, balance: string) =>
+      `A day costs ${cost} and your balance is ${balance}.`,
     callUs: 'Ring us',
     seePlan: 'See the plan',
     refused:
@@ -427,6 +494,55 @@ export const en: Dictionary = {
       'This register has already been taken. Anything you change is recorded as an override, with your name and the time — the teacher who took it stays on the record beside you.',
     takeToday: 'Mark today',
 
+    /*
+     * THE CLOCK GATE (20260811000089), which is three states and two signatures.
+     *
+     * A class on a timetable now has an hour as well as a day: the register opens by
+     * itself at the class time, a teacher who needs it earlier signs for it, and a
+     * class that ended with nothing filed counts as cancelled until somebody signs
+     * that it was held and files it late. The owner's request is quoted in full in
+     * src/lib/attendance/clock.ts.
+     *
+     * TWO VOICES, on purpose. The first card tells a teacher something about their own
+     * day and asks them for nothing, because the ordinary reader of it is standing in
+     * front of the room wondering why the button is gone. The second and third ask for
+     * a signature, so they say what the signature means and who will be told — which
+     * is the whole reason a signature is worth anything here.
+     */
+    lockedTitle: 'This class has not started',
+    lockedBody: (time: string) =>
+      `It begins at ${time}, and the register opens by itself then — there is nothing you need to do.`,
+    lockedSignTitle: 'Taking it before the class starts',
+    lockedSignBody:
+      'If this register has to be taken now, sign below. The owner and the managers are told that it was — with your name and the time — and the signature stays on the class.',
+    lockedSignLabel:
+      'I am taking this class’s register before the class has started, and I am the one filing it.',
+    lockedSignAction: 'Sign and take it early',
+    lateTitle: 'No register was taken',
+    lateBody: (time: string) =>
+      `The class ended at ${time} with nothing filed, so this day counts as a cancelled class until its register is in.`,
+    lateSignTitle: 'The class was held — sign to file it late',
+    lateSignBody:
+      'If the class was held and this is its register, sign below. The owner and the managers are told that it was filed late, and the day stops counting as cancelled.',
+    lateSignLabel:
+      'The class was held, I forgot to file its register at the time, and this is that register.',
+    lateSignAction: 'Sign and file it late',
+    /** What a signed register says about itself, to whoever opens it afterwards. */
+    signedEarly: (time: string) => `Signed and filed early, at ${time}`,
+    signedLate: (time: string) => `Signed and filed late, at ${time}`,
+    /**
+     * The centre's notification — the half of the owner's request that says somebody
+     * else has to be told. `time` is when they signed, not when the class was.
+     */
+    notifyEarly: (name: string, time: string) =>
+      `${name} filed this class early, at ${time}`,
+    notifyLate: (name: string, time: string) =>
+      `${name} filed this class late, at ${time}`,
+    signaturesTitle: 'Registers signed outside class time today',
+    /** The row's own two words, where the Take button would be. */
+    opensAt: (time: string) => `Opens ${time}`,
+    countedCancelled: 'Counted as cancelled',
+
     saved: (n: number) =>
       `Attendance saved — ${n} ${n === 1 ? 'student' : 'students'}`,
     savedExcept: (n: number) =>
@@ -455,6 +571,25 @@ export const en: Dictionary = {
       rosterUnreadable: 'Could not read the student list.',
       emptyBatch: 'This batch has no students.',
       saveFailed: 'Attendance was not saved. Please try again.',
+      /*
+       * The clock gate's two refusals, and neither is the database's message. The
+       * guard says what is true; these say what to do about it, which is the
+       * difference between a form that fails and a screen that helps.
+       */
+      unsigned:
+        'Tick the box to sign, then try again — the register cannot be filed without the signature.',
+      unlockFailed: 'That signature was not recorded. Please try again.',
+      clockChanged:
+        'This class’s time has changed since the page was opened. Reload it and try again.',
+      /**
+       * The clock's two refusals at the save itself, which is the backstop behind the
+       * signature card: a form posted straight to the action, or a signature given and
+       * then the page left open past the class's start.
+       */
+      earlyLocked:
+        'This class has not started yet, so its register cannot be filed without a signature. Open the register and sign to take it early.',
+      lateLocked:
+        'This class ended with no register, so the day now counts as cancelled. Open the register and sign to file it late.',
     },
   },
 
@@ -873,7 +1008,16 @@ export const en: Dictionary = {
     reference: 'Transaction ID',
     receiving: 'Recording…',
     receive: 'Record payment',
-    receiptLink: 'View receipt',
+    /**
+     * The control that appears the moment money is recorded, and it says what it does.
+     *
+     * It was "View receipt" drawn as an underlined link under the confirmation, which read
+     * as a footnote to a sentence rather than as the next thing to do — and the sheet behind
+     * it carries the Print button a parent or an employee is actually waiting for. The words
+     * name the paper and the destination is the paper: one tap from "the money is in" to a
+     * sheet somebody can be handed.
+     */
+    receiptLink: 'Print receipt',
     methods: {
       cash: 'Cash',
       bkash: 'bKash',
@@ -921,7 +1065,7 @@ export const en: Dictionary = {
     confirm: 'Record the refund',
     refunding: 'Recording…',
     keep: 'No, leave it',
-    receiptLink: 'View refund receipt',
+    receiptLink: 'Print refund receipt',
   },
 
   discount: {
@@ -1324,6 +1468,8 @@ export const en: Dictionary = {
     recurringHint:
       'Rent, electricity, internet. Marked in the list below, so you can see at a glance what the centre pays every month.',
     submit: 'Save this',
+    /** See the Bangla: the voucher the action just wrote, one tap away instead of one scroll. */
+    printVoucher: 'Print voucher',
 
     /**
      * Why the form has no edit button, said before the owner looks for one.
@@ -1399,6 +1545,8 @@ export const en: Dictionary = {
 
     billTitle: 'Salaries agreed',
     empty: 'No salary has been agreed with anybody yet.',
+    /** The way out of that sentence, which is the form on this same screen. */
+    emptyDoor: 'Agree the first one',
     unreadable:
       'The salary list cannot be read just now, so nothing is being shown — half a list is worse than none. Please try again.',
 
@@ -1434,6 +1582,14 @@ export const en: Dictionary = {
       payeeNotFound: 'There is nobody like that at this centre. Please reload the screen.',
       payeeGone:
         'They are marked as no longer here. If they are working again, put them back on the staff or teacher list first, then agree a salary.',
+      /** Adding a person is `staff` and the centre plan, not this screen's own permission. */
+      cantHire:
+        'You cannot add somebody to the staff list yourself. Ask the owner, or a manager who keeps the staff list, to add them — the salary can then be agreed here.',
+      newNameRequired: 'Write the name of the person this salary is for.',
+      newRoleRequired: 'Choose what they do at the centre.',
+      /** See the Bangla: the two writes are one press, and neither half is kept alone. */
+      hireFailed:
+        'That person could not be added to the staff list, so no salary was saved either. Please try again.',
       basisRequired: 'Choose how the salary is worked out.',
       dateRequired: 'Write the date this salary starts from.',
       dateTooOld: 'That date does not look right — please check the year.',
@@ -1462,6 +1618,31 @@ export const en: Dictionary = {
     payeeLabel: 'Whose salary',
     payeeTeachers: 'Teachers',
     payeeStaff: 'Staff',
+    /**
+     * The picker's third answer, and the one sentence that turns two screens into one.
+     *
+     * A centre with nobody written down used to be told to go and add an employee first.
+     * This option writes them here, in the same press as the figure — see terms-form.tsx.
+     */
+    newPersonOption: '＋ Somebody new',
+    newPersonHint:
+      'They are added to the staff list by this same button, so you do not have to leave this screen and come back.',
+    newNameLabel: 'Their name',
+    newRoleLabel: 'What they do here',
+    /**
+     * Only shown to a centre that has no teacher row yet — the one case where adding the
+     * wrong kind of person goes unnoticed, because a teacher who is filed as staff can be
+     * paid and cannot be given a batch.
+     */
+    newPersonTeachers: 'This adds a staff member. If they teach, add them as a teacher instead —',
+    newPersonTeacherLink: 'add a teacher',
+    /** The empty-picker card, for a reader who may add somebody. */
+    noPeopleTitle: 'Nobody is on the staff list yet',
+    noPeopleBody:
+      'Write the first name and job below — the person and the salary are saved together, in one press.',
+    /** And the same card for a manager the owner has narrowed out of the staff list. */
+    noPeopleAsk:
+      'A salary needs somebody to pay. Ask an owner or a manager who can see the staff list to add them, then this picker will fill itself.',
     basisLabel: 'How the salary is worked out',
     basicLabel: 'Basic',
     allowancesLabel: 'Allowances',
@@ -1482,6 +1663,13 @@ export const en: Dictionary = {
 
   /** See the Bangla for why the row's words are a section of their own. */
   salaryRow: {
+    /**
+     * The door back to the form with this person already chosen. The form is the edit
+     * button on this screen — picking somebody who already has a figure is how a rise is
+     * recorded — and until this link existed the only way to find it was to scroll up and
+     * pick the same name out of twenty.
+     */
+    change: 'Change this salary',
     open: 'Stop this salary',
     heading: 'Stop this salary?',
     warning:
@@ -1512,6 +1700,8 @@ export const en: Dictionary = {
     tooLarge:
       'There are more rows this month than one screen holds. Tell us and we will sort it out.',
     empty: 'No salary has been agreed with anybody, and nobody has been paid this month.',
+    /** The way out of that sentence, rather than leaving the reader on it. */
+    emptyDoor: 'Agree the salaries first',
 
     peopleTitle: 'Who is still owed',
     agreedLabel: 'Agreed',
@@ -1576,6 +1766,17 @@ export const en: Dictionary = {
       /** See the Bangla: this must never say it failed, or they will pay twice. */
       savedUnknown:
         'The payment has almost certainly been saved, but its voucher number cannot be read just now. Check the list below — do not pay again, or it will be recorded twice.',
+      /**
+       * The refusal that turns a second full salary from one tap into a deliberate act.
+       *
+       * `paid` and `agreed` arrive already formatted (`formatTaka`), because this sentence
+       * is composed on the server and travels finished. The way out is named rather than
+       * only the refusal, for the reason `refundTooMuch` names its ceiling: the box is on
+       * the form directly above the button, and an owner who meant the payment needs to
+       * know which control to reach for.
+       */
+      repeatConfirm: (paid: string, agreed: string) =>
+        `${paid} is already on this month, and this payment would take the month past the agreed ${agreed}. If that is meant — a second instalment, an advance, or a bonus — tick the confirmation box on the form and submit again.`,
     },
   },
 
@@ -1596,8 +1797,35 @@ export const en: Dictionary = {
     noteLabel: 'Note',
     notePlaceholder: 'Eid bonus',
     totalLabel: 'Total',
+    /**
+     * The confirmation tick, drawn only on a row that already has money on the month.
+     *
+     * A hint and not the fence: ./actions.ts reads the same facts for itself and refuses a
+     * payment that would take the month past the agreed figure. This sentence exists so the
+     * owner meets the question before they submit rather than as a refusal afterwards.
+     */
+    repeatLabel:
+      'They already have money recorded for this month. Tick this if the payment is meant to go past the agreed figure — a second instalment, an advance, or a bonus.',
+    /**
+     * The sentence that goes with a locked button.
+     *
+     * The submit is `disabled` while this payment would take the month past the agreed figure
+     * and the tick is not on — the same rule ./actions.ts refuses with, run on the figures
+     * standing in the boxes. A control that cannot be tapped has to say what would let it: a
+     * dead button with no sentence beside it is a page somebody reloads.
+     */
+    unlockHint: 'Tick the confirmation box above to record this payment.',
     submit: 'Record this payment',
     paying: 'Saving…',
+    /**
+     * Offered under the confirmation, the instant the salary is on the record.
+     *
+     * The register below has always linked the voucher number, and it still does — but the
+     * person being paid is standing at the desk and the sentence "Paid. Voucher no. 1042."
+     * told the manager a number rather than giving them the slip. The number is in the label
+     * of the sentence above this button; this is the way to the paper it is printed on.
+     */
+    printSlip: 'Print payslip',
     cancel: 'Cancel',
     /** See the Bangla: there is no edit button, so the form has to say what to do instead. */
     correctionHint:
@@ -1946,7 +2174,11 @@ export const en: Dictionary = {
 
     emptyTitle: 'No students to charge',
     emptyBody: 'There is nobody in this batch yet. Enrol the students first.',
+    /** The door under that sentence — see the page. */
+    emptyDoor: 'Open the students list',
     noBatches: 'There are no batches yet, so pick the whole centre.',
+    /** And the door inside this one, which leads to making the first batch. */
+    noBatchesDoor: 'Make a batch',
     /** See arrears.unreadable for why a failed read takes the form away entirely. */
     unreadable:
       'The list could not be put together just now, so it is not shown — nothing has been lost. Please try again in a moment.',
@@ -2447,35 +2679,6 @@ export const en: Dictionary = {
     overRoom:
       'This plan has room for {room} more, but {fresh} in the list are new.',
     /**
-     * §3.5's priced shortfall — what overRoom says on a plan that sells places.
-     *
-     * No noun after a count anywhere in this block. The shortfall is 1 when a centre
-     * with no room pastes one name, so "{n} places" would read "1 places"; the counts
-     * that can be proved plural say so where they are written.
-     */
-    shortTitle: 'The list needs {n} more',
-    shortBody:
-      'New on this list: {fresh}. Free places: {room}. Buy the places first, and the whole list goes in together.',
-    shortBand: '{n} at {rate} each',
-    shortTotal: 'Total',
-    shortBuy: 'Buy the places for {taka}',
-    shortBuying: 'Opening…',
-    /** Owner only — see planOwner in settings/plan/actions.ts. */
-    shortAsk: 'Only the owner can buy places. Show them this screen.',
-    /**
-     * §3.7's other half, for the branch manager who reached the same screen. {n} is
-     * ASK_PLACES, and it is fixed — see requestPlaces for why a manager does not
-     * choose it. "HQ" rather than "the owner": on an institution the person who pays
-     * is a head office, and a manager who has never met them still knows what to call
-     * them.
-     */
-    shortAskFor: 'Ask HQ for {n} more places',
-    shortAsking: 'Asking…',
-    shortAsked:
-      'HQ has been asked for {n} more places. They add them by paying for them — once that happens, reload this page and the list goes in.',
-    shortAskWithdraw: 'Cancel the request',
-    shortPlanLink: 'Places and plan',
-    /**
      * The reference code is not on this screen. It is rendered on the plan page from
      * the row itself, because an owner leaves for bKash and comes back to a reloaded
      * screen — a code that only existed in this form's state would be gone.
@@ -2837,51 +3040,6 @@ export const en: Dictionary = {
      * Both numbers, because "12 left" says nothing about whether that is comfortable.
      * Twelve of thirty is a different month from twelve of three hundred.
      */
-    placesLeft: (left: number, total: number) => `${left} of ${total} places left`,
-    /**
-     * The same line for a manager pinned to one branch, and four words is the whole of
-     * the difference.
-     *
-     * The tile above this line is what that reader can see, which is their building;
-     * these places are the institution's, because a place is a licence and licences pool
-     * (§3.6). Left unqualified the two figures invite the subtraction between them —
-     * forty students, three hundred places, so two hundred and sixty spare — and the
-     * organisation may have five. §9.1's rule: where two figures on one screen answer
-     * different questions, the screen says which.
-     *
-     * Not shown to head office, whose tile and ceiling are already the same organisation,
-     * and who would read it as a distinction with nothing on the other side of it.
-     */
-    placesPooled: (left: number, total: number) =>
-      `${left} of ${total} places left across the organisation`,
-    /**
-     * The ceiling reached, and a different sentence rather than "0 places left": a
-     * nought is a figure, and this is the one state where the next student is a
-     * decision instead of a form. The link says where to make it.
-     */
-    placesFull: 'Every student place on this plan is taken',
-    placesLink: 'Plan and places',
-    /**
-     * §3.7's urgent state — a twentieth of the ceiling left, or none.
-     *
-     * A second sentence rather than a colour, because a red line saying the same words
-     * as the black one it replaced is a change only the person who wrote it can see.
-     * The thresholds themselves are in lib/plans.ts; nothing here knows what 5% means.
-     *
-     * "Before your next admission" and not "now": the cost of ignoring this is not
-     * abstract, it is an owner standing in front of a parent who wants to enrol, and
-     * that is the sentence that gets a bill paid this week rather than next month.
-     */
-    placesTight: (left: number, total: number) =>
-      `Only ${left} of ${total} student places are left`,
-    placesTightBody:
-      'Add places before your next admission, so the form opens instead of refusing.',
-    /**
-     * The same box with the ceiling reached, and a different second line because
-     * "before your next admission" is advice for somebody who still has one. Present
-     * tense: the refusal is not a risk any more, it is what the form does today.
-     */
-    placesFullBody: 'The new-student form will refuse until you add places.',
 
     /**
      * THE PROFIT LINE — §9.8's box, on the home screen because §9.10 puts it there.
@@ -3513,20 +3671,15 @@ export const en: Dictionary = {
       limitUnknown:
         'Could not check whether this plan has room, so nothing was added. Please try again.',
       /**
-       * The per-student tiers' own version of planLimit, and it has to be a different
-       * sentence because the answer is different. A Coaching Center is already on the
-       * tier it wants — there is nothing above it to change to — and what it has run
-       * out of is places, which are bought a band at a time rather than by moving
-       * plan. "Changing plan makes room" sends that owner to a screen with nothing on
-       * it for them.
+       * Retired with the seats it priced (§16.1 step 28): the per-student tiers are
+       * uncapped, so a per-student centre can no longer run out of places. The
+       * teacher tiers' refusal is `cap` on the students screen, fed by the surviving
+       * `app.guard_student_capacity`.
        *
-       * Names the figure, unlike planLimit, which deliberately does not name a plan's
-       * cap. The difference is that this number is the thing the centre paid for
-       * rather than a ceiling we set, so it is theirs to know — and an owner deciding
-       * how many more to ask for cannot do the sum without it.
+       * Its sentence was not deleted blindly — the figure it named was the thing the
+       * centre paid for rather than a ceiling we set, which is why it was a different
+       * sentence from `planLimit` and not a variant of it.
        */
-      placesFull: (places: number) =>
-        `This centre is using all ${places} of its student ${places === 1 ? 'place' : 'places'}, so nothing was added. Turn a student off, or ask for more places on the plan screen.`,
       staffNeedsCenter: 'Staff and permissions come with the Coaching Center plan.',
       /** staffNeedsCenter one tier up. See settings.branches for the screen's own card. */
       branchesNeedInstitution: 'Branches come with the Institution plan.',
@@ -3742,122 +3895,16 @@ export const en: Dictionary = {
        * noun, so "1 more places" would be wrong for nothing.
        */
       places: {
-        title: 'Buy student places',
-        body: 'Raise the limit as far as you need. We add the places once the money reaches us.',
-        label: 'How many places?',
-        hint: 'The next place costs {taka}.',
-        quote: '{n} more for {taka} — your limit becomes {to}.',
-        submit: 'Buy the places',
-        submitting: 'Buying…',
-        opened:
-          'Done. Send the money as shown below and we will add the places.',
-        waitingTitle: 'Waiting for your transfer',
-        ref: 'Reference code',
-        refHint:
-          'Put this code in the reference when you send the money — without it, matching your transfer to this purchase takes longer.',
-        noContact:
-          'The number is not on this screen yet — we will ring you with it ourselves.',
-        lapsedNote:
-          'This price has run out, so it can no longer be confirmed. Buy again — and if you have already sent the money, ring us.',
         /**
-         * The mirror of `pendingUnreadable` above, with the opposite advice. That form
-         * upserts, so asking twice is safe; this one opens a row per purchase, so a
-         * second tap on a dropped read is a second bill for the founder to sort out.
-         */
-        unreadable:
-          'Whether you have a purchase waiting could not be read just now. If you opened one and sent the money, ring us rather than buying again.',
-        badCount: 'Say how many places you need.',
-        notOnThisPlan:
-          'Places are not sold separately on this plan. More students means a different plan.',
-        closed: 'This purchase is no longer open. Reload the page.',
-        failed: 'Could not start the purchase. Try again.',
-        /**
-         * §3.7's ask, and the two refusals around it. Both refusals are for a POST that
-         * did not come from a screen — an owner sees the price and a teacher sees
-         * neither — so they say whose button it is rather than apologising.
-         */
-        ownerBuys: 'You can buy the places yourself. Asking is for a manager who cannot.',
-        managerOnly: 'Only a branch manager can ask HQ for more places.',
-        asked: 'HQ has been told. They add the places by paying for them.',
-        askWithdrawn: 'The request has been cancelled.',
-        askFailed: 'Could not send the request. Try again.',
-        /**
-         * §3.7's answer, on the owner's side of the same fork. "Buying the places is the
-         * answer" is not a turn of phrase — the ask closes on the purchase and carries
-         * its id, so what the manager is waiting for is a payment, not a decision.
+         * The three words §3.7's asks card still draws on /hq — the one surviving
+         * surface of the old places vocabulary (§16.1 step 28). The card is the record
+         * of asks filed before the seats went: nobody can file one any more, so the
+         * block holds only what the history list needs, and shrinks with it.
          */
         asksTitle: 'A branch has run out of places',
-        asksBody:
-          'Buying the places answers the request. It closes as soon as the purchase is open; the places arrive when the money reaches us.',
         askLine: (where: string, places: number, when: string) =>
           `${where} asked for ${places} more ${places === 1 ? 'place' : 'places'} on ${when}.`,
-        askBuy: (places: number, taka: string) => `Buy ${places} places for ${taka}`,
-        /** Not "Refuse". The branch may ask again next month, and should. */
-        askDecline: 'Not now',
-        askDeclined: 'Closed without a purchase. The branch can ask again.',
-        askGone: 'That request is no longer open. Reload the page.',
-        asksUnreadable:
-          'Whether a branch is waiting for places could not be read just now.',
-      },
-
-      /**
-       * Months of the plan — and, for a centre not on one yet, the plan itself.
-       *
-       * The only place in the app where money moves a tier, so the words are "pay" and
-       * not "ask". The contact card further down is the other half: the conversations
-       * this deliberately cannot have.
-       */
-      subscribe: {
-        title: 'Pay for your plan',
-        body: 'As many months as you like, in one go. Once the money reaches us your '
-          + 'account is covered to the end of that period.',
-        coveredUntil: (date: string) => `Paid up to ${date}.`,
-        notCovered: 'No paid period is on your account yet.',
-        planLabel: 'Which plan?',
-        renewOption: 'Stay on my plan',
-        monthsLabel: 'How many months?',
-        /** A dropdown label, so the server builds it: "1 months" is not a choice. */
-        monthsOption: (n: number) => `${n} ${n === 1 ? 'month' : 'months'}`,
-        quote: '{taka} in total — {from} to {until}.',
-        submit: 'Pay for this',
-        submitting: 'Opening…',
-        opened: 'Done. Send the money as shown below — the plan starts the moment we '
-          + 'have it.',
-        waitingTitle: 'Waiting for money',
-        waitingLine: (months: string, taka: string, until: string) =>
-          `${months} months at ${taka} — covers you to ${until}.`,
-        waitingPlan: (name: string) => `Moves you to ${name}.`,
-        cancel: 'Cancel this purchase',
-        cancelling: 'Cancelling…',
-        cancelled: 'Cancelled. You can buy again now.',
-        gone: 'That purchase is no longer open. Reload the page.',
-        badMonths: 'Choose how many months you are paying for.',
-        badPlan: 'That plan was not recognised. Choose one from the list.',
-        downgradeIsACall:
-          'Moving down a plan is not something this form does. Tell us below and we '
-          + 'will ring you.',
-        midTermIsACall:
-          'You have already paid for the months ahead, so we work a mid-term change '
-          + 'out by hand. Tell us below and we will ring you.',
-        alreadyOpen:
-          'One purchase is still waiting for money. Send that one, or cancel it and '
-          + 'buy again.',
-        notOnThisPlan: 'This plan has no monthly charge, so there is nothing to buy.',
-        tooMuch: (taka: string) =>
-          `This form cannot take more than ${taka} at once. Ring us and we will work `
-          + `it out with you.`,
-        closed: 'That purchase is no longer open. Reload the page.',
-        failed: 'The purchase could not be started. Try again.',
-        unreadable:
-          'Whether you have a purchase waiting could not be read just now. If you have '
-          + 'already sent the money, ring us rather than buying again.',
-        /**
-         * The bill is worked out from the roster, so a count that would not read cannot
-         * be priced. The form goes away rather than quote a figure built from a nought.
-         */
-        priceUnreadable:
-          'What your plan would cost could not be worked out just now. Reload the page, '
-          + 'or ring us and we will tell you.',
+        title: 'The branches waiting',
       },
 
       /** See the Bangla: the only way in to a receipt, and not only for places. */
@@ -4046,6 +4093,19 @@ export const en: Dictionary = {
       usedHere: (n: number) =>
         `${n} ${n === 1 ? 'student' : 'students'} at this branch`,
       new: 'New',
+      /**
+       * What stands where the two ways in were, when the roster is at the size a trial
+       * holds and nothing is on the balance (20260811000098, `CD006`).
+       *
+       * The reader this is written for is the signup: a per-student tier's price is the
+       * student, so there is no "included" band to run out of and no bought places to sell —
+       * what bounds a trial is one number, and money on the balance lifts it entirely. A button
+       * that could only be refused is the one thing these screens must not draw. The sentence
+       * underneath is `errors.rosterNotFunded`, the same refusal the actions write.
+       */
+      rosterTitle: 'This trial’s roster is full',
+      /** The way to the one screen that takes money (§20.4). */
+      rosterLink: 'Add money to the balance',
       importTitle: 'Add a whole register at once',
       importBody: (max: number) => `Paste a list of names — up to ${max} at a time`,
       missingPhone: (n: number) =>
@@ -4109,57 +4169,11 @@ export const en: Dictionary = {
       cap: (name: string, limit: number) =>
         `The ${name} plan holds ${limit} ${limit === 1 ? 'student' : 'students'}.`,
       /**
-       * The same card, for a centre that pays per student. Its ceiling is not what
-       * its plan holds — see settings.errors.placesFull for why that needs its own
-       * words, and lib/plans.ts studentCeiling for where the number comes from.
+       * The per-student tiers' version of `cap`, still drawn after a CD001 refusal —
+       * which since §16.1 step 28 can only come from a teacher tier's plan allowance
+       * (`app.guard_student_capacity` survives; the per-student tiers are uncapped).
        */
       placesTitle: 'There are no student places left',
-      /**
-       * Names the wall and nothing else. It used to end "…or ask for more places on the
-       * plan screen", which is the journey §3.4 opens by forbidding: the owner was
-       * refused here and sent somewhere else to work out how many to buy. Every way out
-       * is now on this card, so the sentence sets up what follows instead of replacing
-       * it with a destination.
-       */
-      places: (places: number) =>
-        `This centre has ${places} student ${places === 1 ? 'place' : 'places'} and is using every one. Another student needs another place.`,
-      /**
-       * The owner's way out, on the screen the refusal happened on — §3.4 and §20.5.
-       *
-       * THE PRICE IS IN THE REFUSAL, which is what §20.5 asks for in as many words: "You
-       * have used all 120 places. One more costs ৳18", never "capacity exceeded". One
-       * figure and not the bands (§33), and the same one BuyPlaces quotes with — it says
-       * it again under its own field, where it turns into the whole bill as soon as a
-       * number is typed. The price belongs in the sentence that refuses and beside the
-       * field that changes it, so twice is right here.
-       *
-       * The note is what no price can say — §22. The money is sent by hand and a human
-       * settles it, so buying does not admit the child standing at the desk, and an owner
-       * who is not told that will keep a family waiting for a form that never finishes.
-       */
-      placesNext: (taka: string) => `One more place costs ${taka}.`,
-      placesBuyNote:
-        'You send the money yourself and we add the places once we have checked it. Nothing is added by this form — so if a family is waiting, take the guardian’s number and admit the student when the places arrive.',
-      /**
-       * The same card again, for the branch manager who cannot buy their way out of it
-       * — §3.7. The count is ASK_PLACES; the button is the only way forward this reader
-       * has, so it says what pressing it does rather than naming a screen.
-       */
-      placesAsk: (n: number) => `Ask HQ for ${n} more places`,
-      placesAsking: 'Asking…',
-      placesAsked: (n: number) =>
-        `HQ has been asked for ${n} more places. They add them by paying for them.`,
-      placesAskWithdraw: 'Cancel the request',
-      /**
-       * The way out that costs nothing and exists on every tier, including the two that
-       * sell no places at all: a student who left in March is still holding a place.
-       *
-       * It is also the only route a teacher on `can_manage_students` is offered here —
-       * they cannot buy, cannot ask, and would be refused at /settings/plan.
-       */
-      placesFreeLink: 'Turn a student off to free a place',
-      /** Owner or manager — /settings/plan is pageRole('manager'). */
-      placesPlanLink: 'Places and plan',
       /**
        * The rail beside the form: what saving it actually does.
        *
@@ -4220,6 +4234,21 @@ export const en: Dictionary = {
         duplicateCode: 'A student with this ID already exists.',
         notFound: 'Student not found.',
         saveFailed: 'Could not save those details.',
+        /**
+         * Past the roster a trial holds, with nothing on the balance (`CD006`, in
+         * 20260811000098). The trigger cannot name either figure, so this does — and the
+         * second sentence is the half that matters, because the bound is not a wall the
+         * customer runs into: any money at all lifts it, and the daily rate then prices the
+         * whole roster exactly as it always did.
+         */
+        rosterNotFunded: (ceiling: number) =>
+          `A trial holds ${ceiling} students. Add money to the balance and the bound lifts entirely — the daily rate then carries as many as you run.`,
+        /**
+         * The same refusal when the policy row itself could not be read, which is a refusal
+         * rather than a pass: a bound nobody can state must not be treated as no bound.
+         */
+        rosterUnknown:
+          'How many students a trial holds could not be read just now, so nothing was saved. Please try again in a moment, or add money to the balance — that lifts the bound entirely.',
 
         /**
          * The student row is written before the batches are, so these two are the
@@ -4385,6 +4414,20 @@ export const en: Dictionary = {
       trimTitle: 'More teachers switched on than this plan covers',
       trimBody: (plan: string, active: number, limit: number) =>
         `${plan} covers ${limit} ${limit === 1 ? 'teacher' : 'teachers'}, and ${active} are switched on here. Switch off the ones who no longer teach at your centre — the attendance and marks they entered stay. Until you do, they can still take attendance for their own batches, but they no longer see fees or send SMS.`,
+      /**
+       * What stands where the add button was, when the next seat is a price this centre
+       * has no balance to pay (see `teacherSeatOpeningRefusal`).
+       *
+       * The reader this is written for is the trial: a signup is given days and not money
+       * (§4.3), so it runs the two seats its tier includes and cannot take a third until
+       * something is on the balance. A button that could only be refused is the one thing
+       * this screen must not draw. The sentence underneath is `errors.seatNotFunded` — the
+       * same refusal the add form writes, in the same words — and the heading and the way
+       * to the billing screen are the list's own.
+       */
+      seatTitle: 'Every seat past this plan’s two is a line on the bill',
+      /** The way to the one screen that takes money (§20.4). */
+      seatLink: 'Add money to the balance',
       addedWithLogin: 'Teacher and their login created',
       addedNoLogin: 'Teacher added (no login)',
       addedWithUsername: (username: string) =>
@@ -4443,6 +4486,13 @@ export const en: Dictionary = {
         notFound: 'Teacher not found.',
         keepOwnSeat:
           'This is your own teacher record — the one seat this plan covers. Switch a colleague off instead.',
+        /**
+         * Past the seats the tier includes with nothing on the balance (`CD005`), the same
+         * refusal `settings.branches.errors.notFunded` writes for a building. The trigger
+         * cannot name a price or a number, so this does.
+         */
+        seatNotFunded: (included: number, taka: string) =>
+          `This plan includes ${included} teacher seats, and each seat after that is ${taka} a month — paid out of your balance like everything else. Add money to the balance to take on another teacher, or to switch one back on.`,
         /*
          * The eight refusals behind Remove, and every one of them names the switch
          * instead. That is the point of the wording: turning a teacher off is the
@@ -4556,6 +4606,20 @@ export const en: Dictionary = {
         `The first ${n} are included, so this one adds nothing to the bill.`,
       /** And after they are. See §3.7 for why a form has to say this at all. */
       addCost: (taka: string) => `This one adds ${taka} a month to the bill.`,
+      /**
+       * What stands in the rail's place when there is no form to draw.
+       *
+       * The reader this is written for is the trial: a signup is given days, not money
+       * (§4.3), so it runs the three buildings the tier includes and cannot open a
+       * fourth until there is a balance to pay for it (`branchOpeningRefusal`). A form
+       * that could only refuse is the one thing this screen must not draw, and a
+       * paragraph explaining why is what goes there instead.
+       */
+      fundTitle: 'A fourth building is a line on the bill',
+      fundBody: (n: number, taka: string) =>
+        `${n} buildings are included in the Institution plan. The next one adds ${taka} a month, and a monthly bill is paid from your balance — which holds nothing yet. Add money to the balance and this form opens.`,
+      /** The way to the one screen that takes money (§20.4). */
+      fundLink: 'Add money to the balance',
       mineTitle: 'Your branch',
       mineBody:
         'Opening a branch, renaming one and closing one belong to the head office, because a branch is a line on the monthly bill. Everything you add is filed under your own branch without you having to say so.',
@@ -4568,6 +4632,13 @@ export const en: Dictionary = {
         notFound: 'That branch is not on your list.',
         /** A branch manager, refused. Names who can, because they will have to ask. */
         hqOnly: 'Only the head office can add, rename or close a branch.',
+        /**
+         * Past the included three with nothing on the balance — the database's own
+         * refusal, and the one the action writes when its count and the trigger's
+         * disagree. The trigger cannot name a price, so this does.
+         */
+        notFunded: (included: number, taka: string) =>
+          `The first ${included} buildings are included; the next one adds ${taka} a month, and the bill comes off your balance. Add money to your balance first.`,
       },
     },
 
@@ -4846,6 +4917,226 @@ export const en: Dictionary = {
     noOwner: 'No owner on record',
     window: 'Attendance, exams, collections and messages cover the last 30 days.',
     gatewayNote: 'Gateway SMS is zero everywhere — no BTRC sender ID has been registered yet.',
+    /**
+     * The list's controls, and the line under them that says what they did.
+     *
+     * `showing` IS THE IMPORTANT ONE. Filters that quietly hide customers turn a panel
+     * of eleven into a panel of four, and the founder who forgets which filters are on
+     * is the founder who concludes they have lost seven customers. So the count is not
+     * optional decoration — it is drawn on every render, filtered or not.
+     *
+     * Both counts arrive as already-localised digits, because `digits` needs the locale
+     * and this file has none — the same split `queueSent` and `sizeLine` follow.
+     */
+    /**
+     * The panel's five sections. `label` is the nav's own name, read aloud by a screen reader
+     * before the links rather than drawn.
+     */
+    nav: {
+      label: 'Founder panel',
+      customers: 'Customers',
+      money: 'Money & growth',
+      health: 'System health',
+      accounts: 'Accounts & staff',
+      audit: 'Audit log',
+    },
+    filters: {
+      search: 'Search',
+      searchHint: 'A name, an area, an email or a phone number',
+      /** Who the account is, not what they may do — see lib/accounts/kind.ts. */
+      kind: 'Who',
+      standing: 'Standing',
+      order: 'Order',
+      kinds: {
+        any: 'Anyone',
+        teacher: 'Teacher',
+        center: 'Coaching centre',
+        institution: 'Institution',
+      },
+      /** The unset option on both dropdowns. "Any" and not "All": neither filters. */
+      any: 'Any',
+      orders: {
+        bill: 'Biggest bill first',
+        quiet: 'Gone quiet first',
+        newest: 'Newest first',
+        name: 'Name',
+      },
+      apply: 'Filter',
+      clear: 'Clear',
+      showing: (shown: string, all: string) => `${shown} of ${all} customers`,
+      none: 'No customer matches.',
+      noneHint: 'Clear the filters to see everybody again.',
+    },
+    /**
+     * The platform's own log — §10's question asked from our side of the fence.
+     *
+     * The three operation words are not the log's own enum read aloud: a founder scanning
+     * fifty lines asks "did somebody add something, change something, or take something
+     * away", and `created` is a word for a database rather than for that question.
+     *
+     * `scope` is the line that has to be here. What this screen shows is a fifth of what the
+     * log holds (see lib/platform/audit.ts), and a founder who assumed it was the whole
+     * record would answer a customer's question wrongly.
+     */
+    audit: {
+      title: 'Audit log',
+      lead: 'Every change to a customer, a payment, a subscription or a login — who made it and when.',
+      center: 'Customer',
+      allCenters: 'Every customer',
+      entity: 'What',
+      allEntities: 'Everything',
+      operation: 'How',
+      anyOperation: 'Any kind',
+      operations: {
+        created: 'Added',
+        updated: 'Changed',
+        deleted: 'Removed',
+      },
+      apply: 'Show',
+      clear: 'Clear',
+      lines: (shown: string) => `${shown} lines, newest first`,
+      none: 'Nothing of that kind yet.',
+      noneHint: 'Clear the filters to see the whole log.',
+      /** A line whose centre could not be named. The line is still drawn, and says so. */
+      unknownCenter: 'A customer we could not name',
+      scope:
+        'This is our side of the record: the centre itself, payments, payment requests, '
+        + 'subscriptions and logins. What happens inside a centre — its register, its fees, '
+        + 'its students — is in that centre\'s own log, and stays there.',
+    },
+    /**
+     * Six months of the business.
+     *
+     * "Recharged" and not "revenue", and "burned" rather than "cost": §9.1 forbids the word
+     * revenue anywhere in the product, and the two labels beside the days each centre spent are
+     * the same two words the customer's own billing screen uses for the same two numbers.
+     *
+     * `whatCounts` is the line that keeps the table honest. A grant, an adjustment, a refund and
+     * a failed settlement are all real rows in the ledger and none of them is in either money
+     * column, so a founder who remembers one of those appears to be looking at a bug.
+     */
+    growth: {
+      title: 'Money & growth',
+      lead: 'Six months of the business: who joined, what came in, and what the centres burned.',
+      /** What we are holding for customers — days we owe, drawn apart from money in. */
+      held: 'Balance held',
+      monthsTitle: 'Six months',
+      monthsLead:
+        'Money in is what customers recharged. Money out is the days their centres were charged for.',
+      month: 'Month',
+      signups: 'New',
+      recharged: 'In',
+      burned: 'Burned',
+      net: 'Net',
+      truncated:
+        'The ledger read reached its cap, so the oldest months may be short — read them as a floor.',
+      unreadable:
+        'The ledger could not be read, so the months are not drawn. The figures above still stand.',
+      whatCounts:
+        'Only a recharge and the bonus it earned count as money in, and only a day charged counts '
+        + 'as money out. A granted day, an adjustment, a refund and a failed settlement are '
+        + 'corrections rather than income, so they are in the customer\'s own history and in '
+        + 'neither column here.',
+    },
+    /**
+     * What is quietly broken.
+     *
+     * Every sentence has three arms — empty, non-empty, and *unreadable* — and the third is not
+     * politeness: this page's whole job is to distinguish "nothing is wrong" from "nothing could
+     * be read", and a failed read drawn as a zero is the exact failure it exists to catch.
+     */
+    health: {
+      title: 'System health',
+      lead: 'What is waiting on us, and what does not reconcile.',
+      clear: 'Nothing is waiting and the books reconcile.',
+      clearHint: 'Every recharge is confirmed, every purchase is finished, and nobody owes us.',
+      waitingTitle: 'Waiting on us',
+      claims: (count: string, oldest: string) =>
+        `${count} recharges to confirm — the oldest was sent ${oldest}`,
+      claimsNone: 'No recharge is waiting to be confirmed.',
+      claimsUnknown: 'The recharges could not be read — check them on the customer list.',
+      purchases: (count: string, oldest: string) =>
+        `${count} purchases started and not finished — the oldest is from ${oldest}`,
+      purchasesNone: 'No purchase is sitting half-done.',
+      purchasesUnknown: 'The purchases could not be read.',
+      atLeast: (count: string) => `at least ${count}`,
+      owing: (count: string, amount: string) =>
+        `${count} customers have not covered the month behind them — ${amount} between them`,
+      owingNone: 'Nobody has fallen behind on their billing.',
+      blindSpots:
+        'Two things this page cannot see. The gateway is metered and switched off, so a zero there '
+        + 'is not a fault. And every count in this panel covers thirty days: an old problem that '
+        + 'has since been fixed does not appear here at all.',
+    },
+    /**
+     * Every login, and our own team.
+     *
+     * `adminsHint` says what the number means rather than who is on the list — this is the one
+     * figure in the panel about *us*, and it is the count of people who can read every customer's
+     * record.
+     */
+    accounts: {
+      title: 'Accounts & staff',
+      lead: 'Every login on every customer, and everyone here who can open this panel.',
+      adminsTitle: 'Our team',
+      adminsHint: 'Accounts that can read every customer\'s record.',
+      adminsEmpty: 'No platform admin could be read, which cannot be right — reload.',
+      search: 'Search',
+      searchHint: 'A name, an email, a number or a username',
+      customer: 'Customer',
+      allCustomers: 'Every customer',
+      role: 'Role',
+      allRoles: 'Any role',
+      apply: 'Filter',
+      clear: 'Clear',
+      showing: (shown: string, all: string) => `${shown} of ${all} logins`,
+      stopped: 'Switched off',
+      noName: 'No name on record',
+      unknownCustomer: 'A customer we could not name',
+      since: (date: string) => `since ${date}`,
+      none: 'No login matches.',
+      noneHint: 'Clear the filters to see them all.',
+      unreadable: 'Could not read the logins.',
+      unreadableHint: 'Reload. If it stays broken, go and look at the database.',
+    },
+    /**
+     * One customer's record, in full — the drill-down behind every row of the list.
+     *
+     * TWO THINGS ARE REUSED RATHER THAN REWRITTEN: the nine 30-day counts are the list's own
+     * `usage` labels, and the four states are its `status` words. A second set of words for the
+     * same nine numbers is how a figure ends up called two things on two screens.
+     *
+     * `ledgerAfter` says "left", not "balance after": a founder reading thirty lines down a
+     * phone wants the running figure to read as a sentence, and the column it comes from is in
+     * the database for whoever needs the precise name.
+     */
+    record: {
+      accountTitle: 'The account',
+      owner: 'Owner',
+      phone: 'Centre number',
+      area: 'Area',
+      signedUp: 'Signed up',
+      lastUsed: 'Last used',
+      trial: 'Trial ends',
+      paidThrough: 'Paid up to',
+      moneyTitle: 'Money',
+      ledgerTitle: 'The balance, entry by entry',
+      ledgerLead: 'The newest thirty things that moved this customer\'s balance.',
+      ledgerEmpty: 'Nothing has touched the balance yet.',
+      ledgerCharge: 'A day charged',
+      ledgerTopUp: 'A day charged again as the roster grew',
+      ledgerAfter: (amount: string) => `left ${amount}`,
+      daysGranted: (days: string) => `${days} days granted`,
+      staffTitle: 'Who can get in',
+      staffEmpty: 'Nobody has a login on this centre yet.',
+      staffStopped: 'Switched off',
+      staffSince: (date: string) => `since ${date}`,
+      auditTitle: 'What we have done',
+      auditEmpty: 'Nothing of ours is recorded against this customer yet.',
+      auditAll: 'The whole log',
+      unreadable: 'Could not read this customer.',
+      unreadableHint: 'Reload. If it stays broken, go and look at the database.',
+    },
     status: {
       trial: 'Trial',
       active: 'Active',
@@ -4925,6 +5216,46 @@ export const en: Dictionary = {
       `Recorded ${amount} — ${from} to ${to}.`,
     paymentSavedMonth: (amount: string, month: string) =>
       `Recorded ${amount} — for ${month}.`,
+    /**
+     * The receipt for money that went onto the balance — a centre's payment since
+     * 20260811000092. No window and no months: the balance buys days a day at a time, and
+     * the sentence this replaced ("from August to August") described a coverage window
+     * nothing in the product reads any more.
+     */
+    paidBalance: (amount: string) => `Recorded ${amount} on their balance.`,
+    /**
+     * And a teacher's, which buys months of Teacher Pro. The amount is the one the price
+     * card produced rather than the one the form held — the same rule the bonus follows.
+     */
+    paidMonths: (amount: string, months: string) =>
+      `Recorded ${amount} — ${months} of Teacher Pro.`,
+    /**
+     * What a signup is given, in days. §4.3, 20260811000091: a policy rather than a price,
+     * and the founder changes it here rather than in a migration.
+     */
+    settings: {
+      title: 'Trials',
+      lead: 'What a new account gets before it pays. A teacher is trialled on a tier; a '
+        + 'coaching centre or an institution is given days on its own tier.',
+      teacherDays: 'Teacher trial (days)',
+      centerDays: 'Coaching centre trial (days)',
+      institutionDays: 'Institution trial (days)',
+      /**
+       * The fourth number, and the only one that is not a length of time: how many active
+       * students a trial may hold before it has to be funded (20260811000098). It sits here
+       * rather than on a price card because nothing about it appears on a bill — it is policy,
+       * like the days beside it, and 0 is the way to switch the bound off.
+       */
+      roster: 'Students a trial may hold',
+      rosterHint:
+        'Any money on the balance lifts this bound entirely. 0 means no bound at all.',
+      save: 'Save trials',
+      saving: 'Saving…',
+      saved: 'Saved.',
+      badDays: 'Whole days, between 0 and 365.',
+      badRoster: 'The roster is a whole number of students, between 0 and 100000.',
+      failed: 'Could not save it. Try again.',
+    },
     planSaved: (plan: string, state: string) => `Now ${plan} · ${state}.`,
     /**
      * A credit, composed on the server because it carries a figure and the group below is
@@ -4954,6 +5285,11 @@ export const en: Dictionary = {
       payTitle: 'Record a payment',
       amount: 'Amount',
       amountHint: 'This month’s bill is prefilled — change it if they paid something else.',
+      /**
+       * Said on a teacher's card, where the figure above is not the founder's to give: a
+       * subscription is priced from `price_versions` by the database (20260811000092).
+       */
+      amountPriced: 'A teacher’s amount comes off the price list — this figure is only used for a centre.',
       method: 'How it came',
       coversFrom: 'From which month',
       months: 'How many months',
@@ -5011,7 +5347,6 @@ export const en: Dictionary = {
     boughtMovesTo: (plan: string) => `and moves them to ${plan}`,
     /** Composed by the Server Action, after the receipt is written. */
     purchaseConfirmed: (amount: string) => `Confirmed ${amount}.`,
-    purchaseHolds: (places: number) => `This centre now holds ${places} students.`,
     purchaseMovedTo: (plan: string) => `They are now on ${plan}.`,
     /** String leaves only — this group is handed to a client component. */
     purchases: {
@@ -5066,19 +5401,19 @@ export const en: Dictionary = {
     lockout: {
       summary: 'Somebody cannot get in',
       body:
-        'Type the number they sign in with and a new password, then read it out to '
-        + 'them on the phone. An owner, a manager or a teacher of this centre — any '
-        + 'of them. Another phone that is already signed in will not be signed out '
-        + 'on its own.',
-      phone: 'Login number',
-      phoneHint: 'Usually the number they are ringing you from.',
+        'Type the number, username or email they sign in with, and a new password, '
+        + 'then read it out to them on the phone. An owner, a manager or a teacher of '
+        + 'this centre — any of them. Another phone that is already signed in will not '
+        + 'be signed out on its own.',
+      identifier: 'Login number, username or email',
+      identifierHint: 'Whatever is on their own screen — any one of the three gets them in.',
       password: 'New password',
       passwordHint: 'Shown on screen, because you have to read it out.',
       submit: 'Set the password',
       saving: 'Setting…',
       failed: 'Could not do it. Try again.',
       errors: {
-        noAccount: 'No account has that number. Check the digits again.',
+        noAccount: 'No account has that number, username or email. Check it again.',
         self:
           'That is your own account. This is not the screen for your own password '
           + '— change it on your account screen.',
@@ -5086,7 +5421,7 @@ export const en: Dictionary = {
           'That account belongs to the platform, not to a centre. Its password '
           + 'cannot be set from here.',
         notStaff:
-          'That account does not work at this centre. Check both the number and '
+          'That account does not work at this centre. Check both the identifier and '
           + 'which centre you are on.',
       },
     },
@@ -5097,6 +5432,7 @@ export const en: Dictionary = {
       plan: 'Plan',
       bill: 'Monthly bill',
       owner: 'Owner',
+      ownerEmail: 'Owner email',
       ownerPhone: 'Owner phone',
       centerPhone: 'Centre phone',
       students: 'Students',
@@ -5191,20 +5527,6 @@ export const en: Dictionary = {
     payrollSome: (branches: string) => `No salaries recorded at: ${branches}`,
     payrollSomeNote:
       'If salaries are paid centrally from the head office, every other branch reads more profitable than it is. Record each payment under the branch the person works at and the comparison becomes fair.',
-    poolNote:
-      'Places are one pool for the whole organisation — every branch draws from the same pool, and none has a quota of its own.',
-    growingTitle: 'Where the places have been going',
-    /** A branch and its figure. The line below names what the figure counts, once. */
-    growingBranch: (branch: string, students: number) => `${branch} ${students}`,
-    growingLine: (branches: string) => `New students in the last three months: ${branches}.`,
-    growingOthers: (count: number) =>
-      count === 1 ? 'And one other branch took some.' : `And ${count} other branches took some.`,
-    growingNote:
-      'Buying more places adds them to the one pool, so whichever branch fills next can use them. This is only to show where the growth is.',
-    growingNone:
-      'No branch has taken a new student in the last three months, so the register is full of students already on it rather than of new arrivals.',
-    growingUnreadable:
-      'Where the recent admissions went could not be read just now. Nothing is wrong with your records — the figures above are unaffected.',
   },
 
   /** See the Bangla: the names are what an owner calls the thing, not the table. */
@@ -5240,6 +5562,7 @@ export const en: Dictionary = {
       students: 'Students',
       guardians: 'Guardians',
       attendance_records: 'Attendance overrides',
+      attendance_unlocks: 'Registers filed outside class time',
       teachers: 'Teachers',
       teacher_permissions: 'Permissions',
       employees: 'Staff',
@@ -5248,7 +5571,6 @@ export const en: Dictionary = {
       payments: 'Paid to us',
       payment_intents: 'Payment requests',
       subscriptions: 'Subscription',
-      policy_acceptances: 'Policy acceptances',
     },
     actions: {
       planChanged: 'Plan changed',
@@ -5282,6 +5604,14 @@ export const en: Dictionary = {
        * one an owner would use when asking about it.
        */
       attendanceOverridden: 'Attendance overridden',
+      /**
+       * The clock gate's two lines (20260811000089). Not "register unlocked" for
+       * either: the useful fact on an owner's log is which side of the class the
+       * register was written on, because that is the question a parent's complaint
+       * or a fee dispute turns into.
+       */
+      attendanceFiledEarly: 'Register filed before the class',
+      attendanceFiledLate: 'Register filed after the class',
       feeRaised: 'Fee billed',
       feeVoided: 'Bill cancelled',
       discountGranted: 'Discount granted',
@@ -5299,6 +5629,7 @@ export const en: Dictionary = {
       salaryPaid: 'Salary paid',
       expenseRecorded: 'Spending recorded',
       platformPaymentRecorded: 'Paid to us',
+      balanceChanged: 'Prepaid balance changed',
       /**
        * "Requested" and not "started", because the centre's side of a manual transfer is
        * an intention: the money has not moved until somebody here confirms it did.
@@ -5320,6 +5651,112 @@ export const en: Dictionary = {
       teacher: 'Teacher',
       student: 'Student',
       guardian: 'Guardian',
+    },
+  },
+
+  /**
+   * The (auth) screens — login, signup and onboarding. See the group's note in bn.ts for why
+   * it exists: the locale cookie was documented as the thing that stops an English reader
+   * being handed a Bangla login form, and nothing on those screens read it.
+   *
+   * Written as the English a Dhaka teacher reads, not as a gloss. "Coaching centre" stays a
+   * coaching centre in English, the way it does everywhere else in this product.
+   */
+  auth: {
+    /**
+     * The panel that fills the left half of a desktop screen, on the two screens a reader
+     * reaches with no session.
+     *
+     * IT EXISTS BECAUSE THESE TWO SCREENS WERE NEVER GIVEN THE DESKTOP TREATMENT. Every
+     * signed-in screen got §20.1's two frames; login and signup stayed a 384px column in
+     * the middle of a 1,440px window — the phone layout drawn at every width, which is
+     * exactly the defect the interface section was written about. The panel is hidden
+     * below `lg`, so the phone is unchanged, and it is static markup: no query, no
+     * JavaScript, nothing for a returning teacher on a phone to download and skip.
+     *
+     * Three lines and not a feature list, because a login form is not where anybody reads
+     * a specification. They are the three things the product is for, and they are the same
+     * three the shell's navigation is grouped by (money, people, families).
+     */
+    brand: {
+      headline: 'The whole coaching centre, in one place',
+      attendance: 'Mark a batch in thirty seconds',
+      money: 'Fees, arrears and receipts that reconcile',
+      families: 'Parents told in Bengali, by SMS',
+      note: 'Built for coaching centres in Bangladesh',
+    },
+    login: {
+      title: 'Log in',
+      tagline: 'Attendance, results and fees — all in one place',
+      identifier: 'Email, mobile number or username',
+      identifierHint: 'For example name@gmail.com, 01712345678 or rahim',
+      password: 'Password',
+      submit: 'Log in',
+      submitting: 'Please wait…',
+      noAccount: 'No account yet?',
+      signUp: 'Create a new account',
+      forgot: 'If you forget your password, ask the owner of your coaching centre — they can set a new one for you.',
+    },
+
+    signup: {
+      title: 'New account',
+      freeLine: 'Free — up to {batches} batches and {students} students',
+      /** The one-batch wording, which the free tier takes today. See bn.ts on why there are two. */
+      freeLineOne: 'Free — {batches} batch and up to {students} students',
+      privacyNote: 'Your students’ information is visible only to your coaching centre. Nobody else.',
+      name: 'Your name',
+      namePlaceholder: 'Md. Rafiqul Islam',
+      email: 'Email',
+      emailHint: 'The code goes to this address, and you will log in with it',
+      password: 'Password',
+      codeSent: 'We sent a verification code to {email}. If it does not arrive, check your spam folder too.',
+      code: 'The code from the email',
+      submitCreate: 'Create account',
+      submittingCreate: 'Creating the account…',
+      submitSend: 'Send the code',
+      submittingSend: 'Sending the code…',
+      resend: 'Send a new code',
+      resendWait: '{n} seconds to go',
+      changeEmail: 'Change the email',
+      agreePrefix: 'I have read and accept the',
+      agreeAnd: 'and',
+      /** No leading space: the sentence ends here in English, and does not in Bangla. */
+      agreeAfter: '.',
+      haveAccount: 'Already have an account?',
+      login: 'Log in',
+    },
+
+    onboarding: {
+      title: 'Get started',
+      welcome: 'Welcome',
+      welcomeNamed: 'Welcome, {name}',
+      question: 'Which one are you?',
+      thenSubscribe: 'take a subscription',
+      thenTopUp: 'top up the balance',
+      trialLine: 'The first {days} days are completely free — no card and no payment. After that you will need to {how} to keep using it.',
+      submit: 'Get started',
+      submitting: 'Creating…',
+      nameNote: 'You can change the name later. If you need more than one teacher you will take a centre plan — you can reach us about it from inside the app.',
+      modes: {
+        teacher: {
+          title: 'I teach alone',
+          body: 'Your own batch and your own students. You take the attendance and the results yourself.',
+          nameLabel: 'Your coaching or batch name',
+          namePlaceholder: 'Rafiq Sir’s Maths',
+        },
+        center: {
+          title: 'I have a coaching centre',
+          body: 'Several teachers and batches, staff and accounts in one place.',
+          nameLabel: 'Coaching centre name',
+          namePlaceholder: 'Uttara Ideal Coaching',
+        },
+        institution: {
+          title: 'I have more than one branch',
+          body: 'An institution — several branches, per-branch accounts and one report.',
+          nameLabel: 'Institution name',
+          namePlaceholder: 'Adarsha Academy',
+        },
+      },
     },
   },
 }

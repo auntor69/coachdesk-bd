@@ -7,11 +7,18 @@
  * a verb, and the verb needs a sentence beside it before it is pressed. This is where the
  * sentence lives.
  *
- * STOPPING IS THE ONLY VERB HERE. There is no edit, because a rise is a new agreement and
- * the trigger retires the old one — see ./terms-form.tsx — and no delete, because a
- * browser session has never had DELETE on this table: what was agreed and when is the
- * record that makes last April's salary explicable, and every payment already made hangs
- * off this row.
+ * TWO VERBS, AND THE SECOND ONE IS A DOOR RATHER THAN A FORM. There is no edit here, because
+ * a rise is a new agreement and the trigger retires the old one — see ./terms-form.tsx —
+ * and no delete, because a browser session has never had DELETE on this table: what was
+ * agreed and when is the record that makes last April's salary explicable, and every
+ * payment already made hangs off this row.
+ *
+ * But "no edit button" used to read on the screen as "no way to change this", which is not
+ * the same thing: the form at the top of the page *is* the edit button, and the only thing
+ * missing was a way to arrive at it with the right person already chosen. So the second
+ * verb is a link carrying `?payee=` back to that form — one tap, no scroll, no picking the
+ * same name out of twenty. It is hidden on a row whose payee has left, because the form
+ * does not offer them and a link that lands on an empty picker is worse than no link.
  *
  * THE CONFIRMATION IS THE ROW LEAVING, not a message, exactly as CancelBill has it. The
  * page reads live agreements only, so this component unmounts with its `useActionState`
@@ -19,6 +26,7 @@
  * live. An error is different — it means nothing moved — so a refusal keeps the panel open
  * and shows why.
  */
+import Link from 'next/link'
 import { useActionState, useState } from 'react'
 
 import { Alert, Button } from '@/components/ui'
@@ -34,6 +42,7 @@ export function TermsRow({
   figure,
   meta,
   note,
+  changeTo,
   canWrite,
   t,
 }: {
@@ -55,6 +64,11 @@ export function TermsRow({
   /** How the salary is worked out and the day it began, joined with ' · ' by the page. */
   meta: string
   note: string | null
+  /**
+   * This row's `payeeValue` — `employee:<id>` or `teacher:<id>` — which is what the link
+   * below puts in the URL, or null for somebody who has left. See the header.
+   */
+  changeTo: string | null
   /**
    * False on a centre whose subscription has lapsed, which keeps the bill and loses every
    * verb on it. `requireWritable` is in front of the action either way; this is so the
@@ -115,13 +129,23 @@ export function TermsRow({
 
       {canWrite &&
         (!asking ? (
-          <div className="mt-3 border-t border-line pt-3">
+          <div className="mt-3 flex flex-wrap items-center gap-x-4 border-t border-line
+            pt-3">
             {/* An error survives here because nothing moved: the agreement is still live,
                 so the row is still on the page to show it. */}
             {state?.error && <Alert>{state.error}</Alert>}
             {/* A plain underlined word and not a button, for CancelBill's reason: the wide
                 buttons in this app do the thing the screen is for, and this screen is for
                 reading a wage bill. */}
+            {changeTo && (
+              <Link
+                href={`/payroll?payee=${changeTo}#agree`}
+                className="inline-flex min-h-tap items-center text-sm font-medium
+                  text-brand-800 underline underline-offset-4 hover:text-brand-900"
+              >
+                {t.change}
+              </Link>
+            )}
             <button
               type="button"
               onClick={() => setAsking(true)}

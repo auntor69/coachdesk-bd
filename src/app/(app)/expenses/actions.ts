@@ -53,7 +53,17 @@ import { has } from '@/lib/plans'
 import type { CenterSession } from '@/lib/auth/session'
 import type { ExpenseCategory, PaymentMethod } from '@/lib/supabase/types'
 
-export type ExpenseState = { error?: string; ok?: string } | null
+/**
+ * The sentence, and the voucher it is about.
+ *
+ * `receipt` exists for the same reason the fee actions' does and the payslip's does: the
+ * confirmation used to name a voucher number in words and stop, leaving the paper reachable
+ * only by scrolling to the register below and noticing that the number in it was a link. The
+ * person who was paid for the rent is standing there, and the voucher is the sheet they sign.
+ */
+export type ExpenseState =
+  | { error?: string; ok?: string; receipt?: { id: string; no: number } }
+  | null
 
 /**
  * Membership tests rather than casts, built from the canonical lists.
@@ -226,10 +236,13 @@ export async function recordExpense(
       idempotency_key: key,
       branch_id: postedBranchId(formData),
     })
-    .select('voucher_no')
+    // The id as well as the number, so the form can offer the sheet the voucher is printed
+    // on without a second read of the row it just wrote.
+    .select('id, voucher_no')
     .single()
 
   let voucherNo: number
+  let voucherId: string
 
   if (writeError) {
     // The one error that is not a failure: 20260811000050's unique index refusing a second
@@ -241,7 +254,7 @@ export async function recordExpense(
 
     const { data: existing } = await supabase
       .from('expenses')
-      .select('voucher_no')
+      .select('id, voucher_no')
       .eq('coaching_center_id', centerId)
       .eq('idempotency_key', key)
       .maybeSingle()
@@ -267,13 +280,17 @@ export async function recordExpense(
     }
 
     voucherNo = existing.voucher_no
+    voucherId = existing.id
   } else {
     voucherNo = written.voucher_no
+    voucherId = written.id
   }
 
   revalidatePath('/expenses')
   // The same confirmation whether this was the first arrival or the fourth. Telling an
   // owner their expense was "already recorded" would read as a warning that they had paid
   // the rent twice, which is not what happened and not what the sentence is for.
-  return { ok: t.savedVoucher(voucherNo) }
+  // The voucher travels with the sentence, and on the replay branch above it is the row the
+  // first arrival wrote — the same sheet, not a second one, which is what the index is for.
+  return { ok: t.savedVoucher(voucherNo), receipt: { id: voucherId, no: voucherNo } }
 }

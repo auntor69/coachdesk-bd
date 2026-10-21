@@ -102,17 +102,18 @@ export type PlanLimits = {
    */
   maxBatches: number | null
   /**
-   * Distinct students the PLAN grants across the whole centre.
+   * Distinct students the PLAN grants, on the tiers that grant a number at all.
    *
-   * null on the per-student tiers, and it does not mean unlimited there — it means
-   * the number is not the plan's to give. A centre's ceiling is
-   * `greatest(what the floor included, what they have bought)`, which no constant
-   * can hold, so `studentCeiling()` is the only thing that answers for them and
-   * `app.student_ceiling` in 20260811000036 is what actually enforces it.
+   * NULL ON THE PER-STUDENT TIERS, and it means unlimited there rather than "the number is
+   * not ours to give" — which is what it used to mean when a centre's limit was
+   * `greatest(what the floor included, what it had bought)` in a column. Capacity is
+   * retired (§16.1 step 28): a centre pays for the students it has, the balance carries
+   * them, and there is no limit for a plan table to hold or a purchase to raise.
    *
-   * So `wouldExceed(plan, 'maxStudents', n)` is a correct question for a teacher
-   * tier and a meaningless one for a centre, where it always answers no. Anything
-   * gating a student on a centre plan reads the ceiling, not this.
+   * SO NULL IS THE WHOLE ANSWER, and every student gate depends on reading it that way —
+   * `wouldExceed` answers no for a null cap, `roomFor` answers null, and `limitRefusal`
+   * returns before it counts. A null read as zero here would refuse a centre's first
+   * student, on the tiers that are the actual business.
    */
   maxStudents: number | null
   /**
@@ -278,6 +279,25 @@ export const PLAN_RANK: Record<PlanId, number> = {
   teacher_plus: 1,
   center: 2,
   institution: 3,
+}
+
+/**
+ * Whether this is one of the two tiers that are one person (MASTERPLAN.md §2.1).
+ *
+ * THE LINE THE PRODUCT IS PRICED ON, asked by id rather than inferred, and it is asked by
+ * one decision: how a dry purse is read. A centre prepays a balance and is read-only when
+ * the money runs out (§4.4, §11.6); a teacher subscribes, and the month their money runs
+ * out they are a Teacher Free account — which is a real tier with a real cap, and the whole
+ * reason the free tier exists as a hook rather than as a demo.
+ *
+ * `hasStaff` answers a nearby question and is deliberately not reused: it reads
+ * `features.staffManagement`, which is about colleagues and is false on every solo tier
+ * only because a solo tier has no colleagues to manage. This is about who the customer is,
+ * and a feature flag moved for an unrelated pricing reason would take this decision with
+ * it.
+ */
+export function isTeacherTier(plan: PlanLimits): boolean {
+  return plan.id === 'teacher_free' || plan.id === 'teacher_plus'
 }
 
 /* -------------------------------------------------------------------------- */
@@ -494,6 +514,123 @@ export function nextBranchCostBdt(plan: PlanLimits, activeBranches: number): num
 }
 
 /**
+ * Why this organisation may not open one more building, or null when it may.
+ *
+ * THE RULE BOTH ENGINES ENFORCE, and it is one sentence: the three buildings an
+ * Institution includes are the tier's, and every building past them is a line on the
+ * monthly bill — so there has to be money on the balance to carry it. §11.6 already
+ * prices the branch inside the day's rate; what this answers is the half a prepaid
+ * product needs, which is whether the money to pay that line exists *before* the
+ * customer is given it.
+ *
+ * THE TRIAL IS WHAT MADE THIS NECESSARY. A center or institution signup is given days on
+ * the line (§4.3), not money, so its balance is zero while it is perfectly writable: every
+ * add-on the daily rate prices was free for those days, and a branch was the one with a
+ * headline on it. Nobody was ever meant to run fifty buildings on the house.
+ *
+ * WRITTEN OUT RATHER THAN ASKED OF THE DATABASE, because the form has to know before the
+ * tap and the action has to know before the insert. `app.guard_branch_ceiling()` in
+ * 20260811000096 is the same rule as a trigger, which is the copy that holds for a
+ * request that never went near a form, for a race between two owners, and for a
+ * PostgREST call with no screen behind it at all. The two are held to each other by
+ * `tests/plans.test.ts` and the RLS suite, the way `monthlyBillBdt` and `settle_billing`
+ * are.
+ *
+ * NULL IS NOT MONEY: a balance nobody could read is a refusal, the same direction every
+ * unreadable figure in this product takes. A free tier answers `no_branches` first, so it
+ * never reaches that line.
+ */
+export type BranchRefusal = 'no_branches' | 'needs_money'
+
+export function branchOpeningRefusal(
+  plan: PlanLimits,
+  opening: { activeBranches: number; balancePoisha: number | null },
+): BranchRefusal | null {
+  if (!plan.features.multipleBranches) return 'no_branches'
+  if (opening.activeBranches < INSTITUTION_INCLUDED_BRANCHES) return null
+  return opening.balancePoisha !== null && opening.balancePoisha > 0 ? null : 'needs_money'
+}
+
+/**
+ * Why this centre may not record one more teacher, or null when it may.
+ *
+ * THE SAME SENTENCE AS `branchOpeningRefusal`, ONE DIMENSION OVER, because the daily rate prices
+ * the same way: a seat past the two the tier includes is `CENTER_TEACHER_SEAT_BDT` a month, and
+ * a monthly line is opened only when there is something on the balance to carry it. Both are
+ * asked before the tap and both are enforced by a trigger — `app.guard_teacher_seat_funding` in
+ * 20260811000097 — for the reason 096 gives: a Server Action is a public endpoint, `teachers`
+ * holds INSERT for `authenticated`, and `plan_allowances.max_teachers` is deliberately null on
+ * the centre tiers, so nothing else in the database was ever going to ask.
+ *
+ * `maxTeachers` IS NULL ON EXACTLY THE TIERS THIS IS ABOUT, which is why the first line is the
+ * question rather than a formality. A teacher tier — including a centre trialling one, since
+ * `effectiveEntitlement` resolves the trial — has a hard one-seat wall and `limitRefusal` refuses
+ * on it with a sentence of its own; a null cap is the *absence* of that wall, so it is a null cap
+ * that reaches the money test. Reading it the other way round would refuse a teacher their own
+ * seat, which is the defect `plan-allowances.test.ts` exists to catch in the other copy.
+ *
+ * A TRIAL IS THE CASE THIS EXISTS FOR. A centre or institution signup is given granted days and
+ * no money (§4.3), so it is writable with an empty balance: without this, unlimited staff could
+ * be recorded on a tier that charges per seat, and nobody would ever be billed for them.
+ *
+ * NULL IS NOT MONEY, the same direction every unreadable figure in this product takes.
+ */
+export function teacherSeatOpeningRefusal(
+  plan: PlanLimits,
+  opening: { activeTeachers: number; balancePoisha: number | null },
+): 'needs_money' | null {
+  if (plan.maxTeachers !== null) return null
+  if (opening.activeTeachers < CENTER_FREE_TEACHER_SEATS) return null
+  return opening.balancePoisha !== null && opening.balancePoisha > 0 ? null : 'needs_money'
+}
+
+/**
+ * Why this organisation may not admit one more student, or null when it may.
+ *
+ * THE THIRD OF THE THREE, and the only one whose answer is not purely money. A seat and a
+ * building are add-ons, so "what the tier includes is the tier's and the rest is a monthly
+ * line" is the whole rule and money is the whole remedy. The roster is the product: a
+ * per-student tier's price IS the student (§3.2, §3.3), `plan_allowances.included_students`
+ * is not a band anybody pays from any more, and a money rule read literally would refuse the
+ * first admission to a signup holding nothing — a three-day trial of a product that cannot
+ * hold a roster. So what bounds it is a NUMBER, `platform_settings.trial_roster_ceiling`:
+ * how much of our database we carry for an account that has never paid us. Money lifts the
+ * bound entirely, which is the second half of the sentence a screen writes from this.
+ *
+ * THE TEACHER TIERS KEEP THEIR OWN WALL and never reach this function's second line — a
+ * `maxStudents` that is not null is a tier the ceiling already covers, refused by
+ * `limitRefusal` with a sentence of its own and by `app.guard_student_capacity` with `CD001`.
+ * Reading it the other way round would refuse a Teacher Pro trial the places it was granted.
+ *
+ * NULL IS NOT ZERO, and the difference is a policy rather than a reading:
+ *   `null` — nobody could read the row. REFUSED, because a policy that cannot be stated must
+ *            not be read as no bound;
+ *   `0`    — the founder's own "no bound". Allowed, and the only value that opens this rule.
+ *
+ * NULL IS NOT MONEY either, for the reason `teacherSeatOpeningRefusal` records.
+ *
+ * `app.guard_trial_roster()` in 20260811000098 is the same rule as a trigger, which is the
+ * copy that holds for a request that never went near a form, for a race between two managers,
+ * and for a PostgREST call with no screen behind it at all. The two are held to each other by
+ * tests/plans.test.ts and the RLS suite.
+ */
+export function trialRosterRefusal(
+  plan: PlanLimits,
+  opening: {
+    activeStudents: number
+    balancePoisha: number | null
+    /** `platform_settings.trial_roster_ceiling`, or null when it could not be read. */
+    ceiling: number | null
+  },
+): 'needs_money' | null {
+  if (plan.maxStudents !== null) return null
+  if (opening.ceiling === null) return 'needs_money'
+  if (opening.ceiling === 0) return null
+  if (opening.activeStudents < opening.ceiling) return null
+  return opening.balancePoisha !== null && opening.balancePoisha > 0 ? null : 'needs_money'
+}
+
+/**
  * What we charge this month.
  *
  * COUNTED IN DISTINCT STUDENTS, NOT ENROLLMENTS, and that is a correction rather
@@ -583,287 +720,6 @@ export function includedStudents(plan: PlanLimits): number {
   return plan.maxStudents ?? 0
 }
 
-/**
- * How many active students this organisation may hold, and what to do about it.
- *
- * A DISCRIMINATED SHAPE AND NOT A NUMBER, because the number alone cannot be acted
- * on. A teacher at 30 of 30 needs to hear "this is as far as the free plan goes"; a
- * centre at 120 of 120 needs to hear "buy more places, here is the price" — and the
- * centre must NOT be told to change plan, because they are already on the one they
- * want. One integer forces every screen to re-derive which sentence it is from
- * `plan.pricing`, and the third screen to do it will get it wrong.
- *
- * NOT `number | null` EITHER, and that is a lesson this repo has already paid for.
- * `null` means unlimited at four cap call sites in this same file, so a ceiling that
- * returned null for "we cannot say" would read as "no limit" at whichever one forgot
- * — the identical sentinel collision that produced `TeacherScope` and `OwnTeacher`.
- * Every arm here carries a real ceiling and the caller must open it to reach one.
- */
-export type StudentCeiling =
-  /** Fixed by the tier. More students means a different plan. */
-  | { kind: 'plan'; ceiling: number }
-  /**
-   * Bought. More students means more places, at a price.
-   *
-   * `included` and `purchased` are both here because the top-up dialog needs the
-   * difference: what the floor gave is not refundable and not re-sellable, and a
-   * centre asking "what have I actually paid for" is asking for `purchased`.
-   */
-  | { kind: 'purchased'; ceiling: number; included: number; purchased: number }
-
-/**
- * The ceiling this organisation is entitled to, from its plan and what it has bought.
- *
- * THE SAME RULE AS `app.student_ceiling`, deliberately duplicated: that function is
- * what a purchase is priced against and this is what explains it, and they have to
- * agree or the app promises room the database refuses. (A live trial sits on top of
- * both — `effectiveEntitlement` here, `app.admitted_ceiling` there, which is what the
- * capacity trigger reads.) `greatest`, not the purchased figure
- * alone, so a centre is never below its own floor's allowance — a capacity of zero is
- * what every fresh centre looks like before its first top-up, and it must not mean
- * "no students".
- *
- * Purchased capacity is ignored on the teacher tiers for the same reason the SQL
- * ignores it: a centre that bought 900 places and downgraded to Teacher Pro lands on
- * 150, because limits apply to new actions and the new action is priced by the new
- * plan. The places are not lost: `student_capacity` still holds the number — this
- * function ignores it on a teacher tier rather than the column being cleared — and the
- * purchase itself is on the record as a `payment_intents` row with the settled
- * `payments` row pointing back at it. So re-upgrading restores them.
- */
-export function studentCeiling(plan: PlanLimits, purchasedCapacity: number): StudentCeiling {
-  const included = includedStudents(plan)
-  if (plan.pricing !== 'per_student') return { kind: 'plan', ceiling: included }
-
-  // A negative or non-numeric capacity is a column that has gone wrong, and the safe
-  // reading of it is "nothing bought" rather than a ceiling below the floor's own.
-  const purchased = Number.isFinite(purchasedCapacity)
-    ? Math.max(0, Math.floor(purchasedCapacity))
-    : 0
-
-  return { kind: 'purchased', ceiling: Math.max(included, purchased), included, purchased }
-}
-
-/**
- * How many more students fit, given the ceiling and what is already there.
- *
- * Never negative, for the reason `roomFor` is not: a centre downgraded below its own
- * roster is a real state, and "you may add -70 students" is not a sentence.
- */
-export function studentRoom(ceiling: StudentCeiling, activeStudents: number): number {
-  if (!Number.isFinite(activeStudents)) return 0
-  return Math.max(0, ceiling.ceiling - Math.floor(activeStudents))
-}
-
-/**
- * §3.7's thresholds, as constants rather than as literals in three screens.
- *
- * A share and not a count, because the same "twelve left" is a comfortable month for a
- * centre of three hundred and next week's problem for a centre of thirty — and the
- * screens that say it out loud already print both numbers for that reason.
- */
-export const CAPACITY_NOTICE_SHARE = 0.2
-export const CAPACITY_URGENT_SHARE = 0.05
-
-/**
- * How many places a branch manager's ask is worth, from §3.7's own button:
- * "[ Request 25 more places ]".
- *
- * A constant and not a field, because the manager is not the one deciding. They are
- * telling HQ that the register is full; how much room to buy is priced from the bands
- * by whoever pays. A box here would invite a manager to type 500 and read the refusal
- * as HQ saying no to them.
- */
-export const ASK_PLACES = 25
-
-/**
- * How close this organisation is to its ceiling, in one word.
- *
- * `full` is the state the database enforces (CD001) and the student form refuses; the
- * other two are warnings, and they exist because the alternative is finding out at the
- * admission desk. §3.7: a notice at a fifth left, urgent at a twentieth.
- *
- * ORGANISATION-WIDE, ALWAYS. The seat belongs to the institution and not to the branch
- * that filled it (§3.6), so `activeStudents` is every active student in the centre and
- * never a branch's own. A branch-scoped count against this ceiling would report a
- * Chattogram manager as having 1,300 of 2,600 places used, which is the per-branch quota
- * this product deliberately does not have.
- *
- * ON THE EFFECTIVE CEILING — `session.ceiling`, which is what every screen that prints a
- * place count already shows. A trial of a higher tier moves that ceiling, and it used to
- * move only this half: `app.student_ceiling` reads the paid `coaching_centers.plan`
- * column, so a trialling centre was told `fine` here and refused CD001 at the form. What
- * a trial grants was the open question and 20260811000060 answers it — the trial tier's
- * places, through `app.admitted_ceiling`, which the capacity trigger now reads. Passing
- * the paid ceiling here instead would only have moved the contradiction, and told an
- * owner to buy the places a founder had just given them.
- */
-export type CapacityPressure = {
-  level: 'fine' | 'notice' | 'urgent' | 'full'
-  /** Places left, which every level names — see CAPACITY_NOTICE_SHARE. */
-  remaining: number
-  ceiling: number
-}
-
-export function capacityPressure(
-  ceiling: StudentCeiling,
-  activeStudents: number,
-): CapacityPressure {
-  const remaining = studentRoom(ceiling, activeStudents)
-  const total = ceiling.ceiling
-  const at = (level: CapacityPressure['level']) => ({ level, remaining, ceiling: total })
-
-  if (remaining === 0) return at('full')
-  // A ceiling of nought with room left is not a state any plan produces, and dividing by
-  // it would make every share Infinity — which would read as "fine" forever.
-  if (!(total > 0)) return at('urgent')
-
-  const share = remaining / total
-  if (share <= CAPACITY_URGENT_SHARE) return at('urgent')
-  if (share <= CAPACITY_NOTICE_SHARE) return at('notice')
-  return at('fine')
-}
-
-/* -------------------------------------------------------------------------- */
-/* What another student place costs                                           */
-/* -------------------------------------------------------------------------- */
-
-/** One band's share of a seat purchase, for the breakdown a price has to show. */
-export type SeatBand = { seats: number; rateBdt: number; costBdt: number }
-
-/**
- * A priced request for more student places, or the reason there is nothing to pay.
- *
- * ONE SHAPE FOR BOTH SCREENS. §3.4 adds one student past the ceiling and §3.5 pastes
- * two hundred, and the difference between them is the quantity — the bands, the floor's
- * free seats and the "you already have room" case are the same question asked twice. Two
- * functions would be two chances to answer it differently, and the one that would drift
- * is the import, because it is the one nobody tests by hand.
- *
- * `seats` is what must be BOUGHT, not what was asked for: a centre with four places
- * free that admits ten buys six.
- */
-export type SeatQuote = {
-  /** Places to buy. Zero means the request already fits. */
-  seats: number
-  costBdt: number
-  /** Per-band, in ascending rate order, for the "180 at ৳18, 20 at ৳12" line. */
-  bands: SeatBand[]
-  /** The ceiling this purchase would produce, which is what the server writes. */
-  newCeiling: number
-  /** The ceiling now, so a screen can say "120 of 120" without asking twice. */
-  ceiling: number
-}
-
-/**
- * Which bands a purchase falls in, and what each part of it costs.
- *
- * MARGINAL, so raising a ceiling from 120 to 320 is priced as the seats between them
- * and never as a fresh bill for 320. §3.5's worked example is exactly this: 180 places
- * at ৳18 and 20 at ৳12, ৳3,480 — and it is shown broken down because a bare ৳3,480
- * invites the suspicion that it was invented.
- *
- * Ceilings in, not student counts. The seats between two ceilings are what money buys;
- * how many are occupied is a different question, asked by `studentRoom`.
- */
-export function capacityBands(fromCeiling: number, toCeiling: number): SeatBand[] {
-  const from = Number.isFinite(fromCeiling) ? Math.max(0, Math.floor(fromCeiling)) : 0
-  const to = Number.isFinite(toCeiling) ? Math.floor(toCeiling) : from
-  if (to <= from) return []
-
-  const out: SeatBand[] = []
-  let bandFloor = 0
-
-  for (const band of STUDENT_BANDS) {
-    // The last band has no top, so it stops wherever the purchase does.
-    const bandTop = band.upTo ?? to
-    const seats = Math.min(to, bandTop) - Math.max(from, bandFloor)
-
-    if (seats > 0) {
-      out.push({ seats, rateBdt: band.rateBdt, costBdt: seats * band.rateBdt })
-    }
-
-    if (bandTop >= to) break
-    bandFloor = band.upTo ?? bandFloor
-  }
-
-  return out
-}
-
-/**
- * What it costs to raise the ceiling from one number to another.
- *
- * Equal to `studentChargeBdt(to) − studentChargeBdt(from)` by construction, and
- * tests/seats.test.ts asserts that across the band boundaries rather than trusting it:
- * the two walk the same table in opposite directions, so a band edited into one and not
- * the other is a monthly bill that disagrees with the price of the seat that caused it.
- */
-export function capacityCostBdt(fromCeiling: number, toCeiling: number): number {
-  return capacityBands(fromCeiling, toCeiling).reduce((sum, band) => sum + band.costBdt, 0)
-}
-
-/**
- * What the next single place costs — §3.4's "one more place costs ৳18".
- *
- * Takes the CEILING and not the student count, so the floor's own seats are already in
- * it: a centre at 50 students has a ceiling of 79 and is not asked for money at all,
- * which is `quoteSeats` returning zero seats rather than this returning zero taka.
- *
- * ONE SEAT IS MISPRICED BY DESIGN, and it is the eightieth. The floor buys 79 seats for
- * ৳1,999 but their band-sum is ৳1,975, so ৳24 of the floor is change nobody gets back —
- * the eightieth place is charged ৳25 while the monthly bill it produces rises by ৳1.
- * Pricing it off the bill instead would make the first seat above the floor nearly free
- * and break the one property worth having, that a seat costs the same whoever asks and
- * whenever. Documented rather than smoothed; ৳24 once is not worth a second price list.
- */
-export function nextSeatCostBdt(ceiling: number): number {
-  return capacityCostBdt(ceiling, ceiling + 1)
-}
-
-/**
- * Price a request for `wanted` more active students.
- *
- * THE TEACHER TIERS RETURN ZERO SEATS AND ZERO TAKA, which is not "it is free" — it is
- * "this is not a purchase". A ceiling of `kind: 'plan'` moves by changing plan, so a
- * price here would be a price for something we do not sell, and every caller has to
- * open the ceiling to find out which sentence it is showing. That is the whole reason
- * `StudentCeiling` is a discriminated union rather than a number.
- *
- * NEVER TRUSTED FROM A BROWSER (§11.4). This computes what a screen may SHOW; the amount
- * that is charged is computed again on the server from the centre's own row, because a
- * quote that arrives in a form body is a price the customer chose.
- */
-export function quoteSeats(
-  ceiling: StudentCeiling,
-  activeStudents: number,
-  wanted: number,
-): SeatQuote {
-  const free = studentRoom(ceiling, activeStudents)
-  const asked = Number.isFinite(wanted) ? Math.max(0, Math.floor(wanted)) : 0
-  const shortfall = Math.max(0, asked - free)
-
-  const nothingToBuy: SeatQuote = {
-    seats: 0,
-    costBdt: 0,
-    bands: [],
-    newCeiling: ceiling.ceiling,
-    ceiling: ceiling.ceiling,
-  }
-
-  if (ceiling.kind === 'plan' || shortfall === 0) return nothingToBuy
-
-  const newCeiling = ceiling.ceiling + shortfall
-  const bands = capacityBands(ceiling.ceiling, newCeiling)
-
-  return {
-    seats: shortfall,
-    costBdt: bands.reduce((sum, band) => sum + band.costBdt, 0),
-    bands,
-    newCeiling,
-    ceiling: ceiling.ceiling,
-  }
-}
-
 /* -------------------------------------------------------------------------- */
 /* Reading a plan                                                             */
 /* -------------------------------------------------------------------------- */
@@ -937,14 +793,16 @@ export function wouldExceed(
  * named here instead — the same reason `hasStaff` exists rather than a fourth reading
  * of `maxTeachers`.
  *
- * /settings/plan is the deliberate exception and reads the raw number: stating the
- * limits IS that screen's job, and so is the refusal copy on the add forms, which
- * names the ceiling at the moment somebody reaches it.
+ * The money screen is the deliberate exception and prints the raw number: its
+ * difference block states the limits a move would raise, on the teacher tiers where
+ * the ladder is still a choice rather than a consequence of size — and the refusal
+ * copy on the add forms names the cap at the moment somebody reaches it.
  */
 export function capIsQuota(plan: PlanLimits, what: LimitKey): boolean {
   if (plan[what] === null) return false
-  // Every non-null cap on a per-student tier is a guardrail: the number that tier
-  // sells is students, and that one comes from `studentCeiling`, not from this table.
+  // Every non-null cap on a per-student tier is a guardrail: that tier sells students and
+  // does not limit them at all, so the only numbers left on it — batches, subjects — are
+  // abuse ceilings we set rather than anything it paid for.
   return plan.pricing !== 'per_student'
 }
 
@@ -1000,12 +858,12 @@ export function overStaffSeats(plan: PlanLimits, activeTeachers: number): boolea
  * whole, with the number that would fit, rather than let 15 through and lose 65
  * without saying which.
  *
- * NOT FOR STUDENTS, and no caller in `src/` uses it at all today — the only bulk
- * import in the product is the student paste, and that now asks `studentRoom`. The
- * reason is the null above: on the two centre tiers `maxStudents` is null, so this
- * answered "unlimited" for the tiers that charge by the student, and the import
- * screen believed it. Anything bulk-capped later should ask whether its own limit
- * has the same shape before reaching for this.
+ * ONE CALLER, AND IT IS THE STUDENT PASTE (§16.1 step 28). `importStudents` asks it how
+ * many of the pasted names fit the plan's own `maxStudents`, and the null above is read
+ * as "nothing to run out of" — which is every per-student tier, the plans whose students
+ * are priced by the balance instead. That reading is the whole reason this is a function
+ * and not a subtraction at the call site: null and zero are opposite answers, and a paste
+ * is where confusing them costs an afternoon's typing.
  */
 export function roomFor(
   plan: PlanLimits,

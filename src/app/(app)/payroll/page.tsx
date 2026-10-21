@@ -1,15 +1,18 @@
 import Link from 'next/link'
 
 import { PageHeader } from '@/components/page-header'
-import { Card } from '@/components/ui'
+import { SearchBox, SearchEmpty } from '@/components/search-box'
+import { Card, LinkButton } from '@/components/ui'
 import { getSession, pageCapability } from '@/lib/auth/session'
 import { formatDate, todayInDhaka } from '@/lib/bd/time'
 import { dict, DEFAULT_LOCALE } from '@/lib/i18n'
 import { formatTaka } from '@/lib/money'
 import { PER_CLASS_BASIS } from '@/lib/payroll/basis'
-import { billRows, tallyBill, withoutTerms, type Payee } from '@/lib/payroll/bill'
+import { billRows, payeeValue, tallyBill, withoutTerms, type Payee } from '@/lib/payroll/bill'
 import { has, planName, PLANS } from '@/lib/plans'
-import { jobTitle } from '@/lib/staff/roles'
+import { matchesSearch, searchTerms } from '@/lib/search'
+import { can } from '@/lib/staff/capabilities'
+import { EMPLOYEE_ROLES, jobTitle } from '@/lib/staff/roles'
 import { createClient } from '@/lib/supabase/server'
 import { TermsForm } from './terms-form'
 import { TermsRow } from './terms-row'
@@ -64,7 +67,21 @@ const TERMS_COLUMNS =
  * whose owner unticked it would get an empty list, and an empty list here means a centre
  * that pays nobody. `pageCapability` is the same 403 the rank check was, one call.
  */
-export default async function PayrollPage() {
+export default async function PayrollPage({
+  searchParams,
+}: {
+  /**
+   * Whose salary the form should open on — `employee:<id>` or `teacher:<id>`, from a row
+   * on the bill or from the list of people with no agreement.
+   *
+   * In the URL rather than in client state, for the reason SearchBox gives about its own
+   * query: it survives a reload, a back button and the offline cache, and it needs no
+   * JavaScript to work at all. Validated against the people this page is actually offering
+   * below, so a hand-typed id is ignored rather than answered with a selection that is not
+   * in the list.
+   */
+  searchParams: Promise<{ payee?: string; q?: string }>
+}) {
   const session = await pageCapability('payroll')
 
   const locale = session.locale
@@ -208,6 +225,58 @@ export default async function PayrollPage() {
     .sort((a, b) => a.name.localeCompare(b.name, 'bn-BD'))
 
   /*
+   * `?payee=` PICKED UP HERE, against the same list the picker is drawn from.
+   *
+   * A row on the bill and a name in the "nobody has agreed a salary" list both link back
+   * to this page with the person's value, which is the whole of what those two taps do —
+   * the alternative was finding the form again and picking a name out of twenty, and the
+   * question an owner arrives with is almost always about somebody they were just
+   * looking at. Somebody who has left is not `pickable` and so is not offered by a URL
+   * either, exactly as they are not offered by the select.
+   */
+  const { payee: wantedPayee, q: rawQuery } = await searchParams
+  const defaultPayee =
+    typeof wantedPayee === 'string' &&
+    pickable.some((p) => payeeValue(p.kind, p.id) === wantedPayee)
+      ? wantedPayee
+      : ''
+
+  /*
+   * THE BOX THAT FINDS ONE AGREEMENT IN TWENTY, which is what this screen is opened for.
+   * Every other long list in the product has one — the fee board, the register, the exams
+   * list, the roster, the weekly list — and the wage bill was the odd one out: a centre pays
+   * fourteen people and an owner looking for one of them was reading fourteen cards. It
+   * matters more here than on those, because the question is usually "what does she earn"
+   * or "give her a rise", asked about a name somebody already has in mind.
+   *
+   * IT FILTERS THE LIST AND NOTHING ELSE, the fee board's own rule and the reason
+   * `lib/search.ts` matches in memory: the total in the rail, the count of monthly
+   * agreements and the warning about somebody who has left are all computed from the
+   * unfiltered rows. An owner typing a name is asking which row is hers, not asking the
+   * centre's wage bill to become hers.
+   *
+   * Two lists narrow, because two lists answer the same question about the same people:
+   * the bill, and the people with nothing agreed yet. `?payee=` is not one of the box's
+   * `keep` values on purpose: choosing a person is the form's job, and a search that left
+   * the last pick behind would open the form on somebody the reader is no longer looking
+   * at.
+   */
+  const query = typeof rawQuery === 'string' ? rawQuery : ''
+  // `words` and not `terms`: this page already has one of those, and it is the live salary
+  // agreements the bill is built from.
+  const words = searchTerms(query)
+
+  const shown =
+    words.length === 0
+      ? rows
+      : rows.filter((row) => matchesSearch([row.name, row.job, row.note], words))
+
+  const shownMissing =
+    words.length === 0
+      ? missing
+      : missing.filter((p) => matchesSearch([p.name, p.job], words))
+
+  /*
    * Whether this centre may write, answered once for the form and for every row's stop
    * verb. `requireWritable` is in front of both actions and is the check that counts; this
    * is so a lapsed subscription is learned from the sentence the shell is already showing
@@ -215,6 +284,27 @@ export default async function PayrollPage() {
    * bill — the figures are what they need to decide whether to renew.
    */
   const canWrite = session.access === 'full'
+
+  /*
+   * Whether the form may write a person as well as an agreement, answered here so the field
+   * exists only where it could work. Two gates, both re-checked in the action: `staff`
+   * (§6.2 — the policies on `employees` are staff-admin's), and the centre plan's staff
+   * management, which is what buys the staff screen at all.
+   */
+  const canHire =
+    canWrite && can(session.active.capabilities, 'staff') && has(session.plan, 'staffManagement')
+
+  // Whether the centre has ever written down a teacher. Read from the list already in hand
+  // — a centre that pays nobody through a teacher row is exactly the centre the form's
+  // "this adds staff, not teachers" note is for.
+  const noTeachers = (teachers ?? []).length === 0
+
+  // The fourteen jobs, labelled once for the form's one picker. Same list and same order as
+  // the staff screen's own, because it is the same column behind both.
+  const roles = EMPLOYEE_ROLES.map((role) => ({
+    value: role,
+    label: d.settings.staff.roles[role],
+  }))
 
   return (
     <div className="flex flex-col gap-4">
@@ -238,13 +328,9 @@ export default async function PayrollPage() {
          * month, and the figures are part of what they need to decide whether to renew.
          */
         actions={
-          <Link
-            href="/payroll/pay"
-            className="inline-flex min-h-tap items-center rounded-xl border-2 border-brand-500
-              bg-brand-50 px-4 font-medium text-brand-800"
-          >
+          <LinkButton href="/payroll/pay" variant="tinted">
             {t.payLink} →
-          </Link>
+          </LinkButton>
         }
       />
 
@@ -319,10 +405,24 @@ export default async function PayrollPage() {
               that submits into a refusal is a worse way to learn the subscription lapsed
               than the sentence the shell is already showing. */}
           {canWrite && (
-            <Card className="order-4">
+            // `id` is the anchor the two links into this form land on. Below `lg` the
+            // rail's blocks are in `order` and the form is not the first of them, so a tap
+            // on a name at the foot of the page would otherwise leave the reader at the
+            // top of a page they have to scroll again.
+            //
+            // And keyed on the person it opens on, because `useState` in a client
+            // component reads its initial value once — a soft navigation from one row to
+            // another re-renders this with a new `defaultPayee` and the picker would keep
+            // showing the last person it was given.
+            <Card className="order-4 scroll-mt-4" id="agree">
               <TermsForm
+                key={defaultPayee || 'none'}
                 people={pickable}
                 bases={t.bases}
+                roles={roles}
+                canHire={canHire}
+                noTeachers={noTeachers}
+                defaultPayee={defaultPayee}
                 t={d.salaryForm}
                 common={d.common}
                 // Computed here, once, on the server: a client component that read the
@@ -340,18 +440,31 @@ export default async function PayrollPage() {
             empty and this list is most of the screen, and on every later visit the bill is
             what they came for.
           */}
-          {missing.length > 0 && (
+          {shownMissing.length > 0 && (
             <section
               className="order-6 rounded-xl border border-dashed border-line bg-surface-alt
                 p-4"
             >
               <h2 className="font-medium text-ink">{t.missingTitle}</h2>
               <p className="mt-1 text-sm text-ink-soft">{t.missingBody}</p>
-              <ul className="mt-2 flex flex-col gap-1">
-                {missing.map((p) => (
-                  <li key={`${p.kind}:${p.id}`} className="text-sm text-ink">
-                    {p.name}
-                    <span className="ml-2 text-ink-faint">{p.job ?? t.teacherJob}</span>
+              {/* Every name is the way to agree it. This list exists to answer "who have we
+                  missed", and until it was tappable the answer it gave was a name the owner
+                  then had to find again in a picker of twenty, above them on a phone. One
+                  tap now opens the form on that person — the same `?payee=` the bill's rows
+                  use. */}
+              <ul className="mt-2 flex flex-col">
+                {shownMissing.map((p) => (
+                  <li key={`${p.kind}:${p.id}`}>
+                    <Link
+                      href={`/payroll?payee=${payeeValue(p.kind, p.id)}#agree`}
+                      className="flex min-h-tap items-center justify-between gap-3 text-sm
+                        text-ink hover:text-brand-800"
+                    >
+                      <span className="truncate font-medium">{p.name}</span>
+                      <span className="shrink-0 text-ink-faint">
+                        {p.job ?? t.teacherJob} →
+                      </span>
+                    </Link>
                   </li>
                 ))}
               </ul>
@@ -364,12 +477,35 @@ export default async function PayrollPage() {
               agreements yet or a list of them, and both land in the same place. */}
           <div className="order-5 flex flex-col gap-3">
             {rows.length === 0 ? (
+              // The sentence and, under it, the way to stop it being true. This card is the
+              // whole of the main column on a centre's first visit, and it used to be a
+              // fact with nothing to press — on a phone the form it describes is above
+              // the fold by then, and on a laptop it is the column beside it.
               <Card>
                 <p className="text-ink-soft">{t.empty}</p>
+                {canWrite && (
+                  <Link
+                    href="/payroll#agree"
+                    className="mt-3 inline-flex min-h-tap items-center font-medium
+                      text-brand-800 underline underline-offset-4 hover:text-brand-900"
+                  >
+                    {t.emptyDoor} →
+                  </Link>
+                )}
               </Card>
             ) : (
               <>
                 <h2 className="font-medium text-ink">{t.billTitle}</h2>
+
+                {/* Under the heading rather than above it, unlike the other lists: here the
+                    heading names what the cards are, and the box filters them. On the fee
+                    board the box is the whole control surface and there is no heading over
+                    the rows at all. */}
+                <SearchBox
+                  q={query}
+                  t={d.search}
+                  count={{ shown: shown.length, total: rows.length }}
+                />
 
                 {/* Two cards abreast wherever there is room for two, one where there is not.
                     Each card is a name, a figure, a line of small print and a verb — a shape
@@ -377,38 +513,50 @@ export default async function PayrollPage() {
                     agreements was scrolling all twenty. The middle step back to one column is
                     not fussiness: from `lg` this column is 401px, and half of that is narrower
                     than the phone the card was drawn for. */}
-                <ul className="grid gap-2 sm:grid-cols-2 lg:grid-cols-1 xl:grid-cols-2">
-                  {rows.map((row) => (
-                    <TermsRow
-                      key={row.termsId}
-                      termsId={row.termsId}
-                      name={row.name ?? d.common.unknown}
-                      job={row.job ?? t.teacherJob}
-                      gone={row.gone}
-                      offLabel={t.inactive}
-                      // The figure the row prints, built here because both shapes of it take
-                      // an argument and `T` maps a function leaf to `never`. A per-class row
-                      // shows a rate and says so in words: ৳350 printed where the row above
-                      // prints ৳13,000 is a teacher who looks very cheap.
-                      figure={
-                        row.basis === PER_CLASS_BASIS
-                          ? row.perClass === null
-                            ? '—'
-                            : t.perClassRate(formatTaka(row.perClass))
-                          : formatTaka(row.net)
-                      }
-                      // How the salary is worked out and the day it began, joined here the way
-                      // the staff list joins its own small print: `since` takes an argument, so
-                      // the row cannot be handed the words to build it for itself. The basis is
-                      // in the faint line rather than beside the figure — under a per-class
-                      // figure that already says "per class" it would be the same word twice.
-                      meta={`${t.bases[row.basis]} · ${t.since(formatDate(row.since, locale))}`}
-                      note={row.note}
-                      canWrite={canWrite}
-                      t={d.salaryRow}
-                    />
-                  ))}
-                </ul>
+                {shown.length === 0 ? (
+                  /* Not `t.empty`, which is a fact about the centre. "No salary has been
+                     agreed with anybody yet" under a filtered bill is the app telling an
+                     owner their payroll is empty because they typed a name wrong — the
+                     same trap SearchEmpty exists for on the board. */
+                  <SearchEmpty t={d.search} />
+                ) : (
+                  <ul className="grid gap-2 sm:grid-cols-2 lg:grid-cols-1 xl:grid-cols-2">
+                    {shown.map((row) => (
+                      <TermsRow
+                        key={row.termsId}
+                        termsId={row.termsId}
+                        name={row.name ?? d.common.unknown}
+                        job={row.job ?? t.teacherJob}
+                        gone={row.gone}
+                        offLabel={t.inactive}
+                        // The figure the row prints, built here because both shapes of it take
+                        // an argument and `T` maps a function leaf to `never`. A per-class row
+                        // shows a rate and says so in words: ৳350 printed where the row above
+                        // prints ৳13,000 is a teacher who looks very cheap.
+                        figure={
+                          row.basis === PER_CLASS_BASIS
+                            ? row.perClass === null
+                              ? '—'
+                              : t.perClassRate(formatTaka(row.perClass))
+                            : formatTaka(row.net)
+                        }
+                        // How the salary is worked out and the day it began, joined here the way
+                        // the staff list joins its own small print: `since` takes an argument, so
+                        // the row cannot be handed the words to build it for itself. The basis is
+                        // in the faint line rather than beside the figure — under a per-class
+                        // figure that already says "per class" it would be the same word twice.
+                        meta={`${t.bases[row.basis]} · ${t.since(formatDate(row.since, locale))}`}
+                        note={row.note}
+                        // The way to a raise, with the person already chosen. Null for somebody
+                        // who has left: the form refuses them and does not offer them, so a
+                        // link that lands on an empty picker would be a door into a wall.
+                        changeTo={row.gone ? null : payeeValue(row.payeeKind, row.payeeId)}
+                        canWrite={canWrite}
+                        t={d.salaryRow}
+                      />
+                    ))}
+                  </ul>
+                )}
               </>
             )}
           </div>

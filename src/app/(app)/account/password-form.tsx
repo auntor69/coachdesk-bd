@@ -8,7 +8,7 @@
  * around — so a live session proves somebody signed in, not who is holding the phone.
  * The action re-checks it against the auth server; this form only collects it.
  */
-import { useActionState } from 'react'
+import { useActionState, useEffect, useRef } from 'react'
 
 import { Alert, Button, Field } from '@/components/ui'
 import { MIN_PASSWORD } from '@/lib/auth/password'
@@ -34,8 +34,24 @@ export function PasswordForm({
     null,
   )
 
+  /*
+   * Emptied on success, and it matters more here than anywhere else the app does it.
+   * These three boxes are the only place a password is ever typed, they are two thirds
+   * secrets, and the phone they are typed on is the centre's and gets passed around — the
+   * same assumption this file's own docblock and the current-password box are built on.
+   * Left filled, the reader who just changed their password walks away from a screen still
+   * holding it, and the box marked "current" now holds one that no longer works: pressing
+   * the button a second time — which is exactly what somebody does when a save is not
+   * obviously a save — answers "That is not your current password."
+   */
+  const formRef = useRef<HTMLFormElement>(null)
+
+  useEffect(() => {
+    if (state?.ok) formRef.current?.reset()
+  }, [state])
+
   return (
-    <form action={action} className="flex flex-col gap-3">
+    <form ref={formRef} action={action} className="flex flex-col gap-3">
       {state?.error && <Alert>{state.error}</Alert>}
       {state?.ok && (
         <p role="status" className="text-sm font-medium text-brand-700">

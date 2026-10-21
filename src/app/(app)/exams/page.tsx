@@ -1,6 +1,6 @@
 import Link from 'next/link'
 
-import { Card } from '@/components/ui'
+import { Card, LinkButton } from '@/components/ui'
 import { PageHeader } from '@/components/page-header'
 import { SearchBox, SearchEmpty } from '@/components/search-box'
 import { pageRole, getSession, canManageExams } from '@/lib/auth/session'
@@ -346,13 +346,9 @@ export default async function ExamsPage({
         subtitle={t.subtitle}
         actions={
           canMark && (
-            <Link
-              href="/exams/new"
-              className="inline-flex min-h-tap items-center justify-center rounded-xl
-                bg-brand-600 px-5 font-semibold text-white hover:bg-brand-700"
-            >
+            <LinkButton href="/exams/new">
               {t.new}
-            </Link>
+            </LinkButton>
           )
         }
       />
@@ -368,13 +364,9 @@ export default async function ExamsPage({
             {canMark ? t.emptyBody : t.emptyBodyReadOnly}
           </p>
           {canMark && (
-            <Link
-              href="/exams/new"
-              className="mt-4 inline-flex min-h-tap items-center justify-center
-                rounded-xl bg-brand-600 px-5 font-semibold text-white"
-            >
+            <LinkButton href="/exams/new" className="mt-4">
               {t.create}
-            </Link>
+            </LinkButton>
           )}
         </Card>
       ) : (

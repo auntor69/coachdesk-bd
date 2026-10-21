@@ -78,7 +78,7 @@ const EXEMPT: Record<string, string> = {
   'src/app/(app)/account/actions.ts': 'the account, not the centre',
   // The button that says "put me on a plan". Refusing it would refuse the exact thing
   // read-only exists to provoke.
-  'src/app/(app)/settings/plan/actions.ts': 'asking to pay is the way out',
+  'src/app/(app)/settings/billing/actions.ts': 'asking to pay is the way out',
 }
 
 test('every action module under (app) either runs the write check or explains itself', () => {
@@ -464,7 +464,7 @@ test('the arm names the one standing that may write, and not the one that may no
    * A screen written the other way round is the same fail-open one layer up — and it
    * would also drop out of `ARMED` above, taking the ordering rule below with it.
    *
-   * The `if` is what makes this a decision. `settings/plan/page.tsx` reads
+   * The `if` is what makes this a decision. The money screen reads
    * `access === 'read_only'` to pick a badge colour, which is a tone and not a refusal.
    */
   for (const file of PAGES) {

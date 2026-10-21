@@ -111,16 +111,17 @@ test('every block has a place in the phone order, and no two share one', () => {
 
   for (const [value, n] of counts) assert.equal(n, 1, `order-${value} is used ${n} times`)
 
-  // 2 to 6 with nothing missing: places warning, paste door, two problem cards, roster.
-  // There is no `order-1` any more — that was the heading's twelfth-column cell, and the
-  // bar above the grid replaced it. The numbers were left where they were rather than
-  // shifted down, because only their relative order matters and renumbering five blocks to
-  // save a 1 is five chances to swap two of them.
+  // 3 to 6 with nothing missing: paste door, two problem cards, roster. There is no
+  // `order-1` — that was the heading's twelfth-column cell, and the bar above the grid
+  // replaced it — and no `order-2`, which was §3.7's places warning and went with the
+  // ceiling (§16.1 step 28). The numbers were left where they were rather than shifted
+  // down, because only their relative order matters and renumbering four blocks to save a
+  // 2 is four chances to swap two of them.
   const used = [...counts.keys()]
-  for (let n = 2; n <= 6; n += 1) {
+  for (let n = 3; n <= 6; n += 1) {
     assert.ok(used.includes(String(n)), `no block is order-${n}`)
   }
-  assert.equal(used.length, 5, `${used.length} distinct positions, expected 5`)
+  assert.equal(used.length, 4, `${used.length} distinct positions, expected 4`)
 
   // Per column the numbers still apply at `lg`, so a column whose numbers do not ascend
   // in source order is a phone and a laptop that disagree.
@@ -340,9 +341,25 @@ test('a lapsed centre keeps the list and loses all three doors out of it', () =>
    */
   assert.match(PAGE, /const mayWrite = session\.access === 'full'/)
 
-  // The New button in the bar, and the paste box below it.
-  assert.match(PAGE, /actions=\{\s*mayWrite && \(\s*<Link\s+href="\/settings\/students\/new"/)
-  assert.match(PAGE, /\{mayWrite && \(\s*<Link\s+href="\/settings\/students\/import"/)
+  /*
+   * The New button in the bar, and the paste box below it — each gated a second time now, and
+   * the second gate is the trial's roster (20260811000098, `door.open`): an organisation that
+   * has never funded its balance is refused another student by `createStudent` and refused a
+   * paste whole by `importStudents`, so a door to either is a door to a refusal for the same
+   * reason a lapsed subscription is one. Two conditions on one door, in this product's own
+   * order: what the reader is entitled to, then what the balance carries.
+   */
+  assert.match(
+    PAGE,
+    /actions=\{\s*mayWrite &&\s*door\.open && \(\s*<Link\s+href="\/settings\/students\/new"/,
+  )
+  assert.match(
+    PAGE,
+    /\{mayWrite && \(\s*<div className="order-3">\s*\{door\.open \? \(\s*<Link\s+href="\/settings\/students\/import"/,
+  )
+  // And the card that stands in its place is the same refusal the action writes, with the
+  // way to the one screen that takes money.
+  assert.match(PAGE, /if \(!door\.open\)|door\.open \? \(/)
 
   // And Edit, which was already narrowed to a role: both have to hold, because an owner of
   // a lapsed centre passes `isStaffAdmin` all day and the edit form would still refuse.
@@ -408,9 +425,11 @@ test('nothing about who may read what has moved', () => {
   assert.match(PAGE, /matchesSearch\(\[r\.name, r\.code, r\.guardianPhone\], terms\)/)
   assert.match(PAGE, /'rows' in students/, 'a failed read no longer draws an empty roster')
 
-  // The places warning ends in a link to /settings/plan, which a teacher on
-  // `can_manage_students` would be refused at.
-  assert.match(PAGE, /const warnPlaces =[\s\S]{0,200}isStaffAdmin\(session\)/)
+  // The places warning and its staff-admin gate went with the ceiling (§16.1 step 28),
+  // and so did the pooled headcount it was fed. Asserted as an absence, because the two
+  // arrived together: a warning cannot come back without the read behind it.
+  assert.doesNotMatch(PAGE, /warnPlaces|PlacesWarning|centerStudentCount/)
+  assert.match(PAGE, /subtitle=\{t\.usedHere\(activeCount\)\}/)
 })
 
 test('both languages have the sheet’s headings, the scope label and the row buttons', () => {

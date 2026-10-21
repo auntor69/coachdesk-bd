@@ -19,12 +19,14 @@
  * the paste does not answer is the one an owner reaches last, and the Add button whose
  * face says "add 40 students" is a scroll below the count that produced the 40.
  *
- * AND, WHEN THE LIST DOES NOT FIT, §3.5's price. The shortfall is computed here and
- * priced from the same bands the server bills from, because a screen that says ৳3,480
- * and an intent that opens at ৳4,000 is a screen nobody trusts twice. Nothing is
- * created before the money arrives — see the note on the priced block.
+ * AND, WHEN THE LIST DOES NOT FIT, ONE SENTENCE AND NO PRICE (§16.1 step 28). The
+ * priced shortfall — §3.5's steps 4 to 6, the bands, the total and the buy button that
+ * opened the intent — went with capacity: there is no ceiling to be short of on a
+ * per-student tier, so a paste that does not fit is a teacher tier past its own plan
+ * allowance, and the answer there is a different plan rather than a price. What is left
+ * is `t.overRoom`, which names the number that fits.
  */
-import { useActionState, useEffect, useMemo, useRef, useState } from 'react'
+import { useActionState, useMemo, useState } from 'react'
 import Link from 'next/link'
 
 import { Alert, Button } from '@/components/ui'
@@ -37,15 +39,6 @@ import {
 } from '@/lib/bd/roster'
 import { fill } from '@/lib/i18n/fill'
 import type { T } from '@/lib/i18n'
-import { mintIdempotencyKey } from '@/lib/idempotency'
-import { formatTaka } from '@/lib/money'
-import { ASK_PLACES, capacityBands, capacityCostBdt } from '@/lib/plans'
-import {
-  buyStudentPlaces,
-  requestPlaces,
-  withdrawPlacesRequest,
-  type UpgradeState,
-} from '../../plan/actions'
 import { importStudents, type ActionState } from '../../actions'
 
 type BatchOption = { id: string; label: string }
@@ -67,11 +60,6 @@ export function ImportForm({
   batches,
   existingKeys,
   room,
-  forSale,
-  mayBuy,
-  mayAsk,
-  asked,
-  mayReadPlan,
 }: {
   t: T<'importForm'>
   common: T<'common'>
@@ -79,33 +67,15 @@ export function ImportForm({
   /** null when the roster is too big to hint with. The import still checks. */
   existingKeys: string[] | null
   /**
-   * How many more students this centre may hold. Always a number: every tier has a
-   * ceiling now, including the ones that bill per student, whose ceiling is the
-   * number of places bought rather than a figure in the plan table. This used to be
-   * `number | null` with null meaning unlimited, which is what the centre tiers
-   * looked like before `studentCeiling` existed.
-   */
-  room: number
-  /**
-   * The PAID ceiling, which is where the bands start — and null on a plan that sells no
-   * places at all. See the page for why it is not `session.ceiling`.
+   * How many more students this tier holds, or null when it holds no limit at all.
    *
-   * Two facts in one prop deliberately: "can this centre buy places" and "at what
-   * price" are the same question, and a separate boolean could disagree with the number.
+   * `roomFor` answers null for both per-student tiers (§16.1 step 28), so null is the
+   * ordinary case on the plans that charge by the student and the sentence about the
+   * plan having room is a teacher tier's alone. It used to be a number on every tier —
+   * a centre's was the places it had bought — and the priced block below was built from
+   * the shortfall against it.
    */
-  forSale: number | null
-  /** Owner only, mirroring requireRole('owner') inside `buyStudentPlaces`. */
-  mayBuy: boolean
-  /**
-   * Manager only, and exactly a manager — §3.7's fork. `planManager` and
-   * `capacity_requests_manager_insert` both refuse an owner, who is offered the price
-   * above instead.
-   */
-  mayAsk: boolean
-  /** How many places this branch has already asked for, or null if they have not. */
-  asked: number | null
-  /** Owner or manager — /settings/plan is pageRole('manager'). */
-  mayReadPlan: boolean
+  room: number | null
 }) {
   const [text, setText] = useState('')
 
@@ -133,51 +103,13 @@ export function ImportForm({
   )
 
   /*
-   * The purchase, in the same <form> as the import.
-   *
-   * A SECOND <form> IS ILLEGAL INSIDE THE FIRST, and a link to /settings/plan would
-   * throw away a five-hundred-line paste to buy the places that paste needs. So the buy
-   * button submits this form to a different action with `formAction`, which is what
-   * useActionState's dispatch is for; `buyStudentPlaces` ignores the roster and the
-   * batch ticks, `importStudents` ignores the two hidden fields.
+   * THE BUY AND THE ASK ARE GONE FROM THIS FORM (§16.1 step 28), and the reason they
+   * were here is worth keeping: a SECOND <form> IS ILLEGAL INSIDE THE FIRST, and a link
+   * to /settings/billing would throw away a five-hundred-line paste to buy the places
+   * that paste needed. That is what made the priced block a block rather than a
+   * destination. With no places to buy there is nothing to submit to a second action,
+   * and the paste box is one form and one button again.
    */
-  const [bought, buy, buying] = useActionState<UpgradeState, FormData>(
-    buyStudentPlaces,
-    null,
-  )
-  const keyRef = useRef<HTMLInputElement>(null)
-
-  /*
-   * The ask, in the same <form> again and for the same reason — §3.7's manager cannot
-   * buy, and a link away from a five-hundred-line paste is a paste thrown away. Neither
-   * action reads a field of the other's: `requestPlaces` takes nothing off the form at
-   * all, because how many places to ask for is not a manager's to type.
-   */
-  const [askState, ask, asking] = useActionState<UpgradeState, FormData>(
-    requestPlaces,
-    null,
-  )
-  const [withdrawn, withdraw, withdrawing] = useActionState<UpgradeState, FormData>(
-    withdrawPlacesRequest,
-    null,
-  )
-
-  /** What the row says, plus what this screen has done to it since it loaded. */
-  const askOpen = withdrawn?.ok ? null : askState?.ok ? ASK_PLACES : asked
-
-  /*
-   * The replay guard, minted after mount because it reads a random source. Reused for a
-   * retry on purpose — `openIntent` hands back the row it already opened for a key it
-   * has seen, so a second tap after "could not start" is not a second bill.
-   *
-   * One key per mount is safe here only because the buy control goes away on success:
-   * see the priced block. Were it to stay, a bigger paste bought under the same key
-   * would land on the first, smaller intent.
-   */
-  useEffect(() => {
-    const input = keyRef.current
-    if (input && !input.value) input.value = mintIdempotencyKey()
-  }, [])
 
   const rows = useMemo(() => parseRoster(text), [text])
   const known = useMemo(() => new Set(existingKeys ?? []), [existingKeys])
@@ -199,24 +131,8 @@ export function ImportForm({
   const hinting = existingKeys !== null
   const newCount = hinting ? ready.length - alreadyThere : ready.length
   const tooMany = rows.length > MAX_IMPORT_ROWS
-  const overRoom = newCount > room
-
-  /*
-   * §3.5 STEPS 3 TO 5, in three lines: the places needed, then one marginal price for
-   * the whole block, then the bands that explain it.
-   *
-   * `short` is measured against `room` — the effective ceiling, which is what refuses
-   * the paste — while the price starts at `forSale`, the paid ceiling. Those are the
-   * same number for every centre not on a trial, and the pair is deliberate for one
-   * that is: the trial decides what fits, the paid row decides what a place costs.
-   *
-   * Bounded by the paste, so no clamp is needed here: MAX_IMPORT_ROWS is 500 and
-   * MAX_PLACES is 2000, so the hidden field below can never be cut down to a smaller
-   * purchase than the one shown.
-   */
-  const short = overRoom ? newCount - room : 0
-  const bands = forSale === null || short === 0 ? [] : capacityBands(forSale, forSale + short)
-  const shortCost = forSale === null ? 0 : capacityCostBdt(forSale, forSale + short)
+  // Null room is a tier with no student limit, which never has too much for it.
+  const overRoom = room !== null && newCount > room
 
   return (
     <form action={formAction} className="flex flex-col gap-4">
@@ -303,119 +219,15 @@ export function ImportForm({
             </Alert>
           )}
 
-          {/* NOTHING IS CREATED BEFORE THE MONEY ARRIVES, which is §3.5's last step and
-              the reason this is a price rather than a half-import. The Add button stays
-              disabled while the list is over the ceiling; with the manual provider the
-              founder confirms the transfer minutes or hours later, so the way back in is
-              a reload rather than a queue of half-admitted children sitting in a table.
-
-              Only where places are actually for sale. A teacher tier gets the old
-              sentence: its ceiling is written in the plan and no money moves it. */}
-          {overRoom &&
-            (forSale === null ? (
-              <Alert tone="warn">{fill(t.overRoom, { room, fresh: newCount })}</Alert>
-            ) : (
-              <div className="flex flex-col gap-3 rounded-2xl border-2 border-late/40 bg-late/5 p-4">
-                <div>
-                  <p className="num font-semibold text-ink">
-                    {fill(t.shortTitle, { n: short })}
-                  </p>
-                  <p className="num mt-1 text-sm text-ink-soft">
-                    {fill(t.shortBody, { room, fresh: newCount })}
-                  </p>
-                </div>
-
-                {/* The bands, because a single ৳3,480 invites the suspicion it was
-                    invented. Marginal and in order, straight off capacityBands.
-
-                    Gone once a purchase is open, and that is not tidiness: this total is
-                    recomputed from whatever is in the box now, so a list edited after
-                    the buy would price a purchase nobody made. What was actually bought
-                    is on the plan page, against the reference. */}
-                {!bought?.ok && (
-                  <dl className="flex flex-col gap-1 text-sm">
-                    {bands.map((band) => (
-                      <div
-                        key={band.rateBdt}
-                        className="flex items-baseline justify-between gap-3"
-                      >
-                        <dt className="num text-ink-soft">
-                          {fill(t.shortBand, {
-                            n: band.seats,
-                            rate: formatTaka(band.rateBdt),
-                          })}
-                        </dt>
-                        <dd className="num text-ink">{formatTaka(band.costBdt)}</dd>
-                      </div>
-                    ))}
-                    <div className="flex items-baseline justify-between gap-3 border-t border-late/40 pt-1">
-                      <dt className="font-semibold text-ink">{t.shortTotal}</dt>
-                      <dd className="num font-semibold text-ink">
-                        {formatTaka(shortCost)}
-                      </dd>
-                    </div>
-                  </dl>
-                )}
-
-                {bought?.error && <Alert>{bought.error}</Alert>}
-                {(askState?.error || withdrawn?.error) && (
-                  <Alert>{askState?.error ?? withdrawn?.error}</Alert>
-                )}
-
-                {bought?.ok ? (
-                  <p role="status" className="text-sm font-medium text-brand-700">
-                    {t.bought}
-                  </p>
-                ) : mayBuy ? (
-                  <>
-                    <input type="hidden" name="idempotencyKey" ref={keyRef} />
-                    <input type="hidden" name="places" value={short} readOnly />
-                    <Button type="submit" formAction={buy} disabled={buying} full>
-                      {buying
-                        ? t.shortBuying
-                        : fill(t.shortBuy, { taka: formatTaka(shortCost) })}
-                    </Button>
-                  </>
-                ) : !mayAsk ? (
-                  <p className="text-sm text-ink-soft">{t.shortAsk}</p>
-                ) : askOpen !== null ? (
-                  <div className="flex flex-col gap-1">
-                    <p role="status" className="num text-sm font-medium text-brand-700">
-                      {fill(t.shortAsked, { n: askOpen })}
-                    </p>
-                    <Button
-                      type="submit"
-                      formAction={withdraw}
-                      disabled={withdrawing}
-                      variant="ghost"
-                      className="self-start px-0"
-                    >
-                      {t.shortAskWithdraw}
-                    </Button>
-                  </div>
-                ) : (
-                  <Button
-                    type="submit"
-                    formAction={ask}
-                    disabled={asking}
-                    variant="secondary"
-                    full
-                  >
-                    {asking ? t.shortAsking : fill(t.shortAskFor, { n: ASK_PLACES })}
-                  </Button>
-                )}
-
-                {mayReadPlan && (
-                  <Link
-                    href="/settings/plan"
-                    className="inline-flex min-h-tap items-center font-medium
-                      text-brand-700"
-                  >
-                    {t.shortPlanLink} →
-                  </Link>
-                )}
-              </div>
-            ))}
+          {/* ONE SENTENCE WHERE §3.5'S PRICED BLOCK WAS (§16.1 step 28). The bands, the
+              total, the buy button, the reference and the manager's ask are all gone;
+              what is left is the plan's own allowance, which is the only cap a tier has
+              after capacity — `room` is null on both per-student tiers, so a centre never
+              sees this. Nothing is created before the money arrives is still true, and
+              now it is simpler: nothing on this screen creates anything but students. */}
+          {room !== null && overRoom && (
+            <Alert tone="warn">{fill(t.overRoom, { room, fresh: newCount })}</Alert>
+          )}
 
           {problems.length > 0 && (
             <div className="flex flex-col gap-2">
@@ -559,6 +371,24 @@ export function ImportForm({
             ) : chosen.length === 0 ? (
               <Alert tone="warn">{t.noBatchPicked}</Alert>
             ) : null)}
+
+          {/* The submission's verdict at the button that produced it. The capped
+              banners at the top of the form stay — they sit beside the textarea,
+              where the *next* paste happens, and one is pinned there by test — but
+              after a 500-line paste they are a screenful above this button, where a
+              refusal or a success is invisible exactly when it matters. aria-hidden
+              because the banner above is already `role="alert"`; this is its twin
+              for the eye, and two live regions saying one thing is two announcements. */}
+          {state?.error && (
+            <p aria-hidden="true" className="text-sm font-medium text-absent">
+              {state.error}
+            </p>
+          )}
+          {state?.ok && (
+            <p aria-hidden="true" className="text-sm font-medium text-brand-700">
+              {state.ok}
+            </p>
+          )}
 
           {/* Ends the column that holds the decision, rather than sitting under both:
               in one column it was the last thing after a hundred problem rows, which is

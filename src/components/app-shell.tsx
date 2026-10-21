@@ -23,9 +23,9 @@ import type { Route } from 'next'
 
 import { signOut } from '@/app/(auth)/actions'
 import { switchCenter } from '@/app/(app)/actions'
-import { SideNav, TabBar, type NavEntry, type NavSection } from '@/components/app-nav'
+import { SideNav, TabBar, type IconName, type NavEntry, type NavSection } from '@/components/app-nav'
 import { LanguageSwitch } from '@/components/language-switch'
-import { Logo } from '@/components/ui'
+import { buttonClass, LinkButton, Logo } from '@/components/ui'
 import type { MemberRole, CenterStatus } from '@/lib/supabase/types'
 import type { Membership, Session } from '@/lib/auth/session'
 import {
@@ -41,6 +41,7 @@ import { TRIAL_NOTICE_DAYS, trialStanding, type TrialStanding } from '@/lib/enti
 import { has, planName, type FeatureKey, type PlanLimits } from '@/lib/plans'
 import { formatBdMobile, normalizeBdMobile } from '@/lib/bd/phone'
 import { formatDate } from '@/lib/bd/time'
+import { formatTaka } from '@/lib/money'
 import { dict, type Dictionary, type Locale } from '@/lib/i18n'
 
 /**
@@ -69,7 +70,12 @@ type NavGate = (ctx: { plan: PlanLimits; member: Membership }) => boolean
 type NavItem = {
   href: Route
   label: keyof Dictionary['shell']['nav']
-  icon: string
+  /**
+   * A key into the navigation icon set (`app-nav.tsx`), drawn as an inline SVG so
+   * every tab and row reads in one visual grammar instead of whatever weight the
+   * Bangla font happened to give a text glyph.
+   */
+  icon: IconName
   group?: NavGroup
   when?: NavGate
   /**
@@ -98,13 +104,13 @@ type NavItem = {
 const FEES_TAB: NavItem = {
   href: '/fees',
   label: 'fees',
-  icon: '৳',
+  icon: 'banknote',
   group: 'money',
   when: ({ member }) => can(member.capabilities, 'fees'),
 }
 
 /** Named for the same reason, now that three roles reach it. */
-const EXAMS_TAB: NavItem = { href: '/exams', label: 'exams', icon: '✎' }
+const EXAMS_TAB: NavItem = { href: '/exams', label: 'exams', icon: 'pencil' }
 
 /**
  * Settings, named for the same reason the fee tab is.
@@ -118,7 +124,7 @@ const EXAMS_TAB: NavItem = { href: '/exams', label: 'exams', icon: '✎' }
 const SETTINGS_TAB: NavItem = {
   href: '/settings',
   label: 'settings',
-  icon: '⚙',
+  icon: 'sliders',
   group: 'organisation',
 }
 
@@ -143,14 +149,29 @@ const SETTINGS_TAB: NavItem = {
  * the phone keeps it.
  */
 const STAFF_ADMIN_NAV: NavItem[] = [
-  { href: '/dashboard', label: 'home', icon: '⌂' },
-  { href: '/teach', label: 'attendance', icon: '✓' },
+  { href: '/dashboard', label: 'home', icon: 'home' },
+  { href: '/teach', label: 'attendance', icon: 'register' },
   EXAMS_TAB,
   FEES_TAB,
+  /*
+   * The roster, lifted out of the settings hub and into the menu proper. It was
+   * the one screen a centre opens several times a day — admit a child, check a
+   * guardian's number, find which batch somebody is in — that still took two taps
+   * through a hub of other things, so the dashboard stayed the only way to
+   * anywhere. Fifth, so the four above it keep the phone's four tabs; on the bar
+   * it lands behind More, which is one tap rather than two.
+   *
+   * No `when` and no `needs`, for the reason /at-risk has neither: the screen asks
+   * `pagePermission('can_manage_students')`, and every reader of this table clears
+   * a roster permission by rank without the box being ticked. A teacher is not in
+   * this table — theirs is a grant on the row, and they keep reaching the roster
+   * through Settings, which `navFor` already opens for them.
+   */
+  { href: '/settings/students', label: 'students', icon: 'students' },
   {
     href: '/expenses',
     label: 'expenses',
-    icon: '↓',
+    icon: 'expenses',
     group: 'money',
     // pageCapability('expenses'), and the plan half as `needs` so the row is drawn
     // locked rather than hidden — the screen behind it is the upsell card.
@@ -160,17 +181,17 @@ const STAFF_ADMIN_NAV: NavItem[] = [
   {
     href: '/payroll',
     label: 'payroll',
-    icon: '⛁',
+    icon: 'calendar',
     group: 'money',
     when: ({ member }) => can(member.capabilities, 'payroll'),
     needs: 'centerWideReporting',
   },
   // pageRole('manager') and nothing else: every tier has students who stop coming.
-  { href: '/at-risk', label: 'atRisk', icon: '!', group: 'families' },
+  { href: '/at-risk', label: 'atRisk', icon: 'alert', group: 'families' },
   {
     href: '/notices',
     label: 'notices',
-    icon: '✉',
+    icon: 'envelope',
     group: 'families',
     // No plan gate on this one at all — a solo teacher on the free plan can tell a
     // batch's parents the room is shut on Thursday, and always could.
@@ -179,7 +200,7 @@ const STAFF_ADMIN_NAV: NavItem[] = [
   {
     href: '/progress',
     label: 'progress',
-    icon: '★',
+    icon: 'star',
     group: 'families',
     when: ({ member }) => can(member.capabilities, 'messages'),
     needs: 'parentSummary',
@@ -187,7 +208,7 @@ const STAFF_ADMIN_NAV: NavItem[] = [
   {
     href: '/hq',
     label: 'hq',
-    icon: '⌗',
+    icon: 'buildings',
     group: 'organisation',
     // The screen's other two checks, both of which hide rather than lock: a manager
     // pinned to one branch is not being sold anything by a row leading to a card that
@@ -202,9 +223,13 @@ const STAFF_ADMIN_NAV: NavItem[] = [
 const NAV_GROUPS: NavGroup[] = ['money', 'families', 'organisation']
 
 /**
- * What each role sees. Icons are text glyphs rather than an icon font or SVG
- * sprite — one less network request on a 3G connection, and they inherit the
- * Bangla font's baseline so nothing sits half a pixel off.
+ * What each role sees. Each entry names an icon by key rather than carrying one: the
+ * shapes are inline SVG in app-nav.tsx, which is a client component, and a component
+ * reference does not serialise across that boundary. The set is drawn rather than
+ * fetched — no sprite, no font, no network request on a 3G connection — and it
+ * replaced the text glyphs (`⌂`, `৳`, `✎`) this table used to carry, which landed on
+ * a different baseline in every Bangla font and read as decoration rather than as
+ * navigation.
  *
  * Keyed by MemberRole rather than string: adding a role to the enum then breaks
  * here until someone decides what that role's navigation is, instead of
@@ -221,9 +246,9 @@ const NAV_GROUPS: NavGroup[] = ['money', 'families', 'organisation']
 const NAV: Record<MemberRole, NavItem[]> = {
   owner: STAFF_ADMIN_NAV,
   manager: STAFF_ADMIN_NAV,
-  teacher: [{ href: '/teach', label: 'attendance', icon: '✓' }, EXAMS_TAB],
-  student: [{ href: '/me', label: 'mine', icon: '⌂' }],
-  guardian: [{ href: '/me', label: 'myChild', icon: '⌂' }],
+  teacher: [{ href: '/teach', label: 'attendance', icon: 'register' }, EXAMS_TAB],
+  student: [{ href: '/me', label: 'mine', icon: 'person' }],
+  guardian: [{ href: '/me', label: 'myChild', icon: 'person' }],
 }
 
 /**
@@ -408,25 +433,39 @@ function splitForPhone(entries: NavEntry[]): { tabs: NavEntry[]; more: NavEntry[
 function ReadOnlyBanner({
   status,
   coveredTo,
+  money,
   t,
   canSeePlan,
 }: {
   status: CenterStatus
   /**
    * The last day the centre's payments covered, already formatted, or null. Non-null
-   * only when the coverage is *why* this banner is on screen — an `active` centre past
-   * its grace window (MASTERPLAN.md §4.4).
+   * only when a *date* is the fact worth reading — a centre suspended by hand, or one
+   * whose coverage history explains the state.
    */
   coveredTo: string | null
+  /**
+   * What the day costs and what is left, both already formatted as taka, or null when
+   * the balance is not what stopped the writing (MASTERPLAN.md §4.4, §11.6).
+   *
+   * THIS IS THE ORDINARY CAUSE NOW. Under the prepaid balance a centre runs out of
+   * money far more often than it is suspended by a human, and the sentence it needs is
+   * about a purse rather than a tier — the two numbers below are what the owner checks
+   * against their own bKash history before ringing anybody.
+   */
+  money: { cost: string; balance: string } | null
   t: Dictionary['readOnly']
   canSeePlan: boolean
 }) {
-  // `cancelled` gets its own words; everything else gets the sentence with a fix in it.
-  // That covers three cases and not one: `suspended`, an `active` centre whose coverage
-  // lapsed past the grace window, and a status outside the enum — and "the plan has run
-  // out, settle the bill" is the right answer to all three, because a row that has gone
-  // wrong is also best answered by a phone call.
+  // `cancelled` gets its own words: that one is not about money at all, and a top-up
+  // would not fix it.
   const cancelled = status === 'cancelled'
+
+  // Three causes and three sentences, in this order: a cancelled account is a fact about
+  // the contract, a dry balance is a fact about the money, and everything else — a hand
+  // suspension, or a status nobody can name — gets the sentence with a phone call in it.
+  const title = cancelled ? t.cancelledTitle : money ? t.balanceTitle : t.suspendedTitle
+  const body = cancelled ? t.cancelledBody : money ? t.balanceBody : t.suspendedBody
 
   // Empty in every deployment until the founder puts their own number in, exactly as
   // on the plan screen — and the banner is not gated on it, for the reason the note
@@ -441,34 +480,40 @@ function ReadOnlyBanner({
       role="status"
       className="mb-5 rounded-xl border-2 border-late/40 bg-late/5 px-4 py-3 print:hidden"
     >
-      <p className="font-semibold text-late">
-        {cancelled ? t.cancelledTitle : t.suspendedTitle}
-      </p>
-      <p className="mt-1 text-sm text-ink-soft">
-        {cancelled ? t.cancelledBody : t.suspendedBody}
-      </p>
+      <p className="font-semibold text-late">{title}</p>
+      <p className="mt-1 text-sm text-ink-soft">{body}</p>
 
       {/* The one fact that turns a general complaint into something a customer can
-          check against their own bKash history. Only when coverage is the reason: on a
-          hand-suspended centre the date would be answering a question nobody asked, and
-          on a cancelled one it would read as a receipt. */}
-      {coveredTo && (
-        <p className="mt-1 text-sm text-ink-soft">{t.coveredTo(coveredTo)}</p>
+          check against their own bKash history, and the figure it is checked against
+          differs with the cause: a date on a coverage centre, two amounts on a balance
+          one. Only when that cause is what put the banner here — on a cancelled account
+          either would read as a receipt. */}
+      {/*
+        THE FIGURES ARE THE OWNER'S AND THE MANAGER'S. A teacher needs to know that saving
+        has stopped — the sentence above says exactly that, in words — and has no business
+        knowing what the centre holds or what a day costs it: `/settings/billing` is
+        `pageRole('manager')` for the same reason, and the strip above the content is gated
+        the same way. `canSeePlan` is that gate under this banner's own name.
+      */}
+      {money ? (
+        canSeePlan && (
+          <p className="mt-1 text-sm text-ink-soft">
+            {t.balanceOut(money.cost, money.balance)}
+          </p>
+        )
+      ) : (
+        coveredTo && <p className="mt-1 text-sm text-ink-soft">{t.coveredTo(coveredTo)}</p>
       )}
 
       {(canSeePlan || salesPhone) && (
         <div className="mt-3 flex flex-wrap gap-2">
-          {/* Owners and managers only, because /settings/plan is pageRole('manager') —
+          {/* Owners and managers only, because /settings/billing is pageRole('manager') —
               offering a teacher a tab that answers with a 403 is worse than offering
               them nothing, and there is nothing for them to do here anyway. */}
           {canSeePlan && (
-            <Link
-              href="/settings/plan"
-              className="inline-flex min-h-tap items-center rounded-xl border-2
-                border-brand-500 bg-brand-50 px-4 font-medium text-brand-800"
-            >
+            <LinkButton href="/settings/billing" variant="tinted" prefetch={false}>
               {t.seePlan}
-            </Link>
+            </LinkButton>
           )}
           {salesPhone && (
             <a
@@ -477,8 +522,9 @@ function ReadOnlyBanner({
               // laptop, and a number that can be read off the screen and dialled by
               // hand works on anything.
               href={`tel:${salesPhone}`}
-              className="inline-flex min-h-tap items-center rounded-xl border-2
-                border-line px-4 font-medium text-ink-soft"
+              // An external anchor, not a route: `buttonClass` is the shared half, and
+              // `LinkButton` is for the app's own pages.
+              className={buttonClass('secondary')}
             >
               {t.callUs}
               <span className="num ml-1">{formatBdMobile(salesPhone)}</span>
@@ -525,11 +571,9 @@ function TrialBanner({
       // `status` for the same reason the read-only banner uses it: this is the state of
       // the screen as opened, not an event, and `alert` would interrupt a screen reader
       // on every navigation for a fortnight.
-      role="status"
-      className={`mb-5 rounded-xl border-2 px-4 py-3 print:hidden ${
-        ending ? 'border-late/40 bg-late/5' : 'border-brand-200 bg-brand-50'
-      }`}
-    >
+      role="status"      className={`mb-5 rounded-xl border px-4 py-3 print:hidden ${
+        ending ? 'border-late/40 bg-late/5' : 'border-brand-200 bg-brand-50 shadow-sm'
+      }`}>
       <p className={`font-semibold ${ending ? 'text-late' : 'text-brand-800'}`}>
         {standing.state === 'ended'
           ? t.endedTitle(tier)
@@ -541,23 +585,22 @@ function TrialBanner({
         {standing.state === 'ended' ? t.endedBody(day) : t.runningBody(tier, day)}
       </p>
 
-      {/* Owners and managers only — /settings/plan is pageRole('manager'), and a
+      {/* Owners and managers only — /settings/billing is pageRole('manager'), and a
           teacher offered a tab that answers 403 is worse off than one offered nothing.
           No sales chip here: unlike a lapse, nothing is broken and nobody needs to be
           rung today. */}
       {canSeePlan && (
         <div className="mt-3">
-          <Link
-            href="/settings/plan"
-            // White while the card is green, or the button's fill matches the card it
-            // sits on and all that is left of it is a border.
-            className={`inline-flex min-h-tap items-center rounded-xl border-2
-              border-brand-500 px-4 font-medium text-brand-800 ${
-                ending ? 'bg-brand-50' : 'bg-white'
-              }`}
+          {/* White while the card is green, or the button's fill would match the card it
+              sits on and all that is left of it is a border — which is why the variant is
+              `tinted` and the fill is the one thing overridden. */}
+          <LinkButton
+            href="/settings/billing"
+            variant="tinted"
+            className={ending ? '' : 'bg-white hover:bg-white'}
           >
             {t.keep(tier)}
-          </Link>
+          </LinkButton>
         </div>
       )}
     </div>
@@ -616,11 +659,14 @@ function Sidebar({
 
       {/* mt-auto so the account block sits at the foot whether or not there is a menu
           above it, and without the menu having to be a flex-1 that is sometimes absent. */}
+      {/* The account block, finished: the reader's own corner of the sidebar.
+          A soft surface instead of bare rows is what makes it read as a place
+          rather than the list's leftovers — and it is still rows of 44px+. */}
       <div className="mt-auto border-t border-line p-2">
         <Link
           href="/account"
           className="flex min-h-tap items-center gap-3 rounded-xl px-2
-            text-sm text-ink-soft hover:bg-surface-alt hover:text-ink"
+            text-sm text-ink-soft transition-colors hover:bg-surface-alt hover:text-ink"
         >
           <span
             aria-hidden
@@ -739,6 +785,113 @@ export async function AppShell({
   const lapsed = readOnly?.status === 'active' ? readOnly.paidThrough : null
 
   /*
+   * Whether the *balance* is what stopped the writing, and the two figures that say so
+   * (MASTERPLAN.md §4.4).
+   *
+   * ASKED OF THE STANDING AND NOT OF THE STATUS, which is the one thing this banner had
+   * to learn when coverage stopped gating anything: a lapsed centre is still `active`, so
+   * the status column cannot tell the money apart from a hand suspension. `billing.lapsed`
+   * is the balance comparison itself — the same one `access` was resolved from, off the
+   * same call, so the sentence and the refusal can never describe different money.
+   *
+   * NULL WHEN THE RATE IS UNKNOWN, and then the plan sentence is drawn instead: a banner
+   * that says "a day costs nothing" because a head count failed would be worse than the
+   * general words it replaces.
+   */
+  const cost =
+    session.billing.dailyRatePoisha !== null
+      ? formatTaka(session.billing.dailyRatePoisha / 100)
+      : null
+  const money =
+    readOnly && session.billing.lapsed && cost
+      ? { cost, balance: formatTaka((session.billing.balancePoisha ?? 0) / 100) }
+      : null
+
+  /*
+   * The money strip (§4.4, §3.7's ladder): what is in the balance and how many more days it
+   * covers, on EVERY screen.
+   *
+   * IT USED TO BE A FOURTEEN-DAY COUNTDOWN, drawn only once the money was nearly out, and
+   * that was the wrong question asked late. What an owner reaches for before they spend
+   * anything is what they hold today — and it was two taps away, behind Settings and then
+   * Billing, on a screen they had to remember to open (§20.4 answers "how much is left"
+   * second, and this is the same figure moved out of the drawer). The day count stays
+   * because it is the honest unit once the money is theirs (§17 — "price in months, burn in
+   * days"), and it is what turns amber inside three days, where it used to simply appear.
+   *
+   * OWNERS AND MANAGERS ONLY, because they are the only ones who can do anything about
+   * it — `/settings/billing` is `pageRole('manager')`, and a countdown a teacher cannot act
+   * on is a daily worry with no button on it. Not at all while the read-only banner is up:
+   * that banner already says the balance is out, and repeating it above itself would be two
+   * versions of one fact.
+   *
+   * NOT SHOWN ON A FREE TIER, because `daysLeft` is null there — there is no rate to
+   * divide by and nothing to run out of.
+   */
+  const canTopUp = Boolean(readOnly === null && atLeast(role, 'manager'))
+  const daysLeft = session.billing.daysLeft
+  const balancePoisha = session.billing.balancePoisha
+  const rail = canTopUp && daysLeft !== null ? daysLeft : null
+
+  /*
+   * THE LINE IS AHEAD OF TODAY, WHICH IS A GRANT AND NOT A PAYMENT.
+   *
+   * `charged_through` is the last day the centre is covered for. A founder's grant of
+   * days moves it forward without touching the balance (§11.7 — a grant is days, not
+   * fake money), so a centre can hold a real balance with its line two months out while
+   * the burn charges nothing. That is correct: there is no day left to buy.
+   *
+   * The billing screen has said so since the granted-days pass, in `billing.leftGranted`.
+   * The strip did not, and it is the surface an owner reads on every screen without
+   * opening anything — so a balance that never moves looked like broken billing rather
+   * than a centre waiting. The count below is still the money's own count, because that
+   * is what the balance buys *after* the granted days; this is the sentence that says
+   * which of the two states the reader is in.
+   *
+   * Two Dhaka days compared as strings, which is chronological order for `YYYY-MM-DD` —
+   * the same comparison the billing page makes for its own `aheadTo`.
+   */
+  const grantedTo =
+    canTopUp &&
+    session.billing.chargedThrough !== null &&
+    session.billing.today !== null &&
+    session.billing.chargedThrough > session.billing.today
+      ? session.billing.chargedThrough
+      : null
+
+  /**
+   * Inside three days the strip turns amber, which is §3.7's first rung.
+   *
+   * NOT WHILE GRANTED DAYS CARRY THE LINE: amber is a warning that the money is about to
+   * run out, and a centre being carried by a grant has nothing running out yet. Colouring
+   * it would be the false alarm the billing screen's own sentence exists to avoid.
+   */
+  const railLow = rail !== null && grantedTo === null && rail <= 3
+
+  /**
+   * The strip's one sentence, with the amount leading it when there is one to lead with.
+   *
+   * ONE LINE AND NOT TWO. This is furniture above every screen in the product, and two
+   * lines of it on a 375px phone is a paragraph the reader scrolls past before their own
+   * content begins. A balance that could not be read is left out rather than drawn as
+   * ৳0 — an unread figure is not an empty one (§11.7).
+   */
+  const daysLine =
+    grantedTo !== null
+      ? t.balanceGranted(formatDate(grantedTo, session.locale))
+      : rail === null
+        ? null
+        : rail === 0
+          ? t.balanceEmpty
+          : t.balanceDays(rail)
+  const heldLine =
+    daysLine === null
+      ? null
+      : balancePoisha === null
+        ? daysLine
+        : `${t.balanceHeld(formatTaka(balancePoisha / 100))} · ${daysLine}`
+
+  /*
    * The trial notice, asked of the row rather than of the entitlement — `Entitlement`
    * cannot say a plan came from a trial, on purpose, and `entitlement.ts` explains at
    * length why this screen is the one exception that gets to ask the question directly.
@@ -762,6 +915,33 @@ export async function AppShell({
 
   return (
     <div className="flex min-h-full flex-col lg:flex-row">
+      {/*
+       * THE FIRST THING IN THE DOCUMENT AND THE FIRST THING TAB REACHES. Without it a
+       * keyboard reader pays for the navigation on every screen — eleven sidebar rows on a
+       * laptop, three header controls on a phone — before they reach the content they came
+       * for, and that tax is paid again after every link. The sidebar is drawn before the
+       * workspace in the DOM (it is the first column), so there is no other place to put
+       * this and no reordering that would let the content come first without breaking the
+       * visual order at `lg`.
+       *
+       * A PLAIN ANCHOR AND NOT A CLIENT COMPONENT: the browser's own fragment jump moves
+       * focus to the target because `main` is focusable (`tabIndex={-1}`), and nothing here
+       * needs JavaScript, a provider or a render. `sr-only` until focused, then a real
+       * button-shaped chip in the top-left corner — `focus:not-sr-only` is what makes it
+       * visible rather than merely focusable.
+       *
+       * Hidden on paper: a print shop does not need a skip link above a receipt.
+       */}
+      <a
+        href="#content"
+        className="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-50
+          focus:rounded-xl focus:border-2 focus:border-brand-600 focus:bg-white
+          focus:px-4 focus:py-3 focus:font-semibold focus:text-ink focus:shadow-lg
+          print:hidden"
+      >
+        {t.skipToContent}
+      </a>
+
       <Sidebar session={session} sections={sections} rows={entries.length} t={t} />
 
       {/* min-w-0 so a wide table inside the workspace scrolls itself instead of
@@ -796,16 +976,27 @@ export async function AppShell({
                 signed in on this shared phone. The letter is the first character of
                 the greeting, which is the name if there is one and the number if
                 there is not.
-              */}
-              <Link
+              */}                <Link
                 href="/account"
+                // Not prefetched: the account screen is opened to change a password or
+                // read a number off it, never mid-task, and prefetching it cost a
+                // backend render on every screen to save a tap that happens monthly.
+                prefetch={false}
                 aria-label={t.account}
                 title={t.account}
-                className="grid h-9 w-9 shrink-0 place-items-center rounded-full
-                  bg-brand-50 text-sm font-semibold text-brand-700
-                  hover:bg-brand-100"
+                // 48px of tappable box around a 36px circle: `--spacing-tap` is the
+                // size this product measures a thumb by, and the circle stays small so
+                // a 320px header can hold three controls and the centre's name.
+                className="group grid h-12 w-12 shrink-0 place-items-center"
               >
-                <span aria-hidden>{initialFor(session)}</span>
+                <span
+                  aria-hidden
+                  className="grid h-9 w-9 place-items-center rounded-full
+                    bg-brand-50 text-sm font-semibold text-brand-700
+                    group-hover:bg-brand-100"
+                >
+                  {initialFor(session)}
+                </span>
               </Link>
 
               <LanguageSwitch locale={session.locale} />
@@ -813,8 +1004,12 @@ export async function AppShell({
               <form action={signOut}>
                 <button
                   type="submit"
-                  className="rounded-lg px-3 py-2 text-sm font-medium text-ink-soft
-                    hover:bg-surface-alt hover:text-ink"
+                  // `min-h-tap` and not padding guesses: the words are what a thumb aims
+                  // at, and a 34px-tall button is under the line this whole design is
+                  // measured against. The header has room — the logo block beside it is
+                  // already taller than 48px — so this costs no height.
+                  className="min-h-tap rounded-lg px-3 py-2 text-sm font-medium
+                    text-ink-soft hover:bg-surface-alt hover:text-ink"
                 >
                   {t.logout}
                 </button>
@@ -836,17 +1031,53 @@ export async function AppShell({
             off: @page owns the margins, and max-w-3xl left standing would waste a
             third of an A4 sheet the register wants for its columns. */}
         <main
-          className="mx-auto w-full max-w-3xl flex-1 px-4 py-5 pb-24
-            lg:max-w-7xl lg:px-8 lg:py-8 lg:pb-8
+          // The skip link's target. `tabIndex={-1}` is what lets a fragment jump move
+          // focus here rather than only scrolling to it, which is the difference between
+          // a keyboard reader landing on the screen and landing back where they were.
+          id="content"
+          tabIndex={-1}
+          // `scroll-mt-16` on a phone, because the header above this is sticky and 64px
+          // tall: without it the skip link lands with the first heading under it. Zero
+          // from `lg`, where that header is gone and the page bar sticks inside main.
+          className="mx-auto w-full max-w-3xl flex-1 scroll-mt-16 px-4 py-5 pb-24
+            lg:max-w-7xl lg:scroll-mt-0 lg:px-8 lg:py-8 lg:pb-8
             print:max-w-none print:px-0 print:py-0 print:pb-0"
         >
           {readOnly && (
             <ReadOnlyBanner
               status={readOnly.status}
               coveredTo={lapsed ? formatDate(lapsed, session.locale) : null}
+              money={money}
               t={d.readOnly}
               canSeePlan={atLeast(role, 'manager')}
             />
+          )}
+          {heldLine !== null && (
+            <div
+              role="status"
+              className={`mb-5 flex flex-wrap items-center justify-between gap-2
+                rounded-xl border px-4 py-3 print:hidden shadow-sm ${
+                  railLow ? 'border-late/40 bg-late/5' : 'border-line bg-white'
+                }`}
+            >
+              <p className={`text-sm font-medium ${railLow ? 'text-late' : 'text-ink-soft'}`}>
+                {heldLine}
+              </p>
+              {/*
+                The countdown's own door, and it leads to the screen that answers it:
+                /settings/billing is the balance, the rate and the recharge (§20.4). The
+                plan screen is still where a tier is bought; what a dry balance needs is
+                the top-up, and that is here.
+              */}
+              <LinkButton
+                href="/settings/billing"
+                variant="tinted"
+                className="text-sm"
+                prefetch={false}
+              >
+                {t.balanceTopUp}
+              </LinkButton>
+            </div>
           )}
           {trial && (
             <TrialBanner

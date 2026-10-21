@@ -14,9 +14,10 @@ export type Json =
   | Json[]
 
 export type AttendanceStatus = 'present' | 'absent' | 'late' | 'excused'
+export type AttendanceUnlockReason = 'early' | 'forgot'
 export type AuditOperation = 'created' | 'updated' | 'deleted'
 export type BatchSlot = 'morning' | 'noon' | 'afternoon' | 'evening' | 'night'
-export type BillingEntryKind = 'recharge' | 'promotion_bonus' | 'daily_charge' | 'founder_money_adjustment' | 'founder_grant_days' | 'refund' | 'reversal' | 'correction' | 'settlement_failure' | 'settlement_retry' | 'migration_opening_balance'
+export type BillingEntryKind = 'recharge' | 'promotion_bonus' | 'daily_charge' | 'founder_money_adjustment' | 'founder_grant_days' | 'refund' | 'reversal' | 'correction' | 'settlement_failure' | 'settlement_retry' | 'migration_opening_balance' | 'signup_trial'
 export type CenterStatus = 'trial' | 'active' | 'suspended' | 'cancelled'
 export type EmployeeRole = 'manager' | 'accountant' | 'receptionist' | 'coordinator' | 'office_assistant' | 'librarian' | 'lab_assistant' | 'it_support' | 'marketing' | 'driver' | 'cook' | 'cleaner' | 'security_guard' | 'other'
 export type EnrollmentStatus = 'active' | 'paused' | 'completed' | 'dropped'
@@ -30,6 +31,8 @@ export type PaymentProvider = 'manual' | 'bkash'
 export type PaymentPurpose = 'subscription' | 'student_capacity' | 'teacher_seat' | 'branch'
 export type PayoutWallet = 'bkash' | 'nagad' | 'rocket'
 export type PlanType = 'teacher_free' | 'teacher_plus' | 'center' | 'institution'
+export type PolicyKind = 'prepaid_billing' | 'refunds' | 'terms' | 'privacy' | 'acceptable_use' | 'deletion' | 'security'
+export type RechargeClaimState = 'submitted' | 'approved' | 'rejected' | 'expired'
 export type RevenueCategory = 'tuition' | 'admission' | 'registration' | 'exam' | 'form' | 'other'
 export type SalaryBasis = 'monthly' | 'per_class'
 export type SmsKind = 'exam_result' | 'attendance_alert' | 'fee_reminder' | 'notice' | 'custom'
@@ -243,6 +246,70 @@ export type Database = {
             isOneToOne: false
             referencedRelation: 'teachers'
             referencedColumns: ['id', 'coaching_center_id']
+          },
+        ]
+      }
+      attendance_unlocks: {
+        Row: {
+          id: string
+          coaching_center_id: string
+          batch_id: string
+          session_date: string
+          reason: AttendanceUnlockReason
+          batch_name: string
+          starts_at: string | null
+          ends_at: string | null
+          signature_version: string
+          claimed_by: string | null
+          claimed_at: string
+        }
+        Insert: {
+          id?: string
+          coaching_center_id: string
+          batch_id: string
+          session_date: string
+          reason: AttendanceUnlockReason
+          batch_name: string
+          starts_at?: string | null
+          ends_at?: string | null
+          signature_version: string
+          claimed_by?: string | null
+          claimed_at?: string
+        }
+        Update: {
+          id?: string
+          coaching_center_id?: string
+          batch_id?: string
+          session_date?: string
+          reason?: AttendanceUnlockReason
+          batch_name?: string
+          starts_at?: string | null
+          ends_at?: string | null
+          signature_version?: string
+          claimed_by?: string | null
+          claimed_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'attendance_unlocks_batch_center_fkey'
+            columns: ['batch_id', 'coaching_center_id']
+            isOneToOne: false
+            referencedRelation: 'batches'
+            referencedColumns: ['id', 'coaching_center_id']
+          },
+          {
+            foreignKeyName: 'attendance_unlocks_claimed_by_fkey'
+            columns: ['claimed_by']
+            isOneToOne: false
+            referencedRelation: 'users'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'attendance_unlocks_coaching_center_id_fkey'
+            columns: ['coaching_center_id']
+            isOneToOne: false
+            referencedRelation: 'coaching_centers'
+            referencedColumns: ['id']
           },
         ]
       }
@@ -721,6 +788,7 @@ export type Database = {
           paid_through: string | null
           balance_poisha: number
           charged_through: string
+          account_kind: string
         }
         Insert: {
           id?: string
@@ -743,6 +811,7 @@ export type Database = {
           paid_through?: string | null
           balance_poisha?: number
           charged_through?: string
+          account_kind?: string
         }
         Update: {
           id?: string
@@ -765,6 +834,7 @@ export type Database = {
           paid_through?: string | null
           balance_poisha?: number
           charged_through?: string
+          account_kind?: string
         }
         Relationships: [
           {
@@ -1884,12 +1954,50 @@ export type Database = {
         }
         Relationships: []
       }
+      platform_settings: {
+        Row: {
+          id: boolean
+          teacher_trial_days: number
+          center_trial_days: number
+          institution_trial_days: number
+          updated_at: string
+          updated_by: string | null
+          trial_roster_ceiling: number
+        }
+        Insert: {
+          id?: boolean
+          teacher_trial_days: number
+          center_trial_days: number
+          institution_trial_days: number
+          updated_at?: string
+          updated_by?: string | null
+          trial_roster_ceiling?: number
+        }
+        Update: {
+          id?: boolean
+          teacher_trial_days?: number
+          center_trial_days?: number
+          institution_trial_days?: number
+          updated_at?: string
+          updated_by?: string | null
+          trial_roster_ceiling?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'platform_settings_updated_by_fkey'
+            columns: ['updated_by']
+            isOneToOne: false
+            referencedRelation: 'users'
+            referencedColumns: ['id']
+          },
+        ]
+      }
       policy_acceptances: {
         Row: {
           id: string
           profile_id: string
-          coaching_center_id: string
-          policy_kind: string
+          coaching_center_id: string | null
+          policy_kind: PolicyKind
           policy_version: string
           accepted_at: string
           ip: string | null
@@ -1897,8 +2005,8 @@ export type Database = {
         Insert: {
           id?: string
           profile_id: string
-          coaching_center_id: string
-          policy_kind: string
+          coaching_center_id?: string | null
+          policy_kind: PolicyKind
           policy_version: string
           accepted_at?: string
           ip?: string | null
@@ -1906,25 +2014,25 @@ export type Database = {
         Update: {
           id?: string
           profile_id?: string
-          coaching_center_id?: string
-          policy_kind?: string
+          coaching_center_id?: string | null
+          policy_kind?: PolicyKind
           policy_version?: string
           accepted_at?: string
           ip?: string | null
         }
         Relationships: [
           {
-            foreignKeyName: 'policy_acceptances_profile_id_fkey'
-            columns: ['profile_id']
-            isOneToOne: false
-            referencedRelation: 'profiles'
-            referencedColumns: ['id']
-          },
-          {
             foreignKeyName: 'policy_acceptances_coaching_center_id_fkey'
             columns: ['coaching_center_id']
             isOneToOne: false
             referencedRelation: 'coaching_centers'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'policy_acceptances_profile_id_fkey'
+            columns: ['profile_id']
+            isOneToOne: false
+            referencedRelation: 'profiles'
             referencedColumns: ['id']
           },
         ]
@@ -1984,6 +2092,7 @@ export type Database = {
           created_at: string
           updated_at: string
           username: string | null
+          email: string | null
         }
         Insert: {
           id: string
@@ -1994,6 +2103,7 @@ export type Database = {
           created_at?: string
           updated_at?: string
           username?: string | null
+          email?: string | null
         }
         Update: {
           id?: string
@@ -2004,6 +2114,7 @@ export type Database = {
           created_at?: string
           updated_at?: string
           username?: string | null
+          email?: string | null
         }
         Relationships: [
           {
@@ -2073,6 +2184,181 @@ export type Database = {
             isOneToOne: false
             referencedRelation: 'students'
             referencedColumns: ['id', 'coaching_center_id']
+          },
+        ]
+      }
+      promotions: {
+        Row: {
+          id: string
+          code: string
+          name: string
+          starts_at: string
+          ends_at: string | null
+          tiers: Json
+          price_version_id: string
+          active: boolean
+          created_by: string | null
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          code: string
+          name: string
+          starts_at?: string
+          ends_at?: string | null
+          tiers: Json
+          price_version_id: string
+          active?: boolean
+          created_by?: string | null
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          code?: string
+          name?: string
+          starts_at?: string
+          ends_at?: string | null
+          tiers?: Json
+          price_version_id?: string
+          active?: boolean
+          created_by?: string | null
+          created_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'promotions_created_by_fkey'
+            columns: ['created_by']
+            isOneToOne: false
+            referencedRelation: 'users'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'promotions_price_version_id_fkey'
+            columns: ['price_version_id']
+            isOneToOne: false
+            referencedRelation: 'price_versions'
+            referencedColumns: ['id']
+          },
+        ]
+      }
+      recharge_claims: {
+        Row: {
+          id: string
+          coaching_center_id: string
+          reference_code: string
+          quoted_poisha: number
+          quoted_bonus_poisha: number
+          price_version_id: string
+          promotion_id: string | null
+          usage_students: number | null
+          usage_teachers: number | null
+          usage_branches: number | null
+          trx_id: string
+          sender_msisdn: string | null
+          state: RechargeClaimState
+          arrived_poisha: number | null
+          granted_poisha: number | null
+          granted_bonus_poisha: number | null
+          granted_promotion_id: string | null
+          reject_reason: string | null
+          submitted_by: string | null
+          reviewed_by: string | null
+          submitted_at: string
+          reviewed_at: string | null
+          review_note: string | null
+        }
+        Insert: {
+          id?: string
+          coaching_center_id: string
+          reference_code?: string
+          quoted_poisha: number
+          quoted_bonus_poisha?: number
+          price_version_id: string
+          promotion_id?: string | null
+          usage_students?: number | null
+          usage_teachers?: number | null
+          usage_branches?: number | null
+          trx_id: string
+          sender_msisdn?: string | null
+          state?: RechargeClaimState
+          arrived_poisha?: number | null
+          granted_poisha?: number | null
+          granted_bonus_poisha?: number | null
+          granted_promotion_id?: string | null
+          reject_reason?: string | null
+          submitted_by?: string | null
+          reviewed_by?: string | null
+          submitted_at?: string
+          reviewed_at?: string | null
+          review_note?: string | null
+        }
+        Update: {
+          id?: string
+          coaching_center_id?: string
+          reference_code?: string
+          quoted_poisha?: number
+          quoted_bonus_poisha?: number
+          price_version_id?: string
+          promotion_id?: string | null
+          usage_students?: number | null
+          usage_teachers?: number | null
+          usage_branches?: number | null
+          trx_id?: string
+          sender_msisdn?: string | null
+          state?: RechargeClaimState
+          arrived_poisha?: number | null
+          granted_poisha?: number | null
+          granted_bonus_poisha?: number | null
+          granted_promotion_id?: string | null
+          reject_reason?: string | null
+          submitted_by?: string | null
+          reviewed_by?: string | null
+          submitted_at?: string
+          reviewed_at?: string | null
+          review_note?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'recharge_claims_coaching_center_id_fkey'
+            columns: ['coaching_center_id']
+            isOneToOne: false
+            referencedRelation: 'coaching_centers'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'recharge_claims_granted_promotion_id_fkey'
+            columns: ['granted_promotion_id']
+            isOneToOne: false
+            referencedRelation: 'promotions'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'recharge_claims_price_version_id_fkey'
+            columns: ['price_version_id']
+            isOneToOne: false
+            referencedRelation: 'price_versions'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'recharge_claims_promotion_id_fkey'
+            columns: ['promotion_id']
+            isOneToOne: false
+            referencedRelation: 'promotions'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'recharge_claims_reviewed_by_fkey'
+            columns: ['reviewed_by']
+            isOneToOne: false
+            referencedRelation: 'users'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'recharge_claims_submitted_by_fkey'
+            columns: ['submitted_by']
+            isOneToOne: false
+            referencedRelation: 'users'
+            referencedColumns: ['id']
           },
         ]
       }
@@ -3231,17 +3517,31 @@ export type Database = {
       }
     }
     Functions: {
+      approve_recharge_claim: {
+        Args: {
+          p_claim: string | null
+          p_arrived_poisha?: number | null
+          p_note?: string | null
+        }
+        Returns: Json
+      }
       bootstrap_center: {
         Args: {
           center_name: string | null
           owner_phone: string | null
           owner_name: string | null
-          teacher_mode?: boolean | null
+          account_kind?: string | null
         }
         Returns: string
       }
       cancel_opted_out_sms: {
         Args: Record<PropertyKey, never>
+        Returns: number
+      }
+      center_owed_poisha: {
+        Args: {
+          p_center: string | null
+        }
         Returns: number
       }
       center_student_count: {
@@ -3265,6 +3565,43 @@ export type Database = {
         }
         Returns: string
       }
+      founder_adjust_balance: {
+        Args: {
+          p_center: string | null
+          p_amount_poisha: number | null
+          p_reason: string | null
+        }
+        Returns: Json
+      }
+      founder_grant_days: {
+        Args: {
+          p_center: string | null
+          p_days: number | null
+          p_reason: string | null
+        }
+        Returns: Json
+      }
+      founder_record_payment: {
+        Args: {
+          p_center: string | null
+          p_amount_poisha: number | null
+          p_months: number | null
+          p_reason: string | null
+          p_method?: PaymentMethod | null
+          p_reference?: string | null
+          p_idempotency_key?: string | null
+        }
+        Returns: Json
+      }
+      founder_set_trial_days: {
+        Args: {
+          p_teacher_trial_days: number | null
+          p_center_trial_days: number | null
+          p_institution_trial_days: number | null
+          p_trial_roster_ceiling: number | null
+        }
+        Returns: Json
+      }
       import_students: {
         Args: {
           p_center_id: string | null
@@ -3275,7 +3612,7 @@ export type Database = {
       }
       platform_centers: {
         Args: Record<PropertyKey, never>
-        Returns: { center_id: string; center_name: string; center_phone: string; bd_area: string; status: CenterStatus; plan: PlanType; created_at: string; owner_name: string; owner_phone: string; students: number; teachers: number; batches: number; sms_credit_balance: number; attendance_30d: number; exams_30d: number; fee_payments_30d: number; collected_30d: number; taps_30d: number; notes_30d: number; results_30d: number; absences_30d: number; sms_30d: number; last_active_at: string; paid_bdt: number; last_paid_at: string; paid_through: string; wants_plan: PlanType; wants_since: string; wants_note: string; asks_open: number; asks_places: number; asks_since: string; branches: number }[]
+        Returns: { center_id: string; center_name: string; center_phone: string; bd_area: string; status: CenterStatus; plan: PlanType; created_at: string; owner_name: string; owner_phone: string; owner_email: string; students: number; teachers: number; batches: number; sms_credit_balance: number; attendance_30d: number; exams_30d: number; fee_payments_30d: number; collected_30d: number; taps_30d: number; notes_30d: number; results_30d: number; absences_30d: number; sms_30d: number; last_active_at: string; paid_bdt: number; last_paid_at: string; paid_through: string; wants_plan: PlanType; wants_since: string; wants_note: string; asks_open: number; asks_places: number; asks_since: string; branches: number }[]
       }
       platform_reconciliation: {
         Args: Record<PropertyKey, never>
@@ -3284,6 +3621,21 @@ export type Database = {
       reap_stranded_sms: {
         Args: Record<PropertyKey, never>
         Returns: number
+      }
+      reject_recharge_claim: {
+        Args: {
+          p_claim: string | null
+          p_reason: string | null
+          p_note?: string | null
+        }
+        Returns: Json
+      }
+      settle_billing: {
+        Args: {
+          p_center: string | null
+          p_ran_by?: string | null
+        }
+        Returns: Json
       }
       settle_payment_intent: {
         Args: {
@@ -3298,6 +3650,7 @@ export type Database = {
     }
     Enums: {
       attendance_status: AttendanceStatus
+      attendance_unlock_reason: AttendanceUnlockReason
       audit_operation: AuditOperation
       batch_slot: BatchSlot
       billing_entry_kind: BillingEntryKind
@@ -3314,6 +3667,8 @@ export type Database = {
       payment_purpose: PaymentPurpose
       payout_wallet: PayoutWallet
       plan_type: PlanType
+      policy_kind: PolicyKind
+      recharge_claim_state: RechargeClaimState
       revenue_category: RevenueCategory
       salary_basis: SalaryBasis
       sms_kind: SmsKind

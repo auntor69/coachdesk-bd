@@ -113,7 +113,7 @@ export default async function ProgressPage({
             )}
           </p>
           <Link
-            href="/settings/plan"
+            href="/settings/billing"
             className="mt-4 inline-flex min-h-tap items-center font-medium text-brand-700"
           >
             {t.seePlans} →

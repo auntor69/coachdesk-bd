@@ -96,7 +96,6 @@ export type CallbackOutcome =
       intentId: string
       paymentId: string
       chargedBdt: number
-      capacityAfter: number
       already: boolean
     }
   | { ok: false; reason: 'bad_payload' | 'refused'; detail: string | null }

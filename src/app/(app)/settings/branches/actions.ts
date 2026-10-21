@@ -14,15 +14,23 @@
  * must not be able to raise the organisation's monthly cost on their own signature.
  *
  * AND AN INSTITUTION PLAN, re-checked here for the reason the staff actions give about
- * theirs: nothing in the database knows what a centre bought, so `multipleBranches` is
- * checked in this file or it is not checked at all. A Server Action is a public HTTP
- * endpoint and the locked card on the page is a courtesy to the reader, not a fence.
+ * theirs. Since 20260811000096 it is also checked in the database — `branches` had no
+ * trigger at all, so a token posted straight at PostgREST could write the fortieth
+ * building on a tier that sells one — and this file's copy is what produces the sentence
+ * a reader can act on, which a SQLSTATE cannot.
  *
- * NO CAP, unlike every other list in settings. A branch is not a quota an owner can run
- * out of — it is a line on the monthly bill (`INSTITUTION_BRANCH_BDT`, after the
- * included three), so the answer to a fourth one is a price and not a refusal. Which is
- * why the add form names the price before the tap: see `nextBranchCostBdt` and
+ * NO CEILING ON HOW MANY, unlike every other list in settings. A branch is not a quota an
+ * owner can run out of — it is a line on the monthly bill (`INSTITUTION_BRANCH_BDT`, after
+ * the included three), so the answer to a fourth one is a price and not a refusal. Which
+ * is why the add form names the price before the tap: see `nextBranchCostBdt` and
  * settings.branches.addCost.
+ *
+ * BUT A PRICE HAS TO BE PAID, which is the half this file was missing (`fence` below, and
+ * the trigger behind it). A signup is given days rather than money (§4.3), so a trialling
+ * institution is writable while its balance holds nothing: the included three are its
+ * tier's and free, and every building past them needs money on the balance to carry the
+ * monthly line. An organisation that has never paid us anything runs the three it was
+ * given.
  *
  * AND NOTHING HERE DELETES, which is a stronger rule than the one on employees. Every
  * foreign key onto this table is `on delete set null` — students, batches, teachers,
@@ -45,9 +53,16 @@ import {
   type CenterSession,
 } from '@/lib/auth/session'
 import { isHqMember } from '@/lib/branches'
+import { isBranchRefusal } from '@/lib/capacity'
 import { dict } from '@/lib/i18n'
 import { MAX_NAME, MAX_TEXT, clamp } from '@/lib/limits'
-import { has } from '@/lib/plans'
+import { formatTaka } from '@/lib/money'
+import {
+  branchOpeningRefusal,
+  has,
+  INSTITUTION_BRANCH_BDT,
+  INSTITUTION_INCLUDED_BRANCHES,
+} from '@/lib/plans'
 import { createClient } from '@/lib/supabase/server'
 
 export type BranchState = { error?: string; ok?: string } | null
@@ -117,12 +132,70 @@ function isFields(value: Fields | BranchState): value is Fields {
 }
 
 /**
+ * The sentence for a building past the included three with nothing on the balance.
+ *
+ * The two figures are the plan's own constants rather than read off this row, because the
+ * refusal is the same sentence for everybody reading it: three included, ৳750 each after.
+ */
+function notFunded(session: CenterSession): string {
+  return dict(session.locale).settings.branches.errors.notFunded(
+    INSTITUTION_INCLUDED_BRANCHES,
+    formatTaka(INSTITUTION_BRANCH_BDT),
+  )
+}
+
+/**
+ * Whether this organisation may open one more building, as a sentence when it may not.
+ *
+ * THE RULE IS `branchOpeningRefusal`'s, and the read is this file's. The three buildings
+ * the tier includes change no line on any bill, so they are never asked about money; past
+ * them the monthly figure the branch adds has to come off a balance that holds something,
+ * because that is what pays it (§11.6).
+ *
+ * A COUNT THAT DID NOT COME BACK IS REFUSED, not read as zero, for the reason
+ * `limitRefusal` gives: a failed count is "we cannot tell just now", and the alternative
+ * is opening a building whose allowance nobody could check. NULL IS NOT MONEY for the same
+ * reason — `branchOpeningRefusal` refuses an unreadable balance rather than treating it as
+ * empty, and the session's own figure is the one the settlement has just written.
+ *
+ * THE DATABASE ASKS THE SAME QUESTION — `app.guard_branch_ceiling` in 20260811000096, on
+ * every insert and on every closed building switched back on, whatever route the write
+ * came in by. That copy is the fence. This one exists because a refusal has to name what it
+ * costs and where to go, and because a form that could only refuse is worse than a form
+ * that is not drawn at all.
+ */
+async function fence(session: CenterSession): Promise<BranchState | null> {
+  const d = dict(session.locale).settings
+  const supabase = await createClient()
+
+  const { count } = await supabase
+    .from('branches')
+    .select('id', { count: 'exact', head: true })
+    .eq('coaching_center_id', session.active.centerId)
+    .eq('active', true)
+
+  if (count === null) return { error: d.listUnreadable }
+
+  const refusal = branchOpeningRefusal(session.plan, {
+    activeBranches: count,
+    balancePoisha: session.billing.balancePoisha,
+  })
+
+  // Unreachable from this module's own `caller()`, which refuses a tier without branches
+  // before any action body runs. Kept because a plan can change under a form that was
+  // drawn a minute ago, and because the answer belongs where the question is asked.
+  if (refusal === 'no_branches') return { error: d.errors.branchesNeedInstitution }
+  if (refusal === 'needs_money') return { error: notFunded(session) }
+  return null
+}
+
+/**
  * Opens a building.
  *
- * The one write in settings that costs money, and it says so on the form rather than
- * here — there is nothing to refuse, so there is nothing for this action to explain. The
- * bill is computed from what is on the table, so an owner who adds a fourth branch is
- * charged for a fourth branch whether or not this screen was where they added it.
+ * The one write in settings that costs money, and the price is on the form rather than
+ * here (settings.branches.addCost) — but a price is not a receipt. The three the tier
+ * includes are free and the fourth onwards is paid for out of the balance, so a trialling
+ * institution with nothing on it is refused with the reason and the way to fix it.
  */
 export async function createBranch(
   _prev: BranchState,
@@ -133,6 +206,9 @@ export async function createBranch(
 
   const fields = readFields(session, formData)
   if (!isFields(fields)) return fields
+
+  const refused = await fence(session)
+  if (refused) return refused
 
   const d = dict(session.locale).settings
   const supabase = await createClient()
@@ -147,6 +223,10 @@ export async function createBranch(
     // `unique (coaching_center_id, name)` is the only realistic failure, and "you
     // already have one of these" is more useful than a database string.
     if (error.code === '23505') return { error: d.branches.errors.duplicate }
+    // The trigger's own refusal, under the count above: two owners at one desk, or a
+    // request that never went near this screen. Without this the reader would be shown
+    // "could not save" for a rule the product states in a sentence.
+    if (isBranchRefusal(error)) return { error: notFunded(session) }
     return { error: d.errors.addFailed }
   }
 
@@ -217,6 +297,13 @@ export async function saveBranch(
  * leave an owner unable to record the plain fact that a building has shut until they had
  * emptied it. The count sits beside the button instead, so the decision is made with the
  * number in view, and every move is on the student's own profile afterwards.
+ *
+ * CLOSING ONE IS NEVER ASKED ABOUT MONEY, AND OPENING ONE ALWAYS IS. A closure stops a
+ * monthly line — refusing it would be charging a customer for shutting a building — while
+ * a building switched back on starts one again, which is why `fence` is asked on the way
+ * in and not on the way out. A row that is already open is a no-op here and the trigger
+ * returns before its own test, so a resubmitted form cannot be refused for a building that
+ * was never closed.
  */
 export async function setBranchActive(
   _prev: BranchState,
@@ -230,6 +317,12 @@ export async function setBranchActive(
   if (!branchId) return { error: d.branches.errors.notFound }
 
   const next = String(formData.get('next') ?? '') === 'on'
+
+  if (next) {
+    const refused = await fence(session)
+    if (refused) return refused
+  }
+
   const supabase = await createClient()
 
   const { data: saved, error } = await supabase
@@ -239,7 +332,10 @@ export async function setBranchActive(
     .eq('coaching_center_id', session.active.centerId)
     .select('id')
 
-  if (error) return { error: d.errors.changeFailed }
+  if (error) {
+    if (isBranchRefusal(error)) return { error: notFunded(session) }
+    return { error: d.errors.changeFailed }
+  }
   if (!saved || saved.length === 0) return { error: d.branches.errors.notFound }
 
   revalidatePath('/settings/branches')

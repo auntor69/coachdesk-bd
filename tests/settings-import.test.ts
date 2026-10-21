@@ -21,6 +21,11 @@
  * button is disabled rather than the list being trimmed to fit. A redesign that drops
  * one of those leaves a screen offering an import the action will refuse, or worse,
  * offering one it will half-do.
+ *
+ * THE PRICE AND THE ASK ARE GONE FROM IT (§16.1 step 28), and so is the one shape that
+ * drew neither — the card for a plan that was full and sold no places. What is left is
+ * one form, one Add button, and a `room` that is null on both per-student tiers because
+ * there is no ceiling to be short of.
  */
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
@@ -102,13 +107,15 @@ test('the left half is the paste and everything read back off it', () => {
   const right = at(FORM, 'xl:col-span-5')
   assert.ok(left < right)
 
-  // In order, and all of them before the split: box, counts, over-500, the price
-  // when it does not fit, the unreadable lines, then the preview of the readable.
+  // In order, and all of them before the split: box, counts, over-500, what does not
+  // fit, the unreadable lines, then the preview of the readable. The priced breakdown
+  // that used to sit between the over-500 alert and the problem list went with capacity
+  // (§16.1 step 28) — the sentence about the plan's room took its place.
   for (const anchor of [
     'id="roster"',
     '{fill(t.fresh, { n: newCount })}',
     '{fill(t.tooMany, { max: MAX_IMPORT_ROWS, got: rows.length })}',
-    '{fill(t.shortTitle, { n: short })}',
+    '{fill(t.overRoom, { room, fresh: newCount })}',
     '{t.problemsTitle}',
     '{fill(t.readyTitle, { n: ready.length })}',
   ]) {
@@ -129,25 +136,42 @@ test('the right half is the batches, the warning, then the button', () => {
 
   // Last in the column, so there is nothing under the thing that submits.
   assert.ok(submit < at(FORM, '</form>'))
-  assert.equal(count(FORM, 'type="submit"'), 4, 'add, buy, ask, withdraw')
+  // ONE SUBMIT, where there were four — add, buy, ask, withdraw. The other three were
+  // `formAction`s into billing/actions.ts and went with the places they bought.
+  assert.equal(count(FORM, 'type="submit"'), 1)
 })
 
 test('the page caps its prose and its three refusals', () => {
-  assert.equal(count(PAGE, 'max-w-2xl'), 3, 'read-only, unreadable, and full-with-nothing-to-buy')
+  assert.equal(count(PAGE, 'max-w-2xl'), 3, 'read-only, a count that did not arrive, and the trial’s bound')
   assert.ok(PAGE.includes('<Card className="max-w-2xl border-late/30 bg-late/5">'))
-  assert.ok(PAGE.includes('<Card className="max-w-2xl">'))
   assert.ok(PAGE.includes('<ReadOnlyNote t={d.readOnly} className="max-w-2xl" />'))
+  /*
+   * The third is the trial's bound (20260811000098), and it is `max-w-2xl` for this test's own
+   * reason: one sentence and a way out is a capped card, never a column 1,216px wide. The card
+   * that used to hold this shape was the full-and-cannot-buy one, and it went with the ceiling
+   * (§16.1 step 28) — a plan limit cannot refuse a paste on a per-student tier, while a trial's
+   * roster can, and both are one sentence with the money screen behind them.
+   */
+  assert.ok(PAGE.includes('<Card className="max-w-2xl">'))
+  assert.match(PAGE, /const door = await rosterDoor\(supabase, session\)/)
+  // Drawn instead of the paste box, and after the three reads — an owner who pasted three
+  // hundred lines into a full trial has lost an afternoon, which is the whole cost here.
+  assert.match(PAGE, /if \(!door\.open\) \{/)
+  assert.ok(
+    PAGE.indexOf('if (!door.open) {') < PAGE.indexOf('<ImportForm'),
+    'the bound is answered before the paste box is drawn',
+  )
 
   // The sentence under the title is the bar's subtitle now, which caps itself at 672px
   // — so the page no longer writes a `max-w-2xl` for it.
   assert.ok(PAGE.includes('subtitle={t.body}'))
 
   // Every arm names the screen that refused, and the bar is what names it.
-  assert.equal(count(PAGE, '<PageHeader'), 3)
+  assert.equal(count(PAGE, '<PageHeader'), 4)
   assert.equal(count(PAGE, '<h1'), 0, 'the bar owns the heading')
   assert.equal(
     count(PAGE, "back={{ href: '/settings/students', label: d.settings.students.title }}"),
-    3,
+    4,
     'and the way back is to the roster, not to the settings hub',
   )
 })
@@ -164,10 +188,13 @@ test('a lapsed centre never sees the paste box, and pays nothing to find out', (
     assert.ok(lapsed < at(PAGE, query), `${query} runs for a centre that cannot write`)
   }
 
-  // And above the full-and-cannot-buy card, for the reason the add-student screen orders
-  // its own two arms the same way: places bought on a lapsed subscription are capacity
-  // nobody can use until the bill is settled, so the bill is the one ask worth making.
-  assert.ok(lapsed < at(PAGE, 'room === 0 && forSale === null'))
+  // It was written above a full-and-cannot-buy card as well, for the reason the
+  // add-student screen ordered its own two arms that way: places bought on a lapsed
+  // subscription were capacity nobody could use until the bill was settled, so the bill
+  // won. That card went with capacity (§16.1 step 28) and the paste box is the only
+  // other arm left — asserted as an absence, because the ordering rule has nothing left
+  // to order.
+  assert.doesNotMatch(PAGE, /forSale/)
 })
 
 /* -------------------------------------------------------------------------- */
@@ -180,30 +207,42 @@ test('the gate is the permission, and the same one the action re-checks', () => 
   assert.doesNotMatch(PAGE, /await pageRole\(/)
   assert.ok(IMPORT_ACTION.includes("const session = await mayManage('can_manage_students', 'students')"))
 
-  // Who may buy, who may ask, who may read the plan — three different answers, and
-  // none of them is "whoever reached this page".
-  assert.ok(PAGE.includes("mayBuy={session.active.role === 'owner'}"))
-  assert.ok(PAGE.includes("const mayAsk = session.active.role === 'manager'"))
-  assert.ok(PAGE.includes('mayReadPlan={isStaffAdmin(session)}'))
+  // The three role answers that used to be resolved here — who may buy, who may ask,
+  // who may read the plan — are gone with the controls they gated, and `isStaffAdmin`
+  // went with the last of them. Asserted as an absence: a role test on this page with no
+  // control behind it is a refusal nobody can reach.
+  assert.doesNotMatch(PAGE, /mayBuy|mayAsk|mayReadPlan|isStaffAdmin/)
+  assert.doesNotMatch(PAGE, /session\.active\.role/)
 })
 
 test('a count that did not arrive takes the paste box away', () => {
-  // Before `studentRoom`, because room computed from a failed count is a number
-  // this screen would then draw.
-  const guard = at(PAGE, 'if (batches === null || studentCount === null) {')
-  assert.ok(guard < at(PAGE, 'studentRoom(session.ceiling, studentCount)'))
+  // Before `roomFor`, because room computed from a failed count is a number this screen
+  // would then draw. Only where a count was asked for: on a per-student tier the read is
+  // skipped entirely and there is no `room` to get wrong.
+  const guard = at(
+    PAGE,
+    'if (batches === null || (session.plan.maxStudents !== null && studentCount === null)) {',
+  )
+  assert.ok(guard < at(PAGE, "roomFor(session.plan, 'maxStudents', studentCount)"))
   assert.ok(PAGE.includes('{t.unreadable}'))
+  assert.ok(PAGE.includes('session.plan.maxStudents === null\n        ? null\n        : centerStudentCount'))
 
-  // And the action refuses the same way rather than reading it as zero.
-  assert.ok(IMPORT_ACTION.includes('if (count === null) return { error: t.errors.limitUnknown }'))
+  // And the action refuses the same way rather than reading it as zero — only where
+  // there is a cap to read against, since a per-student tier counts nothing.
+  assert.ok(
+    IMPORT_ACTION.includes(
+      'if (cap !== null && count === null) return { error: t.errors.limitUnknown }',
+    ),
+  )
+  assert.ok(IMPORT_ACTION.includes('const cap = session.plan.maxStudents'))
   assert.ok(IMPORT_ACTION.includes('if (fresh === null) return { error: t.errors.limitUnknown }'))
 })
 
 test('the roster is a hint, and null means no hint rather than no matches', () => {
   assert.ok(PAGE.includes('const HINT_CEILING = 1000'))
   assert.ok(
-    PAGE.includes(`            roster === null || roster.length > HINT_CEILING
-              ? null`),
+    PAGE.includes(`          roster === null || roster.length > HINT_CEILING
+            ? null`),
   )
 
   // The count is active students — `app.active_students` behind the RPC, which is why
@@ -219,37 +258,43 @@ test('the roster is a hint, and null means no hint rather than no matches', () =
   assert.ok(FORM.includes('const newCount = hinting ? ready.length - alreadyThere : ready.length'))
 })
 
-test('the price is quoted off the paid ceiling, and nothing is created before it', () => {
-  // Not `session.ceiling`: a trial moves what fits, while settle_payment_intent
-  // reads the paid row, so a quote off the trial is one the database refuses.
-  assert.ok(
-    PAGE.includes(
-      'const paid = studentCeiling(planFor(session.active.plan), session.active.studentCapacity)',
-    ),
-  )
-  assert.ok(PAGE.includes("const forSale = paid.kind === 'purchased' ? paid.ceiling : null"))
+test('nothing here is priced, and nothing is created before anything is', () => {
+  // §3.5's steps 4 to 6 — the bands, the total and the buy button that opened the
+  // intent — are gone (§16.1 step 28). There is no ceiling to be short of on a
+  // per-student tier, so a paste that does not fit is a teacher tier past its own plan
+  // allowance and the answer is a different plan, not a price.
+  for (const gone of [
+    'capacityBands',
+    'capacityCostBdt',
+    'studentCeiling',
+    'name="places"',
+    'buyStudentPlaces',
+    'requestPlaces',
+  ]) {
+    assert.equal(count(FORM, gone), 0, `${gone} is back in the import form`)
+  }
 
-  assert.ok(FORM.includes('const short = overRoom ? newCount - room : 0'))
-  assert.ok(FORM.includes('capacityBands(forSale, forSale + short)'))
-  assert.ok(FORM.includes('capacityCostBdt(forSale, forSale + short)'))
-  assert.ok(FORM.includes('<input type="hidden" name="places" value={short} readOnly />'))
+  // What is left is one sentence naming the number that fits, and the same null rule as
+  // the page: a tier that caps nothing never sees it.
+  assert.ok(FORM.includes('const overRoom = room !== null && newCount > room'))
+  assert.ok(FORM.includes('{room !== null && overRoom && ('))
+  assert.ok(FORM.includes('room: number | null'))
 
   // §10: the whole paste lands or none of it does, so an over-room list disables the
   // button instead of being trimmed to fit.
   assert.ok(FORM.includes('disabled={pending || newCount === 0 || tooMany || overRoom}'))
-  assert.ok(IMPORT_ACTION.includes('if (fresh.length > room) {'))
+  assert.ok(IMPORT_ACTION.includes('if (room !== null && fresh.length > room) {'))
   assert.ok(IMPORT_ACTION.includes('if (rows.length > MAX_IMPORT_ROWS) {'))
   assert.ok(IMPORT_ACTION.includes('if (full.length > 0) {'), 'and the per-batch cap')
 })
 
-test('one form, three actions, and the batch ticks are controlled', () => {
-  // A second <form> inside the first is illegal, and a link to /settings/plan would
-  // throw away a five-hundred-line paste to buy the places it needs. Counted on the
-  // opening attribute, because three comments say the tag name to explain the rule.
+test('one form, one action, and the batch ticks are controlled', () => {
+  // The rule that made the buy and the ask live inside this form is kept where it was
+  // written — a second <form> in the first is illegal, and a link to /settings/billing
+  // would throw away a five-hundred-line paste — but there is nothing to submit to it
+  // any more: the paste is the only thing that crosses (§16.1 step 28).
   assert.equal(count(FORM, '<form action='), 1)
-  assert.ok(FORM.includes('formAction={buy}'))
-  assert.ok(FORM.includes('formAction={ask}'))
-  assert.ok(FORM.includes('formAction={withdraw}'))
+  assert.doesNotMatch(FORM, /formAction=/)
 
   // React 19 resets an uncontrolled field after a Server Action, and the box keeps
   // the failed lines on purpose — so an uncontrolled tick imported the retry into

@@ -3,13 +3,29 @@
 /**
  * One person's row for the month, with the form that hands them a salary behind a tap.
  *
- * WHAT IS ABOVE THE FORM IS THE GUARD AGAINST PAYING TWICE. 20260811000044 has no unique
- * index on (payee, for_month) on purpose — half a salary on the 5th and half on the 20th is
- * two real rows and a reversing correction is a third — so nothing in the database will
- * refuse a second payment, and ./actions.ts deliberately does not either. What stops an
- * owner paying a salary twice by accident is this row printing what is already on the
- * record for this month before the form opens. That is why the figures are not inside the
- * collapsed panel.
+ * WHAT IS ABOVE THE FORM IS THE FIRST GUARD AGAINST PAYING TWICE. 20260811000044 has no
+ * unique index on (payee, for_month) on purpose — half a salary on the 5th and half on the
+ * 20th is two real rows and a reversing correction is a third — so the row printing what is
+ * already on the record for this month is what tells an owner where the month stands. The
+ * second guard is inside the form, and it is a LOCK rather than a warning. `needsRepeat` draws
+ * the explicit tick; the submit is disabled and reads as locked until that tick is on,
+ * decided by `needsRepeatConfirmation` — the same function ./actions.ts refuses with — run on
+ * the figures currently standing in the boxes. So the tap is blocked exactly when the server
+ * would refuse it and never when it would not: the second half of a salary stays payable and
+ * the second full salary does not. ./actions.ts still decides the overshoot for itself,
+ * because `disabled` is the browser's attribute and a Server Action is a public endpoint. The
+ * figures stay outside the collapsed panel for the same reason they always did — they are what
+ * the owner reads before they tap.
+ *
+ * AND THE TICK DOES NOT SURVIVE THE PAYMENT IT UNLOCKED. The boxes remount to the agreement's
+ * figures after a success, so a tick left standing from the payment before would submit the
+ * very second full salary this mechanism exists to stop, already confirmed. The tick is
+ * therefore stored as the answer it was given under rather than as a boolean: `confirmed` is
+ * true only while the action's last answer is still the one the owner confirmed, so a new
+ * result — a payment, a refusal — is a new question and the tick is off. Derived, not cleared
+ * from an effect, so there is no second render and no frame where the box and the lock
+ * disagree. A refusal asking to be re-ticked is the safe direction: the tick exists to make
+ * somebody look twice, and a retry is a second look.
  *
  * FOUR BOXES OR ONE, decided by whether there is a live monthly agreement behind the row.
  * Four prefilled from the agreement is the ordinary case: `amount_bdt` is generated from
@@ -31,12 +47,13 @@
 import { useActionState, useEffect, useRef, useState } from 'react'
 
 import { MethodPicker, type MethodLabels } from '@/components/method-picker'
+import { PaperLink } from '@/components/paper-link'
 import { Alert, Button, Field } from '@/components/ui'
 import type { T } from '@/lib/i18n'
 import { mintIdempotencyKey } from '@/lib/idempotency'
 import { MAX_LABEL, MAX_TEXT } from '@/lib/limits'
 import { formatTaka, parseTaka, sumTaka } from '@/lib/money'
-import type { SalaryParts } from '@/lib/payroll/month'
+import { needsRepeatConfirmation, type SalaryParts } from '@/lib/payroll/month'
 import type { PaymentMethod } from '@/lib/supabase/types'
 import { paySalary, type PayState } from './actions'
 
@@ -47,6 +64,13 @@ import { paySalary, type PayState } from './actions'
  * would be read as any of the three, and they differ by however much is still owed.
  */
 export type RowFigure = { label: string; value: string }
+
+/**
+ * "No tick yet" — distinct from `null`, which is the action's state before the first submit.
+ * A module constant and not an inline object, so the comparison is against the same value on
+ * every render; the tick stays off until somebody ticks it.
+ */
+const NOT_ANSWERED = { notAnswered: true } as const
 
 export function PayRow({
   payee,
@@ -59,6 +83,9 @@ export function PayRow({
   hint,
   flag,
   parts,
+  needsRepeat,
+  alreadyPaid,
+  agreedNet,
   canWrite,
   methods,
   t,
@@ -80,6 +107,18 @@ export function PayRow({
   flag: string | null
   /** The agreement's four columns, or null where there is nothing to prefill. */
   parts: SalaryParts | null
+  /**
+   * Draw the confirmation tick: this row already has money on the month. See ./page.tsx
+   * for how it is decided and ./actions.ts for what happens without it.
+   */
+  needsRepeat: boolean
+  /**
+   * Handed over for this month already, every row summed — what the lock is measured from.
+   * The row prints the same figure above the form; this is the one the rule uses.
+   */
+  alreadyPaid: number
+  /** The live monthly agreement's net, or null where there is nothing to overshoot. */
+  agreedNet: number | null
   canWrite: boolean
   methods: MethodLabels
   t: T<'salaryPayForm'>
@@ -87,6 +126,30 @@ export function PayRow({
 }) {
   const [state, action, pending] = useActionState<PayState, FormData>(paySalary, null)
   const [open, setOpen] = useState(false)
+
+  /**
+   * The two things the button's locked state is built from: what the boxes currently add up
+   * to, reported up by `Amounts`, and whether the confirmation tick is on.
+   *
+   * `Amounts` owns the figures because it owns the boxes, so it hands its total up rather than
+   * this component reaching in for it — and the starting guess is the agreement's own sum, so
+   * the lock is right on the first paint rather than a frame later. The tick is controlled for
+   * the reason `./settings/billing/recharge-form.tsx` controls its own: a `disabled` attribute
+   * has to follow it, and an uncontrolled box tells React nothing.
+   */
+  const [amount, setAmount] = useState(agreedAmount(parts))
+
+  /*
+   * The tick, paired with the action's answer it was given under. A sentinel rather than
+   * `null`, because `null` is a real answer here — the state before the first submit — and a
+   * first paint that read it as a confirmed tick would draw the lock already open.
+   *
+   * The boxes are uncontrolled beyond `amount`, so this component has no other record of
+   * "what was on screen when the owner ticked"; the state object is that record, and
+   * `useActionState` keeps its identity until the next result arrives.
+   */
+  const [confirmedFor, setConfirmedFor] = useState<PayState | typeof NOT_ANSWERED>(NOT_ANSWERED)
+  const confirmed = confirmedFor === state
 
   /**
    * Cash first, and it survives a save, for the reason the spending form gives: salaries
@@ -111,6 +174,17 @@ export function PayRow({
     const input = keyRef.current
     if (input && (state?.ok || !input.value)) input.value = mintIdempotencyKey()
   }, [state, open])
+
+  /*
+   * Whether the submit is locked, and this is the action's own rule rather than a second one.
+   *
+   * `needsRepeatConfirmation` and not `needsRepeat`: the tick is drawn on every row that
+   * already has money on the month, and a legitimate second instalment sits under the agreed
+   * figure and must not be locked out of it. Running the same function the action refuses with
+   * means the lock and the refusal cannot disagree — and because it runs on the live `amount`,
+   * typing a smaller figure unlocks the button without touching the box.
+   */
+  const needsTick = needsRepeatConfirmation({ agreedNet, alreadyPaid, amount, confirmed })
 
   return (
     <li className="rounded-xl border border-line bg-white px-4 py-3">
@@ -192,11 +266,37 @@ export function PayRow({
             )}
 
             {/*
+              THE SLIP, THE INSTANT IT EXISTS — and this is the button the screen was
+              missing. The sentence above names the voucher number in words; the only way to
+              the paper was to scroll to the register and notice that the number in it was a
+              link, which is not a journey anybody was told about. The person who has just
+              been paid is standing at the desk, so the sheet is one tap from the
+              confirmation, and the sheet is where the Print button is.
+
+              Behind the same `state` as the sentence, so it is drawn on the replay branch
+              too: the second arrival of a submit carries the row the first one wrote, which
+              is the same slip rather than a second one.
+            */}
+            {state?.receipt && (
+              <PaperLink
+                href={`/payroll/payslip/${state.receipt.id}`}
+                label={`${t.printSlip} ${state.receipt.no}`}
+              >
+                {t.printSlip}
+              </PaperLink>
+            )}
+
+            {/*
               Keyed on the confirmation, which is how the boxes go back to the agreement's
               figures once a salary is recorded without a `setState` in an effect: a new
               voucher number is a new key, so React remounts the fields with their defaults.
             */}
-            <Amounts key={state?.ok ?? 'first'} parts={parts} t={t} />
+            <Amounts
+              key={state?.ok ?? 'first'}
+              parts={parts}
+              t={t}
+              onAmount={setAmount}
+            />
 
             <MethodPicker
               // Unique per row: the page renders one of these under every person, and
@@ -230,7 +330,47 @@ export function PayRow({
               autoComplete="off"
             />
 
-            <Button type="submit" full disabled={pending}>
+            {/*
+              The tick that turns a second payment into a deliberate one — and the key to the
+              button, which is `disabled` until it is on whenever the figures in the boxes
+              would take the month past the agreement. NOT `required`: the second half of a
+              salary is under the agreed figure and has to go through without it, so the form
+              offers the control to every row that has money on the month and locks only the
+              case that needs it. ./actions.ts is still the fence for a request that arrives
+              without the tick — a disabled attribute belongs to the browser, not the endpoint.
+            */}
+            {needsRepeat && (
+              <>
+                {/* Amber while it is the thing standing between the owner and the button: a
+                    lock has to point at what unlocks it. Quiet again the moment it is ticked. */}
+                <label
+                  className={`flex items-start gap-2 text-sm ${
+                    needsTick ? 'text-late' : 'text-ink-soft'
+                  }`}
+                >
+                  <input
+                    type="checkbox"
+                    name="confirmRepeat"
+                    checked={confirmed}
+                    onChange={(e) => setConfirmedFor(e.target.checked ? state : NOT_ANSWERED)}
+                    className="mt-0.5 h-5 w-5 shrink-0 accent-brand-600"
+                  />
+                  <span>{t.repeatLabel}</span>
+                </label>
+
+                {/* Above the button, and only while it is the thing in the way: a control
+                    that cannot be tapped has to say what would let it be. */}
+                {needsTick && !pending && (
+                  <p role="status" className="text-sm font-medium text-late">
+                    {t.unlockHint}
+                  </p>
+                )}
+              </>
+            )}
+
+            {/* Locked until the tick is on: `disabled` is what does it, so the button greys
+                out in the shared style instead of looking tappable and refusing on submit. */}
+            <Button type="submit" full disabled={pending || needsTick}>
               {pending ? t.paying : t.submit}
             </Button>
 
@@ -257,6 +397,18 @@ function box(value: number): string {
   return String(value)
 }
 
+/**
+ * What the agreement's four figures add up to, as the boxes will when they are untouched.
+ *
+ * Only the starting value of the row's `amount` — the boxes report the real one on mount — but
+ * it is what stops a frame of unlocked button on a row that is about to be locked.
+ */
+function agreedAmount(parts: SalaryParts | null): number {
+  return parts === null
+    ? 0
+    : sumTaka([parts.basic, parts.allowances, parts.other, -parts.deductions])
+}
+
 /** What a box holds, as a number, with an empty box counting as nothing. */
 function figure(text: string): number {
   return parseTaka(text) ?? 0
@@ -265,9 +417,10 @@ function figure(text: string): number {
 /**
  * The money boxes, and the figure they add up to.
  *
- * CONTROLLED, AND THE ONLY STATE ON THIS FORM THAT IS. The total under them is what will
- * actually be recorded — `amount_bdt` is generated from these four columns — so it has to
- * follow the typing rather than wait for a round trip.
+ * CONTROLLED, AND THE FIGURES ARE WHY. The total under them is what will actually be recorded
+ * — `amount_bdt` is generated from these four columns — so it has to follow the typing rather
+ * than wait for a round trip, and it is reported up to the row because the button's lock is
+ * measured from it.
  *
  * The arithmetic is `sumTaka`'s, in integer poisha, which is the same function the tested
  * month reads the result back through. Adding four floats here and letting Postgres add the
@@ -276,9 +429,15 @@ function figure(text: string): number {
 function Amounts({
   parts,
   t,
+  onAmount,
 }: {
   parts: SalaryParts | null
   t: T<'salaryPayForm'>
+  /**
+   * The row's lock runs on this: what the submit would add, and so whether the button may be
+   * tapped. Reported from here because these are the boxes that decide it.
+   */
+  onAmount: (amount: number) => void
 }) {
   const [basic, setBasic] = useState(parts ? box(parts.basic) : '')
   const [allowances, setAllowances] = useState(parts ? box(parts.allowances) : '')
@@ -298,6 +457,23 @@ function Amounts({
     className: 'num',
   }
 
+  /*
+   * What this submit would record, in both shapes of the form: the four boxes added up, or the
+   * one box on a row with no agreed figure to split into four.
+   *
+   * ABOVE THE BRANCH BELOW AND NOT INSIDE IT, because the effect under it is a hook and hooks
+   * run on every render. `setAmount` is a stable identity, so the effect fires on the figure
+   * changing and on nothing else.
+   */
+  const total =
+    parts === null
+      ? figure(basic)
+      : sumTaka([figure(basic), figure(allowances), figure(other), -figure(deductions)])
+
+  useEffect(() => {
+    onAmount(total)
+  }, [total, onAmount])
+
   // One box, because there is no agreed figure to split into four. A per-class teacher or
   // somebody with money on this month and no live agreement.
   if (parts === null) {
@@ -312,13 +488,6 @@ function Amounts({
       />
     )
   }
-
-  const total = sumTaka([
-    figure(basic),
-    figure(allowances),
-    figure(other),
-    -figure(deductions),
-  ])
 
   return (
     <>

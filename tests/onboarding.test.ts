@@ -29,17 +29,28 @@ const read = (...parts: string[]) => readFileSync(path.join(ROOT, ...parts), 'ut
 
 const PAGE = read('src', 'app', '(auth)', 'onboarding', 'page.tsx')
 const ACTIONS = read('src', 'app', '(auth)', 'actions.ts')
-/** The live shape of `bootstrap_center` — re-emitted whole by 20260811000079. */
-const MIGRATION = read('supabase', 'migrations', '20260811000079_email_signup.sql')
+/**
+ * The live shape of `bootstrap_center` — re-emitted whole by 20260811000092, which is the
+ * newest definition and the one a call actually reaches. 20260811000079 widened the login
+ * guard; 20260811000092 kept it, changed the fourth argument from `teacher_mode boolean` to
+ * the account kind, and moved the trial length out of this function and into
+ * `platform_settings` (20260811000091). The assertions below follow the file that is in
+ * force rather than the one the guard was first written in.
+ */
+const MIGRATION = read('supabase', 'migrations', '20260811000092_signup_trials_and_payments.sql')
 /** The same file with its prose taken off: a comment naming a rule is not the rule. */
 const SQL = MIGRATION.replace(/^\s*--.*$/gm, '')
 
 test('the screen refuses the form to a login the centre minted', () => {
-  assert.match(PAGE, /if \(session\.username \|\| !session\.email\) \{/)
+  assert.match(PAGE, /if \(session\.username\) \{/)
 
   // The form is below the refusal, and the refusal returns before reaching it.
-  const branch = PAGE.indexOf('if (session.username || !session.email) {')
-  const form = PAGE.indexOf('<OnboardingForm />')
+  const branch = PAGE.indexOf('if (session.username) {')
+  // Opened, not closed: the form takes the trial lengths as props since 20260811000092, so
+  // the tag this test looks for is `<OnboardingForm` with an argument rather than the bare
+  // element it used to be. What matters is that the refusal returns before the form, which
+  // is what the comparison below asks.
+  const form = PAGE.indexOf('<OnboardingForm')
   assert.ok(branch > 0 && form > branch, 'the form is not behind the username check')
   assert.match(PAGE.slice(branch, form), /return \(/, 'the username branch renders nothing')
   assert.doesNotMatch(
@@ -68,14 +79,14 @@ test('the founder is redirected rather than offered a centre', () => {
   // After the unreadable guard — a failed memberships read must not be read as "the
   // founder signed in" — and before the form, so the founder never sees it.
   const unreadable = PAGE.indexOf('session.membershipsUnreadable')
-  const form = PAGE.indexOf('<OnboardingForm />')
+  const form = PAGE.indexOf('<OnboardingForm')
   assert.ok(unreadable > 0 && redirectAt > unreadable, 'the redirect precedes the unreadable guard')
   assert.ok(redirectAt < form, 'the founder can still be handed the create-a-centre form')
 
   // And the two readers the page is *for* keep their arms: a minted login still
   // gets the refusal and a real signup still gets the form.
-  assert.match(PAGE, /if \(session\.username \|\| !session\.email\) \{/)
-  assert.match(PAGE, /<OnboardingForm \/>/)
+  assert.match(PAGE, /if \(session\.username\) \{/)
+  assert.match(PAGE, /<OnboardingForm/)
 })
 
 test('both readers can leave, which is the part nothing else in the product offers', () => {
@@ -85,8 +96,8 @@ test('both readers can leave, which is the part nothing else in the product offe
   // Twice: once per branch. One sign-out on the refusal screen would leave the new
   // signup with no way out, and one under the form would leave the teacher stuck.
   assert.equal(PAGE.split('<SignOut ').length - 1, 2, 'a branch has no way out')
-  const branch = PAGE.indexOf('if (session.username || !session.email) {')
-  const form = PAGE.indexOf('<OnboardingForm />')
+  const branch = PAGE.indexOf('if (session.username) {')
+  const form = PAGE.indexOf('<OnboardingForm')
   assert.match(PAGE.slice(branch, form), /<SignOut /, 'the refusal screen has no way out')
   assert.match(PAGE.slice(form), /<SignOut /, 'the form has no way out')
 
@@ -124,10 +135,20 @@ test('the action asks again, because it is a public endpoint', () => {
   assert.ok(start > 0, 'createCenter is not where this test looks')
   const body = ACTIONS.slice(start, ACTIONS.indexOf('\nexport ', start + 10))
 
-  const check = body.indexOf('session.username || !session.email')
+  const check = body.indexOf('session.username')
+  // The call is the raw `rpc('bootstrap_center', …)` again, and that is a fact about the
+  // generated types rather than about this line: 20260811000092's account kind is in
+  // `Functions.bootstrap_center` now, so the local `BootstrapRpc` cast that stood in for it
+  // while they were stale is gone — see the note in ./actions.ts. What this looks for is
+  // still the call, wherever the action spells it.
   const rpc = body.indexOf("rpc('bootstrap_center'")
   assert.ok(check > 0, 'createCenter does not re-check the login it was called with')
   assert.ok(rpc > check, 'createCenter creates the centre before checking who asked')
+
+  // And the fourth argument is the account kind, which is the whole reason the cast
+  // existed: it is what decides the tier and the trial a customer is given, so a call that
+  // sent a boolean again would be a different product for every new signup.
+  assert.match(body.slice(rpc, rpc + 400), /account_kind: kind/)
 
   // Within the check's own lines, because createCenter refuses three other things and
   // any of those returns would otherwise stand in for this one.
@@ -157,9 +178,27 @@ test('the refusal that counts is in the database, where the anon key lands', () 
 
   // Everything the migration was already doing survives being re-emitted.
   assert.match(SQL, /This account already owns a center/)
-  assert.match(SQL, /'teacher_free',\s*'teacher_plus',\s*pg_catalog\.now\(\) \+ interval '14 days'/)
   assert.match(SQL, /set search_path = ''/)
   assert.match(SQL, /grant execute on function public\.bootstrap_center/)
+
+  /*
+   * AND THE TRIAL IS NO LONGER A LITERAL IN THIS FUNCTION (20260811000091, §4.3).
+   *
+   * A teacher is still given a fortnight of Teacher Pro — but the number is read from
+   * `platform_settings` at signup rather than typed here, and a centre or an institution is
+   * given days on the line on its own tier instead of a teacher's trial. So what this
+   * asserts is the shape: the kind chooses the tier, the length comes from the settings row,
+   * and there is no fourteen-day interval left for the next rewrite to copy.
+   */
+  assert.match(SQL, /from public\.platform_settings s/)
+  assert.match(SQL, /case kind when 'teacher' then 'teacher_free'::public\.plan_type/)
+  assert.match(SQL, /case kind when 'teacher' then 'teacher_plus'::public\.plan_type end/)
+  assert.match(SQL, /'signup_trial'/)
+  assert.doesNotMatch(
+    SQL,
+    /interval '14 days'/,
+    'the fortnight is hard-coded again rather than read from the settings',
+  )
 })
 
 test('the domain in the SQL is the one TypeScript mints, and not the other one', () => {
@@ -182,5 +221,7 @@ test('the domain in the SQL is the one TypeScript mints, and not the other one',
     PHONE_LOGIN_DOMAIN.endsWith(`.${suffix}`),
     'the phone domain no longer shares the suffix the SQL refuses',
   )
-  assert.match(SQL, new RegExp(`like '%\\.${suffix.replace(/\./g, '\\.')}'`))
+  // The suffix rather than one domain: since 2026-09-13 every login on either reserved
+  // domain is one a centre minted, so `like '%.<suffix>'` is what the function refuses.
+  assert.match(SQL, new RegExp(`\.${suffix.replace(/\./g, '\\.')}'`))
 })

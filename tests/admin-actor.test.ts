@@ -93,9 +93,9 @@ function adminCalls(): Call[] {
 /**
  * The calls with no human behind them, and why each has to be one.
  *
- * TWO KINDS, AND THE SECOND IS NOT A MACHINE. The first three are: work nobody asked for,
- * or work asked for by an account that does not exist yet. The last two are reads — a
- * screen showing an owner what a colleague types to sign in — and a read leaves no audit
+ * TWO KINDS, AND THE SECOND IS NOT A MACHINE. The first two are machines: work nobody
+ * asked for, and work whose whole record is that a machine did it. The last two are reads —
+ * a screen showing an owner what a colleague types to sign in — and a read leaves no audit
  * row for anybody to be named on, so an actor there would be a header sent to no reader.
  *
  * Not a list to shorten, and not one to lengthen carelessly either: a new entry is a claim
@@ -106,6 +106,10 @@ function adminCalls(): Call[] {
 const ACTOR_LESS = [
   // The queue worker. `actor_role = 'service_role'` with a null actor is the truth.
   'src/app/api/cron/sms/route.ts',
+  // The nightly burn. Same truth, one table over: the record is a `settlement_runs` row with
+  // `ran_by = 'system'`, and no member asked for the charge — §11.13 calls it a convenience
+  // precisely because nobody is behind it.
+  'src/app/api/cron/settle/route.ts',
   // The two rosters that show a colleague's username, which `profiles` is self-read for.
   // Reads, so there is no audit row and nothing to attribute.
   'src/app/(app)/settings/teachers/page.tsx',
@@ -148,9 +152,18 @@ test('the human-facing modules are all still in the set that names an actor', ()
   assert.deepEqual(named, [
     'src/app/(app)/exams/actions.ts',
     'src/app/(app)/settings/actions.ts',
+    'src/app/(app)/settings/billing/actions.ts',
+    // The recharge card reads `public.promotions` with the admin key, because §11.11 keeps
+    // a promotion unreachable from a centre's own session — and it names the reader, so
+    // nothing it does is anonymous.
+    'src/app/(app)/settings/billing/recharge-panel.tsx',
     'src/app/(app)/settings/managers/actions.ts',
-    'src/app/(app)/settings/plan/actions.ts',
     'src/app/founder/actions.ts',
+    // The consent rows of §14.1. A person ticked a box and a named profile agreed to a
+    // version of a document, so the write has a human behind it — and it is service-role
+    // because the signup acceptance lands in the same request that confirms the address,
+    // before a cookie has been written to the response.
+    'src/lib/legal/acceptance.ts',
   ])
 })
 

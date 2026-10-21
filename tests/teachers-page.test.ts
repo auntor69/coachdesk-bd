@@ -78,7 +78,10 @@ test('adding a teacher is beside the heading, not under the last row', () => {
   const list = PAGE.indexOf('<TeacherList')
   assert.ok(add > bar, 'the add link is inside the bar')
   assert.ok(add < list, 'and above the list rather than below it')
-  assert.match(PAGE, /actions=\{\s+staff &&\s+!atLimit && \(/)
+  // Three conditions on the one door, and the third is money rather than a plan: a tier
+  // that charges per seat may not offer the form while the balance holds nothing to pay
+  // the ৳100 a month the next colleague adds. See teacherSeatOpeningRefusal.
+  assert.match(PAGE, /actions=\{\s+staff &&\s+!atLimit &&\s+seatRefusal === null && \(/)
 
   // One door to the add form. Two would be two things to keep in step.
   assert.equal(count(PAGE, 'href="/settings/teachers/new"'), 1)
@@ -113,10 +116,15 @@ test('a one-sentence refusal is capped rather than set across the page', () => {
   // §26: the defect this whole step is about is a narrow column stretched, and the
   // opposite mistake is one sentence set 1,216px wide. The cap is on the card and not
   // on the column, or the bar's `lg:-mx-8` background would stop 672px in.
+  //
+  // Four `max-w-3xl` cards now, and the fourth is the one the seat rule added: what
+  // stands where the add button was when the next seat is a price this centre has no
+  // balance to pay (20260811000097). It sits beside the seat cap in the same shape
+  // because the two are told apart by their sentences, not by their frames.
   assert.equal(count(PAGE, 'flex flex-col gap-5'), 3)
   assert.doesNotMatch(PAGE, /flex max-w-2xl flex-col/)
   assert.equal(count(PAGE, '<Card className="max-w-2xl'), 2)
-  assert.equal(count(PAGE, '<Card className="max-w-3xl">'), 3)
+  assert.equal(count(PAGE, '<Card className="max-w-3xl">'), 4)
 })
 
 test('the reads and the gates the redesign moved past are unchanged', () => {
@@ -515,7 +523,7 @@ test('the write is scoped, and the membership goes with it', () => {
     '/settings/managers',
     '/payroll',
     '/teach',
-    '/settings/plan',
+    '/settings/billing',
   ]) {
     assert.ok(body.includes(`revalidatePath('${path}')`), path)
   }
@@ -612,4 +620,39 @@ test('the removal words say the person is out, and claim nothing about their log
       assert.match(l[key], /cent|সেন্টার/, `${name}.${key} never says whose access ended`)
     }
   }
+})
+
+test('the teacher list can be searched, and the seat count does not move with it', () => {
+  /*
+   * Fifteen teachers, and an owner looking for the one whose password has to be reset —
+   * holding a name, a number, a subject or a username they cannot remember. Read off the
+   * source, like the rest of this file.
+   *
+   * What it catches is the drift a screenshot does not show. `shown` and not `rows`: the
+   * list is drawn from the narrowed set, and the seat figure under the heading is not — a
+   * centre with fifteen teachers who types one name must not be told it employs one, on the
+   * screen where a seat costs ৳100 a month.
+   */
+  assert.match(PAGE, /searchParams: Promise<\{ q\?: string \}>/)
+  assert.match(PAGE, /import \{ SearchBox, SearchEmpty \} from '@\/components\/search-box'/)
+  assert.match(PAGE, /import \{ matchesSearch, searchTerms \} from '@\/lib\/search'/)
+
+  // The four things an owner arrives holding, and the subjects are already strings by the
+  // time the rows are built — see `subjects` above.
+  assert.match(
+    PAGE,
+    /matchesSearch\(\[row\.name, row\.phone, row\.username, \.\.\.row\.subjects\], words\)/,
+  )
+
+  // The count is the narrowed one over the whole list.
+  assert.match(PAGE, /count=\{\{ shown: shown\.length, total: rows\.length \}\}/)
+
+  // The heading still counts the centre: active count and the seat limit.
+  assert.match(PAGE, /subtitle=\{limit === null \? t\.count\(activeCount\) : t\.used\(activeCount, limit\)\}/)
+
+  // A filtered list that matched nobody says so in the search's own words.
+  assert.match(PAGE, /\{shown\.length === 0 \? \(\s*\r?\n\s*<SearchEmpty t=\{d\.search\} \/>/)
+
+  // And the list is handed the narrowed rows.
+  assert.match(PAGE, /<TeacherList\s*\r?\n\s*teachers=\{shown\}/)
 })

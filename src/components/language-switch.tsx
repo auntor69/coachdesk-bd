@@ -31,7 +31,10 @@ export function LanguageSwitch({ locale }: { locale: Locale }) {
       <button
         type="submit"
         aria-label={fill(dict(locale).shell.switchTo, { lang: LOCALE_NAME[next] })}
-        className="rounded-lg px-3 py-2 text-sm font-medium text-ink-soft
+        // 48px of thumb, because this is the control a reader who cannot read the
+        // screen reaches for first and it appears on the one page they arrive at with
+        // no idea where anything is. The words stay small; the box does not.
+        className="min-h-tap rounded-lg px-3 py-2 text-sm font-medium text-ink-soft
           hover:bg-surface-alt hover:text-ink"
       >
         {LOCALE_NAME[next]}

@@ -215,7 +215,6 @@ async function handleCallback(
     intentId: settled.intent_id,
     paymentId: settled.payment_id,
     chargedBdt: Number(settled.charged_bdt),
-    capacityAfter: settled.capacity_after,
     already: settled.already,
   }
 }

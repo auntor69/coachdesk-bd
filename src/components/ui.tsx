@@ -7,10 +7,20 @@
  * below 48px, text under 16px (which makes iOS zoom on focus), and buttons that
  * give no feedback on a slow connection.
  */
+import Link from 'next/link'
+import type { Route } from 'next'
 import type { ComponentProps, ReactNode } from 'react'
 
+export type ButtonVariant =
+  | 'primary'
+  | 'secondary'
+  | 'ghost'
+  | 'danger'
+  /** A forward action that is not the screen's only one: the brand-tinted outline. */
+  | 'tinted'
+
 type ButtonProps = ComponentProps<'button'> & {
-  variant?: 'primary' | 'secondary' | 'ghost' | 'danger'
+  variant?: ButtonVariant
   full?: boolean
 }
 
@@ -19,11 +29,39 @@ const BUTTON_BASE =
   + 'font-semibold transition-colors disabled:opacity-50 '
   + 'disabled:cursor-not-allowed active:scale-[0.99]'
 
-const BUTTON_VARIANTS = {
-  primary: 'bg-brand-600 text-white hover:bg-brand-700',
+/*
+ * TWO OF EVERYTHING: A `<button>` AND A LINK.
+ *
+ * The link flavour exists because a navigation action and a form action look the same to a
+ * reader and are not the same element — and twelve screens had noticed, each writing the
+ * same classes by hand around a `<Link>`. They had drifted in the three ways hand-copies
+ * always do: `px-4` against this file's `px-5`, so a link sat four pixels narrower than the
+ * button beside it; no `active:scale`, so half the controls in the product answered a tap
+ * and half did not; and no `disabled:` pair, which nobody noticed because a link is never
+ * disabled — until somebody adds one.
+ *
+ * `buttonClass` is the seam both halves share, so the base can only be edited once. It is
+ * exported because a few places genuinely need neither: the fee register's print button,
+ * which is a `<button>` with an `onClick`, and the radio-cards in the batch and centre
+ * forms, which are labels.
+ */
+const BUTTON_VARIANTS: Record<ButtonVariant, string> = {
+  /* `shadow-sm` on the primary only: the app's one unambiguous action per screen
+     gets the room's one lift, at token level, and everything quieter stays flat. */
+  primary: 'bg-brand-600 text-white shadow-sm hover:bg-brand-700',
   secondary: 'bg-white text-ink border-2 border-line hover:border-brand-300',
   ghost: 'text-brand-700 hover:bg-brand-50',
   danger: 'bg-absent text-white hover:brightness-95',
+  tinted: 'border-2 border-brand-500 bg-brand-50 font-medium text-brand-800 hover:bg-brand-100',
+}
+
+/** The shared class string, so a `<button>` and a `<Link>` cannot drift apart. */
+export function buttonClass(
+  variant: ButtonVariant = 'primary',
+  full = false,
+  className = '',
+): string {
+  return `${BUTTON_BASE} ${BUTTON_VARIANTS[variant]} ${full ? 'w-full' : ''} ${className}`
 }
 
 export function Button({
@@ -32,11 +70,39 @@ export function Button({
   className = '',
   ...props
 }: ButtonProps) {
+  return <button className={buttonClass(variant, full, className)} {...props} />
+}
+
+/**
+ * A navigation action wearing the button styles.
+ *
+ * Generic over the route string for the reason `PageHeader`'s crumb is: bare `Route`
+ * resolves its dynamic branch against `string`, which is `never`, so it would admit
+ * `/fees` and reject `/fees/${id}` — and half the links that need this are sub-screens of
+ * a dynamic route. Inferring from the href lets both through while a path matching no
+ * route at all still fails the build.
+ */
+export function LinkButton<RouteType extends string>({
+  href,
+  variant = 'primary',
+  full = false,
+  className = '',
+  children,
+  prefetch,
+  ...props
+}: Omit<ComponentProps<'a'>, 'href' | 'className' | 'children'> & {
+  href: Route<RouteType>
+  variant?: ButtonVariant
+  full?: boolean
+  className?: string
+  children: ReactNode
+  /** Next's own, kept because a link to a live queue may not want to prefetch it. */
+  prefetch?: boolean
+}) {
   return (
-    <button
-      className={`${BUTTON_BASE} ${BUTTON_VARIANTS[variant]} ${full ? 'w-full' : ''} ${className}`}
-      {...props}
-    />
+    <Link href={href} prefetch={prefetch} className={buttonClass(variant, full, className)} {...props}>
+      {children}
+    </Link>
   )
 }
 
@@ -65,9 +131,14 @@ export function Field({ label, hint, error, id, className = '', ...props }: Fiel
         id={inputId}
         // text-base is load-bearing: iOS Safari zooms the whole page when a
         // focused input is under 16px, and the layout never recovers.
+        // The `disabled:` trio is here rather than at each call site because read-only is a
+        // first-class state in this product (§4.4): a centre whose balance has run out is
+        // looking at forms it cannot write, and an input that greys to the browser's default
+        // looks like a rendering fault next to one that greys to this sheet's own surface.
         className={`min-h-tap rounded-xl border-2 bg-white px-4 text-base
           outline-none transition-colors placeholder:text-ink-faint
-          focus:border-brand-500 ${error ? 'border-absent' : 'border-line'} ${className}`}
+          focus:border-brand-500 disabled:cursor-not-allowed disabled:bg-surface-alt
+          disabled:text-ink-soft ${error ? 'border-absent' : 'border-line'} ${className}`}
         aria-invalid={error ? true : undefined}
         aria-describedby={[errorId, hintId].filter(Boolean).join(' ') || undefined}
         {...props}
@@ -128,17 +199,36 @@ export function Alert({
   )
 }
 
-export function Logo({ className = '' }: { className?: string }) {
-  return (
-    <span className={`inline-flex items-center gap-2 font-bold ${className}`}>
+export function Logo({
+  className = '',
+  tone = 'brand',
+}: {
+  className?: string
+  /**
+   * `inverse` for the brand panel that fills the left half of a desktop `/login` and
+   * `/signup` — the wordmark sits on `brand-700` there, where `text-brand-800` is a green
+   * on a green. Two tones and not a colour prop: a logo tinted by hand at each call site is
+   * how a product ends up with two wordmarks a shade apart.
+   */
+  tone?: 'brand' | 'inverse'
+}) {
+  return (    <span className={`inline-flex items-center gap-2.5 font-bold tracking-tight ${className}`}>
+      {/*
+        ক in a tile, redrawn for the ledger identity: the glyph gets a baseline
+        lift so it sits optically centred in a tile that is now one radius step
+        softer than the cards beside it, and the inverse tone also drops scale
+        so the wordmark and the panel it sits on read as one object.
+      */}
       <span
         aria-hidden
-        className="grid h-9 w-9 place-items-center rounded-xl bg-brand-600
-          text-lg text-white"
-      >
+        className={`grid h-9 w-9 place-items-center rounded-lg pt-0.5 text-[1.35rem] leading-none shadow-sm ${
+          tone === 'inverse' ? 'bg-white text-brand-700' : 'bg-brand-600 text-white'
+        }`}>
         ক
       </span>
-      <span className="text-brand-800">CoachDesk</span>
+      <span className={tone === 'inverse' ? 'text-white' : 'text-brand-800'}>
+        CoachDesk
+      </span>
     </span>
   )
 }

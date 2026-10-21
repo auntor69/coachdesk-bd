@@ -1,7 +1,7 @@
 import Link from 'next/link'
 
 import { PageHeader } from '@/components/page-header'
-import { Card } from '@/components/ui'
+import { buttonClass, Card } from '@/components/ui'
 import { pageCapability, getSession } from '@/lib/auth/session'
 import { createClient } from '@/lib/supabase/server'
 import { pageAll, worstFailure } from '@/lib/supabase/page'
@@ -318,8 +318,9 @@ export default async function MonthClosePage({
             </select>
             <button
               type="submit"
-              className="min-h-tap shrink-0 rounded-xl border-2 border-brand-500
-                bg-brand-50 px-4 font-medium text-brand-800"
+              // The shared tinted styles: this apply button had drifted to px-4 against
+              // the sheet's own px-5, and it never answered a tap.
+              className={buttonClass('tinted', false, 'shrink-0')}
             >
               {t.show}
             </button>
@@ -454,7 +455,7 @@ export default async function MonthClosePage({
               {t.registerLink} →
             </Link>
             <Link
-              href="/settings/plan"
+              href="/settings/billing"
               className="inline-flex min-h-tap items-center font-medium text-brand-700
                 underline"
             >

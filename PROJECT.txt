@@ -1,0 +1,104 @@
+COACHDESK BD
+============================================================================
+The operating system for coaching centers in Bangladesh.
+
+One app runs the whole center: admissions and roster with bulk import,
+batches, attendance, exams and marks, a fee board with invoices,
+installments, scholarships and a four-stage chase list, payroll,
+expenses, notices, weekly progress reports, multi-branch HQ, and a
+full audit log — in Bengali and English, offline-first, on any phone
+the staff already owns.
+
+----------------------------------------------------------------------------
+Stack: Next.js (App Router) + Supabase (Postgres, RLS, Auth) + Tailwind,
+deployed on Vercel. 98 SQL migrations. 1,811 unit tests and 1,559
+row-level-security assertions, all green.
+----------------------------------------------------------------------------
+
+Three decisions that make it different:
+
+1. Money is integers. Every amount is stored in poisha (1 taka =
+   100 poisha). No float ever touches a balance — not in the app,
+   not in the database.
+
+2. Billing is burned, not billed. A center holds one prepaid balance
+   and a database function charges each day against it — top-up,
+   catch-up, refusal, every attempt audited. The books reconcile
+   themselves. When the balance cannot cover the day, the app goes
+   read-only: access is derived from money, not a subscription date.
+
+3. Security is tested, not assumed. Plan ceilings and roles are
+   enforced twice — SQL triggers first, server actions second — and
+   every RLS change is proven against every table, every run.
+
+Built for Bangladesh, not translated into it: Bengali-first UI, fees
+in taka, bKash payments, month close the way centers actually run it.
+
+Status: in active development — not launched yet.
+
+Working today: the full center workflow above, held up by 1,811
+unit tests and 1,559 security assertions, all green.
+
+Terms exist now. Seven pages — the prepaid billing terms leading
+it, then refunds, the terms of service, privacy, acceptable use,
+account deletion and security — written in Bengali and English,
+readable at /legal without an account, because the signup box and
+the recharge screen both link into them. Agreeing is recorded as a
+row: which wording of which document, by whom, and when. No page
+claims a certification nobody has audited.
+
+Shipped since: the prepaid billing engine. The balance, the daily
+burn, self-serve recharge and the founder's review queue are live, and
+the founder has two levers — money and granted days, each with a
+written reason. The billing screen is built around the balance: how
+long the money lasts, what is left, what it is priced from, how to add
+more, and every day charged so far with its own count and rate. A
+nightly run settles the centers nobody opened that day, so the live
+balance is current before anyone looks. The old seat-based pricing was
+retired on 2026-09-25: the buy controls are gone, the plan page is a
+redirect, and a per-student tier no longer has a student ceiling at
+all — size sets the daily rate instead of a door. The column that held
+bought places is archived rather than dropped, so the payments that
+bought them still explain themselves. The words went with the controls
+on 2026-09-29: both dictionaries lost the buy-and-ask vocabulary whose
+screens no longer exist, and the head office's card reads the asks
+that were already filed as the history they now are.
+
+The rest of the month went to the ways in. An account signs in with
+exactly one of three things — a real email address, a mobile number,
+or a username a center minted for a teacher who has neither — and the
+screens now say which of the three an account holds, and set its
+password, instead of assuming a number and drawing a blank card. The
+founder can reach an owner who signed up with an email, reset their
+password, and read the audit log without naming anybody by a number
+they do not have. The login, signup and onboarding screens read the
+reader's language and carry the switch to change it, and the app draws
+its three meaningful colours from one place — a green for present, a
+red for wrong, an amber for late — so no screen invents a second
+shade of its own.
+
+A building past the three an institution includes is bought, not
+granted: it opens only when there is money on the balance to carry the
+৳750 a month it adds, which is enforced by a trigger on `branches`
+as well as by the form. A three-day signup is given days and not
+money, so it runs the three buildings its tier includes and no more —
+before that it could name fifty for nothing. Every other dimension a
+plan prices is fenced the same way: the two teacher seats a centre
+includes are the tier's and each one past them is ৳100 a month off the
+balance, refused by a second trigger on `teachers` and by the action
+behind the form, and the screens say why instead of offering a button
+that could only be refused.
+
+The last dimension a free account could grow is its roster, and it is
+bounded by a number rather than by money — because a per-student
+tier's price IS the student, a money rule there would refuse a trial's
+very first admission. An organisation that has never funded its
+balance holds up to five hundred active students, which is one bulk
+import, and any money at all lifts the bound entirely. The number is
+the founder's, set beside the three trial lengths on the same screen,
+and zero switches the fence off. What is left unfenced is deliberate
+and written down: the free SMS credits a signup is given, which the
+OTP gate closes rather than the plan.
+
+Still ahead: automated SMS gateway and the real bKash API
+integration.

@@ -226,6 +226,41 @@ test('the price is the marginal figure, and only for the reader who can add', ()
   assert.doesNotMatch(PAGE, /PER_STUDENT|BAND|nextBranchCostBdt\(session\.plan, activeCount \+/)
 })
 
+test('a building that cannot be paid for is explained instead of offered', () => {
+  // THE DEFECT THE OWNER FOUND, and this is the half of it that was on a screen. An
+  // institution signup is given days rather than money (§4.3), so it is perfectly
+  // writable while its balance holds nothing — and the rail used to offer a fourth
+  // building, and a fifth, and a fiftieth. The screen now asks the same question the
+  // trigger does, before the tap.
+  assert.ok(PAGE.includes('? branchOpeningRefusal(session.plan, {'))
+  assert.ok(PAGE.includes('activeBranches: activeCount,'))
+  assert.ok(PAGE.includes('balancePoisha: session.billing.balancePoisha,'))
+
+  // The rail carries the reason and the way to the one screen that takes money. A form
+  // that could only refuse is the door into a refusal this page already refuses to draw
+  // for a locked tier.
+  assert.ok(PAGE.includes("{refusal === 'needs_money' ? ("))
+  assert.ok(PAGE.includes('{t.fundTitle}'))
+  assert.ok(PAGE.includes('{t.fundBody('))
+  assert.ok(PAGE.includes('href="/settings/billing"'))
+  assert.ok(PAGE.includes('{t.fundLink}'))
+  assert.equal(count(PAGE, '<AddBranch'), 1, 'one form, and only one place it can be drawn')
+
+  // And the action asks before the insert, with the sentence a SQLSTATE cannot write:
+  // what the building costs and where the money goes. The trigger
+  // (`app.guard_branch_ceiling`) is the fence under both.
+  assert.ok(ACTIONS.includes('const refused = await fence(session)'))
+  assert.ok(ACTIONS.includes('branchOpeningRefusal(session.plan, {'))
+  assert.ok(ACTIONS.includes("if (refusal === 'needs_money') return { error: notFunded(session) }"))
+  assert.ok(ACTIONS.includes("if (refusal === 'no_branches') return { error: d.errors.branchesNeedInstitution }"))
+  assert.ok(ACTIONS.includes('if (isBranchRefusal(error)) return { error: notFunded(session) }'))
+
+  // Closing a building stops a line on the bill and is never asked about money; switching
+  // one back on starts one again and always is. The same pair of arms is in the trigger —
+  // see tests/branch-ceiling.test.ts, which is where the SQL is read.
+  assert.ok(ACTIONS.includes('if (next) {\n    const refused = await fence(session)'))
+})
+
 test('there is still no way to delete a building', () => {
   // Every foreign key onto `branches` is `on delete set null`: a delete would unfile a year
   // of fees and salaries from the building that took them, and promote every manager pinned
