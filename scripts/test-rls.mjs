@@ -4831,11 +4831,16 @@ await db.query('delete from students where id = any($1::uuid[])', [
 
 console.log('\nThe clock gate and its two signatures (20260811000089):')
 
-const dhakaHour = (
+const dhakaTime = (
   await db.query(
-    `select extract(hour from (now() at time zone 'Asia/Dhaka'))::int as h`,
+    `select extract(hour from (now() at time zone 'Asia/Dhaka'))::int as h,
+            extract(minute from (now() at time zone 'Asia/Dhaka'))::int as m`,
   )
-).rows[0].h
+).rows[0]
+const dhakaHour = dhakaTime.h
+const dhakaMinute = dhakaTime.m
+const minutesSinceMidnight = dhakaHour * 60 + dhakaMinute
+const minutesToMidnight = 1440 - minutesSinceMidnight
 
 const clockBatch = (name) =>
   one(
@@ -4883,14 +4888,16 @@ const signatureOf = async (batch, reason) =>
     )
   ).rows[0] ?? null
 
-// --- Two hours ahead: the register is locked until it is signed for -------------
+// --- Ahead of class: the register is locked until it is signed for -------------
 
 let earlyBatch = null
 let lateBatch = null
 
-if (dhakaHour <= 21) {
+if (minutesToMidnight >= 5) {
   earlyBatch = await clockBatch('Clock Early Batch')
-  await meetsTodayFrom(earlyBatch, 120, 180)
+  const earlyFrom = minutesToMidnight > 200 ? 120 : Math.max(1, Math.floor(minutesToMidnight * 0.2))
+  const earlyTo = minutesToMidnight > 200 ? 180 : Math.max(earlyFrom + 1, Math.floor(minutesToMidnight * 0.6))
+  await meetsTodayFrom(earlyBatch, earlyFrom, earlyTo)
 
   const refusedEarly = await clockRegister(ids.karim, earlyBatch)
   check(
@@ -4947,18 +4954,20 @@ if (dhakaHour <= 21) {
 } else {
   check(
     "the early half of the clock gate is out of season this hour, and says so",
-    dhakaHour > 21,
-    `Dhaka hour ${dhakaHour}`,
+    minutesToMidnight < 5,
+    `Dhaka minutes to midnight: ${minutesToMidnight}`,
   )
 }
 
-// --- Two hours behind: the class ended, and the day is a cancelled class --------
+// --- Behind class: the class ended, and the day is a cancelled class --------
 
-if (dhakaHour >= 3) {
+if (minutesSinceMidnight >= 40) {
   lateBatch = await clockBatch('Clock Late Batch')
-  // Ended two hours ago, which is well past the thirty-minute grace the register is
+  // Ended at least thirty minutes ago, which is past the thirty-minute grace the register is
   // measured with (`app.attendance_grace_minutes()`).
-  await meetsTodayFrom(lateBatch, -180, -120)
+  const lateTo = minutesSinceMidnight >= 180 ? -120 : -35
+  const lateFrom = minutesSinceMidnight >= 180 ? -180 : -Math.min(minutesSinceMidnight - 2, 70)
+  await meetsTodayFrom(lateBatch, lateFrom, lateTo)
 
   const refusedLate = await clockRegister(ids.karim, lateBatch)
   check(
@@ -4993,8 +5002,8 @@ if (dhakaHour >= 3) {
 } else {
   check(
     "the late half of the clock gate is out of season this hour, and says so",
-    dhakaHour < 3,
-    `Dhaka hour ${dhakaHour}`,
+    minutesSinceMidnight < 40,
+    `Dhaka minutes since midnight: ${minutesSinceMidnight}`,
   )
 }
 
@@ -5022,6 +5031,65 @@ check(
     }
   })(),
 )
+
+// --- Midnight wrap & pre-start clock gate (20260811000100) ---------------------
+
+const midnightBatch = await clockBatch('Clock Midnight Wrap Batch')
+
+if (minutesToMidnight >= 10) {
+  await db.query(
+    `insert into batch_schedules (coaching_center_id, batch_id, day_of_week, start_time, end_time)
+     values ($1, $2,
+             extract(dow from (now() at time zone 'Asia/Dhaka'))::smallint,
+             case when (now() at time zone 'Asia/Dhaka')::time < '22:50'::time
+                  then '22:50'::time
+                  else ((now() at time zone 'Asia/Dhaka')::time + interval '2 minutes')::time
+             end,
+             '23:58'::time)`,
+    [centerA, midnightBatch],
+  )
+
+  // A 'forgot' signature cannot be given for a class that has not finished yet / has not started
+  const preStartForgot = await signOff(ids.karim, midnightBatch, 'forgot')
+  check(
+    "'forgot' signature is refused before start time, even with midnight wrap window",
+    /has not finished yet/.test(preStartForgot),
+    preStartForgot.split('\n')[0] || 'accepted',
+  )
+} else {
+  check(
+    "'forgot' signature pre-start test is out of season in last 10m before midnight",
+    minutesToMidnight < 10,
+    `minutes to midnight: ${minutesToMidnight}`,
+  )
+}
+
+// Active window wrap test: schedule window covering now where end + grace wraps past midnight
+// e.g. start_time = now - 2 min, end_time = 23:50 (wrap grace to 00:20 < start_time)
+const wrapActiveBatch = await clockBatch('Clock Active Wrap Batch')
+if (minutesSinceMidnight >= 30 && minutesToMidnight >= 15) {
+  await db.query(
+    `insert into batch_schedules (coaching_center_id, batch_id, day_of_week, start_time, end_time)
+     values ($1, $2,
+             extract(dow from (now() at time zone 'Asia/Dhaka'))::smallint,
+             ((now() at time zone 'Asia/Dhaka')::time - interval '2 minutes')::time,
+             '23:50'::time)`,
+    [centerA, wrapActiveBatch],
+  )
+
+  const activeForgot = await signOff(ids.karim, wrapActiveBatch, 'forgot')
+  check(
+    "'forgot' signature is refused when class window wraps past midnight and is active",
+    /not finished yet|not late/.test(activeForgot),
+    activeForgot.split('\n')[0] || 'accepted',
+  )
+} else {
+  check(
+    "'forgot' signature active wrap test is out of season near midnight boundary",
+    minutesSinceMidnight < 30 || minutesToMidnight < 15,
+    `minutes since midnight: ${minutesSinceMidnight}, to midnight: ${minutesToMidnight}`,
+  )
+}
 
 // --- The three rules that do not depend on the clock ---------------------------
 
@@ -5136,7 +5204,7 @@ check(
 // The batches go, and the signatures go with them — the cascade the table's own note
 // describes, and the reason a centre closing a batch is not a hand-edit.
 await db.query('delete from batches where id = any($1::uuid[])', [
-  [earlyBatch, lateBatch, bNoClock].filter(Boolean),
+  [earlyBatch, lateBatch, bNoClock, midnightBatch, wrapActiveBatch].filter(Boolean),
 ])
 check(
   'closing a batch takes its signatures with it, and nothing else',
@@ -17343,6 +17411,133 @@ check(
         )`,
   )) === 18,
 )
+
+// --- Consistency, covering indexes & view (20260811000100) -------------------
+
+check(
+  'fee_outstanding_summary view exists with security_invoker = true',
+  (await n(
+    db,
+    `select count(*)::int as n
+       from pg_views v
+       join pg_class c on c.relname = v.viewname and c.relnamespace = 'public'::regnamespace
+      where v.schemaname = 'public'
+        and v.viewname = 'fee_outstanding_summary'
+        and c.reloptions::text like '%security_invoker=true%'`,
+  )) === 1,
+)
+
+check(
+  'migration 20260811000100 hot composite and foreign key indexes exist',
+  (await n(
+    db,
+    `select count(*)::int as n from pg_indexes
+      where schemaname = 'public'
+        and indexname in (
+          'center_members_user_center_role_active_idx',
+          'profiles_lookup_covering_idx',
+          'batches_branch_center_fk_idx',
+          'capacity_requests_branch_center_fk_idx',
+          'center_members_branch_center_fk_idx',
+          'employees_branch_center_fk_idx',
+          'expenses_branch_center_fk_idx',
+          'fee_invoices_branch_center_fk_idx',
+          'fee_payments_branch_center_fk_idx',
+          'notices_branch_center_fk_idx',
+          'payment_intents_branch_center_fk_idx',
+          'salary_payments_branch_center_fk_idx',
+          'students_branch_center_fk_idx',
+          'teachers_branch_center_fk_idx',
+          'recharge_claims_promotion_id_idx',
+          'fee_payments_invoice_center_fk_idx',
+          'fee_reminders_invoice_center_fk_idx',
+          'attendance_sessions_batch_center_fk_idx',
+          'attendance_unlocks_batch_center_fk_idx',
+          'batch_schedules_batch_center_fk_idx',
+          'enrollments_batch_center_fk_idx',
+          'attendance_records_session_center_fk_idx',
+          'absence_notices_session_center_fk_idx',
+          'exam_results_exam_center_fk_idx',
+          'result_notices_exam_center_fk_idx'
+        )`,
+  )) === 25,
+)
+
+check(
+  'redundant prefix indexes pruned by migration 20260811000100 are absent',
+  (await n(
+    db,
+    `select count(*)::int as n from pg_indexes
+      where schemaname = 'public'
+        and indexname in (
+          'billing_ledger_charge_idx',
+          'center_members_center_idx',
+          'center_members_user_idx',
+          'batches_center_idx',
+          'employees_center_idx',
+          'teachers_center_idx',
+          'students_center_idx',
+          'attendance_sessions_center_month_idx',
+          'batch_schedules_batch_idx',
+          'enrollments_student_idx',
+          'enrollments_center_billing_idx',
+          'fee_payments_invoice_idx'
+        )`,
+  )) === 0,
+)
+
+check(
+  'legacy public.schema_migrations table was dropped',
+  (await n(
+    db,
+    `select count(*)::int as n from pg_tables
+      where schemaname = 'public' and tablename = 'schema_migrations'`,
+  )) === 0,
+)
+
+check(
+  'promotions_authenticated_select policy exists on public.promotions with active = true',
+  (await n(
+    db,
+    `select count(*)::int as n from pg_policies
+      where schemaname = 'public'
+        and tablename = 'promotions'
+        and policyname = 'promotions_authenticated_select'
+        and qual like '%active = true%'`,
+  )) === 1,
+)
+
+// Functional RLS check for promotions table and view grants under authenticated session
+const pvId = (await db.query('select id from price_versions limit 1')).rows[0]?.id
+await db.query(
+  `insert into public.promotions (id, code, name, tiers, price_version_id, active)
+   values ('11111111-1111-1111-1111-111111111111', 'TESTACTIVE', 'Active Promo', '[{"min_poisha": 780000, "bonus_bps": 500}]'::jsonb, $1, true),
+          ('22222222-2222-2222-2222-222222222222', 'TESTINACTIVE', 'Inactive Promo', '[{"min_poisha": 780000, "bonus_bps": 500}]'::jsonb, $1, false)
+   on conflict (id) do nothing`,
+  [pvId],
+)
+
+await asUser(db, ids.karim, async (tx) => {
+  const promoRows = (await tx.query('select code, active from public.promotions')).rows
+  const codes = promoRows.map((r) => r.code)
+  check(
+    'authenticated user can read active promotions and cannot see inactive promotions',
+    codes.includes('TESTACTIVE') && !codes.includes('TESTINACTIVE') && promoRows.every((r) => r.active === true),
+    JSON.stringify(promoRows),
+  )
+
+  const summaryQueryRes = await tx.query('select count(*)::int as n from public.fee_outstanding_summary')
+  check(
+    'authenticated user has select grant on fee_outstanding_summary view',
+    summaryQueryRes.rows.length === 1,
+    JSON.stringify(summaryQueryRes.rows),
+  )
+})
+
+await db.query('delete from public.promotions where id in ($1, $2)', [
+  '11111111-1111-1111-1111-111111111111',
+  '22222222-2222-2222-2222-222222222222',
+])
 
 console.log(`\n${passed} passed, ${failed} failed`)
 await db.close()

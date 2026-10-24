@@ -3443,6 +3443,14 @@ export type Database = {
         }
         Relationships: []
       }
+      fee_outstanding_summary: {
+        Row: {
+          coaching_center_id: string | null
+          outstanding_bdt: number | null
+          invoice_count: number | null
+        }
+        Relationships: []
+      }
       fee_waiver_month: {
         Row: {
           coaching_center_id: string | null

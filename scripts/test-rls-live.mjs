@@ -61,11 +61,9 @@ async function runAs(userId, sql, params = []) {
   ])
   await client.query(`select set_config('request.jwt.claim.role', $1, true)`, [role])
   await client.query(`set local role ${role}`)
-  try {
-    return await client.query(sql, params)
-  } finally {
-    await client.query('set local role postgres')
-  }
+  const res = await client.query(sql, params)
+  await client.query('set local role postgres')
+  return res
 }
 
 const n = async (userId, sql, params = []) =>
