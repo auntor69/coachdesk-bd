@@ -18,6 +18,7 @@ import type { Route } from 'next'
 import { createClient } from '@/lib/supabase/server'
 import { loginEmailToPhone } from '@/lib/bd/phone'
 import { loginEmailToUsername } from '@/lib/bd/username'
+import { todayInDhaka } from '@/lib/bd/time'
 import { asLocale, dict, DEFAULT_LOCALE, type Dictionary, type Locale } from '@/lib/i18n'
 import type { PermissionKey } from '@/lib/permissions'
 import {
@@ -460,7 +461,8 @@ export const getSession = cache(async (): Promise<Session | null> => {
   let org = active ? billingOf(active) : null
   let billing = billingStanding(org, now)
 
-  if (active && org && dailyBurn(org)) {
+  const today = todayInDhaka(now)
+  if (active && org && dailyBurn(org) && (!org.charged_through || org.charged_through < today)) {
     const { settlement: settled } = await settleDay(supabase, active.centerId)
     org = {
       ...org,

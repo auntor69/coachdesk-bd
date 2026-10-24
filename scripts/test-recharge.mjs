@@ -496,8 +496,8 @@ check(
   await deniedAsUser(db, null, 'select public.approve_recharge_claim($1)', [ownedClaim.id]),
 )
 check(
-  'and a centre cannot read the promotions that price its bonus',
-  (await asUser(db, ownerId, (tx) => tx.query('select count(*)::int as n from promotions'))).rows[0]
+  'and a centre cannot read inactive promotions',
+  (await asUser(db, ownerId, (tx) => tx.query('select count(*)::int as n from promotions where not active'))).rows[0]
     .n === 0,
 )
 

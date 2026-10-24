@@ -8,11 +8,12 @@ import { isHqMember } from '@/lib/branches'
 import { Suspense } from 'react'
 
 import { createClient } from '@/lib/supabase/server'
-import { pageAll, worstFailure } from '@/lib/supabase/page'
+import { pageAll } from '@/lib/supabase/page'
 import {
   todayInDhaka,
   currentPeriodMonth,
   addMonths,
+  addDays,
   formatDate,
 } from '@/lib/bd/time'
 import { has } from '@/lib/plans'
@@ -20,7 +21,7 @@ import { can, canReadMoney } from '@/lib/staff/capabilities'
 import { setupSteps } from '@/lib/setup'
 import { countChasesDue } from '@/lib/fees/reminder-schedule'
 import { categoryBills, monthBills, monthMoney, payrollState } from '@/lib/finance/profit'
-import { tallyOutstanding, formatTaka as taka } from '@/lib/money'
+import { formatTaka as taka } from '@/lib/money'
 import { dict, DEFAULT_LOCALE } from '@/lib/i18n'
 import { ReminderEntry } from '@/app/(app)/fees/reminder-entry'
 import { ProfitCard } from './profit-card'
@@ -37,9 +38,6 @@ export async function generateMetadata() {
   const locale = session?.locale ?? DEFAULT_LOCALE
   return { title: `${dict(locale).dashboard.title} — CoachDesk` }
 }
-
-/** One line, not a concatenation — see the same note on the fee board. */
-const COLUMNS = 'id, student_name, remaining_bdt, due_date, guardian_phone'
 
 /**
  * The owner's screen. Four numbers, two ways into the day's work, and a list.
@@ -203,7 +201,9 @@ export default async function DashboardPage() {
   const [
     { count: studentCount },
     { data: batchRows },
-    owing,
+    { data: outstandingRow, error: outstandingError },
+    { data: overdueRows, count: overdueCountRaw, error: overdueError },
+    { data: chaseCandidates },
     { data: collectedRow, error: collectedError },
     { data: todaySessions },
     chased,
@@ -224,27 +224,34 @@ export default async function DashboardPage() {
     // Resolved rather than sent when the staff list could not be read — see the note
     // on `scopeUnreadable` for why an unfiltered answer is the wrong one here.
     scopeUnreadable ? { data: null } : batchQuery,
-    // Unvoided and still owed. A voided invoice is a correction and counting it
-    // would show the owner money they are not owed; a settled one is not owed at
-    // all. Every balance here was subtracted by Postgres in numeric(10, 2).
-    //
-    // Paged, because PostgREST stops at 1000 rows without saying so and this is one
-    // row per unpaid invoice across every month the centre has billed. The figure it
-    // adds up to is the first number on the owner's home screen; read short, it
-    // reports less owed than the centre is owed, and nothing on the page could hint
-    // that it had. `.order('id')` is for the paging, not the reader — an offset walk
-    // over an unordered query can repeat a row, and a repeated invoice would be
-    // counted twice into what is outstanding.
-    pageAll((from, to) =>
-      supabase
-        .from('fee_invoice_balances')
-        .select(COLUMNS)
-        .eq('coaching_center_id', session.active.centerId)
-        .is('voided_at', null)
-        .gt('remaining_bdt', 0)
-        .order('id')
-        .range(from, to),
-    ),
+    // Outstanding total, summed directly in SQL by view fee_outstanding_summary.
+    // Replaces unbounded pageAll over fee_invoice_balances.
+    supabase
+      .from('fee_outstanding_summary')
+      .select('outstanding_bdt, invoice_count')
+      .eq('coaching_center_id', session.active.centerId)
+      .maybeSingle(),
+    // Up to 8 largest overdue balances for the dashboard table, with exact total overdue count.
+    supabase
+      .from('fee_invoice_balances')
+      .select('id, student_name, remaining_bdt, due_date', { count: 'exact' })
+      .eq('coaching_center_id', session.active.centerId)
+      .is('voided_at', null)
+      .gt('remaining_bdt', 0)
+      .lt('due_date', today)
+      .order('remaining_bdt', { ascending: false })
+      .limit(8),
+    // Chase candidates for today's worklist door, limited to active balances due within 3 days.
+    isAdmin
+      ? supabase
+          .from('fee_invoice_balances')
+          .select('id, due_date, guardian_phone')
+          .eq('coaching_center_id', session.active.centerId)
+          .is('voided_at', null)
+          .gt('remaining_bdt', 0)
+          .lte('due_date', addDays(today, 3))
+          .limit(1000)
+      : Promise.resolve({ data: null, error: null }),
     // Collected this month, by payment date rather than by invoice period — the
     // owner is asking "what came in", not "what was billed".
     //
@@ -477,23 +484,11 @@ export default async function DashboardPage() {
   /*
    * The invoices, or the fact that there are none to be had — and that difference is
    * the first number on this screen.
-   *
-   * `owing ?? []` erased it. An empty list has nothing to add up, `tallyOutstanding`
-   * of nothing is nothing owed, and the card below drew that in 4xl bold with “nobody
-   * is overdue” underneath: the most reassuring pair of sentences on the owner's home
-   * screen, off a read that never arrived. The note further down this file says a
-   * number that is missing is not a number that is zero. It was written about a
-   * teacher reading a page RLS had emptied, and it is just as true of a dropped query.
    */
-  const invoices = 'rows' in owing ? owing.rows : null
-  const moneyProblem = worstFailure(owing)
-
-  // Same rule as the fee board, so the two screens cannot drift: only positive
-  // remainders, never netted against a family in credit. The credit itself is
-  // not shown here — it is a detail to act on, and it belongs on the board next
-  // to the child's name rather than diluting the one number this card is for.
-  const remainders = (invoices ?? []).map((r) => Number(r.remaining_bdt ?? 0))
-  const { outstanding } = tallyOutstanding(remainders)
+  const invoicesMissing = Boolean(outstandingError || overdueError)
+  const moneyProblem: 'unreadable' | 'tooLarge' | null = outstandingError ? 'unreadable' : null
+  const outstanding = outstandingError ? 0 : Number(outstandingRow?.outstanding_bdt ?? 0)
+  const invoiceCount = outstandingError ? 0 : Number(outstandingRow?.invoice_count ?? 0)
 
   // Number(), not sumTaka: one row, already added up in SQL, arriving as a string
   // because numeric always does.
@@ -504,14 +499,12 @@ export default async function DashboardPage() {
   const collected = collectedError ? null : Number(collectedRow?.collected_bdt ?? 0)
 
   // Biggest debt first: the call an owner makes before the others.
-  const overdue = (invoices ?? [])
-    .filter((r) => (r.due_date ?? today) < today)
-    .map((r) => ({
-      name: r.student_name ?? d.common.unknown,
-      amount: Number(r.remaining_bdt ?? 0),
-      dueDate: r.due_date ?? today,
-    }))
-    .sort((a, b) => b.amount - a.amount)
+  const overdueCount = overdueCountRaw ?? (overdueRows ? overdueRows.length : 0)
+  const overdue = (overdueRows ?? []).map((r) => ({
+    name: r.student_name ?? d.common.unknown,
+    amount: Number(r.remaining_bdt ?? 0),
+    dueDate: r.due_date ?? today,
+  }))
 
   // Newest reminder per invoice, as a Dhaka calendar day.
   //
@@ -538,9 +531,9 @@ export default async function DashboardPage() {
    * anyway is what would cause it.
    */
   const dueToday =
-    invoices !== null && 'rows' in chased
+    isAdmin && chaseCandidates !== null && 'rows' in chased
       ? countChasesDue(
-          invoices.map((r) => ({
+          chaseCandidates.map((r) => ({
             dueDate: r.due_date ?? today,
             lastRemindedOn: (r.id && lastChase.get(r.id)) || null,
             reachable: Boolean(r.guardian_phone),
@@ -665,7 +658,7 @@ export default async function DashboardPage() {
           {seeFees && moneyProblem !== null && (
             <Card className="order-3 border-late/30 bg-late/5">
               <p className="font-medium text-ink">
-                {moneyProblem === 'tooLarge'
+                {(moneyProblem as string) === 'tooLarge'
                   ? t.outstandingTooLarge
                   : t.outstandingUnreadable}
               </p>
@@ -694,8 +687,8 @@ export default async function DashboardPage() {
                   way the fee board carries this sentence. It is only tabular figures,
                   so it does nothing to the Bangla words and everything to the digit. */}
               <p className="num mt-2 text-sm text-brand-800">
-                {overdue.length > 0
-                  ? d.fees.overdueCount(overdue.length)
+                {overdueCount > 0
+                  ? d.fees.overdueCount(overdueCount)
                   : t.nobodyOverdue}
               </p>
             </Card>
@@ -705,7 +698,7 @@ export default async function DashboardPage() {
               else in this column. This is the one action on the owner's home screen that
               brings money in rather than reporting on it, and on a 375px phone that
               means it has to be reachable without a scroll. */}
-          {seeFees && isAdmin && (invoices === null || remainders.length > 0) && (
+          {seeFees && isAdmin && (invoicesMissing || invoiceCount > 0) && (
             // The worklist's own words, borrowed rather than restated — a door and the
             // room behind it disagreeing about what is in there is how an owner stops
             // believing the number.
