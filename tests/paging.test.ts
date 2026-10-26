@@ -234,6 +234,7 @@ test('every paged range(from, to) query in src/ carries a unique tie-breaker ord
     }
   }
 
-  assert.ok(totalPaged >= 45, `expected at least 45 paged queries, found ${totalPaged}`)
+  // Dashboard reminder range query replaced by direct SQL aggregation view dashboard_reminder_summary (Phase 2A)
+  assert.ok(totalPaged >= 44, `expected at least 44 paged queries, found ${totalPaged}`)
   assert.deepEqual(missing, [], `paged queries without a unique tie-breaker order: ${missing.join(', ')}`)
 })

@@ -84,6 +84,43 @@ export function PencilIcon({ className = 'size-4 shrink-0' }: IconProps) {
   )
 }
 
+/** Checkmark: present status, confirmed items. */
+export function CheckIcon({ className = 'size-4 shrink-0' }: IconProps) {
+  return (
+    <Stroked className={className}>
+      <path d="M20 6 9 17l-5-5" />
+    </Stroked>
+  )
+}
+
+/** Clock: late arrival, timed entries. */
+export function ClockIcon({ className = 'size-4 shrink-0' }: IconProps) {
+  return (
+    <Stroked className={className}>
+      <circle cx="12" cy="12" r="10" />
+      <polyline points="12 6 12 12 16 14" />
+    </Stroked>
+  )
+}
+
+/** Cross: absent status, dismissals, cancellations. */
+export function XIcon({ className = 'size-4 shrink-0' }: IconProps) {
+  return (
+    <Stroked className={className}>
+      <path d="M18 6 6 18M6 6l12 12" />
+    </Stroked>
+  )
+}
+
+/** Horizontal rule: excused absence, neutral standing. */
+export function MinusIcon({ className = 'size-4 shrink-0' }: IconProps) {
+  return (
+    <Stroked className={className}>
+      <path d="M5 12h14" />
+    </Stroked>
+  )
+}
+
 /*
  * THE NAVIGATION SET.
  *

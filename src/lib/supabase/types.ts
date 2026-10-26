@@ -3443,11 +3443,28 @@ export type Database = {
         }
         Relationships: []
       }
+      dashboard_fee_summary: {
+        Row: {
+          coaching_center_id: string | null
+          outstanding_bdt: number | null
+          invoice_count: number | null
+          overdue_count: number | null
+        }
+        Relationships: []
+      }
+      dashboard_reminder_summary: {
+        Row: {
+          coaching_center_id: string | null
+          reminders_due_today: number | null
+        }
+        Relationships: []
+      }
       fee_outstanding_summary: {
         Row: {
           coaching_center_id: string | null
           outstanding_bdt: number | null
           invoice_count: number | null
+          overdue_count: number | null
         }
         Relationships: []
       }

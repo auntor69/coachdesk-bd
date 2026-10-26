@@ -8,18 +8,15 @@ import { isHqMember } from '@/lib/branches'
 import { Suspense } from 'react'
 
 import { createClient } from '@/lib/supabase/server'
-import { pageAll } from '@/lib/supabase/page'
 import {
   todayInDhaka,
   currentPeriodMonth,
   addMonths,
-  addDays,
   formatDate,
 } from '@/lib/bd/time'
 import { has } from '@/lib/plans'
 import { can, canReadMoney } from '@/lib/staff/capabilities'
 import { setupSteps } from '@/lib/setup'
-import { countChasesDue } from '@/lib/fees/reminder-schedule'
 import { categoryBills, monthBills, monthMoney, payrollState } from '@/lib/finance/profit'
 import { formatTaka as taka } from '@/lib/money'
 import { dict, DEFAULT_LOCALE } from '@/lib/i18n'
@@ -198,15 +195,32 @@ export default async function DashboardPage() {
     has(session.plan, 'centerWideReporting') &&
     canReadMoney(session.active.capabilities)
 
+  // Whether the fee figures on this page mean anything to whoever is reading it.
+  //
+  // Without this, a teacher landing here from a bookmark got the centre's
+  // outstanding as ৳0 and "nobody is overdue" — RLS had returned them nothing, and
+  // the card reported that absence as good news in the same 4xl type an owner
+  // reads their real arrears in. A number that is missing is not a number that is
+  // zero, and this card is the one the whole product is sold on.
+  //
+  // Free for an owner or a manager: canReadFees answers from the role without a
+  // query, and it is memoised, so this and the fee tab in the shell share one — and
+  // for a teacher it shares `mine`'s query above rather than adding its own.
+  const seeFees = await canReadFees()
+
+  // And whether the revenue tile is one of the three. Named because the grid's own column
+  // count has to agree with it — two tiles in a three-column grid is a gap where a figure
+  // was, which reads as a figure that failed rather than as one nobody is owed.
+  const seeCollected = isAdmin && seeFees
+
   const [
     { count: studentCount },
     { data: batchRows },
     { data: outstandingRow, error: outstandingError },
-    { data: overdueRows, count: overdueCountRaw, error: overdueError },
-    { data: chaseCandidates },
+    { data: overdueRows, error: overdueError },
+    { data: remindersRow, error: remindersError },
     { data: collectedRow, error: collectedError },
     { data: todaySessions },
-    chased,
     { count: enrolmentCount },
     { count: sessionCount },
     { data: profitRow, error: profitError },
@@ -224,33 +238,37 @@ export default async function DashboardPage() {
     // Resolved rather than sent when the staff list could not be read — see the note
     // on `scopeUnreadable` for why an unfiltered answer is the wrong one here.
     scopeUnreadable ? { data: null } : batchQuery,
-    // Outstanding total, summed directly in SQL by view fee_outstanding_summary.
+    // Aggregated invoice summary: outstanding balance, invoice count, and overdue count in one fast SQL aggregate.
     // Replaces unbounded pageAll over fee_invoice_balances.
-    supabase
-      .from('fee_outstanding_summary')
-      .select('outstanding_bdt, invoice_count')
-      .eq('coaching_center_id', session.active.centerId)
-      .maybeSingle(),
-    // Up to 8 largest overdue balances for the dashboard table, with exact total overdue count.
-    supabase
-      .from('fee_invoice_balances')
-      .select('id, student_name, remaining_bdt, due_date', { count: 'exact' })
-      .eq('coaching_center_id', session.active.centerId)
-      .is('voided_at', null)
-      .gt('remaining_bdt', 0)
-      .lt('due_date', today)
-      .order('remaining_bdt', { ascending: false })
-      .limit(8),
-    // Chase candidates for today's worklist door, limited to active balances due within 3 days.
-    isAdmin
+    // Gated by seeFees so unauthorized users never dispatch fee summary queries.
+    seeFees
+      ? supabase
+          .from('dashboard_fee_summary')
+          .select('outstanding_bdt, invoice_count, overdue_count')
+          .eq('coaching_center_id', session.active.centerId)
+          .maybeSingle()
+      : Promise.resolve({ data: null, error: null }),
+    // Up to 8 largest overdue balances for the dashboard table (unbounded count scan removed).
+    // Gated by seeFees and ordered deterministically by largest balance first, then invoice id.
+    seeFees
       ? supabase
           .from('fee_invoice_balances')
-          .select('id, due_date, guardian_phone')
+          .select('id, student_name, remaining_bdt, due_date')
           .eq('coaching_center_id', session.active.centerId)
           .is('voided_at', null)
           .gt('remaining_bdt', 0)
-          .lte('due_date', addDays(today, 3))
-          .limit(1000)
+          .lt('due_date', today)
+          .order('remaining_bdt', { ascending: false })
+          .order('id')
+          .limit(8)
+      : Promise.resolve({ data: null, error: null }),
+    // Reminders due today: aggregated directly in SQL with staff-admin permissions enforced at the view level.
+    isAdmin && seeFees
+      ? supabase
+          .from('dashboard_reminder_summary')
+          .select('reminders_due_today')
+          .eq('coaching_center_id', session.active.centerId)
+          .maybeSingle()
       : Promise.resolve({ data: null, error: null }),
     // Collected this month, by payment date rather than by invoice period — the
     // owner is asking "what came in", not "what was billed".
@@ -264,12 +282,15 @@ export default async function DashboardPage() {
     // from getting it wrong.
     //
     // maybeSingle, because a month nobody has paid in has no row at all.
-    supabase
-      .from('fee_collections_month')
-      .select('collected_bdt')
-      .eq('coaching_center_id', session.active.centerId)
-      .eq('period_month', period)
-      .maybeSingle(),
+    // Gated by seeCollected (isAdmin && seeFees) so unauthorized roles never query revenue.
+    seeCollected
+      ? supabase
+          .from('fee_collections_month')
+          .select('collected_bdt')
+          .eq('coaching_center_id', session.active.centerId)
+          .eq('period_month', period)
+          .maybeSingle()
+      : Promise.resolve({ data: null, error: null }),
     // Today's registers, one row per batch that has one — `unique (batch_id,
     // session_date)` is what makes a row count a batch count.
     //
@@ -282,30 +303,6 @@ export default async function DashboardPage() {
       .select('batch_id')
       .eq('coaching_center_id', session.active.centerId)
       .eq('session_date', today),
-    // Reminders since the start of last month, newest first — enough to tell
-    // which of the outstanding rows have already been chased at their current
-    // stage, which is what turns "twelve people owe money" into "three people
-    // need a message today".
-    //
-    // Run for every role rather than only for the two that can open the
-    // worklist. RLS returns nothing to a teacher, so the query costs one round
-    // trip inside a Promise.all that is already waiting on five others, and
-    // making it conditional would buy nothing but a branch.
-    //
-    // Paged, and not for the sake of the card's wording: `countChasesDue` below is
-    // what turns this into "three need a message today", and a reminder lost past
-    // the row ceiling reads as a family never contacted. The number on the door
-    // would then send an owner to re-chase somebody they chased this morning.
-    pageAll((from, to) =>
-      supabase
-        .from('fee_reminders')
-        .select('invoice_id, created_at')
-        .eq('coaching_center_id', session.active.centerId)
-        .gte('created_at', `${addMonths(period, -1)}T00:00:00+06:00`)
-        .order('created_at', { ascending: false })
-        .order('id')
-        .range(from, to),
-    ),
     /*
      * The two counts behind the setup card, and the reason they are counts rather than
      * rows: both questions are "is there at least one", over tables that hold one row
@@ -489,6 +486,7 @@ export default async function DashboardPage() {
   const moneyProblem: 'unreadable' | 'tooLarge' | null = outstandingError ? 'unreadable' : null
   const outstanding = outstandingError ? 0 : Number(outstandingRow?.outstanding_bdt ?? 0)
   const invoiceCount = outstandingError ? 0 : Number(outstandingRow?.invoice_count ?? 0)
+  const overdueCount = overdueError ? 0 : Number(outstandingRow?.overdue_count ?? 0)
 
   // Number(), not sumTaka: one row, already added up in SQL, arriving as a string
   // because numeric always does.
@@ -498,67 +496,23 @@ export default async function DashboardPage() {
   // collected is a sentence about how the month is going. Unknown is drawn as a dash.
   const collected = collectedError ? null : Number(collectedRow?.collected_bdt ?? 0)
 
-  // Biggest debt first: the call an owner makes before the others.
-  const overdueCount = overdueCountRaw ?? (overdueRows ? overdueRows.length : 0)
+  // Top 8 overdue debts for the dashboard table
   const overdue = (overdueRows ?? []).map((r) => ({
     name: r.student_name ?? d.common.unknown,
     amount: Number(r.remaining_bdt ?? 0),
     dueDate: r.due_date ?? today,
   }))
 
-  // Newest reminder per invoice, as a Dhaka calendar day.
-  //
-  // The conversion is load-bearing and not a slice of the ISO string: created_at
-  // is a timestamptz handed back in UTC, so a reminder sent at 1am Dhaka would
-  // read as yesterday — and yesterday is on the other side of the cooldown, which
-  // is the difference between this number and the one on the worklist.
-  const lastChase = new Map<string, string>()
-  for (const r of 'rows' in chased ? chased.rows : []) {
-    if (!r.invoice_id || lastChase.has(r.invoice_id)) continue
-    lastChase.set(r.invoice_id, todayInDhaka(new Date(r.created_at)))
-  }
-
   /*
-   * The same figure the fee board shows, from the same function, so the owner's home
-   * screen and the board never advertise two different amounts of work — or null, when
-   * either read behind it did not arrive.
-   *
-   * Both are load-bearing, and they fail in opposite directions. With no invoices
-   * there is nothing to count and the door reads “nobody needs chasing today”. With no
-   * reminders every family inside a stage looks like one who has never been contacted,
-   * so the count comes out too high and sends an owner to chase somebody they chased
-   * this morning — which is the harm the reminder query's own note names, and counting
-   * anyway is what would cause it.
+   * The reminders due today, aggregated directly in SQL with the staff-admin
+   * gate enforced at the database level.
    */
   const dueToday =
-    isAdmin && chaseCandidates !== null && 'rows' in chased
-      ? countChasesDue(
-          chaseCandidates.map((r) => ({
-            dueDate: r.due_date ?? today,
-            lastRemindedOn: (r.id && lastChase.get(r.id)) || null,
-            reachable: Boolean(r.guardian_phone),
-          })),
-          today,
-        )
+    isAdmin && seeFees
+      ? remindersError
+        ? null
+        : Number(remindersRow?.reminders_due_today ?? 0)
       : null
-
-  // Whether the fee figures on this page mean anything to whoever is reading it.
-  //
-  // Without this, a teacher landing here from a bookmark got the centre's
-  // outstanding as ৳0 and "nobody is overdue" — RLS had returned them nothing, and
-  // the card reported that absence as good news in the same 4xl type an owner
-  // reads their real arrears in. A number that is missing is not a number that is
-  // zero, and this card is the one the whole product is sold on.
-  //
-  // Free for an owner or a manager: canReadFees answers from the role without a
-  // query, and it is memoised, so this and the fee tab in the shell share one — and
-  // for a teacher it shares `mine`'s query above rather than adding its own.
-  const seeFees = await canReadFees()
-
-  // And whether the revenue tile is one of the three. Named because the grid's own column
-  // count has to agree with it — two tiles in a three-column grid is a gap where a figure
-  // was, which reads as a figure that failed rather than as one nobody is owed.
-  const seeCollected = isAdmin && seeFees
 
   // How far this centre is from the product doing anything at all, or null once it is
   // doing it. Null for a teacher too, because their two counts were never asked for —
@@ -805,63 +759,73 @@ export default async function DashboardPage() {
               has the height for them beside a four-block rail, and eight is the difference
               between a sample and a morning's work. `/fees` is still where the rest are —
               this is the top of a list, not the list. */}
-          {overdue.length > 0 && (
+          {seeFees && (overdueError || overdue.length > 0) && (
             <div className="order-last">
-              <div className="mb-2 flex items-baseline justify-between gap-3">
-                <h2 className="font-semibold text-ink">{t.overdueTitle}</h2>
-                {/* A 44px target on one line: the py is what a thumb aims at and the
-                    -my puts the row back where it was. */}
-                <Link href="/fees" className="-my-3 py-3 text-sm font-medium text-brand-700">
-                  {d.common.seeAll}
-                </Link>
-              </div>
+              {overdueError ? (
+                <div className="rounded-xl border border-line bg-white p-4">
+                  <p className="text-sm font-medium text-absent">
+                    {d.common.somethingWentWrong}
+                  </p>
+                </div>
+              ) : (
+                <>
+                  <div className="mb-2 flex items-baseline justify-between gap-3">
+                    <h2 className="font-semibold text-ink">{t.overdueTitle}</h2>
+                    {/* A 44px target on one line: the py is what a thumb aims at and the
+                        -my puts the row back where it was. */}
+                    <Link href="/fees" className="-my-3 py-3 text-sm font-medium text-brand-700">
+                      {d.common.seeAll}
+                    </Link>
+                  </div>
 
-              {/* One `<table>` at both widths rather than a list on a phone and a table on
-                  a laptop: two renderings of the same eight rows is two things to keep in
-                  step, and this is three columns, which fits 375px once the date is the
-                  short form `formatDate` already returns.
+                  {/* One `<table>` at both widths rather than a list on a phone and a table on
+                      a laptop: two renderings of the same eight rows is two things to keep in
+                      step, and this is three columns, which fits 375px once the date is the
+                      short form `formatDate` already returns.
 
-                  `hidden sm:table-header-group` on the head, not no head at all: three
-                  stacked rows of name/date/৳ explain themselves at a phone's width and the
-                  header would cost a line of chrome, but a screen reader gets the labels
-                  either way. */}
-              <table className="w-full border-separate border-spacing-y-2">
-                <thead className="hidden sm:table-header-group">
-                  <tr className="text-left text-xs font-medium uppercase
-                    tracking-wide text-ink-faint">
-                    <th scope="col" className="px-4 pb-1">{t.overdueName}</th>
-                    <th scope="col" className="px-4 pb-1">{t.overdueDue}</th>
-                    <th scope="col" className="px-4 pb-1 text-right">
-                      {t.overdueAmount}
-                    </th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {overdue.slice(0, 8).map((row, i) => (
-                    <tr key={i} className="bg-white">
-                      {/* The borders go on the cells, not the row: a `<tr>` cannot carry
-                          one in any browser we ship to, so the rounding sits on the first
-                          and last cell of each row and the middle cell keeps only the
-                          rules above and below. */}
-                      <th
-                        scope="row"
-                        className="max-w-[12rem] truncate rounded-l-xl border border-r-0
-                          border-line px-4 py-3 text-left font-medium text-ink"
-                      >
-                        {row.name}
-                      </th>
-                      <td className="num whitespace-nowrap border-y border-line px-4 py-3
-                        text-sm text-ink-faint">
-                        {formatDate(row.dueDate, locale)}
-                      </td>
-                      <td className="num rounded-r-xl border border-l-0 border-line px-4
-                        py-3 text-right font-semibold text-absent">
-                        {taka(row.amount)}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+                      `hidden sm:table-header-group` on the head, not no head at all: three
+                      stacked rows of name/date/৳ explain themselves at a phone's width and the
+                      header would cost a line of chrome, but a screen reader gets the labels
+                      either way. */}
+                  <table className="w-full border-separate border-spacing-y-2">
+                    <thead className="hidden sm:table-header-group">
+                      <tr className="text-left text-xs font-medium uppercase
+                        tracking-wide text-ink-faint">
+                        <th scope="col" className="px-4 pb-1">{t.overdueName}</th>
+                        <th scope="col" className="px-4 pb-1">{t.overdueDue}</th>
+                        <th scope="col" className="px-4 pb-1 text-right">
+                          {t.overdueAmount}
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {overdue.slice(0, 8).map((row, i) => (
+                        <tr key={i} className="bg-white">
+                          {/* The borders go on the cells, not the row: a `<tr>` cannot carry
+                              one in any browser we ship to, so the rounding sits on the first
+                              and last cell of each row and the middle cell keeps only the
+                              rules above and below. */}
+                          <th
+                            scope="row"
+                            className="max-w-[12rem] truncate rounded-l-xl border border-r-0
+                              border-line px-4 py-3 text-left font-medium text-ink"
+                          >
+                            {row.name}
+                          </th>
+                          <td className="num whitespace-nowrap border-y border-line px-4 py-3
+                            text-sm text-ink-faint">
+                            {formatDate(row.dueDate, locale)}
+                          </td>
+                          <td className="num rounded-r-xl border border-l-0 border-line px-4
+                            py-3 text-right font-semibold text-absent">
+                            {taka(row.amount)}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </>
+              )}
             </div>
           )}
         </div>

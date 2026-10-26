@@ -13,6 +13,7 @@ import { memo, useActionState, useCallback, useEffect, useMemo, useRef, useState
 import { useOffline } from 'next/offline'
 
 import { Alert, Button } from '@/components/ui'
+import { CheckIcon, ClockIcon, XIcon, MinusIcon } from '@/components/icons'
 import { clearDraft, useSavedDraft, writeDraft } from '@/lib/drafts'
 import { MAX_TEXT } from '@/lib/limits'
 import type { MarkHistory } from '@/lib/attendance/window'
@@ -49,19 +50,31 @@ export type RosterStudent = {
 /**
  * What each status looks like at a glance.
  *
- * Glyph and colour together, never colour alone: red-green colour blindness is
+ * Vector icon and colour together, never colour alone: red-green colour blindness is
  * around 8% of men, and a register that reads as "all the same" to them is worse
  * than no register.
  *
- * `excused` has a glyph but no button. It is a decision made after the fact, from
+ * `excused` has an icon but no button. It is a decision made after the fact, from
  * the batch history, not while standing in front of a class — but a settled row
  * still has to draw whatever it happens to hold.
  */
-const GLYPH: Record<AttendanceStatus, string> = {
-  present: '✓',
-  late: '⏱',
-  absent: '✕',
-  excused: '—',
+function StatusIcon({
+  status,
+  className = 'size-5 shrink-0',
+}: {
+  status: AttendanceStatus
+  className?: string
+}) {
+  switch (status) {
+    case 'present':
+      return <CheckIcon className={className} />
+    case 'late':
+      return <ClockIcon className={className} />
+    case 'absent':
+      return <XIcon className={className} />
+    case 'excused':
+      return <MinusIcon className={className} />
+  }
 }
 
 /**
@@ -433,8 +446,8 @@ const RosterRow = memo(function RosterRow({
           className="grid h-11 shrink-0 place-items-center rounded-lg border-2
             border-line bg-surface-alt px-3"
         >
-          <span className="text-sm font-medium text-ink-soft">
-            <span aria-hidden>{GLYPH[current]} </span>
+          <span className="inline-flex items-center gap-1.5 text-sm font-medium text-ink-soft">
+            <StatusIcon status={current} className="size-4 shrink-0" />
             {statusLabels[current]}
             <span className="sr-only"> — {t.lockedRow}</span>
           </span>
@@ -459,10 +472,10 @@ const RosterRow = memo(function RosterRow({
                   text-lg transition-colors ${
                     on
                       ? CHOICE_ON[choice.status]
-                      : 'border-line bg-white text-ink-faint'
+                      : 'border-line bg-white text-ink-soft hover:border-ink hover:text-ink'
                   }`}
               >
-                <span aria-hidden>{GLYPH[choice.status]}</span>
+                <StatusIcon status={choice.status} className="size-5 shrink-0" />
               </button>
             )
           })}

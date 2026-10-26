@@ -246,3 +246,63 @@ test('the tiles are three across on a phone and three rows in the rail', () => {
   // Two or three columns on the phone, both written out so Tailwind's scanner sees them.
   assert.match(PAGE, /seeCollected \? 'grid-cols-3' : 'grid-cols-2'/)
 })
+
+test('fee queries and table rendering are gated on permissions ahead of Promise.all', () => {
+  const promiseAllIdx = PAGE.indexOf('await Promise.all([')
+  const seeFeesIdx = PAGE.indexOf('const seeFees = await canReadFees()')
+  const seeCollectedIdx = PAGE.indexOf('const seeCollected = isAdmin && seeFees')
+
+  // Both permissions must resolve before Promise.all dispatches
+  assert.ok(seeFeesIdx > 0, 'seeFees is resolved')
+  assert.ok(seeCollectedIdx > 0, 'seeCollected is resolved')
+  assert.ok(seeFeesIdx < promiseAllIdx, 'seeFees must resolve before Promise.all')
+  assert.ok(seeCollectedIdx < promiseAllIdx, 'seeCollected must resolve before Promise.all')
+
+  // Gated queries in Promise.all
+  assert.match(
+    PAGE,
+    /seeFees\s*\?\s*supabase\s*\.from\('dashboard_fee_summary'\)/,
+    'dashboard_fee_summary query must be gated by seeFees',
+  )
+  assert.match(
+    PAGE,
+    /seeFees\s*\?\s*supabase\s*\.from\('fee_invoice_balances'\)/,
+    'fee_invoice_balances overdue query must be gated by seeFees',
+  )
+  assert.match(
+    PAGE,
+    /isAdmin && seeFees\s*\?\s*supabase\s*\.from\('dashboard_reminder_summary'\)/,
+    'dashboard_reminder_summary query must be gated by isAdmin && seeFees',
+  )
+  assert.match(
+    PAGE,
+    /seeCollected\s*\?\s*supabase\s*\.from\('fee_collections_month'\)/,
+    'fee_collections_month query must be gated by seeCollected',
+  )
+
+  // Overdue table render must be gated on seeFees
+  assert.match(
+    PAGE,
+    /\{seeFees && \(overdueError \|\| overdue\.length > 0\) && \(/,
+    'overdue table rendering must be gated by seeFees',
+  )
+})
+
+test('overdue debts query preserves largest-first ordering with deterministic tie-breaker', () => {
+  // Query must order by remaining_bdt descending, then id ascending, limited to 8
+  assert.match(
+    PAGE,
+    /\.from\('fee_invoice_balances'\)[\s\S]*?\.order\('remaining_bdt',\s*\{\s*ascending:\s*false\s*\}\)[\s\S]*?\.order\('id'\)[\s\S]*?\.limit\(8\)/,
+    'overdue query must order by largest remaining_bdt first, then id, limited to 8',
+  )
+
+  // Headline overdue count remains separate from overdue table rows
+  assert.match(
+    PAGE,
+    /overdueCount > 0\s*\?\s*d\.fees\.overdueCount\(overdueCount\)\s*:\s*t\.nobodyOverdue/,
+    'headline overdue count is preserved separately',
+  )
+
+  // Error card renders when overdue query fails
+  assert.match(PAGE, /d\.common\.somethingWentWrong/, 'error card is rendered on query failure')
+})
