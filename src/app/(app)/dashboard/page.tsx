@@ -195,6 +195,24 @@ export default async function DashboardPage() {
     has(session.plan, 'centerWideReporting') &&
     canReadMoney(session.active.capabilities)
 
+  // Whether the fee figures on this page mean anything to whoever is reading it.
+  //
+  // Without this, a teacher landing here from a bookmark got the centre's
+  // outstanding as ৳0 and "nobody is overdue" — RLS had returned them nothing, and
+  // the card reported that absence as good news in the same 4xl type an owner
+  // reads their real arrears in. A number that is missing is not a number that is
+  // zero, and this card is the one the whole product is sold on.
+  //
+  // Free for an owner or a manager: canReadFees answers from the role without a
+  // query, and it is memoised, so this and the fee tab in the shell share one — and
+  // for a teacher it shares `mine`'s query above rather than adding its own.
+  const seeFees = await canReadFees()
+
+  // And whether the revenue tile is one of the three. Named because the grid's own column
+  // count has to agree with it — two tiles in a three-column grid is a gap where a figure
+  // was, which reads as a figure that failed rather than as one nobody is owed.
+  const seeCollected = isAdmin && seeFees
+
   const [
     { count: studentCount },
     { data: batchRows },
@@ -222,23 +240,30 @@ export default async function DashboardPage() {
     scopeUnreadable ? { data: null } : batchQuery,
     // Aggregated invoice summary: outstanding balance, invoice count, and overdue count in one fast SQL aggregate.
     // Replaces unbounded pageAll over fee_invoice_balances.
-    supabase
-      .from('dashboard_fee_summary')
-      .select('outstanding_bdt, invoice_count, overdue_count')
-      .eq('coaching_center_id', session.active.centerId)
-      .maybeSingle(),
+    // Gated by seeFees so unauthorized users never dispatch fee summary queries.
+    seeFees
+      ? supabase
+          .from('dashboard_fee_summary')
+          .select('outstanding_bdt, invoice_count, overdue_count')
+          .eq('coaching_center_id', session.active.centerId)
+          .maybeSingle()
+      : Promise.resolve({ data: null, error: null }),
     // Up to 8 largest overdue balances for the dashboard table (unbounded count scan removed).
-    supabase
-      .from('fee_invoice_balances')
-      .select('id, student_name, remaining_bdt, due_date')
-      .eq('coaching_center_id', session.active.centerId)
-      .is('voided_at', null)
-      .gt('remaining_bdt', 0)
-      .lt('due_date', today)
-      .order('remaining_bdt', { ascending: false })
-      .limit(8),
+    // Gated by seeFees and ordered deterministically by largest balance first, then invoice id.
+    seeFees
+      ? supabase
+          .from('fee_invoice_balances')
+          .select('id, student_name, remaining_bdt, due_date')
+          .eq('coaching_center_id', session.active.centerId)
+          .is('voided_at', null)
+          .gt('remaining_bdt', 0)
+          .lt('due_date', today)
+          .order('remaining_bdt', { ascending: false })
+          .order('id')
+          .limit(8)
+      : Promise.resolve({ data: null, error: null }),
     // Reminders due today: aggregated directly in SQL with staff-admin permissions enforced at the view level.
-    isAdmin
+    isAdmin && seeFees
       ? supabase
           .from('dashboard_reminder_summary')
           .select('reminders_due_today')
@@ -257,12 +282,15 @@ export default async function DashboardPage() {
     // from getting it wrong.
     //
     // maybeSingle, because a month nobody has paid in has no row at all.
-    supabase
-      .from('fee_collections_month')
-      .select('collected_bdt')
-      .eq('coaching_center_id', session.active.centerId)
-      .eq('period_month', period)
-      .maybeSingle(),
+    // Gated by seeCollected (isAdmin && seeFees) so unauthorized roles never query revenue.
+    seeCollected
+      ? supabase
+          .from('fee_collections_month')
+          .select('collected_bdt')
+          .eq('coaching_center_id', session.active.centerId)
+          .eq('period_month', period)
+          .maybeSingle()
+      : Promise.resolve({ data: null, error: null }),
     // Today's registers, one row per batch that has one — `unique (batch_id,
     // session_date)` is what makes a row count a batch count.
     //
@@ -479,29 +507,12 @@ export default async function DashboardPage() {
    * The reminders due today, aggregated directly in SQL with the staff-admin
    * gate enforced at the database level.
    */
-  const dueToday = isAdmin
-    ? remindersError
-      ? null
-      : Number(remindersRow?.reminders_due_today ?? 0)
-    : null
-
-  // Whether the fee figures on this page mean anything to whoever is reading it.
-  //
-  // Without this, a teacher landing here from a bookmark got the centre's
-  // outstanding as ৳0 and "nobody is overdue" — RLS had returned them nothing, and
-  // the card reported that absence as good news in the same 4xl type an owner
-  // reads their real arrears in. A number that is missing is not a number that is
-  // zero, and this card is the one the whole product is sold on.
-  //
-  // Free for an owner or a manager: canReadFees answers from the role without a
-  // query, and it is memoised, so this and the fee tab in the shell share one — and
-  // for a teacher it shares `mine`'s query above rather than adding its own.
-  const seeFees = await canReadFees()
-
-  // And whether the revenue tile is one of the three. Named because the grid's own column
-  // count has to agree with it — two tiles in a three-column grid is a gap where a figure
-  // was, which reads as a figure that failed rather than as one nobody is owed.
-  const seeCollected = isAdmin && seeFees
+  const dueToday =
+    isAdmin && seeFees
+      ? remindersError
+        ? null
+        : Number(remindersRow?.reminders_due_today ?? 0)
+      : null
 
   // How far this centre is from the product doing anything at all, or null once it is
   // doing it. Null for a teacher too, because their two counts were never asked for —
@@ -748,7 +759,7 @@ export default async function DashboardPage() {
               has the height for them beside a four-block rail, and eight is the difference
               between a sample and a morning's work. `/fees` is still where the rest are —
               this is the top of a list, not the list. */}
-          {(overdueError || overdue.length > 0) && (
+          {seeFees && (overdueError || overdue.length > 0) && (
             <div className="order-last">
               {overdueError ? (
                 <div className="rounded-xl border border-line bg-white p-4">

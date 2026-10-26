@@ -44,6 +44,7 @@ group by fb.coaching_center_id;
 comment on view public.fee_outstanding_summary is
   'Direct SQL aggregation of outstanding fee balances and overdue counts per tenant to eliminate unbounded client-side pageAll memory bloat.';
 
+revoke all on public.fee_outstanding_summary from anon, authenticated, public;
 grant select on public.fee_outstanding_summary to authenticated;
 
 -- Dedicated dashboard view mirroring the aggregation

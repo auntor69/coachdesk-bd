@@ -17631,6 +17631,12 @@ const anonRemDenied = await deniedAsUser(
   'select * from dashboard_reminder_summary where coaching_center_id = $1',
   [centerA],
 )
+const anonOutDenied = await deniedAsUser(
+  db,
+  null,
+  'select * from fee_outstanding_summary where coaching_center_id = $1',
+  [centerA],
+)
 check(
   'anonymous user is denied SELECT on dashboard_fee_summary with permission error (42501)',
   anonFeeDenied,
@@ -17639,6 +17645,36 @@ check(
   'anonymous user is denied SELECT on dashboard_reminder_summary with permission error (42501)',
   anonRemDenied,
 )
+check(
+  'anonymous user is denied SELECT on fee_outstanding_summary with permission error (42501)',
+  anonOutDenied,
+)
+
+// 6b. Effective privilege assertions on all three fee summary views
+const feeViewPrivRows = (
+  await db.query(`
+    select table_name, grantee, privilege_type
+    from information_schema.table_privileges
+    where table_schema = 'public'
+      and table_name in ('fee_outstanding_summary', 'dashboard_fee_summary', 'dashboard_reminder_summary')
+  `)
+).rows
+
+for (const viewName of ['fee_outstanding_summary', 'dashboard_fee_summary', 'dashboard_reminder_summary']) {
+  const viewPrivs = feeViewPrivRows.filter((r) => r.table_name === viewName)
+  const grantees = new Set(viewPrivs.map((r) => r.grantee.toLowerCase()))
+  check(
+    `effective privileges: ${viewName} grants no privileges to anon or public`,
+    !grantees.has('anon') && !grantees.has('public'),
+    `found grantees: ${[...grantees].join(', ')}`,
+  )
+  const authPrivs = viewPrivs.filter((r) => r.grantee.toLowerCase() === 'authenticated').map((r) => r.privilege_type)
+  check(
+    `effective privileges: ${viewName} grants only SELECT to authenticated`,
+    authPrivs.length === 1 && authPrivs[0] === 'SELECT',
+    `found authenticated privileges: ${authPrivs.join(', ')}`,
+  )
+}
 
 // 7. Capability negative test: receptionist (lacking 'fees') sees 0 rows on fee and reminder summaries
 await asUser(db, receptionist, async (tx) => {
