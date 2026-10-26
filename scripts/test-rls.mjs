@@ -17539,6 +17539,216 @@ await db.query('delete from public.promotions where id in ($1, $2)', [
   '22222222-2222-2222-2222-222222222222',
 ])
 
+// --- Dashboard fee and reminder summary views (20260811000101) -----------------
+
+console.log('\nDashboard fee and reminder summaries (20260811000101):')
+
+// 1. Staff-admin reads own centre's fee summary
+await asUser(db, ids.ownerA, async (tx) => {
+  const row = (
+    await tx.query(
+      'select * from dashboard_fee_summary where coaching_center_id = $1',
+      [centerA],
+    )
+  ).rows[0]
+  check(
+    'owner A reads their centre fee summary through dashboard_fee_summary',
+    row !== undefined && Number(row.outstanding_bdt) >= 0 && typeof row.overdue_count === 'number',
+    JSON.stringify(row),
+  )
+})
+
+// 2. Staff-admin reads reminders due today through dashboard_reminder_summary
+await asUser(db, ids.ownerA, async (tx) => {
+  const row = (
+    await tx.query(
+      'select * from dashboard_reminder_summary where coaching_center_id = $1',
+      [centerA],
+    )
+  ).rows[0]
+  check(
+    'owner A reads reminders due today through dashboard_reminder_summary',
+    row === undefined || typeof row.reminders_due_today === 'number',
+    JSON.stringify(row),
+  )
+})
+
+// 3. Cross-tenant negative test: Owner B cannot read Center A's fee summary
+await asUser(db, ids.ownerB, async (tx) => {
+  const count = (
+    await tx.query(
+      'select count(*)::int as n from dashboard_fee_summary where coaching_center_id = $1',
+      [centerA],
+    )
+  ).rows[0].n
+  check(
+    "cross-tenant negative test: owner B sees no fee summary for centre A",
+    count === 0,
+    `got count ${count}`,
+  )
+})
+
+// 4. Cross-tenant negative test: Owner B cannot read Center A's reminder summary
+await asUser(db, ids.ownerB, async (tx) => {
+  const count = (
+    await tx.query(
+      'select count(*)::int as n from dashboard_reminder_summary where coaching_center_id = $1',
+      [centerA],
+    )
+  ).rows[0].n
+  check(
+    "cross-tenant negative test: owner B sees no reminder summary for centre A",
+    count === 0,
+    `got count ${count}`,
+  )
+})
+
+// 5. Unauthorized teacher negative test: Teacher cannot read reminder summary
+await asUser(db, ids.karim, async (tx) => {
+  const count = (
+    await tx.query(
+      'select count(*)::int as n from dashboard_reminder_summary where coaching_center_id = $1',
+      [centerA],
+    )
+  ).rows[0].n
+  check(
+    'unauthorized teacher negative test: teacher Karim sees 0 reminder summary rows',
+    count === 0,
+    `got count ${count}`,
+  )
+})
+
+// 6. Anonymous (signed-out) negative test: denied SELECT at the SQL privilege level
+const anonFeeDenied = await deniedAsUser(
+  db,
+  null,
+  'select * from dashboard_fee_summary where coaching_center_id = $1',
+  [centerA],
+)
+const anonRemDenied = await deniedAsUser(
+  db,
+  null,
+  'select * from dashboard_reminder_summary where coaching_center_id = $1',
+  [centerA],
+)
+check(
+  'anonymous user is denied SELECT on dashboard_fee_summary with permission error (42501)',
+  anonFeeDenied,
+)
+check(
+  'anonymous user is denied SELECT on dashboard_reminder_summary with permission error (42501)',
+  anonRemDenied,
+)
+
+// 7. Capability negative test: receptionist (lacking 'fees') sees 0 rows on fee and reminder summaries
+await asUser(db, receptionist, async (tx) => {
+  const feeCount = (
+    await tx.query(
+      'select count(*)::int as n from dashboard_fee_summary where coaching_center_id = $1',
+      [centerA],
+    )
+  ).rows[0].n
+  const remCount = (
+    await tx.query(
+      'select count(*)::int as n from dashboard_reminder_summary where coaching_center_id = $1',
+      [centerA],
+    )
+  ).rows[0].n
+  check(
+    'capability test: receptionist (lacking fees) sees 0 rows in dashboard_fee_summary',
+    feeCount === 0,
+    `got ${feeCount}`,
+  )
+  check(
+    'capability test: receptionist (lacking fees) sees 0 rows in dashboard_reminder_summary',
+    remCount === 0,
+    `got ${remCount}`,
+  )
+})
+
+// 8. Capability positive test: bookkeeper (holding 'fees') can read fee summary
+await asUser(db, bookkeeper, async (tx) => {
+  const row = (
+    await tx.query(
+      'select * from dashboard_fee_summary where coaching_center_id = $1',
+      [centerA],
+    )
+  ).rows[0]
+  check(
+    'capability test: bookkeeper (holding fees) reads dashboard_fee_summary',
+    row !== undefined && Number(row.outstanding_bdt) >= 0,
+    JSON.stringify(row),
+  )
+})
+
+// 9. Branch scoping test: pinned manager only aggregates their branch's invoices
+const mirpurInv = await one(
+  `insert into fee_invoices (coaching_center_id, student_id, period_month, amount_bdt, due_date)
+   values ($1, $2, '2026-03-01', 1234, '2026-03-10') returning id`,
+  [centerA, mirpur.students],
+)
+const uttaraInv = await one(
+  `insert into fee_invoices (coaching_center_id, student_id, period_month, amount_bdt, due_date)
+   values ($1, $2, '2026-03-01', 5678, '2026-03-10') returning id`,
+  [centerA, uttara.students],
+)
+
+await asUser(db, pinnedManager, async (tx) => {
+  const mirpurBalCount = (
+    await tx.query(
+      'select count(*)::int as n from fee_invoice_balances where id = $1',
+      [mirpurInv],
+    )
+  ).rows[0].n
+  const uttaraBalCount = (
+    await tx.query(
+      'select count(*)::int as n from fee_invoice_balances where id = $1',
+      [uttaraInv],
+    )
+  ).rows[0].n
+  check(
+    'branch scoping: pinned manager sees their own branch invoice in fee_invoice_balances',
+    mirpurBalCount === 1,
+  )
+  check(
+    'branch scoping: pinned manager CANNOT see other branch invoice in fee_invoice_balances',
+    uttaraBalCount === 0,
+  )
+
+  const summary = (
+    await tx.query(
+      'select outstanding_bdt, overdue_count from dashboard_fee_summary where coaching_center_id = $1',
+      [centerA],
+    )
+  ).rows[0]
+  check(
+    'branch scoping: pinned manager aggregates only their own branch balance in dashboard_fee_summary',
+    summary !== undefined && Number(summary.outstanding_bdt) === 1234,
+    `got ${JSON.stringify(summary)}`,
+  )
+  check(
+    'branch scoping: pinned manager counts only their own branch overdue invoices in dashboard_fee_summary',
+    summary !== undefined && summary.overdue_count === 1,
+    `got ${JSON.stringify(summary)}`,
+  )
+})
+
+await asUser(db, ids.ownerA, async (tx) => {
+  const ownerSummary = (
+    await tx.query(
+      'select outstanding_bdt, overdue_count from dashboard_fee_summary where coaching_center_id = $1',
+      [centerA],
+    )
+  ).rows[0]
+  check(
+    'branch scoping: owner aggregates both branch invoices in dashboard_fee_summary',
+    ownerSummary !== undefined && Number(ownerSummary.outstanding_bdt) >= (1234 + 5678),
+    `got ${JSON.stringify(ownerSummary)}`,
+  )
+})
+
+await db.query('delete from fee_invoices where id in ($1, $2)', [mirpurInv, uttaraInv])
+
 console.log(`\n${passed} passed, ${failed} failed`)
 await db.close()
 process.exit(failed ? 1 : 0)
